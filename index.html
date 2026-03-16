@@ -11,102 +11,106 @@
 body{
 font-family:-apple-system;
 margin:0;
-background:#f2f2f7;
+background:#eef2f3;
 }
 
 header{
 background:#27ae60;
 color:white;
 text-align:center;
-padding:16px;
-font-size:22px;
+padding:18px;
+font-size:24px;
 font-weight:bold;
 }
 
 .container{
-padding:16px;
+padding:14px;
 }
 
 .card{
 background:white;
-border-radius:14px;
+border-radius:16px;
 padding:16px;
-margin-bottom:16px;
+margin-bottom:14px;
+box-shadow:0 3px 8px rgba(0,0,0,0.08);
 }
 
 label{
 font-size:14px;
-margin-top:10px;
-display:block;
+font-weight:bold;
 }
 
-input,select{
+input{
 width:100%;
-padding:10px;
+padding:12px;
 font-size:16px;
 border-radius:8px;
 border:1px solid #ccc;
-}
-
-.grid2{
-display:grid;
-grid-template-columns:1fr 1fr;
-gap:10px;
+margin-top:4px;
+margin-bottom:8px;
 }
 
 button{
 width:100%;
-padding:14px;
-margin-top:16px;
-font-size:18px;
-background:#2ecc71;
+padding:16px;
+font-size:20px;
+margin-top:10px;
 border:none;
-border-radius:10px;
+border-radius:12px;
+background:#27ae60;
 color:white;
 font-weight:bold;
+}
+
+.startBox{
+text-align:center;
+font-size:22px;
+font-weight:bold;
+padding:10px;
+background:#ecfdf5;
+border-radius:10px;
+}
+
+.details{
+display:none;
+margin-top:10px;
 }
 
 .bedGrid{
 display:grid;
 grid-template-columns:repeat(3,1fr);
-gap:10px;
+gap:12px;
 }
 
 .bed{
-background:#fafafa;
-border-radius:10px;
-padding:6px;
+background:white;
+border-radius:14px;
+padding:10px;
+box-shadow:0 2px 6px rgba(0,0,0,0.08);
 }
 
 .bedTitle{
 text-align:center;
+font-size:18px;
 font-weight:bold;
-margin-bottom:4px;
+margin-bottom:6px;
 }
 
 .palletGrid{
 display:grid;
-grid-template-columns:repeat(39,1fr);
-gap:2px;
+grid-template-columns:1fr;
+gap:4px;
 }
 
 .pallet{
-height:10px;
-background:#ddd;
-border-radius:2px;
+height:18px;
+background:#d1d5db;
+border-radius:4px;
 }
 
-.start{
-background:#22c55e;
-}
-
-.mid{
-background:#fde047;
-}
-
-.end{
-background:#ef4444;
-}
+.start{background:#22c55e;}
+.mid{background:#fde047;}
+.end{background:#ef4444;}
 
 </style>
 </head>
@@ -125,58 +129,19 @@ background:#ef4444;
 <label>収穫率 (%)</label>
 <input id="rate" type="number" value="100">
 
-<label>収穫開始ベット</label>
-<select id="startBed">
-<option>A</option>
-<option>B</option>
-<option>C</option>
-<option>D</option>
-<option>E</option>
-<option>F</option>
-</select>
-
-<label>開始パレット</label>
-<input id="startPallet" type="number" value="1" min="1" max="78">
-
-<div class="grid2">
-
-<div>
-<label>Aベット</label>
-<input id="A" type="number" value="20">
-</div>
-
-<div>
-<label>Bベット</label>
-<input id="B" type="number" value="20">
-</div>
-
-<div>
-<label>Cベット</label>
-<input id="C" type="number" value="20">
-</div>
-
-<div>
-<label>Dベット</label>
-<input id="D" type="number" value="20">
-</div>
-
-<div>
-<label>Eベット</label>
-<input id="E" type="number" value="20">
-</div>
-
-<div>
-<label>Fベット</label>
-<input id="F" type="number" value="20">
-</div>
-
+<div class="startBox">
+開始位置: <span id="startLabel">A-1</span>
 </div>
 
 <button onclick="calc()">収穫計算</button>
 
-</div>
+<button onclick="toggleDetails()" style="background:#6b7280">
+詳細設定
+</button>
 
-<div class="card">
+<div id="details" class="details"></div>
+
+</div>
 
 <div class="bedGrid">
 
@@ -192,12 +157,48 @@ background:#ef4444;
 
 </div>
 
-</div>
-
 <script>
 
 const order=["A","B","C","D","E","F"]
 const bedMap=["F","D","B","E","C","A"]
+
+let startBed="A"
+let startPallet=1
+
+function toggleDetails(){
+
+let d=document.getElementById("details")
+
+d.style.display=d.style.display=="block"?"none":"block"
+
+}
+
+function drawSettings(){
+
+let html=""
+
+order.forEach(b=>{
+
+html+=`
+<h3>${b}ベット</h3>
+
+<label>手前パレット数</label>
+<input id="${b}_split" type="number" value="30">
+
+<label>手前収穫数</label>
+<input id="${b}_front" type="number" value="20">
+
+<label>奥収穫数</label>
+<input id="${b}_back" type="number" value="16">
+`
+
+})
+
+document.getElementById("details").innerHTML=html
+
+}
+
+drawSettings()
 
 function drawBeds(){
 
@@ -205,12 +206,10 @@ bedMap.forEach(b=>{
 
 let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>"
 
-for(let i=40;i<=78;i++){
-html+="<div class='pallet' id='"+b+"-"+i+"'></div>"
-}
+for(let i=1;i<=20;i++){
 
-for(let i=1;i<=39;i++){
-html+="<div class='pallet' id='"+b+"-"+i+"'></div>"
+html+=`<div class="pallet" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`
+
 }
 
 html+="</div>"
@@ -223,6 +222,26 @@ document.getElementById(b+"bed").innerHTML=html
 
 drawBeds()
 
+function setStart(b,p){
+
+startBed=b
+startPallet=p
+
+document.getElementById("startLabel").innerText=b+"-"+p
+
+}
+
+function getYield(b,p){
+
+let split=Number(document.getElementById(b+"_split").value)
+let front=Number(document.getElementById(b+"_front").value)
+let back=Number(document.getElementById(b+"_back").value)
+
+if(p<=split) return front
+return back
+
+}
+
 function reset(){
 
 document.querySelectorAll(".pallet").forEach(p=>{
@@ -231,60 +250,26 @@ p.className="pallet"
 
 }
 
-function saveSettings(){
-
-localStorage.setItem("rate",rate.value)
-localStorage.setItem("startBed",startBed.value)
-localStorage.setItem("startPallet",startPallet.value)
-
-order.forEach(b=>{
-localStorage.setItem(b,document.getElementById(b).value)
-})
-
-}
-
-function loadSettings(){
-
-if(localStorage.getItem("rate"))
-rate.value=localStorage.getItem("rate")
-
-if(localStorage.getItem("startBed"))
-startBed.value=localStorage.getItem("startBed")
-
-if(localStorage.getItem("startPallet"))
-startPallet.value=localStorage.getItem("startPallet")
-
-order.forEach(b=>{
-let v=localStorage.getItem(b)
-if(v) document.getElementById(b).value=v
-})
-
-}
-
-loadSettings()
-
 function calc(){
-
-saveSettings()
 
 reset()
 
-let cases=Number(cases.value)
-let rateVal=Number(rate.value)/100
+let cases=Number(document.getElementById("cases").value)
+let rate=Number(document.getElementById("rate").value)/100
 
-let need=cases*12/rateVal
+let need=cases*12/rate
 
-let bedIndex=order.indexOf(startBed.value)
-let palletIndex=Number(startPallet.value)
+let bedIndex=order.indexOf(startBed)
+let palletIndex=startPallet
 
 let total=0
-let startSet=false
+let first=true
 let lastId=null
 
 while(total<need){
 
 let bed=order[bedIndex]
-let per=Number(document.getElementById(bed).value)
+let yield=getYield(bed,palletIndex)
 
 let id=bed+"-"+palletIndex
 let el=document.getElementById(id)
@@ -293,16 +278,16 @@ if(el){
 
 lastId=id
 
-if(!startSet){
+if(first){
 el.classList.add("start")
-startSet=true
+first=false
 }else{
 el.classList.add("mid")
 }
 
 }
 
-total+=per
+total+=yield
 
 palletIndex++
 
@@ -320,9 +305,9 @@ bedIndex=0
 
 if(lastId){
 
-let endEl=document.getElementById(lastId)
-endEl.classList.remove("mid")
-endEl.classList.add("end")
+let e=document.getElementById(lastId)
+e.classList.remove("mid")
+e.classList.add("end")
 
 }
 
