@@ -60,6 +60,14 @@ color:white;
 margin-top:8px;
 }
 
+.secondary{
+background:#6b7280;
+}
+
+.third{
+background:#2563eb;
+}
+
 .startBox{
 font-size:20px;
 font-weight:bold;
@@ -101,6 +109,10 @@ background:#d1d5db;
 border-radius:4px;
 }
 
+.middle{
+border-top:3px solid black;
+}
+
 .start{background:#22c55e;}
 .mid{background:#fde047;}
 .end{background:#ef4444;}
@@ -128,15 +140,20 @@ border-radius:4px;
 
 <button onclick="calc()">収穫計算</button>
 
-<button onclick="toggleDetails()" style="background:#6b7280">
+<button class="secondary" onclick="toggleDetail1()">
 詳細設定
 </button>
 
-<button onclick="saveSettings()" style="background:#2563eb">
+<button class="secondary" onclick="toggleDetail2()">
+さらに詳細設定
+</button>
+
+<button class="third" onclick="saveSettings()">
 設定保存
 </button>
 
-<div id="settings"></div>
+<div id="detail1"></div>
+<div id="detail2"></div>
 
 </div>
 
@@ -161,31 +178,45 @@ const bedMap=["F","D","B","E","C","A"]
 
 let startBed="A"
 let startPallet=1
-let detail=false
 
-function toggleDetails(){
-detail=!detail
+let detail1=false
+let detail2=false
+
+function toggleDetail1(){
+detail1=!detail1
+drawSettings()
+}
+
+function toggleDetail2(){
+detail2=!detail2
 drawSettings()
 }
 
 function drawSettings(){
 
-let html=""
+let html1=""
+let html2=""
+
+if(detail1){
 
 order.forEach(b=>{
 
-html+="<h3>"+b+"ベット</h3>"
-
-if(!detail){
-
-html+=`
+html1+=`
+<h3>${b}ベット</h3>
 <label>1パレット収穫数</label>
 <input id="${b}_single" type="number" value="20">
 `
 
-}else{
+})
 
-html+=`
+}
+
+if(detail2){
+
+order.forEach(b=>{
+
+html2+=`
+<h3>${b}ベット</h3>
 <label>手前パレット数</label>
 <input id="${b}_split" type="number" value="30">
 
@@ -196,15 +227,14 @@ html+=`
 <input id="${b}_back" type="number" value="16">
 `
 
-}
-
 })
 
-document.getElementById("settings").innerHTML=html
-
 }
 
-drawSettings()
+document.getElementById("detail1").innerHTML=html1
+document.getElementById("detail2").innerHTML=html2
+
+}
 
 function drawBeds(){
 
@@ -212,9 +242,13 @@ bedMap.forEach(b=>{
 
 let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>"
 
-for(let i=40;i>=1;i--){
+for(let i=39;i>=1;i--){
 
-html+=`<div class="pallet" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`
+let cls="pallet"
+
+if(i==19) cls+=" middle"
+
+html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`
 
 }
 
@@ -239,11 +273,15 @@ document.getElementById("startLabel").innerText=b+"-"+p
 
 function getYield(b,p){
 
-if(!detail){
-return Number(document.getElementById(b+"_single").value)
-}
+let base=20
 
-let split=Number(document.getElementById(b+"_split").value)
+let single=document.getElementById(b+"_single")
+if(single) base=Number(single.value)
+
+let split=document.getElementById(b+"_split")
+
+if(!split) return base
+
 let front=Number(document.getElementById(b+"_front").value)
 let back=Number(document.getElementById(b+"_back").value)
 
@@ -255,7 +293,7 @@ return back
 function reset(){
 
 document.querySelectorAll(".pallet").forEach(p=>{
-p.className="pallet"
+p.className=p.className.replace(" start","").replace(" mid","").replace(" end","")
 })
 
 }
@@ -279,7 +317,7 @@ let lastId=null
 while(total<need){
 
 let bed=order[bedIndex]
-let yield=getYield(bed,palletIndex)
+let yield=getYield(bed,palletIndex)*2
 
 let id=bed+"-"+palletIndex
 let el=document.getElementById(id)
@@ -301,7 +339,7 @@ total+=yield
 
 palletIndex++
 
-if(palletIndex>40){
+if(palletIndex>39){
 
 palletIndex=1
 bedIndex++
@@ -326,35 +364,11 @@ e.classList.add("end")
 function saveSettings(){
 
 let data={
-
 cases:document.getElementById("cases").value,
 rate:document.getElementById("rate").value,
 startBed:startBed,
-startPallet:startPallet,
-detail:detail,
-beds:{}
-
+startPallet:startPallet
 }
-
-order.forEach(b=>{
-
-if(!detail){
-
-data.beds[b]={
-single:document.getElementById(b+"_single").value
-}
-
-}else{
-
-data.beds[b]={
-split:document.getElementById(b+"_split").value,
-front:document.getElementById(b+"_front").value,
-back:document.getElementById(b+"_back").value
-}
-
-}
-
-})
 
 localStorage.setItem("lettuceApp",JSON.stringify(data))
 
@@ -365,7 +379,7 @@ alert("設定保存しました")
 function loadSettings(){
 
 let data=localStorage.getItem("lettuceApp")
-if(!data)return
+if(!data) return
 
 data=JSON.parse(data)
 
@@ -374,25 +388,6 @@ document.getElementById("rate").value=data.rate
 
 startBed=data.startBed
 startPallet=data.startPallet
-detail=data.detail
-
-drawSettings()
-
-order.forEach(b=>{
-
-if(!detail){
-
-document.getElementById(b+"_single").value=data.beds[b].single
-
-}else{
-
-document.getElementById(b+"_split").value=data.beds[b].split
-document.getElementById(b+"_front").value=data.beds[b].front
-document.getElementById(b+"_back").value=data.beds[b].back
-
-}
-
-})
 
 document.getElementById("startLabel").innerText=startBed+"-"+startPallet
 
