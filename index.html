@@ -34,23 +34,34 @@ padding:16px;
 margin-bottom:16px;
 }
 
-input{
+label{
+font-size:14px;
+margin-top:10px;
+display:block;
+}
+
+input,select{
 width:100%;
-padding:12px;
-font-size:18px;
-margin-top:8px;
+padding:10px;
+font-size:16px;
 border-radius:8px;
-border:1px solid #ddd;
+border:1px solid #ccc;
+}
+
+.grid2{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:10px;
 }
 
 button{
 width:100%;
 padding:14px;
+margin-top:16px;
 font-size:18px;
-margin-top:12px;
-border-radius:10px;
-border:none;
 background:#2ecc71;
+border:none;
+border-radius:10px;
 color:white;
 font-weight:bold;
 }
@@ -64,25 +75,25 @@ gap:10px;
 .bed{
 background:#fafafa;
 border-radius:10px;
-padding:10px;
+padding:6px;
 }
 
 .bedTitle{
-font-weight:bold;
-margin-bottom:6px;
 text-align:center;
+font-weight:bold;
+margin-bottom:4px;
 }
 
 .palletGrid{
 display:grid;
-grid-template-columns:repeat(6,1fr);
-gap:3px;
+grid-template-columns:repeat(39,1fr);
+gap:2px;
 }
 
 .pallet{
-height:14px;
+height:10px;
 background:#ddd;
-border-radius:3px;
+border-radius:2px;
 }
 
 .start{
@@ -98,7 +109,6 @@ background:#ef4444;
 }
 
 </style>
-
 </head>
 
 <body>
@@ -112,11 +122,55 @@ background:#ef4444;
 <label>出荷ケース</label>
 <input id="cases" type="number">
 
-<label>1パレットレタス数</label>
-<input id="perPallet" type="number" value="20">
-
 <label>収穫率 (%)</label>
 <input id="rate" type="number" value="100">
+
+<label>収穫開始ベット</label>
+<select id="startBed">
+<option>A</option>
+<option>B</option>
+<option>C</option>
+<option>D</option>
+<option>E</option>
+<option>F</option>
+</select>
+
+<label>開始パレット</label>
+<input id="startPallet" type="number" value="1" min="1" max="78">
+
+<div class="grid2">
+
+<div>
+<label>Aベット</label>
+<input id="A" type="number" value="20">
+</div>
+
+<div>
+<label>Bベット</label>
+<input id="B" type="number" value="20">
+</div>
+
+<div>
+<label>Cベット</label>
+<input id="C" type="number" value="20">
+</div>
+
+<div>
+<label>Dベット</label>
+<input id="D" type="number" value="20">
+</div>
+
+<div>
+<label>Eベット</label>
+<input id="E" type="number" value="20">
+</div>
+
+<div>
+<label>Fベット</label>
+<input id="F" type="number" value="20">
+</div>
+
+</div>
 
 <button onclick="calc()">収穫計算</button>
 
@@ -151,10 +205,12 @@ bedMap.forEach(b=>{
 
 let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>"
 
-for(let i=1;i<=78;i++){
-
+for(let i=40;i<=78;i++){
 html+="<div class='pallet' id='"+b+"-"+i+"'></div>"
+}
 
+for(let i=1;i<=39;i++){
+html+="<div class='pallet' id='"+b+"-"+i+"'></div>"
 }
 
 html+="</div>"
@@ -175,45 +231,78 @@ p.className="pallet"
 
 }
 
+function saveSettings(){
+
+localStorage.setItem("rate",rate.value)
+localStorage.setItem("startBed",startBed.value)
+localStorage.setItem("startPallet",startPallet.value)
+
+order.forEach(b=>{
+localStorage.setItem(b,document.getElementById(b).value)
+})
+
+}
+
+function loadSettings(){
+
+if(localStorage.getItem("rate"))
+rate.value=localStorage.getItem("rate")
+
+if(localStorage.getItem("startBed"))
+startBed.value=localStorage.getItem("startBed")
+
+if(localStorage.getItem("startPallet"))
+startPallet.value=localStorage.getItem("startPallet")
+
+order.forEach(b=>{
+let v=localStorage.getItem(b)
+if(v) document.getElementById(b).value=v
+})
+
+}
+
+loadSettings()
+
 function calc(){
+
+saveSettings()
 
 reset()
 
-let cases=Number(document.getElementById("cases").value)
-let perPallet=Number(document.getElementById("perPallet").value)
-let rate=Number(document.getElementById("rate").value)/100
+let cases=Number(cases.value)
+let rateVal=Number(rate.value)/100
 
-let lettuce=cases*12
-let need=lettuce/rate
-let palletNeed=Math.ceil(need/perPallet)
+let need=cases*12/rateVal
 
-let bedIndex=0
-let palletIndex=1
+let bedIndex=order.indexOf(startBed.value)
+let palletIndex=Number(startPallet.value)
 
-let startBed="A"
-let startPallet=1
+let total=0
+let startSet=false
+let lastId=null
 
-for(let i=0;i<palletNeed;i++){
+while(total<need){
 
 let bed=order[bedIndex]
+let per=Number(document.getElementById(bed).value)
 
 let id=bed+"-"+palletIndex
-
 let el=document.getElementById(id)
 
-if(i==0){
+if(el){
 
+lastId=id
+
+if(!startSet){
 el.classList.add("start")
-
-}else if(i==palletNeed-1){
-
-el.classList.add("end")
-
+startSet=true
 }else{
-
 el.classList.add("mid")
+}
 
 }
+
+total+=per
 
 palletIndex++
 
@@ -222,13 +311,18 @@ if(palletIndex>78){
 palletIndex=1
 bedIndex++
 
-if(bedIndex>=order.length){
-
+if(bedIndex>=order.length)
 bedIndex=0
 
 }
 
 }
+
+if(lastId){
+
+let endEl=document.getElementById(lastId)
+endEl.classList.remove("mid")
+endEl.classList.add("end")
 
 }
 
