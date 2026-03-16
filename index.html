@@ -6,15 +6,15 @@
 <title>🥬 収穫ナビ</title>
 
 <style>
-body{font-family:-apple-system, sans-serif; margin:0; background:#eef2f3;}
+body{font-family:-apple-system; margin:0; background:#eef2f3;}
 header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:24px;font-weight:bold;}
 .container{padding:14px;}
 .card{background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 3px 8px rgba(0,0,0,0.08);}
 label{font-weight:bold;font-size:14px;}
 
-/* 入力欄をスマホでも見やすく */
+/* 入力欄を短く中央寄せ */
 input{
-    width:90%;
+    width:80%;
     max-width:300px;
     display:block;
     margin:0 auto 10px auto;
@@ -24,33 +24,11 @@ input{
     border:1px solid #ccc;
 }
 
-button{
-    width:90%;
-    max-width:300px;
-    display:block;
-    margin:8px auto;
-    padding:14px;
-    font-size:18px;
-    border:none;
-    border-radius:10px;
-    background:#22c55e;
-    color:white;
-}
+button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;background:#22c55e;color:white;margin-top:8px;}
 .secondary{background:#6b7280;}
 .third{background:#2563eb;}
-
-.startBox{font-size:18px;font-weight:bold;text-align:center;padding:10px;background:#ecfdf5;border-radius:10px;margin-top:8px;}
-
-/* ベッドグリッドをレスポンシブ化 */
-.bedGrid{
-    display:grid;
-    grid-template-columns:repeat(1,1fr);
-    gap:10px;
-}
-@media(min-width:600px){
-    .bedGrid{grid-template-columns:repeat(3,1fr);}
-}
-
+.startBox{font-size:20px;font-weight:bold;text-align:center;padding:10px;background:#ecfdf5;border-radius:10px;margin-top:8px;}
+.bedGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 .bed{background:white;border-radius:12px;padding:8px;box-shadow:0 2px 6px rgba(0,0,0,0.08);}
 .bedTitle{text-align:center;font-weight:bold;margin-bottom:6px;}
 .palletGrid{display:grid;grid-template-columns:1fr;gap:3px;}
@@ -69,6 +47,7 @@ button{
 <header>🥬 収穫ナビ</header>
 
 <div class="container">
+
 <div class="card">
 <label>出荷ケース</label>
 <input id="cases" type="number">
@@ -97,27 +76,36 @@ button{
 <div id="Cbed" class="bed"></div>
 <div id="Abed" class="bed"></div>
 </div>
+
 </div>
 
 <script>
 const order=["A","B","C","D","E","F"];
 const bedMap=["F","D","B","E","C","A"];
-let startBed="A", startPallet=1, detail1=false, detail2=false;
+
+let startBed="A";
+let startPallet=1;
+let detail1=false;
+let detail2=false;
 
 function toggleDetail1(){detail1=!detail1; drawSettings();}
 function toggleDetail2(){detail2=!detail2; drawSettings();}
 
 function drawSettings(){
 let html1="", html2="";
-if(detail1){order.forEach(b=>{
+if(detail1){
+order.forEach(b=>{
 html1+=`<h3>${b}ベット</h3><label>1パレット収穫数</label>
-<input id="${b}_single" type="number" value="20">`})}
-if(detail2){order.forEach(b=>{
+<input id="${b}_single" type="number" value="20">`})
+}
+if(detail2){
+order.forEach(b=>{
 html2+=`<h3>${b}ベット</h3>
 <label><input type="checkbox" id="${b}_useSplit">手前奥計算を使う</label>
 <label>手前パレット数</label><input id="${b}_split" type="number" value="30">
 <label>手前収穫数</label><input id="${b}_front" type="number" value="20">
-<label>奥収穫数</label><input id="${b}_back" type="number" value="16">`})}
+<label>奥収穫数</label><input id="${b}_back" type="number" value="16">`})
+}
 document.getElementById("detail1").innerHTML=html1
 document.getElementById("detail2").innerHTML=html2
 setTimeout(loadSettings,0)
@@ -139,7 +127,7 @@ document.getElementById(b+"bed").innerHTML=html;
 drawBeds();
 
 function setStart(b,p){
-document.querySelectorAll(".startSelect").forEach(el=>{el.classList.remove("startSelect")});
+document.querySelectorAll(".startSelect").forEach(el=>{el.classList.remove("startSelect")})
 let el=document.getElementById(b+"-"+p)
 if(el) el.classList.add("startSelect")
 startBed=b; startPallet=p;
