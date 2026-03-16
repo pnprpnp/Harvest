@@ -226,6 +226,12 @@ order.forEach(b=>{
 
 html2+=`
 <h3>${b}ベット</h3>
+
+<label>
+<input type="checkbox" id="${b}_useSplit">
+手前奥計算を使う
+</label>
+
 <label>手前パレット数</label>
 <input id="${b}_split" type="number" value="30">
 
@@ -242,6 +248,8 @@ html2+=`
 
 document.getElementById("detail1").innerHTML=html1
 document.getElementById("detail2").innerHTML=html2
+
+loadSettings()
 
 }
 
@@ -289,20 +297,24 @@ document.getElementById("startLabel").innerText=b+"-"+p
 
 function getYield(b,p){
 
-let base=20
+let useSplit=document.getElementById(b+"_useSplit")
 
-let single=document.getElementById(b+"_single")
-if(single) base=Number(single.value)
+if(useSplit && useSplit.checked){
 
-let split=document.getElementById(b+"_split")
-
-if(!split) return base
-
+let split=Number(document.getElementById(b+"_split").value)
 let front=Number(document.getElementById(b+"_front").value)
 let back=Number(document.getElementById(b+"_back").value)
 
 if(p<=split) return front
 return back
+
+}
+
+let single=document.getElementById(b+"_single")
+
+if(single) return Number(single.value)
+
+return 20
 
 }
 
@@ -385,8 +397,29 @@ let data={
 cases:document.getElementById("cases").value,
 rate:document.getElementById("rate").value,
 startBed:startBed,
-startPallet:startPallet
+startPallet:startPallet,
+beds:{}
 }
+
+order.forEach(b=>{
+
+let single=document.getElementById(b+"_single")
+let split=document.getElementById(b+"_split")
+let front=document.getElementById(b+"_front")
+let back=document.getElementById(b+"_back")
+let useSplit=document.getElementById(b+"_useSplit")
+
+data.beds[b]={
+
+single:single ? single.value : 20,
+split:split ? split.value : 30,
+front:front ? front.value : 20,
+back:back ? back.value : 16,
+useSplit:useSplit ? useSplit.checked : false
+
+}
+
+})
 
 localStorage.setItem("lettuceApp",JSON.stringify(data))
 
@@ -408,6 +441,26 @@ startBed=data.startBed
 startPallet=data.startPallet
 
 document.getElementById("startLabel").innerText=startBed+"-"+startPallet
+
+if(data.beds){
+
+order.forEach(b=>{
+
+let s=document.getElementById(b+"_single")
+let sp=document.getElementById(b+"_split")
+let f=document.getElementById(b+"_front")
+let ba=document.getElementById(b+"_back")
+let u=document.getElementById(b+"_useSplit")
+
+if(s) s.value=data.beds[b].single
+if(sp) sp.value=data.beds[b].split
+if(f) f.value=data.beds[b].front
+if(ba) ba.value=data.beds[b].back
+if(u) u.checked=data.beds[b].useSplit
+
+})
+
+}
 
 }
 
