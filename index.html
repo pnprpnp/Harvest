@@ -15,7 +15,7 @@ background:#eef2f3;
 }
 
 header{
-background:#27ae60;
+background:#22c55e;
 color:white;
 text-align:center;
 padding:18px;
@@ -29,15 +29,15 @@ padding:14px;
 
 .card{
 background:white;
-border-radius:16px;
+border-radius:14px;
 padding:16px;
 margin-bottom:14px;
 box-shadow:0 3px 8px rgba(0,0,0,0.08);
 }
 
 label{
-font-size:14px;
 font-weight:bold;
+font-size:14px;
 }
 
 input{
@@ -46,52 +46,45 @@ padding:12px;
 font-size:16px;
 border-radius:8px;
 border:1px solid #ccc;
-margin-top:4px;
-margin-bottom:8px;
+margin-bottom:10px;
 }
 
 button{
 width:100%;
-padding:16px;
-font-size:20px;
-margin-top:10px;
+padding:14px;
+font-size:18px;
 border:none;
-border-radius:12px;
-background:#27ae60;
+border-radius:10px;
+background:#22c55e;
 color:white;
-font-weight:bold;
+margin-top:8px;
 }
 
 .startBox{
-text-align:center;
-font-size:22px;
+font-size:20px;
 font-weight:bold;
+text-align:center;
 padding:10px;
 background:#ecfdf5;
 border-radius:10px;
-}
-
-.details{
-display:none;
-margin-top:10px;
+margin-top:8px;
 }
 
 .bedGrid{
 display:grid;
 grid-template-columns:repeat(3,1fr);
-gap:12px;
+gap:10px;
 }
 
 .bed{
 background:white;
-border-radius:14px;
-padding:10px;
+border-radius:12px;
+padding:8px;
 box-shadow:0 2px 6px rgba(0,0,0,0.08);
 }
 
 .bedTitle{
 text-align:center;
-font-size:18px;
 font-weight:bold;
 margin-bottom:6px;
 }
@@ -99,11 +92,11 @@ margin-bottom:6px;
 .palletGrid{
 display:grid;
 grid-template-columns:1fr;
-gap:4px;
+gap:3px;
 }
 
 .pallet{
-height:18px;
+height:16px;
 background:#d1d5db;
 border-radius:4px;
 }
@@ -139,7 +132,11 @@ border-radius:4px;
 詳細設定
 </button>
 
-<div id="details" class="details"></div>
+<button onclick="saveSettings()" style="background:#2563eb">
+設定保存
+</button>
+
+<div id="settings"></div>
 
 </div>
 
@@ -164,13 +161,11 @@ const bedMap=["F","D","B","E","C","A"]
 
 let startBed="A"
 let startPallet=1
+let detail=false
 
 function toggleDetails(){
-
-let d=document.getElementById("details")
-
-d.style.display=d.style.display=="block"?"none":"block"
-
+detail=!detail
+drawSettings()
 }
 
 function drawSettings(){
@@ -179,9 +174,18 @@ let html=""
 
 order.forEach(b=>{
 
-html+=`
-<h3>${b}ベット</h3>
+html+="<h3>"+b+"ベット</h3>"
 
+if(!detail){
+
+html+=`
+<label>1パレット収穫数</label>
+<input id="${b}_single" type="number" value="20">
+`
+
+}else{
+
+html+=`
 <label>手前パレット数</label>
 <input id="${b}_split" type="number" value="30">
 
@@ -192,9 +196,11 @@ html+=`
 <input id="${b}_back" type="number" value="16">
 `
 
+}
+
 })
 
-document.getElementById("details").innerHTML=html
+document.getElementById("settings").innerHTML=html
 
 }
 
@@ -206,7 +212,7 @@ bedMap.forEach(b=>{
 
 let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>"
 
-for(let i=1;i<=20;i++){
+for(let i=40;i>=1;i--){
 
 html+=`<div class="pallet" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`
 
@@ -232,6 +238,10 @@ document.getElementById("startLabel").innerText=b+"-"+p
 }
 
 function getYield(b,p){
+
+if(!detail){
+return Number(document.getElementById(b+"_single").value)
+}
 
 let split=Number(document.getElementById(b+"_split").value)
 let front=Number(document.getElementById(b+"_front").value)
@@ -291,7 +301,7 @@ total+=yield
 
 palletIndex++
 
-if(palletIndex>78){
+if(palletIndex>40){
 
 palletIndex=1
 bedIndex++
@@ -312,6 +322,83 @@ e.classList.add("end")
 }
 
 }
+
+function saveSettings(){
+
+let data={
+
+cases:document.getElementById("cases").value,
+rate:document.getElementById("rate").value,
+startBed:startBed,
+startPallet:startPallet,
+detail:detail,
+beds:{}
+
+}
+
+order.forEach(b=>{
+
+if(!detail){
+
+data.beds[b]={
+single:document.getElementById(b+"_single").value
+}
+
+}else{
+
+data.beds[b]={
+split:document.getElementById(b+"_split").value,
+front:document.getElementById(b+"_front").value,
+back:document.getElementById(b+"_back").value
+}
+
+}
+
+})
+
+localStorage.setItem("lettuceApp",JSON.stringify(data))
+
+alert("設定保存しました")
+
+}
+
+function loadSettings(){
+
+let data=localStorage.getItem("lettuceApp")
+if(!data)return
+
+data=JSON.parse(data)
+
+document.getElementById("cases").value=data.cases
+document.getElementById("rate").value=data.rate
+
+startBed=data.startBed
+startPallet=data.startPallet
+detail=data.detail
+
+drawSettings()
+
+order.forEach(b=>{
+
+if(!detail){
+
+document.getElementById(b+"_single").value=data.beds[b].single
+
+}else{
+
+document.getElementById(b+"_split").value=data.beds[b].split
+document.getElementById(b+"_front").value=data.beds[b].front
+document.getElementById(b+"_back").value=data.beds[b].back
+
+}
+
+})
+
+document.getElementById("startLabel").innerText=startBed+"-"+startPallet
+
+}
+
+window.onload=loadSettings
 
 </script>
 
