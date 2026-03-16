@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>レタス収穫ナビ</title>
+
+<style>
+
+body{
+font-family:-apple-system;
+margin:0;
+background:#f2f2f7;
+}
+
+header{
+background:#27ae60;
+color:white;
+text-align:center;
+padding:16px;
+font-size:22px;
+font-weight:bold;
+}
+
+.container{
+padding:16px;
+}
+
+.card{
+background:white;
+border-radius:14px;
+padding:16px;
+margin-bottom:16px;
+}
+
+input{
+width:100%;
+padding:12px;
+font-size:18px;
+margin-top:8px;
+border-radius:8px;
+border:1px solid #ddd;
+}
+
+button{
+width:100%;
+padding:14px;
+font-size:18px;
+margin-top:12px;
+border-radius:10px;
+border:none;
+background:#2ecc71;
+color:white;
+font-weight:bold;
+}
+
+.bedGrid{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:10px;
+}
+
+.bed{
+background:#fafafa;
+border-radius:10px;
+padding:10px;
+}
+
+.bedTitle{
+font-weight:bold;
+margin-bottom:6px;
+text-align:center;
+}
+
+.palletGrid{
+display:grid;
+grid-template-columns:repeat(6,1fr);
+gap:3px;
+}
+
+.pallet{
+height:14px;
+background:#ddd;
+border-radius:3px;
+}
+
+.start{
+background:#22c55e;
+}
+
+.mid{
+background:#fde047;
+}
+
+.end{
+background:#ef4444;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<header>🥬 レタス収穫ナビ</header>
+
+<div class="container">
+
+<div class="card">
+
+<label>出荷ケース</label>
+<input id="cases" type="number">
+
+<label>1パレットレタス数</label>
+<input id="perPallet" type="number" value="20">
+
+<label>収穫率 (%)</label>
+<input id="rate" type="number" value="100">
+
+<button onclick="calc()">収穫計算</button>
+
+</div>
+
+<div class="card">
+
+<div class="bedGrid">
+
+<div id="Fbed" class="bed"></div>
+<div id="Dbed" class="bed"></div>
+<div id="Bbed" class="bed"></div>
+
+<div id="Ebed" class="bed"></div>
+<div id="Cbed" class="bed"></div>
+<div id="Abed" class="bed"></div>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+const order=["A","B","C","D","E","F"]
+const bedMap=["F","D","B","E","C","A"]
+
+function drawBeds(){
+
+bedMap.forEach(b=>{
+
+let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>"
+
+for(let i=1;i<=78;i++){
+
+html+="<div class='pallet' id='"+b+"-"+i+"'></div>"
+
+}
+
+html+="</div>"
+
+document.getElementById(b+"bed").innerHTML=html
+
+})
+
+}
+
+drawBeds()
+
+function reset(){
+
+document.querySelectorAll(".pallet").forEach(p=>{
+p.className="pallet"
+})
+
+}
+
+function calc(){
+
+reset()
+
+let cases=Number(document.getElementById("cases").value)
+let perPallet=Number(document.getElementById("perPallet").value)
+let rate=Number(document.getElementById("rate").value)/100
+
+let lettuce=cases*12
+let need=lettuce/rate
+let palletNeed=Math.ceil(need/perPallet)
+
+let bedIndex=0
+let palletIndex=1
+
+let startBed="A"
+let startPallet=1
+
+for(let i=0;i<palletNeed;i++){
+
+let bed=order[bedIndex]
+
+let id=bed+"-"+palletIndex
+
+let el=document.getElementById(id)
+
+if(i==0){
+
+el.classList.add("start")
+
+}else if(i==palletNeed-1){
+
+el.classList.add("end")
+
+}else{
+
+el.classList.add("mid")
+
+}
+
+palletIndex++
+
+if(palletIndex>78){
+
+palletIndex=1
+bedIndex++
+
+if(bedIndex>=order.length){
+
+bedIndex=0
+
+}
+
+}
+
+}
+
+}
+
+</script>
+
+</body>
+</html>
