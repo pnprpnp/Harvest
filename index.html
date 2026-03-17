@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🥬 収穫＆苗ナビ（苗収穫率対応版）</title>
+<title>🥬 収穫＆苗ナビ（1号棟パレット自動計算版）</title>
 
 <style>
 body{font-family:-apple-system; margin:0; background:#eef2f3;}
@@ -105,7 +105,7 @@ button{
 </style>
 </head>
 <body>
-<header>🥬 収穫＆苗ナビ（苗収穫率対応版）</header>
+<header>🥬 収穫＆苗ナビ（1号棟パレット自動計算版）</header>
 
 <div class="container">
 
@@ -140,13 +140,12 @@ button{
 
   <div id="plantTab" class="tabcontent">
     <div class="card">
-      <div class="sectionTitle">苗計算モード</div>
-      <p class="smallText">収穫計算で色が付いたパレット分の苗数を計算します。</p>
+      <div class="sectionTitle">植え苗計算モード</div>
+      <p class="smallText">収穫計算で色が付いたパレット分をもとに、自動で必要苗数と1号棟パレット枚数を計算します。</p>
 
       <label>苗の収穫率 (%)</label>
       <input id="seedlingRate" type="number" value="100">
 
-      <button onclick="calcPlant()">苗数を計算</button>
       <div id="plantTotalResult" class="resultBox">植える苗の総数: -
 必要な苗数: -</div>
 
@@ -156,11 +155,11 @@ button{
       </div>
 
       <div style="margin-top:10px;">
-        <label>１号棟パレット3枚のうち、60個植えの枚数</label>
+        <label>1号棟パレット3枚のうち、60個植えの枚数</label>
         <input type="number" id="special60" value="0" min="0" max="3">
 
-        <button onclick="calcSpecial()">必要な１号棟パレット枚数を計算</button>
-        <div id="specialResult" class="resultBox">必要な１剛棟パレット枚数: -</div>
+        <button onclick="calcSpecial()">必要な1号棟パレット枚数を計算</button>
+        <div id="specialResult" class="resultBox">必要な1号棟パレット枚数: -</div>
       </div>
     </div>
   </div>
@@ -496,13 +495,11 @@ function calcHarvest(){
   drawBeds();
 }
 
-function calcPlant(){
+function calcPlantCore(){
   let harvestIds = getHarvestResultIds();
 
   if(harvestIds.length === 0){
-    alert("先に収穫計算をしてください");
-    document.getElementById("plantTotalResult").innerText = "植える苗の総数: -\n必要な苗数: -";
-    return;
+    return { ok:false, message:"先に収穫計算をしてください" };
   }
 
   let totalPlantNeed = 0;
@@ -515,8 +512,7 @@ function calcPlant(){
 
   let seedlingRate = Number(document.getElementById("seedlingRate").value || 100) / 100;
   if(seedlingRate <= 0){
-    alert("苗の収穫率を確認してください");
-    return;
+    return { ok:false, message:"苗の収穫率を確認してください" };
   }
 
   let requiredSeedlings = totalPlantNeed / seedlingRate;
@@ -525,18 +521,28 @@ function calcPlant(){
   document.getElementById("plantTotalResult").innerText =
     "植える苗の総数: " + Math.ceil(totalPlantNeed) + "\n" +
     "必要な苗数: " + Math.ceil(requiredSeedlings);
+
   drawBeds();
+
+  return {
+    ok:true,
+    totalPlantNeed: Math.ceil(totalPlantNeed),
+    requiredSeedlings: Math.ceil(requiredSeedlings)
+  };
 }
 
 function calcSpecial(){
-  let plantText = document.getElementById("plantTotalResult").innerText;
-  let match = plantText.match(/必要な苗数:\s*(\d+)/);
-  let totalSeedlings = match ? Number(match[1]) : 0;
+  let plantResult = calcPlantCore();
 
-  if(totalSeedlings <= 0){
-    document.getElementById("specialResult").innerText = "先に苗数を計算してください";
+  if(!plantResult.ok){
+    document.getElementById("specialResult").innerText = plantResult.message;
+    if(plantResult.message === "先に収穫計算をしてください" || plantResult.message === "苗の収穫率を確認してください"){
+      alert(plantResult.message);
+    }
     return;
   }
+
+  let totalSeedlings = plantResult.requiredSeedlings;
 
   let n60 = Number(document.getElementById("special60").value || 0);
   if(n60 < 0) n60 = 0;
@@ -558,7 +564,7 @@ function calcSpecial(){
   }
 
   document.getElementById("specialResult").innerText =
-    "必要な１号棟パレット枚数: " + used + "\n" +
+    "必要な1号棟パレット枚数: " + used + "\n" +
     "（3枚ごとの並び: " + cycle.join("・") + " を繰り返して計算）";
 }
 
