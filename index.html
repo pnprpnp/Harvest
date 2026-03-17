@@ -108,20 +108,19 @@ button{
 
 <div class="container">
 
-  <!-- タブ -->
   <div class="tab">
     <button class="tablinks active" onclick="switchTab(event,'harvestTab')">収穫計算モード</button>
     <button class="tablinks" onclick="switchTab(event,'plantTab')">植え苗計算モード</button>
   </div>
 
-  <!-- 収穫タブ -->
   <div id="harvestTab" class="tabcontent" style="display:block;">
     <div class="card">
       <label>出荷ケース</label>
       <input id="cases" type="number">
 
       <label>全体収穫率 (%)</label>
-      <input id="rate" type="number" value="100">
+      <input id="rate" type="number" value="100" oninput="drawBeds()">
+      <div id="overallRateNotice" class="notice">※全体収穫率と異なるベットがあります</div>
 
       <div class="startBox">
         開始位置: <span id="startLabel">A-1</span><br>
@@ -138,7 +137,6 @@ button{
     </div>
   </div>
 
-  <!-- 植え苗タブ -->
   <div id="plantTab" class="tabcontent">
     <div class="card">
       <div class="sectionTitle">苗計算モード</div>
@@ -162,7 +160,6 @@ button{
     </div>
   </div>
 
-  <!-- パレットグリッド -->
   <div class="bedGrid">
     <div id="Fbed" class="bed"></div>
     <div id="Dbed" class="bed"></div>
@@ -299,6 +296,8 @@ function drawPlantSettings(){
 }
 
 function drawBeds(){
+  let hasDifferentBedRate = false;
+
   bedMap.forEach(b => {
     let html = "<div class='bedTitle'>" + b + "</div><div class='palletGrid'>";
 
@@ -318,11 +317,14 @@ function drawBeds(){
     let rateInput = document.getElementById(b + "_rate");
     let rateNotice = document.getElementById(b + "_rate_notice");
     if(rateNotice){
-      let bedRate = (rateInput && rateInput.value.trim() !== "")
-        ? Number(rateInput.value)
-        : Number(document.getElementById("rate").value || 100);
       let overallRate = Number(document.getElementById("rate").value || 100);
-      rateNotice.style.display = (rateInput && rateInput.value.trim() !== "" && bedRate !== overallRate) ? "block" : "none";
+      let hasBedRate = rateInput && rateInput.value.trim() !== "";
+      let bedRate = hasBedRate ? Number(rateInput.value) : overallRate;
+
+      let isDifferent = hasBedRate && bedRate !== overallRate;
+      rateNotice.style.display = isDifferent ? "block" : "none";
+
+      if(isDifferent) hasDifferentBedRate = true;
     }
 
     let split = 0;
@@ -352,6 +354,11 @@ function drawBeds(){
     html += "</div>";
     document.getElementById(b + "bed").innerHTML = html;
   });
+
+  let overallRateNotice = document.getElementById("overallRateNotice");
+  if(overallRateNotice){
+    overallRateNotice.style.display = hasDifferentBedRate ? "block" : "none";
+  }
 
   restoreHarvestMarks();
 }
@@ -617,7 +624,7 @@ function loadSettings(){
     if(document.getElementById(b + "_front")) document.getElementById(b + "_front").value = d.front;
     if(document.getElementById(b + "_back")) document.getElementById(b + "_back").value = d.back;
     if(document.getElementById(b + "_useSplit")) document.getElementById(b + "_useSplit").checked = d.useSplit;
-    if(document.getElementById(b + "_rate")) document.getElementById(b + "_rate").value = d.rate;
+    if(document.getElementById(b + "_rate")) document.getElementById(b + "_rate").value = d.rate ?? "";
     if(document.getElementById(b + "_useSplitPlant")) document.getElementById(b + "_useSplitPlant").checked = d.useSplitPlant;
     if(document.getElementById(b + "_frontPlant")) document.getElementById(b + "_frontPlant").value = d.frontPlant;
     if(document.getElementById(b + "_backPlant")) document.getElementById(b + "_backPlant").value = d.backPlant;
