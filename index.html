@@ -18,7 +18,6 @@ body{font-family:-apple-system; margin:0; background:#eef2f3;}
 header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:24px;font-weight:bold;}
 .container{padding:14px;}
 .card{background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 3px 8px rgba(0,0,0,0.08);}
-label{font-weight:bold;font-size:14px;}
 
 input{
 width:80%;
@@ -35,58 +34,40 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 .secondary{background:#6b7280;}
 .third{background:#2563eb;}
 
-.startBox{font-size:20px;font-weight:bold;text-align:center;padding:10px;background:#ecfdf5;border-radius:10px;margin-top:8px;}
+.startBox{text-align:center;font-weight:bold;font-size:18px;margin-top:10px;}
 
 .bedGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-.bed{background:white;border-radius:12px;padding:8px;box-shadow:0 2px 6px rgba(0,0,0,0.08);}
+.bed{background:white;border-radius:12px;padding:8px;}
 .bedTitle{text-align:center;font-weight:bold;margin-bottom:6px;}
-.palletGrid{display:grid;grid-template-columns:1fr;gap:3px;}
 
-.pallet{height:8px;border-radius:3px;}
+.pallet{height:8px;border-radius:3px;margin:2px 0;}
 .palletEven{background:#d1d5db;}
 .palletOdd{background:#f3f4f6;}
 
-.middleMark{background:#a78bfa;}
-
-.start{background:#22c55e !important;}
-.mid{background:#fde047 !important;}
-.end{background:#ef4444 !important;}
-
 .startSelect{background:#3b82f6 !important;}
 .endSelect{background:#f97316 !important;}
+.range{background:#fde047 !important;}
 
-.notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;}
 </style>
 </head>
 
 <body>
+
 <header>🥬 収穫ナビ</header>
 
 <div class="container">
 
 <div class="card">
-<label>出荷ケース</label>
-<input id="cases" type="number">
 
-<label>収穫率 (%)</label>
-<input id="rate" type="number" value="100">
+<input id="cases" type="number" placeholder="ケース数">
 
 <div class="startBox">
-開始位置: <span id="startLabel">A-1</span><br>
-終了位置: <span id="endLabel">-</span>
+開始: <span id="startLabel">-</span><br>
+終了: <span id="endLabel">-</span>
 </div>
 
-<button onclick="calc()">収穫計算</button>
+<button onclick="startReverse()">収穫率を逆算</button>
 
-<button class="third" onclick="startEndSelect()">終了位置を選択</button>
-<button class="third" onclick="calcRate()">収穫率を逆算</button>
-
-<button class="secondary" onclick="toggleDetail1()">詳細設定</button>
-<button class="secondary" onclick="toggleDetail2()">さらに詳細設定</button>
-<button class="third" onclick="saveSettings()">設定保存</button>
-
-<div id="detail1"></div>
-<div id="detail2"></div>
 </div>
 
 <div class="bedGrid">
@@ -101,291 +82,147 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 </div>
 
 <script>
+
 const order=["A","B","C","D","E","F"];
 const bedMap=["F","D","B","E","C","A"];
 
-let startBed="A";
-let startPallet=1;
-
+let startBed=null;
+let startPallet=null;
 let endBed=null;
 let endPallet=null;
-let selectingEnd=false;
-
-let detail1=false;
-let detail2=false;
-
-function toggleDetail1(){detail1=!detail1; drawSettings();}
-function toggleDetail2(){detail2=!detail2; drawSettings();}
-
-function drawSettings(){
-let html1="", html2="";
-
-if(detail1){
-order.forEach(b=>{
-html1+=`<h3>${b}ベット</h3>
-<label>1パレット収穫数</label>
-<input id="${b}_single" type="number" value="20" oninput="drawBeds()">`
-})
-}
-
-if(detail2){
-order.forEach(b=>{
-html2+=`<h3>${b}ベット</h3>
-
-<label>
-<input type="checkbox" id="${b}_useSplit" onchange="drawBeds()">
-手前奥計算を使う
-</label>
-
-<div id="${b}_notice" class="notice">
-※手前奥計算が優先されます
-</div>
-
-<label>手前パレット数</label>
-<input id="${b}_split" type="number" value="30" oninput="drawBeds()">
-
-<label>手前収穫数</label>
-<input id="${b}_front" type="number" value="20" oninput="drawBeds()">
-
-<label>奥収穫数</label>
-<input id="${b}_back" type="number" value="16" oninput="drawBeds()">`
-})
-}
-
-document.getElementById("detail1").innerHTML = html1;
-document.getElementById("detail2").innerHTML = html2;
-
-setTimeout(()=>{
-loadSettings();
-drawBeds();
-},0);
-}
+let reverseMode=false;
 
 function drawBeds(){
 bedMap.forEach(b=>{
-let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
-
-let useSplit=document.getElementById(b+"_useSplit");
-let notice=document.getElementById(b+"_notice");
-
-if(notice){
-notice.style.display=(useSplit && useSplit.checked)?"block":"none";
-}
-
-let split=useSplit && useSplit.checked 
-? Number(document.getElementById(b+"_split").value)/2 
-: 0;
+let html="<div class='bedTitle'>"+b+"</div>";
 
 for(let i=39;i>=1;i--){
 let cls="pallet";
+cls += (i%2==0)?" palletEven":" palletOdd";
 
-if(i%2==0) cls+=" palletEven"; else cls+=" palletOdd";
-
-if(i==20) cls+=" middleMark";
-
-if(useSplit && useSplit.checked){
-if(i<=split){cls+=" frontZone";}
-else{cls+=" backZone";}
+html+=`<div class="${cls}" id="${b}-${i}" onclick="tap('${b}',${i})"></div>`;
 }
 
-html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
-}
-html+="</div>";
 document.getElementById(b+"bed").innerHTML=html;
 })
 }
 
-function setStart(b,p){
-
-// 終了選択モード
-if(selectingEnd){
-document.querySelectorAll(".endSelect").forEach(e=>e.classList.remove("endSelect"));
-
-let el=document.getElementById(b+"-"+p);
-if(el) el.classList.add("endSelect");
-
-endBed=b;
-endPallet=p;
-
-document.getElementById("endLabel").innerText=b+"-"+p;
-
-selectingEnd=false;
-return;
+function reset(){
+document.querySelectorAll(".pallet").forEach(el=>{
+el.classList.remove("startSelect","endSelect","range");
+});
 }
 
-// 通常（開始）
-document.querySelectorAll(".startSelect").forEach(el=>el.classList.remove("startSelect"));
+function startReverse(){
+reset();
+reverseMode=true;
+startBed=null;
+endBed=null;
 
-let el=document.getElementById(b+"-"+p);
-if(el) el.classList.add("startSelect");
+document.getElementById("startLabel").innerText="-";
+document.getElementById("endLabel").innerText="-";
 
+alert("開始→終了の順でタップ");
+}
+
+function tap(b,p){
+
+if(!reverseMode) return;
+
+// 開始
+if(!startBed){
 startBed=b;
 startPallet=p;
 
 document.getElementById("startLabel").innerText=b+"-"+p;
+document.getElementById(b+"-"+p).classList.add("startSelect");
+return;
 }
 
-function startEndSelect(){
-selectingEnd=true;
-alert("終了位置をタップしてください");
+// 終了
+if(!endBed){
+endBed=b;
+endPallet=p;
+
+document.getElementById("endLabel").innerText=b+"-"+p;
+document.getElementById(b+"-"+p).classList.add("endSelect");
+
+paintRange();
+calcRate();
+
+reverseMode=false;
+}
 }
 
-function getYield(b,p){
-let useSplit=document.getElementById(b+"_useSplit")
-if(useSplit && useSplit.checked){
-let split=Number(document.getElementById(b+"_split").value)/2
-let front=Number(document.getElementById(b+"_front").value)
-let back=Number(document.getElementById(b+"_back").value)
-return p<=split?front:back
-}
-let single=document.getElementById(b+"_single")
-return single?Number(single.value):20
-}
+function paintRange(){
 
-function reset(){
-document.querySelectorAll(".pallet").forEach(p=>{
-p.classList.remove("start","mid","end","startSelect","endSelect")
-})
+let bedIndex=order.indexOf(startBed);
+let palletIndex=startPallet;
+
+while(true){
+
+let id=order[bedIndex]+"-"+palletIndex;
+let el=document.getElementById(id);
+
+if(el && !el.classList.contains("startSelect") && !el.classList.contains("endSelect")){
+el.classList.add("range");
 }
 
-function calc(){
-reset()
-let cases=Number(document.getElementById("cases").value)
-let rate=Number(document.getElementById("rate").value)/100
-let need=cases*12/rate
-
-let bedIndex=order.indexOf(startBed)
-let palletIndex=startPallet
-
-let total=0
-let first=true
-let lastId=null
-
-while(total<need){
-let bed=order[bedIndex]
-let yield=getYield(bed,palletIndex)*2
-
-let id=bed+"-"+palletIndex
-let el=document.getElementById(id)
-
-if(el){
-lastId=id
-if(first){el.classList.add("start"); first=false}
-else{el.classList.add("mid")}
+if(order[bedIndex]==endBed && palletIndex==endPallet){
+break;
 }
 
-total+=yield
+palletIndex++;
 
-palletIndex++
 if(palletIndex>39){
-palletIndex=1
-bedIndex++
-if(bedIndex>=order.length) bedIndex=0
+palletIndex=1;
+bedIndex++;
+if(bedIndex>=order.length) bedIndex=0;
+}
 }
 }
 
-if(lastId){
-let e=document.getElementById(lastId)
-e.classList.remove("mid")
-e.classList.add("end")
-document.getElementById("endLabel").innerText=lastId
-}
+function getYield(){
+return 20; // 固定（必要なら戻せる）
 }
 
 function calcRate(){
 
-if(!endBed){
-alert("終了位置を選択してください");
+let cases=Number(document.getElementById("cases").value);
+if(!cases){
+alert("ケース数を入力してください");
 return;
 }
 
-let cases=Number(document.getElementById("cases").value)
+let bedIndex=order.indexOf(startBed);
+let palletIndex=startPallet;
 
-let bedIndex=order.indexOf(startBed)
-let palletIndex=startPallet
-
-let total=0
-let safety=0
+let total=0;
 
 while(true){
 
-let bed=order[bedIndex]
-let yield=getYield(bed,palletIndex)*2
+total += getYield()*2;
 
-total+=yield
-
-if(bed===endBed && palletIndex===endPallet){
+if(order[bedIndex]==endBed && palletIndex==endPallet){
 break;
 }
 
-palletIndex++
+palletIndex++;
 
 if(palletIndex>39){
-palletIndex=1
-bedIndex++
-if(bedIndex>=order.length) bedIndex=0
-}
-
-safety++
-if(safety>10000){
-alert("範囲エラー");
-return;
+palletIndex=1;
+bedIndex++;
+if(bedIndex>=order.length) bedIndex=0;
 }
 }
 
-let rate=(cases*12)/total*100
+let rate=(cases*12)/total*100;
 
-alert("収穫率：約 "+rate.toFixed(1)+" %");
+alert("収穫率："+rate.toFixed(1)+"%");
 }
 
-function saveSettings(){
-let data={
-cases:document.getElementById("cases").value,
-rate:document.getElementById("rate").value,
-startBed,startPallet,beds:{}}
+window.onload=drawBeds;
 
-order.forEach(b=>{
-data.beds[b]={
-single:document.getElementById(b+"_single")?.value||20,
-split:document.getElementById(b+"_split")?.value||30,
-front:document.getElementById(b+"_front")?.value||20,
-back:document.getElementById(b+"_back")?.value||16,
-useSplit:document.getElementById(b+"_useSplit")?.checked||false
-}
-})
-
-localStorage.setItem("lettuceApp",JSON.stringify(data))
-alert("設定保存しました")
-}
-
-function loadSettings(){
-let data=localStorage.getItem("lettuceApp")
-if(!data) return
-data=JSON.parse(data)
-
-document.getElementById("cases").value=data.cases
-document.getElementById("rate").value=data.rate
-
-startBed=data.startBed
-startPallet=data.startPallet
-
-document.getElementById("startLabel").innerText=startBed+"-"+startPallet
-
-order.forEach(b=>{
-let d=data.beds?.[b]
-if(!d) return
-
-if(document.getElementById(b+"_single")) document.getElementById(b+"_single").value=d.single
-if(document.getElementById(b+"_split")) document.getElementById(b+"_split").value=d.split
-if(document.getElementById(b+"_front")) document.getElementById(b+"_front").value=d.front
-if(document.getElementById(b+"_back")) document.getElementById(b+"_back").value=d.back
-if(document.getElementById(b+"_useSplit")) document.getElementById(b+"_useSplit").checked=d.useSplit
-})
-}
-
-window.onload=()=>{
-drawSettings();
-}
 </script>
 
 </body>
