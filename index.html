@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🥬 収穫＆苗ナビ（1号棟パレット自動計算版）</title>
+<title>🥬 収穫＆苗ナビ（条件表示版）</title>
 
 <style>
 body{font-family:-apple-system; margin:0; background:#eef2f3;}
@@ -102,16 +102,17 @@ button{
     text-align:center;
     white-space:pre-line;
 }
+.hiddenBlock{display:none;}
 </style>
 </head>
 <body>
-<header>🥬 収穫＆苗ナビ（1号棟パレット自動計算版）</header>
+<header>🥬 収穫＆苗ナビ（条件表示版）</header>
 
 <div class="container">
 
   <div class="tab">
     <button class="tablinks active" onclick="switchTab(event,'harvestTab')">収穫計算モード</button>
-    <button class="tablinks" onclick="switchTab(event,'plantTab')">植え苗計算モード</button>
+    <button class="tablinks" onclick="switchTab(event,'plantTab')">植苗計算モード</button>
   </div>
 
   <div id="harvestTab" class="tabcontent" style="display:block;">
@@ -140,7 +141,7 @@ button{
 
   <div id="plantTab" class="tabcontent">
     <div class="card">
-      <div class="sectionTitle">植え苗計算モード</div>
+      <div class="sectionTitle">植苗計算モード</div>
       <p class="smallText">収穫計算で色が付いたパレット分をもとに、自動で必要苗数と1号棟パレット枚数を計算します。</p>
 
       <label>苗の収穫率 (%)</label>
@@ -216,6 +217,22 @@ function togglePlantDetail1(){
   drawBeds();
 }
 
+function updateHarvestSplitVisibility(b){
+  const checked = document.getElementById(b + "_useSplit")?.checked;
+  const block = document.getElementById(b + "_harvestSplitBlock");
+  const notice = document.getElementById(b + "_notice");
+  if(block) block.style.display = checked ? "block" : "none";
+  if(notice) notice.style.display = checked ? "block" : "none";
+}
+
+function updatePlantSplitVisibility(b){
+  const checked = document.getElementById(b + "_useSplitPlant")?.checked;
+  const block = document.getElementById(b + "_plantSplitBlock");
+  const notice = document.getElementById(b + "_plant_notice");
+  if(block) block.style.display = checked ? "block" : "none";
+  if(notice) notice.style.display = checked ? "block" : "none";
+}
+
 function drawSettings(){
   let html1 = "";
   let html2 = "";
@@ -226,10 +243,6 @@ function drawSettings(){
         <h3>${b}ベット</h3>
         <label>収穫用 1パレット数</label>
         <input id="${b}_single" type="number" value="20" oninput="drawBeds()">
-
-        <label>収穫率 (%)</label>
-        <input id="${b}_rate" type="number" value="" placeholder="空欄なら全体収穫率" oninput="drawBeds()">
-        <div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>
       `;
     });
   }
@@ -239,28 +252,38 @@ function drawSettings(){
       html2 += `
         <h3>${b}ベット</h3>
 
+        <label>収穫率 (%)</label>
+        <input id="${b}_rate" type="number" value="" placeholder="空欄なら全体収穫率" oninput="drawBeds()">
+        <div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>
+
         <div style="margin-bottom:10px;">
           <label style="display:block;">
-            <input type="checkbox" id="${b}_useSplit" onchange="drawBeds()">
+            <input type="checkbox" id="${b}_useSplit" onchange="updateHarvestSplitVisibility('${b}');drawBeds();">
             手前奥計算を使う
           </label>
-          <div id="${b}_notice" class="notice">※手前奥計算が有効のため、詳細設定より優先されます</div>
+          <div id="${b}_notice" class="notice">※手前奥計算が有効のため、下の設定で計算します</div>
         </div>
 
-        <label>収穫モードの手前パレット数</label>
-        <input id="${b}_splitHarvest" type="number" value="30" oninput="drawBeds()">
+        <div id="${b}_harvestSplitBlock" class="hiddenBlock">
+          <label>収穫モードの手前パレット数</label>
+          <input id="${b}_splitHarvest" type="number" value="30" oninput="drawBeds()">
 
-        <label>手前収穫数</label>
-        <input id="${b}_front" type="number" value="20" oninput="drawBeds()">
+          <label>手前収穫数</label>
+          <input id="${b}_front" type="number" value="20" oninput="drawBeds()">
 
-        <label>奥収穫数</label>
-        <input id="${b}_back" type="number" value="16" oninput="drawBeds()">
+          <label>奥収穫数</label>
+          <input id="${b}_back" type="number" value="16" oninput="drawBeds()">
+        </div>
       `;
     });
   }
 
   document.getElementById("detail1").innerHTML = html1;
   document.getElementById("detail2").innerHTML = html2;
+
+  setTimeout(() => {
+    order.forEach(b => updateHarvestSplitVisibility(b));
+  }, 0);
 }
 
 function drawPlantSettings(){
@@ -276,25 +299,31 @@ function drawPlantSettings(){
 
         <div style="margin-bottom:10px;">
           <label style="display:block;">
-            <input type="checkbox" id="${b}_useSplitPlant" onchange="drawBeds()">
+            <input type="checkbox" id="${b}_useSplitPlant" onchange="updatePlantSplitVisibility('${b}');drawBeds();">
             手前奥計算を使う
           </label>
-          <div id="${b}_plant_notice" class="notice">※手前奥計算が有効のため、苗の基本設定より優先されます</div>
+          <div id="${b}_plant_notice" class="notice">※手前奥計算が有効のため、下の設定で計算します</div>
         </div>
 
-        <label>植え苗モードの手前パレット数</label>
-        <input id="${b}_splitPlant" type="number" value="30" oninput="drawBeds()">
+        <div id="${b}_plantSplitBlock" class="hiddenBlock">
+          <label>植苗モードの手前パレット数</label>
+          <input id="${b}_splitPlant" type="number" value="30" oninput="drawBeds()">
 
-        <label>手前苗数</label>
-        <input id="${b}_frontPlant" type="number" value="20" oninput="drawBeds()">
+          <label>手前苗数</label>
+          <input id="${b}_frontPlant" type="number" value="20" oninput="drawBeds()">
 
-        <label>奥苗数</label>
-        <input id="${b}_backPlant" type="number" value="16" oninput="drawBeds()">
+          <label>奥苗数</label>
+          <input id="${b}_backPlant" type="number" value="16" oninput="drawBeds()">
+        </div>
       `;
     });
   }
 
   document.getElementById("plantDetail1").innerHTML = html;
+
+  setTimeout(() => {
+    order.forEach(b => updatePlantSplitVisibility(b));
+  }, 0);
 }
 
 function getHarvestResultIds(){
@@ -327,16 +356,6 @@ function drawBeds(){
 
     let useSplitHarvest = document.getElementById(b + "_useSplit");
     let useSplitPlant = document.getElementById(b + "_useSplitPlant");
-
-    let harvestNotice = document.getElementById(b + "_notice");
-    if(harvestNotice){
-      harvestNotice.style.display = (useSplitHarvest && useSplitHarvest.checked) ? "block" : "none";
-    }
-
-    let plantNotice = document.getElementById(b + "_plant_notice");
-    if(plantNotice){
-      plantNotice.style.display = (useSplitPlant && useSplitPlant.checked) ? "block" : "none";
-    }
 
     let rateInput = document.getElementById(b + "_rate");
     let rateNotice = document.getElementById(b + "_rate_notice");
@@ -536,9 +555,7 @@ function calcSpecial(){
 
   if(!plantResult.ok){
     document.getElementById("specialResult").innerText = plantResult.message;
-    if(plantResult.message === "先に収穫計算をしてください" || plantResult.message === "苗の収穫率を確認してください"){
-      alert(plantResult.message);
-    }
+    alert(plantResult.message);
     return;
   }
 
@@ -634,6 +651,13 @@ function loadSettings(){
     if(document.getElementById(b + "_frontPlant")) document.getElementById(b + "_frontPlant").value = d.frontPlant;
     if(document.getElementById(b + "_backPlant")) document.getElementById(b + "_backPlant").value = d.backPlant;
   });
+
+  setTimeout(() => {
+    order.forEach(b => {
+      updateHarvestSplitVisibility(b);
+      updatePlantSplitVisibility(b);
+    });
+  }, 0);
 }
 
 window.onload = () => {
