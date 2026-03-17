@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html>
 <head>
@@ -56,7 +55,7 @@ button{
 }
 .bedTitle{text-align:center;font-weight:bold;margin-bottom:6px;}
 .palletGrid{display:grid;grid-template-columns:1fr;gap:3px;}
-.pallet{height:10px;border-radius:3px;}
+.pallet{height:10px;border-radius:3px;cursor:pointer;}
 
 .palletEven{background:#c7d0da;}
 .palletOdd{background:#eef2f7;}
@@ -89,6 +88,7 @@ button{
     border-bottom:3px solid #22c55e;
     background:#e0fdf4;
 }
+
 .tabcontent{display:none;}
 
 .sectionTitle{
@@ -130,12 +130,17 @@ button{
 
       <label>全体収穫率 (%)</label>
       <input id="rate" type="number" value="100" oninput="drawBeds()">
-      <div id="overallRateNotice" class="notice">※全体収穫率と異なるベットがあります</div>
+      <div id="overallRateNotice" class="notice">※全体収穫率と異なるベッドがあります</div>
 
       <div class="startBox">
+        現在選択中: <span id="currentLabel">A-1</span><br>
         開始位置: <span id="startLabel">A-1</span><br>
         終了位置: <span id="endLabel">-</span>
       </div>
+
+      <div id="harvestSummaryBox" class="resultBox">必要玉数: -
+見込み収穫数: -
+使用パレット枚数: -</div>
 
       <button class="secondary" onclick="resetStartEnd()">開始位置・終了位置をリセット</button>
       <button onclick="calcHarvest()">収穫計算</button>
@@ -188,6 +193,8 @@ button{
 <script>
 const order = ["A","B","C","D","E","F"];
 const bedMap = ["F","D","B","E","C","A"];
+const PALLETS_PER_BED = 39;
+const TOTAL_PALLETS = order.length * PALLETS_PER_BED;
 
 let startBed = "A";
 let startPallet = 1;
@@ -202,7 +209,7 @@ function switchTab(evt, mode){
   document.querySelectorAll(".tabcontent").forEach(tc => tc.style.display = "none");
   document.querySelectorAll(".tablinks").forEach(tb => tb.classList.remove("active"));
   document.getElementById(mode).style.display = "block";
-  evt.currentTarget.classList.add("active");
+  if(evt && evt.currentTarget) evt.currentTarget.classList.add("active");
   calcMode = (mode === "harvestTab") ? "harvest" : "plant";
   drawBeds();
 }
@@ -210,21 +217,21 @@ function switchTab(evt, mode){
 function toggleDetail1(){
   detail1 = !detail1;
   drawSettings();
-  loadSettings();
+  restoreVisibleInputsFromSaved();
   drawBeds();
 }
 
 function toggleDetail2(){
   detail2 = !detail2;
   drawSettings();
-  loadSettings();
+  restoreVisibleInputsFromSaved();
   drawBeds();
 }
 
 function togglePlantDetail1(){
   plantDetail1 = !plantDetail1;
   drawPlantSettings();
-  loadSettings();
+  restoreVisibleInputsFromSaved();
   drawBeds();
 }
 
@@ -251,7 +258,7 @@ function drawSettings(){
   if(detail1){
     order.forEach(b => {
       html1 += `
-        <h3>${b}ベット</h3>
+        <h3>${b}ベッド</h3>
         <label>収穫用 1パレット片面数</label>
         <input id="${b}_single" type="number" value="20" oninput="drawBeds()">
       `;
@@ -261,11 +268,11 @@ function drawSettings(){
   if(detail2){
     order.forEach(b => {
       html2 += `
-        <h3>${b}ベット</h3>
+        <h3>${b}ベッド</h3>
 
         <label>収穫率 (%)</label>
         <input id="${b}_rate" type="number" value="" placeholder="空欄なら全体収穫率" oninput="drawBeds()">
-        <div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>
+        <div id="${b}_rate_notice" class="notice">※このベッドは全体収穫率と異なります</div>
 
         <div style="margin-bottom:10px;">
           <label style="display:block;">
@@ -303,7 +310,7 @@ function drawPlantSettings(){
   if(plantDetail1){
     order.forEach(b => {
       html += `
-        <h3>${b}ベット</h3>
+        <h3>${b}ベッド</h3>
 
         <label>1パレット片面苗数</label>
         <input id="${b}_singlePlant" type="number" value="20" oninput="drawBeds()">
@@ -369,6 +376,21 @@ function getPlantMarkedIds(){
   }
 }
 
+function updateHarvestSummaryBox(summary){
+  const box = document.getElementById("harvestSummaryBox");
+  if(!box) return;
+
+  if(!summary){
+    box.innerText = "必要玉数: -\n見込み収穫数: -\n使用パレット枚数: -";
+    return;
+  }
+
+  box.innerText =
+    "必要玉数: " + Math.ceil(summary.need || 0) + "\n" +
+    "見込み収穫数: " + Math.ceil(summary.estimatedHarvest || 0) + "\n" +
+    "使用パレット枚数: " + Math.ceil(summary.usedPallets || 0);
+}
+
 function drawBeds(){
   let hasDifferentBedRate = false;
 
@@ -394,16 +416,16 @@ function drawBeds(){
       split = (useSplitHarvest && useSplitHarvest.checked)
         ? Number(document.getElementById(b + "_splitHarvest")?.value || 0)
         : 0;
-    } else {
+    }else{
       split = (useSplitPlant && useSplitPlant.checked)
         ? Number(document.getElementById(b + "_splitPlant")?.value || 0)
         : 0;
     }
 
-    for(let i = 39; i >= 1; i--){
+    for(let i = PALLETS_PER_BED; i >= 1; i--){
       let cls = "pallet";
       cls += (i % 2 === 0) ? " palletEven" : " palletOdd";
-      if(i === Math.ceil(39/2)) cls += " middleMark";
+      if(i === Math.ceil(PALLETS_PER_BED / 2)) cls += " middleMark";
       if(split > 0){
         cls += (i <= split) ? " frontZone" : " backZone";
       }
@@ -445,6 +467,7 @@ function applySavedMarks(){
   let selected = document.getElementById(currentBed + "-" + currentPallet);
   if(selected) selected.classList.add("startSelect");
 
+  document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
   document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 
   if(harvestIds.length > 0){
@@ -461,6 +484,7 @@ function setStart(b, p){
 
   currentBed = b;
   currentPallet = p;
+  document.getElementById("currentLabel").innerText = b + "-" + p;
 }
 
 function resetStartEnd(){
@@ -468,14 +492,20 @@ function resetStartEnd(){
   startPallet = 1;
   currentBed = "A";
   currentPallet = 1;
+
+  document.getElementById("currentLabel").innerText = "A-1";
   document.getElementById("startLabel").innerText = "A-1";
   document.getElementById("endLabel").innerText = "-";
+
   localStorage.removeItem("lettuceHarvestResult");
   localStorage.removeItem("lettuceHarvestSummary");
   localStorage.removeItem("lettucePlantMarked");
+
   document.getElementById("plantTotalResult").innerText =
     "収穫見込み数: -\n植える苗の総数: -\n必要な苗数: -";
   document.getElementById("specialResult").innerText = "必要な1号棟パレット枚数: -";
+  updateHarvestSummaryBox(null);
+
   drawBeds();
 }
 
@@ -532,7 +562,7 @@ function calcHarvest(){
   let total = 0;
   let resultIds = [];
   let loopGuard = 0;
-  const maxLoop = order.length * 39 * 10;
+  const maxLoop = TOTAL_PALLETS;
 
   while(total < need && loopGuard < maxLoop){
     let bed = order[bedIndex];
@@ -543,23 +573,34 @@ function calcHarvest(){
     total += yieldValue;
     palletIndex++;
 
-    if(palletIndex > 39){
+    if(palletIndex > PALLETS_PER_BED){
       palletIndex = 1;
       bedIndex++;
-      if(bedIndex >= order.length) bedIndex = 0;
+      if(bedIndex >= order.length) break;
     }
 
     loopGuard++;
   }
 
+  if(total <= 0){
+    alert("収穫数の設定を確認してください");
+    return;
+  }
+
   localStorage.setItem("lettuceHarvestResult", JSON.stringify(resultIds));
-  localStorage.setItem("lettuceHarvestSummary", JSON.stringify({
+  const summary = {
     cases: cases,
     need: Math.ceil(need),
     estimatedHarvest: Math.ceil(total),
     usedPallets: resultIds.length
-  }));
+  };
+  localStorage.setItem("lettuceHarvestSummary", JSON.stringify(summary));
 
+  if(total < need){
+    alert("全パレットを使っても必要玉数に足りませんでした");
+  }
+
+  updateHarvestSummaryBox(summary);
   drawBeds();
 }
 
@@ -612,7 +653,6 @@ function calcSpecial(){
   }
 
   let totalSeedlings = plantResult.requiredSeedlings;
-
   let n60 = Number(document.getElementById("special60").value || 0);
   if(n60 < 0) n60 = 0;
   if(n60 > 3) n60 = 3;
@@ -670,7 +710,7 @@ function saveSettings(){
   alert("設定保存しました");
 }
 
-function loadSettings(){
+function restoreVisibleInputsFromSaved(){
   let data = localStorage.getItem("lettuceApp");
   if(!data) return;
 
@@ -679,18 +719,6 @@ function loadSettings(){
   }catch(e){
     return;
   }
-
-  if(document.getElementById("cases")) document.getElementById("cases").value = data.cases ?? "";
-  if(document.getElementById("rate")) document.getElementById("rate").value = data.rate ?? "100";
-  if(document.getElementById("seedlingRate")) document.getElementById("seedlingRate").value = data.seedlingRate ?? "100";
-  if(document.getElementById("special60")) document.getElementById("special60").value = data.special60 ?? "0";
-
-  startBed = data.startBed || "A";
-  startPallet = data.startPallet || 1;
-  currentBed = data.currentBed || startBed;
-  currentPallet = data.currentPallet || startPallet;
-
-  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 
   order.forEach(b => {
     let d = data.beds?.[b];
@@ -717,6 +745,32 @@ function loadSettings(){
   }, 0);
 }
 
+function loadSettings(){
+  let data = localStorage.getItem("lettuceApp");
+  if(!data) return;
+
+  try{
+    data = JSON.parse(data);
+  }catch(e){
+    return;
+  }
+
+  if(document.getElementById("cases")) document.getElementById("cases").value = data.cases ?? "";
+  if(document.getElementById("rate")) document.getElementById("rate").value = data.rate ?? "100";
+  if(document.getElementById("seedlingRate")) document.getElementById("seedlingRate").value = data.seedlingRate ?? "100";
+  if(document.getElementById("special60")) document.getElementById("special60").value = data.special60 ?? "0";
+
+  startBed = data.startBed || "A";
+  startPallet = data.startPallet || 1;
+  currentBed = data.currentBed || startBed;
+  currentPallet = data.currentPallet || startPallet;
+
+  document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
+  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
+
+  restoreVisibleInputsFromSaved();
+}
+
 window.onload = () => {
   drawSettings();
   drawPlantSettings();
@@ -724,6 +778,8 @@ window.onload = () => {
   drawBeds();
 
   const summary = getHarvestSummary();
+  updateHarvestSummaryBox(summary);
+
   if(summary){
     document.getElementById("plantTotalResult").innerText =
       "収穫見込み数: " + Math.ceil(summary.estimatedHarvest || 0) + "\n" +
@@ -733,4 +789,3 @@ window.onload = () => {
 </script>
 </body>
 </html>
-```
