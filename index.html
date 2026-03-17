@@ -252,11 +252,6 @@ function drawSettings(){
 
   document.getElementById("detail1").innerHTML = html1;
   document.getElementById("detail2").innerHTML = html2;
-
-  setTimeout(() => {
-    loadSettings();
-    drawBeds();
-  }, 0);
 }
 
 function drawPlantSettings(){
@@ -288,11 +283,6 @@ function drawPlantSettings(){
   }
 
   document.getElementById("plantDetail1").innerHTML = html;
-
-  setTimeout(() => {
-    loadSettings();
-    drawBeds();
-  }, 0);
 }
 
 function drawBeds(){
@@ -320,10 +310,9 @@ function drawBeds(){
       let overallRate = Number(document.getElementById("rate").value || 100);
       let hasBedRate = rateInput && rateInput.value.trim() !== "";
       let bedRate = hasBedRate ? Number(rateInput.value) : overallRate;
-
       let isDifferent = hasBedRate && bedRate !== overallRate;
-      rateNotice.style.display = isDifferent ? "block" : "none";
 
+      rateNotice.style.display = isDifferent ? "block" : "none";
       if(isDifferent) hasDifferentBedRate = true;
     }
 
@@ -437,6 +426,7 @@ function calcHarvest(){
 
   let cases = Number(document.getElementById("cases").value || 0);
   let overallRate = Number(document.getElementById("rate").value || 100) / 100;
+
   if(cases <= 0 || overallRate <= 0){
     alert("出荷ケースと全体収穫率を確認してください");
     return;
@@ -517,13 +507,14 @@ function calcPlant(){
 
   harvestIds.forEach(id => {
     let el = document.getElementById(id);
-    if(!el) return;
-
     let [b, pStr] = id.split("-");
     let p = Number(pStr);
 
     totalSeedlings += getPlantYield(b, p);
-    el.classList.add("plantMark");
+
+    if(el){
+      el.classList.add("plantMark");
+    }
   });
 
   document.getElementById("plantTotalResult").innerText = "苗の総数: " + Math.ceil(totalSeedlings);
@@ -634,8 +625,8 @@ function loadSettings(){
 window.onload = () => {
   drawSettings();
   drawPlantSettings();
-  drawBeds();
   loadSettings();
+  drawBeds();
   restoreHarvestMarks();
 };
 </script>
