@@ -21,33 +21,42 @@ header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:2
 label{font-weight:bold;font-size:14px;}
 
 input{
-    width:80%;
-    max-width:300px;
-    display:block;
-    margin:0 auto 10px auto;
-    padding:12px;
-    font-size:16px;
-    border-radius:8px;
-    border:1px solid #ccc;
+width:80%;
+max-width:300px;
+display:block;
+margin:0 auto 10px auto;
+padding:12px;
+font-size:16px;
+border-radius:8px;
+border:1px solid #ccc;
 }
 
 button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;background:#22c55e;color:white;margin-top:8px;}
 .secondary{background:#6b7280;}
 .third{background:#2563eb;}
-.startBox{font-size:20px;font-weight:bold;text-align:center;padding:10px;background:#ecfdf5;border-radius:10px;margin-top:8px;}
+
+.startBox{text-align:center;font-size:18px;font-weight:bold;padding:10px;background:#ecfdf5;border-radius:10px;}
+
 .bedGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 .bed{background:white;border-radius:12px;padding:8px;box-shadow:0 2px 6px rgba(0,0,0,0.08);}
 .bedTitle{text-align:center;font-weight:bold;margin-bottom:6px;}
+
 .palletGrid{display:grid;grid-template-columns:1fr;gap:3px;}
-.pallet{height:10px;border-radius:3px;}
+.pallet{height:8px;border-radius:3px;}
 .palletEven{background:#d1d5db;}
 .palletOdd{background:#f3f4f6;}
+
 .middleMark{background:#a78bfa;}
 .start{background:#22c55e !important;}
 .mid{background:#fde047 !important;}
 .end{background:#ef4444 !important;}
 .startSelect{background:#3b82f6 !important;}
+
 .notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;}
+
+/* ログ */
+.logItem{border-bottom:1px solid #eee;padding:8px;font-size:13px;}
+.logBtn{margin-top:5px;background:#2563eb;color:white;border:none;border-radius:6px;padding:5px 10px;}
 </style>
 </head>
 
@@ -59,21 +68,29 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 <div class="card">
 <label>出荷ケース</label>
 <input id="cases" type="number">
+
 <label>収穫率 (%)</label>
 <input id="rate" type="number" value="100">
 
 <div class="startBox">
-開始位置: <span id="startLabel">A-1</span><br>
-終了位置: <span id="endLabel">-</span>
+開始: <span id="startLabel">A-1</span><br>
+終了: <span id="endLabel">-</span>
 </div>
 
 <button onclick="calc()">収穫計算</button>
 <button class="secondary" onclick="toggleDetail1()">詳細設定</button>
-<button class="secondary" onclick="toggleDetail2()">さらに詳細設定</button>
+<button class="secondary" onclick="toggleDetail2()">さらに詳細</button>
 <button class="third" onclick="saveSettings()">設定保存</button>
 
 <div id="detail1"></div>
 <div id="detail2"></div>
+</div>
+
+<!-- ログ -->
+<div class="card">
+<h3>📋 作業ログ</h3>
+<div id="logList"></div>
+<button class="secondary" onclick="clearLogs()">ログ削除</button>
 </div>
 
 <div class="bedGrid">
@@ -100,51 +117,31 @@ function toggleDetail1(){detail1=!detail1; drawSettings();}
 function toggleDetail2(){detail2=!detail2; drawSettings();}
 
 function drawSettings(){
-let html1="", html2="";
+let html1="",html2="";
 
 if(detail1){
 order.forEach(b=>{
-html1+=`<h3>${b}ベット</h3>
-<label>1パレット収穫数</label>
+html1+=`<h3>${b}</h3>
 <input id="${b}_single" type="number" value="20" oninput="drawBeds()">`
 })
 }
 
 if(detail2){
 order.forEach(b=>{
-html2+=`<h3>${b}ベット</h3>
+html2+=`
+<h3>${b}</h3>
+<label><input type="checkbox" id="${b}_useSplit" onchange="drawBeds()"> 手前奥計算</label>
+<div id="${b}_notice" class="notice">※優先されます</div>
 
-<div style="margin-bottom:10px;">
-<label style="display:block;">
-<input type="checkbox" id="${b}_useSplit" onchange="drawBeds()">
-手前奥計算を使う
-</label>
-
-<div id="${b}_notice" class="notice">
-※手前奥計算が有効のため、詳細設定より優先されます
-</div>
-</div>
-
-<div style="margin-bottom:10px;">
-<label style="display:block;">手前パレット数</label>
 <input id="${b}_split" type="number" value="30" oninput="drawBeds()">
-</div>
-
-<div style="margin-bottom:10px;">
-<label style="display:block;">手前収穫数</label>
 <input id="${b}_front" type="number" value="20" oninput="drawBeds()">
-</div>
-
-<div style="margin-bottom:10px;">
-<label style="display:block;">奥収穫数</label>
 <input id="${b}_back" type="number" value="16" oninput="drawBeds()">
-</div>
 `
 })
 }
 
-document.getElementById("detail1").innerHTML = html1;
-document.getElementById("detail2").innerHTML = html2;
+detail1.innerHTML=html1;
+detail2.innerHTML=html2;
 
 setTimeout(()=>{
 loadSettings();
@@ -158,27 +155,20 @@ let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
 
 let useSplit=document.getElementById(b+"_useSplit");
 
-// 注意文表示
 let notice=document.getElementById(b+"_notice");
 if(notice){
 notice.style.display=(useSplit && useSplit.checked)?"block":"none";
 }
 
-let split=useSplit && useSplit.checked 
-? Number(document.getElementById(b+"_split").value)/2 
-: 0;
+let split=useSplit&&useSplit.checked?Number(document.getElementById(b+"_split").value)/2:0;
 
 for(let i=39;i>=1;i--){
-let cls="pallet";
+let cls="pallet "+(i%2?"palletOdd":"palletEven");
 
-if(i%2==0) cls+=" palletEven"; else cls+=" palletOdd";
+if(i===20) cls+=" middleMark";
 
-let middle=Math.ceil(39/2);
-if(i==middle) cls+=" middleMark";
-
-if(useSplit && useSplit.checked){
-if(i<=split){cls+=" frontZone";}
-else{cls+=" backZone";}
+if(useSplit&&useSplit.checked){
+cls+=(i<=split)?" frontZone":" backZone";
 }
 
 html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
@@ -189,117 +179,137 @@ document.getElementById(b+"bed").innerHTML=html;
 }
 
 function setStart(b,p){
-document.querySelectorAll(".startSelect").forEach(el=>el.classList.remove("startSelect"))
-let el=document.getElementById(b+"-"+p)
-if(el) el.classList.add("startSelect")
+document.querySelectorAll(".startSelect").forEach(e=>e.classList.remove("startSelect"));
+let el=document.getElementById(b+"-"+p);
+if(el) el.classList.add("startSelect");
 startBed=b; startPallet=p;
-document.getElementById("startLabel").innerText=b+"-"+p
+startLabel.innerText=b+"-"+p;
 }
 
 function getYield(b,p){
-let useSplit=document.getElementById(b+"_useSplit")
-if(useSplit && useSplit.checked){
-let split=Number(document.getElementById(b+"_split").value)/2
-let front=Number(document.getElementById(b+"_front").value)
-let back=Number(document.getElementById(b+"_back").value)
-return p<=split?front:back
+let useSplit=document.getElementById(b+"_useSplit");
+if(useSplit&&useSplit.checked){
+let split=Number(document.getElementById(b+"_split").value)/2;
+let front=Number(document.getElementById(b+"_front").value);
+let back=Number(document.getElementById(b+"_back").value);
+return p<=split?front:back;
 }
-let single=document.getElementById(b+"_single")
-return single?Number(single.value):20
+let s=document.getElementById(b+"_single");
+return s?Number(s.value):20;
 }
 
 function reset(){
 document.querySelectorAll(".pallet").forEach(p=>{
 p.classList.remove("start","mid","end","startSelect")
-})
+});
 }
 
 function calc(){
-reset()
-let cases=Number(document.getElementById("cases").value)
-let rate=Number(document.getElementById("rate").value)/100
-let need=cases*12/rate
-let bedIndex=order.indexOf(startBed)
-let palletIndex=startPallet
-let total=0
-let first=true
-let lastId=null
+reset();
+
+let cases=Number(casesEl.value);
+let rate=Number(rateEl.value)/100;
+let need=cases*12/rate;
+
+let bedIndex=order.indexOf(startBed);
+let palletIndex=startPallet;
+let total=0;
+let first=true;
+let lastId=null;
 
 while(total<need){
-let bed=order[bedIndex]
-let yield=getYield(bed,palletIndex)*2
-let id=bed+"-"+palletIndex
-let el=document.getElementById(id)
+let bed=order[bedIndex];
+let yield=getYield(bed,palletIndex)*2;
+let id=bed+"-"+palletIndex;
+let el=document.getElementById(id);
 
 if(el){
-lastId=id
-if(first){el.classList.add("start"); first=false}
-else{el.classList.add("mid")}
+lastId=id;
+if(first){el.classList.add("start"); first=false;}
+else{el.classList.add("mid");}
 }
 
-total+=yield
-palletIndex++
+total+=yield;
+palletIndex++;
 
 if(palletIndex>39){
-palletIndex=1
-bedIndex++
-if(bedIndex>=order.length) bedIndex=0
+palletIndex=1;
+bedIndex=(bedIndex+1)%6;
 }
 }
 
 if(lastId){
-let e=document.getElementById(lastId)
-e.classList.remove("mid")
-e.classList.add("end")
-document.getElementById("endLabel").innerText=lastId
+let e=document.getElementById(lastId);
+e.classList.remove("mid");
+e.classList.add("end");
+endLabel.innerText=lastId;
+
+// ★ログ保存
+saveLog(startBed+"-"+startPallet,lastId,cases,need);
+}
+}
+
+// ===== ログ =====
+function saveLog(start,end,cases,need){
+let logs=JSON.parse(localStorage.getItem("logs")||"[]");
+logs.unshift({time:new Date().toLocaleString(),start,end,cases,need:Math.ceil(need)});
+if(logs.length>50) logs.pop();
+localStorage.setItem("logs",JSON.stringify(logs));
+drawLogs();
+}
+
+function drawLogs(){
+let logs=JSON.parse(localStorage.getItem("logs")||"[]");
+let html="";
+logs.forEach((l,i)=>{
+html+=`
+<div class="logItem">
+${l.time}<br>
+${l.start} → ${l.end}<br>
+<button class="logBtn" onclick="resume(${i})">再開</button>
+</div>`;
+});
+logList.innerHTML=html||"履歴なし";
+}
+
+function resume(i){
+let logs=JSON.parse(localStorage.getItem("logs")||"[]");
+let l=logs[i];
+let [b,p]=l.end.split("-");
+setStart(b,Number(p));
+alert("再開しました");
+}
+
+function clearLogs(){
+if(confirm("削除しますか？")){
+localStorage.removeItem("logs");
+drawLogs();
 }
 }
 
 function saveSettings(){
-let data={
-cases:document.getElementById("cases").value,
-rate:document.getElementById("rate").value,
-startBed,startPallet,beds:{}}
-
-order.forEach(b=>{
-data.beds[b]={
-single:document.getElementById(b+"_single")?.value||20,
-split:document.getElementById(b+"_split")?.value||30,
-front:document.getElementById(b+"_front")?.value||20,
-back:document.getElementById(b+"_back")?.value||16,
-useSplit:document.getElementById(b+"_useSplit")?.checked||false
-}
-})
-
-localStorage.setItem("lettuceApp",JSON.stringify(data))
-alert("設定保存しました")
+localStorage.setItem("lettuceApp",JSON.stringify({
+cases:casesEl.value,
+rate:rateEl.value,
+startBed,startPallet
+}));
+alert("保存しました");
 }
 
 function loadSettings(){
-let data=localStorage.getItem("lettuceApp")
-if(!data) return
-data=JSON.parse(data)
-
-document.getElementById("cases").value=data.cases
-document.getElementById("rate").value=data.rate
-startBed=data.startBed
-startPallet=data.startPallet
-document.getElementById("startLabel").innerText=startBed+"-"+startPallet
-
-order.forEach(b=>{
-let d=data.beds?.[b]
-if(!d) return
-if(document.getElementById(b+"_single")) document.getElementById(b+"_single").value=d.single
-if(document.getElementById(b+"_split")) document.getElementById(b+"_split").value=d.split
-if(document.getElementById(b+"_front")) document.getElementById(b+"_front").value=d.front
-if(document.getElementById(b+"_back")) document.getElementById(b+"_back").value=d.back
-if(document.getElementById(b+"_useSplit")) document.getElementById(b+"_useSplit").checked=d.useSplit
-})
+let d=JSON.parse(localStorage.getItem("lettuceApp")||"{}");
+casesEl.value=d.cases||"";
+rateEl.value=d.rate||100;
+if(d.startBed){setStart(d.startBed,d.startPallet);}
 }
+
+const casesEl=document.getElementById("cases");
+const rateEl=document.getElementById("rate");
 
 window.onload=()=>{
 drawSettings();
-}
+drawLogs();
+};
 </script>
 
 </body>
