@@ -2,35 +2,16 @@
 <html>
 <head>
 <meta charset="UTF-8">
-
-<link rel="apple-touch-icon" href="icon.png">
-<link rel="icon" href="icon.png">
-<link rel="manifest" href="manifest.json">
-
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🥬 収穫＆苗ナビ</title>
+<title>🥬 収穫＆苗ナビ（タブ版）</title>
 
 <style>
-.frontZone{background:#bbf7d0 !important;}
-.backZone{background:#fecaca !important;}
-
 body{font-family:-apple-system; margin:0; background:#eef2f3;}
 header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:24px;font-weight:bold;}
 .container{padding:14px;}
 .card{background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 3px 8px rgba(0,0,0,0.08);}
 label{font-weight:bold;font-size:14px;}
-
-input{
-    width:80%;
-    max-width:300px;
-    display:block;
-    margin:0 auto 10px auto;
-    padding:12px;
-    font-size:16px;
-    border-radius:8px;
-    border:1px solid #ccc;
-}
-
+input{width:80%;max-width:300px;display:block;margin:0 auto 10px auto;padding:12px;font-size:16px;border-radius:8px;border:1px solid #ccc;}
 button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;background:#22c55e;color:white;margin-top:8px;}
 .secondary{background:#6b7280;}
 .third{background:#2563eb;}
@@ -47,20 +28,29 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 .mid{background:#fde047 !important;}
 .end{background:#ef4444 !important;}
 .startSelect{background:#3b82f6 !important;}
+.plantMark{background:#34d399 !important;}
 .notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;}
-.plantMark{background:#34d399 !important;} /* 植え苗モード色 */
+
+/* タブ用CSS */
+.tab { display:flex; margin-bottom:10px; }
+.tab button { flex:1; padding:10px; cursor:pointer; border:none; border-bottom:3px solid transparent; background:#f3f4f6; font-weight:bold;}
+.tab button.active { border-bottom:3px solid #22c55e; background:#e0fdf4;}
+.tabcontent { display:none; }
 </style>
 </head>
-
 <body>
-<header>🥬 収穫＆苗ナビ</header>
+<header>🥬 収穫＆苗ナビ（タブ版）</header>
 
 <div class="container">
 
-<!-- モード切替 -->
-<button onclick="switchMode('harvest')">収穫計算モード</button>
-<button onclick="switchMode('plant')">植え苗計算モード</button>
+<!-- タブ -->
+<div class="tab">
+  <button class="tablinks active" onclick="switchTab(event,'harvestTab')">収穫計算モード</button>
+  <button class="tablinks" onclick="switchTab(event,'plantTab')">植え苗計算モード</button>
+</div>
 
+<!-- 収穫タブ -->
+<div id="harvestTab" class="tabcontent" style="display:block;">
 <div class="card">
 <label>出荷ケース</label>
 <input id="cases" type="number">
@@ -79,17 +69,27 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 
 <div id="detail1"></div>
 <div id="detail2"></div>
+</div>
+</div>
 
-<!-- 植え苗モード用 特別パレット設定 -->
-<div id="plantSettings" style="display:none;margin-top:10px;">
+<!-- 植え苗タブ -->
+<div id="plantTab" class="tabcontent">
+<div class="card">
+<label>苗計算モード</label>
+<p>収穫済みパレット分の苗を計算します。</p>
+<button onclick="calc()">苗数を計算</button>
+
+<!-- 特別パレット設定 -->
+<div style="margin-top:10px;">
 <label>特別パレット3枚のうち、60個植えの枚数</label>
 <input type="number" id="special60" value="0" min="0" max="3">
 <button onclick="calcSpecial()">必要パレット数を計算</button>
 <div id="specialResult" style="margin-top:6px;font-weight:bold;"></div>
 </div>
-
+</div>
 </div>
 
+<!-- パレットグリッド -->
 <div class="bedGrid">
 <div id="Fbed" class="bed"></div>
 <div id="Dbed" class="bed"></div>
@@ -102,27 +102,28 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 </div>
 
 <script>
+// 共通設定
 const order=["A","B","C","D","E","F"];
 const bedMap=["F","D","B","E","C","A"];
+let startBed="A", startPallet=1, detail1=false, detail2=false, calcMode="harvest";
 
-let startBed="A";
-let startPallet=1;
-let detail1=false;
-let detail2=false;
-let calcMode="harvest";
-
-function switchMode(mode){
-    calcMode = mode;
-    document.getElementById("plantSettings").style.display = (mode==="plant")?"block":"none";
-    drawBeds();
+// タブ切替
+function switchTab(evt,mode){
+  document.querySelectorAll(".tabcontent").forEach(tc=>tc.style.display="none");
+  document.querySelectorAll(".tablinks").forEach(tb=>tb.classList.remove("active"));
+  document.getElementById(mode).style.display="block";
+  evt.currentTarget.classList.add("active");
+  calcMode = (mode==='harvestTab')?'harvest':'plant';
+  drawBeds();
 }
 
+// 詳細設定
 function toggleDetail1(){detail1=!detail1; drawSettings();}
 function toggleDetail2(){detail2=!detail2; drawSettings();}
 
+// 設定描画
 function drawSettings(){
 let html1="", html2="";
-
 order.forEach(b=>{
     if(detail1){
         html1+=`<h3>${b}ベット</h3>
@@ -135,7 +136,6 @@ order.forEach(b=>{
         <div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>`;
     }
 });
-
 order.forEach(b=>{
     if(detail2){
         html2+=`<h3>${b}ベット</h3>
@@ -160,26 +160,19 @@ order.forEach(b=>{
         </div>`;
     }
 });
-
 document.getElementById("detail1").innerHTML = html1;
 document.getElementById("detail2").innerHTML = html2;
-
-setTimeout(()=>{
-loadSettings();
-drawBeds();
-},0);
+setTimeout(()=>{loadSettings(); drawBeds();},0);
 }
 
+// パレット描画
 function drawBeds(){
 bedMap.forEach(b=>{
     let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
     let useSplit=document.getElementById(b+"_useSplit");
-
-    // 手前奥注意文
     let notice=document.getElementById(b+"_notice");
     if(notice) notice.style.display=(useSplit && useSplit.checked)?"block":"none";
 
-    // 個別収穫率注意文
     let rateInput = document.getElementById(b+"_rate")
     let rateNotice = document.getElementById(b+"_rate_notice")
     if(rateNotice){
@@ -189,16 +182,11 @@ bedMap.forEach(b=>{
     }
 
     let split=useSplit && useSplit.checked ? Number(document.getElementById(b+"_split").value)/2 : 0;
-
     for(let i=39;i>=1;i--){
         let cls="pallet";
         cls += (i%2==0) ? " palletEven" : " palletOdd";
         if(i==Math.ceil(39/2)) cls+=" middleMark";
-
-        if(useSplit && useSplit.checked){
-            cls += (i<=split) ? " frontZone" : " backZone";
-        }
-
+        if(useSplit && useSplit.checked) cls += (i<=split) ? " frontZone" : " backZone";
         html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
     }
     html+="</div>";
@@ -214,11 +202,12 @@ startBed=b; startPallet=p;
 document.getElementById("startLabel").innerText=b+"-"+p
 }
 
+// 収穫/苗取得
 function getYield(b,p){
     let rateInput = document.getElementById(b+"_rate")
     let rate = rateInput && rateInput.value.trim()!=="" ? Number(rateInput.value)/100 : Number(document.getElementById("rate").value)/100;
     let useSplit = document.getElementById(b+"_useSplit");
-    
+
     if(calcMode==="plant"){
         let singlePlant = Number(document.getElementById(b+"_singlePlant")?.value || 20);
         return useSplit && useSplit.checked ? (p<=Number(document.getElementById(b+"_split").value)/2 ? Number(document.getElementById(b+"_front").value)*singlePlant/20 : Number(document.getElementById(b+"_back").value)*singlePlant/20) : singlePlant;
@@ -237,6 +226,7 @@ p.classList.remove("start","mid","end","startSelect","plantMark")
 })
 }
 
+// 計算
 function calc(){
 reset();
 if(calcMode==="harvest"){
@@ -246,23 +236,19 @@ if(calcMode==="harvest"){
     let bedIndex=order.indexOf(startBed);
     let palletIndex=startPallet;
     let total=0, first=true, lastId=null;
-
     while(total<need){
         let bed=order[bedIndex];
         let yieldP=getYield(bed,palletIndex)*2;
         let id=bed+"-"+palletIndex;
         let el=document.getElementById(id);
-
         if(el){
             lastId=id;
             if(first){el.classList.add("start"); first=false;} else {el.classList.add("mid");}
         }
-
         total+=yieldP;
         palletIndex++;
         if(palletIndex>39){palletIndex=1; bedIndex++; if(bedIndex>=order.length) bedIndex=0;}
     }
-
     if(lastId){
         let e=document.getElementById(lastId)
         e.classList.remove("mid")
@@ -300,7 +286,6 @@ function calcSpecial(){
     let specialTotal = n60*60 + n120*120;
     let needed = totalSeedlings;
     let result = "";
-
     if(specialTotal >= needed){
         let used = 0;
         let remaining = needed;
@@ -319,25 +304,18 @@ function calcSpecial(){
     document.getElementById("specialResult").innerText = result;
 }
 
-// 保存・読み込み
+// 保存/読み込み
 function saveSettings(){
-let data={
-cases:document.getElementById("cases").value,
-rate:document.getElementById("rate").value,
-startBed,startPallet,beds:{}}
-
+let data={cases:document.getElementById("cases").value,rate:document.getElementById("rate").value,startBed,startPallet,beds:{}};
 order.forEach(b=>{
-data.beds[b]={
-single:document.getElementById(b+"_single")?.value||20,
+data.beds[b]={single:document.getElementById(b+"_single")?.value||20,
 singlePlant:document.getElementById(b+"_singlePlant")?.value||20,
 split:document.getElementById(b+"_split")?.value||30,
 front:document.getElementById(b+"_front")?.value||20,
 back:document.getElementById(b+"_back")?.value||16,
 useSplit:document.getElementById(b+"_useSplit")?.checked||false,
-rate:document.getElementById(b+"_rate")?.value||100
-}
-})
-
+rate:document.getElementById(b+"_rate")?.value||100}
+});
 localStorage.setItem("lettuceApp",JSON.stringify(data))
 alert("設定保存しました")
 }
@@ -346,16 +324,13 @@ function loadSettings(){
 let data=localStorage.getItem("lettuceApp")
 if(!data) return
 data=JSON.parse(data)
-
 document.getElementById("cases").value=data.cases
 document.getElementById("rate").value=data.rate
 startBed=data.startBed
 startPallet=data.startPallet
 document.getElementById("startLabel").innerText=startBed+"-"+startPallet
-
 order.forEach(b=>{
-let d=data.beds?.[b]
-if(!d) return
+let d=data.beds?.[b]; if(!d) return;
 if(document.getElementById(b+"_single")) document.getElementById(b+"_single").value=d.single
 if(document.getElementById(b+"_singlePlant")) document.getElementById(b+"_singlePlant").value=d.singlePlant
 if(document.getElementById(b+"_split")) document.getElementById(b+"_split").value=d.split
@@ -366,10 +341,7 @@ if(document.getElementById(b+"_rate")) document.getElementById(b+"_rate").value=
 })
 }
 
-window.onload=()=>{
-drawSettings();
-}
+window.onload=()=>{drawSettings();}
 </script>
-
 </body>
 </html>
