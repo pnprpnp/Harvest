@@ -172,9 +172,12 @@ notice.style.display=(useSplit && useSplit.checked)?"block":"none";
 let rateInput = document.getElementById(b+"_rate")
 let rateNotice = document.getElementById(b+"_rate_notice")
 if(rateNotice){
-    let bedRate = rateInput && rateInput.value ? Number(rateInput.value) : 100
+    let bedRate = rateInput && rateInput.value.trim() !== "" 
+                  ? Number(rateInput.value) 
+                  : Number(document.getElementById("rate").value)
     let overallRate = Number(document.getElementById("rate").value)
-    rateNotice.style.display = (bedRate !== overallRate) ? "block" : "none"
+    // 注意文は「個別入力があり、全体率と異なる場合」のみ表示
+    rateNotice.style.display = (rateInput && rateInput.value.trim() !== "" && bedRate !== overallRate) ? "block" : "none"
 }
 
 let split=useSplit && useSplit.checked 
@@ -213,7 +216,9 @@ document.getElementById("startLabel").innerText=b+"-"+p
 function getYield(b,p){
   let useSplit=document.getElementById(b+"_useSplit")
   let rateInput=document.getElementById(b+"_rate")
-  let rate=rateInput && rateInput.value ? Number(rateInput.value)/100 : Number(document.getElementById("rate").value)/100
+  let rate=rateInput && rateInput.value.trim() !== "" 
+           ? Number(rateInput.value)/100 
+           : Number(document.getElementById("rate").value)/100
 
   if(useSplit && useSplit.checked){
     let split=Number(document.getElementById(b+"_split").value)/2
