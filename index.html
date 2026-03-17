@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -59,7 +59,7 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 <div class="card">
 <label>出荷ケース</label>
 <input id="cases" type="number">
-<label>収穫率 (%)</label>
+<label>全体収穫率 (%)</label>
 <input id="rate" type="number" value="100">
 
 <div class="startBox">
@@ -106,7 +106,10 @@ if(detail1){
 order.forEach(b=>{
 html1+=`<h3>${b}ベット</h3>
 <label>1パレット収穫数</label>
-<input id="${b}_single" type="number" value="20" oninput="drawBeds()">`
+<input id="${b}_single" type="number" value="20" oninput="drawBeds()">
+<label>収穫率 (%)</label>
+<input id="${b}_rate" type="number" value="100" oninput="drawBeds()">
+<div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>`
 })
 }
 
@@ -139,6 +142,7 @@ html2+=`<h3>${b}ベット</h3>
 <label style="display:block;">奥収穫数</label>
 <input id="${b}_back" type="number" value="16" oninput="drawBeds()">
 </div>
+
 `
 })
 }
@@ -158,10 +162,19 @@ let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
 
 let useSplit=document.getElementById(b+"_useSplit");
 
-// 注意文表示
+// 手前奥注意文表示
 let notice=document.getElementById(b+"_notice");
 if(notice){
 notice.style.display=(useSplit && useSplit.checked)?"block":"none";
+}
+
+// 個別収穫率注意文表示
+let rateInput = document.getElementById(b+"_rate")
+let rateNotice = document.getElementById(b+"_rate_notice")
+if(rateNotice){
+    let bedRate = rateInput && rateInput.value ? Number(rateInput.value) : 100
+    let overallRate = Number(document.getElementById("rate").value)
+    rateNotice.style.display = (bedRate !== overallRate) ? "block" : "none"
 }
 
 let split=useSplit && useSplit.checked 
@@ -196,16 +209,21 @@ startBed=b; startPallet=p;
 document.getElementById("startLabel").innerText=b+"-"+p
 }
 
+// 収穫数取得（ベット個別率＋手前奥対応）
 function getYield(b,p){
-let useSplit=document.getElementById(b+"_useSplit")
-if(useSplit && useSplit.checked){
-let split=Number(document.getElementById(b+"_split").value)/2
-let front=Number(document.getElementById(b+"_front").value)
-let back=Number(document.getElementById(b+"_back").value)
-return p<=split?front:back
-}
-let single=document.getElementById(b+"_single")
-return single?Number(single.value):20
+  let useSplit=document.getElementById(b+"_useSplit")
+  let rateInput=document.getElementById(b+"_rate")
+  let rate=rateInput && rateInput.value ? Number(rateInput.value)/100 : Number(document.getElementById("rate").value)/100
+
+  if(useSplit && useSplit.checked){
+    let split=Number(document.getElementById(b+"_split").value)/2
+    let front=Number(document.getElementById(b+"_front").value)*rate
+    let back=Number(document.getElementById(b+"_back").value)*rate
+    return p<=split?front:back
+  }
+
+  let single=document.getElementById(b+"_single")
+  return single ? Number(single.value)*rate : 20*rate
 }
 
 function reset(){
@@ -267,7 +285,8 @@ single:document.getElementById(b+"_single")?.value||20,
 split:document.getElementById(b+"_split")?.value||30,
 front:document.getElementById(b+"_front")?.value||20,
 back:document.getElementById(b+"_back")?.value||16,
-useSplit:document.getElementById(b+"_useSplit")?.checked||false
+useSplit:document.getElementById(b+"_useSplit")?.checked||false,
+rate:document.getElementById(b+"_rate")?.value||100
 }
 })
 
@@ -294,6 +313,7 @@ if(document.getElementById(b+"_split")) document.getElementById(b+"_split").valu
 if(document.getElementById(b+"_front")) document.getElementById(b+"_front").value=d.front
 if(document.getElementById(b+"_back")) document.getElementById(b+"_back").value=d.back
 if(document.getElementById(b+"_useSplit")) document.getElementById(b+"_useSplit").checked=d.useSplit
+if(document.getElementById(b+"_rate")) document.getElementById(b+"_rate").value=d.rate
 })
 }
 
@@ -303,4 +323,4 @@ drawSettings();
 </script>
 
 </body>
-</html
+</html>
