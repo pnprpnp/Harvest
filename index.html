@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🥬 収穫＆苗ナビ（タブ版）</title>
+<title>🥬 収穫＆苗ナビ（苗収穫率対応版）</title>
 
 <style>
 body{font-family:-apple-system; margin:0; background:#eef2f3;}
@@ -59,8 +59,8 @@ button{
 .start{background:#22c55e !important;}
 .mid{background:#fde047 !important;}
 .end{background:#ef4444 !important;}
-.startSelect{background:#3b82f6 !important;}
-.plantMark{background:#34d399 !important;}
+.startSelect{outline:2px solid #2563eb;}
+.plantMark{box-shadow:inset 0 0 0 2px #10b981;}
 .frontZone{background:#bbf7d0 !important;}
 .backZone{background:#fecaca !important;}
 .notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;margin-bottom:8px;}
@@ -100,11 +100,12 @@ button{
     background:#f0fdf4;
     font-weight:bold;
     text-align:center;
+    white-space:pre-line;
 }
 </style>
 </head>
 <body>
-<header>🥬 収穫＆苗ナビ（タブ版）</header>
+<header>🥬 収穫＆苗ナビ（苗収穫率対応版）</header>
 
 <div class="container">
 
@@ -142,8 +143,12 @@ button{
       <div class="sectionTitle">苗計算モード</div>
       <p class="smallText">収穫計算で色が付いたパレット分の苗数を計算します。</p>
 
+      <label>苗の収穫率 (%)</label>
+      <input id="seedlingRate" type="number" value="100">
+
       <button onclick="calcPlant()">苗数を計算</button>
-      <div id="plantTotalResult" class="resultBox">苗の総数: -</div>
+      <div id="plantTotalResult" class="resultBox">植える苗の総数: -
+必要な苗数: -</div>
 
       <div style="margin-top:10px;">
         <button class="secondary" onclick="togglePlantDetail1()">苗の詳細設定</button>
@@ -154,7 +159,7 @@ button{
         <label>特別パレット3枚のうち、60個植えの枚数</label>
         <input type="number" id="special60" value="0" min="0" max="3">
 
-        <button onclick="calcSpecial()">必要パレット数を計算</button>
+        <button onclick="calcSpecial()">必要な特別パレット枚数を計算</button>
         <div id="specialResult" class="resultBox">必要な特別パレット枚数: -</div>
       </div>
     </div>
@@ -194,16 +199,22 @@ function switchTab(evt, mode){
 function toggleDetail1(){
   detail1 = !detail1;
   drawSettings();
+  loadSettings();
+  drawBeds();
 }
 
 function toggleDetail2(){
   detail2 = !detail2;
   drawSettings();
+  loadSettings();
+  drawBeds();
 }
 
 function togglePlantDetail1(){
   plantDetail1 = !plantDetail1;
   drawPlantSettings();
+  loadSettings();
+  drawBeds();
 }
 
 function drawSettings(){
@@ -219,7 +230,6 @@ function drawSettings(){
 
         <label>収穫率 (%)</label>
         <input id="${b}_rate" type="number" value="" placeholder="空欄なら全体収穫率" oninput="drawBeds()">
-
         <div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>
       `;
     });
@@ -238,8 +248,8 @@ function drawSettings(){
           <div id="${b}_notice" class="notice">※手前奥計算が有効のため、詳細設定より優先されます</div>
         </div>
 
-        <label>手前パレット数</label>
-        <input id="${b}_split" type="number" value="30" oninput="drawBeds()">
+        <label>収穫モードの手前パレット数</label>
+        <input id="${b}_splitHarvest" type="number" value="30" oninput="drawBeds()">
 
         <label>手前収穫数</label>
         <input id="${b}_front" type="number" value="20" oninput="drawBeds()">
@@ -273,6 +283,9 @@ function drawPlantSettings(){
           <div id="${b}_plant_notice" class="notice">※手前奥計算が有効のため、苗の基本設定より優先されます</div>
         </div>
 
+        <label>植え苗モードの手前パレット数</label>
+        <input id="${b}_splitPlant" type="number" value="30" oninput="drawBeds()">
+
         <label>手前苗数</label>
         <input id="${b}_frontPlant" type="number" value="20" oninput="drawBeds()">
 
@@ -283,6 +296,28 @@ function drawPlantSettings(){
   }
 
   document.getElementById("plantDetail1").innerHTML = html;
+}
+
+function getHarvestResultIds(){
+  let saved = localStorage.getItem("lettuceHarvestResult");
+  if(!saved) return [];
+  try{
+    let arr = JSON.parse(saved);
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){
+    return [];
+  }
+}
+
+function getPlantMarkedIds(){
+  let saved = localStorage.getItem("lettucePlantMarked");
+  if(!saved) return [];
+  try{
+    let arr = JSON.parse(saved);
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){
+    return [];
+  }
 }
 
 function drawBeds(){
@@ -319,24 +354,21 @@ function drawBeds(){
     let split = 0;
     if(calcMode === "harvest"){
       split = (useSplitHarvest && useSplitHarvest.checked)
-        ? Number(document.getElementById(b + "_split")?.value || 0) / 2
+        ? Number(document.getElementById(b + "_splitHarvest")?.value || 0)
         : 0;
     } else {
       split = (useSplitPlant && useSplitPlant.checked)
-        ? Number(document.getElementById(b + "_split")?.value || 0) / 2
+        ? Number(document.getElementById(b + "_splitPlant")?.value || 0)
         : 0;
     }
 
     for(let i = 39; i >= 1; i--){
       let cls = "pallet";
       cls += (i % 2 === 0) ? " palletEven" : " palletOdd";
-
       if(i === Math.ceil(39/2)) cls += " middleMark";
-
       if(split > 0){
         cls += (i <= split) ? " frontZone" : " backZone";
       }
-
       html += `<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
     }
 
@@ -349,7 +381,37 @@ function drawBeds(){
     overallRateNotice.style.display = hasDifferentBedRate ? "block" : "none";
   }
 
-  restoreHarvestMarks();
+  applySavedMarks();
+}
+
+function applySavedMarks(){
+  document.querySelectorAll(".pallet").forEach(el=>{
+    el.classList.remove("start","mid","end","plantMark","startSelect");
+  });
+
+  let harvestIds = getHarvestResultIds();
+  harvestIds.forEach((id, idx) => {
+    let el = document.getElementById(id);
+    if(!el) return;
+    if(idx === 0) el.classList.add("start");
+    else if(idx === harvestIds.length - 1) el.classList.add("end");
+    else el.classList.add("mid");
+  });
+
+  let plantIds = getPlantMarkedIds();
+  plantIds.forEach(id => {
+    let el = document.getElementById(id);
+    if(el) el.classList.add("plantMark");
+  });
+
+  let selected = document.getElementById(startBed + "-" + startPallet);
+  if(selected) selected.classList.add("startSelect");
+
+  if(harvestIds.length > 0){
+    document.getElementById("endLabel").innerText = harvestIds[harvestIds.length - 1];
+  }else{
+    document.getElementById("endLabel").innerText = "-";
+  }
 }
 
 function setStart(b, p){
@@ -370,7 +432,7 @@ function getHarvestYield(b, p){
   let useSplit = document.getElementById(b + "_useSplit")?.checked;
 
   if(useSplit){
-    let split = Number(document.getElementById(b + "_split")?.value || 0) / 2;
+    let split = Number(document.getElementById(b + "_splitHarvest")?.value || 0);
     let front = Number(document.getElementById(b + "_front")?.value || 20);
     let back = Number(document.getElementById(b + "_back")?.value || 16);
     return (p <= split ? front : back) * rate;
@@ -384,7 +446,7 @@ function getPlantYield(b, p){
   let useSplit = document.getElementById(b + "_useSplitPlant")?.checked;
 
   if(useSplit){
-    let split = Number(document.getElementById(b + "_split")?.value || 0) / 2;
+    let split = Number(document.getElementById(b + "_splitPlant")?.value || 0);
     let frontPlant = Number(document.getElementById(b + "_frontPlant")?.value || 20);
     let backPlant = Number(document.getElementById(b + "_backPlant")?.value || 16);
     return p <= split ? frontPlant : backPlant;
@@ -393,36 +455,8 @@ function getPlantYield(b, p){
   return Number(document.getElementById(b + "_singlePlant")?.value || 20);
 }
 
-function clearVisualMarks(){
-  document.querySelectorAll(".pallet").forEach(p => {
-    p.classList.remove("start", "mid", "end", "plantMark");
-  });
-}
-
-function restoreHarvestMarks(){
-  let saved = localStorage.getItem("lettuceHarvestResult");
-  if(!saved) return;
-
-  try{
-    let arr = JSON.parse(saved);
-    if(!Array.isArray(arr)) return;
-
-    arr.forEach((id, idx) => {
-      let el = document.getElementById(id);
-      if(!el) return;
-      if(idx === 0) el.classList.add("start");
-      else if(idx === arr.length - 1) el.classList.add("end");
-      else el.classList.add("mid");
-    });
-
-    if(arr.length > 0){
-      document.getElementById("endLabel").innerText = arr[arr.length - 1];
-    }
-  }catch(e){}
-}
-
 function calcHarvest(){
-  clearVisualMarks();
+  localStorage.removeItem("lettucePlantMarked");
 
   let cases = Number(document.getElementById("cases").value || 0);
   let overallRate = Number(document.getElementById("rate").value || 100) / 100;
@@ -436,8 +470,6 @@ function calcHarvest(){
   let bedIndex = order.indexOf(startBed);
   let palletIndex = startPallet;
   let total = 0;
-  let first = true;
-  let lastId = null;
   let resultIds = [];
   let loopGuard = 0;
   const maxLoop = order.length * 39 * 10;
@@ -446,19 +478,8 @@ function calcHarvest(){
     let bed = order[bedIndex];
     let yieldValue = getHarvestYield(bed, palletIndex) * 2;
     let id = bed + "-" + palletIndex;
-    let el = document.getElementById(id);
 
-    if(el){
-      resultIds.push(id);
-      lastId = id;
-      if(first){
-        el.classList.add("start");
-        first = false;
-      }else{
-        el.classList.add("mid");
-      }
-    }
-
+    resultIds.push(id);
     total += yieldValue;
     palletIndex++;
 
@@ -471,58 +492,45 @@ function calcHarvest(){
     loopGuard++;
   }
 
-  if(lastId){
-    let e = document.getElementById(lastId);
-    if(e){
-      e.classList.remove("mid");
-      e.classList.add("end");
-    }
-    document.getElementById("endLabel").innerText = lastId;
-  }
-
   localStorage.setItem("lettuceHarvestResult", JSON.stringify(resultIds));
+  drawBeds();
 }
 
 function calcPlant(){
-  clearVisualMarks();
-  restoreHarvestMarks();
-
-  let saved = localStorage.getItem("lettuceHarvestResult");
-  let harvestIds = [];
-
-  try{
-    harvestIds = JSON.parse(saved || "[]");
-    if(!Array.isArray(harvestIds)) harvestIds = [];
-  }catch(e){
-    harvestIds = [];
-  }
+  let harvestIds = getHarvestResultIds();
 
   if(harvestIds.length === 0){
     alert("先に収穫計算をしてください");
-    document.getElementById("plantTotalResult").innerText = "苗の総数: -";
+    document.getElementById("plantTotalResult").innerText = "植える苗の総数: -\n必要な苗数: -";
     return;
   }
 
-  let totalSeedlings = 0;
+  let totalPlantNeed = 0;
 
   harvestIds.forEach(id => {
-    let el = document.getElementById(id);
     let [b, pStr] = id.split("-");
     let p = Number(pStr);
-
-    totalSeedlings += getPlantYield(b, p);
-
-    if(el){
-      el.classList.add("plantMark");
-    }
+    totalPlantNeed += getPlantYield(b, p);
   });
 
-  document.getElementById("plantTotalResult").innerText = "苗の総数: " + Math.ceil(totalSeedlings);
+  let seedlingRate = Number(document.getElementById("seedlingRate").value || 100) / 100;
+  if(seedlingRate <= 0){
+    alert("苗の収穫率を確認してください");
+    return;
+  }
+
+  let requiredSeedlings = totalPlantNeed / seedlingRate;
+
+  localStorage.setItem("lettucePlantMarked", JSON.stringify(harvestIds));
+  document.getElementById("plantTotalResult").innerText =
+    "植える苗の総数: " + Math.ceil(totalPlantNeed) + "\n" +
+    "必要な苗数: " + Math.ceil(requiredSeedlings);
+  drawBeds();
 }
 
 function calcSpecial(){
   let plantText = document.getElementById("plantTotalResult").innerText;
-  let match = plantText.match(/(\d+)/);
+  let match = plantText.match(/必要な苗数:\s*(\d+)/);
   let totalSeedlings = match ? Number(match[1]) : 0;
 
   if(totalSeedlings <= 0){
@@ -534,34 +542,31 @@ function calcSpecial(){
   if(n60 < 0) n60 = 0;
   if(n60 > 3) n60 = 3;
 
-  let n120 = 3 - n60;
-
-  let pallets = [];
-  for(let i = 0; i < n60; i++) pallets.push(60);
-  for(let i = 0; i < n120; i++) pallets.push(120);
-
-  pallets.sort((a, b) => a - b);
+  let cycle = [];
+  for(let i=0;i<n60;i++) cycle.push(60);
+  for(let i=0;i<3-n60;i++) cycle.push(120);
 
   let used = 0;
   let sum = 0;
+  let index = 0;
 
-  for(let i = 0; i < pallets.length; i++){
-    sum += pallets[i];
+  while(sum < totalSeedlings){
+    sum += cycle[index];
     used++;
-    if(sum >= totalSeedlings) break;
+    index++;
+    if(index >= cycle.length) index = 0;
   }
 
-  if(sum >= totalSeedlings){
-    document.getElementById("specialResult").innerText = "必要な特別パレット枚数: " + used;
-  }else{
-    document.getElementById("specialResult").innerText = "特別パレットだけでは苗数が足りません";
-  }
+  document.getElementById("specialResult").innerText =
+    "必要な特別パレット枚数: " + used + "\n" +
+    "（3枚ごとの並び: " + cycle.join("・") + " を繰り返して計算）";
 }
 
 function saveSettings(){
   let data = {
     cases: document.getElementById("cases")?.value || "",
     rate: document.getElementById("rate")?.value || "100",
+    seedlingRate: document.getElementById("seedlingRate")?.value || "100",
     startBed,
     startPallet,
     special60: document.getElementById("special60")?.value || "0",
@@ -572,7 +577,8 @@ function saveSettings(){
     data.beds[b] = {
       single: document.getElementById(b + "_single")?.value || 20,
       singlePlant: document.getElementById(b + "_singlePlant")?.value || 20,
-      split: document.getElementById(b + "_split")?.value || 30,
+      splitHarvest: document.getElementById(b + "_splitHarvest")?.value || 30,
+      splitPlant: document.getElementById(b + "_splitPlant")?.value || 30,
       front: document.getElementById(b + "_front")?.value || 20,
       back: document.getElementById(b + "_back")?.value || 16,
       useSplit: document.getElementById(b + "_useSplit")?.checked || false,
@@ -599,6 +605,7 @@ function loadSettings(){
 
   if(document.getElementById("cases")) document.getElementById("cases").value = data.cases ?? "";
   if(document.getElementById("rate")) document.getElementById("rate").value = data.rate ?? "100";
+  if(document.getElementById("seedlingRate")) document.getElementById("seedlingRate").value = data.seedlingRate ?? "100";
   if(document.getElementById("special60")) document.getElementById("special60").value = data.special60 ?? "0";
 
   startBed = data.startBed || "A";
@@ -611,7 +618,8 @@ function loadSettings(){
 
     if(document.getElementById(b + "_single")) document.getElementById(b + "_single").value = d.single;
     if(document.getElementById(b + "_singlePlant")) document.getElementById(b + "_singlePlant").value = d.singlePlant;
-    if(document.getElementById(b + "_split")) document.getElementById(b + "_split").value = d.split;
+    if(document.getElementById(b + "_splitHarvest")) document.getElementById(b + "_splitHarvest").value = d.splitHarvest;
+    if(document.getElementById(b + "_splitPlant")) document.getElementById(b + "_splitPlant").value = d.splitPlant;
     if(document.getElementById(b + "_front")) document.getElementById(b + "_front").value = d.front;
     if(document.getElementById(b + "_back")) document.getElementById(b + "_back").value = d.back;
     if(document.getElementById(b + "_useSplit")) document.getElementById(b + "_useSplit").checked = d.useSplit;
@@ -627,7 +635,6 @@ window.onload = () => {
   drawPlantSettings();
   loadSettings();
   drawBeds();
-  restoreHarvestMarks();
 };
 </script>
 </body>
