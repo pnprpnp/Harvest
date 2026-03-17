@@ -33,8 +33,8 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 
 /* タブ用CSS */
 .tab { display:flex; margin-bottom:10px; }
-.tab button { flex:1; padding:10px; cursor:pointer; border:none; border-bottom:3px solid transparent; background:#f3f4f6; font-weight:bold;}
-.tab button.active { border-bottom:3px solid #22c55e; background:#e0fdf4;}
+.tab button { flex:1; padding:10px; cursor:pointer; border:none; border-bottom:3px solid transparent; background:#f3f4f6; font-weight:bold; color:#1f2937; }
+.tab button.active { border-bottom:3px solid #22c55e; background:#e0fdf4; }
 .tabcontent { display:none; }
 </style>
 </head>
@@ -79,6 +79,12 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 <p>収穫済みパレット分の苗を計算します。</p>
 <button onclick="calc()">苗数を計算</button>
 
+<!-- 苗詳細設定 -->
+<div style="margin-top:10px;">
+<button class="secondary" onclick="togglePlantDetail1()">苗の詳細設定</button>
+<div id="plantDetail1"></div>
+</div>
+
 <!-- 特別パレット設定 -->
 <div style="margin-top:10px;">
 <label>特別パレット3枚のうち、60個植えの枚数</label>
@@ -105,7 +111,7 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 // 共通設定
 const order=["A","B","C","D","E","F"];
 const bedMap=["F","D","B","E","C","A"];
-let startBed="A", startPallet=1, detail1=false, detail2=false, calcMode="harvest";
+let startBed="A", startPallet=1, detail1=false, detail2=false, calcMode="harvest", plantDetail1=false;
 
 // タブ切替
 function switchTab(evt,mode){
@@ -120,6 +126,7 @@ function switchTab(evt,mode){
 // 詳細設定
 function toggleDetail1(){detail1=!detail1; drawSettings();}
 function toggleDetail2(){detail2=!detail2; drawSettings();}
+function togglePlantDetail1(){plantDetail1=!plantDetail1; drawPlantSettings();}
 
 // 設定描画
 function drawSettings(){
@@ -165,11 +172,32 @@ document.getElementById("detail2").innerHTML = html2;
 setTimeout(()=>{loadSettings(); drawBeds();},0);
 }
 
+// 苗詳細設定描画
+function drawPlantSettings(){
+let html="";
+if(plantDetail1){
+    order.forEach(b=>{
+      html += `<h3>${b}ベット</h3>
+        <label>1パレット苗数</label>
+        <input id="${b}_singlePlant" type="number" value="20" oninput="drawBeds()">
+        <label>手前奥計算を使う</label>
+        <input type="checkbox" id="${b}_useSplitPlant" onchange="drawBeds()">
+        <div id="${b}_plant_notice" class="notice">※手前奥計算が有効のため、詳細設定より優先されます</div>
+        <label>手前苗数</label>
+        <input id="${b}_frontPlant" type="number" value="20" oninput="drawBeds()">
+        <label>奥苗数</label>
+        <input id="${b}_backPlant" type="number" value="16" oninput="drawBeds()">`;
+    });
+}
+document.getElementById("plantDetail1").innerHTML = html;
+}
+
 // パレット描画
 function drawBeds(){
 bedMap.forEach(b=>{
     let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
     let useSplit=document.getElementById(b+"_useSplit");
+    let useSplitPlant=document.getElementById(b+"_useSplitPlant");
     let notice=document.getElementById(b+"_notice");
     if(notice) notice.style.display=(useSplit && useSplit.checked)?"block":"none";
 
@@ -181,12 +209,15 @@ bedMap.forEach(b=>{
         rateNotice.style.display=(rateInput && rateInput.value.trim()!=="" && bedRate!==overallRate)?"block":"none"
     }
 
-    let split=useSplit && useSplit.checked ? Number(document.getElementById(b+"_split").value)/2 : 0;
+    let split=0;
+    if(calcMode==="harvest") split=useSplit && useSplit.checked ? Number(document.getElementById(b+"_split").value)/2 : 0;
+    if(calcMode==="plant") split=useSplitPlant && useSplitPlant.checked ? Number(document.getElementById(b+"_split").value)/2 : 0;
+
     for(let i=39;i>=1;i--){
         let cls="pallet";
         cls += (i%2==0) ? " palletEven" : " palletOdd";
         if(i==Math.ceil(39/2)) cls+=" middleMark";
-        if(useSplit && useSplit.checked) cls += (i<=split) ? " frontZone" : " backZone";
+        if(split>0) cls += (i <= split) ? " frontZone" : " backZone";
         html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
     }
     html+="</div>";
@@ -194,6 +225,7 @@ bedMap.forEach(b=>{
 })
 }
 
+// パレット開始位置設定
 function setStart(b,p){
 document.querySelectorAll(".startSelect").forEach(el=>el.classList.remove("startSelect"))
 let el=document.getElementById(b+"-"+p)
@@ -204,22 +236,31 @@ document.getElementById("startLabel").innerText=b+"-"+p
 
 // 収穫/苗取得
 function getYield(b,p){
-    let rateInput = document.getElementById(b+"_rate")
-    let rate = rateInput && rateInput.value.trim()!=="" ? Number(rateInput.value)/100 : Number(document.getElementById("rate").value)/100;
-    let useSplit = document.getElementById(b+"_useSplit");
+let rateInput = document.getElementById(b+"_rate")
+let rate = rateInput && rateInput.value.trim()!=="" ? Number(rateInput.value)/100 : Number(document.getElementById("rate").value)/100;
 
-    if(calcMode==="plant"){
-        let singlePlant = Number(document.getElementById(b+"_singlePlant")?.value || 20);
-        return useSplit && useSplit.checked ? (p<=Number(document.getElementById(b+"_split").value)/2 ? Number(document.getElementById(b+"_front").value)*singlePlant/20 : Number(document.getElementById(b+"_back").value)*singlePlant/20) : singlePlant;
+if(calcMode==="plant"){
+    let singlePlant = Number(document.getElementById(b+"_singlePlant")?.value || 20);
+    let useSplit = document.getElementById(b+"_useSplitPlant")?.checked;
+    if(useSplit){
+        return p<=Number(document.getElementById(b+"_split").value)/2 
+            ? Number(document.getElementById(b+"_frontPlant").value) 
+            : Number(document.getElementById(b+"_backPlant").value);
     }
-
-    let single = Number(document.getElementById(b+"_single")?.value || 20);
-    if(useSplit && useSplit.checked){
-        return p<=Number(document.getElementById(b+"_split").value)/2 ? Number(document.getElementById(b+"_front").value)*rate : Number(document.getElementById(b+"_back").value)*rate;
-    }
-    return single*rate;
+    return singlePlant;
 }
 
+let single = Number(document.getElementById(b+"_single")?.value || 20);
+let useSplit = document.getElementById(b+"_useSplit")?.checked;
+if(useSplit){
+    return p<=Number(document.getElementById(b+"_split").value)/2 
+        ? Number(document.getElementById(b+"_front").value)*rate 
+        : Number(document.getElementById(b+"_back").value)*rate;
+}
+return single*rate;
+}
+
+// 初期リセット
 function reset(){
 document.querySelectorAll(".pallet").forEach(p=>{
 p.classList.remove("start","mid","end","startSelect","plantMark")
@@ -272,36 +313,36 @@ if(calcMode==="harvest"){
 
 // 特別パレット計算
 function calcSpecial(){
-    let totalSeedlings = 0;
-    order.forEach(b=>{
-        for(let p=1;p<=39;p++){
-            let el = document.getElementById(b+"-"+p);
-            if(el && el.classList.contains("plantMark")){
-                totalSeedlings += getYield(b,p);
-            }
+let totalSeedlings = 0;
+order.forEach(b=>{
+    for(let p=1;p<=39;p++){
+        let el = document.getElementById(b+"-"+p);
+        if(el && el.classList.contains("plantMark")){
+            totalSeedlings += getYield(b,p);
         }
-    });
-    let n60 = Number(document.getElementById("special60").value);
-    let n120 = 3-n60;
-    let specialTotal = n60*60 + n120*120;
-    let needed = totalSeedlings;
-    let result = "";
-    if(specialTotal >= needed){
-        let used = 0;
-        let remaining = needed;
-        for(let i=0;i<n60;i++){
-            if(remaining<=60){ used++; remaining=0; break;}
-            remaining-=60; used++;
-        }
-        for(let i=0;i<n120;i++){
-            if(remaining<=120){ used++; remaining=0; break;}
-            remaining-=120; used++;
-        }
-        result = "必要な特別パレット枚数: " + used;
-    }else{
-        result = "特別パレットだけでは苗数が足りません";
     }
-    document.getElementById("specialResult").innerText = result;
+});
+let n60 = Number(document.getElementById("special60").value);
+let n120 = 3-n60;
+let specialTotal = n60*60 + n120*120;
+let needed = totalSeedlings;
+let result = "";
+if(specialTotal >= needed){
+    let used = 0;
+    let remaining = needed;
+    for(let i=0;i<n60;i++){
+        if(remaining<=60){ used++; remaining=0; break;}
+        remaining-=60; used++;
+    }
+    for(let i=0;i<n120;i++){
+        if(remaining<=120){ used++; remaining=0; break;}
+        remaining-=120; used++;
+    }
+    result = "必要な特別パレット枚数: " + used;
+}else{
+    result = "特別パレットだけでは苗数が足りません";
+}
+document.getElementById("specialResult").innerText = result;
 }
 
 // 保存/読み込み
@@ -314,7 +355,11 @@ split:document.getElementById(b+"_split")?.value||30,
 front:document.getElementById(b+"_front")?.value||20,
 back:document.getElementById(b+"_back")?.value||16,
 useSplit:document.getElementById(b+"_useSplit")?.checked||false,
-rate:document.getElementById(b+"_rate")?.value||100}
+rate:document.getElementById(b+"_rate")?.value||100,
+useSplitPlant:document.getElementById(b+"_useSplitPlant")?.checked||false,
+frontPlant:document.getElementById(b+"_frontPlant")?.value||20,
+backPlant:document.getElementById(b+"_backPlant")?.value||16
+}
 });
 localStorage.setItem("lettuceApp",JSON.stringify(data))
 alert("設定保存しました")
@@ -330,7 +375,7 @@ startBed=data.startBed
 startPallet=data.startPallet
 document.getElementById("startLabel").innerText=startBed+"-"+startPallet
 order.forEach(b=>{
-let d=data.beds?.[b]; if(!d) return;
+let d=data.beds?.[b]; if(!d) return
 if(document.getElementById(b+"_single")) document.getElementById(b+"_single").value=d.single
 if(document.getElementById(b+"_singlePlant")) document.getElementById(b+"_singlePlant").value=d.singlePlant
 if(document.getElementById(b+"_split")) document.getElementById(b+"_split").value=d.split
@@ -338,10 +383,18 @@ if(document.getElementById(b+"_front")) document.getElementById(b+"_front").valu
 if(document.getElementById(b+"_back")) document.getElementById(b+"_back").value=d.back
 if(document.getElementById(b+"_useSplit")) document.getElementById(b+"_useSplit").checked=d.useSplit
 if(document.getElementById(b+"_rate")) document.getElementById(b+"_rate").value=d.rate
-})
+if(document.getElementById(b+"_useSplitPlant")) document.getElementById(b+"_useSplitPlant").checked=d.useSplitPlant
+if(document.getElementById(b+"_frontPlant")) document.getElementById(b+"_frontPlant").value=d.frontPlant
+if(document.getElementById(b+"_backPlant")) document.getElementById(b+"_backPlant").value=d.backPlant
+});
 }
 
-window.onload=()=>{drawSettings();}
+// 初期描画
+window.onload = ()=>{
+    drawSettings();
+    drawPlantSettings();
+    drawBeds();
+}
 </script>
 </body>
 </html>
