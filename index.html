@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🥬 収穫＆苗ナビ（条件表示版）</title>
+<title>🥬 収穫＆苗ナビ（完成版）</title>
 
 <style>
 body{font-family:-apple-system; margin:0; background:#eef2f3;}
@@ -34,15 +34,18 @@ button{
 }
 .secondary{background:#6b7280;}
 .third{background:#2563eb;}
+
 .startBox{
-    font-size:20px;
+    font-size:19px;
     font-weight:bold;
     text-align:center;
-    padding:10px;
+    padding:12px;
     background:#ecfdf5;
     border-radius:10px;
     margin-top:8px;
+    line-height:1.7;
 }
+
 .bedGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 .bed{
     background:white;
@@ -53,16 +56,20 @@ button{
 .bedTitle{text-align:center;font-weight:bold;margin-bottom:6px;}
 .palletGrid{display:grid;grid-template-columns:1fr;gap:3px;}
 .pallet{height:10px;border-radius:3px;}
-.palletEven{background:#d1d5db;}
-.palletOdd{background:#f3f4f6;}
+
+.palletEven{background:#bfc7d1;}
+.palletOdd{background:#e5e7eb;}
 .middleMark{background:#a78bfa;}
+
 .start{background:#22c55e !important;}
 .mid{background:#fde047 !important;}
 .end{background:#ef4444 !important;}
 .startSelect{outline:2px solid #2563eb;}
 .plantMark{box-shadow:inset 0 0 0 2px #10b981;}
-.frontZone{background:#bbf7d0 !important;}
-.backZone{background:#fecaca !important;}
+
+.frontZone{background:#86efac !important;}
+.backZone{background:#fca5a5 !important;}
+
 .notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;margin-bottom:8px;}
 
 .tab{display:flex;margin-bottom:10px;gap:8px;}
@@ -106,7 +113,7 @@ button{
 </style>
 </head>
 <body>
-<header>🥬 収穫＆苗ナビ（条件表示版）</header>
+<header>🥬 収穫＆苗ナビ（完成版）</header>
 
 <div class="container">
 
@@ -126,9 +133,11 @@ button{
 
       <div class="startBox">
         開始位置: <span id="startLabel">A-1</span><br>
+        選択位置: <span id="currentLabel">A-1</span><br>
         終了位置: <span id="endLabel">-</span>
       </div>
 
+      <button class="secondary" onclick="setCurrentAsStart()">選択位置を開始位置にする</button>
       <button onclick="calcHarvest()">収穫計算</button>
       <button class="secondary" onclick="toggleDetail1()">詳細設定</button>
       <button class="secondary" onclick="toggleDetail2()">さらに詳細設定</button>
@@ -157,8 +166,7 @@ button{
 
       <div style="margin-top:10px;">
         <label>1号棟パレット3枚のうち、60個植えの枚数</label>
-        <input type="number" id="special60" value="0" min="0" max="3">
-
+        <input id="special60" type="number" value="0" min="0" max="3">
         <button onclick="calcSpecial()">必要な1号棟パレット枚数を計算</button>
         <div id="specialResult" class="resultBox">必要な1号棟パレット枚数: -</div>
       </div>
@@ -182,6 +190,8 @@ const bedMap = ["F","D","B","E","C","A"];
 
 let startBed = "A";
 let startPallet = 1;
+let currentBed = "A";
+let currentPallet = 1;
 let detail1 = false;
 let detail2 = false;
 let plantDetail1 = false;
@@ -364,7 +374,6 @@ function drawBeds(){
       let hasBedRate = rateInput && rateInput.value.trim() !== "";
       let bedRate = hasBedRate ? Number(rateInput.value) : overallRate;
       let isDifferent = hasBedRate && bedRate !== overallRate;
-
       rateNotice.style.display = isDifferent ? "block" : "none";
       if(isDifferent) hasDifferentBedRate = true;
     }
@@ -422,8 +431,11 @@ function applySavedMarks(){
     if(el) el.classList.add("plantMark");
   });
 
-  let selected = document.getElementById(startBed + "-" + startPallet);
+  let selected = document.getElementById(currentBed + "-" + currentPallet);
   if(selected) selected.classList.add("startSelect");
+
+  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
+  document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
 
   if(harvestIds.length > 0){
     document.getElementById("endLabel").innerText = harvestIds[harvestIds.length - 1];
@@ -436,9 +448,16 @@ function setStart(b, p){
   document.querySelectorAll(".startSelect").forEach(el => el.classList.remove("startSelect"));
   let el = document.getElementById(b + "-" + p);
   if(el) el.classList.add("startSelect");
-  startBed = b;
-  startPallet = p;
-  document.getElementById("startLabel").innerText = b + "-" + p;
+
+  currentBed = b;
+  currentPallet = p;
+  document.getElementById("currentLabel").innerText = b + "-" + p;
+}
+
+function setCurrentAsStart(){
+  startBed = currentBed;
+  startPallet = currentPallet;
+  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 }
 
 function getHarvestYield(b, p){
@@ -592,6 +611,8 @@ function saveSettings(){
     seedlingRate: document.getElementById("seedlingRate")?.value || "100",
     startBed,
     startPallet,
+    currentBed,
+    currentPallet,
     special60: document.getElementById("special60")?.value || "0",
     beds: {}
   };
@@ -633,7 +654,11 @@ function loadSettings(){
 
   startBed = data.startBed || "A";
   startPallet = data.startPallet || 1;
+  currentBed = data.currentBed || startBed;
+  currentPallet = data.currentPallet || startPallet;
+
   document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
+  document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
 
   order.forEach(b => {
     let d = data.beds?.[b];
