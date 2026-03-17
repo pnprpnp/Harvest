@@ -132,12 +132,13 @@ button{
       <div id="overallRateNotice" class="notice">※全体収穫率と異なるベットがあります</div>
 
       <div class="startBox">
-        開始位置: <span id="startLabel">A-1</span><br>
         選択位置: <span id="currentLabel">A-1</span><br>
+        開始位置: <span id="startLabel">A-1</span><br>
         終了位置: <span id="endLabel">-</span>
       </div>
 
       <button class="secondary" onclick="setCurrentAsStart()">選択位置を開始位置にする</button>
+      <button class="secondary" onclick="resetStartEnd()">開始位置・終了位置をリセット</button>
       <button onclick="calcHarvest()">収穫計算</button>
       <button class="secondary" onclick="toggleDetail1()">詳細設定</button>
       <button class="secondary" onclick="toggleDetail2()">さらに詳細設定</button>
@@ -434,8 +435,8 @@ function applySavedMarks(){
   let selected = document.getElementById(currentBed + "-" + currentPallet);
   if(selected) selected.classList.add("startSelect");
 
-  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
   document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
+  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 
   if(harvestIds.length > 0){
     document.getElementById("endLabel").innerText = harvestIds[harvestIds.length - 1];
@@ -458,6 +459,16 @@ function setCurrentAsStart(){
   startBed = currentBed;
   startPallet = currentPallet;
   document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
+}
+
+function resetStartEnd(){
+  startBed = "A";
+  startPallet = 1;
+  document.getElementById("startLabel").innerText = "A-1";
+  document.getElementById("endLabel").innerText = "-";
+  localStorage.removeItem("lettuceHarvestResult");
+  localStorage.removeItem("lettucePlantMarked");
+  drawBeds();
 }
 
 function getHarvestYield(b, p){
@@ -494,6 +505,10 @@ function getPlantYield(b, p){
 
 function calcHarvest(){
   localStorage.removeItem("lettucePlantMarked");
+
+  startBed = currentBed;
+  startPallet = currentPallet;
+  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 
   let cases = Number(document.getElementById("cases").value || 0);
   let overallRate = Number(document.getElementById("rate").value || 100) / 100;
@@ -657,8 +672,8 @@ function loadSettings(){
   currentBed = data.currentBed || startBed;
   currentPallet = data.currentPallet || startPallet;
 
-  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
   document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
+  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 
   order.forEach(b => {
     let d = data.beds?.[b];
