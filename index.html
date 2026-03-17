@@ -11,8 +11,8 @@
 <title>🥬 収穫ナビ</title>
 
 <style>
-.frontZone{background:#bbf7d0 !important;}  /* 手前 */
-.backZone{background:#fecaca !important;}   /* 奥 */
+.frontZone{background:#bbf7d0 !important;}
+.backZone{background:#fecaca !important;}
 
 body{font-family:-apple-system; margin:0; background:#eef2f3;}
 header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:24px;font-weight:bold;}
@@ -20,7 +20,6 @@ header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:2
 .card{background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 3px 8px rgba(0,0,0,0.08);}
 label{font-weight:bold;font-size:14px;}
 
-/* 入力欄を短く中央寄せ */
 input{
     width:80%;
     max-width:300px;
@@ -48,6 +47,7 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 .mid{background:#fde047 !important;}
 .end{background:#ef4444 !important;}
 .startSelect{background:#3b82f6 !important;}
+.notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;}
 </style>
 </head>
 
@@ -115,32 +115,41 @@ order.forEach(b=>{
 html2+=`<h3>${b}ベット</h3>
 
 <div style="margin-bottom:10px;">
-  <label style="display:block;">
-    <input type="checkbox" id="${b}_useSplit" onchange="drawBeds()">
-    手前奥計算を使う
-  </label>
+<label style="display:block;">
+<input type="checkbox" id="${b}_useSplit" onchange="drawBeds()">
+手前奥計算を使う
+</label>
 
-　<div id="${b}_notice" style="display:none; color:#dc2626; font-size:13px; margin-top:4px;">
-  ※手前奥計算が有効のため、詳細設定より優先されます
-　</div>
+<div id="${b}_notice" class="notice">
+※手前奥計算が有効のため、詳細設定より優先されます
+</div>
 </div>
 
 <div style="margin-bottom:10px;">
-  <label style="display:block;">手前パレット数</label>
-  <input id="${b}_split" type="number" value="30" oninput="drawBeds()">
+<label style="display:block;">手前パレット数</label>
+<input id="${b}_split" type="number" value="30" oninput="drawBeds()">
 </div>
 
 <div style="margin-bottom:10px;">
-  <label style="display:block;">手前収穫数</label>
-  <input id="${b}_front" type="number" value="20" oninput="drawBeds()">
+<label style="display:block;">手前収穫数</label>
+<input id="${b}_front" type="number" value="20" oninput="drawBeds()">
 </div>
 
 <div style="margin-bottom:10px;">
-  <label style="display:block;">奥収穫数</label>
-  <input id="${b}_back" type="number" value="16" oninput="drawBeds()">
+<label style="display:block;">奥収穫数</label>
+<input id="${b}_back" type="number" value="16" oninput="drawBeds()">
 </div>
 `
 })
+}
+
+document.getElementById("detail1").innerHTML = html1;
+document.getElementById("detail2").innerHTML = html2;
+
+setTimeout(()=>{
+loadSettings();
+drawBeds();
+},0);
 }
 
 function drawBeds(){
@@ -149,26 +158,27 @@ let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
 
 let useSplit=document.getElementById(b+"_useSplit");
 
-let notice = document.getElementById(b+"_notice");
+// 注意文表示
+let notice=document.getElementById(b+"_notice");
 if(notice){
-  notice.style.display = (useSplit && useSplit.checked) ? "block" : "none";
+notice.style.display=(useSplit && useSplit.checked)?"block":"none";
 }
+
 let split=useSplit && useSplit.checked 
-    ? Number(document.getElementById(b+"_split").value)/2 
-    : 0;
+? Number(document.getElementById(b+"_split").value)/2 
+: 0;
 
 for(let i=39;i>=1;i--){
 let cls="pallet";
 
-if(i % 2 == 0) cls+=" palletEven"; else cls+=" palletOdd";
-let middle = Math.ceil(39 / 2);  // 中央を自動計算
+if(i%2==0) cls+=" palletEven"; else cls+=" palletOdd";
 
-if(i == middle) cls += " middleMark";
+let middle=Math.ceil(39/2);
+if(i==middle) cls+=" middleMark";
 
-/* 手前奥色分け */
 if(useSplit && useSplit.checked){
-    if(i<=split){ cls+=" frontZone"; }
-    else{ cls+=" backZone"; }
+if(i<=split){cls+=" frontZone";}
+else{cls+=" backZone";}
 }
 
 html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
@@ -179,7 +189,7 @@ document.getElementById(b+"bed").innerHTML=html;
 }
 
 function setStart(b,p){
-document.querySelectorAll(".startSelect").forEach(el=>{el.classList.remove("startSelect")})
+document.querySelectorAll(".startSelect").forEach(el=>el.classList.remove("startSelect"))
 let el=document.getElementById(b+"-"+p)
 if(el) el.classList.add("startSelect")
 startBed=b; startPallet=p;
@@ -189,13 +199,13 @@ document.getElementById("startLabel").innerText=b+"-"+p
 function getYield(b,p){
 let useSplit=document.getElementById(b+"_useSplit")
 if(useSplit && useSplit.checked){
-let split=Number(document.getElementById(b+"_split").value) / 2  // ←ここ追加
+let split=Number(document.getElementById(b+"_split").value)/2
 let front=Number(document.getElementById(b+"_front").value)
 let back=Number(document.getElementById(b+"_back").value)
-return p<=split ? front : back
+return p<=split?front:back
 }
 let single=document.getElementById(b+"_single")
-return single ? Number(single.value) : 20
+return single?Number(single.value):20
 }
 
 function reset(){
@@ -214,56 +224,81 @@ let palletIndex=startPallet
 let total=0
 let first=true
 let lastId=null
+
 while(total<need){
 let bed=order[bedIndex]
 let yield=getYield(bed,palletIndex)*2
 let id=bed+"-"+palletIndex
 let el=document.getElementById(id)
-if(el){lastId=id; if(first){el.classList.add("start"); first=false}else{el.classList.add("mid")}}
+
+if(el){
+lastId=id
+if(first){el.classList.add("start"); first=false}
+else{el.classList.add("mid")}
+}
+
 total+=yield
 palletIndex++
-if(palletIndex>39){palletIndex=1; bedIndex++; if(bedIndex>=order.length) bedIndex=0}
+
+if(palletIndex>39){
+palletIndex=1
+bedIndex++
+if(bedIndex>=order.length) bedIndex=0
 }
-if(lastId){let e=document.getElementById(lastId); e.classList.remove("mid"); e.classList.add("end")
-document.getElementById("endLabel").innerText=lastId}
+}
+
+if(lastId){
+let e=document.getElementById(lastId)
+e.classList.remove("mid")
+e.classList.add("end")
+document.getElementById("endLabel").innerText=lastId
+}
 }
 
 function saveSettings(){
-let data={cases:document.getElementById("cases").value,rate:document.getElementById("rate").value,startBed:startBed,startPallet:startPallet,beds:{}}
+let data={
+cases:document.getElementById("cases").value,
+rate:document.getElementById("rate").value,
+startBed,startPallet,beds:{}}
+
 order.forEach(b=>{
-let single=document.getElementById(b+"_single"),split=document.getElementById(b+"_split"),
-front=document.getElementById(b+"_front"),back=document.getElementById(b+"_back"),
-useSplit=document.getElementById(b+"_useSplit")
-data.beds[b]={single:single?single.value:20,split:split?split.value:30,front:front?front.value:20,back:back?back.value:16,useSplit:useSplit?useSplit.checked:false}
+data.beds[b]={
+single:document.getElementById(b+"_single")?.value||20,
+split:document.getElementById(b+"_split")?.value||30,
+front:document.getElementById(b+"_front")?.value||20,
+back:document.getElementById(b+"_back")?.value||16,
+useSplit:document.getElementById(b+"_useSplit")?.checked||false
+}
 })
+
 localStorage.setItem("lettuceApp",JSON.stringify(data))
 alert("設定保存しました")
 }
 
 function loadSettings(){
-let data=localStorage.getItem("lettuceApp"); if(!data) return
+let data=localStorage.getItem("lettuceApp")
+if(!data) return
 data=JSON.parse(data)
+
 document.getElementById("cases").value=data.cases
 document.getElementById("rate").value=data.rate
 startBed=data.startBed
 startPallet=data.startPallet
 document.getElementById("startLabel").innerText=startBed+"-"+startPallet
-if(data.beds){
+
 order.forEach(b=>{
-let s=document.getElementById(b+"_single"),sp=document.getElementById(b+"_split"),
-f=document.getElementById(b+"_front"),ba=document.getElementById(b+"_back"),u=document.getElementById(b+"_useSplit")
-if(s) s.value=data.beds[b].single
-if(sp) sp.value=data.beds[b].split
-if(f) f.value=data.beds[b].front
-if(ba) ba.value=data.beds[b].back
-if(u) u.checked=data.beds[b].useSplit
+let d=data.beds?.[b]
+if(!d) return
+if(document.getElementById(b+"_single")) document.getElementById(b+"_single").value=d.single
+if(document.getElementById(b+"_split")) document.getElementById(b+"_split").value=d.split
+if(document.getElementById(b+"_front")) document.getElementById(b+"_front").value=d.front
+if(document.getElementById(b+"_back")) document.getElementById(b+"_back").value=d.back
+if(document.getElementById(b+"_useSplit")) document.getElementById(b+"_useSplit").checked=d.useSplit
 })
-}
 }
 
 window.onload=()=>{
-    loadSettings();
-    drawBeds(); // ← これ追加
+drawSettings();
 }
 </script>
 
