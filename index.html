@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🥬 収穫ナビ</title>
+<title>🥬 収穫＆苗ナビ</title>
 
 <style>
 .frontZone{background:#bbf7d0 !important;}
@@ -48,13 +48,18 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 .end{background:#ef4444 !important;}
 .startSelect{background:#3b82f6 !important;}
 .notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;}
+.plantMark{background:#34d399 !important;} /* 植え苗モード色 */
 </style>
 </head>
 
 <body>
-<header>🥬 収穫ナビ</header>
+<header>🥬 収穫＆苗ナビ</header>
 
 <div class="container">
+
+<!-- モード切替 -->
+<button onclick="switchMode('harvest')">収穫計算モード</button>
+<button onclick="switchMode('plant')">植え苗計算モード</button>
 
 <div class="card">
 <label>出荷ケース</label>
@@ -67,13 +72,22 @@ button{width:100%;padding:14px;font-size:18px;border:none;border-radius:10px;bac
 終了位置: <span id="endLabel">-</span>
 </div>
 
-<button onclick="calc()">収穫計算</button>
+<button onclick="calc()">計算</button>
 <button class="secondary" onclick="toggleDetail1()">詳細設定</button>
 <button class="secondary" onclick="toggleDetail2()">さらに詳細設定</button>
 <button class="third" onclick="saveSettings()">設定保存</button>
 
 <div id="detail1"></div>
 <div id="detail2"></div>
+
+<!-- 植え苗モード用 特別パレット設定 -->
+<div id="plantSettings" style="display:none;margin-top:10px;">
+<label>特別パレット3枚のうち、60個植えの枚数</label>
+<input type="number" id="special60" value="0" min="0" max="3">
+<button onclick="calcSpecial()">必要パレット数を計算</button>
+<div id="specialResult" style="margin-top:6px;font-weight:bold;"></div>
+</div>
+
 </div>
 
 <div class="bedGrid">
@@ -95,6 +109,13 @@ let startBed="A";
 let startPallet=1;
 let detail1=false;
 let detail2=false;
+let calcMode="harvest";
+
+function switchMode(mode){
+    calcMode = mode;
+    document.getElementById("plantSettings").style.display = (mode==="plant")?"block":"none";
+    drawBeds();
+}
 
 function toggleDetail1(){detail1=!detail1; drawSettings();}
 function toggleDetail2(){detail2=!detail2; drawSettings();}
@@ -102,50 +123,43 @@ function toggleDetail2(){detail2=!detail2; drawSettings();}
 function drawSettings(){
 let html1="", html2="";
 
-if(detail1){
 order.forEach(b=>{
-html1+=`<h3>${b}ベット</h3>
-<label>1パレット収穫数</label>
-<input id="${b}_single" type="number" value="20" oninput="drawBeds()">
-<label>収穫率 (%)</label>
-<input id="${b}_rate" type="number" value="100" oninput="drawBeds()">
-<div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>`
-})
-}
+    if(detail1){
+        html1+=`<h3>${b}ベット</h3>
+        <label>収穫用 1パレット数</label>
+        <input id="${b}_single" type="number" value="20" oninput="drawBeds()">
+        <label>苗用 1パレット数</label>
+        <input id="${b}_singlePlant" type="number" value="20" oninput="drawBeds()">
+        <label>収穫率 (%)</label>
+        <input id="${b}_rate" type="number" value="100" oninput="drawBeds()">
+        <div id="${b}_rate_notice" class="notice">※このベットは全体収穫率と異なります</div>`;
+    }
+});
 
-if(detail2){
 order.forEach(b=>{
-html2+=`<h3>${b}ベット</h3>
-
-<div style="margin-bottom:10px;">
-<label style="display:block;">
-<input type="checkbox" id="${b}_useSplit" onchange="drawBeds()">
-手前奥計算を使う
-</label>
-
-<div id="${b}_notice" class="notice">
-※手前奥計算が有効のため、詳細設定より優先されます
-</div>
-</div>
-
-<div style="margin-bottom:10px;">
-<label style="display:block;">手前パレット数</label>
-<input id="${b}_split" type="number" value="30" oninput="drawBeds()">
-</div>
-
-<div style="margin-bottom:10px;">
-<label style="display:block;">手前収穫数</label>
-<input id="${b}_front" type="number" value="20" oninput="drawBeds()">
-</div>
-
-<div style="margin-bottom:10px;">
-<label style="display:block;">奥収穫数</label>
-<input id="${b}_back" type="number" value="16" oninput="drawBeds()">
-</div>
-
-`
-})
-}
+    if(detail2){
+        html2+=`<h3>${b}ベット</h3>
+        <div style="margin-bottom:10px;">
+        <label style="display:block;">
+        <input type="checkbox" id="${b}_useSplit" onchange="drawBeds()">
+        手前奥計算を使う
+        </label>
+        <div id="${b}_notice" class="notice">※手前奥計算が有効のため、詳細設定より優先されます</div>
+        </div>
+        <div style="margin-bottom:10px;">
+        <label style="display:block;">手前パレット数</label>
+        <input id="${b}_split" type="number" value="30" oninput="drawBeds()">
+        </div>
+        <div style="margin-bottom:10px;">
+        <label style="display:block;">手前収穫数</label>
+        <input id="${b}_front" type="number" value="20" oninput="drawBeds()">
+        </div>
+        <div style="margin-bottom:10px;">
+        <label style="display:block;">奥収穫数</label>
+        <input id="${b}_back" type="number" value="16" oninput="drawBeds()">
+        </div>`;
+    }
+});
 
 document.getElementById("detail1").innerHTML = html1;
 document.getElementById("detail2").innerHTML = html2;
@@ -158,49 +172,37 @@ drawBeds();
 
 function drawBeds(){
 bedMap.forEach(b=>{
-let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
+    let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
+    let useSplit=document.getElementById(b+"_useSplit");
 
-let useSplit=document.getElementById(b+"_useSplit");
+    // 手前奥注意文
+    let notice=document.getElementById(b+"_notice");
+    if(notice) notice.style.display=(useSplit && useSplit.checked)?"block":"none";
 
-// 手前奥注意文表示
-let notice=document.getElementById(b+"_notice");
-if(notice){
-notice.style.display=(useSplit && useSplit.checked)?"block":"none";
-}
+    // 個別収穫率注意文
+    let rateInput = document.getElementById(b+"_rate")
+    let rateNotice = document.getElementById(b+"_rate_notice")
+    if(rateNotice){
+        let bedRate = rateInput && rateInput.value.trim()!=="" ? Number(rateInput.value) : Number(document.getElementById("rate").value)
+        let overallRate = Number(document.getElementById("rate").value)
+        rateNotice.style.display=(rateInput && rateInput.value.trim()!=="" && bedRate!==overallRate)?"block":"none"
+    }
 
-// 個別収穫率注意文表示
-let rateInput = document.getElementById(b+"_rate")
-let rateNotice = document.getElementById(b+"_rate_notice")
-if(rateNotice){
-    let bedRate = rateInput && rateInput.value.trim() !== "" 
-                  ? Number(rateInput.value) 
-                  : Number(document.getElementById("rate").value)
-    let overallRate = Number(document.getElementById("rate").value)
-    // 注意文は「個別入力があり、全体率と異なる場合」のみ表示
-    rateNotice.style.display = (rateInput && rateInput.value.trim() !== "" && bedRate !== overallRate) ? "block" : "none"
-}
+    let split=useSplit && useSplit.checked ? Number(document.getElementById(b+"_split").value)/2 : 0;
 
-let split=useSplit && useSplit.checked 
-? Number(document.getElementById(b+"_split").value)/2 
-: 0;
+    for(let i=39;i>=1;i--){
+        let cls="pallet";
+        cls += (i%2==0) ? " palletEven" : " palletOdd";
+        if(i==Math.ceil(39/2)) cls+=" middleMark";
 
-for(let i=39;i>=1;i--){
-let cls="pallet";
+        if(useSplit && useSplit.checked){
+            cls += (i<=split) ? " frontZone" : " backZone";
+        }
 
-if(i%2==0) cls+=" palletEven"; else cls+=" palletOdd";
-
-let middle=Math.ceil(39/2);
-if(i==middle) cls+=" middleMark";
-
-if(useSplit && useSplit.checked){
-if(i<=split){cls+=" frontZone";}
-else{cls+=" backZone";}
-}
-
-html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
-}
-html+="</div>";
-document.getElementById(b+"bed").innerHTML=html;
+        html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
+    }
+    html+="</div>";
+    document.getElementById(b+"bed").innerHTML=html;
 })
 }
 
@@ -212,72 +214,112 @@ startBed=b; startPallet=p;
 document.getElementById("startLabel").innerText=b+"-"+p
 }
 
-// 収穫数取得（ベット個別率＋手前奥対応）
 function getYield(b,p){
-  let useSplit=document.getElementById(b+"_useSplit")
-  let rateInput=document.getElementById(b+"_rate")
-  let rate=rateInput && rateInput.value.trim() !== "" 
-           ? Number(rateInput.value)/100 
-           : Number(document.getElementById("rate").value)/100
+    let rateInput = document.getElementById(b+"_rate")
+    let rate = rateInput && rateInput.value.trim()!=="" ? Number(rateInput.value)/100 : Number(document.getElementById("rate").value)/100;
+    let useSplit = document.getElementById(b+"_useSplit");
+    
+    if(calcMode==="plant"){
+        let singlePlant = Number(document.getElementById(b+"_singlePlant")?.value || 20);
+        return useSplit && useSplit.checked ? (p<=Number(document.getElementById(b+"_split").value)/2 ? Number(document.getElementById(b+"_front").value)*singlePlant/20 : Number(document.getElementById(b+"_back").value)*singlePlant/20) : singlePlant;
+    }
 
-  if(useSplit && useSplit.checked){
-    let split=Number(document.getElementById(b+"_split").value)/2
-    let front=Number(document.getElementById(b+"_front").value)*rate
-    let back=Number(document.getElementById(b+"_back").value)*rate
-    return p<=split?front:back
-  }
-
-  let single=document.getElementById(b+"_single")
-  return single ? Number(single.value)*rate : 20*rate
+    let single = Number(document.getElementById(b+"_single")?.value || 20);
+    if(useSplit && useSplit.checked){
+        return p<=Number(document.getElementById(b+"_split").value)/2 ? Number(document.getElementById(b+"_front").value)*rate : Number(document.getElementById(b+"_back").value)*rate;
+    }
+    return single*rate;
 }
 
 function reset(){
 document.querySelectorAll(".pallet").forEach(p=>{
-p.classList.remove("start","mid","end","startSelect")
+p.classList.remove("start","mid","end","startSelect","plantMark")
 })
 }
 
 function calc(){
-reset()
-let cases=Number(document.getElementById("cases").value)
-let rate=Number(document.getElementById("rate").value)/100
-let need=cases*12/rate
-let bedIndex=order.indexOf(startBed)
-let palletIndex=startPallet
-let total=0
-let first=true
-let lastId=null
+reset();
+if(calcMode==="harvest"){
+    let cases=Number(document.getElementById("cases").value);
+    let rate=Number(document.getElementById("rate").value)/100;
+    let need=cases*12/rate;
+    let bedIndex=order.indexOf(startBed);
+    let palletIndex=startPallet;
+    let total=0, first=true, lastId=null;
 
-while(total<need){
-let bed=order[bedIndex]
-let yield=getYield(bed,palletIndex)*2
-let id=bed+"-"+palletIndex
-let el=document.getElementById(id)
+    while(total<need){
+        let bed=order[bedIndex];
+        let yieldP=getYield(bed,palletIndex)*2;
+        let id=bed+"-"+palletIndex;
+        let el=document.getElementById(id);
 
-if(el){
-lastId=id
-if(first){el.classList.add("start"); first=false}
-else{el.classList.add("mid")}
+        if(el){
+            lastId=id;
+            if(first){el.classList.add("start"); first=false;} else {el.classList.add("mid");}
+        }
+
+        total+=yieldP;
+        palletIndex++;
+        if(palletIndex>39){palletIndex=1; bedIndex++; if(bedIndex>=order.length) bedIndex=0;}
+    }
+
+    if(lastId){
+        let e=document.getElementById(lastId)
+        e.classList.remove("mid")
+        e.classList.add("end")
+        document.getElementById("endLabel").innerText=lastId
+    }
+}else if(calcMode==="plant"){
+    let totalSeedlings = 0;
+    order.forEach(b=>{
+        for(let p=1;p<=39;p++){
+            let el = document.getElementById(b+"-"+p);
+            if(el && (el.classList.contains("start")||el.classList.contains("mid")||el.classList.contains("end"))){
+                totalSeedlings += getYield(b,p);
+                el.classList.add("plantMark");
+            }
+        }
+    });
+    alert("植える苗の総数: "+Math.ceil(totalSeedlings));
+}
 }
 
-total+=yield
-palletIndex++
+// 特別パレット計算
+function calcSpecial(){
+    let totalSeedlings = 0;
+    order.forEach(b=>{
+        for(let p=1;p<=39;p++){
+            let el = document.getElementById(b+"-"+p);
+            if(el && el.classList.contains("plantMark")){
+                totalSeedlings += getYield(b,p);
+            }
+        }
+    });
+    let n60 = Number(document.getElementById("special60").value);
+    let n120 = 3-n60;
+    let specialTotal = n60*60 + n120*120;
+    let needed = totalSeedlings;
+    let result = "";
 
-if(palletIndex>39){
-palletIndex=1
-bedIndex++
-if(bedIndex>=order.length) bedIndex=0
-}
+    if(specialTotal >= needed){
+        let used = 0;
+        let remaining = needed;
+        for(let i=0;i<n60;i++){
+            if(remaining<=60){ used++; remaining=0; break;}
+            remaining-=60; used++;
+        }
+        for(let i=0;i<n120;i++){
+            if(remaining<=120){ used++; remaining=0; break;}
+            remaining-=120; used++;
+        }
+        result = "必要な特別パレット枚数: " + used;
+    }else{
+        result = "特別パレットだけでは苗数が足りません";
+    }
+    document.getElementById("specialResult").innerText = result;
 }
 
-if(lastId){
-let e=document.getElementById(lastId)
-e.classList.remove("mid")
-e.classList.add("end")
-document.getElementById("endLabel").innerText=lastId
-}
-}
-
+// 保存・読み込み
 function saveSettings(){
 let data={
 cases:document.getElementById("cases").value,
@@ -287,6 +329,7 @@ startBed,startPallet,beds:{}}
 order.forEach(b=>{
 data.beds[b]={
 single:document.getElementById(b+"_single")?.value||20,
+singlePlant:document.getElementById(b+"_singlePlant")?.value||20,
 split:document.getElementById(b+"_split")?.value||30,
 front:document.getElementById(b+"_front")?.value||20,
 back:document.getElementById(b+"_back")?.value||16,
@@ -314,6 +357,7 @@ order.forEach(b=>{
 let d=data.beds?.[b]
 if(!d) return
 if(document.getElementById(b+"_single")) document.getElementById(b+"_single").value=d.single
+if(document.getElementById(b+"_singlePlant")) document.getElementById(b+"_singlePlant").value=d.singlePlant
 if(document.getElementById(b+"_split")) document.getElementById(b+"_split").value=d.split
 if(document.getElementById(b+"_front")) document.getElementById(b+"_front").value=d.front
 if(document.getElementById(b+"_back")) document.getElementById(b+"_back").value=d.back
