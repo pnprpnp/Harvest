@@ -6,6 +6,9 @@
 <title>🥬 収穫ナビ</title>
 
 <style>
+.frontZone{background:#bbf7d0 !important;}  /* 手前 */
+.backZone{background:#fecaca !important;}   /* 奥 */
+
 body{font-family:-apple-system; margin:0; background:#eef2f3;}
 header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:24px;font-weight:bold;}
 .container{padding:14px;}
@@ -108,23 +111,39 @@ html2+=`<h3>${b}ベット</h3>
 }
 document.getElementById("detail1").innerHTML=html1
 document.getElementById("detail2").innerHTML=html2
-setTimeout(loadSettings,0)
+setTimeout(()=>{
+    loadSettings();
+    drawBeds();   // ←これを追加
+},0)
 }
 
 function drawBeds(){
 bedMap.forEach(b=>{
 let html="<div class='bedTitle'>"+b+"</div><div class='palletGrid'>";
+
+let useSplit=document.getElementById(b+"_useSplit");
+let split=useSplit && useSplit.checked 
+    ? Number(document.getElementById(b+"_split").value)/2 
+    : 0;
+
 for(let i=39;i>=1;i--){
 let cls="pallet";
+
 if(i % 2 == 0) cls+=" palletEven"; else cls+=" palletOdd";
 if(i==19) cls+=" middleMark";
+
+/* 手前奥色分け */
+if(useSplit && useSplit.checked){
+    if(i<=split){ cls+=" frontZone"; }
+    else{ cls+=" backZone"; }
+}
+
 html+=`<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
 }
 html+="</div>";
 document.getElementById(b+"bed").innerHTML=html;
 })
 }
-drawBeds();
 
 function setStart(b,p){
 document.querySelectorAll(".startSelect").forEach(el=>{el.classList.remove("startSelect")})
@@ -137,7 +156,7 @@ document.getElementById("startLabel").innerText=b+"-"+p
 function getYield(b,p){
 let useSplit=document.getElementById(b+"_useSplit")
 if(useSplit && useSplit.checked){
-let split=Number(document.getElementById(b+"_split").value)
+let split=Number(document.getElementById(b+"_split").value) / 2  // ←ここ追加
 let front=Number(document.getElementById(b+"_front").value)
 let back=Number(document.getElementById(b+"_back").value)
 return p<=split ? front : back
