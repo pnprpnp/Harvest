@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html>
 <head>
@@ -133,14 +134,11 @@ button{
       <div id="overallRateNotice" class="notice">※全体収穫率と異なるベッドがあります</div>
 
       <div class="startBox">
-        現在選択中: <span id="currentLabel">A-1</span><br>
         開始位置: <span id="startLabel">A-1</span><br>
         終了位置: <span id="endLabel">-</span>
       </div>
 
-      <div id="harvestSummaryBox" class="resultBox">必要玉数: -
-見込み収穫数: -
-使用パレット枚数: -</div>
+      <div id="harvestSummaryBox" class="resultBox">必要パレット数: -</div>
 
       <button class="secondary" onclick="resetStartEnd()">開始位置・終了位置をリセット</button>
       <button onclick="calcHarvest()">収穫計算</button>
@@ -198,8 +196,6 @@ const TOTAL_PALLETS = order.length * PALLETS_PER_BED;
 
 let startBed = "A";
 let startPallet = 1;
-let currentBed = "A";
-let currentPallet = 1;
 let detail1 = false;
 let detail2 = false;
 let plantDetail1 = false;
@@ -381,14 +377,12 @@ function updateHarvestSummaryBox(summary){
   if(!box) return;
 
   if(!summary){
-    box.innerText = "必要玉数: -\n見込み収穫数: -\n使用パレット枚数: -";
+    box.innerText = "必要パレット数: -";
     return;
   }
 
   box.innerText =
-    "必要玉数: " + Math.ceil(summary.need || 0) + "\n" +
-    "見込み収穫数: " + Math.ceil(summary.estimatedHarvest || 0) + "\n" +
-    "使用パレット枚数: " + Math.ceil(summary.usedPallets || 0);
+    "必要パレット数: " + Math.ceil((summary.usedPallets || 0) * 2);
 }
 
 function drawBeds(){
@@ -464,10 +458,9 @@ function applySavedMarks(){
     if(el) el.classList.add("plantMark");
   });
 
-  let selected = document.getElementById(currentBed + "-" + currentPallet);
+  let selected = document.getElementById(startBed + "-" + startPallet);
   if(selected) selected.classList.add("startSelect");
 
-  document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
   document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 
   if(harvestIds.length > 0){
@@ -478,22 +471,15 @@ function applySavedMarks(){
 }
 
 function setStart(b, p){
-  document.querySelectorAll(".startSelect").forEach(el => el.classList.remove("startSelect"));
-  let el = document.getElementById(b + "-" + p);
-  if(el) el.classList.add("startSelect");
-
-  currentBed = b;
-  currentPallet = p;
-  document.getElementById("currentLabel").innerText = b + "-" + p;
+  startBed = b;
+  startPallet = p;
+  drawBeds();
 }
 
 function resetStartEnd(){
   startBed = "A";
   startPallet = 1;
-  currentBed = "A";
-  currentPallet = 1;
 
-  document.getElementById("currentLabel").innerText = "A-1";
   document.getElementById("startLabel").innerText = "A-1";
   document.getElementById("endLabel").innerText = "-";
 
@@ -544,10 +530,6 @@ function getPlantYield(b, p){
 function calcHarvest(){
   localStorage.removeItem("lettucePlantMarked");
 
-  startBed = currentBed;
-  startPallet = currentPallet;
-  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
-
   let cases = Number(document.getElementById("cases").value || 0);
   let overallRate = Number(document.getElementById("rate").value || 100);
 
@@ -562,7 +544,7 @@ function calcHarvest(){
   let total = 0;
   let resultIds = [];
   let loopGuard = 0;
-  const maxLoop = TOTAL_PALLETS;
+  const maxLoop = TOTAL_PALLETS - ((order.indexOf(startBed) * PALLETS_PER_BED) + (startPallet - 1));
 
   while(total < need && loopGuard < maxLoop){
     let bed = order[bedIndex];
@@ -597,7 +579,7 @@ function calcHarvest(){
   localStorage.setItem("lettuceHarvestSummary", JSON.stringify(summary));
 
   if(total < need){
-    alert("全パレットを使っても必要玉数に足りませんでした");
+    alert("開始位置から最後まで使っても必要玉数に足りませんでした");
   }
 
   updateHarvestSummaryBox(summary);
@@ -684,8 +666,6 @@ function saveSettings(){
     seedlingRate: document.getElementById("seedlingRate")?.value || "100",
     startBed,
     startPallet,
-    currentBed,
-    currentPallet,
     special60: document.getElementById("special60")?.value || "0",
     beds: {}
   };
@@ -762,10 +742,7 @@ function loadSettings(){
 
   startBed = data.startBed || "A";
   startPallet = data.startPallet || 1;
-  currentBed = data.currentBed || startBed;
-  currentPallet = data.currentPallet || startPallet;
 
-  document.getElementById("currentLabel").innerText = currentBed + "-" + currentPallet;
   document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
 
   restoreVisibleInputsFromSaved();
@@ -789,3 +766,4 @@ window.onload = () => {
 </script>
 </body>
 </html>
+```
