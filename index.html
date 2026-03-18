@@ -1,3 +1,6 @@
+以下が、今のコードに「表示上だけ左右2分割」を反映した完全版です。
+計算処理はそのままで、見た目だけ左右2分割になります。
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -55,35 +58,67 @@ button{
 }
 .bedTitle{text-align:center;font-weight:bold;margin-bottom:6px;}
 .palletGrid{display:grid;grid-template-columns:1fr;gap:3px;}
+
 .pallet{
   height:10px;
   border-radius:3px;
   cursor:pointer;
   border:1px solid rgba(0,0,0,0.05);
+  display:flex;
+  flex-direction:row;
+  gap:1px;
+  overflow:hidden;
+  background:transparent !important;
 }
 
-.palletEven{background:#c7d0da;}
-.palletOdd{background:#dbe3ec;}
+.palletLeft,
+.palletRight{
+  flex:1;
+  height:100%;
+  border-radius:1px;
+}
 
-.middleMark{background:#b197fc;}
+/* 通常色 */
+.palletEven .palletLeft,
+.palletEven .palletRight{background:#c7d0da;}
 
+.palletOdd .palletLeft,
+.palletOdd .palletRight{background:#dbe3ec;}
+
+/* 中央 */
+.middleMark .palletLeft,
+.middleMark .palletRight{background:#b197fc;}
+
+/* 20 */
 .special20{
-  background:#a78bfa !important; /* 前と同じ紫 */
   height:12px;
 }
+.special20 .palletLeft,
+.special20 .palletRight{background:#a78bfa !important;}
 
-.multiple4{
-  background:#93c5fd !important; 
-}
+/* 4の倍数 */
+.multiple4 .palletLeft,
+.multiple4 .palletRight{background:#93c5fd !important;}
 
-.start{background:#22c55e !important;}
-.mid{background:#fde047 !important;}
-.end{background:#ef4444 !important;}
+/* 収穫結果 */
+.start .palletLeft,
+.start .palletRight{background:#22c55e !important;}
+
+.mid .palletLeft,
+.mid .palletRight{background:#fde047 !important;}
+
+.end .palletLeft,
+.end .palletRight{background:#ef4444 !important;}
+
 .startSelect{outline:2px solid #2563eb;}
 .plantMark{box-shadow:inset 0 0 0 2px #10b981;}
 
-.frontZone{background:#86efac !important;}
-.backZone{background:#fca5a5 !important;}
+/* 手前奥 */
+.frontZone .palletLeft,
+.frontZone .palletRight{background:#86efac !important;}
+
+.backZone .palletLeft,
+.backZone .palletRight{background:#fca5a5 !important;}
 
 .notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;margin-bottom:8px;}
 
@@ -126,7 +161,6 @@ button{
     white-space:pre-line;
 }
 .hiddenBlock{display:none;}
-
 </style>
 </head>
 <body>
@@ -434,18 +468,24 @@ function drawBeds(){
     for(let i = PALLETS_PER_BED; i >= 1; i--){
       let cls = "pallet";
       cls += (i % 2 === 0) ? " palletEven" : " palletOdd";
-    
-    if(i === 20){
-  cls += " special20";
-}else if(i % 4 === 0){
-  cls += " multiple4";
-}
-    
+
+      if(i === 20){
+        cls += " special20";
+      }else if(i % 4 === 0){
+        cls += " multiple4";
+      }
+
       if(i === Math.ceil(PALLETS_PER_BED / 2)) cls += " middleMark";
       if(split > 0){
         cls += (i <= split) ? " frontZone" : " backZone";
       }
-      html += `<div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}"></div>`;
+
+      html += `
+        <div class="${cls}" onclick="setStart('${b}',${i})" id="${b}-${i}">
+          <div class="palletLeft"></div>
+          <div class="palletRight"></div>
+        </div>
+      `;
     }
 
     html += "</div>";
@@ -788,4 +828,3 @@ window.onload = () => {
 </script>
 </body>
 </html>
-```
