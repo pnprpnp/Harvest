@@ -534,7 +534,7 @@ button{
   <div class="card">
     <div class="sectionTitle">記録一覧</div>
 
-    <div class="smallText" style="margin-bottom:8px;">最新の記録</div>
+    <div class="smallText" style="margin-bottom:8px;">今日の記録</div>
     <div id="latestRecord" class="smallText">まだ記録がありません</div>
 
     <button type="button" class="third" onclick="exportWorkRecordsCSV()">記録をCSVで保存</button>
@@ -1259,31 +1259,30 @@ function fillRecordFromCurrent(){
 }
 
 function syncRecordFromCurrent(autoActual = false){
-  const startEldom = document.querySelector(".pallet.start");
+  const greenStartDom = document.querySelector(".pallet.start");
   let startText = "";
-  
-  if(startEldom){
-  startText = document.getElementById("startLabel")?.innerText || "";
+
+  if(greenStartDom){
+    startText = greenStartDom.id;   // ← 緑パレットの id を使う
+  }else{
+    startText = document.getElementById("startLabel")?.innerText || "";
   }
+
   const endText = getCurrentEndLabel();
   const casesValue = document.getElementById("cases")?.value || "";
-  const rateValue = document.getElementById("rate")?.value || "";
 
   const startEl = document.getElementById("recordStart");
   const actualEl = document.getElementById("recordActualEnd");
   const casesEl = document.getElementById("recordCases");
-  const actualRateEl = document.getElementById("recordActualRate");
 
   if(startEl) startEl.value = startText;
   if(casesEl) casesEl.value = casesValue;
-  if(actualRateEl) actualRateEl.value = rateValue;
 
   if(autoActual && actualEl){
     actualEl.value = endText;
   }
 
   updateActualEndPreview();
-
   calculateActualRateFromRange();
 }
 
@@ -1454,8 +1453,9 @@ function renderWorkRecords(){
       <div class="recordItem">
         <div class="recordTitle">${r.date}</div>
         <div class="recordMeta">
+出荷ケース: ${r.cases || "なし"}
+実際の収穫率: ${r.actualRate || "なし"}${r.actualRate ? "%" : ""}
 開始位置: ${r.start}
-計算上の終了位置: ${r.plannedEnd}
 実際の終了位置: ${r.actualEnd}
 メモ: ${r.memo || "なし"}
         </div>
@@ -1530,37 +1530,6 @@ function getPositionRange(startPos, endPos){
   return result;
 }
 
-function getNextPosition(pos){
-  if(!pos || !pos.includes("-")) return null;
-
-  const parts = pos.split("-");
-  const bed = parts[0];
-  const pallet = Number(parts[1]);
-
-  if(!bed || !pallet) return null;
-
-  let nextBed = bed;
-  let nextPallet = pallet + 1;
-
-  if(nextPallet > PALLETS_PER_BED){
-    const bedIndex = order.indexOf(bed);
-    if(bedIndex === -1) return null;
-
-    if(bedIndex >= order.length - 1){
-      nextBed = order[0];
-      nextPallet = 1;
-    }else{
-      nextBed = order[bedIndex + 1];
-      nextPallet = 1;
-    }
-  }
-
-  return {
-    bed: nextBed,
-    pallet: nextPallet
-  };
-}
-
 function calculateActualRateFromRange(){
   const cases = Number(document.getElementById("recordCases")?.value || 0);
   const start = document.getElementById("recordStart")?.value.trim() || "";
@@ -1609,20 +1578,6 @@ function calculateActualRateFromRange(){
 
   const actualRate = (actualHarvestCount / totalBaseCount) * 100;
   rateEl.value = actualRate.toFixed(1);
-}
-
-function applyLatestRecordToStartOnLoad(){
-  const records = getWorkRecords();
-  if(!records || records.length === 0) return;
-
-  const latest = records[0];
-  if(!latest.actualEnd) return;
-
-  const next = getNextPosition(latest.actualEnd);
-  if(!next) return;
-
-  startBed = next.bed;
-  startPallet = next.pallet;
 }
 
 function getNextPosition(pos){
@@ -1868,7 +1823,6 @@ if(settingsModal){
 document.getElementById("recordStart")?.addEventListener("input", calculateActualRateFromRange);
 };
 </script>
-<div id="saveToast" class="toast">設定を保存しました</div>
 
 <div id="startToast" class="toast">前回の記録から開始位置を反映しました</div>
 </body>
