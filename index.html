@@ -569,6 +569,40 @@ button{
 
 <div id="manualDragModeBadge" class="manualDragModeBadge">追加モード中</div>
 
+<div id="manualBedAddWrap" class="hiddenBlock">
+  <div class="smallText" style="margin-top:10px;">ベッド一括操作</div>
+
+  <div class="modeSwitch" style="margin-bottom:6px;">
+    <button type="button" class="modeOption" onclick="addWholeBedManual('A')">A追加</button>
+    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('A')">A削除</button>
+  </div>
+
+  <div class="modeSwitch" style="margin-bottom:6px;">
+    <button type="button" class="modeOption" onclick="addWholeBedManual('B')">B追加</button>
+    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('B')">B削除</button>
+  </div>
+
+  <div class="modeSwitch" style="margin-bottom:6px;">
+    <button type="button" class="modeOption" onclick="addWholeBedManual('C')">C追加</button>
+    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('C')">C削除</button>
+  </div>
+
+  <div class="modeSwitch" style="margin-bottom:6px;">
+    <button type="button" class="modeOption" onclick="addWholeBedManual('D')">D追加</button>
+    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('D')">D削除</button>
+  </div>
+
+  <div class="modeSwitch" style="margin-bottom:6px;">
+    <button type="button" class="modeOption" onclick="addWholeBedManual('E')">E追加</button>
+    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('E')">E削除</button>
+  </div>
+
+  <div class="modeSwitch">
+    <button type="button" class="modeOption" onclick="addWholeBedManual('F')">F追加</button>
+    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('F')">F削除</button>
+  </div>
+</div>
+
 <div id="manualHarvestActions" class="hiddenBlock">
   <button type="button" class="secondary" onclick="clearManualHarvestSelection()">手動選択をクリア</button>
   <button type="button" onclick="confirmManualHarvestSelection()">手動選択を確定</button>
@@ -2009,12 +2043,16 @@ function setHarvestSelectMode(mode){
   const manualBtn = document.getElementById("harvestManualModeBtn");
   const info = document.getElementById("manualHarvestInfo");
   const actions = document.getElementById("manualHarvestActions");
+  const bedAddWrap = document.getElementById("manualBedAddWrap")
+
 
   if(autoBtn) autoBtn.classList.toggle("active", mode === "auto");
   if(manualBtn) manualBtn.classList.toggle("active", mode === "manual");
 
   if(info) info.style.display = mode === "manual" ? "block" : "none";
   if(actions) actions.style.display = mode === "manual" ? "block" : "none";
+
+  if(bedAddWrap) bedAddWrap.style.display = mode === "manual" ? "block" : "none";
 
   if(mode === "manual" && manualHarvestIds.length === 0){
     const saved = getHarvestResultIds();
@@ -2326,6 +2364,66 @@ function canAddManualHarvestId(id){
   const currentTotal = getManualHarvestTotal();
 
   return currentTotal + nextYield <= need;
+}
+
+function addWholeBedManual(bed){
+  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
+
+  const cases = Number(document.getElementById("cases")?.value || 0);
+  if(cases <= 0){
+    alert("先に出荷ケースを入力してください");
+    return;
+  }
+
+  let addedCount = 0;
+  const need = cases * 12;
+
+  for(let p = 1; p <= PALLETS_PER_BED; p++){
+    const id = bed + "-" + p;
+
+    if(manualHarvestIds.includes(id)) continue;
+
+    const currentTotal = getManualHarvestTotal();
+    const nextYield = Math.ceil(getHarvestYield(bed, p));
+
+    if(currentTotal + nextYield > need){
+      break;
+    }
+
+    manualHarvestIds.push(id);
+    addedCount++;
+  }
+
+  sortManualHarvestIds();
+  updateManualHarvestInfo();
+  drawBeds();
+
+  if(addedCount === 0){
+    showManualReachToast(bed + "ベッドは追加できません");
+  }else{
+    showManualReachToast(bed + "ベッドを " + addedCount + " 枚追加");
+  }
+}
+
+function removeWholeBedManual(bed){
+  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
+
+  const before = manualHarvestIds.length;
+
+  manualHarvestIds = manualHarvestIds.filter(id => !id.startsWith(bed + "-"));
+
+  const removedCount = before - manualHarvestIds.length;
+
+  manualReachedNotified = false;
+  sortManualHarvestIds();
+  updateManualHarvestInfo();
+  drawBeds();
+
+  if(removedCount === 0){
+    showManualReachToast(bed + "ベッドは選択されていません");
+  }else{
+    showManualReachToast(bed + "ベッドを " + removedCount + " 枚削除");
+  }
 }
 
 window.onload = () => {
