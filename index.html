@@ -542,6 +542,29 @@ button{
   touch-action:none;
 }
 
+.bedTitleBtn{
+  width:100%;
+  margin:0 0 6px 0;
+  padding:6px 8px;
+  font-size:15px;
+  font-weight:bold;
+  border:none;
+  border-radius:8px;
+  background:#e5e7eb;
+  color:#111827;
+  text-align:center;
+}
+
+.bedTitleBtn.manualBedActionReady{
+  background:#2563eb;
+  color:white;
+}
+
+.bedTitleBtn.manualBedSelected{
+  background:#16a34a;
+  color:white;
+}
+
 </style>
 </head>
 <body>
@@ -579,40 +602,6 @@ button{
 <div id="manualHarvestBadge" class="manualNeedBadge warn" style="display:none;">まだ足りません</div>
 
 <div id="manualDragModeBadge" class="manualDragModeBadge">追加モード中</div>
-
-<div id="manualBedAddWrap" class="hiddenBlock">
-  <div class="smallText" style="margin-top:10px;">ベッド一括操作</div>
-
-  <div class="modeSwitch" style="margin-bottom:6px;">
-    <button type="button" class="modeOption" onclick="addWholeBedManual('A')">A追加</button>
-    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('A')">A削除</button>
-  </div>
-
-  <div class="modeSwitch" style="margin-bottom:6px;">
-    <button type="button" class="modeOption" onclick="addWholeBedManual('B')">B追加</button>
-    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('B')">B削除</button>
-  </div>
-
-  <div class="modeSwitch" style="margin-bottom:6px;">
-    <button type="button" class="modeOption" onclick="addWholeBedManual('C')">C追加</button>
-    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('C')">C削除</button>
-  </div>
-
-  <div class="modeSwitch" style="margin-bottom:6px;">
-    <button type="button" class="modeOption" onclick="addWholeBedManual('D')">D追加</button>
-    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('D')">D削除</button>
-  </div>
-
-  <div class="modeSwitch" style="margin-bottom:6px;">
-    <button type="button" class="modeOption" onclick="addWholeBedManual('E')">E追加</button>
-    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('E')">E削除</button>
-  </div>
-
-  <div class="modeSwitch">
-    <button type="button" class="modeOption" onclick="addWholeBedManual('F')">F追加</button>
-    <button type="button" class="secondary modeOption" onclick="removeWholeBedManual('F')">F削除</button>
-  </div>
-</div>
 
 <div id="manualHarvestActions" class="hiddenBlock">
   <button type="button" class="secondary" onclick="clearManualHarvestSelection()">手動選択をクリア</button>
@@ -792,6 +781,9 @@ let manualReachedNotified = false;
 let longPressTimer = null;
 let longPressActivated = false;
 const LONG_PRESS_MS = 200;
+let bedTitleLongPressTimer = null;
+let bedTitleLongPressFired = false;
+const BED_TITLE_LONG_PRESS_MS = 300;
 
 function switchTab(evt, mode){
   document.querySelectorAll(".tabcontent").forEach(tc => tc.style.display = "none");
@@ -1039,8 +1031,17 @@ function drawBeds(){
   const actualEnd = document.getElementById("recordActualEnd")?.value?.trim() || "";
 
   bedMap.forEach(b => {
-    let html = "<div class='bedTitle'>" + b + "</div><div class='palletGrid'>";
-
+    let html = `
+  <button type="button"
+          class="bedTitle bedTitleBtn"
+          onclick="handleBedTitleTap('${b}')"
+          ontouchstart="handleBedTitleTouchStart(event,'${b}')"
+          ontouchend="handleBedTitleTouchEnd()"
+          ontouchcancel="handleBedTitleTouchEnd()">
+    ${b}
+  </button>
+  <div class='palletGrid'>
+`;
     let useSplitHarvest = document.getElementById(b + "_useSplit");
     let useSplitPlant = document.getElementById(b + "_useSplitPlant");
 
@@ -1111,6 +1112,7 @@ function drawBeds(){
 
   applySavedMarks();
   updateManualHarvestInfo();
+  updateBedTitleButtons();
 }
 
 function applySavedMarks(){
@@ -2057,7 +2059,6 @@ function setHarvestSelectMode(mode){
   const manualBtn = document.getElementById("harvestManualModeBtn");
   const info = document.getElementById("manualHarvestInfo");
   const actions = document.getElementById("manualHarvestActions");
-  const bedAddWrap = document.getElementById("manualBedAddWrap")
 
 
   if(autoBtn) autoBtn.classList.toggle("active", mode === "auto");
@@ -2065,8 +2066,6 @@ function setHarvestSelectMode(mode){
 
   if(info) info.style.display = mode === "manual" ? "block" : "none";
   if(actions) actions.style.display = mode === "manual" ? "block" : "none";
-
-  if(bedAddWrap) bedAddWrap.style.display = mode === "manual" ? "block" : "none";
 
   if(mode === "manual" && manualHarvestIds.length === 0){
     const saved = getHarvestResultIds();
@@ -2083,6 +2082,7 @@ function setHarvestSelectMode(mode){
   updateManualHarvestInfo();
   updateManualDragModeUI();
   drawBeds();
+  updateBedTitleButtons();
 
   if(mode !== "manual"){
   setPageScrollLocked(false);
@@ -2449,6 +2449,59 @@ function removeWholeBedManual(bed){
 function setPageScrollLocked(locked){
   document.body.classList.toggle("noScroll", locked);
   document.documentElement.classList.toggle("noScroll", locked);
+}
+
+function isWholeBedSelectedManual(bed){
+  return manualHarvestIds.some(id => id.startsWith(bed + "-"));
+}
+
+function updateBedTitleButtons(){
+  document.querySelectorAll(".bedTitleBtn").forEach(btn => {
+    btn.classList.remove("manualBedActionReady", "manualBedSelected");
+
+    const bed = btn.textContent.trim();
+    if(!bed) return;
+
+    if(calcMode === "harvest" && harvestSelectMode === "manual"){
+      btn.classList.add("manualBedActionReady");
+
+      if(isWholeBedSelectedManual(bed)){
+        btn.classList.add("manualBedSelected");
+      }
+    }
+  });
+}
+
+function handleBedTitleTap(bed){
+  if(bedTitleLongPressFired){
+    bedTitleLongPressFired = false;
+    return;
+  }
+
+  // 短押しは何もしない
+}
+
+function handleBedTitleTouchStart(event, bed){
+  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
+
+  bedTitleLongPressFired = false;
+  clearTimeout(bedTitleLongPressTimer);
+
+  bedTitleLongPressTimer = setTimeout(() => {
+    bedTitleLongPressFired = true;
+
+    if(isWholeBedSelectedManual(bed)){
+      removeWholeBedManual(bed);
+    }else{
+      addWholeBedManual(bed);
+    }
+  }, BED_TITLE_LONG_PRESS_MS);
+
+  event.preventDefault();
+}
+
+function handleBedTitleTouchEnd(){
+  clearTimeout(bedTitleLongPressTimer);
 }
 
 window.onload = () => {
