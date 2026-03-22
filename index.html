@@ -508,6 +508,29 @@ button{
   color:white;
 }
 
+.manualDragModeBadge{
+  margin-top:8px;
+  padding:10px;
+  border-radius:10px;
+  text-align:center;
+  font-weight:bold;
+  font-size:16px;
+  background:#2563eb;
+  color:white;
+  display:none;
+  animation:manualPulse 1s infinite;
+}
+
+.manualDragModeOn .bed{
+  box-shadow:0 0 0 2px #60a5fa, 0 4px 12px rgba(37,99,235,0.18);
+}
+
+@keyframes manualPulse{
+  0%{opacity:1;}
+  50%{opacity:0.75;}
+  100%{opacity:1;}
+}
+
 </style>
 </head>
 <body>
@@ -535,6 +558,16 @@ button{
 </div>
 
 <div id="manualHarvestBadge" class="manualNeedBadge warn" style="display:none;">まだ足りません</div>
+
+<div id="manualHarvestInfo" class="resultBox hiddenBlock">
+必要玉数: -
+現在の合計: -
+選択パレット数: -
+</div>
+
+<div id="manualHarvestBadge" class="manualNeedBadge warn" style="display:none;">まだ足りません</div>
+
+<div id="manualDragModeBadge" class="manualDragModeBadge">追加モード中</div>
 
 <div id="manualHarvestActions" class="hiddenBlock">
   <button type="button" class="secondary" onclick="clearManualHarvestSelection()">手動選択をクリア</button>
@@ -711,6 +744,9 @@ let isDraggingHarvest = false;
 let lastTouchedHarvestId = "";
 let suppressNextTap = false;
 let manualReachedNotified = false;
+let longPressTimer = null;
+let longPressActivated = false;
+const LONG_PRESS_MS = 350;
 
 function switchTab(evt, mode){
   document.querySelectorAll(".tabcontent").forEach(tc => tc.style.display = "none");
@@ -724,6 +760,7 @@ function switchTab(evt, mode){
 
   drawBeds();
   updateActualEndPreview();
+  updateManualDragModeUI();
 }
 
 function setHarvestMode(b, useSplit){
@@ -1950,6 +1987,21 @@ function showSaveToast(message = "設定を更新しました"){
   }, 2000);
 }
 
+function updateManualDragModeUI(){
+  const badge = document.getElementById("manualDragModeBadge");
+  const container = document.querySelector(".container");
+
+  const isOn = calcMode === "harvest" && harvestSelectMode === "manual" && longPressActivated;
+
+  if(badge){
+    badge.style.display = isOn ? "block" : "none";
+  }
+
+  if(container){
+    container.classList.toggle("manualDragModeOn", isOn);
+  }
+}
+
 function setHarvestSelectMode(mode){
   harvestSelectMode = mode;
 
@@ -1977,6 +2029,7 @@ function setHarvestSelectMode(mode){
   }
 
   updateManualHarvestInfo();
+  updateManualDragModeUI();
   drawBeds();
 }
 
@@ -2186,9 +2239,21 @@ function handleHarvestTouchStart(event, b, p){
 
   isDraggingHarvest = true;
   suppressNextTap = false;
+  longPressActivated = false;
 
   const id = b + "-" + p;
   lastTouchedHarvestId = id;
+
+  clearTimeout(longPressTimer);
+  longPressTimer = setTimeout(() => {
+    if(!isDraggingHarvest) return;
+
+    longPressActivated = true;
+    suppressNextTap = true;
+    updateManualDragModeUI();
+    addManualHarvestId(id);
+    showManualReachToast("追加モード");
+  }, LONG_PRESS_MS);
 
   event.preventDefault();
 }
@@ -2206,8 +2271,12 @@ function handleHarvestTouchMove(event){
   const pallet = el.closest(".pallet");
   if(!pallet || !pallet.id) return;
 
-  if(pallet.id !== lastTouchedHarvestId){
-    suppressNextTap = true;
+  // 長押し成立前に大きく動いたら、ただのドラッグとみなして長押しキャンセル
+  if(!longPressActivated && pallet.id !== lastTouchedHarvestId){
+    clearTimeout(longPressTimer);
+  }
+
+  if(longPressActivated && pallet.id !== lastTouchedHarvestId){
     lastTouchedHarvestId = pallet.id;
     addManualHarvestId(pallet.id);
   }
@@ -2218,8 +2287,13 @@ function handleHarvestTouchMove(event){
 function handleHarvestTouchEnd(){
   if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
 
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+
   isDraggingHarvest = false;
   lastTouchedHarvestId = "";
+  longPressActivated = false;
+  updateManualDragModeUI();
 
   setTimeout(() => {
     suppressNextTap = false;
@@ -2313,6 +2387,7 @@ if(btn){
 
 setHarvestSelectMode("auto");
 updateManualHarvestInfo();
+updateManualDragModeUI();
 
 };
 </script>
