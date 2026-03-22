@@ -2185,11 +2185,10 @@ function handleHarvestTouchStart(event, b, p){
   if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
 
   isDraggingHarvest = true;
-  suppressNextTap = true;
+  suppressNextTap = false;
 
   const id = b + "-" + p;
   lastTouchedHarvestId = id;
-  addManualHarvestId(id);
 
   event.preventDefault();
 }
@@ -2208,6 +2207,7 @@ function handleHarvestTouchMove(event){
   if(!pallet || !pallet.id) return;
 
   if(pallet.id !== lastTouchedHarvestId){
+    suppressNextTap = true;
     lastTouchedHarvestId = pallet.id;
     addManualHarvestId(pallet.id);
   }
@@ -2220,6 +2220,10 @@ function handleHarvestTouchEnd(){
 
   isDraggingHarvest = false;
   lastTouchedHarvestId = "";
+
+  setTimeout(() => {
+    suppressNextTap = false;
+  }, 0);
 }
 
 function showManualReachToast(message = "必要玉数に達しました"){
