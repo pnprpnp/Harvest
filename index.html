@@ -600,9 +600,9 @@ button{
       <label>出荷ケース</label>
       <input id="cases" type="number" oninput="updateManualHarvestInfo()">
 
-      <label>全体収穫率 (%)</label>
-      <input id="rate" type="number" value="100" oninput="drawBeds()">
-      <div id="overallRateNotice" class="notice">※全体収穫率と異なるベッドがあります</div>
+      <label>全体ロス率 (%)</label>
+      <input id="rate" type="number" value="0" oninput="drawBeds()">
+      <div id="overallRateNotice" class="notice">※全体ロス率と異なるベッドがあります</div>
 
       <div class="startBox">
         開始位置: <span id="startLabel">A-1</span><br>
@@ -626,8 +626,8 @@ button{
       <div class="sectionTitle">植苗計算</div>
       <p class="smallText">収穫計算で色が付いたパレット分をもとに、自動で必要苗数と1号棟パレット枚数を計算します。</p>
 
-      <label>苗の収穫率 (%)</label>
-      <input id="seedlingRate" type="number" value="100">
+      <label>苗のロス率 (%)</label>
+      <input id="seedlingRate" type="number" value="0">
 
       <div id="plantTotalResult" class="resultBox">収穫見込み数: -
 植える苗の総数: -
@@ -662,8 +662,8 @@ button{
     <label>出荷ケース</label>
     <input id="recordCases" type="number" placeholder="例：300">
 
-    <label>実際の収穫率（％）</label>
-    <input id="recordActualRate" type="text" readonly placeholder="例：95">
+    <label>実際のロス率（％）</label>
+    <input id="recordActualRate" type="text" readonly placeholder="例：5">
 
     <label>開始位置</label>
     <input id="recordStart" type="text" placeholder="例: A-1">
@@ -868,16 +868,16 @@ function drawSettings(){
   let html2 = "";
 
   if(detail2){
-  html2 += `<div class="smallText" style="margin-bottom:8px;">ベッドごとの収穫率と手前奥設定</div>`;
+  html2 += `<div class="smallText" style="margin-bottom:8px;">ベッドごとのロス率と手前奥設定</div>`;
 
   order.forEach(b => {
     html2 += `
   <div class="splitSettingCard" id="${b}_harvestCard">
     <div class="splitSettingTitle">${b}ベッド</div>
 
-    <label>収穫率 (%)</label>
-    <input id="${b}_rate" type="number" value="" placeholder="空欄なら全体収穫率" oninput="drawBeds()">
-    <div id="${b}_rate_notice" class="notice">※このベッドは全体収穫率と異なります</div>
+    <label>ロス率 (%)</label>
+    <input id="${b}_rate" type="number" value="" placeholder="空欄なら全体ロス率" oninput="drawBeds()">
+    <div id="${b}_rate_notice" class="notice">※このベッドは全体ロス率と異なります</div>
 
     <div class="modeSwitch">
       <button type="button" class="modeOption" id="${b}_harvestNormalBtn" onclick="setHarvestMode('${b}', false)">通常計算</button>
@@ -1038,7 +1038,7 @@ function drawBeds(){
     let rateInput = document.getElementById(b + "_rate");
     let rateNotice = document.getElementById(b + "_rate_notice");
     if(rateNotice){
-      let overallRate = Number(document.getElementById("rate").value || 100);
+      let overallRate = Number(document.getElementById("rate").value || 0);
       let hasBedRate = rateInput && rateInput.value.trim() !== "";
       let bedRate = hasBedRate ? Number(rateInput.value) : overallRate;
       let isDifferent = hasBedRate && bedRate !== overallRate;
@@ -1209,9 +1209,13 @@ setPageScrollLocked(false);
 
 function getHarvestYield(b, p){
   let rateInput = document.getElementById(b + "_rate");
-  let rate = (rateInput && rateInput.value.trim() !== "")
-    ? Number(rateInput.value) / 100
-    : Number(document.getElementById("rate").value || 100) / 100;
+
+ let loss = (rateInput && rateInput.value.trim() !== "")
+  ? Number(rateInput.value)
+  : Number(document.getElementById("rate").value || 0);
+
+// ロス率 → 収穫率へ変換
+ let rate = (100 - loss) / 100;
 
   let useSplit = document.getElementById(b + "_useSplit")?.checked;
 
@@ -1251,7 +1255,7 @@ function calcHarvest(){
   let overallRate = Number(document.getElementById("rate").value || 100);
 
   if(cases <= 0 || overallRate <= 0){
-    alert("出荷ケースと全体収穫率を確認してください");
+    alert("出荷ケースと全体ロス率を確認してください");
     return;
   }
 
@@ -1322,12 +1326,19 @@ function calcPlantCore(){
     totalPlantNeed += getPlantYield(b, p);
   });
 
-  let seedlingRate = Number(document.getElementById("seedlingRate").value || 100) / 100;
-  if(seedlingRate <= 0){
-    return { ok:false, message:"苗の収穫率を確認してください" };
-  }
+  let loss = Number(document.getElementById("seedlingRate").value || 0);
 
-  let requiredSeedlings = totalPlantNeed / seedlingRate;
+// 安全処理（0〜100に制限）
+loss = Math.max(0, Math.min(100, loss));
+
+// ロス率 → 収穫率へ変換
+let seedlingRate = (100 - loss) / 100;
+
+if(seedlingRate <= 0){
+  return { ok:false, message:"苗のロス率が100%です" };
+}
+
+let requiredSeedlings = totalPlantNeed / seedlingRate;
 
   localStorage.setItem("lettucePlantMarked", JSON.stringify(harvestIds));
   document.getElementById("plantTotalResult").innerText =
@@ -1588,7 +1599,7 @@ function exportWorkRecordsCSV(){
   const headers = [
     "日付",
     "出荷ケース",
-    "実際の収穫率",
+    "実際のロス率",
     "開始位置",
     "実際の終了位置",
     "メモ"
@@ -1691,7 +1702,7 @@ function renderWorkRecords(){
         <div class="recordTitle">${r.date}</div>
         <div class="recordMeta">
 出荷ケース: ${r.cases || "なし"}
-実際の収穫率: ${r.actualRate || "なし"}${r.actualRate ? "%" : ""}
+実際のロス率: ${r.actualRate || "なし"}${r.actualRate ? "%" : ""}
 開始位置: ${r.start}
 実際の終了位置: ${r.actualEnd}
 メモ: ${r.memo || "なし"}
@@ -1809,7 +1820,11 @@ function calculateActualRateFromRange(){
   }
 
   const actualRate = (actualHarvestCount / totalBaseCount) * 100;
-  rateEl.value = actualRate.toFixed(1);
+
+// 収穫率 → ロス率へ変換
+const lossRate = 100 - actualRate;
+
+rateEl.value = lossRate.toFixed(1);
 }
 
 function getNextPosition(pos){
