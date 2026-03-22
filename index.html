@@ -66,6 +66,12 @@ button{
   gap:1px;
   overflow:hidden;
   background:transparent !important;
+  .pallet{
+  touch-action:none;
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+}
 }
 
 .palletLeft,
@@ -529,6 +535,11 @@ button{
   0%{opacity:1;}
   50%{opacity:0.75;}
   100%{opacity:1;}
+}
+
+.noScroll{
+  overflow:hidden;
+  touch-action:none;
 }
 
 </style>
@@ -1199,6 +1210,9 @@ function resetStartEnd(){
   updateHarvestSummaryBox(null);
 
   drawBeds();
+
+setPageScrollLocked(false);
+
 }
 
 function getHarvestYield(b, p){
@@ -2069,6 +2083,10 @@ function setHarvestSelectMode(mode){
   updateManualHarvestInfo();
   updateManualDragModeUI();
   drawBeds();
+
+  if(mode !== "manual"){
+  setPageScrollLocked(false);
+}
 }
 
 function getManualHarvestTotal(){
@@ -2284,14 +2302,15 @@ function handleHarvestTouchStart(event, b, p){
 
   clearTimeout(longPressTimer);
   longPressTimer = setTimeout(() => {
-    if(!isDraggingHarvest) return;
+  if(!isDraggingHarvest) return;
 
-    longPressActivated = true;
-    suppressNextTap = true;
-    updateManualDragModeUI();
-    addManualHarvestId(id);
-    showManualReachToast("追加モード");
-  }, LONG_PRESS_MS);
+  longPressActivated = true;
+  suppressNextTap = true;
+  setPageScrollLocked(true);
+  updateManualDragModeUI();
+  addManualHarvestId(id);
+  showManualReachToast("追加モード");
+}, LONG_PRESS_MS);
 
   event.preventDefault();
 }
@@ -2331,6 +2350,7 @@ function handleHarvestTouchEnd(){
   isDraggingHarvest = false;
   lastTouchedHarvestId = "";
   longPressActivated = false;
+  setPageScrollLocked(false);
   updateManualDragModeUI();
 
   setTimeout(() => {
@@ -2424,6 +2444,11 @@ function removeWholeBedManual(bed){
   }else{
     showManualReachToast(bed + "ベッドを " + removedCount + " 枚削除");
   }
+}
+
+function setPageScrollLocked(locked){
+  document.body.classList.toggle("noScroll", locked);
+  document.documentElement.classList.toggle("noScroll", locked);
 }
 
 window.onload = () => {
