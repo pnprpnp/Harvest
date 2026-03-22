@@ -66,7 +66,7 @@ button{
   gap:1px;
   overflow:hidden;
   background:transparent !important;
-  touch-action:none;
+  touch-action:pan-y;
   -webkit-user-select:none;
   user-select:none;
   -webkit-touch-callout:none;
@@ -2292,17 +2292,17 @@ function handleHarvestTouchStart(event, b, p){
 
   clearTimeout(longPressTimer);
   longPressTimer = setTimeout(() => {
-  if(!isDraggingHarvest) return;
+    if(!isDraggingHarvest) return;
 
-  longPressActivated = true;
-  suppressNextTap = true;
-  setPageScrollLocked(true);
-  updateManualDragModeUI();
-  addManualHarvestId(id);
-  showManualReachToast("追加モード");
-}, LONG_PRESS_MS);
+    longPressActivated = true;
+    suppressNextTap = true;
+    setPageScrollLocked(true);
+    updateManualDragModeUI();
+    addManualHarvestId(id);
+    showManualReachToast("追加モード");
+  }, LONG_PRESS_MS);
 
-  event.preventDefault();
+  // ここではスクロールを止めない
 }
 
 function handleHarvestTouchMove(event){
@@ -2316,18 +2316,25 @@ function handleHarvestTouchMove(event){
   if(!el) return;
 
   const pallet = el.closest(".pallet");
-  if(!pallet || !pallet.id) return;
 
-  // 長押し成立前に大きく動いたら、ただのドラッグとみなして長押しキャンセル
-  if(!longPressActivated && pallet.id !== lastTouchedHarvestId){
-    clearTimeout(longPressTimer);
+  // 長押し成立前に別パレットへ動いたら、ただのスクロール操作として扱う
+  if(!longPressActivated){
+    if(!pallet || pallet.id !== lastTouchedHarvestId){
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+      isDraggingHarvest = false;
+    }
+    return;
   }
 
-  if(longPressActivated && pallet.id !== lastTouchedHarvestId){
+  if(!pallet || !pallet.id) return;
+
+  if(pallet.id !== lastTouchedHarvestId){
     lastTouchedHarvestId = pallet.id;
     addManualHarvestId(pallet.id);
   }
 
+  // 長押し成立後だけスクロールを止める
   event.preventDefault();
 }
 
