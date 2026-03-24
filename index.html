@@ -1,566 +1,438 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>収穫＆苗ナビ</title>
-
 <style>
-body{font-family:-apple-system; margin:0; background:#eef2f3;}
-header{background:#22c55e;color:white;text-align:center;padding:18px;font-size:24px;font-weight:bold;}
-.container{padding:14px;}
-.card{background:white;border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 3px 8px rgba(0,0,0,0.08);}
-label{font-weight:bold;font-size:14px;display:block;margin-top:8px;}
-input{
-    width:80%;
-    max-width:300px;
-    display:block;
-    margin:0 auto 10px auto;
-    padding:12px;
-    font-size:16px;
-    border-radius:8px;
-    border:1px solid #ccc;
-    box-sizing:border-box;
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  margin:0;
+  background:#eef2f3;
+  color:#111827;
 }
-button{
-    width:100%;
-    padding:14px;
-    font-size:18px;
-    border:none;
-    border-radius:10px;
-    background:#22c55e;
-    color:white;
-    margin-top:8px;
-}
-.secondary{background:#6b7280;}
-.third{background:#2563eb;}
-
-.startBox{
-    font-size:19px;
-    font-weight:bold;
-    text-align:center;
-    padding:12px;
-    background:#ecfdf5;
-    border-radius:10px;
-    margin-top:8px;
-    line-height:1.7;
-}
-
-.bedGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-.bed{
-    background:white;
-    border-radius:12px;
-    padding:8px;
-    box-shadow:0 2px 6px rgba(0,0,0,0.08);
-}
-.bedTitle{text-align:center;font-weight:bold;margin-bottom:6px;}
-.palletGrid{display:grid;grid-template-columns:1fr;gap:3px;}
-
-.pallet{
-  height:10px;
-  border-radius:3px;
-  cursor:pointer;
-  border:1px solid rgba(0,0,0,0.05);
-  display:flex;
-  flex-direction:row;
-  gap:1px;
-  overflow:hidden;
-  background:transparent !important;
-  touch-action:pan-y;
-  -webkit-user-select:none;
-  user-select:none;
-  -webkit-touch-callout:none;
-}
-
-.palletLeft,
-.palletRight{
-  flex:1;
-  height:100%;
-  border-radius:1px;
-}
-
-/* 通常色 */
-.palletEven .palletLeft,
-.palletEven .palletRight{background:#c7d0da;}
-
-.palletOdd .palletLeft,
-.palletOdd .palletRight{background:#dbe3ec;}
-
-/* 中央 */
-.middleMark .palletLeft,
-.middleMark .palletRight{background:#b197fc;}
-
-/* 20 */
-.special20{
-  height:12px;
-}
-.special20 .palletLeft,
-.special20 .palletRight{background:#a78bfa !important;}
-
-/* 4の倍数 */
-.multiple4 .palletLeft,
-.multiple4 .palletRight{background:#93c5fd !important;}
-
-/* 手前奥 */
-.frontZone .palletLeft,
-.frontZone .palletRight{background:#86efac !important;}
-
-.backZone .palletLeft,
-.backZone .palletRight{background:#fca5a5 !important;}
-
-/* 収穫結果 */
-.start .palletLeft,
-.start .palletRight{background:#22c55e !important;}
-
-.mid .palletLeft,
-.mid .palletRight{background:#fde047 !important;}
-
-.end .palletLeft,
-.end .palletRight{background:#ef4444 !important;}
-
-.startSelect{outline:2px solid #2563eb;}
-.plantMark{
-  outline:2px solid #10b981;
-  outline-offset:-2px;
-}
-
-.notice{display:none;color:#dc2626;font-size:13px;margin-top:4px;margin-bottom:8px;}
-
-.tab{display:flex;margin-bottom:10px;gap:8px;}
-.tab button{
-    flex:1;
-    padding:12px 10px;
-    cursor:pointer;
-    border:none;
-    border-bottom:3px solid transparent;
-    background:#f3f4f6;
-    font-weight:bold;
-    color:#1f2937;
-    margin-top:0;
-}
-.tab button.active{
-    border-bottom:3px solid #22c55e;
-    background:#e0fdf4;
-}
-
-.tabcontent{display:none;}
-
-.sectionTitle{
-    font-size:18px;
-    font-weight:bold;
-    margin:8px 0 4px 0;
-}
-.smallText{
-    font-size:14px;
-    color:#374151;
-    margin:0 0 8px 0;
-}
-.resultBox{
-    margin-top:8px;
-    padding:10px;
-    border-radius:10px;
-    background:#f0fdf4;
-    font-weight:bold;
-    text-align:center;
-    white-space:pre-line;
-}
-.hiddenBlock{display:none;}
-
-.recordItem{
-    background:#f9fafb;
-    border:1px solid #d1d5db;
-    border-radius:10px;
-    padding:10px;
-    margin-bottom:10px;
-}
-.recordTitle{
-    font-weight:bold;
-    margin-bottom:6px;
-}
-.recordMeta{
-    font-size:14px;
-    color:#374151;
-    white-space:pre-line;
-}
-.recordButtons{
-    margin-top:8px;
-    display:flex;
-    gap:8px;
-}
-.recordButtons button{
-    flex:1;
-    padding:10px;
-    font-size:14px;
-    margin-top:0;
-}
-.recordHint{
-    margin-top:8px;
-    padding:10px;
-    border-radius:10px;
-    background:#eff6ff;
-    color:#1d4ed8;
-    font-size:14px;
-    font-weight:bold;
-    text-align:center;
-    white-space:pre-line;
-}
-.actualEndPreview{
-    margin-top:8px;
-    padding:10px;
-    border-radius:10px;
-    background:#fefce8;
-    color:#854d0e;
-    font-size:15px;
-    font-weight:bold;
-    text-align:center;
-}
-.actualSelect .palletLeft,
-.actualSelect .palletRight{background:#fb7185 !important;}
-
-.warningBox{
-  background:#fff7ed;
-  color:#9a3412;
-  border:1px solid #fdba74;
-  padding:10px;
-  border-radius:10px;
-  font-size:13px;
-  margin-top:8px;
+header{
+  background:#22c55e;
+  color:#fff;
   text-align:center;
-  font-weight:bold;
-}
-
-.toggleBtn{
-  padding:2px 0;
-  font-size:16px;
-  line-height:1;
-}
-
-.smallBtn{
-  flex:1;
-  padding:6px 10px;
-  font-size:13px;
-  width:auto;
-  display:inline-block;
-  margin-top:6px;
-  background:#9ca3af;
-}
-
-.modalOverlay{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,0.45);
-  z-index:9999;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:16px;
-  box-sizing:border-box;
-}
-
-.modalBox{
-  width:100%;
-  max-width:700px;
-  max-height:90vh;
-  background:white;
-  border-radius:16px;
-  box-shadow:0 10px 30px rgba(0,0,0,0.25);
-  overflow:hidden;
-  display:flex;
-  flex-direction:column;
-}
-
-.modalHeader{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:14px 16px;
-  border-bottom:1px solid #e5e7eb;
-}
-
-.modalTitle{
+  padding:14px;
   font-size:20px;
   font-weight:bold;
 }
-
-.modalCloseBtn{
-  width:auto;
-  min-width:44px;
-  padding:8px 12px;
-  margin:0;
-  background:#ef4444;
-  font-size:16px;
-}
-
-.modalBody{
-  padding:16px;
-  overflow:auto;
-}
-
-.modalFooter{
+.container{padding:8px;}
+.tabBar{
   display:flex;
-  gap:8px;
-  padding:14px 16px;
-  border-top:1px solid #e5e7eb;
-}
-
-.modalFooter button{
-  flex:1;
-  margin-top:0;
-}
-
-.settingsSection{
-  margin-bottom:14px;
-  border:1px solid #dbe4ea;
-  border-radius:12px;
-  overflow:hidden;
-  background:#f8fafc;
-}
-
-.settingsHeader{
-  width:100%;
-  margin:0;
-  padding:12px 14px;
-  border:none;
-  border-radius:0;
-  background:#eaf4ea;
-  color:#111827;
-  font-size:16px;
-  font-weight:bold;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-}
-
-.settingsBody{
-  padding:12px;
-  background:white;
-}
-
-.settingsBody h3{
-  margin:14px 0 6px 0;
-  padding:8px 10px;
-  border-radius:8px;
-  background:#f3f4f6;
-  font-size:15px;
-}
-
-.settingsBody label{
-  margin-top:10px;
-}
-
-.settingsBody input{
-  width:100%;
-  max-width:none;
-  margin:6px 0 10px 0;
-}
-
-.settingsBody .notice{
-  margin-top:4px;
+  gap:6px;
   margin-bottom:10px;
 }
-
+.tabBtn{
+  flex:1;
+  padding:11px 10px;
+  border:none;
+  border-radius:10px;
+  background:#e5e7eb;
+  color:#111827;
+  font-weight:bold;
+  font-size:15px;
+}
+.tabBtn.active{
+  background:#16a34a;
+  color:#fff;
+}
+.card{
+  background:#fff;
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:10px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.08);
+}
+.sectionTitle{
+  font-size:16px;
+  font-weight:bold;
+  margin-bottom:8px;
+}
+.smallText{
+  font-size:13px;
+  color:#6b7280;
+  line-height:1.6;
+}
+label{
+  display:block;
+  font-size:13px;
+  font-weight:bold;
+  margin:10px 0 6px;
+}
+input, select, textarea{
+  width:100%;
+  box-sizing:border-box;
+  border:1px solid #d1d5db;
+  border-radius:10px;
+  padding:11px 12px;
+  font-size:16px;
+  background:#fff;
+}
+input::placeholder, textarea::placeholder{
+  color:#2563eb;
+  opacity:0.95;
+  font-weight:600;
+}
+textarea{
+  min-height:80px;
+  resize:vertical;
+}
+button.actionBtn{
+  width:100%;
+  border:none;
+  border-radius:10px;
+  padding:12px;
+  font-size:16px;
+  font-weight:bold;
+  color:#fff;
+  background:#22c55e;
+  margin-top:8px;
+}
+button.secondaryBtn{
+  background:#6b7280;
+}
+button.thirdBtn{
+  background:#2563eb;
+}
+.buildingSwitch{
+  display:flex;
+  gap:6px;
+  margin:0 0 10px 0;
+}
+.buildingBtn{
+  flex:1;
+  padding:10px;
+  border:none;
+  border-radius:8px;
+  background:#2563eb;
+  font-weight:bold;
+  color:#fff;
+}
+.buildingBtn.active{
+  background:#16a34a;
+  color:#fff;
+}
+.bedWrap{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+}
+.bed{
+  background:#fff;
+  border-radius:10px;
+  padding:6px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.08);
+}
+.bedTitle{
+  text-align:center;
+  font-weight:bold;
+  margin-bottom:6px;
+  padding:8px 5px;
+  border-radius:8px;
+  background:#dbeafe;
+  font-size:14px;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
+}
+.bedTitle.bedFullySelected{
+  background:#bfdbfe;
+  color:#1d4ed8;
+}
+.palletGrid{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  grid-template-rows:repeat(39,14px);
+  gap:2px;
+}
+.pallet{
+  border-radius:4px;
+  border:1px solid rgba(0,0,0,0.08);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:8px;
+  background:#dbe3ec;
+  color:#334155;
+  box-sizing:border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+.palletEven{background:#c7d0da;}
+.multiple8Pair{background:#93c5fd !important;}
+.centerStrong{background:#7c3aed !important;color:#fff;font-weight:bold;}
+.harvestFill{
+  background:#22c55e !important;
+  color:#fff;
+  font-weight:bold;
+}
+.harvestStart{
+  background:#16a34a !important;
+  color:#fff;
+  font-weight:bold;
+}
+.harvestEnd{
+  background:#ef4444 !important;
+  color:#fff;
+  font-weight:bold;
+}
+.recordedPallet{
+  background:#9ca3af !important;
+  color:#fff !important;
+  border-color:#6b7280 !important;
+  opacity:0.95;
+  cursor:not-allowed;
+}
+.bedSettingGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.resultBox{
+  background:#f0fdf4;
+  border-radius:10px;
+  padding:12px;
+  text-align:center;
+  font-weight:bold;
+  line-height:1.7;
+  white-space:pre-line;
+}
+.modeBadge{
+  background:#eff6ff;
+  color:#1d4ed8;
+  border-radius:10px;
+  padding:10px;
+  text-align:center;
+  font-weight:bold;
+  line-height:1.6;
+  margin-bottom:10px;
+}
+.recordItem{
+  background:#f9fafb;
+  border:1px solid #d1d5db;
+  border-radius:10px;
+  padding:10px;
+  margin-top:10px;
+}
+.recordTitle{
+  font-weight:bold;
+  margin-bottom:6px;
+}
+.recordMeta{
+  font-size:14px;
+  color:#374151;
+  white-space:pre-line;
+  line-height:1.6;
+}
+.recordActions{
+  display:flex;
+  gap:8px;
+  margin-top:8px;
+}
+.recordActions button{
+  flex:1;
+  border:none;
+  border-radius:8px;
+  padding:10px;
+  color:#fff;
+  font-weight:bold;
+}
+.summaryCode{
+  display:block;
+  background:#eff6ff;
+  color:#1d4ed8;
+  border-radius:8px;
+  padding:8px;
+  margin-top:4px;
+  font-size:13px;
+  line-height:1.6;
+  white-space:pre-wrap;
+  word-break:break-word;
+}
 .toast{
   position:fixed;
-  bottom:20px;
   left:50%;
-  transform:translateX(-50%) translateY(20px);
-  background:#22c55e;
-  color:white;
-  padding:10px 16px;
+  bottom:18px;
+  transform:translateX(-50%) translateY(16px);
+  background:#16a34a;
+  color:#fff;
+  padding:10px 14px;
   border-radius:999px;
   font-size:14px;
   opacity:0;
   pointer-events:none;
-  transition:all 0.3s ease;
+  transition:all .25s ease;
   z-index:9999;
 }
-
 .toast.show{
   opacity:1;
   transform:translateX(-50%) translateY(0);
 }
+@media (max-width:480px){
+  .pallet{font-size:7px;}
+}
 
-.simpleSettingList{
+.recordEditNotice{
+  background:#fffbeb;
+  color:#92400e;
+  border:1px solid #fcd34d;
+  border-radius:10px;
+  padding:10px;
+  text-align:center;
+  font-weight:bold;
+  line-height:1.6;
+  margin-top:10px;
+}
+.recordBedWrap{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  margin-top:10px;
+}
+.recordToggleWrap{
+  margin-top:12px;
+  border:1px solid #d8e2f0;
+  border-radius:12px;
+  background:#f8fbff;
+  overflow:hidden;
+}
+.recordToggleSummary{
+  cursor:pointer;
+  list-style:none;
+  padding:12px 14px;
+  font-weight:700;
+  color:#1f4f82;
+}
+.recordToggleSummary::-webkit-details-marker{
+  display:none;
+}
+.recordToggleBody{
+  padding:0 12px 12px;
+}
+
+
+
+    .accordionGroup {
+      margin-top: 14px;
+      border: 1px solid #dbe4ff;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .accordionBtn {
+      width: 100%;
+      border: none;
+      background: #eef4ff;
+      color: #1e3a8a;
+      font-weight: 700;
+      text-align: left;
+      padding: 14px 16px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    .accordionBtn::after {
+      content: "＋";
+      font-size: 18px;
+      line-height: 1;
+    }
+    .accordionGroup.open .accordionBtn::after {
+      content: "−";
+    }
+    .accordionContent {
+      display: none;
+      padding: 14px 16px 6px;
+      background: #f8fbff;
+    }
+    .accordionGroup.open .accordionContent {
+      display: block;
+    }
+    .bedTabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .bedTabBtn {
+      border: 1px solid #bfdbfe;
+      background: #fff;
+      color: #1d4ed8;
+      border-radius: 14px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 62px;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      line-height: 1.1;
+    }
+    .bedTabBtn.active {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+      box-shadow: 0 4px 12px rgba(37,99,235,0.18);
+    }
+    .bedTabLabel {
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .bedTabValue {
+      font-size: 10px;
+      font-weight: 700;
+      opacity: 0.78;
+      letter-spacing: 0.02em;
+    }
+    .bedTabBtn.active .bedTabValue {
+      opacity: 0.92;
+    }
+    .bedTabPanels {
+      display: block;
+    }
+    .bedTabPanel {
+      display: none;
+    }
+    .bedTabPanel.active {
+      display: block;
+    }
+    .bedFieldItem {
+      background: #fff;
+      border: 1px solid #dbe4ff;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .bedFieldItem label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #334155;
+    }
+
+  
+.yieldModeRow{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px;min-width:0;}
+.yieldSplitBox{background:#f8fafc;border:1px solid #dbeafe;border-radius:10px;padding:10px;margin-top:10px;display:grid;gap:10px;}
+.yieldSplitBox.disabled{display:none;}
+.inlineNote{font-size:12px;color:#475569;line-height:1.5;}
+.bedMiniGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.bedMiniGrid.single{grid-template-columns:1fr;}
+.checkLine{display:inline-flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap;line-height:1.4;flex-wrap:nowrap;}
+.checkLine input{flex:0 0 auto;}
+.checkLine span,.checkLine label{white-space:nowrap;}
+
+
+.externalSaveTools{
+  margin-top:12px;
   display:flex;
   flex-direction:column;
-  gap:6px;
-}
-
-.simpleSettingRow{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding:6px 10px;
-  background:#f9fafb;
-  border:1px solid #e5e7eb;
-  border-radius:10px;
-}
-
-.simpleSettingLabel{
-  margin:0;
-  min-width:70px;
-  font-weight:bold;
-  font-size:14px;
-}
-
-.simpleSettingInput{
-  flex:1;
-  width:auto;
-  max-width:none;
-  margin:0;
-}
-
-.splitSettingCard{
-  margin-top:8px;
-  padding:8px;
-  background:#f9fafb;
-  border:1px solid #e5e7eb;
-  border-radius:10px;
-}
-
-.splitSettingTitle{
-  font-weight:bold;
-  margin-bottom:6px;
-  font-size:15px;
-}
-
-.splitSettingCard label{
-  margin-top:6px;
-}
-
-.splitSettingCard input{
-  margin:4px 0 6px 0;
-  padding:8px;
-  font-size:15px;
-}
-
-.modeSwitch{
-  display:flex;
   gap:8px;
-  margin:8px 0 10px 0;
-}
-
-.modeOption{
-  flex:1;
-  width:auto;
-  margin-top:0;
-  padding:10px 8px;
-  font-size:14px;
-  background:#e5e7eb;
-  color:#111827;
-}
-
-.modeOption.active{
-  background:#16a34a;
-  color:white;
-}
-
-.splitModeOn{
-  border:2px solid #16a34a;
-  background:#f0fdf4;
-}
-
-.manualPick .palletLeft,
-.manualPick .palletRight{background:#f59e0b !important;}
-
-.manualPickStart .palletLeft,
-.manualPickStart .palletRight{background:#22c55e !important;}
-
-.manualPickEnd .palletLeft,
-.manualPickEnd .palletRight{background:#ef4444 !important;}
-
-.manualHarvestInfoOk{
-  background:#dcfce7 !important;
-  color:#166534;
-  border:2px solid #22c55e;
-}
-
-.manualHarvestInfoWarn{
-  background:#fef3c7 !important;
-  color:#92400e;
-  border:2px solid #f59e0b;
-}
-
-.manualHarvestInfoOver{
-  background:#fee2e2 !important;
-  color:#991b1b;
-  border:2px solid #ef4444;
-}
-
-.manualNeedBadge{
-  margin-top:8px;
-  padding:10px;
-  border-radius:10px;
-  text-align:center;
-  font-weight:bold;
-  font-size:18px;
-  white-space:pre-line;
-}
-
-.manualNeedBadge.ok{
-  background:#22c55e;
-  color:white;
-}
-
-.manualNeedBadge.warn{
-  background:#f59e0b;
-  color:white;
-}
-
-.manualNeedBadge.over{
-  background:#ef4444;
-  color:white;
-}
-
-.manualDragModeBadge{
-  margin-top:8px;
-  padding:10px;
-  border-radius:10px;
-  text-align:center;
-  font-weight:bold;
-  font-size:16px;
-  background:#2563eb;
-  color:white;
-  display:none;
-  animation:manualPulse 1s infinite;
-}
-
-.manualDragModeOn .bed{
-  box-shadow:0 0 0 2px #60a5fa, 0 4px 12px rgba(37,99,235,0.18);
-}
-
-@keyframes manualPulse{
-  0%{opacity:1;}
-  50%{opacity:0.75;}
-  100%{opacity:1;}
-}
-
-.noScroll{
-  overflow:hidden;
-  touch-action:none;
-}
-
-.bedTitleBtn{
-  width:100%;
-  margin:0 0 6px 0;
-  padding:6px 8px;
-  font-size:15px;
-  font-weight:bold;
-  border:none;
-  border-radius:8px;
-  background:#e5e7eb;
-  color:#111827;
-  text-align:center;
-}
-
-.bedTitleBtn.manualBedActionReady{
-  background:#2563eb;
-  color:white;
-}
-
-.bedTitleBtn.manualBedSelected{
-  background:#16a34a;
-  color:white;
 }
 
 </style>
@@ -569,2020 +441,1711 @@ button{
 <header>収穫＆苗ナビ</header>
 
 <div class="container">
-
-  <div class="tab">
-    <button class="tablinks active" onclick="switchTab(event,'harvestTab')">収穫計算</button>
-    <button class="tablinks" onclick="switchTab(event,'plantTab')">植苗計算</button>
-    <button class="tablinks" onclick="switchTab(event,'recordTab')">記録</button>
+  <div class="tabBar">
+    <button id="forecastTabBtn" class="tabBtn active" onclick="switchTab('forecast')">収穫選択</button>
+    <button id="settingsTabBtn" class="tabBtn" onclick="switchTab('settings')">詳細設定</button>
+    <button id="recordTabBtn" class="tabBtn" onclick="switchTab('record')">記録</button>
   </div>
 
-  <div id="harvestTab" class="tabcontent" style="display:block;">
+  <div id="forecastTab">
     <div class="card">
-      <div class="modeSwitch">
-  <button type="button" id="harvestAutoModeBtn" class="modeOption active" onclick="setHarvestSelectMode('auto')">自動計算</button>
-  <button type="button" id="harvestManualModeBtn" class="modeOption" onclick="setHarvestSelectMode('manual')">手動選択</button>
-</div>
-
-<div id="manualHarvestInfo" class="resultBox hiddenBlock">
-必要玉数: -
-現在の合計: -
-選択パレット数: -
-</div>
-
-<div id="manualHarvestBadge" class="manualNeedBadge warn" style="display:none;">まだ足りません</div>
-
-<div id="manualDragModeBadge" class="manualDragModeBadge">追加モード中</div>
-
-<div id="manualHarvestActions" class="hiddenBlock">
-  <button type="button" class="secondary" onclick="clearManualHarvestSelection()">手動選択をクリア</button>
-  <button type="button" onclick="confirmManualHarvestSelection()">手動選択を確定</button>
-</div>
+      <div class="sectionTitle">収穫選択</div>
+      
       <label>出荷ケース</label>
-      <input id="cases" type="number" oninput="updateManualHarvestInfo()">
+      <input id="casesInput" type="number" min="0" value="0" inputmode="numeric" oninput="syncRecordCasesFromMain(false); updateRecordActualLoss(); renderForecastSummary()">
 
-      <label>全体ロス率 (%)</label>
-      <input id="rate" type="number" value="0" oninput="drawBeds()">
-      <div id="overallRateNotice" class="notice">※全体ロス率と異なるベッドがあります</div>
-
-      <div class="startBox">
-        開始位置: <span id="startLabel">A-1</span><br>
-        終了位置: <span id="endLabel">-</span>
-      </div>
-
-      <div id="harvestSummaryBox" class="resultBox">必要パレット数: -</div>
-
-      <button class="secondary" onclick="resetStartEnd()">開始位置・終了位置をリセット</button>
-      <button onclick="calcHarvest()">収穫計算</button>
-
-      <div style="display:flex; gap:8px; justify-content:center;">
-       <button class="secondary smallBtn" onclick="openSettingsModal()">⚙️ 設定</button>
-      </div>
-
+      <button class="actionBtn" onclick="runHarvestPrediction()">自動計算で候補を入れる</button>
+      <button class="actionBtn secondaryBtn" onclick="clearHarvestPrediction()">選択をクリア</button>
     </div>
-  </div>
 
-  <div id="plantTab" class="tabcontent">
     <div class="card">
-      <div class="sectionTitle">植苗計算</div>
-      <p class="smallText">収穫計算で色が付いたパレット分をもとに、自動で必要苗数と1号棟パレット枚数を計算します。</p>
+      <div class="sectionTitle">選択結果</div>
+      <div id="forecastSummary" class="resultBox">開始パレット: -
+選択枚数: 0
+終了パレット: -
+収穫後の残り収穫可能ケース: 0
+必要な1号棟特別パレット枚数: 0枚</div>
+    </div>
 
-      <label>苗のロス率 (%)</label>
-      <input id="seedlingRate" type="number" value="0">
+    <div class="buildingSwitch">
+      <button class="buildingBtn" onclick="prevBuilding()">←</button>
+      <button id="currentBuildingBtn" class="buildingBtn active">2号棟</button>
+      <button class="buildingBtn" onclick="nextBuilding()">→</button>
+    </div>
 
-      <div id="plantTotalResult" class="resultBox">収穫見込み数: -
-植える苗の総数: -
-必要な苗数: -</div>
+    <div id="beds" class="bedWrap"></div>
+  </div>
 
-      <div style="margin-top:10px;">
-      <button class="secondary smallBtn" onclick="openSettingsModal()">⚙️ 設定</button>
+  <div id="settingsTab" style="display:none;">
+    <div class="card">
+      <div class="sectionTitle">基本設定</div>
+
+      <label>全体ロス率（%）</label>
+      <input id="defaultLossRateInput" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら0%">
+
+      <label>収穫する時１パレットあたり植えられている個数</label>
+      <select id="defaultYieldInput" onchange="settingsDirty=true" oninput="settingsDirty=true">
+        <option value="20">20</option>
+        <option value="16">16</option>
+        <option value="12">12</option>
+      </select>
+
+      <label>収穫後に植える苗の1パレットあたり個数</label>
+      <select id="defaultPlantingCountInput" onchange="settingsDirty=true" oninput="settingsDirty=true">
+        <option value="20">20</option>
+        <option value="16">16</option>
+        <option value="12">12</option>
+      </select>
+
+      <label>苗のロス率（%）</label>
+      <input id="seedlingLossRateInput" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら0%">
+
+      <label>3枚中の60個用パレット枚数</label>
+      <select id="specialPallet60CountInput" onchange="settingsDirty=true" oninput="settingsDirty=true">
+        <option value="0">0枚（120,120,120）</option>
+        <option value="1">1枚（120,120,60）</option>
+        <option value="2">2枚（120,60,60）</option>
+        <option value="3">3枚（60,60,60）</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="sectionTitle">ベッド別設定</div>
+      <div class="smallText">ベッドごとの植え付け数とロス率を設定できます。収穫個数・苗個数は手前／奥で分けて設定することもできます。ベッド別ロス率が未入力なら全体ロス率を使います。</div>
+      <div class="accordionGroup">
+        <button type="button" class="accordionBtn" onclick="toggleAccordion(this)">収穫する時1パレットあたり植えられている個数</button>
+        <div class="accordionContent">
+          <div class="bedTabs" data-tab-group="yield">
+            <button type="button" class="bedTabBtn active" data-tab-summary-group="yield" data-tab-summary-bed="A" onclick="switchBedTab(this, 'yield', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_yield_A"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="B" onclick="switchBedTab(this, 'yield', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_yield_B"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="C" onclick="switchBedTab(this, 'yield', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_yield_C"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="D" onclick="switchBedTab(this, 'yield', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_yield_D"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="E" onclick="switchBedTab(this, 'yield', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_yield_E"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="F" onclick="switchBedTab(this, 'yield', 'F')"><span class="bedTabLabel">F</span><span class="bedTabValue" id="tabValue_yield_F"></span></button>
+          </div>
+          <div class="bedTabPanels">
+            <div class="bedTabPanel active" data-tab-panel="yield-A">
+              <div class="bedFieldItem"><label>Aベッド（通常）</label><select id="yield_A" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="yieldUseFrontBack_A" onchange="settingsDirty=true;refreshYieldFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="yieldSplitBox_A">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedMiniGrid single">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="yieldFrontCount_A" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedMiniGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="yieldFront_A" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="yieldBack_A" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="yield-B">
+              <div class="bedFieldItem"><label>Bベッド（通常）</label><select id="yield_B" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="yieldUseFrontBack_B" onchange="settingsDirty=true;refreshYieldFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="yieldSplitBox_B">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedMiniGrid single">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="yieldFrontCount_B" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedMiniGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="yieldFront_B" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="yieldBack_B" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="yield-C">
+              <div class="bedFieldItem"><label>Cベッド（通常）</label><select id="yield_C" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="yieldUseFrontBack_C" onchange="settingsDirty=true;refreshYieldFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="yieldSplitBox_C">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedMiniGrid single">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="yieldFrontCount_C" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedMiniGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="yieldFront_C" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="yieldBack_C" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="yield-D">
+              <div class="bedFieldItem"><label>Dベッド（通常）</label><select id="yield_D" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="yieldUseFrontBack_D" onchange="settingsDirty=true;refreshYieldFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="yieldSplitBox_D">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedMiniGrid single">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="yieldFrontCount_D" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedMiniGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="yieldFront_D" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="yieldBack_D" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="yield-E">
+              <div class="bedFieldItem"><label>Eベッド（通常）</label><select id="yield_E" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="yieldUseFrontBack_E" onchange="settingsDirty=true;refreshYieldFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="yieldSplitBox_E">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedMiniGrid single">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="yieldFrontCount_E" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedMiniGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="yieldFront_E" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="yieldBack_E" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="yield-F">
+              <div class="bedFieldItem"><label>Fベッド（通常）</label><select id="yield_F" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="yieldUseFrontBack_F" onchange="settingsDirty=true;refreshYieldFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="yieldSplitBox_F">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedMiniGrid single">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="yieldFrontCount_F" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedMiniGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="yieldFront_F" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="yieldBack_F" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div style="margin-top:10px;">
-        <label>1号棟パレット3枚のうち、60個植えの枚数</label>
-        <input id="special60" type="number" value="0" min="0" max="3">
-        <button onclick="calcSpecial()">必要な1号棟パレット枚数を計算</button>
-        <div id="specialResult" class="resultBox">必要な1号棟パレット枚数: -</div>
+      <div class="accordionGroup">
+        <button type="button" class="accordionBtn" onclick="toggleAccordion(this)">ベッド別ロス率</button>
+        <div class="accordionContent">
+          <div class="bedTabs" data-tab-group="loss">
+            <button type="button" class="bedTabBtn active" data-tab-summary-group="loss" data-tab-summary-bed="A" onclick="switchBedTab(this, 'loss', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_loss_A"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="B" onclick="switchBedTab(this, 'loss', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_loss_B"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="C" onclick="switchBedTab(this, 'loss', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_loss_C"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="D" onclick="switchBedTab(this, 'loss', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_loss_D"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="E" onclick="switchBedTab(this, 'loss', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_loss_E"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="F" onclick="switchBedTab(this, 'loss', 'F')"><span class="bedTabLabel">F</span><span class="bedTabValue" id="tabValue_loss_F"></span></button>
+          </div>
+          <div class="bedTabPanels">
+            <div class="bedTabPanel active" data-tab-panel="loss-A"><div class="bedFieldItem"><label>Aベッド</label><input id="loss_A" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら全体ロス率"></div></div>
+            <div class="bedTabPanel" data-tab-panel="loss-B"><div class="bedFieldItem"><label>Bベッド</label><input id="loss_B" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら全体ロス率"></div></div>
+            <div class="bedTabPanel" data-tab-panel="loss-C"><div class="bedFieldItem"><label>Cベッド</label><input id="loss_C" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら全体ロス率"></div></div>
+            <div class="bedTabPanel" data-tab-panel="loss-D"><div class="bedFieldItem"><label>Dベッド</label><input id="loss_D" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら全体ロス率"></div></div>
+            <div class="bedTabPanel" data-tab-panel="loss-E"><div class="bedFieldItem"><label>Eベッド</label><input id="loss_E" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら全体ロス率"></div></div>
+            <div class="bedTabPanel" data-tab-panel="loss-F"><div class="bedFieldItem"><label>Fベッド</label><input id="loss_F" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら全体ロス率"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="accordionGroup">
+        <button type="button" class="accordionBtn" onclick="toggleAccordion(this)">収穫後に植える苗の1パレットあたり個数</button>
+        <div class="accordionContent">
+          <div class="bedTabs" data-tab-group="plant">
+            <button type="button" class="bedTabBtn active" data-tab-summary-group="plant" data-tab-summary-bed="A" onclick="switchBedTab(this, 'plant', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_plant_A"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="B" onclick="switchBedTab(this, 'plant', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_plant_B"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="C" onclick="switchBedTab(this, 'plant', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_plant_C"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="D" onclick="switchBedTab(this, 'plant', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_plant_D"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="E" onclick="switchBedTab(this, 'plant', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_plant_E"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="F" onclick="switchBedTab(this, 'plant', 'F')"><span class="bedTabLabel">F</span><span class="bedTabValue" id="tabValue_plant_F"></span></button>
+          </div>
+          <div class="bedTabPanels">
+            <div class="bedTabPanel active" data-tab-panel="plant-A">
+              <div class="bedFieldItem"><label>Aベッド 基本個数</label><select id="plant_A" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="plantUseFrontBack_A" onchange="settingsDirty=true;refreshPlantFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="plantSplitBox_A">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="plantFrontCount_A" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="plantFront_A" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="plantBack_A" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="plant-B">
+              <div class="bedFieldItem"><label>Bベッド 基本個数</label><select id="plant_B" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="plantUseFrontBack_B" onchange="settingsDirty=true;refreshPlantFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="plantSplitBox_B">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="plantFrontCount_B" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="plantFront_B" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="plantBack_B" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="plant-C">
+              <div class="bedFieldItem"><label>Cベッド 基本個数</label><select id="plant_C" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="plantUseFrontBack_C" onchange="settingsDirty=true;refreshPlantFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="plantSplitBox_C">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="plantFrontCount_C" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="plantFront_C" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="plantBack_C" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="plant-D">
+              <div class="bedFieldItem"><label>Dベッド 基本個数</label><select id="plant_D" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="plantUseFrontBack_D" onchange="settingsDirty=true;refreshPlantFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="plantSplitBox_D">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="plantFrontCount_D" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="plantFront_D" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="plantBack_D" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="plant-E">
+              <div class="bedFieldItem"><label>Eベッド 基本個数</label><select id="plant_E" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="plantUseFrontBack_E" onchange="settingsDirty=true;refreshPlantFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="plantSplitBox_E">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="plantFrontCount_E" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="plantFront_E" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="plantBack_E" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div class="bedTabPanel" data-tab-panel="plant-F">
+              <div class="bedFieldItem"><label>Fベッド 基本個数</label><select id="plant_F" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+              <div class="yieldModeRow"><label class="checkLine"><input type="checkbox" id="plantUseFrontBack_F" onchange="settingsDirty=true;refreshPlantFrontBackVisibility();refreshBedTabSummaries()"> 手前奥設定を使う</label></div>
+              <div class="yieldSplitBox" id="plantSplitBox_F">
+                <div class="inlineNote">このベッドは、パレット番号 1 から「手前」として数えます。手前パレット数を超えた分を「奥」として計算します。</div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前パレット数</label><input id="plantFrontCount_F" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="78" step="1" inputmode="numeric" placeholder="例: 39"></div>
+                </div>
+                <div class="bedFieldGrid">
+                  <div class="bedFieldItem"><label>手前 1パレットあたり個数</label><select id="plantFront_F" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                  <div class="bedFieldItem"><label>奥 1パレットあたり個数</label><select id="plantBack_F" onchange="settingsDirty=true" oninput="settingsDirty=true"><option value="20">20</option><option value="16">16</option><option value="12">12</option></select></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button class="actionBtn" onclick="saveSettings()">設定を保存</button>
+      <button class="actionBtn secondaryBtn" onclick="resetSettings()">設定を初期化</button>
+    </div>
+  </div>
+
+  <div id="recordTab" style="display:none;">
+    <div class="card">
+      <div class="sectionTitle">記録を保存</div>
+      <div class="smallText">現在の選択結果を使って記録します。保存したパレットは以後グレー表示となり選択できません。出荷ケース数は収穫選択タブの値を初期表示し、記録タブ側で変更しても収穫選択タブには反映されません。実際のロス率は、出荷ケース数と実際に収穫した場所から自動計算します。</div>
+
+      <label>日付</label>
+      <input id="recordDateInput" type="date">
+
+      <label>出荷ケース数</label>
+      <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
+
+      <label>実際のロス率（%）</label>
+      <input id="recordActualLossInput" type="text" readonly placeholder="実際に収穫した場所から自動計算">
+
+      <label>実際に収穫したパレット番号（自動まとめ表示）</label>
+      <textarea id="recordPalletSummaryInput" readonly placeholder="選択結果をここへ反映できます"></textarea>
+
+      <label>メモ</label>
+      <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
+
+      <button class="actionBtn thirdBtn" onclick="saveRecord()">この内容で記録する</button>
+      <button class="actionBtn secondaryBtn" onclick="clearRecordForm()">記録入力をクリア</button>
+
+      <div class="recordEditNotice">記録タブでも下のパレットを直接タップして追加・削除できます。<br>ここで実際に収穫した場所へ調整してください。<br>記録タブでは出荷ケース数を超えて選択できます。</div>
+
+      <div class="buildingSwitch">
+        <button class="buildingBtn" onclick="prevBuilding()">←</button>
+        <button id="recordCurrentBuildingBtn" class="buildingBtn active">2号棟</button>
+        <button class="buildingBtn" onclick="nextBuilding()">→</button>
+      </div>
+
+      <div id="recordBeds" class="recordBedWrap"></div>
+    </div>
+
+    <div class="card">
+      <div class="sectionTitle">記録一覧</div>
+      <div id="recordList" class="smallText">まだ記録がありません。</div>
+      <div class="externalSaveTools">
+        <button class="actionBtn secondaryBtn" onclick="exportRecordsToFile()">記録を外部保存(JSON)</button>
+        <button class="actionBtn secondaryBtn" onclick="triggerImportRecords()">外部保存した記録を読み込む</button>
+        <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
+        <div class="smallText">記録一覧をJSONファイルとして保存できます。読み込み時は、同じ内容の記録を重複追加しないように取り込みます。</div>
       </div>
     </div>
-  </div>
-
-<div id="recordTab" class="tabcontent">
-  <div class="card">
-    <div class="sectionTitle">記録</div>
-    <p class="smallText">実際にどこまで収穫したかを保存できます。</p>
-
-    <div class="warningBox">
-      ⚠️ この記録はブラウザに保存されています。<br>
-      履歴・データを削除すると記録も消えます。
-    </div>
-
-    <label>日付</label>
-    <input id="recordDate" type="date">
-
-    <label>出荷ケース</label>
-    <input id="recordCases" type="number" placeholder="例：300">
-
-    <label>実際のロス率（％）</label>
-    <input id="recordActualRate" type="text" readonly placeholder="例：5">
-
-    <label>開始位置</label>
-    <input id="recordStart" type="text" placeholder="例: A-1">
-
-    <label>実際の終了位置</label>
-    <input id="recordActualEnd" type="text" placeholder="例: B-10">
-
-    <div id="actualEndPreview" class="actualEndPreview">実際の終了位置: 未選択</div>
-
-    <label>メモ</label>
-    <input id="recordMemo" type="text" placeholder="例: 途中で終了">
-
-    <button onclick="saveWorkRecord()">記録を保存</button>
-    <button class="secondary" onclick="clearRecordInputs()">入力欄をクリア</button>
-
-    <div class="recordHint">記録モード中は、下のパレットをタップすると
-「実際の終了位置」に入ります</div>
-  </div>
-
-  <div class="card">
-    <div class="sectionTitle">記録一覧</div>
-
-    <div class="smallText" style="margin-bottom:8px;">今日の記録</div>
-    <div id="latestRecord" class="smallText">まだ記録がありません</div>
-
-    <button type="button" class="third" onclick="exportWorkRecordsCSV()">記録をCSVで保存</button>
-    <button type="button" class="secondary toggleBtn" onclick="togglePastRecords(this)">▽</button>
-
-    <div id="pastRecordsWrap" style="display:none; margin-top:10px;">
-      <div class="smallText" style="margin-bottom:8px;">過去の記録</div>
-      <div id="pastRecordList" class="smallText">過去の記録はありません</div>
-    </div>
-  </div>
+  </div></div>
 </div>
 
-<div class="bedGrid">
-  <div id="Fbed" class="bed"></div>
-  <div id="Dbed" class="bed"></div>
-  <div id="Bbed" class="bed"></div>
-  <div id="Ebed" class="bed"></div>
-  <div id="Cbed" class="bed"></div>
-  <div id="Abed" class="bed"></div>
-</div>
-
-<div id="settingsModal" class="modalOverlay" style="display:none;">
-  <div class="modalBox">
-    <div class="modalHeader">
-      <div class="modalTitle">設定</div>
-      <button type="button" class="modalCloseBtn" onclick="closeSettingsModal()">✕</button>
-    </div>
-
-    <div class="modalBody">
-
-  <div class="settingsSection">
-    <button type="button" class="settingsHeader" onclick="toggleSettingsSection('detailSettingsBody', this)">
-      <span>収穫詳細設定</span>
-      <span>▽</span>
-    </button>
-    <div id="detailSettingsBody" class="settingsBody" style="display:none;">
-      <div id="detail2"></div>
-    </div>
-  </div>
-
-  <div class="settingsSection">
-    <button type="button" class="settingsHeader" onclick="toggleSettingsSection('plantSettingsBody', this)">
-      <span>苗の詳細設定</span>
-      <span>▽</span>
-    </button>
-    <div id="plantSettingsBody" class="settingsBody" style="display:none;">
-      <div id="plantDetail1"></div>
-    </div>
-  </div>
-
-</div>
-
-    <div class="modalFooter">
-      <button class="secondary" onclick="closeSettingsModal()">閉じる</button>
-      <button class="third" onclick="saveAndCloseSettings()">設定保存</button>
-    </div>
-  </div>
-</div>
+<div id="toast" class="toast">保存しました</div>
 
 <script>
-
-const order = ["A","B","C","D","E","F"];
+const SETTINGS_KEY = "harvestForecastSettings_v16";
+const RECORDS_KEY = "harvestForecastRecords_v9";
+const CASE_SIZE = 12;
+const MIN_BUILDING = 2;
+const MAX_BUILDING = 9;
+const BUILDINGS = [2,3,4,5,6,7,8,9];
 const bedMap = ["F","D","B","E","C","A"];
-const PALLETS_PER_BED = 39;
-const TOTAL_PALLETS = order.length * PALLETS_PER_BED;
-const RECORD_KEY = "lettuceWorkRecords";
+const bedOrder = ["A","B","C","D","E","F"];
+const ROWS = 39;
+const COLS = 2;
+const PALLETS_PER_BED = 78;
+const ALLOWED_YIELDS = [20, 16, 12];
+const BED_LONG_PRESS_MS = 450;
 
-let startBed = "A";
-let startPallet = 1;
-let detail1 = false;
-let detail2 = false;
-let plantDetail1 = false;
-let calcMode = "harvest";
+const defaultSettings = {
+  defaultLossRate: 0,
+  defaultYieldPerPallet: 20,
+  defaultPlantingCount: 20,
+  seedlingLossRate: 0,
+  specialPallet60CountPer3: 2,
+  beds: {
+    A: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
+    B: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
+    C: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
+    D: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
+    E: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
+    F: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 }
+  }
+};
 
-let settingsChanged = false;
-let harvestSelectMode = "auto"; // "auto" or "manual"
-let manualHarvestIds = [];
-let isDraggingHarvest = false;
-let lastTouchedHarvestId = "";
-let suppressNextTap = false;
-let manualReachedNotified = false;
-let longPressTimer = null;
-let longPressActivated = false;
-const LONG_PRESS_MS = 200;
-let bedTitleLongPressTimer = null;
-let bedTitleLongPressFired = false;
-const BED_TITLE_LONG_PRESS_MS = 300;
+let settings = loadSettings();
+let currentBuilding = 2;
+let harvestFillKeys = [];
+let harvestSummary = null;
+let records = loadRecords();
+let bedLongPressTimer = null;
+let bedLongPressFired = false;
+let recordCasesEdited = false;
+let recordBaseFillKeys = [];
+let settingsDirty = false;
 
-function switchTab(evt, mode){
-  document.querySelectorAll(".tabcontent").forEach(tc => tc.style.display = "none");
-  document.querySelectorAll(".tablinks").forEach(tb => tb.classList.remove("active"));
-  document.getElementById(mode).style.display = "block";
-  if(evt && evt.currentTarget) evt.currentTarget.classList.add("active");
-
-  if(mode === "harvestTab") calcMode = "harvest";
-  else if(mode === "plantTab") calcMode = "plant";
-  else calcMode = "record";
-
-  drawBeds();
-  updateActualEndPreview();
-  updateManualDragModeUI();
+function deepClone(obj){
+  return JSON.parse(JSON.stringify(obj));
 }
 
-function setHarvestMode(b, useSplit){
-  const checkbox = document.getElementById(b + "_useSplit");
-  if(!checkbox) return;
-
-  checkbox.checked = useSplit;
-  settingsChanged = true;
-  updateHarvestSplitVisibility(b);
-  drawBeds();
+function normalizeYield(value, fallback){
+  const n = Number(value);
+  return ALLOWED_YIELDS.includes(n) ? n : fallback;
 }
 
-function setPlantMode(b, useSplit){
-  const checkbox = document.getElementById(b + "_useSplitPlant");
-  if(!checkbox) return;
-
-  checkbox.checked = useSplit;
-  settingsChanged = true;
-  updatePlantSplitVisibility(b);
-  drawBeds();
+function toggleAccordion(button){
+  const group = button.closest(".accordionGroup");
+  if(!group) return;
+  group.classList.toggle("open");
 }
 
-function updateHarvestModeUI(b){
-  const checkbox = document.getElementById(b + "_useSplit");
-  const normalBtn = document.getElementById(b + "_harvestNormalBtn");
-  const splitBtn = document.getElementById(b + "_harvestSplitBtn");
-  const card = document.getElementById(b + "_harvestCard");
+function switchBedTab(button, groupName, bedName){
+  const content = button.closest(".accordionContent");
+  if(!content) return;
 
-  if(!checkbox) return;
+  content.querySelectorAll(`.bedTabs[data-tab-group="${groupName}"] .bedTabBtn`).forEach(btn => {
+    btn.classList.toggle("active", btn === button);
+  });
 
-  const isSplit = checkbox.checked;
-
-  if(normalBtn) normalBtn.classList.toggle("active", !isSplit);
-  if(splitBtn) splitBtn.classList.toggle("active", isSplit);
-  if(card) card.classList.toggle("splitModeOn", isSplit);
-}
-
-function updatePlantModeUI(b){
-  const checkbox = document.getElementById(b + "_useSplitPlant");
-  const normalBtn = document.getElementById(b + "_plantNormalBtn");
-  const splitBtn = document.getElementById(b + "_plantSplitBtn");
-  const card = document.getElementById(b + "_plantCard");
-
-  if(!checkbox) return;
-
-  const isSplit = checkbox.checked;
-
-  if(normalBtn) normalBtn.classList.toggle("active", !isSplit);
-  if(splitBtn) splitBtn.classList.toggle("active", isSplit);
-  if(card) card.classList.toggle("splitModeOn", isSplit);
-}
-
-function updateHarvestSplitVisibility(b){
-  const checked = document.getElementById(b + "_useSplit")?.checked;
-  const splitBlock = document.getElementById(b + "_harvestSplitBlock");
-  const normalBlock = document.getElementById(b + "_harvestNormalBlock");
-  const notice = document.getElementById(b + "_notice");
-
-  if(splitBlock) splitBlock.style.display = checked ? "block" : "none";
-  if(normalBlock) normalBlock.style.display = checked ? "none" : "block";
-  if(notice) notice.style.display = checked ? "block" : "none";
-
-  updateHarvestModeUI(b);
-}
-
-function updatePlantSplitVisibility(b){
-  const checked = document.getElementById(b + "_useSplitPlant")?.checked;
-  const block = document.getElementById(b + "_plantSplitBlock");
-  const notice = document.getElementById(b + "_plant_notice");
-
-  if(block) block.style.display = checked ? "block" : "none";
-  if(notice) notice.style.display = checked ? "block" : "none";
-
-  updatePlantModeUI(b);
-}
-
-function drawSettings(){
-  let html2 = "";
-
-  if(detail2){
-  html2 += `<div class="smallText" style="margin-bottom:8px;">ベッドごとのロス率と手前奥設定</div>`;
-
-  order.forEach(b => {
-    html2 += `
-  <div class="splitSettingCard" id="${b}_harvestCard">
-    <div class="splitSettingTitle">${b}ベッド</div>
-
-    <label>ロス率 (%)</label>
-    <input id="${b}_rate" type="number" value="" placeholder="空欄なら全体ロス率" oninput="drawBeds()">
-    <div id="${b}_rate_notice" class="notice">※このベッドは全体ロス率と異なります</div>
-
-    <div class="modeSwitch">
-      <button type="button" class="modeOption" id="${b}_harvestNormalBtn" onclick="setHarvestMode('${b}', false)">通常計算</button>
-      <button type="button" class="modeOption" id="${b}_harvestSplitBtn" onclick="setHarvestMode('${b}', true)">手前奥計算</button>
-    </div>
-
-    <input type="checkbox" id="${b}_useSplit" style="display:none;">
-
-    <div id="${b}_harvestNormalBlock">
-      <label>収穫する時に1パレットあたり植えられている数</label>
-      <input id="${b}_single" type="number" value="20" oninput="drawBeds()">
-    </div>
-
-    <div id="${b}_notice" class="notice">※手前奥計算が有効のため、下の設定で計算します</div>
-
-    <div id="${b}_harvestSplitBlock" class="hiddenBlock">
-      <label>収穫モードの手前パレット数</label>
-      <input id="${b}_splitHarvest" type="number" value="30" oninput="drawBeds()">
-
-      <label>手前 収穫する時に1パレットあたり植えられている数</label>
-      <input id="${b}_front" type="number" value="20" oninput="drawBeds()">
-
-      <label>奥 収穫する時に1パレットあたり植えられている数</label>
-      <input id="${b}_back" type="number" value="16" oninput="drawBeds()">
-    </div>
-  </div>
-`;
+  content.querySelectorAll(`.bedTabPanel[data-tab-panel^="${groupName}-"]`).forEach(panel => {
+    panel.classList.toggle("active", panel.dataset.tabPanel === `${groupName}-${bedName}`);
   });
 }
 
-  document.getElementById("detail2").innerHTML = html2;
-
-  setTimeout(() => {
-    order.forEach(b => updateHarvestSplitVisibility(b));
-  }, 0);
+function normalizeLossInput(value){
+  if(value === "" || value === null || typeof value === "undefined") return "";
+  const n = Number(value);
+  if(!Number.isFinite(n)) return "";
+  return Math.min(100, Math.max(0, n));
 }
 
-function drawPlantSettings(){
-  let html = "";
-
-  if(plantDetail1){
-  html += `<div class="smallText" style="margin-bottom:8px;">収穫した後に二次定植で1パレットに植える苗数</div>`;
-  html += `<div class="simpleSettingList">`;
-
-  order.forEach(b => {
-    html += `
-      <div class="simpleSettingRow">
-        <label class="simpleSettingLabel">${b}ベッド</label>
-        <input class="simpleSettingInput" id="${b}_singlePlant" type="number" value="20" oninput="drawBeds()">
-      </div>
-    `;
-  });
-
-  html += `</div>`;
-
-  html += `<div style="margin-top:16px;" class="smallText">手前奥計算</div>`;
-
-  order.forEach(b => {
-    html += `
-      <div class="splitSettingCard" id="${b}_plantCard">
-        <div class="splitSettingTitle">${b}ベッド</div>
-
-        <div class="modeSwitch">
-        <button type="button" class="modeOption" id="${b}_plantNormalBtn" onclick="setPlantMode('${b}', false)">通常計算</button>
-        <button type="button" class="modeOption" id="${b}_plantSplitBtn" onclick="setPlantMode('${b}', true)">手前奥計算</button>
-        </div>
-
-        <input type="checkbox" id="${b}_useSplitPlant" style="display:none;">
-
-         <div id="${b}_plant_notice" class="notice">※手前奥計算が有効のため、下の設定で計算します</div>
-
-        <div id="${b}_plantSplitBlock" class="hiddenBlock">
-          <label>二次定植するときの手前パレット数</label>
-          <input id="${b}_splitPlant" type="number" value="30" oninput="drawBeds()">
-
-          <label>手前 収穫した後に二次定植で1パレットに植える苗数</label>
-          <input id="${b}_frontPlant" type="number" value="20" oninput="drawBeds()">
-
-          <label>奥 収穫した後に二次定植で１パレットに植える苗数</label>
-          <input id="${b}_backPlant" type="number" value="16" oninput="drawBeds()">
-        </div>
-      </div>
-    `;
-  });
+function showToast(message){
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.classList.add("show");
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => toast.classList.remove("show"), 1600);
 }
 
-  document.getElementById("plantDetail1").innerHTML = html;
 
-  setTimeout(() => {
-    order.forEach(b => updatePlantSplitVisibility(b));
-  }, 0);
-}
-
-function getHarvestResultIds(){
-  let saved = localStorage.getItem("lettuceHarvestResult");
-  if(!saved) return [];
-  try{
-    let arr = JSON.parse(saved);
-    return Array.isArray(arr) ? arr : [];
-  }catch(e){
-    return [];
-  }
-}
-
-function getHarvestSummary(){
-  let saved = localStorage.getItem("lettuceHarvestSummary");
-  if(!saved) return null;
-  try{
-    return JSON.parse(saved);
-  }catch(e){
-    return null;
-  }
-}
-
-function getPlantMarkedIds(){
-  let saved = localStorage.getItem("lettucePlantMarked");
-  if(!saved) return [];
-  try{
-    let arr = JSON.parse(saved);
-    return Array.isArray(arr) ? arr : [];
-  }catch(e){
-    return [];
-  }
-}
-
-function updateHarvestSummaryBox(summary){
-  const box = document.getElementById("harvestSummaryBox");
-  if(!box) return;
-
-  if(!summary){
-    box.innerText = "必要パレット数: -";
-    return;
-  }
-
-  box.innerText =
-    "必要パレット数: " + Math.ceil((summary.usedPallets || 0) * 2);
-}
-
-function drawBeds(){
-  let hasDifferentBedRate = false;
-  const actualEnd = document.getElementById("recordActualEnd")?.value?.trim() || "";
-
-  bedMap.forEach(b => {
-    let html = `
-  <button type="button"
-          class="bedTitle bedTitleBtn"
-          onclick="handleBedTitleTap('${b}')"
-          ontouchstart="handleBedTitleTouchStart(event,'${b}')"
-          ontouchend="handleBedTitleTouchEnd()"
-          ontouchcancel="handleBedTitleTouchEnd()">
-    ${b}
-  </button>
-  <div class='palletGrid'>
-`;
-    let useSplitHarvest = document.getElementById(b + "_useSplit");
-    let useSplitPlant = document.getElementById(b + "_useSplitPlant");
-
-    let rateInput = document.getElementById(b + "_rate");
-    let rateNotice = document.getElementById(b + "_rate_notice");
-    if(rateNotice){
-      let overallRate = Number(document.getElementById("rate").value || 0);
-      let hasBedRate = rateInput && rateInput.value.trim() !== "";
-      let bedRate = hasBedRate ? Number(rateInput.value) : overallRate;
-      let isDifferent = hasBedRate && bedRate !== overallRate;
-      rateNotice.style.display = isDifferent ? "block" : "none";
-      if(isDifferent) hasDifferentBedRate = true;
+function getBedTabSummaryText(groupName, bedName){
+  if(groupName === "yield"){
+    const useSplit = !!document.getElementById(`yieldUseFrontBack_${bedName}`)?.checked;
+    if(useSplit){
+      const front = document.getElementById(`yieldFront_${bedName}`)?.value || "";
+      const back = document.getElementById(`yieldBack_${bedName}`)?.value || "";
+      const frontCount = document.getElementById(`yieldFrontCount_${bedName}`)?.value || "";
+      return `手${front} / 奥${back}` + (frontCount !== "" ? ` (${frontCount})` : "");
     }
-
-    let split = 0;
-    if(calcMode === "harvest"){
-      split = (useSplitHarvest && useSplitHarvest.checked)
-        ? Number(document.getElementById(b + "_splitHarvest")?.value || 0)
-        : 0;
-    }else if(calcMode === "plant"){
-      split = (useSplitPlant && useSplitPlant.checked)
-        ? Number(document.getElementById(b + "_splitPlant")?.value || 0)
-        : 0;
-    }else{
-      split = 0;
-    }
-
-    for(let i = PALLETS_PER_BED; i >= 1; i--){
-      let cls = "pallet";
-      cls += (i % 2 === 0) ? " palletEven" : " palletOdd";
-
-      if(i === 20){
-        cls += " special20";
-      }else if(i % 4 === 0){
-        cls += " multiple4";
-      }
-
-      if(i === Math.ceil(PALLETS_PER_BED / 2)) cls += " middleMark";
-      if(split > 0){
-        cls += (i <= split) ? " frontZone" : " backZone";
-      }
-
-      if(calcMode === "record" && actualEnd === `${b}-${i}`){
-        cls += " actualSelect";
-      }
-
-      html += `
-  <div class="${cls}"
-       onclick="handlePalletTap('${b}',${i})"
-       ontouchstart="handleHarvestTouchStart(event,'${b}',${i})"
-       ontouchmove="handleHarvestTouchMove(event)"
-       ontouchend="handleHarvestTouchEnd()"
-       id="${b}-${i}">
-    <div class="palletLeft"></div>
-    <div class="palletRight"></div>
-  </div>
-`;
-    }
-
-    html += "</div>";
-    document.getElementById(b + "bed").innerHTML = html;
-  });
-
-  let overallRateNotice = document.getElementById("overallRateNotice");
-  if(overallRateNotice){
-    overallRateNotice.style.display = hasDifferentBedRate ? "block" : "none";
   }
 
-  applySavedMarks();
-  updateManualHarvestInfo();
-  updateBedTitleButtons();
+  if(groupName === "plant"){
+    const useSplit = !!document.getElementById(`plantUseFrontBack_${bedName}`)?.checked;
+    if(useSplit){
+      const front = document.getElementById(`plantFront_${bedName}`)?.value || "";
+      const back = document.getElementById(`plantBack_${bedName}`)?.value || "";
+      const frontCount = document.getElementById(`plantFrontCount_${bedName}`)?.value || "";
+      return `手${front} / 奥${back}` + (frontCount !== "" ? ` (${frontCount})` : "");
+    }
+  }
+
+  const input = document.getElementById(groupName + "_" + bedName);
+  if(!input) return "";
+
+  const value = String(input.value || "").trim();
+  if(groupName === "loss") return value === "" ? "全体" : `${value}%`;
+  return value === "" ? "未入力" : `${value}個`;
 }
 
-function applySavedMarks(){
-  document.querySelectorAll(".pallet").forEach(el=>{
-    el.classList.remove(
-      "start","mid","end",
-      "plantMark","startSelect",
-      "manualPick","manualPickStart","manualPickEnd"
-    );
+function refreshYieldFrontBackVisibility(){
+  bedOrder.forEach(bedName => {
+    const wrap = document.getElementById(`yieldSplitBox_${bedName}`);
+    const checkbox = document.getElementById(`yieldUseFrontBack_${bedName}`);
+    if(wrap && checkbox){
+      wrap.classList.toggle("disabled", !checkbox.checked);
+    }
   });
+}
 
-  if(harvestSelectMode === "manual"){
-    manualHarvestIds.forEach((id, idx) => {
-      const el = document.getElementById(id);
-      if(!el) return;
+function refreshPlantFrontBackVisibility(){
+  bedOrder.forEach(bedName => {
+    const wrap = document.getElementById(`plantSplitBox_${bedName}`);
+    const checkbox = document.getElementById(`plantUseFrontBack_${bedName}`);
+    if(wrap && checkbox){
+      wrap.classList.toggle("disabled", !checkbox.checked);
+    }
+  });
+}
 
-      if(idx === 0) el.classList.add("manualPickStart");
-      else if(idx === manualHarvestIds.length - 1) el.classList.add("manualPickEnd");
-      else el.classList.add("manualPick");
+function refreshBedTabSummaries(){
+  ["yield","loss","plant"].forEach(groupName => {
+    bedOrder.forEach(bedName => {
+      const el = document.getElementById(`tabValue_${groupName}_${bedName}`);
+      if(el){
+        el.textContent = getBedTabSummaryText(groupName, bedName);
+      }
     });
-  }else{
-    const harvestIds = getHarvestResultIds();
-    harvestIds.forEach((id, idx) => {
-      const el = document.getElementById(id);
-      if(!el) return;
+  });
+}
 
-      if(idx === 0) el.classList.add("start");
-      else if(idx === harvestIds.length - 1) el.classList.add("end");
-      else el.classList.add("mid");
-    });
-  }
-
-  const plantIds = getPlantMarkedIds();
-  plantIds.forEach(id => {
+function installSettingsDirtyWatchers(){
+  [
+    "defaultLossRateInput","defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
+    "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",
+    "yield_D","loss_D","plant_D","yield_E","loss_E","plant_E","yield_F","loss_F","plant_F",
+    "yieldUseFrontBack_A","yieldFrontCount_A","yieldFront_A","yieldBack_A",
+    "yieldUseFrontBack_B","yieldFrontCount_B","yieldFront_B","yieldBack_B",
+    "yieldUseFrontBack_C","yieldFrontCount_C","yieldFront_C","yieldBack_C",
+    "yieldUseFrontBack_D","yieldFrontCount_D","yieldFront_D","yieldBack_D",
+    "yieldUseFrontBack_E","yieldFrontCount_E","yieldFront_E","yieldBack_E",
+    "yieldUseFrontBack_F","yieldFrontCount_F","yieldFront_F","yieldBack_F",
+    "plantUseFrontBack_A","plantFrontCount_A","plantFront_A","plantBack_A",
+    "plantUseFrontBack_B","plantFrontCount_B","plantFront_B","plantBack_B",
+    "plantUseFrontBack_C","plantFrontCount_C","plantFront_C","plantBack_C",
+    "plantUseFrontBack_D","plantFrontCount_D","plantFront_D","plantBack_D",
+    "plantUseFrontBack_E","plantFrontCount_E","plantFront_E","plantBack_E",
+    "plantUseFrontBack_F","plantFrontCount_F","plantFront_F","plantBack_F"
+  ].forEach(id => {
     const el = document.getElementById(id);
-    if(el) el.classList.add("plantMark");
-  });
-
-  if(harvestSelectMode === "manual"){
-    if(manualHarvestIds.length > 0){
-      document.getElementById("startLabel").innerText = manualHarvestIds[0];
-      document.getElementById("endLabel").innerText = manualHarvestIds[manualHarvestIds.length - 1];
-    }else{
-      document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
-      document.getElementById("endLabel").innerText = "-";
+    if(el && !el.dataset.dirtyWatchInstalled){
+      el.addEventListener("input", () => { settingsDirty = true; refreshYieldFrontBackVisibility(); refreshPlantFrontBackVisibility(); refreshBedTabSummaries(); });
+      el.addEventListener("change", () => { settingsDirty = true; refreshYieldFrontBackVisibility(); refreshPlantFrontBackVisibility(); refreshBedTabSummaries(); });
+      el.dataset.dirtyWatchInstalled = "1";
     }
+  });
+}
+
+
+function captureRecordBaseSelection(){
+  recordBaseFillKeys = [...harvestFillKeys];
+}
+
+function restoreRecordSelectionToBase(){
+  harvestFillKeys = [...recordBaseFillKeys];
+  if(harvestFillKeys.length){
+    recalcHarvestSummary();
   }else{
-    const selected = document.getElementById(startBed + "-" + startPallet);
-    if(selected) selected.classList.add("startSelect");
+    harvestSummary = null;
+  }
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+  updateRecordActualLoss();
+}
 
-    document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
+function switchTab(tabName){
+  const settingsVisible = document.getElementById("settingsTab").style.display !== "none";
 
-    const harvestIds = getHarvestResultIds();
-    if(harvestIds.length > 0){
-      document.getElementById("endLabel").innerText = harvestIds[harvestIds.length - 1];
+  if(settingsVisible && tabName !== "settings" && settingsDirty){
+    const shouldSave = confirm("設定が変更されています。保存しますか？");
+    if(shouldSave){
+      saveSettings();
     }else{
-      document.getElementById("endLabel").innerText = "-";
-    }
-  }
-}
-
-function setStart(b, p){
-  if(calcMode === "record"){
-    const pos = b + "-" + p;
-    const actualEl = document.getElementById("recordActualEnd");
-    if(actualEl){
-      actualEl.value = pos;
-      updateActualEndPreview();
-      drawBeds();
-    }
-    return;
-  }
-
-  startBed = b;
-  startPallet = p;
-  drawBeds();
-  syncRecordFromCurrent(false);
-}
-
-function resetStartEnd(){
-  startBed = "A";
-  manualHarvestIds = [];
-  manualReachedNotified = false;
-  updateManualHarvestInfo();
-  startPallet = 1;
-
-  document.getElementById("startLabel").innerText = "A-1";
-  document.getElementById("endLabel").innerText = "-";
-
-  localStorage.removeItem("lettuceHarvestResult");
-  localStorage.removeItem("lettuceHarvestSummary");
-  localStorage.removeItem("lettucePlantMarked");
-
-  document.getElementById("plantTotalResult").innerText =
-    "収穫見込み数: -\n植える苗の総数: -\n必要な苗数: -";
-  document.getElementById("specialResult").innerText = "必要な1号棟パレット枚数: -";
-  updateHarvestSummaryBox(null);
-
-  drawBeds();
-
-setPageScrollLocked(false);
-
-}
-
-function getHarvestYield(b, p){
-  let rateInput = document.getElementById(b + "_rate");
-
- let loss = (rateInput && rateInput.value.trim() !== "")
-  ? Number(rateInput.value)
-  : Number(document.getElementById("rate").value || 0);
-
-// ロス率 → 収穫率へ変換
- let rate = (100 - loss) / 100;
-
-  let useSplit = document.getElementById(b + "_useSplit")?.checked;
-
-  if(useSplit){
-    let split = Number(document.getElementById(b + "_splitHarvest")?.value || 0);
-    let front = Number(document.getElementById(b + "_front")?.value || 20);
-    let back = Number(document.getElementById(b + "_back")?.value || 16);
-    return (p <= split ? front : back) * rate * 2;
-  }
-
-  let single = Number(document.getElementById(b + "_single")?.value || 20);
-  return single * rate * 2;
-}
-
-function getPlantYield(b, p){
-  let useSplit = document.getElementById(b + "_useSplitPlant")?.checked;
-
-  if(useSplit){
-    let split = Number(document.getElementById(b + "_splitPlant")?.value || 0);
-    let frontPlant = Number(document.getElementById(b + "_frontPlant")?.value || 20);
-    let backPlant = Number(document.getElementById(b + "_backPlant")?.value || 16);
-    return (p <= split ? frontPlant : backPlant) * 2;
-  }
-
-  return Number(document.getElementById(b + "_singlePlant")?.value || 20) * 2;
-}
-
-function calcHarvest(){
-  if(harvestSelectMode === "manual"){
-    confirmManualHarvestSelection();
-    return;
-  }
-
-  localStorage.removeItem("lettucePlantMarked");
-
-  let cases = Number(document.getElementById("cases").value || 0);
-  let overallRate = Number(document.getElementById("rate").value || 100);
-
-  if(cases <= 0 || overallRate <= 0){
-    alert("出荷ケースと全体ロス率を確認してください");
-    return;
-  }
-
-  let need = cases * 12;
-  let bedIndex = order.indexOf(startBed);
-  let palletIndex = startPallet;
-  let total = 0;
-  let resultIds = [];
-  let visitedCount = 0;
-
-  while(total < need && visitedCount < TOTAL_PALLETS){
-    let bed = order[bedIndex];
-    let yieldValue = getHarvestYield(bed, palletIndex);
-    let id = bed + "-" + palletIndex;
-
-    resultIds.push(id);
-    total += yieldValue;
-    visitedCount++;
-
-    palletIndex++;
-
-    if(palletIndex > PALLETS_PER_BED){
-      palletIndex = 1;
-      bedIndex++;
-
-      if(bedIndex >= order.length){
-        bedIndex = 0;
-      }
+      populateSettingsForm();
+      settingsDirty = false;
     }
   }
 
-  if(total <= 0){
-    alert("収穫数の設定を確認してください");
-    return;
+  document.getElementById("forecastTab").style.display = tabName === "forecast" ? "block" : "none";
+  document.getElementById("settingsTab").style.display = tabName === "settings" ? "block" : "none";
+  document.getElementById("recordTab").style.display = tabName === "record" ? "block" : "none";
+  document.getElementById("forecastTabBtn").classList.toggle("active", tabName === "forecast");
+  document.getElementById("settingsTabBtn").classList.toggle("active", tabName === "settings");
+  document.getElementById("recordTabBtn").classList.toggle("active", tabName === "record");
+  if(tabName === "record"){
+    captureRecordBaseSelection();
+    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    updateRecordActualLoss();
+    drawRecordBeds();
   }
-
-  localStorage.setItem("lettuceHarvestResult", JSON.stringify(resultIds));
-  const summary = {
-    cases: cases,
-    need: Math.ceil(need),
-    estimatedHarvest: Math.ceil(total),
-    usedPallets: resultIds.length
-  };
-  localStorage.setItem("lettuceHarvestSummary", JSON.stringify(summary));
-
-  if(total < need){
-    alert("全ベッドを1周しても必要玉数に足りませんでした");
-  }
-
-  updateHarvestSummaryBox(summary);
-  drawBeds();
-  syncRecordFromCurrent(true);
-}
-
-function calcPlantCore(){
-  let harvestIds = getHarvestResultIds();
-  let summary = getHarvestSummary();
-
-  if(harvestIds.length === 0){
-    return { ok:false, message:"先に収穫計算をしてください" };
-  }
-
-  let totalPlantNeed = 0;
-
-  harvestIds.forEach(id => {
-    let [b, pStr] = id.split("-");
-    let p = Number(pStr);
-    totalPlantNeed += getPlantYield(b, p);
-  });
-
-  let loss = Number(document.getElementById("seedlingRate").value || 0);
-
-// 安全処理（0〜100に制限）
-loss = Math.max(0, Math.min(100, loss));
-
-// ロス率 → 収穫率へ変換
-let seedlingRate = (100 - loss) / 100;
-
-if(seedlingRate <= 0){
-  return { ok:false, message:"苗のロス率が100%です" };
-}
-
-let requiredSeedlings = totalPlantNeed / seedlingRate;
-
-  localStorage.setItem("lettucePlantMarked", JSON.stringify(harvestIds));
-  document.getElementById("plantTotalResult").innerText =
-    "収穫見込み数: " + Math.ceil(summary?.estimatedHarvest || 0) + "\n" +
-    "植える苗の総数: " + Math.ceil(totalPlantNeed) + "\n" +
-    "必要な苗数: " + Math.ceil(requiredSeedlings);
-
-  drawBeds();
-
-  return {
-    ok:true,
-    estimatedHarvest: Math.ceil(summary?.estimatedHarvest || 0),
-    totalPlantNeed: Math.ceil(totalPlantNeed),
-    requiredSeedlings: Math.ceil(requiredSeedlings)
-  };
-}
-
-function calcSpecial(){
-  let plantResult = calcPlantCore();
-
-  if(!plantResult.ok){
-    document.getElementById("specialResult").innerText = plantResult.message;
-    alert(plantResult.message);
-    return;
-  }
-
-  let totalSeedlings = plantResult.requiredSeedlings;
-  let n60 = Number(document.getElementById("special60").value || 0);
-  if(n60 < 0) n60 = 0;
-  if(n60 > 3) n60 = 3;
-
-  let cycle = [];
-  for(let i=0;i<n60;i++) cycle.push(60);
-  for(let i=0;i<3-n60;i++) cycle.push(120);
-
-  let used = 0;
-  let sum = 0;
-  let index = 0;
-
-  while(sum < totalSeedlings){
-    sum += cycle[index];
-    used++;
-    index++;
-    if(index >= cycle.length) index = 0;
-  }
-
-  document.getElementById("specialResult").innerText =
-    "必要な1号棟パレット枚数: " + used + "\n" +
-    "（3枚ごとの並び: " + cycle.join("・") + " を繰り返して計算）";
-}
-
-function saveSettings(){
-  let data = {
-    cases: document.getElementById("cases")?.value || "",
-    rate: document.getElementById("rate")?.value || "100",
-    seedlingRate: document.getElementById("seedlingRate")?.value || "100",
-    startBed,
-    startPallet,
-    special60: document.getElementById("special60")?.value || "0",
-    beds: {}
-  };
-
-  order.forEach(b => {
-    data.beds[b] = {
-      single: document.getElementById(b + "_single")?.value || 20,
-      singlePlant: document.getElementById(b + "_singlePlant")?.value || 20,
-      splitHarvest: document.getElementById(b + "_splitHarvest")?.value || 30,
-      splitPlant: document.getElementById(b + "_splitPlant")?.value || 30,
-      front: document.getElementById(b + "_front")?.value || 20,
-      back: document.getElementById(b + "_back")?.value || 16,
-      useSplit: document.getElementById(b + "_useSplit")?.checked || false,
-      rate: document.getElementById(b + "_rate")?.value || "",
-      useSplitPlant: document.getElementById(b + "_useSplitPlant")?.checked || false,
-      frontPlant: document.getElementById(b + "_frontPlant")?.value || 20,
-      backPlant: document.getElementById(b + "_backPlant")?.value || 16
-    };
-  });
-
-  localStorage.setItem("lettuceApp", JSON.stringify(data));
-}
-
-function restoreVisibleInputsFromSaved(){
-  let data = localStorage.getItem("lettuceApp");
-  if(!data) return;
-
-  try{
-    data = JSON.parse(data);
-  }catch(e){
-    return;
-  }
-
-  order.forEach(b => {
-    let d = data.beds?.[b];
-    if(!d) return;
-
-    if(document.getElementById(b + "_single")) document.getElementById(b + "_single").value = d.single;
-    if(document.getElementById(b + "_singlePlant")) document.getElementById(b + "_singlePlant").value = d.singlePlant;
-    if(document.getElementById(b + "_splitHarvest")) document.getElementById(b + "_splitHarvest").value = d.splitHarvest;
-    if(document.getElementById(b + "_splitPlant")) document.getElementById(b + "_splitPlant").value = d.splitPlant;
-    if(document.getElementById(b + "_front")) document.getElementById(b + "_front").value = d.front;
-    if(document.getElementById(b + "_back")) document.getElementById(b + "_back").value = d.back;
-    if(document.getElementById(b + "_useSplit")) document.getElementById(b + "_useSplit").checked = d.useSplit;
-    if(document.getElementById(b + "_rate")) document.getElementById(b + "_rate").value = d.rate ?? "";
-    if(document.getElementById(b + "_useSplitPlant")) document.getElementById(b + "_useSplitPlant").checked = d.useSplitPlant;
-    if(document.getElementById(b + "_frontPlant")) document.getElementById(b + "_frontPlant").value = d.frontPlant;
-    if(document.getElementById(b + "_backPlant")) document.getElementById(b + "_backPlant").value = d.backPlant;
-  });
-
-  setTimeout(() => {
-    order.forEach(b => {
-      updateHarvestSplitVisibility(b);
-      updatePlantSplitVisibility(b);
-    });
-  }, 0);
 }
 
 function loadSettings(){
-  let data = localStorage.getItem("lettuceApp");
-  if(!data) return;
-
   try{
-    data = JSON.parse(data);
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if(!raw) return deepClone(defaultSettings);
+    const parsed = JSON.parse(raw);
+
+    const merged = deepClone(defaultSettings);
+    if(Number.isFinite(Number(parsed.defaultLossRate))) merged.defaultLossRate = Number(parsed.defaultLossRate);
+    merged.defaultYieldPerPallet = normalizeYield(parsed.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
+    merged.defaultPlantingCount = normalizeYield(parsed.defaultPlantingCount, defaultSettings.defaultPlantingCount);
+    merged.seedlingLossRate = clampNumber(parsed.seedlingLossRate, 0, 100, defaultSettings.seedlingLossRate);
+    merged.specialPallet60CountPer3 = clampNumber(parsed.specialPallet60CountPer3, 0, 3, defaultSettings.specialPallet60CountPer3);
+
+    if(parsed.beds){
+      ["A","B","C","D","E","F"].forEach(b => {
+        if(parsed.beds[b]){
+          merged.beds[b].yield = normalizeYield(parsed.beds[b].yield, merged.defaultYieldPerPallet);
+          merged.beds[b].lossRate = normalizeLossInput(parsed.beds[b].lossRate);
+          merged.beds[b].plant = normalizeYield(parsed.beds[b].plant, merged.defaultPlantingCount);
+          merged.beds[b].yieldUseFrontBack = !!parsed.beds[b].yieldUseFrontBack;
+          merged.beds[b].yieldFrontCount = clampNumber(parsed.beds[b].yieldFrontCount, 0, PALLETS_PER_BED, 39);
+          merged.beds[b].yieldFront = normalizeYield(parsed.beds[b].yieldFront, merged.beds[b].yield);
+          merged.beds[b].yieldBack = normalizeYield(parsed.beds[b].yieldBack, merged.beds[b].yield);
+          merged.beds[b].plantUseFrontBack = !!parsed.beds[b].plantUseFrontBack;
+          merged.beds[b].plantFrontCount = clampNumber(parsed.beds[b].plantFrontCount, 0, PALLETS_PER_BED, 39);
+          merged.beds[b].plantFront = normalizeYield(parsed.beds[b].plantFront, merged.beds[b].plant);
+          merged.beds[b].plantBack = normalizeYield(parsed.beds[b].plantBack, merged.beds[b].plant);
+        }
+      });
+    }
+    return merged;
   }catch(e){
-    return;
+    return deepClone(defaultSettings);
   }
-
-  if(document.getElementById("cases")) document.getElementById("cases").value = data.cases ?? "";
-  if(document.getElementById("rate")) document.getElementById("rate").value = data.rate ?? "100";
-  if(document.getElementById("seedlingRate")) document.getElementById("seedlingRate").value = data.seedlingRate ?? "100";
-  if(document.getElementById("special60")) document.getElementById("special60").value = data.special60 ?? "0";
-
-  startBed = data.startBed || "A";
-  startPallet = data.startPallet || 1;
-
-  document.getElementById("startLabel").innerText = startBed + "-" + startPallet;
-
-  restoreVisibleInputsFromSaved();
 }
 
-/* 記録モード */
-function getWorkRecords(){
-  let saved = localStorage.getItem(RECORD_KEY);
-  if(!saved) return [];
+function saveSettingsToStorage(){
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function loadRecords(){
   try{
-    let arr = JSON.parse(saved);
-    return Array.isArray(arr) ? arr : [];
+    const raw = localStorage.getItem(RECORDS_KEY);
+    if(!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   }catch(e){
     return [];
   }
 }
 
-function setWorkRecords(records){
-  localStorage.setItem(RECORD_KEY, JSON.stringify(records));
+function saveRecordsToStorage(){
+  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
 }
 
-function getCurrentEndLabel(){
-  let endText = document.getElementById("endLabel")?.innerText || "-";
-  return endText === "-" ? "" : endText;
+function populateSettingsForm(){
+  document.getElementById("defaultLossRateInput").value = settings.defaultLossRate;
+  document.getElementById("defaultYieldInput").value = String(settings.defaultYieldPerPallet);
+  document.getElementById("defaultPlantingCountInput").value = String(settings.defaultPlantingCount);
+  document.getElementById("seedlingLossRateInput").value = settings.seedlingLossRate;
+  document.getElementById("specialPallet60CountInput").value = String(settings.specialPallet60CountPer3);
+
+  ["A","B","C","D","E","F"].forEach(b => {
+    document.getElementById("yield_" + b).value = String(settings.beds[b].yield);
+    document.getElementById("loss_" + b).value = settings.beds[b].lossRate;
+    document.getElementById("plant_" + b).value = String(settings.beds[b].plant);
+    document.getElementById("yieldUseFrontBack_" + b).checked = !!settings.beds[b].yieldUseFrontBack;
+    document.getElementById("yieldFrontCount_" + b).value = settings.beds[b].yieldFrontCount;
+    document.getElementById("yieldFront_" + b).value = String(settings.beds[b].yieldFront);
+    document.getElementById("yieldBack_" + b).value = String(settings.beds[b].yieldBack);
+    document.getElementById("plantUseFrontBack_" + b).checked = !!settings.beds[b].plantUseFrontBack;
+    document.getElementById("plantFrontCount_" + b).value = settings.beds[b].plantFrontCount;
+    document.getElementById("plantFront_" + b).value = String(settings.beds[b].plantFront);
+    document.getElementById("plantBack_" + b).value = String(settings.beds[b].plantBack);
+  });
+
+  refreshYieldFrontBackVisibility();
+  refreshPlantFrontBackVisibility();
+  refreshBedTabSummaries();
 }
 
-function syncRecordFromCurrent(autoActual = false){
-  let startText = "";
-  let endText = "";
+function readSettingsForm(){
+  const next = deepClone(settings);
 
-  if(harvestSelectMode === "manual" && manualHarvestIds.length > 0){
-    startText = manualHarvestIds[0];
-    endText = manualHarvestIds[manualHarvestIds.length - 1];
+  next.defaultLossRate = clampNumber(document.getElementById("defaultLossRateInput").value, 0, 100, defaultSettings.defaultLossRate);
+  next.defaultYieldPerPallet = normalizeYield(document.getElementById("defaultYieldInput").value, defaultSettings.defaultYieldPerPallet);
+  next.defaultPlantingCount = normalizeYield(document.getElementById("defaultPlantingCountInput").value, defaultSettings.defaultPlantingCount);
+  next.seedlingLossRate = clampNumber(document.getElementById("seedlingLossRateInput").value, 0, 100, defaultSettings.seedlingLossRate);
+  next.specialPallet60CountPer3 = clampNumber(document.getElementById("specialPallet60CountInput").value, 0, 3, defaultSettings.specialPallet60CountPer3);
+
+  ["A","B","C","D","E","F"].forEach(b => {
+    next.beds[b].yield = normalizeYield(document.getElementById("yield_" + b).value, next.defaultYieldPerPallet);
+    next.beds[b].lossRate = normalizeLossInput(document.getElementById("loss_" + b).value);
+    next.beds[b].plant = normalizeYield(document.getElementById("plant_" + b).value, next.defaultPlantingCount);
+    next.beds[b].yieldUseFrontBack = !!document.getElementById("yieldUseFrontBack_" + b).checked;
+    next.beds[b].yieldFrontCount = clampNumber(document.getElementById("yieldFrontCount_" + b).value, 0, PALLETS_PER_BED, 39);
+    next.beds[b].yieldFront = normalizeYield(document.getElementById("yieldFront_" + b).value, next.beds[b].yield);
+    next.beds[b].yieldBack = normalizeYield(document.getElementById("yieldBack_" + b).value, next.beds[b].yield);
+    next.beds[b].plantUseFrontBack = !!document.getElementById("plantUseFrontBack_" + b).checked;
+    next.beds[b].plantFrontCount = clampNumber(document.getElementById("plantFrontCount_" + b).value, 0, PALLETS_PER_BED, 39);
+    next.beds[b].plantFront = normalizeYield(document.getElementById("plantFront_" + b).value, next.beds[b].plant);
+    next.beds[b].plantBack = normalizeYield(document.getElementById("plantBack_" + b).value, next.beds[b].plant);
+  });
+
+  return next;
+}
+
+function clampNumber(value, min, max, fallback){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function saveSettings(){
+  settings = readSettingsForm();
+  saveSettingsToStorage();
+  settingsDirty = false;
+  clearHarvestPrediction();
+  showToast("設定を保存しました");
+}
+
+function resetSettings(){
+  settings = deepClone(defaultSettings);
+  saveSettingsToStorage();
+  populateSettingsForm();
+  settingsDirty = false;
+  clearHarvestPrediction();
+  showToast("設定を初期化しました");
+}
+
+function getPalletKey(building, bed, number){
+  return `${building}-${bed}-${number}`;
+}
+
+function parsePalletKey(key){
+  const parts = key.split("-");
+  return {
+    building: Number(parts[0]),
+    bed: parts[1],
+    number: Number(parts[2])
+  };
+}
+
+function updateBuildingLabel(){
+  const mainBtn = document.getElementById("currentBuildingBtn");
+  const recordBtn = document.getElementById("recordCurrentBuildingBtn");
+  if(mainBtn) mainBtn.textContent = currentBuilding + "号棟";
+  if(recordBtn) recordBtn.textContent = currentBuilding + "号棟";
+}
+
+function nextBuilding(){
+  currentBuilding++;
+  if(currentBuilding > MAX_BUILDING) currentBuilding = MIN_BUILDING;
+  updateBuildingLabel();
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+}
+
+function prevBuilding(){
+  currentBuilding--;
+  if(currentBuilding < MIN_BUILDING) currentBuilding = MAX_BUILDING;
+  updateBuildingLabel();
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+}
+
+function getRecordedPalletSet(){
+  const set = new Set();
+  records.forEach(record => {
+    if(Array.isArray(record.palletKeys)){
+      record.palletKeys.forEach(key => set.add(key));
+    }
+  });
+  return set;
+}
+
+function isRecorded(building, bed, number){
+  return getRecordedPalletSet().has(getPalletKey(building, bed, number));
+}
+
+function isFilled(building, bed, number){
+  return harvestFillKeys.includes(getPalletKey(building, bed, number));
+}
+
+function isBedFullyFilledInCurrentBuilding(bed){
+  let hasTarget = false;
+  for(let number=1; number<=PALLETS_PER_BED; number++){
+    if(isRecorded(currentBuilding, bed, number)) continue;
+    hasTarget = true;
+    if(!isFilled(currentBuilding, bed, number)) return false;
+  }
+  return hasTarget;
+}
+
+function getCurrentHarvestTotal(){
+  let total = 0;
+  harvestFillKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    total += getPredictedHarvestForBed(p.bed, p.number);
+  });
+  return Math.round(total * 10) / 10;
+}
+
+function togglePallet(building, bed, number){
+  const key = getPalletKey(building, bed, number);
+
+  if(isRecorded(building, bed, number)){
+    showToast("記録済みパレットは選択できません");
+    return;
+  }
+
+  const fillIndex = harvestFillKeys.indexOf(key);
+  if(fillIndex >= 0){
+    harvestFillKeys.splice(fillIndex, 1);
+    recalcHarvestSummary();
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    updateRecordActualLoss();
+    return;
   }else{
-    const greenStartDom = document.querySelector(".pallet.start");
-    if(greenStartDom){
-      startText = greenStartDom.id;
+    const needHeads = clampNumber(document.getElementById("casesInput").value || 0, 0, 999999, 0) * CASE_SIZE;
+    if(needHeads <= 0){
+      showToast("先に出荷ケースを入力してください");
+      return;
+    }
+    const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForBed(bed, number);
+    if(nextTotal > needHeads){
+      showToast("必要個数を超えるため追加できません");
+      return;
+    }
+    harvestFillKeys.push(key);
+    sortHarvestFillKeys();
+    recalcHarvestSummary();
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    updateRecordActualLoss();
+    return;
+  }
+}
+
+function addOrRemoveWholeBed(bed){
+  const needHeads = clampNumber(document.getElementById("casesInput").value || 0, 0, 999999, 0) * CASE_SIZE;
+  if(needHeads <= 0){
+    showToast("先に出荷ケースを入力してください");
+    return;
+  }
+
+  const fullyFilled = isBedFullyFilledInCurrentBuilding(bed);
+
+  if(fullyFilled){
+    harvestFillKeys = harvestFillKeys.filter(key => {
+      const p = parsePalletKey(key);
+      return !(p.building === currentBuilding && p.bed === bed);
+    });
+    recalcHarvestSummary();
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    updateRecordActualLoss();
+    showToast(currentBuilding + "号棟 " + bed + "ベッドを全削除しました");
+    return;
+  }
+
+  let added = 0;
+  for(let number=1; number<=PALLETS_PER_BED; number++){
+    if(isRecorded(currentBuilding, bed, number)) continue;
+    const key = getPalletKey(currentBuilding, bed, number);
+    if(harvestFillKeys.includes(key)) continue;
+
+    const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForBed(bed, number);
+    if(nextTotal > needHeads) break;
+
+    harvestFillKeys.push(key);
+    added++;
+  }
+
+  if(added === 0){
+    showToast("必要個数を超えるため追加できません");
+    return;
+  }
+
+  sortHarvestFillKeys();
+  recalcHarvestSummary();
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+  updateRecordActualLoss();
+  showToast(currentBuilding + "号棟 " + bed + "ベッドを一括追加しました");
+}
+
+function handleBedTitlePressStart(bed){
+  bedLongPressFired = false;
+  clearTimeout(bedLongPressTimer);
+  bedLongPressTimer = setTimeout(() => {
+    bedLongPressFired = true;
+    addOrRemoveWholeBed(bed);
+  }, BED_LONG_PRESS_MS);
+}
+
+function handleBedTitlePressEnd(){
+  clearTimeout(bedLongPressTimer);
+}
+
+function handleBedTitleClick(bed){
+  if(bedLongPressFired){
+    bedLongPressFired = false;
+    return;
+  }
+}
+
+function clearHarvestPrediction(){
+  harvestFillKeys = [];
+  harvestSummary = null;
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  document.getElementById("recordPalletSummaryInput").value = "";
+  updateRecordActualLoss();
+}
+
+function getHarvestPlantCountForPallet(bed, number){
+  const bedSettings = settings?.beds?.[bed] || {};
+  const raw = bedSettings.yield;
+  const baseYield = normalizeYield(raw, settings.defaultYieldPerPallet);
+
+  if(!bedSettings.yieldUseFrontBack){
+    return baseYield;
+  }
+
+  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
+  const frontYield = normalizeYield(bedSettings.yieldFront, baseYield);
+  const backYield = normalizeYield(bedSettings.yieldBack, baseYield);
+
+  return Number(number) <= frontCount ? frontYield : backYield;
+}
+
+function getAppliedLossRateForBed(bed){
+  const bedLoss = settings?.beds?.[bed]?.lossRate;
+  if(bedLoss === "" || bedLoss === null || typeof bedLoss === "undefined"){
+    return clampNumber(settings.defaultLossRate, 0, 100, 0);
+  }
+  return clampNumber(bedLoss, 0, 100, clampNumber(settings.defaultLossRate, 0, 100, 0));
+}
+
+function getPredictedHarvestForBed(bed, number){
+  const plantCount = getHarvestPlantCountForPallet(bed, number);
+  const lossRate = getAppliedLossRateForBed(bed);
+  return plantCount * (100 - lossRate) / 100;
+}
+
+function getNextPallet(building, bed, number){
+  let nextBuilding = building;
+  let nextBed = bed;
+  let nextNumber = number + 1;
+
+  if(nextNumber > PALLETS_PER_BED){
+    nextNumber = 1;
+    const bedIndex = bedOrder.indexOf(bed);
+    if(bedIndex < bedOrder.length - 1){
+      nextBed = bedOrder[bedIndex + 1];
     }else{
-      startText = document.getElementById("startLabel")?.innerText || "";
+      nextBed = bedOrder[0];
+      const buildingIndex = BUILDINGS.indexOf(building);
+      nextBuilding = BUILDINGS[(buildingIndex + 1) % BUILDINGS.length];
+    }
+  }
+
+  return { building: nextBuilding, bed: nextBed, number: nextNumber };
+}
+
+function getOrderIndexFromKey(key){
+  const p = parsePalletKey(key);
+  const buildingIndex = BUILDINGS.indexOf(p.building);
+  const bedIndex = bedOrder.indexOf(p.bed);
+  return buildingIndex * bedOrder.length * PALLETS_PER_BED + bedIndex * PALLETS_PER_BED + (p.number - 1);
+}
+
+function sortHarvestFillKeys(){
+  harvestFillKeys.sort((a,b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+}
+
+function findFirstAvailableInCurrentBuilding(){
+  const recordedSet = getRecordedPalletSet();
+  for(const bed of bedOrder){
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      const key = getPalletKey(currentBuilding, bed, number);
+      if(!recordedSet.has(key)){
+        return key;
+      }
+    }
+  }
+  return null;
+}
+
+function runHarvestPrediction(){
+  const cases = clampNumber(document.getElementById("casesInput").value || 0, 0, 999999, 0);
+  const needHeads = cases * CASE_SIZE;
+  const recordedSet = getRecordedPalletSet();
+
+  if(needHeads <= 0){
+    showToast("出荷ケースを入力してください");
+    return;
+  }
+
+  const autoStartKey = findFirstAvailableInCurrentBuilding();
+  if(!autoStartKey){
+    showToast("この号棟に未収穫パレットがありません");
+    return;
+  }
+
+  harvestFillKeys = [];
+  harvestSummary = null;
+
+  let current = parsePalletKey(autoStartKey);
+  let total = 0;
+  let guard = 0;
+  const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
+
+  while(total < needHeads && guard < maxLoop){
+    const key = getPalletKey(current.building, current.bed, current.number);
+
+    if(!recordedSet.has(key)){
+      const harvest = getPredictedHarvestForBed(current.bed, current.number);
+      harvestFillKeys.push(key);
+      total += harvest;
+
+      if(total >= needHeads){
+        harvestSummary = {
+          start: autoStartKey,
+          end: key,
+          filledCount: harvestFillKeys.length,
+          totalHarvest: Math.round(total * 10) / 10,
+          needHeads: needHeads
+        };
+        break;
+      }
     }
 
-    const currentEnd = document.getElementById("endLabel")?.innerText || "-";
-    endText = currentEnd === "-" ? "" : currentEnd;
+    current = getNextPallet(current.building, current.bed, current.number);
+    guard++;
   }
 
-  const casesValue = document.getElementById("cases")?.value || "";
-
-  const startEl = document.getElementById("recordStart");
-  const actualEl = document.getElementById("recordActualEnd");
-  const casesEl = document.getElementById("recordCases");
-
-  if(startEl) startEl.value = startText;
-  if(casesEl) casesEl.value = casesValue;
-
-  if(autoActual && actualEl){
-    actualEl.value = endText;
+  if(!harvestSummary){
+    const endKey = harvestFillKeys.length > 0 ? harvestFillKeys[harvestFillKeys.length - 1] : "-";
+    harvestSummary = {
+      start: autoStartKey,
+      end: endKey,
+      filledCount: harvestFillKeys.length,
+      totalHarvest: Math.round(total * 10) / 10,
+      needHeads: needHeads
+    };
+    showToast("記録済みを除外して1周分見ても必要個数に届きませんでした");
   }
 
-  updateActualEndPreview();
-}
-
-function clearRecordInputs(){
-  document.getElementById("recordCases").value = "";
-  document.getElementById("recordActualRate").value = "";
-  document.getElementById("recordStart").value = "";
-  document.getElementById("recordActualEnd").value = "";
-  document.getElementById("recordMemo").value = "";
-  updateActualEndPreview();
   drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+  updateRecordActualLoss();
 }
 
-function updateActualEndPreview(){
-  const box = document.getElementById("actualEndPreview");
-  if(!box) return;
+function recalcHarvestSummary(){
+  sortHarvestFillKeys();
 
-  const value = document.getElementById("recordActualEnd")?.value?.trim() || "";
-  box.innerText = value ? ("実際の終了位置: " + value) : "実際の終了位置: 未選択";
-
-  calculateActualRateFromRange();
+  harvestSummary = {
+    start: harvestFillKeys.length ? harvestFillKeys[0] : null,
+    end: harvestFillKeys.length ? harvestFillKeys[harvestFillKeys.length - 1] : "-",
+    filledCount: harvestFillKeys.length,
+    totalHarvest: getCurrentHarvestTotal(),
+    needHeads: clampNumber(document.getElementById("casesInput").value || 0, 0, 999999, 0) * CASE_SIZE
+  };
 }
 
-function saveWorkRecord(){
-  const date = document.getElementById("recordDate").value;
-  const cases = document.getElementById("recordCases").value.trim();
-  const actualRate = document.getElementById("recordActualRate").value.trim();
-  const start = document.getElementById("recordStart").value.trim();
-  const actualEnd = document.getElementById("recordActualEnd").value.trim();
-  const memo = document.getElementById("recordMemo").value.trim();
+
+
+function getPlantingCountForPallet(bed, number){
+  const bedSettings = settings?.beds?.[bed] || {};
+  const raw = bedSettings.plant;
+  const basePlant = normalizeYield(raw, settings.defaultPlantingCount);
+
+  if(!bedSettings.plantUseFrontBack){
+    return basePlant;
+  }
+
+  const frontCount = clampNumber(bedSettings.plantFrontCount, 0, PALLETS_PER_BED, 39);
+  const frontPlant = normalizeYield(bedSettings.plantFront, basePlant);
+  const backPlant = normalizeYield(bedSettings.plantBack, basePlant);
+
+  return Number(number) <= frontCount ? frontPlant : backPlant;
+}
+
+function getSelectedSeedlingNeed(){
+  let total = 0;
+  harvestFillKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    total += getPlantingCountForPallet(p.bed, p.number);
+  });
+  return total;
+}
+
+function getRequiredSeedlingsWithLoss(){
+  const totalPlanting = getSelectedSeedlingNeed();
+  const lossRate = clampNumber(settings.seedlingLossRate, 0, 100, 0);
+  const surviveRate = (100 - lossRate) / 100;
+  if(totalPlanting <= 0) return 0;
+  if(surviveRate <= 0) return 0;
+  return Math.ceil(totalPlanting / surviveRate);
+}
+
+function getRemainingCasesForCurrentBuilding(){
+  const recordedSet = getRecordedPalletSet();
+  const selectedSet = new Set(harvestFillKeys || []);
+  let remainingHeads = 0;
+
+  for(const bed of bedOrder){
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      const key = getPalletKey(currentBuilding, bed, number);
+      if(recordedSet.has(key)) continue;
+      if(selectedSet.has(key)) continue;
+      remainingHeads += getPredictedHarvestForBed(bed, number);
+    }
+  }
+
+  return Math.floor((remainingHeads / CASE_SIZE) * 10) / 10;
+}
+
+function getSpecialPalletPattern(n){
+  const safeN = clampNumber(n, 0, 3, 0);
+  const pattern = [];
+  const count120 = 3 - safeN;
+
+  for(let i = 0; i < count120; i++) pattern.push(120);
+  for(let i = 0; i < safeN; i++) pattern.push(60);
+
+  return pattern;
+}
+
+function getRequiredSpecialPalletCount(){
+  const requiredSeedlings = getRequiredSeedlingsWithLoss();
+  if(requiredSeedlings <= 0) return 0;
+
+  const pattern = getSpecialPalletPattern(settings.specialPallet60CountPer3);
+  if(!pattern.length) return 0;
+
+  let total = 0;
+  let count = 0;
+  let index = 0;
+
+  while(total < requiredSeedlings){
+    total += pattern[index % pattern.length];
+    count++;
+    index++;
+  }
+
+  return count;
+}
+
+function renderForecastSummary(){
+  let startLabel = "開始パレット: -";
+  if(harvestSummary && harvestSummary.start){
+    const p = parsePalletKey(harvestSummary.start);
+    startLabel = `開始パレット: ${p.building}号棟 ${p.bed}-${p.number}`;
+  }
+
+  let filledCount = 0;
+  let endLabel = "終了パレット: -";
+
+  if(harvestSummary){
+    filledCount = harvestSummary.filledCount;
+    if(harvestSummary.end && harvestSummary.end !== "-"){
+      const e = parsePalletKey(harvestSummary.end);
+      endLabel = `終了パレット: ${e.building}号棟 ${e.bed}-${e.number}`;
+    }
+  }
+
+  const remainingCases = getRemainingCasesForCurrentBuilding();
+  const requiredSpecialPalletCount = getRequiredSpecialPalletCount();
+
+  document.getElementById("forecastSummary").textContent =
+    startLabel + "\n" +
+    "選択枚数: " + filledCount + "\n" +
+    endLabel + "\n" +
+    "収穫後の残り収穫可能ケース: " + remainingCases + "\n" +
+    "必要な1号棟特別パレット枚数: " + requiredSpecialPalletCount + "枚";
+}
+
+function drawBeds(){
+  const container = document.getElementById("beds");
+  container.innerHTML = "";
+  const recordedSet = getRecordedPalletSet();
+
+  bedMap.forEach(b => {
+    const bed = document.createElement("div");
+    bed.className = "bed";
+
+    const title = document.createElement("div");
+    let titleCls = "bedTitle";
+    if(isBedFullyFilledInCurrentBuilding(b)) titleCls += " bedFullySelected";
+    title.className = titleCls;
+    title.textContent = currentBuilding + "号棟 " + b;
+    title.onmousedown = () => handleBedTitlePressStart(b);
+    title.onmouseup = handleBedTitlePressEnd;
+    title.onmouseleave = handleBedTitlePressEnd;
+    title.ontouchstart = (e) => { e.preventDefault(); handleBedTitlePressStart(b); };
+    title.ontouchend = handleBedTitlePressEnd;
+    title.ontouchcancel = handleBedTitlePressEnd;
+    title.onclick = () => handleBedTitleClick(b);
+    bed.appendChild(title);
+
+    const grid = document.createElement("div");
+    grid.className = "palletGrid";
+
+    let count = 1;
+
+    for(let r = ROWS - 1; r >= 0; r--){
+      for(let c = COLS - 1; c >= 0; c--){
+        const number = count;
+        const key = getPalletKey(currentBuilding, b, number);
+        const pallet = document.createElement("div");
+        let cls = "pallet";
+
+        if(number % 2 === 0) cls += " palletEven";
+        if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
+        if(number === 39 || number === 40) cls += " centerStrong";
+        if(isFilled(currentBuilding, b, number)) cls += " harvestFill";
+        if(recordedSet.has(key)) cls += " recordedPallet";
+
+        if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
+        if(harvestSummary && harvestSummary.end === key) cls += " harvestEnd";
+
+        pallet.className = cls;
+        pallet.textContent = number;
+        pallet.title = `${currentBuilding}号棟 ${b}-${number}`;
+        pallet.style.gridRowStart = r + 1;
+        pallet.style.gridColumnStart = c + 1;
+        pallet.onclick = () => togglePallet(currentBuilding, b, number);
+
+        grid.appendChild(pallet);
+        count++;
+      }
+    }
+
+    bed.appendChild(grid);
+    container.appendChild(bed);
+  });
+}
+
+
+function toggleRecordPallet(building, bed, number){
+  const key = getPalletKey(building, bed, number);
+
+  if(isRecorded(building, bed, number)){
+    showToast("記録済みパレットは調整できません");
+    return;
+  }
+
+  const fillIndex = harvestFillKeys.indexOf(key);
+  if(fillIndex >= 0){
+    harvestFillKeys.splice(fillIndex, 1);
+    recalcHarvestSummary();
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    updateRecordActualLoss();
+    return;
+  }else{
+    harvestFillKeys.push(key);
+    sortHarvestFillKeys();
+    recalcHarvestSummary();
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    updateRecordActualLoss();
+    return;
+  }
+}
+
+function drawRecordBeds(){
+  const container = document.getElementById("recordBeds");
+  if(!container) return;
+  container.innerHTML = "";
+  const recordedSet = getRecordedPalletSet();
+
+  bedMap.forEach(b => {
+    const bed = document.createElement("div");
+    bed.className = "bed";
+
+    const title = document.createElement("div");
+    let titleCls = "bedTitle";
+    if(isBedFullyFilledInCurrentBuilding(b)) titleCls += " bedFullySelected";
+    title.className = titleCls;
+    title.textContent = currentBuilding + "号棟 " + b;
+    bed.appendChild(title);
+
+    const grid = document.createElement("div");
+    grid.className = "palletGrid";
+
+    let count = 1;
+    for(let r = ROWS - 1; r >= 0; r--){
+      for(let c = COLS - 1; c >= 0; c--){
+        const number = count;
+        const key = getPalletKey(currentBuilding, b, number);
+        const pallet = document.createElement("div");
+        let cls = "pallet";
+
+        if(number % 2 === 0) cls += " palletEven";
+        if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
+        if(number === 39 || number === 40) cls += " centerStrong";
+        if(isFilled(currentBuilding, b, number)) cls += " harvestFill";
+        if(recordedSet.has(key)) cls += " recordedPallet";
+
+        if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
+        if(harvestSummary && harvestSummary.end === key) cls += " harvestEnd";
+
+        pallet.className = cls;
+        pallet.textContent = number;
+        pallet.title = `${currentBuilding}号棟 ${b}-${number}`;
+        pallet.style.gridRowStart = r + 1;
+        pallet.style.gridColumnStart = c + 1;
+        pallet.onclick = () => toggleRecordPallet(currentBuilding, b, number);
+
+        grid.appendChild(pallet);
+        count++;
+      }
+    }
+
+    bed.appendChild(grid);
+    container.appendChild(bed);
+  });
+}
+
+
+function syncRecordCasesFromMain(force = false){
+  const mainCases = document.getElementById("casesInput");
+  const recordCases = document.getElementById("recordCasesInput");
+  if(!mainCases || !recordCases) return;
+
+  if(force || !recordCasesEdited || recordCases.value === ""){
+    recordCases.value = mainCases.value || "";
+  }
+}
+
+function getActualLossRateFromSelectedPallets(cases){
+  if(!harvestFillKeys.length || cases <= 0) return "";
+
+  let plantedTotal = 0;
+  harvestFillKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    plantedTotal += getPlantingCountForPallet(p.bed, p.number);
+  });
+
+  if(plantedTotal <= 0) return "";
+
+  const shippedHeads = cases * CASE_SIZE;
+  const actualHarvestRate = (shippedHeads / plantedTotal) * 100;
+  const actualLossRate = 100 - actualHarvestRate;
+
+  return (Math.round(actualLossRate * 10) / 10).toFixed(1);
+}
+
+function updateRecordActualLoss(){
+  const input = document.getElementById("recordActualLossInput");
+  if(!input) return;
+
+  const cases = clampNumber(
+    document.getElementById("recordCasesInput")?.value || document.getElementById("casesInput")?.value || 0,
+    0, 999999, 0
+  );
+
+  const value = getActualLossRateFromSelectedPallets(cases);
+  input.value = value === "" ? "" : value;
+}
+
+function formatPalletSummary(keys){
+  if(!keys || keys.length === 0) return "";
+
+  const groups = {};
+  keys.forEach(key => {
+    const {building, bed, number} = parsePalletKey(key);
+    const groupKey = `${building}号棟${bed}`;
+    if(!groups[groupKey]) groups[groupKey] = [];
+    groups[groupKey].push(number);
+  });
+
+  const orderedGroupKeys = [];
+  BUILDINGS.forEach(building => {
+    bedOrder.forEach(bed => {
+      const groupKey = `${building}号棟${bed}`;
+      if(groups[groupKey] && groups[groupKey].length > 0){
+        orderedGroupKeys.push(groupKey);
+      }
+    });
+  });
+
+  const parts = orderedGroupKeys.map(groupKey => {
+    const nums = [...groups[groupKey]].sort((a,b) => a - b);
+    const ranges = [];
+    let start = nums[0];
+    let prev = nums[0];
+
+    for(let i=1;i<nums.length;i++){
+      const cur = nums[i];
+      if(cur === prev + 1){
+        prev = cur;
+      }else{
+        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+        start = cur;
+        prev = cur;
+      }
+    }
+    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
+    return `${groupKey}:${ranges.join(",")}`;
+  });
+
+  return parts.join("\n");
+}
+
+function setTodayToRecordDate(){
+  const el = document.getElementById("recordDateInput");
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth()+1).padStart(2, "0");
+  const d = String(today.getDate()).padStart(2, "0");
+  el.value = `${y}-${m}-${d}`;
+}
+
+function clearRecordForm(){
+  restoreRecordSelectionToBase();
+  setTodayToRecordDate();
+  recordCasesEdited = false;
+  syncRecordCasesFromMain(true);
+  const memoInput = document.getElementById("recordMemoInput");
+  if(memoInput) memoInput.value = "";
+  updateRecordActualLoss();
+}
+
+function saveRecord(){
+  const date = document.getElementById("recordDateInput").value;
+  const cases = clampNumber(document.getElementById("recordCasesInput").value || 0, 0, 999999, 0);
+  const actualLoss = document.getElementById("recordActualLossInput").value.trim();
+  const palletSummary = document.getElementById("recordPalletSummaryInput").value.trim();
+  const memo = document.getElementById("recordMemoInput")?.value.trim() || "";
 
   if(!date){
-    alert("日付を入力してください");
+    showToast("日付を入力してください");
     return;
   }
-
-  if(!start || !actualEnd){
-    alert("開始位置と実際の終了位置を入力してください");
+  if(cases <= 0){
+    showToast("出荷ケース数を入力してください");
     return;
   }
-
-  const records = getWorkRecords();
+  if(palletSummary === ""){
+    showToast("収穫したパレット番号を入力してください");
+    return;
+  }
+  if(actualLoss === ""){
+    showToast("実際のロス率を計算できません");
+    return;
+  }
+  if(!harvestFillKeys.length){
+    showToast("保存する選択結果がありません");
+    return;
+  }
 
   records.unshift({
     id: Date.now(),
     date,
     cases,
-    actualRate,
-    start,
-    actualEnd,
-    memo
+    palletSummary,
+    memo,
+    actualLoss,
+    palletKeys: [...harvestFillKeys]
   });
 
-  setWorkRecords(records);
-  renderWorkRecords();
+  saveRecordsToStorage();
+  renderRecordList();
+  clearHarvestPrediction();
+  captureRecordBaseSelection();
+  clearRecordForm();
+  showToast("記録を保存しました");
 }
 
-function exportWorkRecordsCSV(){
-  const records = getWorkRecords();
+function deleteRecord(id){
+  records = records.filter(r => r.id !== id);
+  saveRecordsToStorage();
+  renderRecordList();
+  drawBeds();
+  renderForecastSummary();
+  showToast("記録を削除しました");
+}
 
-  if(records.length === 0){
-    alert("保存する記録がありません");
+function renderRecordList(){
+  const box = document.getElementById("recordList");
+  if(!records.length){
+    box.textContent = "まだ記録がありません。";
     return;
   }
 
-  const headers = [
-    "日付",
-    "出荷ケース",
-    "実際のロス率",
-    "開始位置",
-    "実際の終了位置",
-    "メモ"
-  ];
+  const selectedDate = document.getElementById("recordDateInput")?.value || "";
+  let visibleRecords = [];
 
-  const escapeCSV = (value) => {
-    const str = String(value ?? "");
-    return '"' + str.replace(/"/g, '""') + '"';
-  };
-
-  const rows = records.map(r => [
-    r.date,
-    r.cases || "",
-    r.actualRate || "",
-    r.start,
-    r.actualEnd,
-    r.memo || ""
-  ]);
-
-  const csvLines = [
-    headers.map(escapeCSV).join(","),
-    ...rows.map(row => row.map(escapeCSV).join(","))
-  ];
-
-  const csvText = "\uFEFF" + csvLines.join("\n");
-  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, "0");
-  const d = String(today.getDate()).padStart(2, "0");
-  const fileName = `収穫記録_${y}${m}${d}.csv`;
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  URL.revokeObjectURL(url);
-}
-
-function renderWorkRecords(){
-  const latestBox = document.getElementById("latestRecord");
-  const pastBox = document.getElementById("pastRecordList");
-
-  if(!latestBox || !pastBox) return;
-
-  const records = getWorkRecords();
-
-  if(records.length === 0){
-    latestBox.innerHTML = "まだ記録がありません";
-    pastBox.innerHTML = "過去の記録はありません";
-    return;
+  if(selectedDate){
+    visibleRecords = records.filter(r => r.date === selectedDate);
   }
 
-  // 👇 今日の日付を取得
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
-  const todayStr = `${yyyy}-${mm}-${dd}`;
+  if(!visibleRecords.length){
+    visibleRecords = [records[0]];
+  }
 
-  // 👇 今日の記録
-  const todayRecords = records.filter(r => r.date === todayStr);
+  const visibleIds = new Set(visibleRecords.map(r => r.id));
+  const hiddenRecords = records.filter(r => !visibleIds.has(r.id));
 
-  // 👇 過去の記録
-  const past = records.filter(r => r.date !== todayStr);
-
-  // ===== 今日の記録 =====
-  if(todayRecords.length === 0){
-    latestBox.innerHTML = "今日の記録はありません";
-  }else{
-    latestBox.innerHTML = todayRecords.map(r => `
-      <div class="recordItem">
-        <div class="recordTitle">${r.date}</div>
-        <div class="recordMeta">
-出荷ケース: ${r.cases || "なし"}
-実際の収穫率: ${r.actualRate || "なし"}${r.actualRate ? "%" : ""}
-開始位置: ${r.start}
-実際の終了位置: ${r.actualEnd}
-メモ: ${r.memo || "なし"}
-        </div>
-        <div class="recordButtons">
-          <button onclick="applyRecordToStart('${r.actualEnd}')">次の開始位置にする</button>
-          <button class="secondary" onclick="deleteWorkRecord(${r.id})">削除</button>
-        </div>
+  const visibleHtml = visibleRecords.map(r => `
+    <div class="recordItem">
+      <div class="recordTitle">${r.date}</div>
+      <div class="recordMeta">出荷ケース数: ${r.cases}
+実際のロス率: ${r.actualLoss}%</div>
+      <span class="summaryCode">${escapeHtml(r.palletSummary)}</span>
+      ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
+      <div class="recordActions">
+        <button class="secondaryBtn" onclick="deleteRecord(${r.id})">削除</button>
       </div>
-    `).join("");
-  }
+    </div>
+  `).join("");
 
-  // ===== 過去の記録 =====
-  if(past.length === 0){
-    pastBox.innerHTML = "過去の記録はありません";
-  }else{
-    pastBox.innerHTML = past.map(r => `
-      <div class="recordItem">
-        <div class="recordTitle">${r.date}</div>
-        <div class="recordMeta">
-出荷ケース: ${r.cases || "なし"}
-実際のロス率: ${r.actualRate || "なし"}${r.actualRate ? "%" : ""}
-開始位置: ${r.start}
-実際の終了位置: ${r.actualEnd}
-メモ: ${r.memo || "なし"}
-        </div>
-        <div class="recordButtons">
-          <button onclick="applyRecordToStart('${r.actualEnd}')">次の開始位置にする</button>
-          <button class="secondary" onclick="deleteWorkRecord(${r.id})">削除</button>
-        </div>
+  const hiddenHtml = hiddenRecords.map(r => `
+    <div class="recordItem">
+      <div class="recordTitle">${r.date}</div>
+      <div class="recordMeta">出荷ケース数: ${r.cases}
+実際のロス率: ${r.actualLoss}%</div>
+      <span class="summaryCode">${escapeHtml(r.palletSummary)}</span>
+      ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
+      <div class="recordActions">
+        <button class="secondaryBtn" onclick="deleteRecord(${r.id})">削除</button>
       </div>
-    `).join("");
-  }
+    </div>
+  `).join("");
+
+  box.innerHTML = visibleHtml + (hiddenRecords.length ? `
+    <details class="recordToggleWrap">
+      <summary class="recordToggleSummary">一覧を見る（他 ${hiddenRecords.length} 件）</summary>
+      <div class="recordToggleBody">
+        ${hiddenHtml}
+      </div>
+    </details>
+  ` : "");
 }
 
-function togglePastRecords(btn){
-  const wrap = document.getElementById("pastRecordsWrap");
-  if(!wrap || !btn) return;
-
-  const isOpen = wrap.style.display !== "none";
-  wrap.style.display = isOpen ? "none" : "block";
-  btn.innerText = isOpen ? "▽" : "△";
+function escapeHtml(str){
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
-function deleteWorkRecord(id){
-  const records = getWorkRecords().filter(r => r.id !== id);
-  setWorkRecords(records);
-  renderWorkRecords();
+
+function makeRecordSignature(record){
+  const keys = Array.isArray(record.palletKeys) ? [...record.palletKeys].sort().join("|") : "";
+  return [
+    record.date || "",
+    Number(record.cases || 0),
+    String(record.actualLoss || ""),
+    String(record.palletSummary || ""),
+    String(record.memo || ""),
+    keys
+  ].join("__");
 }
 
-function getPositionRange(startPos, endPos){
-  if(!startPos || !endPos || !startPos.includes("-") || !endPos.includes("-")){
-    return [];
+function normalizeImportedRecord(record, index){
+  if(!record || typeof record !== "object") return null;
+
+  const date = String(record.date || "").trim();
+  const palletSummary = String(record.palletSummary || "").trim();
+  const memo = String(record.memo || "").trim();
+  const actualLoss = String(record.actualLoss || "").trim();
+  const cases = clampNumber(record.cases, 0, 999999, NaN);
+  const palletKeys = Array.isArray(record.palletKeys)
+    ? record.palletKeys
+        .map(v => String(v || "").trim())
+        .filter(Boolean)
+    : [];
+
+  if(!date || !Number.isFinite(cases) || cases <= 0 || !palletSummary || !actualLoss || !palletKeys.length){
+    return null;
   }
 
-  const [startBedRaw, startPalletRaw] = startPos.split("-");
-  const [endBedRaw, endPalletRaw] = endPos.split("-");
-
-  let currentBed = startBedRaw;
-  let currentPallet = Number(startPalletRaw);
-  const endBed = endBedRaw;
-  const endPallet = Number(endPalletRaw);
-
-  if(!currentBed || !currentPallet || !endBed || !endPallet){
-    return [];
-  }
-
-  const result = [];
-  let guard = 0;
-
-  while(guard < TOTAL_PALLETS){
-    result.push(currentBed + "-" + currentPallet);
-
-    if(currentBed === endBed && currentPallet === endPallet){
-      break;
-    }
-
-    currentPallet++;
-
-    if(currentPallet > PALLETS_PER_BED){
-      currentPallet = 1;
-      const bedIndex = order.indexOf(currentBed);
-      if(bedIndex === -1) return [];
-      currentBed = order[(bedIndex + 1) % order.length];
-    }
-
-    guard++;
-  }
-
-  return result;
-}
-
-function calculateActualRateFromRange(){
-  const cases = Number(document.getElementById("recordCases")?.value || 0);
-  const start = document.getElementById("recordStart")?.value.trim() || "";
-  const actualEnd = document.getElementById("recordActualEnd")?.value.trim() || "";
-  const rateEl = document.getElementById("recordActualRate");
-
-  if(!rateEl) return;
-
-  if(!cases || !start || !actualEnd){
-    rateEl.value = "";
-    return;
-  }
-
-  const positions = getPositionRange(start, actualEnd);
-
-  if(positions.length === 0){
-    rateEl.value = "";
-    return;
-  }
-
-  let totalBaseCount = 0;
-
-  positions.forEach(pos => {
-    const [b, pStr] = pos.split("-");
-    const p = Number(pStr);
-
-    const useSplit = document.getElementById(b + "_useSplit")?.checked;
-
-    if(useSplit){
-      const split = Number(document.getElementById(b + "_splitHarvest")?.value || 0);
-      const front = Number(document.getElementById(b + "_front")?.value || 20);
-      const back = Number(document.getElementById(b + "_back")?.value || 16);
-      totalBaseCount += (p <= split ? front : back) * 2;
-    }else{
-      const single = Number(document.getElementById(b + "_single")?.value || 20);
-      totalBaseCount += single * 2;
-    }
-  });
-
-  const actualHarvestCount = cases * 12;
-
-  if(totalBaseCount <= 0){
-    rateEl.value = "";
-    return;
-  }
-
-  const actualRate = (actualHarvestCount / totalBaseCount) * 100;
-
-// 収穫率 → ロス率へ変換
-const lossRate = 100 - actualRate;
-
-rateEl.value = lossRate.toFixed(1);
-}
-
-function getNextPosition(pos){
-  if(!pos || !pos.includes("-")) return null;
-
-  const parts = pos.split("-");
-  const bed = parts[0];
-  const pallet = Number(parts[1]);
-
-  if(!bed || !pallet) return null;
-
-  let nextBed = bed;
-  let nextPallet = pallet + 1;
-
-  if(nextPallet > PALLETS_PER_BED){
-    const bedIndex = order.indexOf(bed);
-    if(bedIndex === -1) return null;
-
-    if(bedIndex >= order.length - 1){
-      nextBed = order[0];
-      nextPallet = 1;
-    }else{
-      nextBed = order[bedIndex + 1];
-      nextPallet = 1;
-    }
+  let id = Number(record.id);
+  if(!Number.isFinite(id) || records.some(r => r.id === id)){
+    id = Date.now() + index + Math.floor(Math.random() * 1000);
   }
 
   return {
-    bed: nextBed,
-    pallet: nextPallet
+    id,
+    date,
+    cases,
+    palletSummary,
+    memo,
+    actualLoss,
+    palletKeys
   };
 }
 
-function applyLatestRecordToStartOnLoad(){
-  const records = getWorkRecords();
-  if(!records || records.length === 0) return false;
-
-  const latest = records[0];
-  if(!latest.actualEnd) return false;
-
-  const next = getNextPosition(latest.actualEnd);
-  if(!next) return false;
-
-  startBed = next.bed;
-  startPallet = next.pallet;
-  return true;
-}
-
-function applyRecordToStart(pos){
-  if(!pos || !pos.includes("-")){
-    alert("位置データが正しくありません");
-    return;
-  }
-
-  const parts = pos.split("-");
-  const bed = parts[0];
-  const pallet = Number(parts[1]);
-
-  if(!bed || !pallet){
-    alert("位置データが正しくありません");
-    return;
-  }
-
-  let nextBed = bed;
-  let nextPallet = pallet + 1;
-
-  if(nextPallet > PALLETS_PER_BED){
-    const bedIndex = order.indexOf(bed);
-
-    if(bedIndex === -1){
-      alert("ベッド情報が正しくありません");
-      return;
-    }
-
-    if(bedIndex >= order.length - 1){
-      nextBed = order[0];
-      nextPallet = 1;
-    }else{
-      nextBed = order[bedIndex + 1];
-      nextPallet = 1;
-    }
-  }
-
-  startBed = nextBed;
-  startPallet = nextPallet;
-
-  document.querySelectorAll(".tabcontent").forEach(tc => tc.style.display = "none");
-  document.querySelectorAll(".tablinks").forEach(tb => tb.classList.remove("active"));
-  document.getElementById("harvestTab").style.display = "block";
-  document.querySelectorAll(".tablinks")[0].classList.add("active");
-  calcMode = "harvest";
-
-  drawBeds();
-  syncRecordFromCurrent(false);
-  showStartToast("開始位置を " + nextBed + "-" + nextPallet + " にしました");
-}
-
-function setTodayToRecordDate(){
-  const el = document.getElementById("recordDate");
-  if(!el) return;
-
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, "0");
-  const d = String(today.getDate()).padStart(2, "0");
-  el.value = `${y}-${m}-${d}`;
-}
-
-function openSettingsModal(){
-  detail1 = true;
-  detail2 = true;
-  plantDetail1 = true;
-
-  drawSettings();
-  drawPlantSettings();
-  restoreVisibleInputsFromSaved();
-
-  const modal = document.getElementById("settingsModal");
-  if(modal) modal.style.display = "flex";
-
-  settingsChanged = false; // ←開いた時リセット
-
-  // 全inputに変更検知をつける
-  setTimeout(() => {
-    document.querySelectorAll("#settingsModal input").forEach(el => {
-      el.addEventListener("input", () => {
-        settingsChanged = true;
-      });
-    });
-  }, 0);
-}
-
-function closeSettingsModal(){
-  if(settingsChanged){
-    const shouldSave = confirm("設定を保存しますか？");
-
-    if(shouldSave){
-      saveSettings();
-      showSaveToast();
-    }else{
-      loadSettings();
-      drawBeds();
-    }
-  }
-
-  const modal = document.getElementById("settingsModal");
-  if(modal) modal.style.display = "none";
-
-  settingsChanged = false;
-}
-
-function toggleSettingsSection(bodyId, btn){
-  const allBodies = document.querySelectorAll("#settingsModal .settingsBody");
-  const allHeaders = document.querySelectorAll("#settingsModal .settingsHeader");
-
-  const targetBody = document.getElementById(bodyId);
-  if(!targetBody) return;
-
-  const isOpen = targetBody.style.display !== "none";
-
-  allBodies.forEach(body => {
-    body.style.display = "none";
-  });
-
-  allHeaders.forEach(header => {
-    const spans = header.querySelectorAll("span");
-    if(spans[1]){
-      spans[1].innerText = "▽";
-    }
-  });
-
-  if(!isOpen){
-    targetBody.style.display = "block";
-
-    const spans = btn.querySelectorAll("span");
-    if(spans[1]){
-      spans[1].innerText = "△";
-    }
-  }
-}
-
-function saveAndCloseSettings(){
-  saveSettings();
-  showSaveToast();
-
-  const modal = document.getElementById("settingsModal");
-  if(modal) modal.style.display = "none";
-
-  settingsChanged = false;
-}
-
-function showStartToast(message = "前回の記録から開始位置を反映しました"){
-  const toast = document.getElementById("startToast");
-  if(!toast) return;
-
-  toast.innerText = message;
-  toast.classList.add("show");
-
-  clearTimeout(showStartToast._timer);
-  showStartToast._timer = setTimeout(() => {
-    toast.classList.remove("show");
-  }, 2000);
-}
-
-function showSaveToast(message = "設定を更新しました"){
-  const toast = document.getElementById("saveToast");
-  if(!toast) return;
-
-  toast.innerText = message;
-  toast.classList.add("show");
-
-  clearTimeout(showSaveToast._timer);
-  showSaveToast._timer = setTimeout(() => {
-    toast.classList.remove("show");
-  }, 2000);
-}
-
-function updateManualDragModeUI(){
-  const badge = document.getElementById("manualDragModeBadge");
-  const container = document.querySelector(".container");
-
-  const isOn = calcMode === "harvest" && harvestSelectMode === "manual" && longPressActivated;
-
-  if(badge){
-    badge.style.display = isOn ? "block" : "none";
-  }
-
-  if(container){
-    container.classList.toggle("manualDragModeOn", isOn);
-  }
-}
-
-function setHarvestSelectMode(mode){
-  harvestSelectMode = mode;
-
-  const autoBtn = document.getElementById("harvestAutoModeBtn");
-  const manualBtn = document.getElementById("harvestManualModeBtn");
-  const info = document.getElementById("manualHarvestInfo");
-  const actions = document.getElementById("manualHarvestActions");
-
-
-  if(autoBtn) autoBtn.classList.toggle("active", mode === "auto");
-  if(manualBtn) manualBtn.classList.toggle("active", mode === "manual");
-
-  if(info) info.style.display = mode === "manual" ? "block" : "none";
-  if(actions) actions.style.display = mode === "manual" ? "block" : "none";
-
-  if(mode === "manual" && manualHarvestIds.length === 0){
-  const saved = getHarvestResultIds();
-  if(saved.length > 0){
-    manualHarvestIds = [...saved];
-    sortManualHarvestIds();
-  }
-  }
-
- if(mode !== "manual"){
-  manualReachedNotified = false;
- }
-
-  updateManualHarvestInfo();
-  updateManualDragModeUI();
-  drawBeds();
-  updateBedTitleButtons();
-
-  if(mode !== "manual"){
-  setPageScrollLocked(false);
-}
-}
-
-function getManualHarvestTotal(){
-  let total = 0;
-
-  manualHarvestIds.forEach(id => {
-    const [b, pStr] = id.split("-");
-    const p = Number(pStr);
-    total += getHarvestYield(b, p);
-  });
-
-  return Math.ceil(total);
-}
-
-function updateManualHarvestInfo(){
-  const box = document.getElementById("manualHarvestInfo");
-  const badge = document.getElementById("manualHarvestBadge");
-  if(!box) return;
-
-  const cases = Number(document.getElementById("cases")?.value || 0);
-  const need = cases * 12;
-  const total = getManualHarvestTotal();
-  const count = manualHarvestIds.length;
-  const diff = need - total;
-
-  box.classList.remove("manualHarvestInfoOk", "manualHarvestInfoWarn", "manualHarvestInfoOver");
-  if(badge){
-    badge.classList.remove("ok", "warn", "over");
-    badge.style.display = harvestSelectMode === "manual" ? "block" : "none";
-  }
-
-  let status = "";
-  let detail = "";
-
-  if(cases <= 0){
-    status = "出荷ケースを入力してください";
-    detail = "";
-    box.classList.add("manualHarvestInfoWarn");
-    if(badge){
-      badge.classList.add("warn");
-      badge.innerText = "出荷ケース未入力";
-    }
-    manualReachedNotified = false;
-  }else if(total < need){
-    status = "⚠️ まだ足りません";
-    detail = "あと " + Math.ceil(diff) + " 玉";
-    box.classList.add("manualHarvestInfoWarn");
-    if(badge){
-      badge.classList.add("warn");
-      badge.innerText = "まだ足りません\nあと " + Math.ceil(diff) + " 玉";
-    }
-    manualReachedNotified = false;
-  }else if(total === need){
-    status = "✅ ぴったり達成";
-    detail = "必要玉数ちょうど";
-    box.classList.add("manualHarvestInfoOk");
-    if(badge){
-      badge.classList.add("ok");
-      badge.innerText = "達成しました\nぴったりです";
-    }
-    if(!manualReachedNotified){
-      showManualReachToast("必要玉数ちょうどです");
-      manualReachedNotified = true;
-    }
-  }else{
-    status = "✅ 必要玉数に達しています";
-    detail = "超過 " + Math.ceil(total - need) + " 玉";
-    box.classList.add("manualHarvestInfoOver");
-    if(badge){
-      badge.classList.add("over");
-      badge.innerText = "達成しました\n" + Math.ceil(total - need) + " 玉オーバー";
-    }
-    if(!manualReachedNotified){
-      showManualReachToast("必要玉数に達しました");
-      manualReachedNotified = true;
-    }
-  }
-
-  box.innerText =
-    "必要玉数: " + (cases > 0 ? need : "-") + "\n" +
-    "現在の合計: " + total + "\n" +
-    "選択パレット数: " + count + "\n" +
-    status +
-    (detail ? "\n" + detail : "");
-}
-
-function sortManualHarvestIds(){
-  manualHarvestIds.sort((a, b) => {
-    const [bedA, palletA] = a.split("-");
-    const [bedB, palletB] = b.split("-");
-    const bedIndexA = order.indexOf(bedA);
-    const bedIndexB = order.indexOf(bedB);
-
-    if(bedIndexA !== bedIndexB) return bedIndexA - bedIndexB;
-    return Number(palletA) - Number(palletB);
-  });
-}
-
-function toggleManualHarvestId(id){
-  const idx = manualHarvestIds.indexOf(id);
-
-  if(idx >= 0){
-    manualHarvestIds.splice(idx, 1);
-    manualReachedNotified = false;
-  }else{
-    if(!canAddManualHarvestId(id)){
-      showManualReachToast("必要玉数を超えるため追加できません");
-      return;
-    }
-    manualHarvestIds.push(id);
-  }
-
-  sortManualHarvestIds();
-  updateManualHarvestInfo();
-  drawBeds();
-}
-
-function addManualHarvestId(id){
-  if(manualHarvestIds.includes(id)) return;
-
-  if(!canAddManualHarvestId(id)){
-    showManualReachToast("必要玉数を超えるため追加できません");
-    return;
-  }
-
-  manualHarvestIds.push(id);
-  sortManualHarvestIds();
-  updateManualHarvestInfo();
-  drawBeds();
-}
-
-function clearManualHarvestSelection(){
-  manualHarvestIds = [];
-  manualReachedNotified = false;
-  updateManualHarvestInfo();
-  drawBeds();
-}
-
-function confirmManualHarvestSelection(){
-  const cases = Number(document.getElementById("cases").value || 0);
-  if(cases <= 0){
-    alert("出荷ケースを入力してください");
-    return;
-  }
-
-  if(manualHarvestIds.length === 0){
-    alert("収穫パレットを選択してください");
-    return;
-  }
-
-  const need = cases * 12;
-  const total = getManualHarvestTotal();
-
-  localStorage.removeItem("lettucePlantMarked");
-  localStorage.setItem("lettuceHarvestResult", JSON.stringify(manualHarvestIds));
-
-  const summary = {
-    cases: cases,
-    need: Math.ceil(need),
-    estimatedHarvest: Math.ceil(total),
-    usedPallets: manualHarvestIds.length
+function exportRecordsToFile(){
+  const payload = {
+    app: "収穫＆苗ナビ",
+    type: "record-backup",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    recordCount: records.length,
+    records
   };
-  localStorage.setItem("lettuceHarvestSummary", JSON.stringify(summary));
 
-  updateHarvestSummaryBox(summary);
-  drawBeds();
-  syncRecordFromCurrent(true);
-
-  if(total < need){
-    alert("必要玉数にまだ足りません");
-  }else{
-    alert("手動選択を保存しました");
-  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    "-",
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0")
+  ].join("");
+  link.href = url;
+  link.download = `収穫記録バックアップ_${stamp}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast("記録を外部保存しました");
 }
 
-function handlePalletTap(b, p){
-  if(suppressNextTap){
-    suppressNextTap = false;
-    return;
-  }
-
-  if(calcMode === "record"){
-    const pos = b + "-" + p;
-    const actualEl = document.getElementById("recordActualEnd");
-    if(actualEl){
-      actualEl.value = pos;
-      updateActualEndPreview();
-      drawBeds();
-    }
-    return;
-  }
-
-  if(calcMode === "harvest" && harvestSelectMode === "manual"){
-    toggleManualHarvestId(b + "-" + p);
-    return;
-  }
-
-  startBed = b;
-  startPallet = p;
-  drawBeds();
-  syncRecordFromCurrent(false);
+function triggerImportRecords(){
+  const input = document.getElementById("recordImportInput");
+  if(!input) return;
+  input.value = "";
+  input.click();
 }
 
-function handleHarvestTouchStart(event, b, p){
-  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
+function importRecordsFromFile(file){
+  if(!file) return;
 
-  isDraggingHarvest = true;
-  suppressNextTap = false;
-  longPressActivated = false;
-
-  const id = b + "-" + p;
-  lastTouchedHarvestId = id;
-
-  clearTimeout(longPressTimer);
-  longPressTimer = setTimeout(() => {
-    if(!isDraggingHarvest) return;
-
-    longPressActivated = true;
-    suppressNextTap = true;
-    setPageScrollLocked(true);
-    updateManualDragModeUI();
-    addManualHarvestId(id);
-    showManualReachToast("追加モード");
-  }, LONG_PRESS_MS);
-
-  // ここではスクロールを止めない
-}
-
-function handleHarvestTouchMove(event){
-  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
-  if(!isDraggingHarvest) return;
-
-  const touch = event.touches[0];
-  if(!touch) return;
-
-  const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  if(!el) return;
-
-  const pallet = el.closest(".pallet");
-
-  // 長押し成立前に別パレットへ動いたら、ただのスクロール操作として扱う
-  if(!longPressActivated){
-    if(!pallet || pallet.id !== lastTouchedHarvestId){
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
-      isDraggingHarvest = false;
-    }
-    return;
-  }
-
-  if(!pallet || !pallet.id) return;
-
-  if(pallet.id !== lastTouchedHarvestId){
-    lastTouchedHarvestId = pallet.id;
-    addManualHarvestId(pallet.id);
-  }
-
-  // 長押し成立後だけスクロールを止める
-  event.preventDefault();
-}
-
-function handleHarvestTouchEnd(){
-  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
-
-  clearTimeout(longPressTimer);
-  longPressTimer = null;
-
-  isDraggingHarvest = false;
-  lastTouchedHarvestId = "";
-  longPressActivated = false;
-  setPageScrollLocked(false);
-  updateManualDragModeUI();
-
-  setTimeout(() => {
-    suppressNextTap = false;
-  }, 0);
-}
-
-function showManualReachToast(message = "必要玉数に達しました"){
-  const toast = document.getElementById("manualReachToast");
-  if(!toast) return;
-
-  toast.innerText = message;
-  toast.classList.add("show");
-
-  clearTimeout(showManualReachToast._timer);
-  showManualReachToast._timer = setTimeout(() => {
-    toast.classList.remove("show");
-  }, 1800);
-}
-
-function canAddManualHarvestId(id){
-  const cases = Number(document.getElementById("cases")?.value || 0);
-  if(cases <= 0) return true;
-
-  if(manualHarvestIds.includes(id)) return true;
-
-  const need = cases * 12;
-  const [b, pStr] = id.split("-");
-  const p = Number(pStr);
-  const nextYield = Math.ceil(getHarvestYield(b, p));
-  const currentTotal = getManualHarvestTotal();
-
-  return currentTotal + nextYield <= need;
-}
-
-function addWholeBedManual(bed){
-  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
-
-  const cases = Number(document.getElementById("cases")?.value || 0);
-  if(cases <= 0){
-    alert("先に出荷ケースを入力してください");
-    return;
-  }
-
-  let addedCount = 0;
-  const need = cases * 12;
-
-  for(let p = 1; p <= PALLETS_PER_BED; p++){
-    const id = bed + "-" + p;
-
-    if(manualHarvestIds.includes(id)) continue;
-
-    const currentTotal = getManualHarvestTotal();
-    const nextYield = Math.ceil(getHarvestYield(bed, p));
-
-    if(currentTotal + nextYield > need){
-      break;
-    }
-
-    manualHarvestIds.push(id);
-    addedCount++;
-  }
-
-  sortManualHarvestIds();
-  updateManualHarvestInfo();
-  drawBeds();
-
-  if(addedCount === 0){
-    showManualReachToast(bed + "ベッドは追加できません");
-  }else{
-    showManualReachToast(bed + "ベッドを " + addedCount + " 枚追加");
-  }
-}
-
-function removeWholeBedManual(bed){
-  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
-
-  const before = manualHarvestIds.length;
-
-  manualHarvestIds = manualHarvestIds.filter(id => !id.startsWith(bed + "-"));
-
-  const removedCount = before - manualHarvestIds.length;
-
-  manualReachedNotified = false;
-  sortManualHarvestIds();
-  updateManualHarvestInfo();
-  drawBeds();
-
-  if(removedCount === 0){
-    showManualReachToast(bed + "ベッドは選択されていません");
-  }else{
-    showManualReachToast(bed + "ベッドを " + removedCount + " 枚削除");
-  }
-}
-
-function setPageScrollLocked(locked){
-  document.body.classList.toggle("noScroll", locked);
-  document.documentElement.classList.toggle("noScroll", locked);
-}
-
-function isWholeBedSelectedManual(bed){
-  return manualHarvestIds.some(id => id.startsWith(bed + "-"));
-}
-
-function updateBedTitleButtons(){
-  document.querySelectorAll(".bedTitleBtn").forEach(btn => {
-    btn.classList.remove("manualBedActionReady", "manualBedSelected");
-
-    const bed = btn.textContent.trim();
-    if(!bed) return;
-
-    if(calcMode === "harvest" && harvestSelectMode === "manual"){
-      btn.classList.add("manualBedActionReady");
-
-      if(isWholeBedSelectedManual(bed)){
-        btn.classList.add("manualBedSelected");
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const parsed = JSON.parse(String(reader.result || ""));
+      const sourceRecords = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.records) ? parsed.records : null);
+      if(!sourceRecords){
+        showToast("読み込める記録ファイルではありません");
+        return;
       }
+
+      const existing = new Set(records.map(makeRecordSignature));
+      const imported = [];
+      sourceRecords.forEach((record, index) => {
+        const normalized = normalizeImportedRecord(record, index);
+        if(!normalized) return;
+        const signature = makeRecordSignature(normalized);
+        if(existing.has(signature)) return;
+        existing.add(signature);
+        imported.push(normalized);
+      });
+
+      if(!imported.length){
+        showToast("追加できる新しい記録はありませんでした");
+        return;
+      }
+
+      records = [...imported, ...records].sort((a, b) => Number(b.id) - Number(a.id));
+      saveRecordsToStorage();
+      renderRecordList();
+      drawBeds();
+      drawRecordBeds();
+      renderForecastSummary();
+      showToast(`${imported.length}件の記録を読み込みました`);
+    }catch(e){
+      showToast("記録ファイルの読み込みに失敗しました");
     }
-  });
+  };
+  reader.onerror = () => {
+    showToast("記録ファイルを読み込めませんでした");
+  };
+  reader.readAsText(file, "utf-8");
 }
 
-function handleBedTitleTap(bed){
-  if(bedTitleLongPressFired){
-    bedTitleLongPressFired = false;
-    return;
-  }
-
-  // 短押しは何もしない
-}
-
-function handleBedTitleTouchStart(event, bed){
-  if(!(calcMode === "harvest" && harvestSelectMode === "manual")) return;
-
-  bedTitleLongPressFired = false;
-  clearTimeout(bedTitleLongPressTimer);
-
-  bedTitleLongPressTimer = setTimeout(() => {
-    bedTitleLongPressFired = true;
-
-    if(isWholeBedSelectedManual(bed)){
-      removeWholeBedManual(bed);
-    }else{
-      addWholeBedManual(bed);
-    }
-  }, BED_TITLE_LONG_PRESS_MS);
-
-  event.preventDefault();
-}
-
-function handleBedTitleTouchEnd(){
-  clearTimeout(bedTitleLongPressTimer);
-}
 
 window.onload = () => {
-
-detail1 = true;
-detail2 = true;
-plantDetail1 = true;
-
-drawSettings();
-drawPlantSettings();
-loadSettings();
-
-  const appliedFromRecord = applyLatestRecordToStartOnLoad();
+  populateSettingsForm();
+  installSettingsDirtyWatchers();
+  updateBuildingLabel();
   drawBeds();
-
-  if(appliedFromRecord){showStartToast("前回の記録から開始位置を自動反映しました");
-  }
-
-  const settingsModal = document.getElementById("settingsModal");
-if(settingsModal){
-  settingsModal.addEventListener("click", (e) => {
-    if(e.target === settingsModal){
-      closeSettingsModal();
-    }
-  });
-}
-
-  const summary = getHarvestSummary();
-  updateHarvestSummaryBox(summary);
-
-  if(summary){
-    document.getElementById("plantTotalResult").innerText =
-      "収穫見込み数: " + Math.ceil(summary.estimatedHarvest || 0) + "\n" +
-      "植える苗の総数: -\n必要な苗数: -";
-  }
-
+  drawRecordBeds();
+  renderForecastSummary();
   setTodayToRecordDate();
-  syncRecordFromCurrent(true);
-  renderWorkRecords();
+  renderRecordList();
+  syncRecordCasesFromMain(true);
+  captureRecordBaseSelection();
+  document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+  updateRecordActualLoss();
 
-  document.getElementById("recordActualEnd")?.addEventListener("input", () => {
-    updateActualEndPreview();
-    drawBeds();
-  });
+  const recordDateInput = document.getElementById("recordDateInput");
+  if(recordDateInput){
+    recordDateInput.addEventListener("input", () => {
+      renderRecordList();
+    });
+    recordDateInput.addEventListener("change", () => {
+      renderRecordList();
+    });
+  }
 
-  document.getElementById("recordCases")?.addEventListener("input", calculateActualRateFromRange);
-document.getElementById("recordStart")?.addEventListener("input", calculateActualRateFromRange);
+  const recordCasesInput = document.getElementById("recordCasesInput");
+  if(recordCasesInput){
+    recordCasesInput.addEventListener("input", () => {
+      recordCasesEdited = true;
+      updateRecordActualLoss();
+    });
+  }
 
-const wrap = document.getElementById("pastRecordsWrap");
-const btn = document.querySelector(".toggleBtn");
-
-if(wrap){
-  wrap.style.display = "none";
-}
-
-if(btn){
-  btn.innerText = "▽";
-}
-
-setHarvestSelectMode("auto");
-updateManualHarvestInfo();
-updateManualDragModeUI();
-
+  const recordImportInput = document.getElementById("recordImportInput");
+  if(recordImportInput){
+    recordImportInput.addEventListener("change", (event) => {
+      importRecordsFromFile(event.target.files?.[0]);
+    });
+  }
 };
 </script>
-
-<div id="startToast" class="toast">前回の記録から開始位置を反映しました</div>
-<div id="saveToast" class="toast">設定を更新しました</div>
-<div id="manualReachToast" class="toast">必要玉数に達しました</div>
-
 </body>
 </html>
