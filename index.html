@@ -78,7 +78,7 @@ label{
   font-weight:bold;
   margin:10px 0 6px;
 }
-input, select, textarea{
+input:not([type="checkbox"]), select, textarea{
   width:100%;
   box-sizing:border-box;
   border:1px solid #d1d5db;
@@ -158,6 +158,42 @@ button.thirdBtn{
   background:#bfdbfe;
   color:#1d4ed8;
 }
+.bedZoneInfo{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:0 0 6px;
+  padding:5px 8px;
+  border-radius:8px;
+  border:1px solid #d1d5db;
+  background:#f8fafc;
+  font-size:11px;
+  color:#475569;
+}
+.bedZoneLegend{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.bedZoneChip{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+}
+.bedZoneChip::before{
+  content:"";
+  width:10px;
+  height:10px;
+  border-radius:3px;
+  border:1px solid rgba(0,0,0,0.08);
+  background:#ddd;
+  flex:0 0 auto;
+}
+.bedZoneChip.front::before{background:#dcfce7;}
+.bedZoneChip.back::before{background:#fce7f3;}
 .palletGrid{
   display:grid;
   grid-template-columns:repeat(2,1fr);
@@ -177,6 +213,8 @@ button.thirdBtn{
   -webkit-tap-highlight-color: transparent;
 }
 .palletEven{background:#c7d0da;}
+.pallet.frontZone{background:#dcfce7;border-color:#86efac;}
+.pallet.backZone{background:#fce7f3;border-color:#f9a8d4;}
 .multiple8Pair{background:#93c5fd !important;}
 .centerStrong{background:#7c3aed !important;color:#fff;font-weight:bold;}
 .harvestFill{
@@ -353,25 +391,25 @@ button.thirdBtn{
       background: #f8fbff;
     }
     .bedTabs {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 6px;
-      margin-bottom: 0;
+      margin-bottom: 10px;
       padding: 0;
       position: relative;
-      z-index: 2;
+      z-index: 1;
     }
     .bedTabBtn {
       border: 1px solid #bfdbfe;
-      border-bottom: none;
       background: #eef4ff;
       color: #1d4ed8;
-      border-radius: 14px 14px 0 0;
+      border-radius: 14px;
       padding: 8px 10px 9px;
       font-size: 13px;
       font-weight: 700;
       cursor: pointer;
-      min-width: 62px;
+      min-width: 0;
+      width: 100%;
       display: inline-flex;
       flex-direction: column;
       align-items: center;
@@ -379,7 +417,7 @@ button.thirdBtn{
       gap: 2px;
       line-height: 1.1;
       position: relative;
-      top: 1px;
+      top: 0;
     }
     .bedTabs .bedTabBtn:first-child {
       margin-left: 0;
@@ -406,7 +444,7 @@ button.thirdBtn{
     .bedTabPanels {
       display: block;
       border: 1px solid #dbe4ff;
-      border-radius: 0 12px 12px 12px;
+      border-radius: 12px;
       background: #ffffff;
       padding: 12px;
       margin-top: 0;
@@ -472,10 +510,11 @@ button.thirdBtn{
 .inlineNote{font-size:12px;color:#475569;line-height:1.5;}
 .bedMiniGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .bedMiniGrid.single{grid-template-columns:1fr;}
-.checkLine{display:inline-flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap;line-height:1.4;flex-wrap:nowrap;}
-.checkLine input{flex:0 0 auto;}
-.checkLine span,.checkLine label{white-space:nowrap;}
+.checkLine{display:inline-flex;align-items:center;gap:2px;font-weight:600;line-height:1.45;flex-wrap:nowrap;max-width:100%;writing-mode:horizontal-tb;text-orientation:mixed;}
+.checkLine input[type="checkbox"]{width:auto;min-width:auto;max-width:none;flex:0 0 auto;margin:0 2px 0 0;padding:0;border:none;border-radius:0;background:transparent;appearance:auto;-webkit-appearance:checkbox;vertical-align:middle;}
+.checkLine .checkText{display:inline-block;margin:0;writing-mode:horizontal-tb;text-orientation:mixed;white-space:normal;word-break:keep-all;overflow-wrap:break-word;}
 .overrideToggle{margin:10px 0 8px;}
+.overrideToggle .checkLine{display:inline-flex;max-width:100%;}
 .fieldDisabled{opacity:0.42;pointer-events:none;filter:saturate(0.75);}
 .fieldDisabled input,.fieldDisabled select{background:#e5e7eb;color:#64748b;}
 
@@ -540,17 +579,17 @@ button.thirdBtn{
         <div id="defaultLossRateWrap">
         <input id="defaultLossRateInput" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら0%">
         </div>
-        <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedLossSettings" onchange="settingsDirty=true;refreshOverrideControls();refreshBedTabSummaries()"> ベッド別設定を有効にする</label></div>
+        <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedLossSettings" onchange="settingsDirty=true;refreshOverrideControls();refreshBedTabSummaries()"><span class="checkText">ベッド別設定を有効にする</span></label></div>
         <div class="accordionGroup" id="bedLossAccordion">
         <div class="bedInlineTitle">ベッド別に設定する</div>
         <div class="accordionContent">
           <div class="bedTabs" data-tab-group="loss">
-            <button type="button" class="bedTabBtn active" data-tab-summary-group="loss" data-tab-summary-bed="A" onclick="switchBedTab(this, 'loss', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_loss_A"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="B" onclick="switchBedTab(this, 'loss', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_loss_B"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="C" onclick="switchBedTab(this, 'loss', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_loss_C"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="D" onclick="switchBedTab(this, 'loss', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_loss_D"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="E" onclick="switchBedTab(this, 'loss', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_loss_E"></span></button>
             <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="F" onclick="switchBedTab(this, 'loss', 'F')"><span class="bedTabLabel">F</span><span class="bedTabValue" id="tabValue_loss_F"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="D" onclick="switchBedTab(this, 'loss', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_loss_D"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="B" onclick="switchBedTab(this, 'loss', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_loss_B"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="E" onclick="switchBedTab(this, 'loss', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_loss_E"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="loss" data-tab-summary-bed="C" onclick="switchBedTab(this, 'loss', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_loss_C"></span></button>
+            <button type="button" class="bedTabBtn active" data-tab-summary-group="loss" data-tab-summary-bed="A" onclick="switchBedTab(this, 'loss', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_loss_A"></span></button>
           </div>
           <div class="bedTabPanels">
             <div class="bedTabPanel active" data-tab-panel="loss-A"><div class="bedFieldItem"><label>Aベッド</label><input id="loss_A" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら全体ロス率"></div></div>
@@ -577,17 +616,17 @@ button.thirdBtn{
         <option value="12">12</option>
       </select>
       </div>
-      <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedYieldSettings" onchange="settingsDirty=true;refreshOverrideControls();refreshBedTabSummaries()"> ベッド別設定を有効にする</label></div>
+      <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedYieldSettings" onchange="settingsDirty=true;refreshOverrideControls();refreshBedTabSummaries()"><span class="checkText">ベッド別設定を有効にする</span></label></div>
       <div class="accordionGroup" id="bedYieldAccordion">
         <div class="bedInlineTitle">ベッド別に設定する（収穫する時1パレットあたり植えられている個数）</div>
         <div class="accordionContent">
           <div class="bedTabs" data-tab-group="yield">
-            <button type="button" class="bedTabBtn active" data-tab-summary-group="yield" data-tab-summary-bed="A" onclick="switchBedTab(this, 'yield', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_yield_A"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="B" onclick="switchBedTab(this, 'yield', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_yield_B"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="C" onclick="switchBedTab(this, 'yield', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_yield_C"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="D" onclick="switchBedTab(this, 'yield', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_yield_D"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="E" onclick="switchBedTab(this, 'yield', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_yield_E"></span></button>
             <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="F" onclick="switchBedTab(this, 'yield', 'F')"><span class="bedTabLabel">F</span><span class="bedTabValue" id="tabValue_yield_F"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="D" onclick="switchBedTab(this, 'yield', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_yield_D"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="B" onclick="switchBedTab(this, 'yield', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_yield_B"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="E" onclick="switchBedTab(this, 'yield', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_yield_E"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="yield" data-tab-summary-bed="C" onclick="switchBedTab(this, 'yield', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_yield_C"></span></button>
+            <button type="button" class="bedTabBtn active" data-tab-summary-group="yield" data-tab-summary-bed="A" onclick="switchBedTab(this, 'yield', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_yield_A"></span></button>
           </div>
           <div class="bedTabPanels">
             <div class="bedTabPanel active" data-tab-panel="yield-A">
@@ -692,17 +731,17 @@ button.thirdBtn{
         <option value="12">12</option>
       </select>
       </div>
-      <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedPlantSettings" onchange="settingsDirty=true;refreshOverrideControls();refreshBedTabSummaries()"> ベッド別設定を有効にする</label></div>
+      <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedPlantSettings" onchange="settingsDirty=true;refreshOverrideControls();refreshBedTabSummaries()"><span class="checkText">ベッド別設定を有効にする</span></label></div>
       <div class="accordionGroup" id="bedPlantAccordion">
         <div class="bedInlineTitle">ベッド別に設定する（収穫後に植える苗の1パレットあたり個数）</div>
         <div class="accordionContent">
           <div class="bedTabs" data-tab-group="plant">
-            <button type="button" class="bedTabBtn active" data-tab-summary-group="plant" data-tab-summary-bed="A" onclick="switchBedTab(this, 'plant', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_plant_A"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="B" onclick="switchBedTab(this, 'plant', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_plant_B"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="C" onclick="switchBedTab(this, 'plant', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_plant_C"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="D" onclick="switchBedTab(this, 'plant', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_plant_D"></span></button>
-            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="E" onclick="switchBedTab(this, 'plant', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_plant_E"></span></button>
             <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="F" onclick="switchBedTab(this, 'plant', 'F')"><span class="bedTabLabel">F</span><span class="bedTabValue" id="tabValue_plant_F"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="D" onclick="switchBedTab(this, 'plant', 'D')"><span class="bedTabLabel">D</span><span class="bedTabValue" id="tabValue_plant_D"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="B" onclick="switchBedTab(this, 'plant', 'B')"><span class="bedTabLabel">B</span><span class="bedTabValue" id="tabValue_plant_B"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="E" onclick="switchBedTab(this, 'plant', 'E')"><span class="bedTabLabel">E</span><span class="bedTabValue" id="tabValue_plant_E"></span></button>
+            <button type="button" class="bedTabBtn" data-tab-summary-group="plant" data-tab-summary-bed="C" onclick="switchBedTab(this, 'plant', 'C')"><span class="bedTabLabel">C</span><span class="bedTabValue" id="tabValue_plant_C"></span></button>
+            <button type="button" class="bedTabBtn active" data-tab-summary-group="plant" data-tab-summary-bed="A" onclick="switchBedTab(this, 'plant', 'A')"><span class="bedTabLabel">A</span><span class="bedTabValue" id="tabValue_plant_A"></span></button>
           </div>
           <div class="bedTabPanels">
             <div class="bedTabPanel active" data-tab-panel="plant-A">
@@ -819,7 +858,6 @@ button.thirdBtn{
   <div id="recordTab" style="display:none;">
     <div class="card">
       <div class="sectionTitle">記録を保存</div>
-      <div class="smallText">現在の選択結果を使って記録します。保存したパレットは以後グレー表示となり選択できません。出荷ケース数は収穫選択タブの値を初期表示し、記録タブ側で変更しても収穫選択タブには反映されません。実際のロス率は、出荷ケース数と実際に収穫した場所から自動計算します。</div>
 
       <label>日付</label>
       <input id="recordDateInput" type="date">
@@ -1550,6 +1588,36 @@ function getHarvestPlantCountForPallet(bed, number){
   return Number(number) <= frontCount ? frontYield : backYield;
 }
 
+function getYieldSplitVisualInfo(bed){
+  const bedSettings = settings?.beds?.[bed] || {};
+  const useBedYield = !!settings?.useBedYieldSettings;
+  const useSplit = !!bedSettings.yieldUseFrontBack;
+  if(!useBedYield || !useSplit) return null;
+
+  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
+  const backCount = Math.max(0, PALLETS_PER_BED - frontCount);
+
+  return {
+    frontCount,
+    backCount,
+    hasFront: frontCount > 0,
+    hasBack: backCount > 0
+  };
+}
+
+function appendYieldSplitInfo(bedElement, splitInfo){
+  if(!bedElement || !splitInfo) return;
+  const info = document.createElement("div");
+  info.className = "bedZoneInfo";
+  info.innerHTML = `
+    <div class="bedZoneLegend">
+      <span class="bedZoneChip front">手前 ${splitInfo.frontCount}枚</span>
+      <span class="bedZoneChip back">奥 ${splitInfo.backCount}枚</span>
+    </div>
+  `;
+  bedElement.appendChild(info);
+}
+
 function getAppliedLossRateForBed(bed){
   if(!settings?.useBedLossSettings){
     return clampNumber(settings.defaultLossRate, 0, 100, 0);
@@ -1810,6 +1878,7 @@ function drawBeds(){
   bedMap.forEach(b => {
     const bed = document.createElement("div");
     bed.className = "bed";
+    const splitInfo = getYieldSplitVisualInfo(b);
 
     const title = document.createElement("div");
     let titleCls = "bedTitle";
@@ -1838,6 +1907,10 @@ function drawBeds(){
         let cls = "pallet";
 
         if(number % 2 === 0) cls += " palletEven";
+        if(splitInfo){
+          if(splitInfo.hasFront && number <= splitInfo.frontCount) cls += " frontZone";
+          if(splitInfo.hasBack && number > splitInfo.frontCount) cls += " backZone";
+        }
         if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
         if(number === 39 || number === 40) cls += " centerStrong";
         if(isFilled(currentBuilding, b, number)) cls += " harvestFill";
@@ -1859,6 +1932,7 @@ function drawBeds(){
     }
 
     bed.appendChild(grid);
+    appendYieldSplitInfo(bed, splitInfo);
     container.appendChild(bed);
   });
 }
@@ -1904,6 +1978,7 @@ function drawRecordBeds(){
   bedMap.forEach(b => {
     const bed = document.createElement("div");
     bed.className = "bed";
+    const splitInfo = getYieldSplitVisualInfo(b);
 
     const title = document.createElement("div");
     let titleCls = "bedTitle";
@@ -1924,6 +1999,10 @@ function drawRecordBeds(){
         let cls = "pallet";
 
         if(number % 2 === 0) cls += " palletEven";
+        if(splitInfo){
+          if(splitInfo.hasFront && number <= splitInfo.frontCount) cls += " frontZone";
+          if(splitInfo.hasBack && number > splitInfo.frontCount) cls += " backZone";
+        }
         if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
         if(number === 39 || number === 40) cls += " centerStrong";
         if(isFilled(currentBuilding, b, number)) cls += " harvestFill";
@@ -1945,6 +2024,7 @@ function drawRecordBeds(){
     }
 
     bed.appendChild(grid);
+    appendYieldSplitInfo(bed, splitInfo);
     container.appendChild(bed);
   });
 }
@@ -1960,13 +2040,34 @@ function syncRecordCasesFromMain(force = false){
   }
 }
 
+function getYieldCountForPallet(bed, number){
+  const bedSettings = settings?.beds?.[bed] || {};
+
+  if(!settings?.useBedYieldSettings){
+    return normalizeYield(settings?.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
+  }
+
+  const raw = bedSettings.yield;
+  const baseYield = normalizeYield(raw, settings.defaultYieldPerPallet);
+
+  if(!bedSettings.yieldUseFrontBack){
+    return baseYield;
+  }
+
+  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
+  const frontYield = normalizeYield(bedSettings.yieldFront, baseYield);
+  const backYield = normalizeYield(bedSettings.yieldBack, baseYield);
+
+  return Number(number) <= frontCount ? frontYield : backYield;
+}
+
 function getActualLossRateFromSelectedPallets(cases){
   if(!harvestFillKeys.length || cases <= 0) return "";
 
   let plantedTotal = 0;
   harvestFillKeys.forEach(key => {
     const p = parsePalletKey(key);
-    plantedTotal += getPlantingCountForPallet(p.bed, p.number);
+    plantedTotal += getYieldCountForPallet(p.bed, p.number);
   });
 
   if(plantedTotal <= 0) return "";
