@@ -1115,6 +1115,13 @@ button.thirdBtn{
       <div class="sectionTitle">記録一覧</div>
       <div id="recordList" class="smallText">まだ記録がありません。</div>
       <div class="externalSaveTools">
+        <label>Googleスプレッドシート連携URL</label>
+        <input id="googleSheetUrlInput" type="url" placeholder="Apps ScriptのWebアプリURL">
+        <label>連携トークン（任意）</label>
+        <input id="googleSheetTokenInput" type="text" placeholder="Apps Script側と同じ合言葉">
+        <button class="actionBtn thirdBtn" onclick="saveGoogleSheetConfig()">Google連携設定を保存</button>
+        <button class="actionBtn secondaryBtn" onclick="sendLatestRecordToGoogleSheet()">最新記録をスプレッドシートへ再送信</button>
+        <div class="smallText">記録保存時に、同じ内容をGoogleスプレッドシートへ送信します。URLが未設定の場合は、これまで通りこの端末だけに保存します。</div>
         <button class="actionBtn secondaryBtn" onclick="exportRecordsToFile()">記録を外部保存(JSON)</button>
         <button class="actionBtn secondaryBtn" onclick="triggerImportRecords()">外部保存した記録を読み込む</button>
         <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
@@ -1149,6 +1156,8 @@ button.thirdBtn{
 const SETTINGS_KEY = "harvestForecastSettings_v16";
 const RECORDS_KEY = "harvestForecastRecords_v9";
 const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
+const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
+const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const CASE_SIZE = 12;
 const RECORDED_LOOKBACK_DAYS = 7;
 const MIN_BUILDING = 2;
@@ -1541,6 +1550,106 @@ function loadRecords(){
 
 function saveRecordsToStorage(){
   localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+}
+
+function loadGoogleSheetConfig(){
+  try{
+    const raw = localStorage.getItem(GOOGLE_SHEET_CONFIG_KEY);
+    if(!raw) return { url: "", token: "" };
+    const parsed = JSON.parse(raw);
+    return {
+      url: String(parsed.url || "").trim(),
+      token: String(parsed.token || "").trim()
+    };
+  }catch(e){
+    return { url: "", token: "" };
+  }
+}
+
+function saveGoogleSheetConfigToStorage(config){
+  localStorage.setItem(GOOGLE_SHEET_CONFIG_KEY, JSON.stringify({
+    url: String(config?.url || "").trim(),
+    token: String(config?.token || "").trim()
+  }));
+}
+
+function populateGoogleSheetConfigForm(){
+  const config = loadGoogleSheetConfig();
+  const urlInput = document.getElementById("googleSheetUrlInput");
+  const tokenInput = document.getElementById("googleSheetTokenInput");
+  if(urlInput) urlInput.value = config.url;
+  if(tokenInput) tokenInput.value = config.token;
+}
+
+function readGoogleSheetConfigForm(){
+  return {
+    url: String(document.getElementById("googleSheetUrlInput")?.value || "").trim(),
+    token: String(document.getElementById("googleSheetTokenInput")?.value || "").trim()
+  };
+}
+
+function saveGoogleSheetConfig(){
+  const config = readGoogleSheetConfigForm();
+  saveGoogleSheetConfigToStorage(config);
+  showToast(config.url ? "Google連携設定を保存しました" : "Google連携URLを空にしました");
+}
+
+function buildGoogleSheetRecordPayload(record, config){
+  return {
+    app: "収穫シミュ",
+    type: "harvest-record",
+    version: 1,
+    token: config.token || "",
+    record: {
+      id: record.id,
+      date: record.date,
+      cases: record.cases,
+      palletSummary: record.palletSummary,
+      memo: record.memo || "",
+      actualLoss: record.actualLoss,
+      palletKeys: Array.isArray(record.palletKeys) ? record.palletKeys : []
+    }
+  };
+}
+
+async function sendRecordToGoogleSheet(record, options = {}){
+  const showNotice = !!options.showNotice;
+  const config = loadGoogleSheetConfig();
+
+  if(!config.url){
+    if(showNotice) showToast("Google連携URLを設定してください");
+    return false;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
+
+  try{
+    await fetch(config.url, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(buildGoogleSheetRecordPayload(record, config)),
+      signal: controller.signal
+    });
+    if(showNotice) showToast("スプレッドシートへ送信しました");
+    return true;
+  }catch(e){
+    if(showNotice) showToast("スプレッドシート送信に失敗しました");
+    return false;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+function sendLatestRecordToGoogleSheet(){
+  if(!records.length){
+    showToast("送信する記録がありません");
+    return;
+  }
+  sendRecordToGoogleSheet(records[0], { showNotice: true });
 }
 
 function populateSettingsForm(){
@@ -3078,7 +3187,7 @@ function saveRecord(){
     return;
   }
 
-  records.unshift({
+  const record = {
     id: Date.now(),
     date,
     cases,
@@ -3086,9 +3195,12 @@ function saveRecord(){
     memo,
     actualLoss,
     palletKeys: [...harvestFillKeys]
-  });
+  };
+
+  records.unshift(record);
 
   saveRecordsToStorage();
+  sendRecordToGoogleSheet(record);
   renderRecordList();
   updateBuildingLastHarvestInfo();
   clearHarvestPrediction();
@@ -3309,6 +3421,7 @@ function importRecordsFromFile(file){
 
 window.onload = () => {
   populateSettingsForm();
+  populateGoogleSheetConfigForm();
   installSettingsDirtyWatchers();
   installNumberInputAutoSelect();
 
