@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>収穫＆苗ナビ</title>
+<title>収穫シミュ</title>
 <style>
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   margin:0;
-  background:#eef2f3;
+  background:#f0f7f2;
   color:#111827;
 }
 header{
@@ -50,15 +50,22 @@ header{
 }
 .card{
   background:#fff;
-  border-radius:12px;
+  border-radius:10px;
   padding:12px;
   margin-bottom:10px;
-  box-shadow:0 2px 6px rgba(0,0,0,0.08);
+  box-shadow:0 1px 4px rgba(0,0,0,0.06);
 }
 .tabLinkedCard{
   border:1px solid #cbd5e1;
   border-top-left-radius:0;
-  border-top-right-radius:12px;
+  border-top-right-radius:0;
+  box-shadow:0 2px 6px rgba(0,0,0,0.06);
+  margin-top:-1px;
+}
+#recordTab > .card:first-child{
+  border:1px solid #cbd5e1;
+  border-top-left-radius:0;
+  border-top-right-radius:0;
   box-shadow:0 2px 6px rgba(0,0,0,0.06);
   margin-top:-1px;
 }
@@ -67,10 +74,32 @@ header{
   font-weight:bold;
   margin-bottom:8px;
 }
+summary.sectionTitle{
+  cursor:pointer;
+  list-style:none;
+}
+summary.sectionTitle::-webkit-details-marker{
+  display:none;
+}
+summary.sectionTitle::after{
+  content:"▼";
+  float:right;
+  font-size:12px;
+  color:#64748b;
+}
+details:not([open]) summary.sectionTitle{
+  margin-bottom:0;
+}
+details:not([open]) summary.sectionTitle::after{
+  content:"▶";
+}
 .smallText{
   font-size:13px;
   color:#6b7280;
   line-height:1.6;
+}
+.hiddenRecordField{
+  display:none;
 }
 label{
   display:block;
@@ -86,6 +115,19 @@ input:not([type="checkbox"]), select, textarea{
   padding:11px 12px;
   font-size:16px;
   background:#fff;
+}
+#recordDateInput{
+  height:44px;
+  min-height:44px;
+  padding:0 12px;
+  line-height:44px;
+  appearance:none;
+  -webkit-appearance:none;
+}
+#recordDateInput::-webkit-date-and-time-value{
+  min-height:44px;
+  line-height:44px;
+  text-align:left;
 }
 input::placeholder, textarea::placeholder{
   color:#9ca3af;
@@ -118,6 +160,61 @@ button.thirdBtn{
   gap:6px;
   margin:0 0 10px 0;
 }
+.buildingLastHarvest{
+  margin:-4px 0 10px;
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  flex-wrap:wrap;
+  text-align:center;
+  font-size:15px;
+  font-weight:bold;
+  color:#166534;
+}
+.buildingInfoItem{
+  display:inline-block;
+}
+.casePlacementGrid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
+  margin-top:8px;
+}
+.casePlacementHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.casePlacementHeader .sectionTitle{
+  margin-bottom:0;
+}
+.casePlacementActions{
+  display:flex;
+  gap:6px;
+  flex:0 0 auto;
+}
+.casePlacementDefaultBtn{
+  border:none;
+  border-radius:8px;
+  padding:8px 10px;
+  background:#6b7280;
+  color:#fff;
+  font-size:13px;
+  font-weight:bold;
+  white-space:nowrap;
+}
+.casePlacementClearBtn{
+  background:#9ca3af;
+}
+.casePlacementItem label{
+  margin:0 0 4px;
+  text-align:center;
+}
+.casePlacementItem input{
+  padding:8px 6px;
+  text-align:center;
+}
 .buildingBtn{
   flex:1;
   padding:10px;
@@ -130,6 +227,12 @@ button.thirdBtn{
 .buildingBtn.active{
   background:#16a34a;
   color:#fff;
+  font-size:20px;
+  line-height:1;
+}
+.buildingSwitch .buildingBtn:not(.active){
+  font-size:20px;
+  line-height:1;
 }
 .bedWrap{
   display:grid;
@@ -253,6 +356,25 @@ button.thirdBtn{
   line-height:1.7;
   white-space:pre-line;
 }
+.instructionBox{
+  background:#f8fafc;
+  border:1px solid #cbd5e1;
+  color:#0f172a;
+  text-align:left;
+  line-height:1.8;
+}
+.remainingCaseBox{
+  background:#eff6ff;
+  color:#1d4ed8;
+  border:1px solid #bfdbfe;
+  border-radius:10px;
+  padding:10px;
+  margin-top:8px;
+  text-align:center;
+  font-weight:bold;
+  line-height:1.5;
+  white-space:pre-line;
+}
 .modeBadge{
   background:#eff6ff;
   color:#1d4ed8;
@@ -323,6 +445,70 @@ button.thirdBtn{
 .toast.show{
   opacity:1;
   transform:translateX(-50%) translateY(0);
+}
+.bedActionMenu{
+  position:fixed;
+  left:50%;
+  bottom:18px;
+  transform:translateX(-50%);
+  width:min(340px, calc(100vw - 24px));
+  background:#fff;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,0.18);
+  padding:12px;
+  z-index:9998;
+  display:none;
+}
+.bedActionMenu.show{
+  display:block;
+}
+.bedActionTitle{
+  font-weight:bold;
+  font-size:14px;
+  margin-bottom:8px;
+  color:#111827;
+}
+.bedActionMenu button{
+  width:100%;
+  border:none;
+  border-radius:8px;
+  padding:11px;
+  margin-top:7px;
+  font-size:15px;
+  font-weight:bold;
+  color:#fff;
+  background:#2563eb;
+}
+.bedActionMenu button.clearBedAction{
+  background:#6b7280;
+}
+.bedActionInput{
+  width:100%;
+  box-sizing:border-box;
+  border:1px solid #d1d5db;
+  border-radius:8px;
+  padding:11px 12px;
+  font-size:16px;
+  margin:4px 0 6px;
+}
+.bedActionHelp{
+  font-size:12px;
+  color:#64748b;
+  line-height:1.5;
+  margin-bottom:4px;
+}
+.bedActionSignRow{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.bedActionSignRow button{
+  margin-top:0;
+  background:#16a34a;
+}
+.bedActionSignRow button.signNegative{
+  background:#dc2626;
 }
 @media (max-width:480px){
   .pallet{font-size:7px;}
@@ -528,7 +714,7 @@ button.thirdBtn{
 </style>
 </head>
 <body>
-<header>収穫＆苗ナビ</header>
+<header>収穫シミュ</header>
 
 <div class="container">
   <div class="tabBar">
@@ -549,12 +735,12 @@ button.thirdBtn{
     </div>
 
     <div class="card">
-      <div class="sectionTitle">選択結果</div>
-      <div id="forecastSummary" class="resultBox">開始パレット: -
-選択枚数: 0
-終了パレット: -
-収穫後の残り収穫可能ケース: 0
-必要な苗の枚数: 0枚</div>
+      <div class="sectionTitle">指示内容</div>
+      <div id="instructionSummary" class="resultBox instructionBox">苗: 0枚
+出荷ケース数: 0
+収穫場所: -
+残すケース:
+残すケースなし</div>
     </div>
 
     <div class="buildingSwitch">
@@ -562,8 +748,44 @@ button.thirdBtn{
       <button id="currentBuildingBtn" class="buildingBtn active">2号棟</button>
       <button class="buildingBtn" onclick="nextBuilding()">→</button>
     </div>
+    <div class="buildingLastHarvest">
+      <span id="buildingLastHarvestInfo" class="buildingInfoItem">前回記録なし</span>
+      <span id="remainingCasesSummary" class="buildingInfoItem">残り収穫可能ケース: 0</span>
+    </div>
+
+    <div class="card">
+      <div class="casePlacementHeader">
+        <div class="sectionTitle">収穫ケース配置 <span id="casePlacementBuildingLabel">（2号棟）</span></div>
+        <div class="casePlacementActions">
+          <button type="button" class="casePlacementDefaultBtn" onclick="setDefaultCasePlacement()">基本配置</button>
+          <button type="button" class="casePlacementDefaultBtn casePlacementClearBtn" onclick="clearCasePlacement()">クリア</button>
+        </div>
+      </div>
+      <div class="casePlacementGrid">
+        <div class="casePlacementItem">
+          <label>前</label>
+          <input id="frontCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
+        </div>
+        <div class="casePlacementItem">
+          <label>真ん中</label>
+          <input id="middleCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
+        </div>
+        <div class="casePlacementItem">
+          <label>後ろ</label>
+          <input id="backCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
+        </div>
+      </div>
+
+    </div>
 
     <div id="beds" class="bedWrap"></div>
+
+    <details class="card">
+      <summary class="sectionTitle">選択結果</summary>
+      <div id="forecastSummary" class="resultBox">開始パレット: -
+選択枚数: 0
+終了パレット: -</div>
+    </details>
   </div>
 
   <div id="settingsTab" style="display:none;">
@@ -868,8 +1090,8 @@ button.thirdBtn{
       <label>実際のロス率（%）</label>
       <input id="recordActualLossInput" type="text" readonly placeholder="実際に収穫した場所から自動計算">
 
-      <label>実際に収穫したパレット番号（自動まとめ表示）</label>
-      <textarea id="recordPalletSummaryInput" readonly placeholder="選択結果をここへ反映できます"></textarea>
+      <label class="hiddenRecordField">実際に収穫したパレット番号（自動まとめ表示）</label>
+      <textarea id="recordPalletSummaryInput" class="hiddenRecordField" readonly placeholder="選択結果をここへ反映できます"></textarea>
 
       <label>メモ</label>
       <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
@@ -884,6 +1106,7 @@ button.thirdBtn{
         <button id="recordCurrentBuildingBtn" class="buildingBtn active">2号棟</button>
         <button class="buildingBtn" onclick="nextBuilding()">→</button>
       </div>
+      <div id="recordBuildingLastHarvestInfo" class="buildingLastHarvest">前回記録なし</div>
 
       <div id="recordBeds" class="recordBedWrap"></div>
     </div>
@@ -902,6 +1125,25 @@ button.thirdBtn{
 </div>
 
 <div id="toast" class="toast">保存しました</div>
+<div id="bedActionMenu" class="bedActionMenu">
+  <div id="bedActionTitle" class="bedActionTitle">ベッド操作</div>
+  <button type="button" onclick="selectBedToNeed('front')">必要数まで前から選択</button>
+  <button type="button" onclick="selectBedToNeed('back')">必要数まで後ろから選択</button>
+  <button type="button" class="clearBedAction" onclick="clearSelectedBedFromMenu()">このベッドを全解除</button>
+  <button type="button" class="clearBedAction" onclick="hideBedActionMenu()">キャンセル</button>
+</div>
+<div id="recordBedActionMenu" class="bedActionMenu">
+  <div id="recordBedActionTitle" class="bedActionTitle">実際に収穫した枚数を調整</div>
+  <input id="recordBedCountInput" class="bedActionInput" type="text" inputmode="numeric" pattern="-?[0-9]*" placeholder="例: 5 または -5">
+  <div class="bedActionSignRow">
+    <button type="button" onclick="setRecordBedCountSign(1)">追加 +</button>
+    <button type="button" class="signNegative" onclick="setRecordBedCountSign(-1)">解除 -</button>
+  </div>
+  <div class="bedActionHelp">正の数は追加、マイナスは解除します。</div>
+  <button type="button" onclick="applyRecordBedCount('front')">前から反映</button>
+  <button type="button" onclick="applyRecordBedCount('back')">後ろから反映</button>
+  <button type="button" class="clearBedAction" onclick="hideRecordBedActionMenu()">キャンセル</button>
+</div>
 
 <script>
 const SETTINGS_KEY = "harvestForecastSettings_v16";
@@ -917,6 +1159,7 @@ const bedOrder = ["A","B","C","D","E","F"];
 const ROWS = 39;
 const COLS = 2;
 const PALLETS_PER_BED = 78;
+const PALLETS_PER_PIN = 4;
 const ALLOWED_YIELDS = [20, 16, 12];
 const BED_LONG_PRESS_MS = 450;
 
@@ -946,9 +1189,12 @@ let harvestSummary = null;
 let records = loadRecords();
 let bedLongPressTimer = null;
 let bedLongPressFired = false;
+let activeBedActionBed = null;
+let activeRecordBedActionBed = null;
 let recordCasesEdited = false;
 let recordBaseFillKeys = [];
 let settingsDirty = false;
+let casePlacementByBuilding = {};
 
 function deepClone(obj){
   return JSON.parse(JSON.stringify(obj));
@@ -995,11 +1241,13 @@ function showToast(message){
 
 
 function saveHarvestStateToStorage(){
+  syncCurrentCasePlacementFromInputs();
   const payload = {
     currentBuilding,
     harvestFillKeys,
     harvestSummary,
     casesInput: document.getElementById("casesInput")?.value || "",
+    casePlacementByBuilding,
     recordCasesInput: document.getElementById("recordCasesInput")?.value || "",
     recordPalletSummaryInput: document.getElementById("recordPalletSummaryInput")?.value || "",
     recordMemoInput: document.getElementById("recordMemoInput")?.value || "",
@@ -1019,6 +1267,10 @@ function loadHarvestStateFromStorage(){
       harvestFillKeys: Array.isArray(parsed.harvestFillKeys) ? parsed.harvestFillKeys.filter(v => typeof v === "string") : [],
       harvestSummary: parsed.harvestSummary && typeof parsed.harvestSummary === "object" ? parsed.harvestSummary : null,
       casesInput: parsed.casesInput ?? "",
+      casePlacementByBuilding: parsed.casePlacementByBuilding && typeof parsed.casePlacementByBuilding === "object" ? parsed.casePlacementByBuilding : null,
+      frontCaseInput: parsed.frontCaseInput ?? "",
+      middleCaseInput: parsed.middleCaseInput ?? "",
+      backCaseInput: parsed.backCaseInput ?? "",
       recordCasesInput: parsed.recordCasesInput ?? "",
       recordPalletSummaryInput: parsed.recordPalletSummaryInput ?? "",
       recordMemoInput: parsed.recordMemoInput ?? "",
@@ -1181,6 +1433,19 @@ function installSettingsDirtyWatchers(){
   });
 }
 
+function installNumberInputAutoSelect(){
+  document.querySelectorAll('input[type="number"]').forEach(input => {
+    if(input.dataset.autoSelectInstalled) return;
+    input.addEventListener("focus", () => {
+      setTimeout(() => input.select(), 0);
+    });
+    input.addEventListener("mouseup", event => {
+      event.preventDefault();
+    });
+    input.dataset.autoSelectInstalled = "1";
+  });
+}
+
 
 function captureRecordBaseSelection(){
   recordBaseFillKeys = [...harvestFillKeys];
@@ -1192,6 +1457,8 @@ function restoreRecordSelectionToBase(){
 }
 
 function switchTab(tabName){
+  hideBedActionMenu();
+  hideRecordBedActionMenu();
   const settingsVisible = document.getElementById("settingsTab").style.display !== "none";
 
   if(settingsVisible && tabName !== "settings" && settingsDirty){
@@ -1339,6 +1606,45 @@ function clampNumber(value, min, max, fallback){
   return Math.min(max, Math.max(min, n));
 }
 
+function normalizeCasePlacement(value){
+  return {
+    front: clampNumber(value?.front, 0, 999999, 0),
+    middle: clampNumber(value?.middle, 0, 999999, 0),
+    back: clampNumber(value?.back, 0, 999999, 0)
+  };
+}
+
+function getCasePlacementForBuilding(building){
+  const key = String(building);
+  if(!casePlacementByBuilding[key]){
+    casePlacementByBuilding[key] = { front: 0, middle: 0, back: 0 };
+  }
+  return normalizeCasePlacement(casePlacementByBuilding[key]);
+}
+
+function syncCurrentCasePlacementFromInputs(){
+  const frontInput = document.getElementById("frontCaseInput");
+  const middleInput = document.getElementById("middleCaseInput");
+  const backInput = document.getElementById("backCaseInput");
+  if(!frontInput || !middleInput || !backInput) return;
+
+  casePlacementByBuilding[String(currentBuilding)] = {
+    front: clampNumber(frontInput.value || 0, 0, 999999, 0),
+    middle: clampNumber(middleInput.value || 0, 0, 999999, 0),
+    back: clampNumber(backInput.value || 0, 0, 999999, 0)
+  };
+}
+
+function populateCasePlacementInputs(){
+  const placement = getCasePlacementForBuilding(currentBuilding);
+  const frontInput = document.getElementById("frontCaseInput");
+  const middleInput = document.getElementById("middleCaseInput");
+  const backInput = document.getElementById("backCaseInput");
+  if(frontInput) frontInput.value = placement.front;
+  if(middleInput) middleInput.value = placement.middle;
+  if(backInput) backInput.value = placement.back;
+}
+
 function saveSettings(){
   settings = readSettingsForm();
   saveSettingsToStorage();
@@ -1372,11 +1678,56 @@ function parsePalletKey(key){
 function updateBuildingLabel(){
   const mainBtn = document.getElementById("currentBuildingBtn");
   const recordBtn = document.getElementById("recordCurrentBuildingBtn");
+  const caseLabel = document.getElementById("casePlacementBuildingLabel");
   if(mainBtn) mainBtn.textContent = currentBuilding + "号棟";
   if(recordBtn) recordBtn.textContent = currentBuilding + "号棟";
+  if(caseLabel) caseLabel.textContent = "（" + currentBuilding + "号棟）";
+  populateCasePlacementInputs();
+  updateBuildingLastHarvestInfo();
+}
+
+function getLastHarvestStartDateForBuilding(building){
+  let latest = null;
+
+  records.forEach(record => {
+    if(!Array.isArray(record.palletKeys)) return;
+    const hasBuilding = record.palletKeys.some(key => {
+      const p = parsePalletKey(String(key || ""));
+      return p.building === building;
+    });
+    if(!hasBuilding) return;
+
+    const date = parseDateOnlyString(record.date);
+    if(!date) return;
+    if(!latest || date.getTime() > latest.getTime()){
+      latest = date;
+    }
+  });
+
+  return latest;
+}
+
+function updateBuildingLastHarvestInfo(){
+  const latest = getLastHarvestStartDateForBuilding(currentBuilding);
+  let text = "前回記録なし";
+
+  if(latest){
+    const today = startOfLocalDay(new Date());
+    const target = startOfLocalDay(latest);
+    const diffDays = Math.floor((today.getTime() - target.getTime()) / 86400000);
+    text = "前回から" + Math.max(0, diffDays) + "日";
+  }
+
+  const mainInfo = document.getElementById("buildingLastHarvestInfo");
+  const recordInfo = document.getElementById("recordBuildingLastHarvestInfo");
+  if(mainInfo) mainInfo.textContent = text;
+  if(recordInfo) recordInfo.textContent = text;
 }
 
 function nextBuilding(){
+  hideBedActionMenu();
+  hideRecordBedActionMenu();
+  syncCurrentCasePlacementFromInputs();
   currentBuilding++;
   if(currentBuilding > MAX_BUILDING) currentBuilding = MIN_BUILDING;
   updateBuildingLabel();
@@ -1386,6 +1737,9 @@ function nextBuilding(){
 }
 
 function prevBuilding(){
+  hideBedActionMenu();
+  hideRecordBedActionMenu();
+  syncCurrentCasePlacementFromInputs();
   currentBuilding--;
   if(currentBuilding < MIN_BUILDING) currentBuilding = MAX_BUILDING;
   updateBuildingLabel();
@@ -1538,12 +1892,210 @@ function addOrRemoveWholeBed(bed){
   showToast(currentBuilding + "号棟 " + bed + "ベッドを一括追加しました");
 }
 
+function showBedActionMenu(bed){
+  hideRecordBedActionMenu();
+  activeBedActionBed = bed;
+  const menu = document.getElementById("bedActionMenu");
+  const title = document.getElementById("bedActionTitle");
+  if(title) title.textContent = currentBuilding + "号棟 " + bed + "ベッドの操作";
+  if(menu) menu.classList.add("show");
+}
+
+function hideBedActionMenu(){
+  const menu = document.getElementById("bedActionMenu");
+  if(menu) menu.classList.remove("show");
+  activeBedActionBed = null;
+}
+
+function showRecordBedActionMenu(bed){
+  hideBedActionMenu();
+  activeRecordBedActionBed = bed;
+  const menu = document.getElementById("recordBedActionMenu");
+  const title = document.getElementById("recordBedActionTitle");
+  const input = document.getElementById("recordBedCountInput");
+  if(title) title.textContent = currentBuilding + "号棟 " + bed + "ベッドの収穫枚数調整";
+  if(input) input.value = "";
+  if(menu) menu.classList.add("show");
+  setTimeout(() => input?.focus(), 0);
+}
+
+function hideRecordBedActionMenu(){
+  const menu = document.getElementById("recordBedActionMenu");
+  if(menu) menu.classList.remove("show");
+  activeRecordBedActionBed = null;
+}
+
+function setRecordBedCountSign(sign){
+  const input = document.getElementById("recordBedCountInput");
+  if(!input) return;
+
+  const raw = String(input.value || "").trim();
+  const absValue = raw === "-" ? "" : String(Math.abs(Math.trunc(Number(raw) || 0)) || "");
+  input.value = sign < 0 ? "-" + absValue : absValue;
+  input.focus();
+}
+
+function applyRecordBedCount(direction){
+  const bed = activeRecordBedActionBed;
+  const rawCount = Number(document.getElementById("recordBedCountInput")?.value || 0);
+  hideRecordBedActionMenu();
+  if(!bed) return;
+  if(!Number.isFinite(rawCount) || rawCount === 0){
+    showToast("調整する枚数を入力してください");
+    return;
+  }
+
+  const count = Math.trunc(rawCount);
+  if(count === 0){
+    showToast("調整する枚数を入力してください");
+    return;
+  }
+
+  const numbers = [];
+  if(direction === "back"){
+    for(let number = PALLETS_PER_BED; number >= 1; number--) numbers.push(number);
+  }else{
+    for(let number = 1; number <= PALLETS_PER_BED; number++) numbers.push(number);
+  }
+
+  let changed = 0;
+  const targetCount = Math.abs(count);
+
+  if(count > 0){
+    for(const number of numbers){
+      if(changed >= targetCount) break;
+      if(isRecorded(currentBuilding, bed, number)) continue;
+
+      const key = getPalletKey(currentBuilding, bed, number);
+      if(harvestFillKeys.includes(key)) continue;
+
+      harvestFillKeys.push(key);
+      changed++;
+    }
+  }else{
+    for(const number of numbers){
+      if(changed >= targetCount) break;
+
+      const key = getPalletKey(currentBuilding, bed, number);
+      const fillIndex = harvestFillKeys.indexOf(key);
+      if(fillIndex < 0) continue;
+
+      harvestFillKeys.splice(fillIndex, 1);
+      changed++;
+    }
+  }
+
+  if(changed === 0){
+    showToast(count > 0 ? "追加できるパレットがありません" : "解除できる選択がありません");
+    return;
+  }
+
+  sortHarvestFillKeys();
+  refreshAfterHarvestSelectionChanged();
+  showToast(currentBuilding + "号棟 " + bed + "ベッドを" + (direction === "back" ? "後ろ" : "前") + "から" + changed + "枚" + (count > 0 ? "追加" : "解除") + "しました");
+}
+
+function clearSelectedRecordBedFromMenu(){
+  const bed = activeRecordBedActionBed;
+  hideRecordBedActionMenu();
+  if(!bed) return;
+
+  const beforeCount = harvestFillKeys.length;
+  harvestFillKeys = harvestFillKeys.filter(key => {
+    const p = parsePalletKey(key);
+    return !(p.building === currentBuilding && p.bed === bed);
+  });
+
+  if(harvestFillKeys.length === beforeCount){
+    showToast("このベッドに解除する選択がありません");
+    return;
+  }
+
+  refreshAfterHarvestSelectionChanged();
+  showToast(currentBuilding + "号棟 " + bed + "ベッドを全解除しました");
+}
+
+function selectBedToNeed(direction){
+  const bed = activeBedActionBed;
+  hideBedActionMenu();
+  if(!bed) return;
+
+  const needHeads = clampNumber(document.getElementById("casesInput").value || 0, 0, 999999, 0) * CASE_SIZE;
+  if(needHeads <= 0){
+    showToast("先に出荷ケースを入力してください");
+    return;
+  }
+
+  const originalKeys = [...harvestFillKeys];
+  harvestFillKeys = harvestFillKeys.filter(key => {
+    const p = parsePalletKey(key);
+    return !(p.building === currentBuilding && p.bed === bed);
+  });
+
+  if(getCurrentHarvestTotal() >= needHeads){
+    harvestFillKeys = originalKeys;
+    showToast("すでに必要個数に達しています");
+    return;
+  }
+
+  const numbers = [];
+  if(direction === "back"){
+    for(let number = PALLETS_PER_BED; number >= 1; number--) numbers.push(number);
+  }else{
+    for(let number = 1; number <= PALLETS_PER_BED; number++) numbers.push(number);
+  }
+
+  let added = 0;
+  for(const number of numbers){
+    if(isRecorded(currentBuilding, bed, number)) continue;
+
+    const key = getPalletKey(currentBuilding, bed, number);
+    if(harvestFillKeys.includes(key)) continue;
+
+    const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForBed(bed, number);
+    if(nextTotal > needHeads) break;
+
+    harvestFillKeys.push(key);
+    added++;
+  }
+
+  if(added === 0){
+    harvestFillKeys = originalKeys;
+    showToast("必要個数を超えるため追加できません");
+    return;
+  }
+
+  sortHarvestFillKeys();
+  refreshAfterHarvestSelectionChanged();
+  showToast(currentBuilding + "号棟 " + bed + "ベッドを" + (direction === "back" ? "後ろ" : "前") + "から選択しました");
+}
+
+function clearSelectedBedFromMenu(){
+  const bed = activeBedActionBed;
+  hideBedActionMenu();
+  if(!bed) return;
+
+  const beforeCount = harvestFillKeys.length;
+  harvestFillKeys = harvestFillKeys.filter(key => {
+    const p = parsePalletKey(key);
+    return !(p.building === currentBuilding && p.bed === bed);
+  });
+
+  if(harvestFillKeys.length === beforeCount){
+    showToast("このベッドに解除する選択がありません");
+    return;
+  }
+
+  refreshAfterHarvestSelectionChanged();
+  showToast(currentBuilding + "号棟 " + bed + "ベッドを全解除しました");
+}
+
 function handleBedTitlePressStart(bed){
   bedLongPressFired = false;
   clearTimeout(bedLongPressTimer);
   bedLongPressTimer = setTimeout(() => {
     bedLongPressFired = true;
-    addOrRemoveWholeBed(bed);
+    showBedActionMenu(bed);
   }, BED_LONG_PRESS_MS);
 }
 
@@ -1558,7 +2110,18 @@ function handleBedTitleClick(bed){
   }
 }
 
+function handleRecordBedTitlePressStart(bed){
+  bedLongPressFired = false;
+  clearTimeout(bedLongPressTimer);
+  bedLongPressTimer = setTimeout(() => {
+    bedLongPressFired = true;
+    showRecordBedActionMenu(bed);
+  }, BED_LONG_PRESS_MS);
+}
+
 function clearHarvestPrediction(){
+  hideBedActionMenu();
+  hideRecordBedActionMenu();
   harvestFillKeys = [];
   harvestSummary = null;
   drawBeds();
@@ -1679,6 +2242,39 @@ function findFirstAvailableInCurrentBuilding(){
   return null;
 }
 
+function getPreviousBuilding(building){
+  const index = BUILDINGS.indexOf(building);
+  if(index < 0) return null;
+  return BUILDINGS[(index - 1 + BUILDINGS.length) % BUILDINGS.length];
+}
+
+function getUnharvestedCountForBuilding(building){
+  const recordedSet = getRecordedPalletSet();
+  const selectedSet = new Set(harvestFillKeys || []);
+  let count = 0;
+
+  for(const bed of bedOrder){
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      const key = getPalletKey(building, bed, number);
+      if(recordedSet.has(key)) continue;
+      if(selectedSet.has(key)) continue;
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function alertIfPreviousBuildingHasLeftovers(){
+  const previousBuilding = getPreviousBuilding(currentBuilding);
+  if(!previousBuilding) return;
+
+  const unharvestedCount = getUnharvestedCountForBuilding(previousBuilding);
+  if(unharvestedCount <= 0) return;
+
+  alert(previousBuilding + "号棟に取り残しがあります。\n未収穫パレット: " + unharvestedCount + "枚");
+}
+
 function runHarvestPrediction(){
   const cases = clampNumber(document.getElementById("casesInput").value || 0, 0, 999999, 0);
   const needHeads = cases * CASE_SIZE;
@@ -1688,6 +2284,8 @@ function runHarvestPrediction(){
     showToast("出荷ケースを入力してください");
     return;
   }
+
+  alertIfPreviousBuildingHasLeftovers();
 
   const autoStartKey = findFirstAvailableInCurrentBuilding();
   if(!autoStartKey){
@@ -1841,7 +2439,263 @@ function getRequiredSpecialPalletCount(){
   return count;
 }
 
+function isContinuousFromFront(numbers){
+  return numbers.every((number, index) => number === index + 1);
+}
+
+function isContinuousFromBack(numbers){
+  const start = PALLETS_PER_BED - numbers.length + 1;
+  return numbers.every((number, index) => number === start + index);
+}
+
+function formatPinDirectionForPartialBed(numbers){
+  const selectedCount = numbers.length;
+  if(selectedCount <= 0) return "";
+
+  if(isContinuousFromFront(numbers)){
+    const remainingCount = PALLETS_PER_BED - selectedCount;
+    const takePins = Math.floor(selectedCount / PALLETS_PER_PIN);
+    const leavePins = Math.ceil(remainingCount / PALLETS_PER_PIN);
+
+    if(remainingCount > 0 && leavePins > 0 && (takePins <= 0 || leavePins < takePins)){
+      return "後ろ" + leavePins + "ピン残す";
+    }
+    if(takePins > 0) return "前" + takePins + "ピンとる";
+    return "前" + selectedCount + "枚とる";
+  }
+
+  if(isContinuousFromBack(numbers)){
+    const selectedCount = numbers.length;
+    const remainingCount = PALLETS_PER_BED - selectedCount;
+    const takePins = Math.floor(selectedCount / PALLETS_PER_PIN);
+    const leavePins = Math.ceil(remainingCount / PALLETS_PER_PIN);
+
+    if(remainingCount > 0 && leavePins > 0 && (takePins <= 0 || leavePins < takePins)){
+      return "前" + leavePins + "ピン残す";
+    }
+    if(takePins > 0) return "後ろ" + takePins + "ピンとる";
+    return "後ろ" + selectedCount + "枚とる";
+  }
+
+  return "個別選択";
+}
+
+function formatHarvestLocationInstruction(){
+  if(!harvestFillKeys.length) return "収穫場所: -";
+
+  const groups = {};
+  const recordedSet = getRecordedPalletSet();
+  harvestFillKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    if(!BUILDINGS.includes(p.building) || !bedOrder.includes(p.bed) || !Number.isFinite(p.number)) return;
+    const groupKey = p.building + "-" + p.bed;
+    if(!groups[groupKey]){
+      groups[groupKey] = { building: p.building, bed: p.bed, numbers: [] };
+    }
+    groups[groupKey].numbers.push(p.number);
+  });
+
+  const parts = [];
+  BUILDINGS.forEach(building => {
+    const fullBeds = [];
+    const partialParts = [];
+
+    bedOrder.forEach(bed => {
+      const group = groups[building + "-" + bed];
+      if(!group) return;
+
+      const numbers = [...new Set(group.numbers)].sort((a, b) => a - b);
+      const selectedSet = new Set(numbers);
+      let allAvailableSelected = false;
+      let hasAvailable = false;
+
+      for(let number = 1; number <= PALLETS_PER_BED; number++){
+        const key = getPalletKey(building, bed, number);
+        if(recordedSet.has(key)) continue;
+        hasAvailable = true;
+        if(!selectedSet.has(number)){
+          allAvailableSelected = false;
+          break;
+        }
+        allAvailableSelected = true;
+      }
+
+      if(numbers.length >= PALLETS_PER_BED || (hasAvailable && allAvailableSelected)){
+        fullBeds.push(bed);
+        return;
+      }
+
+      const direction = formatPinDirectionForPartialBed(numbers);
+      partialParts.push(bed + " " + direction);
+    });
+
+    const buildingParts = [];
+    if(fullBeds.length){
+      buildingParts.push(fullBeds.join(",") + "全部");
+    }
+    partialParts.forEach(part => buildingParts.push(part));
+    if(buildingParts.length){
+      parts.push(building + "号棟 " + buildingParts.join("、"));
+    }
+  });
+
+  return parts.length ? "収穫場所: " + parts.join("、") : "収穫場所: -";
+}
+
+function getCaseLocationForPallet(bed, number){
+  const isFrontSide = Number(number) <= Math.ceil(PALLETS_PER_BED / 2);
+  if(["A","C","E"].includes(bed)){
+    return isFrontSide ? "front" : "middle";
+  }
+  return Number(number) > PALLETS_PER_BED - 20 ? "back" : "middle";
+}
+
+function getCaseLocationLabel(location){
+  if(location === "front") return "前側";
+  if(location === "middle") return "真ん中";
+  return "後ろ";
+}
+
+function distributeCaseDemandByHarvestLocation(totalCases){
+  const buckets = [];
+
+  harvestFillKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    const location = getCaseLocationForPallet(p.bed, p.number);
+    let bucket = buckets.find(item => item.building === p.building && item.location === location);
+    if(!bucket){
+      bucket = { building: p.building, location, heads: 0 };
+      buckets.push(bucket);
+    }
+    bucket.heads += getPredictedHarvestForBed(p.bed, p.number);
+  });
+
+  const demandByBuilding = {};
+  const totalHeads = buckets.reduce((sum, bucket) => sum + bucket.heads, 0);
+  if(totalCases <= 0 || totalHeads <= 0) return demandByBuilding;
+
+  const remainders = buckets.map(bucket => {
+    const raw = (bucket.heads / totalHeads) * totalCases;
+    const buildingKey = String(bucket.building);
+    if(!demandByBuilding[buildingKey]){
+      demandByBuilding[buildingKey] = { front: 0, middle: 0, back: 0 };
+    }
+    demandByBuilding[buildingKey][bucket.location] = Math.floor(raw);
+    return {
+      building: bucket.building,
+      location: bucket.location,
+      remainder: raw - Math.floor(raw)
+    };
+  }).sort((a, b) => b.remainder - a.remainder);
+
+  let assigned = Object.values(demandByBuilding).reduce((total, demand) => {
+    return total + demand.front + demand.middle + demand.back;
+  }, 0);
+  let index = 0;
+  while(assigned < totalCases){
+    const target = remainders[index % remainders.length];
+    demandByBuilding[String(target.building)][target.location]++;
+    assigned++;
+    index++;
+  }
+
+  return demandByBuilding;
+}
+
+function consumeCasesFromPlacement(available, demand){
+  const remaining = { ...available };
+  let shortage = 0;
+  const fallbackOrder = {
+    front: ["front", "middle", "back"],
+    middle: ["middle", "front", "back"],
+    back: ["back", "middle", "front"]
+  };
+
+  ["front", "middle", "back"].forEach(primary => {
+    let need = demand[primary];
+    fallbackOrder[primary].forEach(location => {
+      if(need <= 0) return;
+      const used = Math.min(remaining[location], need);
+      remaining[location] -= used;
+      need -= used;
+    });
+    shortage += need;
+  });
+
+  return { remaining, shortage };
+}
+
+function getCasePlacementSummaryText(){
+  const totalCases = clampNumber(document.getElementById("casesInput")?.value || 0, 0, 999999, 0);
+  syncCurrentCasePlacementFromInputs();
+  const demandByBuilding = distributeCaseDemandByHarvestLocation(totalCases);
+  const remainingLines = [];
+  let totalShortage = 0;
+
+  BUILDINGS.forEach(building => {
+    const demand = demandByBuilding[String(building)] || { front: 0, middle: 0, back: 0 };
+    const placement = getCasePlacementForBuilding(building);
+    const hasDemand = demand.front > 0 || demand.middle > 0 || demand.back > 0;
+    const hasPlacement = placement.front > 0 || placement.middle > 0 || placement.back > 0;
+    if(!hasDemand && !hasPlacement) return;
+
+    const result = consumeCasesFromPlacement(placement, demand);
+    ["front", "middle", "back"].forEach(location => {
+      if(result.remaining[location] > 0){
+        remainingLines.push(building + "号棟 " + getCaseLocationLabel(location) + ": " + result.remaining[location] + "ケース");
+      }
+    });
+    totalShortage += result.shortage;
+  });
+
+  let text = remainingLines.length ? remainingLines.join("\n") : "残すケースなし";
+
+  if(totalShortage > 0){
+    text += "\n不足: " + totalShortage + "ケース";
+  }
+
+  return text;
+}
+
+function renderCasePlacementSummary(){
+  const box = document.getElementById("casePlacementSummary");
+  if(!box) return;
+  const text = getCasePlacementSummaryText();
+  box.textContent = text;
+}
+
+function setDefaultCasePlacement(){
+  const front = document.getElementById("frontCaseInput");
+  const middle = document.getElementById("middleCaseInput");
+  const back = document.getElementById("backCaseInput");
+  if(front) front.value = 0;
+  if(middle) middle.value = 80;
+  if(back) back.value = 40;
+  syncCurrentCasePlacementFromInputs();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+}
+
+function clearCasePlacement(){
+  const front = document.getElementById("frontCaseInput");
+  const middle = document.getElementById("middleCaseInput");
+  const back = document.getElementById("backCaseInput");
+  if(front) front.value = 0;
+  if(middle) middle.value = 0;
+  if(back) back.value = 0;
+  syncCurrentCasePlacementFromInputs();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+}
+
+function handleCasePlacementInput(){
+  syncCurrentCasePlacementFromInputs();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+}
+
 function renderForecastSummary(){
+  const cases = clampNumber(document.getElementById("casesInput")?.value || 0, 0, 999999, 0);
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
@@ -1865,9 +2719,23 @@ function renderForecastSummary(){
   document.getElementById("forecastSummary").textContent =
     startLabel + "\n" +
     "選択枚数: " + filledCount + "\n" +
-    endLabel + "\n" +
-    "収穫後の残り収穫可能ケース: " + remainingCases + "\n" +
-    "必要な苗の枚数: " + requiredSpecialPalletCount + "枚";
+    endLabel;
+
+  const instructionBox = document.getElementById("instructionSummary");
+  if(instructionBox){
+    instructionBox.textContent =
+      "苗: " + requiredSpecialPalletCount + "枚\n" +
+      "出荷ケース数: " + cases + "\n" +
+      formatHarvestLocationInstruction() + "\n" +
+      "残すケース:\n" + getCasePlacementSummaryText();
+  }
+
+  const remainingBox = document.getElementById("remainingCasesSummary");
+  if(remainingBox){
+    remainingBox.textContent = "残り収穫可能ケース: " + remainingCases;
+  }
+
+  renderCasePlacementSummary();
 }
 
 function drawBeds(){
@@ -1985,6 +2853,13 @@ function drawRecordBeds(){
     if(isBedFullyFilledInCurrentBuilding(b)) titleCls += " bedFullySelected";
     title.className = titleCls;
     title.textContent = currentBuilding + "号棟 " + b;
+    title.onmousedown = () => handleRecordBedTitlePressStart(b);
+    title.onmouseup = handleBedTitlePressEnd;
+    title.onmouseleave = handleBedTitlePressEnd;
+    title.ontouchstart = (e) => { e.preventDefault(); handleRecordBedTitlePressStart(b); };
+    title.ontouchend = handleBedTitlePressEnd;
+    title.ontouchcancel = handleBedTitlePressEnd;
+    title.onclick = () => handleBedTitleClick(b);
     bed.appendChild(title);
 
     const grid = document.createElement("div");
@@ -2195,6 +3070,7 @@ function saveRecord(){
 
   saveRecordsToStorage();
   renderRecordList();
+  updateBuildingLastHarvestInfo();
   clearHarvestPrediction();
   captureRecordBaseSelection();
   clearRecordForm();
@@ -2207,6 +3083,7 @@ function deleteRecord(id){
   renderRecordList();
   drawBeds();
   renderForecastSummary();
+  updateBuildingLastHarvestInfo();
   showToast("記録を削除しました");
 }
 
@@ -2325,7 +3202,7 @@ function normalizeImportedRecord(record, index){
 
 function exportRecordsToFile(){
   const payload = {
-    app: "収穫＆苗ナビ",
+    app: "収穫シミュ",
     type: "record-backup",
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -2397,6 +3274,7 @@ function importRecordsFromFile(file){
       drawBeds();
       drawRecordBeds();
       renderForecastSummary();
+      updateBuildingLastHarvestInfo();
       showToast(`${imported.length}件の記録を読み込みました`);
     }catch(e){
       showToast("記録ファイルの読み込みに失敗しました");
@@ -2412,6 +3290,7 @@ function importRecordsFromFile(file){
 window.onload = () => {
   populateSettingsForm();
   installSettingsDirtyWatchers();
+  installNumberInputAutoSelect();
 
   const savedHarvestState = loadHarvestStateFromStorage();
   if(savedHarvestState){
@@ -2419,6 +3298,15 @@ window.onload = () => {
     harvestFillKeys = savedHarvestState.harvestFillKeys;
     harvestSummary = savedHarvestState.harvestSummary;
     recordCasesEdited = !!savedHarvestState.recordCasesEdited;
+    casePlacementByBuilding = savedHarvestState.casePlacementByBuilding || {};
+
+    if(!savedHarvestState.casePlacementByBuilding && (savedHarvestState.frontCaseInput !== "" || savedHarvestState.middleCaseInput !== "" || savedHarvestState.backCaseInput !== "")){
+      casePlacementByBuilding[String(currentBuilding)] = {
+        front: clampNumber(savedHarvestState.frontCaseInput || 0, 0, 999999, 0),
+        middle: clampNumber(savedHarvestState.middleCaseInput || 0, 0, 999999, 0),
+        back: clampNumber(savedHarvestState.backCaseInput || 0, 0, 999999, 0)
+      };
+    }
 
     const casesInput = document.getElementById("casesInput");
     if(casesInput) casesInput.value = savedHarvestState.casesInput;
