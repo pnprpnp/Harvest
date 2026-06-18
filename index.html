@@ -1686,8 +1686,8 @@ function updateBuildingLabel(){
   updateBuildingLastHarvestInfo();
 }
 
-function getLastHarvestStartDateForBuilding(building){
-  let latest = null;
+function getHarvestCycleStartsForBuilding(building){
+  const dateMap = {};
 
   records.forEach(record => {
     if(!Array.isArray(record.palletKeys)) return;
@@ -1699,23 +1699,43 @@ function getLastHarvestStartDateForBuilding(building){
 
     const date = parseDateOnlyString(record.date);
     if(!date) return;
-    if(!latest || date.getTime() > latest.getTime()){
-      latest = date;
+    dateMap[record.date] = date;
+  });
+
+  const dates = Object.values(dateMap).sort((a, b) => a.getTime() - b.getTime());
+  const cycleStarts = [];
+
+  dates.forEach((date, index) => {
+    if(index === 0){
+      cycleStarts.push(date);
+      return;
+    }
+
+    const previousDate = dates[index - 1];
+    const diffDays = Math.floor((startOfLocalDay(date).getTime() - startOfLocalDay(previousDate).getTime()) / 86400000);
+    if(diffDays > RECORDED_LOOKBACK_DAYS){
+      cycleStarts.push(date);
     }
   });
 
-  return latest;
+  return cycleStarts;
+}
+
+function getHarvestCycleIntervalDaysForBuilding(building){
+  const cycleStarts = getHarvestCycleStartsForBuilding(building);
+  if(cycleStarts.length < 2) return null;
+
+  const currentStart = startOfLocalDay(cycleStarts[cycleStarts.length - 1]);
+  const previousStart = startOfLocalDay(cycleStarts[cycleStarts.length - 2]);
+  return Math.max(0, Math.floor((currentStart.getTime() - previousStart.getTime()) / 86400000));
 }
 
 function updateBuildingLastHarvestInfo(){
-  const latest = getLastHarvestStartDateForBuilding(currentBuilding);
+  const intervalDays = getHarvestCycleIntervalDaysForBuilding(currentBuilding);
   let text = "前回記録なし";
 
-  if(latest){
-    const today = startOfLocalDay(new Date());
-    const target = startOfLocalDay(latest);
-    const diffDays = Math.floor((today.getTime() - target.getTime()) / 86400000);
-    text = "前回から" + Math.max(0, diffDays) + "日";
+  if(intervalDays !== null){
+    text = "前回から" + intervalDays + "日";
   }
 
   const mainInfo = document.getElementById("buildingLastHarvestInfo");
