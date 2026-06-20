@@ -916,7 +916,7 @@ button:disabled{
   padding:14px;
   font-size:13px;
   line-height:1.6;
-  box-shadow:0 0 0 9999px rgba(15,23,42,0.34), 0 22px 48px rgba(15,23,42,0.34);
+  box-shadow:0 0 0 9999px rgba(15,23,42,0.48), 0 22px 48px rgba(15,23,42,0.34);
   opacity:0;
   z-index:9999;
   pointer-events:none;
@@ -962,7 +962,7 @@ button:disabled{
   padding:14px;
   font-size:14px;
   line-height:1.6;
-  box-shadow:0 0 0 9999px rgba(15,23,42,0.34), 0 22px 48px rgba(15,23,42,0.34);
+  box-shadow:0 0 0 9999px rgba(15,23,42,0.48), 0 22px 48px rgba(15,23,42,0.34);
   opacity:0;
   z-index:10000;
   pointer-events:none;
@@ -1026,7 +1026,7 @@ button:disabled{
   border:2px solid #2563eb;
   border-radius:10px;
   background:#fff;
-  box-shadow:0 0 0 9999px rgba(15,23,42,0.34), 0 22px 48px rgba(15,23,42,0.34);
+  box-shadow:0 0 0 9999px rgba(15,23,42,0.48), 0 22px 48px rgba(15,23,42,0.34);
   opacity:0;
   pointer-events:none;
   z-index:10000;
@@ -1511,7 +1511,7 @@ button:disabled{
           <button type="button" class="googleSheetHelpBtn" aria-label="再送信の説明を表示" onclick="toggleGoogleSheetResendHelp()">?</button>
           <div id="googleSheetResendHelpPanel" class="googleSheetHelpPanel">
             <div class="googleSheetHelpTitle">スプレッドシート連携について</div>
-            <div>通信状況などの理由でスプレッドシートに送信できなかった可能性がある記録は、未送信としてこのボタンに残ります。内容を確認して、必要に応じて再送信してください。すでにスプレッドシート側にある記録を誤って送信しても、同じ記録が重複して追加されることはありません。</div>
+            <div>通信状況などの理由でスプレッドシートに送信できなかった可能性がある記録は、未送信としてこのボタンに残ります。内容を確認して、必要に応じて再送信してください。スプレッドシート側で重複判定キーを使うと、同じ内容の記録が重複して追加されにくくなります。</div>
             <button type="button" class="googleSheetHelpClose" onclick="hideGoogleSheetResendHelp()">閉じる</button>
           </div>
         </div>
@@ -1619,7 +1619,7 @@ let recordBaseFillKeys = [];
 let settingsDirty = false;
 let casePlacementByBuilding = {};
 let googleSheetConfirmResolver = null;
-let googleSheetSending = false;
+let googleSheetSendState = "idle";
 
 function deepClone(obj){
   return JSON.parse(JSON.stringify(obj));
@@ -2072,6 +2072,7 @@ function serializeRecordForStorage(record){
   if(record?.type === "partialHarvest"){
     return {
       id: record.id,
+      duplicateKey: getRecordDuplicateKey(record),
       type: "partialHarvest",
       date: record.date,
       cases: record.cases,
@@ -2082,6 +2083,7 @@ function serializeRecordForStorage(record){
 
   const payload = {
     id: record.id,
+    duplicateKey: getRecordDuplicateKey(record),
     type: "fullHarvest",
     date: record.date,
     cases: record.cases,
@@ -2101,6 +2103,7 @@ function normalizeStoredRecord(record){
     if(!targets.length) return null;
     return {
       id: record.id,
+      duplicateKey: String(record.duplicateKey || "").trim(),
       type: "partialHarvest",
       date: String(record.date || "").trim(),
       cases: clampNumber(record.cases, 0, 999999, 0),
@@ -2113,6 +2116,7 @@ function normalizeStoredRecord(record){
   const palletKeys = getPalletKeysFromRecord(record);
   return {
     ...record,
+    duplicateKey: String(record.duplicateKey || "").trim(),
     type: "fullHarvest",
     memo: record.memo || "",
     palletKeys
@@ -2211,6 +2215,22 @@ function setGoogleSheetSyncStatus(record, state){
   updateGoogleSheetResendButtonState();
 }
 
+function markGoogleSheetRecordsSynced(recordsToMark, state = "confirmed"){
+  if(!Array.isArray(recordsToMark) || !recordsToMark.length) return;
+  const status = loadGoogleSheetSyncStatus();
+  const updatedAt = new Date().toISOString();
+
+  recordsToMark.forEach(record => {
+    if(!record || !record.id) return;
+    status[String(record.id)] = {
+      state,
+      updatedAt
+    };
+  });
+
+  saveGoogleSheetSyncStatus(status);
+}
+
 function isGoogleSheetRecordUnsent(record, status){
   const state = status[String(record?.id)]?.state || "";
   return state !== "confirmed" && state !== "unconfirmed";
@@ -2228,7 +2248,15 @@ function updateGoogleSheetResendButtonState(){
   const btn = document.getElementById("googleSheetResendBtn");
   if(!btn) return;
 
-  if(googleSheetSending){
+  if(googleSheetSendState === "confirming"){
+    btn.disabled = true;
+    btn.classList.remove("resendNeedsAttention");
+    btn.textContent = "送信確認中...";
+    btn.title = "スプレッドシートへの送信確認中です";
+    return;
+  }
+
+  if(googleSheetSendState === "sending"){
     btn.disabled = true;
     btn.classList.remove("resendNeedsAttention");
     btn.textContent = "送信中...";
@@ -2249,6 +2277,8 @@ function updateGoogleSheetResendButtonState(){
 function askGoogleSheetSendConfirm(message){
   const panel = document.getElementById("googleSheetConfirmPanel");
   const messageBox = document.getElementById("googleSheetConfirmMessage");
+  const sendBtn = document.querySelector(".googleSheetConfirmSend");
+  const cancelBtn = document.querySelector(".googleSheetConfirmCancel");
 
   if(!panel || !messageBox){
     return Promise.resolve(confirm(message));
@@ -2259,6 +2289,8 @@ function askGoogleSheetSendConfirm(message){
   }
 
   messageBox.textContent = message;
+  if(sendBtn) sendBtn.disabled = false;
+  if(cancelBtn) cancelBtn.disabled = false;
   panel.classList.add("show");
 
   return new Promise(resolve => {
@@ -2268,7 +2300,11 @@ function askGoogleSheetSendConfirm(message){
 
 function resolveGoogleSheetConfirm(shouldSend){
   const panel = document.getElementById("googleSheetConfirmPanel");
+  const sendBtn = document.querySelector(".googleSheetConfirmSend");
+  const cancelBtn = document.querySelector(".googleSheetConfirmCancel");
   if(panel) panel.classList.remove("show");
+  if(sendBtn) sendBtn.disabled = true;
+  if(cancelBtn) cancelBtn.disabled = true;
 
   if(googleSheetConfirmResolver){
     googleSheetConfirmResolver(!!shouldSend);
@@ -2276,15 +2312,48 @@ function resolveGoogleSheetConfirm(shouldSend){
   }
 }
 
+function makeRecordContentKey(record){
+  if(record?.type === "partialHarvest"){
+    const targets = normalizePartialHarvestTargets(record.targets)
+      .map(target => `${target.building}-${target.bed}-${target.start}-${target.end}-${target.plantsPerPallet}`)
+      .sort()
+      .join("|");
+    return [
+      "partialHarvest",
+      record.date || "",
+      Number(record.cases || 0),
+      String(record.memo || ""),
+      targets
+    ].join("__");
+  }
+
+  const keys = Array.isArray(record?.palletKeys) ? [...record.palletKeys].sort().join("|") : "";
+  return [
+    "fullHarvest",
+    record?.date || "",
+    Number(record?.cases || 0),
+    String(record?.actualLoss || ""),
+    String(record?.memo || ""),
+    keys
+  ].join("__");
+}
+
+function getRecordDuplicateKey(record){
+  return String(record?.duplicateKey || "").trim() || makeRecordContentKey(record);
+}
+
 function buildGoogleSheetRecordPayload(record, config){
   const isPartial = record?.type === "partialHarvest";
+  const duplicateKey = getRecordDuplicateKey(record);
   return {
     app: "収穫シミュ",
     type: "harvest-record",
     version: 1,
     token: config.token || "",
+    duplicateKey,
     record: {
       id: record.id,
+      duplicateKey,
       type: isPartial ? "partialHarvest" : "fullHarvest",
       date: record.date,
       cases: record.cases,
@@ -2452,12 +2521,12 @@ async function sendRecordToGoogleSheet(record, options = {}){
 }
 
 async function sendPendingRecordsToGoogleSheet(){
-  if(googleSheetSending){
-    showToast("送信中です");
+  if(googleSheetSendState !== "idle"){
+    showToast(googleSheetSendState === "confirming" ? "送信確認中です" : "送信中です");
     return;
   }
 
-  googleSheetSending = true;
+  googleSheetSendState = "confirming";
   updateGoogleSheetResendButtonState();
 
   try{
@@ -2481,6 +2550,8 @@ async function sendPendingRecordsToGoogleSheet(){
         formatGoogleSheetSendRecordList(latestRecords)
       );
       if(!shouldSendLatest) return;
+      googleSheetSendState = "sending";
+      updateGoogleSheetResendButtonState();
       await sendRecordToGoogleSheet(records[0], { showNotice: true });
       return;
     }
@@ -2491,6 +2562,9 @@ async function sendPendingRecordsToGoogleSheet(){
       formatGoogleSheetSendRecordList(recordsToSend)
     );
     if(!shouldSend) return;
+
+    googleSheetSendState = "sending";
+    updateGoogleSheetResendButtonState();
 
     let successCount = 0;
     let failCount = 0;
@@ -2510,7 +2584,7 @@ async function sendPendingRecordsToGoogleSheet(){
       showToast("未送信の記録を送信しました");
     }
   }finally{
-    googleSheetSending = false;
+    googleSheetSendState = "idle";
     updateGoogleSheetResendButtonState();
   }
 }
@@ -2575,7 +2649,8 @@ async function importRecordsFromGoogleSheet(){
     importRecordsFromSource(
       sourceRecords.map(normalizeGoogleSheetRowRecord),
       "スプレッドシートから{count}件の記録を読み込みました",
-      "追加できる新しい記録はありませんでした"
+      "追加できる新しい記録はありませんでした",
+      { markGoogleSheetSynced: true }
     );
   }catch(e){
     showToast("スプレッドシートから読み込めませんでした");
@@ -3997,27 +4072,75 @@ function consumeCasesFromPlacement(available, demand){
   return { remaining, shortage };
 }
 
+function getNextBuilding(building){
+  const index = BUILDINGS.indexOf(building);
+  if(index < 0) return null;
+  return BUILDINGS[(index + 1) % BUILDINGS.length];
+}
+
+function hasSelectedPalletInBuilding(building){
+  return harvestFillKeys.some(key => {
+    const p = parsePalletKey(String(key || ""));
+    return p.building === building;
+  });
+}
+
+function isBuildingCompletedByCurrentSelection(building){
+  return hasSelectedPalletInBuilding(building) && getUnharvestedCountForBuilding(building) === 0;
+}
+
+function getCasePlacementProcessingOrder(){
+  const startPallet = harvestSummary?.start || (harvestFillKeys.length ? harvestFillKeys[0] : "");
+  const firstSelected = startPallet ? parsePalletKey(startPallet) : null;
+  const startBuilding = BUILDINGS.includes(firstSelected?.building) ? firstSelected.building : currentBuilding;
+  const startIndex = Math.max(0, BUILDINGS.indexOf(startBuilding));
+  return [...BUILDINGS.slice(startIndex), ...BUILDINGS.slice(0, startIndex)];
+}
+
 function getCasePlacementSummaryText(){
   const totalCases = getHarvestCasePlan().regularCases;
   syncCurrentCasePlacementFromInputs();
   const demandByBuilding = distributeCaseDemandByHarvestLocation(totalCases);
-  const remainingLines = [];
+  const carriedCasesByBuilding = {};
+  const remainingByBuilding = {};
   let totalShortage = 0;
 
-  BUILDINGS.forEach(building => {
+  getCasePlacementProcessingOrder().forEach(building => {
     const demand = demandByBuilding[String(building)] || { front: 0, middle: 0, back: 0 };
     const placement = getCasePlacementForBuilding(building);
+    const available = {
+      ...placement,
+      front: placement.front + clampNumber(carriedCasesByBuilding[String(building)], 0, 999999, 0)
+    };
     const hasDemand = demand.front > 0 || demand.middle > 0 || demand.back > 0;
-    const hasPlacement = placement.front > 0 || placement.middle > 0 || placement.back > 0;
+    const hasPlacement = available.front > 0 || available.middle > 0 || available.back > 0;
     if(!hasDemand && !hasPlacement) return;
 
-    const result = consumeCasesFromPlacement(placement, demand);
+    const result = consumeCasesFromPlacement(available, demand);
+    let remaining = result.remaining;
+
+    if(isBuildingCompletedByCurrentSelection(building)){
+      const carryCases = remaining.front + remaining.middle + remaining.back;
+      const nextBuilding = getNextBuilding(building);
+      if(carryCases > 0 && nextBuilding){
+        carriedCasesByBuilding[String(nextBuilding)] = clampNumber(carriedCasesByBuilding[String(nextBuilding)], 0, 999999, 0) + carryCases;
+        remaining = { front: 0, middle: 0, back: 0 };
+      }
+    }
+
+    remainingByBuilding[String(building)] = remaining;
+    totalShortage += result.shortage;
+  });
+
+  const remainingLines = [];
+  BUILDINGS.forEach(building => {
+    const remaining = remainingByBuilding[String(building)];
+    if(!remaining) return;
     ["front", "middle", "back"].forEach(location => {
-      if(result.remaining[location] > 0){
-        remainingLines.push(building + "号棟 " + getCaseLocationLabel(location) + ": " + result.remaining[location] + "ケース");
+      if(remaining[location] > 0){
+        remainingLines.push(building + "号棟 " + getCaseLocationLabel(location) + ": " + remaining[location] + "ケース");
       }
     });
-    totalShortage += result.shortage;
   });
 
   let text = remainingLines.length ? remainingLines.join("\n") : "残すケースなし";
@@ -4465,6 +4588,7 @@ function saveRecord(){
     actualLoss,
     palletKeys: [...harvestFillKeys]
   };
+  record.duplicateKey = getRecordDuplicateKey(record);
 
   records.unshift(record);
 
@@ -4546,6 +4670,7 @@ function savePartialHarvestRecord(){
     targets,
     palletKeys: []
   };
+  record.duplicateKey = getRecordDuplicateKey(record);
 
   records.unshift(record);
   saveRecordsToStorage();
@@ -4652,29 +4777,7 @@ function escapeHtml(str){
 
 
 function makeRecordSignature(record){
-  if(record?.type === "partialHarvest"){
-    const targets = normalizePartialHarvestTargets(record.targets)
-      .map(target => `${target.building}-${target.bed}-${target.start}-${target.end}-${target.plantsPerPallet}`)
-      .join("|");
-    return [
-      "partialHarvest",
-      record.date || "",
-      Number(record.cases || 0),
-      String(record.memo || ""),
-      targets
-    ].join("__");
-  }
-
-  const keys = Array.isArray(record.palletKeys) ? [...record.palletKeys].sort().join("|") : "";
-  return [
-    "fullHarvest",
-    record.date || "",
-    Number(record.cases || 0),
-    String(record.actualLoss || ""),
-    String(record.palletSummary || ""),
-    String(record.memo || ""),
-    keys
-  ].join("__");
+  return getRecordDuplicateKey(record);
 }
 
 function normalizeImportedRecord(record, index){
@@ -4698,6 +4801,7 @@ function normalizeImportedRecord(record, index){
 
     return {
       id,
+      duplicateKey: String(record.duplicateKey || "").trim(),
       type: "partialHarvest",
       date,
       cases,
@@ -4722,6 +4826,7 @@ function normalizeImportedRecord(record, index){
 
   return {
     id,
+    duplicateKey: String(record.duplicateKey || "").trim(),
     type: "fullHarvest",
     date,
     cases,
@@ -4838,7 +4943,7 @@ function hideRecordImportMenu(){
   menu.classList.remove("show");
 }
 
-function importRecordsFromSource(sourceRecords, successMessage, emptyMessage){
+function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, options = {}){
   if(!Array.isArray(sourceRecords)){
     showToast("読み込める記録が見つかりませんでした");
     return false;
@@ -4862,6 +4967,9 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage){
 
   records = [...imported, ...records].sort((a, b) => Number(b.id) - Number(a.id));
   saveRecordsToStorage();
+  if(options.markGoogleSheetSynced){
+    markGoogleSheetRecordsSynced(imported, "confirmed");
+  }
   maybePromptRecordExport();
   renderRecordList();
   updateGoogleSheetResendButtonState();
