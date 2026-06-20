@@ -159,6 +159,10 @@ button.resendNeedsAttention{
   background:#f59e0b;
   color:#111827;
 }
+button:disabled{
+  opacity:0.55;
+  cursor:not-allowed;
+}
 .forecastControlRow{
   display:grid;
   grid-template-columns:minmax(0, 1.25fr) minmax(72px, 0.75fr) minmax(72px, 0.75fr);
@@ -877,6 +881,174 @@ button.resendNeedsAttention{
   flex-direction:column;
   gap:8px;
 }
+.googleSheetResendHelpWrap{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 44px;
+  gap:8px;
+  align-items:start;
+}
+.googleSheetResendHelpWrap .actionBtn{
+  margin-top:0;
+}
+.googleSheetHelpBtn{
+  width:44px;
+  height:44px;
+  border:none;
+  border-radius:10px;
+  background:#f3f4f6;
+  color:#4b5563;
+  font-size:20px;
+  font-weight:800;
+  line-height:1;
+}
+.googleSheetHelpPanel{
+  display:none;
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%) scale(0.96);
+  width:min(440px, calc(100vw - 24px));
+  box-sizing:border-box;
+  border:2px solid #6b7280;
+  border-radius:10px;
+  background:#fff;
+  color:#0f172a;
+  padding:14px;
+  font-size:13px;
+  line-height:1.6;
+  box-shadow:0 0 0 9999px rgba(15,23,42,0.34), 0 22px 48px rgba(15,23,42,0.34);
+  opacity:0;
+  z-index:9999;
+  pointer-events:none;
+  transition:all .22s ease;
+}
+.googleSheetHelpPanel.show{
+  display:block;
+  opacity:1;
+  transform:translate(-50%, -50%) scale(1);
+  pointer-events:auto;
+}
+.googleSheetHelpTitle{
+  font-size:15px;
+  font-weight:800;
+  color:#fff;
+  background:#4b5563;
+  margin:-14px -14px 12px;
+  padding:12px 14px;
+}
+.googleSheetHelpClose{
+  width:100%;
+  border:none;
+  border-radius:8px;
+  padding:10px;
+  margin-top:12px;
+  background:#4b5563;
+  color:#fff;
+  font-weight:bold;
+  font-size:14px;
+}
+.googleSheetConfirmPanel{
+  display:none;
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%) scale(0.96);
+  width:min(380px, calc(100vw - 24px));
+  box-sizing:border-box;
+  border:2px solid #2563eb;
+  border-radius:10px;
+  background:#fff;
+  color:#0f172a;
+  padding:14px;
+  font-size:14px;
+  line-height:1.6;
+  box-shadow:0 0 0 9999px rgba(15,23,42,0.34), 0 22px 48px rgba(15,23,42,0.34);
+  opacity:0;
+  z-index:10000;
+  pointer-events:none;
+  transition:all .22s ease;
+}
+.googleSheetConfirmPanel.show{
+  display:block;
+  opacity:1;
+  transform:translate(-50%, -50%) scale(1);
+  pointer-events:auto;
+}
+.googleSheetConfirmTitle{
+  font-size:15px;
+  font-weight:800;
+  color:#fff;
+  background:#2563eb;
+  margin:-14px -14px 12px;
+  padding:12px 14px;
+}
+.googleSheetConfirmMessage{
+  white-space:pre-line;
+  max-height:min(52vh, 420px);
+  overflow:auto;
+}
+.googleSheetConfirmActions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:14px;
+}
+.googleSheetConfirmActions button{
+  border:none;
+  border-radius:8px;
+  padding:11px;
+  color:#fff;
+  font-weight:bold;
+  font-size:14px;
+}
+.googleSheetConfirmCancel{
+  background:#6b7280;
+}
+.googleSheetConfirmSend{
+  background:#2563eb;
+}
+.recordImportChoice{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.recordImportMenu{
+  display:none;
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%) scale(0.96);
+  width:min(380px, calc(100vw - 24px));
+  box-sizing:border-box;
+  grid-template-columns:1fr;
+  gap:8px;
+  padding:14px;
+  border:2px solid #2563eb;
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 0 0 9999px rgba(15,23,42,0.34), 0 22px 48px rgba(15,23,42,0.34);
+  opacity:0;
+  pointer-events:none;
+  z-index:10000;
+  transition:all .22s ease;
+}
+.recordImportMenu.show{
+  display:grid;
+  opacity:1;
+  pointer-events:auto;
+  transform:translate(-50%, -50%) scale(1);
+}
+.recordImportTitle{
+  font-size:15px;
+  font-weight:800;
+  color:#fff;
+  background:#2563eb;
+  margin:-14px -14px 4px;
+  padding:12px 14px;
+}
+.recordImportMenu .actionBtn{
+  margin-top:0;
+}
 
 </style>
 </head>
@@ -1334,10 +1506,25 @@ button.resendNeedsAttention{
             <button class="actionBtn thirdBtn" onclick="saveGoogleSheetConfig()">Google連携設定を保存</button>
           </div>
         </details>
-        <button id="googleSheetResendBtn" class="actionBtn secondaryBtn" onclick="sendLatestRecordToGoogleSheet()">最新記録をスプレッドシートへ再送信</button>
-        <div class="smallText">記録保存時に、同じ内容をGoogleスプレッドシートへ送信します。URLが未設定の場合は、これまで通りこの端末だけに保存します。</div>
+        <div class="googleSheetResendHelpWrap">
+          <button id="googleSheetResendBtn" class="actionBtn secondaryBtn" onclick="sendPendingRecordsToGoogleSheet()">最新記録をスプレッドシートへ再送信</button>
+          <button type="button" class="googleSheetHelpBtn" aria-label="再送信の説明を表示" onclick="toggleGoogleSheetResendHelp()">?</button>
+          <div id="googleSheetResendHelpPanel" class="googleSheetHelpPanel">
+            <div class="googleSheetHelpTitle">スプレッドシート連携について</div>
+            <div>通信状況などの理由でスプレッドシートに送信できなかった可能性がある記録は、未送信としてこのボタンに残ります。内容を確認して、必要に応じて再送信してください。すでにスプレッドシート側にある記録を誤って送信しても、同じ記録が重複して追加されることはありません。</div>
+            <button type="button" class="googleSheetHelpClose" onclick="hideGoogleSheetResendHelp()">閉じる</button>
+          </div>
+        </div>
+        <div class="recordImportChoice">
+          <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" onclick="toggleRecordImportMenu()">記録を読み込む</button>
+          <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
+            <div id="recordImportTitle" class="recordImportTitle">記録を読み込む</div>
+            <button id="googleSheetImportBtn" class="actionBtn thirdBtn" onclick="hideRecordImportMenu(); importRecordsFromGoogleSheet()">スプレッドシートから読み込む</button>
+            <button class="actionBtn secondaryBtn" onclick="hideRecordImportMenu(); triggerImportRecords()">JSONファイルを読み込む</button>
+            <button class="actionBtn secondaryBtn" onclick="hideRecordImportMenu()">キャンセル</button>
+          </div>
+        </div>
         <button class="actionBtn secondaryBtn" onclick="exportRecordsToFile()">記録を外部保存(JSON)</button>
-        <button class="actionBtn secondaryBtn" onclick="triggerImportRecords()">外部保存した記録を読み込む</button>
         <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
         <div class="smallText">記録一覧をJSONファイルとして保存できます。読み込み時は、同じ内容の記録を重複追加しないように取り込みます。</div>
       </div>
@@ -1364,6 +1551,14 @@ button.resendNeedsAttention{
   <button type="button" onclick="applyRecordBedCount('front')">前から反映</button>
   <button type="button" onclick="applyRecordBedCount('back')">後ろから反映</button>
   <button type="button" class="clearBedAction" onclick="hideRecordBedActionMenu()">キャンセル</button>
+</div>
+<div id="googleSheetConfirmPanel" class="googleSheetConfirmPanel" role="dialog" aria-modal="true" aria-labelledby="googleSheetConfirmTitle">
+  <div id="googleSheetConfirmTitle" class="googleSheetConfirmTitle">スプレッドシートへ送信</div>
+  <div id="googleSheetConfirmMessage" class="googleSheetConfirmMessage"></div>
+  <div class="googleSheetConfirmActions">
+    <button type="button" class="googleSheetConfirmCancel" onclick="resolveGoogleSheetConfirm(false)">キャンセル</button>
+    <button type="button" class="googleSheetConfirmSend" onclick="resolveGoogleSheetConfirm(true)">送信する</button>
+  </div>
 </div>
 
 <script>
@@ -1423,6 +1618,8 @@ let recordCasesEdited = false;
 let recordBaseFillKeys = [];
 let settingsDirty = false;
 let casePlacementByBuilding = {};
+let googleSheetConfirmResolver = null;
+let googleSheetSending = false;
 
 function deepClone(obj){
   return JSON.parse(JSON.stringify(obj));
@@ -1687,6 +1884,9 @@ function restoreRecordSelectionToBase(){
 function switchTab(tabName){
   hideBedActionMenu();
   hideRecordBedActionMenu();
+  hideRecordImportMenu();
+  hideGoogleSheetResendHelp();
+  resolveGoogleSheetConfirm(false);
   const settingsVisible = document.getElementById("settingsTab").style.display !== "none";
 
   if(settingsVisible && tabName !== "settings" && settingsDirty){
@@ -2011,18 +2211,69 @@ function setGoogleSheetSyncStatus(record, state){
   updateGoogleSheetResendButtonState();
 }
 
+function isGoogleSheetRecordUnsent(record, status){
+  const state = status[String(record?.id)]?.state || "";
+  return state !== "confirmed" && state !== "unconfirmed";
+}
+
+function getGoogleSheetUnsentRecords(){
+  const config = loadGoogleSheetConfig();
+  if(!config.url) return [];
+
+  const status = loadGoogleSheetSyncStatus();
+  return records.filter(record => isGoogleSheetRecordUnsent(record, status));
+}
+
 function updateGoogleSheetResendButtonState(){
   const btn = document.getElementById("googleSheetResendBtn");
   if(!btn) return;
 
-  const latest = records[0];
-  const config = loadGoogleSheetConfig();
-  const status = loadGoogleSheetSyncStatus();
-  const latestStatus = latest ? status[String(latest.id)]?.state : "";
-  const needsAttention = !!latest && !!config.url && latestStatus !== "confirmed";
+  if(googleSheetSending){
+    btn.disabled = true;
+    btn.classList.remove("resendNeedsAttention");
+    btn.textContent = "送信中...";
+    btn.title = "スプレッドシートへ送信中です";
+    return;
+  }
 
+  const config = loadGoogleSheetConfig();
+  const unsentCount = config.url ? getGoogleSheetUnsentRecords().length : 0;
+  const needsAttention = unsentCount > 0;
+
+  btn.disabled = false;
   btn.classList.toggle("resendNeedsAttention", needsAttention);
-  btn.title = needsAttention ? "最新記録がスプレッドシート反映済みか確認できていません" : "";
+  btn.textContent = needsAttention ? "未送信の記録（" + unsentCount + "）" : "最新記録をスプレッドシートへ再送信";
+  btn.title = needsAttention ? unsentCount + "件の記録がスプレッドシート未送信です" : "";
+}
+
+function askGoogleSheetSendConfirm(message){
+  const panel = document.getElementById("googleSheetConfirmPanel");
+  const messageBox = document.getElementById("googleSheetConfirmMessage");
+
+  if(!panel || !messageBox){
+    return Promise.resolve(confirm(message));
+  }
+
+  if(googleSheetConfirmResolver){
+    resolveGoogleSheetConfirm(false);
+  }
+
+  messageBox.textContent = message;
+  panel.classList.add("show");
+
+  return new Promise(resolve => {
+    googleSheetConfirmResolver = resolve;
+  });
+}
+
+function resolveGoogleSheetConfirm(shouldSend){
+  const panel = document.getElementById("googleSheetConfirmPanel");
+  if(panel) panel.classList.remove("show");
+
+  if(googleSheetConfirmResolver){
+    googleSheetConfirmResolver(!!shouldSend);
+    googleSheetConfirmResolver = null;
+  }
 }
 
 function buildGoogleSheetRecordPayload(record, config){
@@ -2044,6 +2295,94 @@ function buildGoogleSheetRecordPayload(record, config){
       targets: isPartial ? normalizePartialHarvestTargets(record.targets) : []
     }
   };
+}
+
+function buildGoogleSheetImportPayload(config){
+  return {
+    app: "収穫シミュ",
+    type: "harvest-record-list",
+    version: 1,
+    action: "listRecords",
+    token: config.token || ""
+  };
+}
+
+function parseMaybeJson(value, fallback){
+  if(typeof value !== "string") return value ?? fallback;
+  const trimmed = value.trim();
+  if(!trimmed) return fallback;
+  try{
+    return JSON.parse(trimmed);
+  }catch(e){
+    return value;
+  }
+}
+
+function parseMaybeJsonList(value){
+  const parsed = parseMaybeJson(value, []);
+  if(Array.isArray(parsed)) return parsed;
+  if(typeof parsed === "string"){
+    return parsed
+      .split(/[\n,|]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function unwrapImportedRecord(record){
+  record = parseMaybeJson(record, record);
+  if(!record || typeof record !== "object") return record;
+
+  if(record.type === "harvest-record" && record.record && typeof record.record === "object"){
+    return record.record;
+  }
+
+  if(record.record && typeof record.record === "object" && (record.record.date || record.record.targets || record.record.palletKeys)){
+    return record.record;
+  }
+
+  return record;
+}
+
+function normalizeGoogleSheetRowRecord(row){
+  const record = unwrapImportedRecord(row);
+  if(!record || typeof record !== "object") return record;
+
+  return {
+    ...record,
+    palletKeys: parseMaybeJsonList(record.palletKeys),
+    palletRanges: parseMaybeJsonList(record.palletRanges),
+    targets: parseMaybeJson(record.targets, record.targets)
+  };
+}
+
+function formatGoogleSheetSendRecordLine(record, index){
+  const date = record?.date || "日付なし";
+  const cases = clampNumber(record?.cases, 0, 999999, 0);
+
+  if(record?.type === "partialHarvest"){
+    const targetText = String(formatPartialHarvestSummary(record.targets) || "")
+      .split("\n")[0] || "場所未設定";
+    return (index + 1) + ". " + date + " 先取り収穫 " + cases + "ケース / " + targetText;
+  }
+
+  const locationText = String(record?.palletSummary || "")
+    .split("\n")[0] || "場所未設定";
+  const lossText = record?.actualLoss ? " / ロス率" + record.actualLoss + "%" : "";
+  return (index + 1) + ". " + date + " 通常収穫 " + cases + "ケース" + lossText + " / " + locationText;
+}
+
+function formatGoogleSheetSendRecordList(recordsToSend){
+  const list = Array.isArray(recordsToSend) ? recordsToSend : [];
+  const displayLimit = 20;
+  const lines = list.slice(0, displayLimit).map(formatGoogleSheetSendRecordLine);
+
+  if(list.length > displayLimit){
+    lines.push("ほか " + (list.length - displayLimit) + "件");
+  }
+
+  return lines.join("\n");
 }
 
 async function sendRecordToGoogleSheet(record, options = {}){
@@ -2112,12 +2451,137 @@ async function sendRecordToGoogleSheet(record, options = {}){
   }
 }
 
-function sendLatestRecordToGoogleSheet(){
-  if(!records.length){
-    showToast("送信する記録がありません");
+async function sendPendingRecordsToGoogleSheet(){
+  if(googleSheetSending){
+    showToast("送信中です");
     return;
   }
-  sendRecordToGoogleSheet(records[0], { showNotice: true });
+
+  googleSheetSending = true;
+  updateGoogleSheetResendButtonState();
+
+  try{
+    if(!records.length){
+      showToast("送信する記録がありません");
+      return;
+    }
+
+    const config = loadGoogleSheetConfig();
+    if(!config.url){
+      showToast("Google連携URLを設定してください");
+      return;
+    }
+
+    const unsentRecords = getGoogleSheetUnsentRecords();
+
+    if(!unsentRecords.length){
+      const latestRecords = [records[0]];
+      const shouldSendLatest = await askGoogleSheetSendConfirm(
+        "以下の記録をスプレッドシートへ再送信しますか？\n\n" +
+        formatGoogleSheetSendRecordList(latestRecords)
+      );
+      if(!shouldSendLatest) return;
+      await sendRecordToGoogleSheet(records[0], { showNotice: true });
+      return;
+    }
+
+    const recordsToSend = [...unsentRecords].reverse();
+    const shouldSend = await askGoogleSheetSendConfirm(
+      "以下の未送信記録（" + recordsToSend.length + "件）をスプレッドシートへ送信しますか？\n\n" +
+      formatGoogleSheetSendRecordList(recordsToSend)
+    );
+    if(!shouldSend) return;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for(const record of recordsToSend){
+      const ok = await sendRecordToGoogleSheet(record, { showNotice: false });
+      if(ok){
+        successCount++;
+      }else{
+        failCount++;
+      }
+    }
+
+    if(failCount > 0){
+      showToast("送信完了: " + successCount + "件 / 失敗: " + failCount + "件");
+    }else{
+      showToast("未送信の記録を送信しました");
+    }
+  }finally{
+    googleSheetSending = false;
+    updateGoogleSheetResendButtonState();
+  }
+}
+
+function sendLatestRecordToGoogleSheet(){
+  sendPendingRecordsToGoogleSheet();
+}
+
+function extractRecordsFromGoogleSheetResponse(result){
+  if(Array.isArray(result)) return result;
+  if(!result || typeof result !== "object") return null;
+  if(Array.isArray(result.records)) return result.records;
+  if(Array.isArray(result.data)) return result.data;
+  if(Array.isArray(result.rows)) return result.rows;
+  if(result.record && typeof result.record === "object") return [result.record];
+  return null;
+}
+
+async function importRecordsFromGoogleSheet(){
+  const config = loadGoogleSheetConfig();
+
+  if(!config.url){
+    showToast("Google連携URLを設定してください");
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
+  const payload = JSON.stringify(buildGoogleSheetImportPayload(config));
+
+  try{
+    const response = await fetch(config.url, {
+      method: "POST",
+      mode: "cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: payload,
+      signal: controller.signal
+    });
+
+    const text = await response.text();
+    let result = {};
+    try{
+      result = text ? JSON.parse(text) : {};
+    }catch(e){
+      showToast("スプレッドシートの応答を読み込めません");
+      return;
+    }
+
+    if(result.ok === false){
+      showToast("読み込み失敗: " + (result.message || "原因不明"));
+      return;
+    }
+
+    const sourceRecords = extractRecordsFromGoogleSheetResponse(result);
+    if(!sourceRecords){
+      showToast("読み込める記録が見つかりませんでした");
+      return;
+    }
+
+    importRecordsFromSource(
+      sourceRecords.map(normalizeGoogleSheetRowRecord),
+      "スプレッドシートから{count}件の記録を読み込みました",
+      "追加できる新しい記録はありませんでした"
+    );
+  }catch(e){
+    showToast("スプレッドシートから読み込めませんでした");
+  }finally{
+    clearTimeout(timer);
+  }
 }
 
 function populateSettingsForm(){
@@ -4346,6 +4810,69 @@ function triggerImportRecords(){
   input.click();
 }
 
+function toggleGoogleSheetResendHelp(){
+  const panel = document.getElementById("googleSheetResendHelpPanel");
+  if(!panel) return;
+  hideRecordImportMenu();
+  clearTimeout(toggleGoogleSheetResendHelp._timer);
+  panel.classList.toggle("show");
+}
+
+function hideGoogleSheetResendHelp(){
+  const panel = document.getElementById("googleSheetResendHelpPanel");
+  if(!panel) return;
+  clearTimeout(toggleGoogleSheetResendHelp._timer);
+  panel.classList.remove("show");
+}
+
+function toggleRecordImportMenu(){
+  const menu = document.getElementById("recordImportMenu");
+  if(!menu) return;
+  hideGoogleSheetResendHelp();
+  menu.classList.toggle("show");
+}
+
+function hideRecordImportMenu(){
+  const menu = document.getElementById("recordImportMenu");
+  if(!menu) return;
+  menu.classList.remove("show");
+}
+
+function importRecordsFromSource(sourceRecords, successMessage, emptyMessage){
+  if(!Array.isArray(sourceRecords)){
+    showToast("読み込める記録が見つかりませんでした");
+    return false;
+  }
+
+  const existing = new Set(records.map(makeRecordSignature));
+  const imported = [];
+  sourceRecords.forEach((record, index) => {
+    const normalized = normalizeImportedRecord(record, index);
+    if(!normalized) return;
+    const signature = makeRecordSignature(normalized);
+    if(existing.has(signature)) return;
+    existing.add(signature);
+    imported.push(normalized);
+  });
+
+  if(!imported.length){
+    showToast(emptyMessage || "追加できる新しい記録はありませんでした");
+    return false;
+  }
+
+  records = [...imported, ...records].sort((a, b) => Number(b.id) - Number(a.id));
+  saveRecordsToStorage();
+  maybePromptRecordExport();
+  renderRecordList();
+  updateGoogleSheetResendButtonState();
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  updateBuildingLastHarvestInfo();
+  showToast((successMessage || "{count}件の記録を読み込みました").replace("{count}", imported.length));
+  return true;
+}
+
 function importRecordsFromFile(file){
   if(!file) return;
 
@@ -4359,32 +4886,11 @@ function importRecordsFromFile(file){
         return;
       }
 
-      const existing = new Set(records.map(makeRecordSignature));
-      const imported = [];
-      sourceRecords.forEach((record, index) => {
-        const normalized = normalizeImportedRecord(record, index);
-        if(!normalized) return;
-        const signature = makeRecordSignature(normalized);
-        if(existing.has(signature)) return;
-        existing.add(signature);
-        imported.push(normalized);
-      });
-
-      if(!imported.length){
-        showToast("追加できる新しい記録はありませんでした");
-        return;
-      }
-
-      records = [...imported, ...records].sort((a, b) => Number(b.id) - Number(a.id));
-      saveRecordsToStorage();
-      maybePromptRecordExport();
-      renderRecordList();
-      updateGoogleSheetResendButtonState();
-      drawBeds();
-      drawRecordBeds();
-      renderForecastSummary();
-      updateBuildingLastHarvestInfo();
-      showToast(`${imported.length}件の記録を読み込みました`);
+      importRecordsFromSource(
+        sourceRecords,
+        "{count}件の記録を読み込みました",
+        "追加できる新しい記録はありませんでした"
+      );
     }catch(e){
       showToast("記録ファイルの読み込みに失敗しました");
     }
