@@ -750,13 +750,13 @@ button:disabled{
   background:#f8fafc;
   border-color:#d1d5db;
 }
-.harvestSizeChoiceRow{
+.qualityChoiceRow{
   display:grid;
-  grid-template-columns:minmax(54px, 0.62fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns:repeat(4, minmax(0, 1fr));
   gap:6px;
   margin-top:6px;
 }
-.harvestSizeChoice{
+.qualityChoice{
   display:flex;
   align-items:center;
   justify-content:center;
@@ -767,45 +767,52 @@ button:disabled{
   color:#166534;
   font-weight:800;
   font-size:14px;
+  opacity:0.42;
 }
-.harvestSizeChoice input{
+.qualityChoice input{
   display:none;
 }
-.harvestSizeChoice:has(input:checked){
+.qualityChoice:not(:has(input:checked)){
+  opacity:0.42;
+  background:#f8fafc !important;
+  border-color:#e5e7eb !important;
+  color:#94a3b8 !important;
+  box-shadow:none !important;
+}
+.qualityChoice:has(input:checked){
+  opacity:1;
   background:#22c55e;
   border-color:#16a34a;
   color:#fff;
+  box-shadow:0 2px 8px rgba(15,23,42,0.16);
 }
-.harvestSizeChoice.sizeUnknown{
-  border-color:#d1d5db;
-  background:#f8fafc;
-  color:#64748b;
-  font-size:13px;
-}
-.harvestSizeChoice.sizeUnknown:has(input:checked){
-  background:#6b7280;
-  border-color:#4b5563;
-  color:#fff;
-}
-.harvestSizeChoice.sizeSmall{
+.qualityChoice.qualitySmall{
   border-color:#ddd6fe;
   background:#f5f3ff;
   color:#6d28d9;
 }
-.harvestSizeChoice.sizeSmall:has(input:checked){
+.qualityChoice.qualitySmall:has(input:checked){
   background:#7c3aed;
   border-color:#6d28d9;
   color:#fff;
 }
-.harvestSizeChoice.sizeLarge{
+.qualityChoice.qualityLarge{
   border-color:#fed7aa;
   background:#fff7ed;
   color:#c2410c;
 }
-.harvestSizeChoice.sizeLarge:has(input:checked){
+.qualityChoice.qualityLarge:has(input:checked){
   background:#f97316;
   border-color:#ea580c;
   color:#fff;
+}
+.qualityChoice.qualityProblem:has(input:checked){
+  background:#f59e0b;
+  border-color:#d97706;
+  color:#111827;
+}
+.qualityOtherInput{
+  margin-top:8px;
 }
 .recordFormActionRow{
   display:grid;
@@ -1636,13 +1643,14 @@ button:disabled{
         </div>
       </div>
 
-      <label>収穫時の大きさ平均</label>
-      <div class="harvestSizeChoiceRow">
-        <label class="harvestSizeChoice sizeUnknown"><input type="radio" name="harvestSizeRating" value="unknown" checked>不明</label>
-        <label class="harvestSizeChoice sizeSmall"><input type="radio" name="harvestSizeRating" value="small">小さい</label>
-        <label class="harvestSizeChoice"><input type="radio" name="harvestSizeRating" value="normal">並</label>
-        <label class="harvestSizeChoice sizeLarge"><input type="radio" name="harvestSizeRating" value="large">大きい</label>
+      <label>品質メモ</label>
+      <div class="qualityChoiceRow">
+        <label class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
+        <label class="qualityChoice qualitySmall"><input type="checkbox" name="qualityMemoTag" value="small">小さい</label>
+        <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="elongated">徒長</label>
+        <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip">チップ</label>
       </div>
+      <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他">
 
       <label class="hiddenRecordField">実際に収穫したパレット番号（自動まとめ表示）</label>
       <textarea id="recordPalletSummaryInput" class="hiddenRecordField" readonly placeholder="選択結果をここへ反映できます"></textarea>
@@ -1788,7 +1796,6 @@ const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
 const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
-const LAST_HARVEST_SIZE_RATING_KEY = "harvestForecastLastHarvestSizeRating_v1";
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
 const CASE_SIZE = 12;
@@ -1898,6 +1905,7 @@ function saveHarvestStateToStorage(){
     recordCasesInput: document.getElementById("recordCasesInput")?.value || "",
     recordPalletSummaryInput: document.getElementById("recordPalletSummaryInput")?.value || "",
     recordMemoInput: document.getElementById("recordMemoInput")?.value || "",
+    qualityMemo: getSelectedQualityMemo(),
     recordCasesEdited,
     savedAt: new Date().toISOString()
   };
@@ -1921,6 +1929,7 @@ function loadHarvestStateFromStorage(){
       recordCasesInput: parsed.recordCasesInput ?? "",
       recordPalletSummaryInput: parsed.recordPalletSummaryInput ?? "",
       recordMemoInput: parsed.recordMemoInput ?? "",
+      qualityMemo: normalizeQualityMemo(parsed.qualityMemo || parsed.qualityTags || null),
       recordCasesEdited: !!parsed.recordCasesEdited
     };
   }catch(e){
@@ -2367,48 +2376,82 @@ function normalizePartialHarvestTargets(targets){
   }).filter(Boolean);
 }
 
-function normalizeHarvestSizeRating(value){
+function normalizeQualityTag(value){
   const text = String(value || "").trim();
-  if(text === "不明") return "unknown";
   if(text === "大きい") return "large";
-  if(text === "並") return "normal";
   if(text === "小さい") return "small";
-  return ["unknown", "large", "normal", "small"].includes(text) ? text : "unknown";
+  if(text === "徒長") return "elongated";
+  if(text === "チップ") return "chip";
+  return ["large", "small", "elongated", "chip"].includes(text) ? text : "";
 }
 
-function getHarvestSizeRatingLabel(value){
-  const labels = {
-    unknown: "不明",
-    large: "大きい",
-    normal: "並",
-    small: "小さい"
-  };
-  return labels[normalizeHarvestSizeRating(value)];
-}
-
-function getSelectedHarvestSizeRating(){
-  const checked = document.querySelector('input[name="harvestSizeRating"]:checked');
-  return normalizeHarvestSizeRating(checked?.value || "unknown");
-}
-
-function setSelectedHarvestSizeRating(value){
-  const normalized = normalizeHarvestSizeRating(value);
-  document.querySelectorAll('input[name="harvestSizeRating"]').forEach(input => {
-    input.checked = input.value === normalized;
-  });
-  updateRecordInputGuides();
-}
-
-function loadLastHarvestSizeRating(){
-  try{
-    return normalizeHarvestSizeRating(localStorage.getItem(LAST_HARVEST_SIZE_RATING_KEY));
-  }catch(e){
-    return "unknown";
+function normalizeQualityMemo(value){
+  if(typeof value === "string"){
+    const parts = value
+      .split(/[,\n、|]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+    const tags = [];
+    const otherParts = [];
+    parts.forEach(part => {
+      const tag = normalizeQualityTag(part);
+      if(tag){
+        tags.push(tag);
+      }else if(part !== "-"){
+        otherParts.push(part);
+      }
+    });
+    return normalizeQualityMemo({ tags, other: otherParts.join("、") });
   }
+
+  const source = value && typeof value === "object" ? value : {};
+  const rawTags = Array.isArray(source.tags)
+    ? source.tags
+    : (Array.isArray(source.qualityTags) ? source.qualityTags : (Array.isArray(value) ? value : []));
+  const tags = [...new Set(rawTags.map(normalizeQualityTag).filter(Boolean))];
+  const other = String(source.other || source.qualityOther || "").trim();
+  return { tags, other };
 }
 
-function saveLastHarvestSizeRating(value){
-  localStorage.setItem(LAST_HARVEST_SIZE_RATING_KEY, normalizeHarvestSizeRating(value));
+function qualityMemoFromLegacySizeRating(value){
+  const tag = normalizeQualityTag(value);
+  return normalizeQualityMemo(tag ? { tags: [tag], other: "" } : null);
+}
+
+function getQualityTagLabel(value){
+  const labels = {
+    large: "大きい",
+    small: "小さい",
+    elongated: "徒長",
+    chip: "チップ"
+  };
+  return labels[normalizeQualityTag(value)] || "";
+}
+
+function formatQualityMemo(value){
+  const qualityMemo = normalizeQualityMemo(value);
+  return [
+    ...qualityMemo.tags.map(getQualityTagLabel).filter(Boolean),
+    qualityMemo.other
+  ].filter(Boolean).join("、");
+}
+
+function getSelectedQualityMemo(){
+  const tags = Array.from(document.querySelectorAll('input[name="qualityMemoTag"]:checked'))
+    .map(input => normalizeQualityTag(input.value))
+    .filter(Boolean);
+  const other = String(document.getElementById("qualityMemoOtherInput")?.value || "").trim();
+  return normalizeQualityMemo({ tags, other });
+}
+
+function setSelectedQualityMemo(value){
+  const qualityMemo = normalizeQualityMemo(value);
+  document.querySelectorAll('input[name="qualityMemoTag"]').forEach(input => {
+    input.checked = qualityMemo.tags.includes(normalizeQualityTag(input.value));
+  });
+  const otherInput = document.getElementById("qualityMemoOtherInput");
+  if(otherInput) otherInput.value = qualityMemo.other;
+  updateRecordInputGuides();
 }
 
 function updateRecordInputGuides(){
@@ -2447,7 +2490,7 @@ function serializeRecordForStorage(record){
     palletSummary: record.palletSummary,
     memo: record.memo || "",
     actualLoss: record.actualLoss,
-    sizeRating: normalizeHarvestSizeRating(record.sizeRating),
+    qualityMemo: normalizeQualityMemo(record.qualityMemo),
     plantingAge: record.plantingAge || null,
     palletRanges: compressPalletKeysToRanges(record.palletKeys)
   };
@@ -2478,7 +2521,9 @@ function normalizeStoredRecord(record){
     duplicateKey: String(record.duplicateKey || "").trim(),
     type: "fullHarvest",
     memo: record.memo || "",
-    sizeRating: normalizeHarvestSizeRating(record.sizeRating),
+    qualityMemo: record.qualityMemo
+      ? normalizeQualityMemo(record.qualityMemo)
+      : qualityMemoFromLegacySizeRating(record.sizeRating),
     plantingAge: normalizePlantingAgeSnapshot(record.plantingAge),
     palletKeys
   };
@@ -2764,7 +2809,8 @@ function buildGoogleSheetRecordPayload(record, config){
       palletSummary: isPartial ? formatPartialHarvestSummary(record.targets) : record.palletSummary,
       memo: record.memo || "",
       actualLoss: isPartial ? "" : record.actualLoss,
-      sizeRating: isPartial ? "" : normalizeHarvestSizeRating(record.sizeRating),
+      qualityMemo: isPartial ? null : normalizeQualityMemo(record.qualityMemo),
+      qualityText: isPartial ? "" : formatQualityMemo(record.qualityMemo),
       plantingAge: isPartial ? null : normalizePlantingAgeSnapshot(record.plantingAge),
       palletKeys: isPartial ? [] : (Array.isArray(record.palletKeys) ? record.palletKeys : []),
       targets: isPartial ? normalizePartialHarvestTargets(record.targets) : []
@@ -2838,6 +2884,13 @@ function normalizeGoogleSheetRowRecord(row){
     ...record,
     palletKeys: parseMaybeJsonList(record.palletKeys),
     palletRanges: parseMaybeJsonList(record.palletRanges),
+    qualityMemo: parseMaybeJson(
+      record.qualityMemo || record.qualityText || "",
+      record.qualityMemo || record.qualityText || {
+        qualityTags: parseMaybeJsonList(record.qualityTags),
+        qualityOther: record.qualityOther || ""
+      }
+    ),
     plantingAge: parseMaybeJson(record.plantingAge, record.plantingAge),
     targets: parseMaybeJson(record.targets, record.targets)
   };
@@ -5110,8 +5163,9 @@ function clearRecordForm(){
   document.querySelectorAll('input[name="partialHarvestBed"]').forEach(input => {
     input.checked = false;
   });
-  setSelectedHarvestSizeRating(loadLastHarvestSizeRating());
+  setSelectedQualityMemo(null);
   updateRecordActualLoss();
+  saveHarvestStateToStorage();
 }
 
 function saveRecord(){
@@ -5119,7 +5173,7 @@ function saveRecord(){
   const totalCases = clampNumber(document.getElementById("recordCasesInput").value || 0, 0, 999999, 0);
   const cases = getRegularHarvestCases(totalCases, date);
   const actualLoss = getRecordActualLossValue();
-  const sizeRating = getSelectedHarvestSizeRating();
+  const qualityMemo = getSelectedQualityMemo();
   const plantingAge = getCurrentPlantingAgeSnapshot();
   const palletSummary = document.getElementById("recordPalletSummaryInput").value.trim();
   const memo = appendAutoMemo(
@@ -5160,14 +5214,13 @@ function saveRecord(){
     palletSummary,
     memo,
     actualLoss,
-    sizeRating,
+    qualityMemo,
     plantingAge,
     palletKeys: [...harvestFillKeys]
   };
   record.duplicateKey = getRecordDuplicateKey(record);
 
   records.unshift(record);
-  saveLastHarvestSizeRating(sizeRating);
 
   saveRecordsToStorage();
   maybePromptRecordExport();
@@ -5341,7 +5394,7 @@ function renderRecordItemHtml(r){
       <div class="recordTitle">${r.date}</div>
       <div class="recordMeta">収穫ケース数: ${r.cases}
 実際のロス率: ${r.actualLoss}%
-大きさ: ${getHarvestSizeRatingLabel(r.sizeRating)}</div>
+品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
       ${formatPlantingAgeForRecord(r) ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">定植日数: ${escapeHtml(formatPlantingAgeForRecord(r))}</div>` : ""}
       <span class="summaryCode">${escapeHtml(r.palletSummary)}</span>
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
@@ -5399,7 +5452,12 @@ function normalizeImportedRecord(record, index){
 
   const palletSummary = String(record.palletSummary || "").trim();
   const actualLoss = String(record.actualLoss || "").trim();
-  const sizeRating = normalizeHarvestSizeRating(record.sizeRating);
+  const qualityMemo = record.qualityMemo || record.qualityTags || record.qualityText
+    ? normalizeQualityMemo(record.qualityMemo || {
+        qualityTags: parseMaybeJsonList(record.qualityTags),
+        qualityOther: record.qualityOther || record.qualityText || ""
+      })
+    : qualityMemoFromLegacySizeRating(record.sizeRating);
   const plantingAge = normalizePlantingAgeSnapshot(record.plantingAge);
   const palletKeys = getPalletKeysFromRecord(record);
 
@@ -5421,7 +5479,7 @@ function normalizeImportedRecord(record, index){
     palletSummary,
     memo,
     actualLoss,
-    sizeRating,
+    qualityMemo,
     plantingAge,
     palletKeys
   };
@@ -5638,6 +5696,8 @@ window.onload = () => {
     const recordMemoInput = document.getElementById("recordMemoInput");
     if(recordMemoInput) recordMemoInput.value = savedHarvestState.recordMemoInput || "";
 
+    setSelectedQualityMemo(savedHarvestState.qualityMemo);
+
     if(harvestFillKeys.length){
       recalcHarvestSummary();
     }else{
@@ -5650,7 +5710,9 @@ window.onload = () => {
   drawRecordBeds();
   renderForecastSummary();
   setTodayToRecordDate();
-  setSelectedHarvestSizeRating(loadLastHarvestSizeRating());
+  if(!savedHarvestState){
+    setSelectedQualityMemo(null);
+  }
   updateBuildingLastHarvestInfo();
   renderRecordList();
   updateGoogleSheetResendButtonState();
@@ -5694,9 +5756,19 @@ window.onload = () => {
     });
   }
 
-  document.querySelectorAll('input[name="harvestSizeRating"]').forEach(input => {
-    input.addEventListener("change", updateRecordInputGuides);
+  document.querySelectorAll('input[name="qualityMemoTag"]').forEach(input => {
+    input.addEventListener("change", () => {
+      updateRecordInputGuides();
+      saveHarvestStateToStorage();
+    });
   });
+
+  const qualityMemoOtherInput = document.getElementById("qualityMemoOtherInput");
+  if(qualityMemoOtherInput){
+    qualityMemoOtherInput.addEventListener("input", () => {
+      saveHarvestStateToStorage();
+    });
+  }
 
   const recordMemoInput = document.getElementById("recordMemoInput");
   if(recordMemoInput){
