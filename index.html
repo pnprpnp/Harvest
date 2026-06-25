@@ -995,6 +995,30 @@ button:disabled{
   border-radius:14px;
   background:#f8fbff;
 }
+.settingCluster.settingClusterDetails{
+  padding:0;
+  overflow:hidden;
+}
+.settingClusterSummary{
+  cursor:pointer;
+  list-style:none;
+  padding:14px;
+}
+.settingClusterSummary::-webkit-details-marker{
+  display:none;
+}
+.settingClusterSummary::after{
+  content:"▼";
+  float:right;
+  font-size:12px;
+  color:#64748b;
+}
+.settingClusterDetails:not([open]) .settingClusterSummary::after{
+  content:"▶";
+}
+.settingClusterDetailsBody{
+  padding:0 14px 14px;
+}
 .settingCluster:first-of-type{
   margin-top:12px;
 }
@@ -1921,17 +1945,21 @@ button:disabled{
         </select>
       </div>
 
-      <div class="settingCluster">
-        <div class="clusterHeader">
-          <div class="clusterTitle">簡易アクセス制限</div>
-          <div class="clusterNote">記録タブと集計タブを簡易ロックします。固定パスワードをここで入力して保存すると、この端末で解除されます。</div>
+      <details id="accessProtectionDetails" class="settingCluster settingClusterDetails" open>
+        <summary class="settingClusterSummary">
+          <div class="clusterHeader">
+            <div class="clusterTitle">簡易アクセス制限</div>
+            <div class="clusterNote">記録タブと集計タブを簡易ロックします。固定パスワードをここで入力して保存すると、この端末で解除されます。</div>
+          </div>
+        </summary>
+        <div class="settingClusterDetailsBody">
+          <label>解除用パスワード</label>
+          <input id="accessPasswordInput" type="password" placeholder="あらかじめ設定した固定パスワード">
+          <div id="accessProtectionStatus" class="smallText" style="margin-top:6px;">ロック状態を確認中です。</div>
+          <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="protectRecordTabInput" onchange="settingsDirty=true"><span class="checkText">記録タブにパスワードをかける</span></label></div>
+          <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="protectDashboardTabInput" onchange="settingsDirty=true"><span class="checkText">集計タブにパスワードをかける</span></label></div>
         </div>
-        <label>解除用パスワード</label>
-        <input id="accessPasswordInput" type="password" placeholder="あらかじめ設定した固定パスワード">
-        <div id="accessProtectionStatus" class="smallText" style="margin-top:6px;">ロック状態を確認中です。</div>
-        <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="protectRecordTabInput" onchange="settingsDirty=true"><span class="checkText">記録タブにパスワードをかける</span></label></div>
-        <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="protectDashboardTabInput" onchange="settingsDirty=true"><span class="checkText">集計タブにパスワードをかける</span></label></div>
-      </div>
+      </details>
 
       <button class="actionBtn" onclick="saveSettings()">設定を保存</button>
       <button class="actionBtn secondaryBtn" onclick="resetSettings()">設定を初期化</button>
@@ -2249,8 +2277,8 @@ const defaultSettings = {
   useBedPlantSettings: false,
   seedlingLossRate: 0,
   specialPallet60CountPer3: 2,
-  protectRecordTab: false,
-  protectDashboardTab: false,
+  protectRecordTab: true,
+  protectDashboardTab: true,
   beds: {
     A: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
     B: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
@@ -2352,6 +2380,13 @@ function refreshProtectedAccessState(){
   protectedAccessUnlocked = hasPresetAccessPassword() && loadProtectedAccessAuth();
 }
 
+function syncAccessProtectionDetails(options = {}){
+  const details = document.getElementById("accessProtectionDetails");
+  if(!details) return;
+  const forceClosed = !!options.forceClosed;
+  details.open = forceClosed ? false : !protectedAccessUnlocked;
+}
+
 function updateAccessProtectionStatus(){
   const box = document.getElementById("accessProtectionStatus");
   if(!box) return;
@@ -2362,11 +2397,13 @@ function updateAccessProtectionStatus(){
   }
   if(!protectedEnabled){
     box.textContent = "現在は保護がOFFです。";
+    syncAccessProtectionDetails();
     return;
   }
   box.textContent = protectedAccessUnlocked
     ? "この端末では記録・集計のロックが解除済みです。"
     : "この端末では記録・集計がロック中です。解除用パスワードを入力して保存してください。";
+  syncAccessProtectionDetails();
 }
 
 function applyAccessUnlockInput(value){
@@ -2390,6 +2427,17 @@ function ensureProtectedTabAccess(tabName){
   if(!isProtectedTab(tabName)) return true;
   if(protectedAccessUnlocked) return true;
   showToast("設定タブで解除用パスワードを入力して保存してください");
+  return false;
+}
+
+function isAnyProtectedOperationEnabled(){
+  return !!settings?.protectRecordTab || !!settings?.protectDashboardTab;
+}
+
+function ensureProtectedOperationAccess(actionLabel){
+  if(!isAnyProtectedOperationEnabled()) return true;
+  if(protectedAccessUnlocked) return true;
+  showToast((actionLabel || "この操作") + "には解除用パスワードが必要です");
   return false;
 }
 
@@ -2639,8 +2687,6 @@ function switchTab(tabName){
       settingsDirty = false;
     }
   }
-
-  if(!ensureProtectedTabAccess(tabName)) return;
 
   document.getElementById("forecastTab").style.display = tabName === "forecast" ? "block" : "none";
   document.getElementById("settingsTab").style.display = tabName === "settings" ? "block" : "none";
@@ -3121,6 +3167,7 @@ function readGoogleSheetConfigForm(){
 }
 
 function saveGoogleSheetConfig(){
+  if(!ensureProtectedOperationAccess("Google連携設定の保存")) return;
   const config = readGoogleSheetConfigForm();
   saveGoogleSheetConfigToStorage(config);
   populateGoogleSheetConfigForm();
@@ -3158,6 +3205,7 @@ function canResetGoogleSheetSyncStatus(){
 }
 
 function performGoogleSheetSyncStatusReset(){
+  if(!ensureProtectedOperationAccess("送信状態のリセット")) return;
   localStorage.removeItem(GOOGLE_SHEET_SYNC_STATUS_KEY);
   updateGoogleSheetResendButtonState();
   showToast("送信状態をリセットしました");
@@ -3581,6 +3629,7 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend){
 }
 
 async function sendPendingRecordsToGoogleSheet(){
+  if(!ensureProtectedOperationAccess("スプレッドシートへの送信")) return;
   if(googleSheetSendState !== "idle"){
     showToast(googleSheetSendState === "confirming" ? "送信確認中です" : "送信中です");
     return;
@@ -3904,13 +3953,23 @@ function appendSettingsChangeMemo(previousSettings, nextSettings){
 }
 
 function saveSettings(){
+  let unlockResult = null;
+  if(isAnyProtectedOperationEnabled() && !protectedAccessUnlocked){
+    unlockResult = applyAccessUnlockInput(document.getElementById("accessPasswordInput")?.value || "");
+    if(unlockResult !== true){
+      showToast("設定を保存するには正しい固定パスワードが必要です");
+      return false;
+    }
+  }
   const previousSettings = deepClone(settings);
   const nextSettings = readSettingsForm();
   if((nextSettings.protectRecordTab || nextSettings.protectDashboardTab) && !hasPresetAccessPassword()){
     showToast("固定パスワードが未設定です");
     return false;
   }
-  const unlockResult = applyAccessUnlockInput(document.getElementById("accessPasswordInput")?.value || "");
+  if(unlockResult === null){
+    unlockResult = applyAccessUnlockInput(document.getElementById("accessPasswordInput")?.value || "");
+  }
   if(isAccessProtectionConfigChanged(previousSettings, nextSettings) && !protectedAccessUnlocked && unlockResult !== true){
     showToast("保護設定を変えるには正しい固定パスワードを入力して保存してください");
     return false;
@@ -3923,6 +3982,7 @@ function saveSettings(){
   saveHarvestStateToStorage();
   populateSettingsForm();
   if(unlockResult === true){
+    syncAccessProtectionDetails({ forceClosed: true });
     showToast("設定を保存してロックを解除しました");
   }else if(unlockResult === false){
     showToast("設定を保存しました。パスワードが違うためロックは解除されていません");
@@ -3933,6 +3993,7 @@ function saveSettings(){
 }
 
 function resetSettings(){
+  if(!ensureProtectedOperationAccess("設定の初期化")) return;
   const previousSettings = deepClone(settings);
   const nextSettings = deepClone(defaultSettings);
   appendSettingsChangeMemo(previousSettings, nextSettings);
@@ -6576,6 +6637,7 @@ function clearRecordForm(){
 }
 
 function saveRecord(){
+  if(!ensureProtectedOperationAccess("記録の保存")) return;
   const date = document.getElementById("recordDateInput").value;
   const totalCases = clampNumber(document.getElementById("recordCasesInput").value || 0, 0, 999999, 0);
   const cases = getRegularHarvestCases(totalCases, date);
@@ -6668,6 +6730,7 @@ function formatPartialHarvestSummary(targets){
 }
 
 function savePartialHarvestRecord(){
+  if(!ensureProtectedOperationAccess("先取り収穫の保存")) return;
   const date = document.getElementById("recordDateInput").value;
   const cases = clampNumber(document.getElementById("partialHarvestCasesInput")?.value || 0, 0, 999999, 0);
   const building = clampNumber(document.getElementById("partialHarvestBuildingInput")?.value || currentBuilding, MIN_BUILDING, MAX_BUILDING, NaN);
@@ -6730,6 +6793,7 @@ function savePartialHarvestRecord(){
 }
 
 function deleteRecord(id){
+  if(!ensureProtectedOperationAccess("記録の削除")) return;
   records = records.filter(r => r.id !== id);
   saveRecordsToStorage();
   renderRecordList();
@@ -6935,6 +6999,7 @@ function maybePromptRecordExport(){
 }
 
 function exportRecordsToFile(){
+  if(!ensureProtectedOperationAccess("記録の外部保存")) return;
   const payload = {
     app: "収穫シミュ",
     type: "record-backup",
