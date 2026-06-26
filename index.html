@@ -594,46 +594,29 @@ button:disabled{
   font-size:0.88em;
   font-weight:800;
 }
-.seedlingManualControl{
-  display:flex;
+.seedlingInlineWrap{
+  display:inline-flex;
   align-items:center;
-  flex-wrap:wrap;
-  gap:8px;
-  margin:8px 0 10px;
-  padding:10px;
-  border:1px solid #fed7aa;
-  border-radius:10px;
-  background:#fff7ed;
+  gap:4px;
+  margin:0 2px;
 }
-.seedlingManualControl label{
-  margin:0;
-  color:#9a3412;
-  font-size:13px;
-  font-weight:800;
-}
-.seedlingManualControl input{
-  width:86px;
-  margin:0;
-}
-.seedlingManualControl button{
-  width:auto;
-  margin:0;
-  padding:8px 10px;
-  border:none;
+input.seedlingInlineInput{
+  width:3.8em !important;
+  min-width:3.8em;
+  max-width:3.8em;
+  box-sizing:border-box;
+  padding:4px 4px;
+  border:1px solid #fb923c;
   border-radius:8px;
-  background:#fb923c;
-  color:#fff;
-  font-size:12px;
-  font-weight:800;
-}
-.seedlingManualControl button.secondary{
-  background:#e2e8f0;
-  color:#334155;
-}
-.seedlingManualStatus{
+  background:#fff7ed;
   color:#9a3412;
-  font-size:12px;
-  font-weight:800;
+  font-size:1em;
+  font-weight:900;
+  text-align:center;
+}
+.seedlingInlineSuffix{
+  color:#9a3412;
+  font-weight:900;
 }
 .instructionRow{
   display:table;
@@ -722,6 +705,33 @@ button:disabled{
   justify-content:flex-end;
   gap:12px;
 }
+.monitorScaleControls{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:3px;
+  border-radius:999px;
+  background:rgba(255,255,255,0.72);
+  border:1px solid rgba(37,99,235,0.16);
+}
+.monitorScaleBtn{
+  min-width:34px;
+  border:none;
+  border-radius:999px;
+  padding:7px 10px;
+  background:#0f172a;
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.2;
+}
+.monitorScaleLabel{
+  min-width:44px;
+  text-align:center;
+  color:#0f172a;
+  font-size:12px;
+  font-weight:900;
+}
 .monitorModeClose{
   border:none;
   border-radius:999px;
@@ -732,12 +742,20 @@ button:disabled{
   font-weight:800;
   line-height:1.2;
 }
+.monitorModeViewport{
+  position:relative;
+  min-height:0;
+  overflow:hidden;
+}
 .monitorModeBody{
   display:grid;
   grid-template-columns:minmax(320px, 1fr) minmax(320px, 1fr);
   gap:14px;
   min-height:0;
-  height:100%;
+  width:var(--monitor-design-width, 1280px);
+  height:var(--monitor-design-height, 690px);
+  transform:scale(var(--monitor-fit-scale, 1));
+  transform-origin:top left;
 }
 .monitorModeLeft{
   min-height:0;
@@ -777,7 +795,7 @@ button:disabled{
   padding:12px;
   background:#eff6ff;
   color:#0f172a;
-  font-size:14px;
+  font-size:16px;
   line-height:1.6;
   resize:vertical;
 }
@@ -2254,19 +2272,7 @@ button:disabled{
   }
   .monitorModeHeader{
     align-items:flex-start;
-    flex-direction:column;
-  }
-  .monitorModeBody{
-    grid-template-columns:1fr;
-  }
-  .monitorBedGrid{
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-  }
-  .monitorHarvestMap{
-    grid-template-columns:1fr;
-  }
-  .monitorInstructionText{
-    font-size:24px;
+    flex-wrap:wrap;
   }
 }
 
@@ -2308,13 +2314,6 @@ button:disabled{
         <div class="sectionTitleActions">
           <button type="button" class="monitorLaunchBtn monitorSaveBtn" onclick="saveCurrentMonitorRemoteContent()">保存しモニターに表示</button>
         </div>
-      </div>
-      <div class="seedlingManualControl">
-        <label for="manualSeedlingCountInput">苗枚数を手動変更</label>
-        <input id="manualSeedlingCountInput" type="number" min="0" inputmode="numeric" placeholder="自動">
-        <button type="button" onclick="applyManualSeedlingCount()">反映</button>
-        <button type="button" class="secondary" onclick="clearManualSeedlingCount()">自動に戻す</button>
-        <span id="manualSeedlingStatus" class="seedlingManualStatus">自動計算</span>
       </div>
       <div id="instructionSummary" class="resultBox instructionBox">苗: 0枚
 収穫ケース数: 0
@@ -2952,22 +2951,30 @@ button:disabled{
 <div id="monitorModeOverlay" class="monitorModeOverlay">
   <div class="monitorModeShell">
     <div class="monitorModeHeader">
+      <div class="monitorScaleControls" aria-label="モニター表示倍率">
+        <button type="button" class="monitorScaleBtn" onclick="adjustMonitorFitScale(-0.05)">−</button>
+        <span id="monitorScaleLabel" class="monitorScaleLabel">自動</span>
+        <button type="button" class="monitorScaleBtn" onclick="adjustMonitorFitScale(0.05)">＋</button>
+        <button type="button" class="monitorScaleBtn" onclick="resetMonitorFitScale()">自動</button>
+      </div>
       <button type="button" class="monitorModeClose" onclick="closeMonitorMode()">閉じる</button>
     </div>
-    <div class="monitorModeBody">
-      <div class="monitorModeLeft">
-        <div class="monitorPanel">
-          <div id="monitorInstructionText" class="monitorInstructionText"></div>
+    <div id="monitorModeViewport" class="monitorModeViewport">
+      <div id="monitorModeBody" class="monitorModeBody">
+        <div class="monitorModeLeft">
+          <div class="monitorPanel">
+            <div id="monitorInstructionText" class="monitorInstructionText"></div>
+          </div>
+          <div class="monitorPanel monitorHarvestPanel">
+            <div class="monitorSectionTitle">収穫場所</div>
+            <div id="monitorHarvestMap" class="monitorHarvestMap"></div>
+          </div>
         </div>
-        <div class="monitorPanel monitorHarvestPanel">
-          <div class="monitorSectionTitle">収穫場所</div>
-          <div id="monitorHarvestMap" class="monitorHarvestMap"></div>
-        </div>
-      </div>
-      <div class="monitorModeRight">
-        <div class="monitorPanel monitorMemoPanel">
-          <div class="monitorSectionTitle">メモ欄</div>
-          <div id="monitorMemoText" class="monitorMemoText"></div>
+        <div class="monitorModeRight">
+          <div class="monitorPanel monitorMemoPanel">
+            <div class="monitorSectionTitle">メモ欄</div>
+            <div id="monitorMemoText" class="monitorMemoText"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -3034,6 +3041,9 @@ const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
 const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
+const MONITOR_SCALE_ADJUST_KEY = "harvestForecastMonitorScaleAdjust_v1";
+const MONITOR_DESIGN_WIDTH = 1280;
+const MONITOR_DESIGN_HEIGHT = 690;
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 30000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
@@ -3106,6 +3116,7 @@ let monitorRemotePollInFlight = false;
 let monitorRemoteEditorHarvestFillKeys = [];
 let monitorModeOpenInProgress = false;
 let monitorModeLoading = false;
+let monitorScaleAdjust = loadMonitorScaleAdjust();
 
 function deepClone(obj){
   return JSON.parse(JSON.stringify(obj));
@@ -3318,6 +3329,56 @@ function closeDashboardWindow(){
   }
 }
 
+function loadMonitorScaleAdjust(){
+  try{
+    const value = Number(localStorage.getItem(MONITOR_SCALE_ADJUST_KEY) || 0);
+    return Number.isFinite(value) ? Math.min(0.4, Math.max(-0.4, value)) : 0;
+  }catch(e){
+    return 0;
+  }
+}
+
+function saveMonitorScaleAdjust(){
+  try{
+    localStorage.setItem(MONITOR_SCALE_ADJUST_KEY, String(monitorScaleAdjust));
+  }catch(e){}
+}
+
+function updateMonitorFitScale(){
+  const viewport = document.getElementById("monitorModeViewport");
+  const body = document.getElementById("monitorModeBody");
+  const label = document.getElementById("monitorScaleLabel");
+  if(!viewport || !body) return;
+
+  body.style.setProperty("--monitor-design-width", MONITOR_DESIGN_WIDTH + "px");
+  body.style.setProperty("--monitor-design-height", MONITOR_DESIGN_HEIGHT + "px");
+
+  const widthScale = viewport.clientWidth / MONITOR_DESIGN_WIDTH;
+  const heightScale = viewport.clientHeight / MONITOR_DESIGN_HEIGHT;
+  const autoScale = Math.min(widthScale, heightScale);
+  const scale = Math.min(1.35, Math.max(0.35, autoScale + monitorScaleAdjust));
+  body.style.setProperty("--monitor-fit-scale", String(scale));
+
+  if(label){
+    label.textContent = monitorScaleAdjust === 0
+      ? "自動"
+      : Math.round(scale * 100) + "%";
+  }
+}
+
+function adjustMonitorFitScale(delta){
+  monitorScaleAdjust = Math.min(0.4, Math.max(-0.4, monitorScaleAdjust + delta));
+  monitorScaleAdjust = Math.round(monitorScaleAdjust * 100) / 100;
+  saveMonitorScaleAdjust();
+  updateMonitorFitScale();
+}
+
+function resetMonitorFitScale(){
+  monitorScaleAdjust = 0;
+  saveMonitorScaleAdjust();
+  updateMonitorFitScale();
+}
+
 async function openMonitorMode(){
   if(monitorModeOpenInProgress) return;
   monitorModeOpenInProgress = true;
@@ -3335,17 +3396,21 @@ async function openMonitorMode(){
     overlay.classList.add("show");
     if(tabBar) tabBar.classList.add("monitorHidden");
     document.body.style.overflow = "hidden";
+    updateMonitorFitScale();
     renderMonitorMode();
 
     if(config.url){
       await fetchMonitorRemoteContent({ silentErrors: true, force: true });
       monitorModeLoading = false;
       renderMonitorMode();
+      updateMonitorFitScale();
     }
 
     startMonitorRemotePolling();
     if(document.documentElement.requestFullscreen && !document.fullscreenElement){
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen()
+        .then(updateMonitorFitScale)
+        .catch(() => {});
     }
   }finally{
     monitorModeLoading = false;
@@ -4649,6 +4714,8 @@ function fillMonitorRemoteEditorFromCurrentState(){
 }
 
 function saveCurrentMonitorRemoteContent(){
+  const shouldSave = window.confirm("現在の内容を保存してモニターに表示しますか？");
+  if(!shouldSave) return;
   fillMonitorRemoteEditorFromCurrentState();
   saveMonitorRemoteEditor();
 }
@@ -7435,38 +7502,80 @@ function getSeedlingInstructionText(autoCount){
   return "苗: " + manualCount + "枚（自動: " + autoCount + "枚）";
 }
 
-function updateManualSeedlingControl(){
-  const input = document.getElementById("manualSeedlingCountInput");
-  const status = document.getElementById("manualSeedlingStatus");
-  const autoCount = getRequiredSpecialPalletCount();
-  if(input){
-    input.value = hasManualSeedlingCount() ? String(getDisplayedSeedlingCount(autoCount)) : "";
-    input.placeholder = String(autoCount);
-  }
-  if(status){
-    status.textContent = hasManualSeedlingCount()
-      ? "手動: " + getDisplayedSeedlingCount(autoCount) + "枚（自動: " + autoCount + "枚）"
-      : "自動計算: " + autoCount + "枚";
-  }
+function getSeedlingInstructionEditorHtml(autoCount){
+  const displayedCount = getDisplayedSeedlingCount(autoCount);
+  const autoNote = hasManualSeedlingCount()
+    ? `<span class="instructionAutoNote">（自動: ${autoCount}枚）</span>`
+    : "";
+  return `苗: <span class="seedlingInlineWrap"><input id="seedlingInlineInput" class="seedlingInlineInput" type="number" min="0" inputmode="numeric" value="${escapeHtml(String(displayedCount))}" placeholder="${escapeHtml(String(autoCount))}" aria-label="苗枚数"><span class="seedlingInlineSuffix">枚</span></span>${autoNote}`;
 }
 
-function applyManualSeedlingCount(){
-  const input = document.getElementById("manualSeedlingCountInput");
-  const value = String(input?.value || "").trim();
+function handleSeedlingInlineCommit(rawValue){
+  const value = String(rawValue || "").trim();
   if(value === ""){
-    clearManualSeedlingCount();
+    if(hasManualSeedlingCount()){
+      manualSeedlingCount = null;
+      renderForecastSummary();
+      saveHarvestStateToStorage();
+      showToast("苗枚数を自動計算に戻しました");
+    }else{
+      renderForecastSummary();
+    }
     return;
   }
+
   manualSeedlingCount = clampNumber(value, 0, 999999, 0);
   renderForecastSummary();
   saveHarvestStateToStorage();
   showToast("苗枚数を手動変更しました");
 }
 
+function bindSeedlingInlineInput(){
+  const input = document.getElementById("seedlingInlineInput");
+  if(!input || input.dataset.bound === "1") return;
+
+  input.addEventListener("focus", () => {
+    if(input.dataset.clearedOnFocus === "1") return;
+    input.dataset.previousValue = input.value;
+    input.dataset.clearedOnFocus = "1";
+    input.dataset.enteredSinceFocus = "0";
+    input.value = "";
+  });
+  input.addEventListener("input", () => {
+    if(input.dataset.clearedOnFocus === "1"){
+      input.dataset.enteredSinceFocus = "1";
+    }
+  });
+  input.addEventListener("keydown", (event) => {
+    if(event.key === "Enter"){
+      event.preventDefault();
+      input.blur();
+    }
+  });
+  input.addEventListener("blur", () => {
+    const value = input.value;
+    const restorePrevious = input.dataset.clearedOnFocus === "1"
+      && input.dataset.enteredSinceFocus !== "1"
+      && String(value || "").trim() === "";
+    if(restorePrevious){
+      input.value = input.dataset.previousValue || "";
+    }else{
+      handleSeedlingInlineCommit(value);
+    }
+    delete input.dataset.previousValue;
+    delete input.dataset.clearedOnFocus;
+    delete input.dataset.enteredSinceFocus;
+  });
+  input.dataset.bound = "1";
+}
+
+function applyManualSeedlingCount(){
+  const input = document.getElementById("seedlingInlineInput");
+  handleSeedlingInlineCommit(input?.value || "");
+}
+
 function clearManualSeedlingCount(){
   manualSeedlingCount = null;
-  const input = document.getElementById("manualSeedlingCountInput");
-  if(input) input.value = "";
   renderForecastSummary();
   saveHarvestStateToStorage();
   showToast("苗枚数を自動計算に戻しました");
@@ -7997,9 +8106,9 @@ function renderMonitorMode(){
     if(remote && remote.instructionText.trim()){
       instruction.innerHTML = `<div class="resultBox instructionBox monitorInstructionMirror">${formatInstructionDisplayHtml(remote.instructionText)}</div>`;
     }else{
-      const source = document.getElementById("instructionSummary");
-      instruction.innerHTML = source?.innerHTML
-        ? `<div class="resultBox instructionBox monitorInstructionMirror">${source.innerHTML}</div>`
+      const instructionText = buildInstructionSummaryText();
+      instruction.innerHTML = instructionText
+        ? `<div class="resultBox instructionBox monitorInstructionMirror">${formatInstructionDisplayHtml(instructionText)}</div>`
         : `<div class="monitorEmpty">指示内容がまだありません。</div>`;
     }
   }
@@ -8010,6 +8119,7 @@ function renderMonitorMode(){
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
+  const requiredSpecialPalletCount = getRequiredSpecialPalletCount();
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
@@ -8036,10 +8146,16 @@ function renderForecastSummary(){
 
   const instructionBox = document.getElementById("instructionSummary");
   if(instructionBox){
-    const instructionText = buildInstructionSummaryText();
-    instructionBox.innerHTML = formatInstructionDisplayHtml(instructionText);
+    const caseLineHtml = `収穫ケース数: <span class="instructionEmphasis">${escapeHtml(String(cases))}</span>`;
+    const harvestLocationLine = formatHarvestLocationInstruction();
+    const remainingCasesLine = "残すケース: " + getCasePlacementSummaryText();
+    instructionBox.innerHTML = [
+      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(requiredSpecialPalletCount)} / ${caseLineHtml}</div>`,
+      formatInstructionDisplayHtml(harvestLocationLine),
+      formatInstructionDisplayHtml(remainingCasesLine)
+    ].join("");
+    bindSeedlingInlineInput();
   }
-  updateManualSeedlingControl();
 
   const remainingBox = document.getElementById("remainingCasesSummary");
   if(remainingBox){
@@ -8887,6 +9003,13 @@ function importRecordsFromFile(file){
 
 
 window.onload = () => {
+  window.addEventListener("resize", () => {
+    if(isMonitorModeOpen) updateMonitorFitScale();
+  });
+  document.addEventListener("fullscreenchange", () => {
+    if(isMonitorModeOpen) updateMonitorFitScale();
+  });
+
   populateSettingsForm();
   populateGoogleSheetConfigForm();
   populateDashboardStartDayOptions();
@@ -9041,23 +9164,6 @@ window.onload = () => {
   if(mainCasesInput){
     mainCasesInput.addEventListener("input", () => {
       saveHarvestStateToStorage();
-    });
-  }
-
-  const manualSeedlingCountInput = document.getElementById("manualSeedlingCountInput");
-  if(manualSeedlingCountInput){
-    manualSeedlingCountInput.addEventListener("keydown", (event) => {
-      if(event.key === "Enter"){
-        event.preventDefault();
-        applyManualSeedlingCount();
-      }
-    });
-    manualSeedlingCountInput.addEventListener("change", () => {
-      if(String(manualSeedlingCountInput.value || "").trim() === ""){
-        clearManualSeedlingCount();
-      }else{
-        applyManualSeedlingCount();
-      }
     });
   }
 
