@@ -50,22 +50,27 @@ header{
 .headerActionBtn:active{
   background:#1f2937;
 }
-.container{padding:8px;}
+.container{
+  padding:8px 8px calc(86px + env(safe-area-inset-bottom));
+}
 .tabBar{
   display:flex;
   gap:4px;
   margin:0;
   align-items:flex-end;
-  position:sticky;
-  top:0;
+  position:fixed;
+  left:0;
+  right:0;
+  bottom:0;
   z-index:9000;
   background:rgba(245,243,255,0.96);
-  padding:8px 6px 6px;
-  border-bottom:1px solid #ddd6fe;
-  border-radius:0 0 14px 14px;
+  padding:8px 6px calc(6px + env(safe-area-inset-bottom));
+  border-top:1px solid #ddd6fe;
+  border-radius:14px 14px 0 0;
   overflow:hidden;
   backdrop-filter:blur(10px);
   -webkit-backdrop-filter:blur(10px);
+  box-sizing:border-box;
 }
 .tabBtn{
   flex:1;
@@ -1165,13 +1170,18 @@ input.seedlingInlineInput{
 .toast{
   position:fixed;
   left:50%;
-  bottom:18px;
-  transform:translateX(-50%) translateY(16px);
+  top:calc(12px + env(safe-area-inset-top));
+  transform:translateX(-50%) translateY(-16px);
   background:#16a34a;
   color:#fff;
+  width:min(560px, calc(100vw - 28px));
+  box-sizing:border-box;
   padding:10px 14px;
-  border-radius:999px;
+  border-radius:14px;
   font-size:14px;
+  line-height:1.45;
+  text-align:center;
+  white-space:normal;
   opacity:0;
   pointer-events:none;
   transition:all .25s ease;
@@ -1197,6 +1207,10 @@ input.seedlingInlineInput{
 }
 .bedActionMenu.show{
   display:block;
+}
+#recordBedActionMenu.show{
+  top:calc(12px + env(safe-area-inset-top));
+  bottom:auto;
 }
 .bedActionTitle{
   font-weight:bold;
@@ -1226,6 +1240,21 @@ input.seedlingInlineInput{
   padding:11px 12px;
   font-size:16px;
   margin:4px 0 6px;
+}
+.bedActionRangeRow{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  gap:8px;
+  align-items:center;
+  margin:4px 0 6px;
+}
+.bedActionRangeRow .bedActionInput{
+  margin:0;
+}
+.bedActionRangeLabel{
+  font-size:14px;
+  font-weight:bold;
+  color:#475569;
 }
 .bedActionHelp{
   font-size:12px;
@@ -1283,7 +1312,41 @@ input.seedlingInlineInput{
   gap:10px;
   align-items:end;
 }
+.recordStageSection{
+  display:grid;
+  gap:0;
+}
+.recordStageSection[hidden]{
+  display:none !important;
+}
+.recordStageCaption{
+  margin:2px 0 8px;
+  font-size:13px;
+  font-weight:800;
+  color:#475569;
+}
+.recordSeedlingDiffBox{
+  margin:2px 0 10px;
+  padding:10px 12px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  background:#f8fafc;
+  color:#0f172a;
+  font-size:13px;
+  line-height:1.6;
+  white-space:pre-line;
+}
+.recordSeedlingRow{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
+  gap:10px;
+  align-items:end;
+  margin-top:2px;
+}
 .recordActualRow label{
+  margin-top:10px;
+}
+.recordSeedlingRow label{
   margin-top:10px;
 }
 .recordDateField{
@@ -2697,47 +2760,77 @@ input.seedlingInlineInput{
     <div class="card">
       <div class="sectionTitle">記録を保存</div>
 
-      <div class="recordDateField">
-        <label>日付</label>
-        <div class="recordDateInputRow">
-          <input id="recordDateInput" type="date">
-          <div id="recordWeekdayDisplay" class="recordWeekdayDisplay">--</div>
+      <div id="recordHarvestStageSection" class="recordStageSection">
+        <div class="recordStageCaption">第一段階: 収穫記録</div>
+
+        <div class="recordDateField">
+          <label>日付</label>
+          <div class="recordDateInputRow">
+            <input id="recordDateInput" type="date">
+            <div id="recordWeekdayDisplay" class="recordWeekdayDisplay">--</div>
+          </div>
         </div>
+
+        <div class="recordActualRow">
+          <div>
+            <label>実際の収穫ケース数</label>
+            <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
+          </div>
+          <div>
+            <label>実際のロス率</label>
+            <div id="recordActualLossInput" class="recordLossDisplay empty" data-value="">--</div>
+          </div>
+        </div>
+
+        <label>品質メモ</label>
+        <div class="qualityChoiceRow">
+          <label class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
+          <label class="qualityChoice qualitySmall"><input type="checkbox" name="qualityMemoTag" value="small">小さい</label>
+          <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="elongated">徒長</label>
+          <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip">チップ</label>
+        </div>
+        <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他">
+
+        <label>メモ</label>
+        <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
       </div>
 
-      <div class="recordActualRow">
-        <div>
-          <label>実際の収穫ケース数</label>
-          <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
-        </div>
-        <div>
-          <label>実際のロス率</label>
-          <div id="recordActualLossInput" class="recordLossDisplay empty" data-value="">--</div>
-        </div>
-      </div>
+      <div id="recordPlantingStageSection" class="recordStageSection" hidden>
+        <div class="recordStageCaption">第二段階: 苗植え記録</div>
+        <div id="recordSeedlingDiffBox" class="recordSeedlingDiffBox">苗枚数を計算中です。</div>
 
-      <label>品質メモ</label>
-      <div class="qualityChoiceRow">
-        <label class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
-        <label class="qualityChoice qualitySmall"><input type="checkbox" name="qualityMemoTag" value="small">小さい</label>
-        <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="elongated">徒長</label>
-        <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip">チップ</label>
+        <div class="recordSeedlingRow">
+          <div>
+            <label>実際に取った苗</label>
+            <input id="recordActualSeedlingTrayCountInput" type="number" min="0" inputmode="numeric" placeholder="0">
+          </div>
+        </div>
+
+        <div class="recordActualRow">
+          <div class="hiddenRecordField">
+            <label>実際に取った苗 合計株数</label>
+            <div id="recordActualSeedlingTotalDisplay" class="recordLossDisplay empty" data-value="">--</div>
+          </div>
+          <div>
+            <label>実際の苗ロス率</label>
+            <div id="recordActualSeedlingLossInput" class="recordLossDisplay empty" data-value="">--</div>
+          </div>
+        </div>
       </div>
-      <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他">
 
       <label class="hiddenRecordField">実際に収穫したパレット番号（自動まとめ表示）</label>
       <textarea id="recordPalletSummaryInput" class="hiddenRecordField" readonly placeholder="選択結果をここへ反映できます"></textarea>
 
-      <label>メモ</label>
-      <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
+      <label class="hiddenRecordField">実際に苗植えした場所</label>
+      <textarea id="recordPlantingSummaryInput" class="hiddenRecordField" readonly placeholder="収穫を記録した後、表で苗植え場所を選ぶと入ります"></textarea>
 
       <div class="recordFormActionRow">
-        <button class="actionBtn thirdBtn" onclick="saveRecord()">この内容で記録する</button>
+        <button id="recordPrimaryActionBtn" class="actionBtn thirdBtn" onclick="handleRecordPrimaryAction()">収穫場所を記録する</button>
         <button class="actionBtn secondaryBtn recordClearBtn" onclick="clearRecordForm()">クリア</button>
       </div>
 
       <div class="recordHarvestAdjustBox">
-        <div class="recordEditNotice">実際の収穫場所に調整してください。</div>
+        <div id="recordEditNotice" class="recordEditNotice">実際の収穫場所に調整してください。</div>
 
         <div class="buildingSwitch">
           <button class="buildingBtn" onclick="prevBuilding()">←</button>
@@ -2938,14 +3031,14 @@ input.seedlingInlineInput{
 </div>
 <div id="recordBedActionMenu" class="bedActionMenu">
   <div id="recordBedActionTitle" class="bedActionTitle">実際に収穫した枚数を調整</div>
-  <input id="recordBedCountInput" class="bedActionInput" type="text" inputmode="numeric" pattern="-?[0-9]*" placeholder="例: 5 または -5">
-  <div class="bedActionSignRow">
-    <button type="button" onclick="setRecordBedCountSign(1)">追加 +</button>
-    <button type="button" class="signNegative" onclick="setRecordBedCountSign(-1)">解除 -</button>
+  <div class="bedActionRangeRow">
+    <input id="recordBedRangeStartInput" class="bedActionInput" type="number" inputmode="numeric" min="1" max="78" placeholder="例: 1">
+    <div class="bedActionRangeLabel">から</div>
+    <input id="recordBedRangeEndInput" class="bedActionInput" type="number" inputmode="numeric" min="1" max="78" placeholder="例: 20">
   </div>
-  <div class="bedActionHelp">正の数は追加、マイナスは解除します。</div>
-  <button type="button" onclick="applyRecordBedCount('front')">前から反映</button>
-  <button type="button" onclick="applyRecordBedCount('back')">後ろから反映</button>
+  <div class="bedActionHelp">指定したパレット番号の範囲を追加または削除します。</div>
+  <button type="button" onclick="applyRecordBedRange('add')">この範囲を追加</button>
+  <button type="button" class="signNegative" onclick="applyRecordBedRange('remove')">この範囲を削除</button>
   <button type="button" class="clearBedAction" onclick="hideRecordBedActionMenu()">キャンセル</button>
 </div>
 <div id="monitorModeOverlay" class="monitorModeOverlay">
@@ -3099,7 +3192,10 @@ let bedLongPressFired = false;
 let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let recordCasesEdited = false;
+let recordPlantingSummaryEdited = false;
 let recordBaseFillKeys = [];
+let recordSelectionMode = "harvest";
+let activePlantingRecordId = null;
 let settingsDirty = false;
 let casePlacementByBuilding = {};
 let googleSheetConfirmResolver = null;
@@ -3257,7 +3353,7 @@ function showToast(message){
   toast.textContent = message;
   toast.classList.add("show");
   clearTimeout(showToast._timer);
-  showToast._timer = setTimeout(() => toast.classList.remove("show"), 1600);
+  showToast._timer = setTimeout(() => toast.classList.remove("show"), 2800);
 }
 
 async function openMonitorEditorWindow(){
@@ -3444,10 +3540,15 @@ function saveHarvestStateToStorage(){
     monitorMemoInput: document.getElementById("monitorMemoInput")?.value || "",
     casePlacementByBuilding,
     recordCasesInput: document.getElementById("recordCasesInput")?.value || "",
+    recordActualSeedlingTrayCountInput: document.getElementById("recordActualSeedlingTrayCountInput")?.value || "",
     recordPalletSummaryInput: document.getElementById("recordPalletSummaryInput")?.value || "",
+    recordPlantingSummaryInput: document.getElementById("recordPlantingSummaryInput")?.value || "",
     recordMemoInput: document.getElementById("recordMemoInput")?.value || "",
     qualityMemo: getSelectedQualityMemo(),
     recordCasesEdited,
+    recordPlantingSummaryEdited,
+    recordSelectionMode,
+    activePlantingRecordId,
     savedAt: new Date().toISOString()
   };
   localStorage.setItem(HARVEST_STATE_KEY, JSON.stringify(payload));
@@ -3470,10 +3571,15 @@ function loadHarvestStateFromStorage(){
       middleCaseInput: parsed.middleCaseInput ?? "",
       backCaseInput: parsed.backCaseInput ?? "",
       recordCasesInput: parsed.recordCasesInput ?? "",
+      recordActualSeedlingTrayCountInput: parsed.recordActualSeedlingTrayCountInput ?? "",
       recordPalletSummaryInput: parsed.recordPalletSummaryInput ?? "",
+      recordPlantingSummaryInput: parsed.recordPlantingSummaryInput ?? "",
       recordMemoInput: parsed.recordMemoInput ?? "",
       qualityMemo: normalizeQualityMemo(parsed.qualityMemo || parsed.qualityTags || null),
-      recordCasesEdited: !!parsed.recordCasesEdited
+      recordCasesEdited: !!parsed.recordCasesEdited,
+      recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
+      recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
+      activePlantingRecordId: Number.isFinite(Number(parsed.activePlantingRecordId)) ? Number(parsed.activePlantingRecordId) : null
     };
   }catch(e){
     return null;
@@ -3499,10 +3605,14 @@ function refreshAfterHarvestSelectionChanged(options = {}){
 
   const summaryInput = document.getElementById("recordPalletSummaryInput");
   if(summaryInput){
-    summaryInput.value = keepRecordSummary ? (summaryInput.value || "") : formatPalletSummary(harvestFillKeys);
+    if(recordSelectionMode === "harvest"){
+      summaryInput.value = keepRecordSummary ? (summaryInput.value || "") : formatPalletSummary(harvestFillKeys);
+    }
   }
+  syncRecordPlantingSummaryFromSelection();
 
   updateRecordActualLoss();
+  updateRecordActualSeedlingDisplays();
   saveHarvestStateToStorage();
 }
 
@@ -3684,8 +3794,12 @@ function switchTab(tabName){
   document.getElementById("recordTabBtn").classList.toggle("active", tabName === "record");
   document.getElementById("dashboardTabBtn")?.classList.toggle("active", tabName === "dashboard");
   if(tabName === "record"){
-    captureRecordBaseSelection();
-    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    if(recordSelectionMode !== "planting"){
+      captureRecordBaseSelection();
+      document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    }
+    refreshRecordModeUi();
+    syncRecordPlantingSummaryFromSelection();
     updateRecordActualLoss();
     drawRecordBeds();
   }
@@ -3904,6 +4018,21 @@ function getPalletKeysFromRecord(record){
   ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
 }
 
+function getPlantingPalletKeysFromRecord(record, harvestKeys = null){
+  if(!record || typeof record !== "object" || record.type === "partialHarvest") return [];
+  const keys = [...new Set([
+    ...expandPalletKeyItemsToKeys(record.plantingPalletKeys),
+    ...expandPalletRangesToKeys(record.plantingRanges)
+  ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  if(keys.length) return keys;
+
+  if(record.plantingPending) return [];
+  if(String(record.plantingSummary || "").trim()){
+    return Array.isArray(harvestKeys) ? [...harvestKeys] : getPalletKeysFromRecord(record);
+  }
+  return Array.isArray(harvestKeys) ? [...harvestKeys] : getPalletKeysFromRecord(record);
+}
+
 function normalizePartialHarvestTargets(targets){
   if(!Array.isArray(targets)) return [];
 
@@ -4039,11 +4168,18 @@ function serializeRecordForStorage(record){
     date: record.date,
     cases: record.cases,
     palletSummary: record.palletSummary,
+    plannedSeedlingTrayCount: clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0),
+    plantingSummary: record.plantingSummary || "",
+    plantingDate: record.plantingDate || "",
+    actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0)),
+    actualSeedlingLossRate: String(record.actualSeedlingLossRate || "").trim(),
     memo: record.memo || "",
     actualLoss: record.actualLoss,
     qualityMemo: normalizeQualityMemo(record.qualityMemo),
     plantingAge: record.plantingAge || null,
-    palletRanges: compressPalletKeysToRanges(record.palletKeys)
+    palletRanges: compressPalletKeysToRanges(record.palletKeys),
+    plantingRanges: compressPalletKeysToRanges(record.plantingPalletKeys),
+    plantingPending: !!record.plantingPending
   };
 
   return payload;
@@ -4067,11 +4203,19 @@ function normalizeStoredRecord(record){
   }
 
   const palletKeys = getPalletKeysFromRecord(record);
+  const plantingPalletKeys = getPlantingPalletKeysFromRecord(record, palletKeys);
   return {
     ...record,
     duplicateKey: String(record.duplicateKey || "").trim(),
     type: "fullHarvest",
     memo: record.memo || "",
+    plannedSeedlingTrayCount: clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0),
+    plantingSummary: String(record.plantingSummary || "").trim(),
+    plantingDate: String(record.plantingDate || "").trim(),
+    actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0)),
+    actualSeedlingLossRate: String(record.actualSeedlingLossRate || "").trim(),
+    plantingPending: !!record.plantingPending,
+    plantingPalletKeys,
     qualityMemo: record.qualityMemo
       ? normalizeQualityMemo(record.qualityMemo)
       : qualityMemoFromLegacySizeRating(record.sizeRating),
@@ -4279,7 +4423,7 @@ function getGoogleSheetUnsentRecords(){
   if(!config.url) return [];
 
   const status = loadGoogleSheetSyncStatus();
-  return records.filter(record => isGoogleSheetRecordUnsent(record, status));
+  return records.filter(record => !record.plantingPending && isGoogleSheetRecordUnsent(record, status));
 }
 
 function updateGoogleSheetResendButtonState(){
@@ -4377,12 +4521,18 @@ function buildGoogleSheetRecordPayload(record, config){
       date: record.date,
       cases: record.cases,
       palletSummary: isPartial ? formatPartialHarvestSummary(record.targets) : record.palletSummary,
+      plannedSeedlingTrayCount: isPartial ? 0 : clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0),
+      plantingSummary: isPartial ? "" : (record.plantingSummary || ""),
+      plantingDate: isPartial ? "" : (record.plantingDate || ""),
+      actualSeedlingTrayCount: isPartial ? 0 : clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0),
+      actualSeedlingLossRate: isPartial ? "" : String(record.actualSeedlingLossRate || "").trim(),
       memo: record.memo || "",
       actualLoss: isPartial ? "" : record.actualLoss,
       qualityMemo: isPartial ? null : normalizeQualityMemo(record.qualityMemo),
       qualityText: isPartial ? "" : formatQualityMemo(record.qualityMemo),
       plantingAge: isPartial ? null : normalizePlantingAgeSnapshot(record.plantingAge),
       palletKeys: isPartial ? [] : (Array.isArray(record.palletKeys) ? record.palletKeys : []),
+      plantingPalletKeys: isPartial ? [] : (Array.isArray(record.plantingPalletKeys) ? record.plantingPalletKeys : []),
       targets: isPartial ? normalizePartialHarvestTargets(record.targets) : []
     }
   };
@@ -4891,6 +5041,12 @@ function normalizeGoogleSheetRowRecord(row){
     ...record,
     palletKeys: parseMaybeJsonList(record.palletKeys),
     palletRanges: parseMaybeJsonList(record.palletRanges),
+    plantingPalletKeys: parseMaybeJsonList(record.plantingPalletKeys),
+    plantingRanges: parseMaybeJsonList(record.plantingRanges),
+    plannedSeedlingTrayCount: clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0),
+    plantingDate: String(record.plantingDate || "").trim(),
+    actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0)),
+    actualSeedlingLossRate: String(record.actualSeedlingLossRate || "").trim(),
     qualityMemo: parseMaybeJson(
       record.qualityMemo || record.qualityText || "",
       record.qualityMemo || record.qualityText || {
@@ -4915,8 +5071,10 @@ function formatGoogleSheetSendRecordLine(record, index){
 
   const locationText = String(record?.palletSummary || "")
     .split("\n")[0] || "場所未設定";
+  const plantingText = String(record?.plantingSummary || "")
+    .split("\n")[0];
   const lossText = record?.actualLoss ? " / ロス率" + record.actualLoss + "%" : "";
-  return (index + 1) + ". " + date + " 通常収穫 " + cases + "ケース" + lossText + " / " + locationText;
+  return (index + 1) + ". " + date + " 通常収穫 " + cases + "ケース" + lossText + " / " + locationText + (plantingText ? " / 苗植え:" + plantingText : "");
 }
 
 function formatGoogleSheetSendRecordList(recordsToSend){
@@ -5874,6 +6032,7 @@ function getDashboardRecordSearchText(record){
     formatDashboardBuildings(record),
     qualityMemo || "",
     summary || "",
+    record?.plantingSummary || "",
     record?.memo || ""
   ].join("\n").toLowerCase();
 }
@@ -6323,7 +6482,10 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
     const summary = record.type === "partialHarvest"
       ? formatPartialHarvestSummary(record.targets)
       : (record.palletSummary || "");
-    const noteText = [summary, record.memo || ""].filter(Boolean).join("\n");
+    const plantingText = record.type === "partialHarvest" || !record.plantingSummary
+      ? ""
+      : "苗植え場所: " + record.plantingSummary;
+    const noteText = [summary, plantingText, record.memo || ""].filter(Boolean).join("\n");
 
     return `
       <tr>
@@ -6494,20 +6656,28 @@ function getLocalDayDiff(fromDate, toDate){
   return Math.floor((startOfLocalDay(toDate).getTime() - startOfLocalDay(fromDate).getTime()) / 86400000);
 }
 
+function getEffectivePlantingDateForRecord(record){
+  if(!record || record.type !== "fullHarvest" || record.plantingPending) return null;
+  const plantingDate = parseDateOnlyString(String(record.plantingDate || "").trim());
+  if(plantingDate) return plantingDate;
+  return parseDateOnlyString(String(record.date || "").trim());
+}
+
 function getLatestPlantingDateByPallet(targetDate){
   const map = new Map();
   const targetDay = startOfLocalDay(targetDate);
 
   records.forEach(record => {
-    if(!Array.isArray(record.palletKeys)) return;
-    const recordDate = parseDateOnlyString(record.date);
-    if(!recordDate) return;
+    const plantingKeys = getPlantingPalletKeysFromRecord(record);
+    if(!plantingKeys.length) return;
+    const effectivePlantingDate = getEffectivePlantingDateForRecord(record);
+    if(!effectivePlantingDate) return;
 
-    const recordDay = startOfLocalDay(recordDate);
+    const recordDay = startOfLocalDay(effectivePlantingDate);
     if(recordDay.getTime() >= targetDay.getTime()) return;
     if(getLocalDayDiff(recordDay, targetDay) > CALCULATION_LOOKBACK_DAYS) return;
 
-    record.palletKeys.forEach(key => {
+    plantingKeys.forEach(key => {
       const palletKey = String(key || "");
       const current = map.get(palletKey);
       if(!current || recordDay.getTime() > current.getTime()){
@@ -6849,71 +7019,63 @@ function showRecordBedActionMenu(bed){
   activeRecordBedActionBed = bed;
   const menu = document.getElementById("recordBedActionMenu");
   const title = document.getElementById("recordBedActionTitle");
-  const input = document.getElementById("recordBedCountInput");
-  if(title) title.textContent = currentBuilding + "号棟 " + bed + "ベッドの収穫枚数調整";
-  if(input) input.value = "";
-  if(menu) menu.classList.add("show");
-  setTimeout(() => input?.focus(), 0);
+  const startInput = document.getElementById("recordBedRangeStartInput");
+  const endInput = document.getElementById("recordBedRangeEndInput");
+  if(title) title.textContent = currentBuilding + "号棟 " + bed + "ベッドの" + (recordSelectionMode === "planting" ? "苗植え枚数調整" : "収穫枚数調整");
+  if(startInput) startInput.value = "";
+  if(endInput) endInput.value = "";
+  if(menu){
+    menu.classList.add("show");
+  }
+  setTimeout(() => startInput?.focus(), 0);
 }
 
 function hideRecordBedActionMenu(){
   const menu = document.getElementById("recordBedActionMenu");
-  if(menu) menu.classList.remove("show");
+  if(menu){
+    menu.classList.remove("show");
+  }
   activeRecordBedActionBed = null;
 }
 
-function setRecordBedCountSign(sign){
-  const input = document.getElementById("recordBedCountInput");
-  if(!input) return;
-
-  const raw = String(input.value || "").trim();
-  const absValue = raw === "-" ? "" : String(Math.abs(Math.trunc(Number(raw) || 0)) || "");
-  input.value = sign < 0 ? "-" + absValue : absValue;
-  input.focus();
-}
-
-function applyRecordBedCount(direction){
+function applyRecordBedRange(action){
   const bed = activeRecordBedActionBed;
-  const rawCount = Number(document.getElementById("recordBedCountInput")?.value || 0);
+  const startValue = Number(document.getElementById("recordBedRangeStartInput")?.value || 0);
+  const endValue = Number(document.getElementById("recordBedRangeEndInput")?.value || 0);
   const recordedSet = getRecordTabRecordedPalletSet();
+  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet() : null;
   hideRecordBedActionMenu();
   if(!bed) return;
-  if(!Number.isFinite(rawCount) || rawCount === 0){
-    showToast("調整する枚数を入力してください");
+  if(!Number.isFinite(startValue) || !Number.isFinite(endValue) || startValue <= 0 || endValue <= 0){
+    showToast("開始と終了のパレット番号を入力してください");
     return;
   }
 
-  const count = Math.trunc(rawCount);
-  if(count === 0){
-    showToast("調整する枚数を入力してください");
+  const start = Math.max(1, Math.min(PALLETS_PER_BED, Math.trunc(startValue)));
+  const end = Math.max(1, Math.min(PALLETS_PER_BED, Math.trunc(endValue)));
+  const rangeStart = Math.min(start, end);
+  const rangeEnd = Math.max(start, end);
+  if(rangeStart > rangeEnd){
+    showToast("パレット番号の範囲を確認してください");
     return;
-  }
-
-  const numbers = [];
-  if(direction === "back"){
-    for(let number = PALLETS_PER_BED; number >= 1; number--) numbers.push(number);
-  }else{
-    for(let number = 1; number <= PALLETS_PER_BED; number++) numbers.push(number);
   }
 
   let changed = 0;
-  const targetCount = Math.abs(count);
-
-  if(count > 0){
-    for(const number of numbers){
-      if(changed >= targetCount) break;
-      if(isRecorded(currentBuilding, bed, number, { recordedSet, context: "record" })) continue;
-
+  if(action === "add"){
+    for(let number = rangeStart; number <= rangeEnd; number++){
       const key = getPalletKey(currentBuilding, bed, number);
+      if(plantingAllowedSet){
+        if(!plantingAllowedSet.has(key)) continue;
+      }else if(isRecorded(currentBuilding, bed, number, { recordedSet, context: "record" })){
+        continue;
+      }
       if(harvestFillKeys.includes(key)) continue;
 
       harvestFillKeys.push(key);
       changed++;
     }
   }else{
-    for(const number of numbers){
-      if(changed >= targetCount) break;
-
+    for(let number = rangeStart; number <= rangeEnd; number++){
       const key = getPalletKey(currentBuilding, bed, number);
       const fillIndex = harvestFillKeys.indexOf(key);
       if(fillIndex < 0) continue;
@@ -6924,13 +7086,13 @@ function applyRecordBedCount(direction){
   }
 
   if(changed === 0){
-    showToast(count > 0 ? "追加できるパレットがありません" : "解除できる選択がありません");
+    showToast(action === "add" ? "追加できるパレットがありません" : "削除できる選択がありません");
     return;
   }
 
   sortHarvestFillKeys();
   refreshAfterHarvestSelectionChanged();
-  showToast(currentBuilding + "号棟 " + bed + "ベッドを" + (direction === "back" ? "後ろ" : "前") + "から" + changed + "枚" + (count > 0 ? "追加" : "解除") + "しました");
+  showToast(currentBuilding + "号棟 " + bed + "ベッドのパレット番号" + rangeStart + "から" + rangeEnd + "を" + changed + "枚" + (action === "add" ? "追加" : "削除") + "しました");
 }
 
 function clearSelectedRecordBedFromMenu(){
@@ -7420,11 +7582,26 @@ function getSelectedSeedlingNeed(){
 
 function getRequiredSeedlingsWithLoss(){
   const totalPlanting = getSelectedSeedlingNeed();
+  return getRequiredSeedlingsWithLossFromPlantingTotal(totalPlanting);
+}
+
+function getRequiredSeedlingsWithLossFromPlantingTotal(totalPlanting){
   const lossRate = clampNumber(settings.seedlingLossRate, 0, 100, 0);
   const surviveRate = (100 - lossRate) / 100;
   if(totalPlanting <= 0) return 0;
   if(surviveRate <= 0) return 0;
   return Math.ceil(totalPlanting / surviveRate);
+}
+
+function getSeedlingNeedForKeys(keys){
+  if(!Array.isArray(keys) || !keys.length) return 0;
+  let total = 0;
+  keys.forEach(key => {
+    const p = parsePalletKey(String(key || ""));
+    if(!BUILDINGS.includes(p.building) || !bedOrder.includes(p.bed) || !Number.isFinite(p.number)) return;
+    total += getPlantingCountForPallet(p.bed, p.number);
+  });
+  return total;
 }
 
 function getRemainingCasesForCurrentBuilding(){
@@ -7457,6 +7634,10 @@ function getSpecialPalletPattern(n){
 
 function getRequiredSpecialPalletCount(){
   const requiredSeedlings = getRequiredSeedlingsWithLoss();
+  return getSpecialPalletCountForRequiredSeedlings(requiredSeedlings);
+}
+
+function getSpecialPalletCountForRequiredSeedlings(requiredSeedlings){
   if(requiredSeedlings <= 0) return 0;
 
   const pattern = getSpecialPalletPattern(settings.specialPallet60CountPer3);
@@ -7473,6 +7654,12 @@ function getRequiredSpecialPalletCount(){
   }
 
   return count;
+}
+
+function getSeedlingTrayCountNeededForKeys(keys){
+  const totalPlanting = getSeedlingNeedForKeys(keys);
+  const requiredSeedlings = getRequiredSeedlingsWithLossFromPlantingTotal(totalPlanting);
+  return getSpecialPalletCountForRequiredSeedlings(requiredSeedlings);
 }
 
 function normalizeManualSeedlingCount(value){
@@ -7706,6 +7893,153 @@ function formatHarvestLocationInstruction(){
   if(!parts.length) return "収穫場所: -";
   if(parts.length === 1) return "収穫場所: " + parts[0];
   return "収穫場所: " + parts.join("\n");
+}
+
+function getPlantingSummaryFromSelection(){
+  return formatHarvestLocationInstruction()
+    .replace(/^収穫場所:\s*/, "")
+    .replace(/^-$/, "")
+    .trim();
+}
+
+function formatPlantingSummaryForKeys(keys){
+  const previousKeys = [...harvestFillKeys];
+  try{
+    harvestFillKeys = Array.isArray(keys) ? [...keys] : [];
+    return getPlantingSummaryFromSelection();
+  }finally{
+    harvestFillKeys = previousKeys;
+  }
+}
+
+function syncRecordPlantingSummaryFromSelection(options = {}){
+  const input = document.getElementById("recordPlantingSummaryInput");
+  if(!input) return;
+  if(recordSelectionMode !== "planting" && !options.force){
+    return;
+  }
+  if(recordPlantingSummaryEdited && !options.force) return;
+  input.value = recordSelectionMode === "planting" ? getPlantingSummaryFromSelection() : "";
+}
+
+function getPlannedSeedlingTrayCountForRecord(){
+  const plannedKeys = Array.isArray(recordBaseFillKeys) && recordBaseFillKeys.length
+    ? recordBaseFillKeys
+    : harvestFillKeys;
+  if(hasManualSeedlingCount()){
+    return getDisplayedSeedlingCount(getSeedlingTrayCountNeededForKeys(plannedKeys));
+  }
+  return getSeedlingTrayCountNeededForKeys(plannedKeys);
+}
+
+function syncRecordActualSeedlingTrayCountInput(record = getActivePlantingRecord(), options = {}){
+  const input = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(!input) return;
+  if(!record || record.type !== "fullHarvest"){
+    if(options.force) input.value = "";
+    return;
+  }
+  if(input.dataset.userEdited === "1" && !options.force) return;
+  const value = clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0) || clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0);
+  input.value = value > 0 ? String(value) : "";
+}
+
+function getRecordById(id){
+  const safeId = Number(id);
+  if(!Number.isFinite(safeId)) return null;
+  return records.find(record => Number(record.id) === safeId) || null;
+}
+
+function getActivePlantingRecord(){
+  return getRecordById(activePlantingRecordId);
+}
+
+function getUnplantedPalletSet(options = {}){
+  const excludeId = Number(options.excludeRecordId);
+  const unplanted = new Set();
+  const orderedRecords = [...records].sort(compareRecordsByDateDesc).reverse();
+
+  orderedRecords.forEach(record => {
+    if(record?.type !== "fullHarvest") return;
+
+    const harvestKeys = Array.isArray(record.palletKeys) ? record.palletKeys : getPalletKeysFromRecord(record);
+    const plantingKeys = getPlantingPalletKeysFromRecord(record, harvestKeys);
+
+    if(!(Number.isFinite(excludeId) && Number(record.id) === excludeId)){
+      harvestKeys.forEach(key => unplanted.add(key));
+    }
+    plantingKeys.forEach(key => unplanted.delete(key));
+  });
+
+  return unplanted;
+}
+
+function getPlantingAllowedPalletSet(){
+  const activeRecord = getActivePlantingRecord();
+  const allowed = getUnplantedPalletSet({ excludeRecordId: activeRecord?.id });
+
+  if(activeRecord && Array.isArray(activeRecord.palletKeys)){
+    activeRecord.palletKeys.forEach(key => allowed.add(key));
+  }
+
+  return allowed;
+}
+
+function isPlantingSelectionAllowed(key){
+  return getPlantingAllowedPalletSet().has(key);
+}
+
+function enterHarvestRecordMode(){
+  recordSelectionMode = "harvest";
+  activePlantingRecordId = null;
+  recordPlantingSummaryEdited = false;
+  const input = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(input) delete input.dataset.userEdited;
+  refreshRecordModeUi();
+}
+
+function enterPlantingRecordMode(record){
+  if(!record) return;
+  recordSelectionMode = "planting";
+  activePlantingRecordId = Number(record.id);
+  recordPlantingSummaryEdited = false;
+  harvestFillKeys = [...(Array.isArray(record.palletKeys) ? record.palletKeys : [])];
+  const input = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(input) delete input.dataset.userEdited;
+  refreshAfterHarvestSelectionChanged();
+  syncRecordActualSeedlingTrayCountInput(record, { force: true });
+  refreshRecordModeUi();
+}
+
+function refreshRecordModeUi(){
+  const notice = document.getElementById("recordEditNotice");
+  const button = document.getElementById("recordPrimaryActionBtn");
+  const plantingInput = document.getElementById("recordPlantingSummaryInput");
+  const harvestStageSection = document.getElementById("recordHarvestStageSection");
+  const plantingStageSection = document.getElementById("recordPlantingStageSection");
+
+  if(recordSelectionMode === "planting"){
+    if(notice) notice.textContent = "実際に苗植えした場所を選択してください。";
+    if(button) button.textContent = "苗植え場所を記録して送信する";
+    if(plantingInput) plantingInput.placeholder = "表で実際に苗植えした場所を選ぶと入ります";
+    if(harvestStageSection) harvestStageSection.hidden = true;
+    if(plantingStageSection) plantingStageSection.hidden = false;
+    updateRecordSeedlingDiffDisplay();
+  }else{
+    if(notice) notice.textContent = "実際の収穫場所に調整してください。";
+    if(button) button.textContent = "収穫場所を記録する";
+    if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
+    if(harvestStageSection) harvestStageSection.hidden = false;
+    if(plantingStageSection) plantingStageSection.hidden = true;
+  }
+}
+
+function handleRecordPrimaryAction(){
+  if(recordSelectionMode === "planting"){
+    savePlantingRecord();
+    return;
+  }
+  saveRecord();
 }
 
 function getCaseLocationForPallet(bed, number){
@@ -8243,7 +8577,12 @@ function toggleRecordPallet(building, bed, number){
   const key = getPalletKey(building, bed, number);
   const recordedSet = getRecordTabRecordedPalletSet();
 
-  if(isRecorded(building, bed, number, { recordedSet, context: "record" })){
+  if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key)){
+    showToast("苗植え場所は、今回収穫した場所か前回苗植えしなかった場所だけ選択できます");
+    return;
+  }
+
+  if(recordSelectionMode !== "planting" && isRecorded(building, bed, number, { recordedSet, context: "record" })){
     showToast("記録済みパレットは調整できません");
     return;
   }
@@ -8255,7 +8594,8 @@ function toggleRecordPallet(building, bed, number){
     drawBeds();
     drawRecordBeds();
     renderForecastSummary();
-    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    syncRecordPlantingSummaryFromSelection();
     updateRecordActualLoss();
     return;
   }else{
@@ -8265,7 +8605,8 @@ function toggleRecordPallet(building, bed, number){
     drawBeds();
     drawRecordBeds();
     renderForecastSummary();
-    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+    syncRecordPlantingSummaryFromSelection();
     updateRecordActualLoss();
     return;
   }
@@ -8276,6 +8617,7 @@ function drawRecordBeds(){
   if(!container) return;
   container.innerHTML = "";
   const recordedSet = getRecordTabRecordedPalletSet();
+  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet() : null;
 
   bedMap.forEach(b => {
     const bed = document.createElement("div");
@@ -8317,7 +8659,11 @@ function drawRecordBeds(){
         const partialHarvestCount = getPartialHarvestCountForPallet(currentBuilding, b, number);
         if(partialHarvestCount > 0) cls += " partialHarvestPallet";
         if(isFilled(currentBuilding, b, number)) cls += " harvestFill";
-        if(recordedSet.has(key)) cls += " recordedPallet";
+        if(recordSelectionMode === "planting"){
+          if(!plantingAllowedSet.has(key)) cls += " recordedPallet";
+        }else if(recordedSet.has(key)){
+          cls += " recordedPallet";
+        }
 
         if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
         if(harvestSummary && harvestSummary.end === key) cls += " harvestEnd";
@@ -8414,6 +8760,138 @@ function getRecordActualLossValue(){
   return String(display.dataset.value || "").trim();
 }
 
+function getRecordActualSeedlingTrayCount(){
+  return clampNumber(document.getElementById("recordActualSeedlingTrayCountInput")?.value || 0, 0, 999999, 0);
+}
+
+function getSeedlingCountFromTrayCount(trayCount){
+  const safeTrayCount = clampNumber(trayCount, 0, 999999, 0);
+  if(safeTrayCount <= 0) return 0;
+
+  const pattern = getSpecialPalletPattern(settings.specialPallet60CountPer3);
+  if(!pattern.length) return 0;
+
+  let total = 0;
+  for(let index = 0; index < safeTrayCount; index++){
+    total += pattern[index % pattern.length];
+  }
+  return total;
+}
+
+function getActualTakenSeedlingTotal(){
+  return getSeedlingCountFromTrayCount(getRecordActualSeedlingTrayCount());
+}
+
+function getActualPlantedSeedlingTotal(keys = harvestFillKeys){
+  if(!Array.isArray(keys) || !keys.length) return 0;
+  let total = 0;
+  keys.forEach(key => {
+    const p = parsePalletKey(String(key || ""));
+    if(!BUILDINGS.includes(p.building) || !bedOrder.includes(p.bed) || !Number.isFinite(p.number)) return;
+    total += getPlantingCountForPallet(p.bed, p.number);
+  });
+  return total;
+}
+
+function getActualSeedlingLossRateValue(){
+  if(recordSelectionMode !== "planting") return "";
+  const takenTotal = getActualTakenSeedlingTotal();
+  if(takenTotal <= 0) return "";
+  const plantedTotal = getActualPlantedSeedlingTotal();
+  if(plantedTotal <= 0) return "";
+  const lossRate = ((takenTotal - plantedTotal) / takenTotal) * 100;
+  return (Math.round(lossRate * 10) / 10).toFixed(1);
+}
+
+function getRecordSeedlingDiffSummaryText(record = getActivePlantingRecord()){
+  if(!record || record.type !== "fullHarvest"){
+    return "苗枚数の差を表示する収穫記録がありません。";
+  }
+
+  const plannedCount = clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0);
+  const actualRequiredCount = getSeedlingTrayCountNeededForKeys(record.palletKeys);
+  const diff = actualRequiredCount - plannedCount;
+  const diffText = diff === 0
+    ? "差: 0枚"
+    : (diff > 0 ? `差: +${diff}枚` : `差: ${diff}枚`);
+
+  return [
+    `収穫選択で計算した苗枚数: ${plannedCount}枚`,
+    `実際の収穫場所を全部植える必要苗枚数: ${actualRequiredCount}枚`,
+    diffText
+  ].join("\n");
+}
+
+function updateRecordSeedlingDiffDisplay(){
+  const box = document.getElementById("recordSeedlingDiffBox");
+  if(!box) return;
+  box.textContent = getRecordSeedlingDiffSummaryText();
+}
+
+function updateRecordActualSeedlingDisplays(){
+  const totalDisplay = document.getElementById("recordActualSeedlingTotalDisplay");
+  const lossDisplay = document.getElementById("recordActualSeedlingLossInput");
+  const takenTotal = getActualTakenSeedlingTotal();
+  const lossValue = getActualSeedlingLossRateValue();
+
+  if(totalDisplay){
+    totalDisplay.dataset.value = takenTotal > 0 ? String(takenTotal) : "";
+    totalDisplay.textContent = takenTotal > 0 ? String(takenTotal) : "--";
+    totalDisplay.classList.toggle("empty", takenTotal <= 0);
+  }
+
+  if(lossDisplay){
+    lossDisplay.dataset.value = lossValue === "" ? "" : lossValue;
+    lossDisplay.textContent = lossValue === "" ? "--" : lossValue + "%";
+    lossDisplay.classList.toggle("empty", lossValue === "");
+  }
+}
+
+function bindRecordActualSeedlingTrayCountInput(){
+  const input = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(!input || input.dataset.bound === "1") return;
+
+  input.addEventListener("focus", () => {
+    if(input.dataset.clearedOnFocus === "1") return;
+    input.dataset.previousValue = input.value;
+    input.dataset.clearedOnFocus = "1";
+    input.dataset.enteredSinceFocus = "0";
+    input.value = "";
+  });
+
+  input.addEventListener("input", () => {
+    input.dataset.userEdited = "1";
+    if(input.dataset.clearedOnFocus === "1"){
+      input.dataset.enteredSinceFocus = "1";
+    }
+  });
+
+  input.addEventListener("keydown", event => {
+    if(event.key === "Enter"){
+      event.preventDefault();
+      input.blur();
+    }
+  });
+
+  input.addEventListener("blur", () => {
+    const value = input.value;
+    const restorePrevious = input.dataset.clearedOnFocus === "1"
+      && input.dataset.enteredSinceFocus !== "1"
+      && String(value || "").trim() === "";
+    if(restorePrevious){
+      input.value = input.dataset.previousValue || "";
+      delete input.dataset.userEdited;
+    }
+    delete input.dataset.previousValue;
+    delete input.dataset.clearedOnFocus;
+    delete input.dataset.enteredSinceFocus;
+    updateRecordActualSeedlingDisplays();
+    saveHarvestStateToStorage();
+  });
+
+  input.dataset.bound = "1";
+}
+
 function formatPalletSummary(keys){
   if(!keys || keys.length === 0) return "";
 
@@ -8484,12 +8962,20 @@ function setTodayToRecordDate(){
 }
 
 function clearRecordForm(){
+  enterHarvestRecordMode();
   restoreRecordSelectionToBase();
   setTodayToRecordDate();
   recordCasesEdited = false;
+  recordPlantingSummaryEdited = false;
   syncRecordCasesFromMain(true);
+  syncRecordPlantingSummaryFromSelection({ force: true });
   const memoInput = document.getElementById("recordMemoInput");
   if(memoInput) memoInput.value = "";
+  const actualSeedlingTrayCountInput = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(actualSeedlingTrayCountInput){
+    actualSeedlingTrayCountInput.value = "";
+    delete actualSeedlingTrayCountInput.dataset.userEdited;
+  }
   const partialCasesInput = document.getElementById("partialHarvestCasesInput");
   if(partialCasesInput) partialCasesInput.value = "";
   document.querySelectorAll('input[name="partialHarvestBed"]').forEach(input => {
@@ -8497,6 +8983,7 @@ function clearRecordForm(){
   });
   setSelectedQualityMemo(null);
   updateRecordActualLoss();
+  updateRecordActualSeedlingDisplays();
   saveHarvestStateToStorage();
 }
 
@@ -8506,6 +8993,7 @@ function saveRecord(){
   const totalCases = clampNumber(document.getElementById("recordCasesInput").value || 0, 0, 999999, 0);
   const cases = getRegularHarvestCases(totalCases, date);
   const actualLoss = getRecordActualLossValue();
+  const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
   const qualityMemo = getSelectedQualityMemo();
   const plantingAge = getCurrentPlantingAgeSnapshot();
   const palletSummary = document.getElementById("recordPalletSummaryInput").value.trim();
@@ -8545,11 +9033,17 @@ function saveRecord(){
     date,
     cases,
     palletSummary,
+    plannedSeedlingTrayCount: getPlannedSeedlingTrayCountForRecord(),
+    plantingSummary: "",
+    plantingPending: true,
+    actualSeedlingTrayCount,
+    actualSeedlingLossRate: "",
     memo,
     actualLoss,
     qualityMemo,
     plantingAge,
-    palletKeys: [...harvestFillKeys]
+    palletKeys: [...harvestFillKeys],
+    plantingPalletKeys: []
   };
   record.duplicateKey = getRecordDuplicateKey(record);
 
@@ -8557,7 +9051,76 @@ function saveRecord(){
 
   saveRecordsToStorage();
   maybePromptRecordExport();
-  sendRecordToGoogleSheet(record);
+  renderRecordList();
+  renderDashboard();
+  updateGoogleSheetResendButtonState();
+  updateBuildingLastHarvestInfo();
+  enterPlantingRecordMode(record);
+  saveHarvestStateToStorage();
+  showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");
+}
+
+function savePlantingRecord(){
+  if(!ensureProtectedOperationAccess("苗植え場所の保存")) return;
+  const record = getActivePlantingRecord();
+  const plantingDate = document.getElementById("recordDateInput")?.value || record?.date || "";
+  if(!record || record.type !== "fullHarvest"){
+    showToast("苗植え場所を紐づける収穫記録がありません");
+    enterHarvestRecordMode();
+    return;
+  }
+  if(!plantingDate){
+    showToast("苗植えした日付を入力してください");
+    return;
+  }
+
+  if(!harvestFillKeys.length){
+    showToast("苗植えした場所を選択してください");
+    return;
+  }
+
+  const allowedSet = getPlantingAllowedPalletSet();
+  const invalidKeys = harvestFillKeys.filter(key => !allowedSet.has(key));
+  if(invalidKeys.length){
+    showToast("苗植えできる場所だけを選択してください");
+    return;
+  }
+
+  const selectedKeys = [...harvestFillKeys];
+  const selectedSet = new Set(selectedKeys);
+  const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
+  const actualSeedlingLossRate = getActualSeedlingLossRateValue();
+  const recordsToSend = [];
+
+  records.forEach(targetRecord => {
+    if(targetRecord?.type !== "fullHarvest") return;
+    const harvestKeys = Array.isArray(targetRecord.palletKeys) ? targetRecord.palletKeys : getPalletKeysFromRecord(targetRecord);
+    const selectedHarvestKeys = harvestKeys.filter(key => selectedSet.has(key));
+    const isActiveRecord = Number(targetRecord.id) === Number(record.id);
+    const keysToApply = isActiveRecord ? selectedKeys : selectedHarvestKeys;
+    if(!keysToApply.length) return;
+
+    const beforePending = !!targetRecord.plantingPending;
+    const existingPlantingKeys = getPlantingPalletKeysFromRecord(targetRecord, harvestKeys);
+    targetRecord.plantingPalletKeys = [...new Set([...existingPlantingKeys, ...keysToApply])]
+      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+    targetRecord.plantingSummary = formatPlantingSummaryForKeys(targetRecord.plantingPalletKeys);
+    targetRecord.plantingDate = plantingDate;
+    if(isActiveRecord){
+      targetRecord.actualSeedlingTrayCount = actualSeedlingTrayCount;
+      targetRecord.actualSeedlingLossRate = actualSeedlingLossRate;
+    }
+    targetRecord.plantingPending = false;
+    targetRecord.duplicateKey = getRecordDuplicateKey(targetRecord);
+
+    if(isActiveRecord || beforePending){
+      recordsToSend.push(targetRecord);
+    }
+  });
+
+  saveRecordsToStorage();
+  maybePromptRecordExport();
+  recordsToSend.forEach(recordToSend => sendRecordToGoogleSheet(recordToSend));
   renderRecordList();
   renderDashboard();
   updateGoogleSheetResendButtonState();
@@ -8567,7 +9130,33 @@ function saveRecord(){
   captureRecordBaseSelection();
   clearRecordForm();
   saveHarvestStateToStorage();
-  showToast("記録を保存しました");
+  showToast("苗植え場所を記録して送信しました");
+}
+
+function resumePlantingRecord(id){
+  const record = getRecordById(id);
+  if(!record || record.type !== "fullHarvest"){
+    showToast("苗植え場所を記録する収穫記録が見つかりません");
+    return;
+  }
+  const recordDateInput = document.getElementById("recordDateInput");
+  if(recordDateInput) recordDateInput.value = record.plantingDate || record.date || "";
+  updateRecordWeekdayDisplay();
+  const recordCasesInput = document.getElementById("recordCasesInput");
+  if(recordCasesInput) recordCasesInput.value = String(record.cases || "");
+  const recordActualSeedlingTrayCountInput = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(recordActualSeedlingTrayCountInput){
+    recordActualSeedlingTrayCountInput.value = "";
+    delete recordActualSeedlingTrayCountInput.dataset.userEdited;
+  }
+  const recordMemoInput = document.getElementById("recordMemoInput");
+  if(recordMemoInput) recordMemoInput.value = record.memo || "";
+  setSelectedQualityMemo(record.qualityMemo);
+  enterPlantingRecordMode(record);
+  updateRecordActualLoss();
+  updateRecordActualSeedlingDisplays();
+  saveHarvestStateToStorage();
+  showToast("苗植え場所の記録を再開しました");
 }
 
 function formatPartialHarvestSummary(targets){
@@ -8733,15 +9322,33 @@ function renderRecordItemHtml(r){
       <div class="recordTitle">${r.date}</div>
       <div class="recordMeta">収穫ケース数: ${r.cases}
 実際のロス率: ${r.actualLoss}%
+予定苗枚数: ${escapeHtml(String(r.plannedSeedlingTrayCount || 0))}枚
+実際に取った苗: ${escapeHtml(formatActualSeedlingTrayText(r))}
+実際の苗ロス率: ${escapeHtml(formatActualSeedlingLossRateText(r))}
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
       ${formatPlantingAgeForRecord(r) ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">定植日数: ${escapeHtml(formatPlantingAgeForRecord(r))}</div>` : ""}
       <span class="summaryCode">${escapeHtml(r.palletSummary)}</span>
+      ${r.plantingPending ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">苗植え場所: 未記録（送信待ち）</div>` : ""}
+      ${!r.plantingPending && r.plantingSummary ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">苗植え場所: ${escapeHtml(r.plantingSummary)}</div>` : ""}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <div class="recordActions">
+        ${r.plantingPending ? `<button class="thirdBtn" onclick="resumePlantingRecord(${r.id})">苗植え場所を記録</button>` : ""}
         <button class="secondaryBtn" onclick="confirmDeleteRecord(${r.id})">削除</button>
       </div>
     </div>
   `;
+}
+
+function formatActualSeedlingTrayText(record){
+  const trayCount = clampNumber(record?.actualSeedlingTrayCount, 0, 999999, clampNumber(record?.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record?.actualSeedling120TrayCount, 0, 999999, 0));
+  if(trayCount <= 0) return "-";
+  const totalSeedlings = getSeedlingCountFromTrayCount(trayCount);
+  return `${trayCount}枚（換算 ${totalSeedlings}株）`;
+}
+
+function formatActualSeedlingLossRateText(record){
+  const value = String(record?.actualSeedlingLossRate || "").trim();
+  return value ? value + "%" : "-";
 }
 
 function escapeHtml(str){
@@ -8790,6 +9397,11 @@ function normalizeImportedRecord(record, index){
   }
 
   const palletSummary = String(record.palletSummary || "").trim();
+  const plannedSeedlingTrayCount = clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0);
+  const plantingSummary = String(record.plantingSummary || "").trim();
+  const plantingDate = String(record.plantingDate || "").trim();
+  const actualSeedlingTrayCount = clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0));
+  const actualSeedlingLossRate = String(record.actualSeedlingLossRate || "").trim();
   const actualLoss = String(record.actualLoss || "").trim();
   const qualityMemo = record.qualityMemo || record.qualityTags || record.qualityText
     ? normalizeQualityMemo(record.qualityMemo || {
@@ -8799,6 +9411,7 @@ function normalizeImportedRecord(record, index){
     : qualityMemoFromLegacySizeRating(record.sizeRating);
   const plantingAge = normalizePlantingAgeSnapshot(record.plantingAge);
   const palletKeys = getPalletKeysFromRecord(record);
+  const plantingPalletKeys = getPlantingPalletKeysFromRecord(record, palletKeys);
 
   if(!date || !Number.isFinite(cases) || cases <= 0 || !palletSummary || !actualLoss || !palletKeys.length){
     return null;
@@ -8816,11 +9429,18 @@ function normalizeImportedRecord(record, index){
     date,
     cases,
     palletSummary,
+    plannedSeedlingTrayCount,
+    plantingSummary,
+    plantingDate,
+    actualSeedlingTrayCount,
+    actualSeedlingLossRate,
+    plantingPending: !!record.plantingPending && !plantingPalletKeys.length,
     memo,
     actualLoss,
     qualityMemo,
     plantingAge,
-    palletKeys
+    palletKeys,
+    plantingPalletKeys
   };
 }
 
@@ -9024,6 +9644,13 @@ window.onload = () => {
     harvestSummary = savedHarvestState.harvestSummary;
     manualSeedlingCount = savedHarvestState.manualSeedlingCount;
     recordCasesEdited = !!savedHarvestState.recordCasesEdited;
+    recordPlantingSummaryEdited = !!savedHarvestState.recordPlantingSummaryEdited;
+    recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
+    activePlantingRecordId = savedHarvestState.activePlantingRecordId;
+    if(recordSelectionMode === "planting" && !getActivePlantingRecord()){
+      recordSelectionMode = "harvest";
+      activePlantingRecordId = null;
+    }
     casePlacementByBuilding = savedHarvestState.casePlacementByBuilding || {};
 
     if(!savedHarvestState.casePlacementByBuilding && (savedHarvestState.frontCaseInput !== "" || savedHarvestState.middleCaseInput !== "" || savedHarvestState.backCaseInput !== "")){
@@ -9043,9 +9670,17 @@ window.onload = () => {
     const recordCasesInput = document.getElementById("recordCasesInput");
     if(recordCasesInput) recordCasesInput.value = savedHarvestState.recordCasesInput;
 
+    const recordActualSeedlingTrayCountInput = document.getElementById("recordActualSeedlingTrayCountInput");
+    if(recordActualSeedlingTrayCountInput) recordActualSeedlingTrayCountInput.value = savedHarvestState.recordActualSeedlingTrayCountInput || "";
+
     const recordSummaryInput = document.getElementById("recordPalletSummaryInput");
     if(recordSummaryInput){
       recordSummaryInput.value = savedHarvestState.recordPalletSummaryInput || formatPalletSummary(harvestFillKeys);
+    }
+
+    const recordPlantingSummaryInput = document.getElementById("recordPlantingSummaryInput");
+    if(recordPlantingSummaryInput){
+      recordPlantingSummaryInput.value = savedHarvestState.recordPlantingSummaryInput || "";
     }
 
     const recordMemoInput = document.getElementById("recordMemoInput");
@@ -9061,6 +9696,7 @@ window.onload = () => {
   }
 
   updateBuildingLabel();
+  refreshRecordModeUi();
   drawBeds();
   drawRecordBeds();
   renderForecastSummary();
@@ -9104,8 +9740,11 @@ window.onload = () => {
   if(recordSummaryInput){
     recordSummaryInput.value = recordSummaryInput.value || formatPalletSummary(harvestFillKeys);
   }
+  syncRecordPlantingSummaryFromSelection();
 
   updateRecordActualLoss();
+  updateRecordActualSeedlingDisplays();
+  bindRecordActualSeedlingTrayCountInput();
 
   const recordDateInput = document.getElementById("recordDateInput");
   if(recordDateInput){
@@ -9114,6 +9753,7 @@ window.onload = () => {
       renderRecordList();
       renderForecastSummary();
       updateRecordActualLoss();
+      updateRecordActualSeedlingDisplays();
       updateBuildingLastHarvestInfo();
       drawRecordBeds();
       saveHarvestStateToStorage();
@@ -9123,6 +9763,7 @@ window.onload = () => {
       renderRecordList();
       renderForecastSummary();
       updateRecordActualLoss();
+      updateRecordActualSeedlingDisplays();
       updateBuildingLastHarvestInfo();
       drawRecordBeds();
       saveHarvestStateToStorage();
@@ -9138,6 +9779,15 @@ window.onload = () => {
       saveHarvestStateToStorage();
     });
   }
+
+  ["recordActualSeedlingTrayCountInput"].forEach(id => {
+    const input = document.getElementById(id);
+    if(!input) return;
+    input.addEventListener("input", () => {
+      updateRecordActualSeedlingDisplays();
+      saveHarvestStateToStorage();
+    });
+  });
 
   document.querySelectorAll('input[name="qualityMemoTag"]').forEach(input => {
     input.addEventListener("change", () => {
@@ -9156,6 +9806,14 @@ window.onload = () => {
   const recordMemoInput = document.getElementById("recordMemoInput");
   if(recordMemoInput){
     recordMemoInput.addEventListener("input", () => {
+      saveHarvestStateToStorage();
+    });
+  }
+
+  const recordPlantingSummaryInput = document.getElementById("recordPlantingSummaryInput");
+  if(recordPlantingSummaryInput){
+    recordPlantingSummaryInput.addEventListener("input", () => {
+      recordPlantingSummaryEdited = true;
       saveHarvestStateToStorage();
     });
   }
