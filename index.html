@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>収穫シミュ</title>
+<link rel="apple-touch-icon" href="app-icon.png">
+<link rel="icon" href="app-icon.png">
 <style>
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -27,6 +29,34 @@ header{
 }
 .appTitle{
   text-align:center;
+}
+.headerMenuBtn{
+  position:absolute;
+  left:8px;
+  top:50%;
+  transform:translateY(-50%);
+  border:none;
+  border-radius:10px;
+  width:34px;
+  height:34px;
+  padding:0;
+  background:#fff;
+  color:#15803d;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 2px 0 rgba(21, 128, 61, .25);
+}
+.headerMenuBtn::before{
+  content:"";
+  width:18px;
+  height:2px;
+  border-radius:999px;
+  background:#15803d;
+  box-shadow:0 -6px 0 #15803d, 0 6px 0 #15803d;
+}
+.headerMenuBtn:active{
+  transform:translateY(calc(-50% + 1px));
 }
 .headerActions{
   position:absolute;
@@ -63,32 +93,54 @@ header{
   right:0;
   bottom:0;
   z-index:9000;
-  background:rgba(245,243,255,0.96);
+  background:rgba(145, 76, 255, 0.92);
   padding:8px 6px calc(6px + env(safe-area-inset-bottom));
-  border-top:1px solid #ddd6fe;
-  border-radius:14px 14px 0 0;
+  border-top:1px solid rgba(145, 76, 255, 0.92);
+  border-radius:0;
   overflow:hidden;
   backdrop-filter:blur(10px);
   -webkit-backdrop-filter:blur(10px);
   box-sizing:border-box;
+  box-shadow:0 -10px 24px rgba(15,23,42,0.26);
+}
+.tabBar::after{
+  content:none;
+  position:absolute;
+  left:50%;
+  top:6px;
+  bottom:22px;
+  width:1px;
+  background:rgba(255, 255, 255, 0.42);
+  transform:translateX(-50%);
 }
 .tabBtn{
   flex:1;
   padding:10px 8px;
   border:none;
-  border-radius:12px;
-  background:#ede9fe;
-  color:#6d28d9;
+  border-radius:0;
+  background:transparent;
+  color:#b8b9b9;
   font-weight:bold;
-  font-size:15px;
+  font-size:12px;
   position:relative;
-  box-shadow:inset 0 -1px 0 #d8b4fe;
+  box-shadow:none;
   text-decoration:none;
-  transition:background .18s ease, color .18s ease, box-shadow .18s ease;
+  transition:color .18s ease;
   -webkit-tap-highlight-color:transparent;
   appearance:none;
   -webkit-appearance:none;
   touch-action:manipulation;
+}
+.tabBtn::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:0;
+  width:100px;
+  height:2px;
+  border-radius:999px;
+  background:transparent;
+  transform:translateX(-50%);
 }
 .tabBtn:active,
 .tabBtn:focus{
@@ -100,11 +152,38 @@ header{
   margin-right:0;
 }
 .tabBtn.active{
-  background:#c4b5fd;
-  color:#4c1d95;
+  background:transparent;
+  color:#fff;
   z-index:2;
-  box-shadow:0 -1px 0 #a78bfa, 0 4px 14px rgba(124,58,237,0.18);
-  transform:none;
+  box-shadow:none;
+}
+.tabBtn.active::after{
+  background:transparent;
+}
+.tabBtn.hasTabIcon{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  transform:translateY(-13px);
+}
+.tabIcon{
+  display:block;
+  width:25px;
+  height:25px;
+  margin:0 auto 3px;
+  background:currentColor;
+}
+.forecastTabIcon{
+  mask:url("シミュモニターのアイコン.svg") center / contain no-repeat;
+  -webkit-mask:url("シミュモニターのアイコン.svg") center / contain no-repeat;
+}
+.recordTabIcon{
+  mask:url("記録のアイコン.svg") center / contain no-repeat;
+  -webkit-mask:url("記録のアイコン.svg") center / contain no-repeat;
+}
+.tabBtnText{
+  display:block;
 }
 .card{
   background:#fff;
@@ -128,8 +207,11 @@ header{
   margin-top:8px;
 }
 .sectionTitle{
-  font-size:16px;
-  font-weight:bold;
+  font-size:18px;
+  font-weight:900;
+  color:#0f172a;
+  border-left:5px solid #2563eb;
+  padding-left:8px;
   margin-bottom:8px;
 }
 summary.sectionTitle{
@@ -144,6 +226,16 @@ summary.sectionTitle::after{
   float:right;
   font-size:12px;
   color:#64748b;
+}
+summary.forecastSummaryTitle{
+  border-left:none;
+  padding-left:0;
+  font-size:15px;
+  font-weight:700;
+  color:#374151;
+}
+.forecastSummaryCard{
+  margin-top:16px;
 }
 details:not([open]) summary.sectionTitle{
   margin-bottom:0;
@@ -173,6 +265,9 @@ input:not([type="checkbox"]), select, textarea{
   padding:11px 12px;
   font-size:16px;
   background:#fff;
+}
+.emptyInputField{
+  background:#eff6ff !important;
 }
 .recordInputNeedsAttention{
   border-color:#2563eb !important;
@@ -229,15 +324,24 @@ button:disabled{
 }
 .forecastControlRow{
   display:grid;
-  grid-template-columns:minmax(0, 1.25fr) minmax(72px, 0.75fr) minmax(72px, 0.75fr);
+  grid-template-columns:minmax(0, 1fr);
   gap:6px;
   align-items:end;
 }
+.forecastCaseField{
+  display:grid;
+  grid-template-columns:auto minmax(96px, 140px);
+  gap:10px;
+  align-items:center;
+}
 .forecastCaseField label{
   margin-top:0;
+  margin-bottom:0;
+  font-size:16px;
 }
 .forecastCaseField input{
   height:44px;
+  text-align:right;
 }
 .forecastControlRow .actionBtn{
   margin-top:0;
@@ -250,51 +354,104 @@ button:disabled{
   gap:6px;
   margin:0 0 10px 0;
 }
-.buildingLastHarvest{
-  margin:-4px 0 10px;
-  display:flex;
-  justify-content:center;
-  gap:10px;
-  flex-wrap:wrap;
+.buildingStatusCards{
+  margin:-2px 0 10px;
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+}
+.buildingStatusCard{
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#fff;
+  padding:12px 10px;
   text-align:center;
-  font-size:15px;
-  font-weight:bold;
-  color:#166534;
 }
-.buildingInfoItem{
-  display:inline-block;
-}
-.plantingAgeDetailWrap{
-  margin:-4px 0 10px;
-  border:1px solid #bbf7d0;
-  border-radius:8px;
-  background:#f0fdf4;
-  overflow:hidden;
-}
-.plantingAgeDetailWrap summary{
+.plantingAgeSummaryButton{
+  width:100%;
+  border:none;
+  background:transparent;
+  padding:0;
+  font:inherit;
+  color:inherit;
   cursor:pointer;
-  padding:8px 10px;
-  font-size:13px;
-  font-weight:bold;
-  color:#166534;
-  list-style:none;
 }
-.plantingAgeDetailWrap summary::-webkit-details-marker{
-  display:none;
+.plantingAgeSummaryButton::after{
+  content:"ⓘ";
+  margin-left:6px;
+  font-size:1em;
+  color:#64748b;
 }
-.plantingAgeDetailWrap summary::after{
-  content:"▼";
-  float:right;
-  color:#16a34a;
+.buildingStatusValue{
+  font-size:17px;
+  font-weight:900;
+  color:#111827;
+  line-height:1.4;
 }
-.plantingAgeDetailWrap:not([open]) summary::after{
-  content:"▶";
+@media (max-width:420px){
+  .buildingStatusCards{
+    gap:6px;
+  }
+  .buildingStatusCard{
+    padding:10px 6px;
+  }
+  .buildingStatusValue{
+    font-size:15px;
+  }
 }
 .plantingAgeDetail{
-  border-top:1px solid #bbf7d0;
+  border-top:1px solid #e5e7eb;
   padding:8px 10px 10px;
   display:grid;
   gap:6px;
+  text-align:left;
+}
+.plantingAgeModal{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  background:rgba(15,23,42,0.45);
+  padding:18px;
+  box-sizing:border-box;
+}
+.plantingAgeModal.show{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.plantingAgeWindow{
+  width:min(420px, 100%);
+  max-height:calc(100dvh - 36px);
+  overflow:auto;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 24px 64px rgba(15,23,42,0.28);
+}
+.plantingAgeWindowHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid #e5e7eb;
+}
+.plantingAgeWindowTitle{
+  font-size:16px;
+  font-weight:900;
+  color:#111827;
+}
+.plantingAgeWindowClose{
+  border:none;
+  border-radius:999px;
+  padding:6px 10px;
+  background:#e5e7eb;
+  color:#334155;
+  font-size:12px;
+  font-weight:900;
+}
+.plantingAgeWindowBody{
+  padding:10px 12px 12px;
 }
 .plantingAgeBedRow{
   display:grid;
@@ -313,7 +470,7 @@ button:disabled{
 }
 .casePlacementGrid{
   display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
+  grid-template-columns:minmax(0, 1fr);
   gap:8px;
   margin-top:8px;
 }
@@ -321,14 +478,33 @@ button:disabled{
   background:#fff7ed;
   border:1px solid #fed7aa;
 }
+.casePlacementPanel{
+  margin-top:8px;
+  padding:0;
+  border:none;
+  border-radius:0;
+  background:transparent;
+}
+.casePlacementDivider{
+  height:1px;
+  margin:12px 8px 10px;
+  background:#e5e7eb;
+}
 .casePlacementHeader{
+  position:relative;
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:8px;
+  flex-wrap:wrap;
+  min-height:34px;
 }
 .casePlacementHeader .sectionTitle{
   margin-bottom:0;
+  border-left:none;
+  padding-left:0;
+  font-size:16px;
+  font-weight:bold;
 }
 .casePlacementActions{
   display:flex;
@@ -348,15 +524,102 @@ button:disabled{
 .casePlacementClearBtn{
   background:#9ca3af;
 }
+.casePlacementBuildingSwitch{
+  display:flex;
+  gap:4px;
+  margin:0;
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%, -50%);
+}
+.casePlacementBuildingSwitch .buildingBtn{
+  flex:0 0 auto;
+  min-width:42px;
+  padding:6px 8px;
+  font-size:13px;
+  line-height:1.1;
+}
+.casePlacementBuildingSwitch .buildingBtn.active{
+  min-width:64px;
+  font-size:14px;
+}
+#casePlacementBuildingBtn{
+  background:transparent;
+  color:#111827;
+  border-radius:0;
+  padding:0 4px;
+  min-width:auto;
+  font-size:18px;
+  cursor:default;
+  box-shadow:none;
+}
+.casePlacementItem{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(96px, 140px);
+  gap:10px;
+  align-items:center;
+}
+.casePlacementClearInlineBtn{
+  width:22px;
+  height:22px;
+  border:none;
+  border-radius:999px;
+  background:#dc2626;
+  color:#fff;
+  font-size:14px;
+  font-weight:900;
+  line-height:1;
+  touch-action:manipulation;
+  padding:0;
+  justify-self:end;
+  align-self:center;
+}
 .casePlacementItem label{
-  margin:0 0 4px;
-  text-align:center;
+  margin:0;
+  text-align:right;
+  font-size:16px;
 }
 .casePlacementItem input{
+  height:44px;
   padding:8px 6px;
-  text-align:center;
-  border-color:#fdba74;
-  background:#fffbf5;
+  text-align:right;
+}
+.casePlacementTotal{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(96px, 140px);
+  gap:10px;
+  align-items:center;
+  margin-top:2px;
+  font-weight:900;
+  color:#111827;
+}
+.casePlacementTotalLabelWrap{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+}
+.casePlacementTotalLabel{
+  text-align:right;
+  font-size:16px;
+}
+.casePlacementTotalValue{
+  text-align:right;
+  font-size:18px;
+}
+button.casePlacementCalculateBtn{
+  width:min(100%, 260px);
+  display:block;
+  margin-left:auto;
+  margin-right:auto;
+  margin-top:24px;
+  border-radius:3px;
+  box-shadow:none;
+}
+button.casePlacementCalculateBtn:active{
+  transform:translateY(1px);
+  box-shadow:none;
 }
 .buildingBtn{
   flex:1;
@@ -366,17 +629,19 @@ button:disabled{
   background:#2563eb;
   font-weight:bold;
   color:#fff;
+  touch-action:manipulation;
 }
 .buildingBtn.active{
-  background:#16a34a;
-  color:#fff;
+  background:transparent;
+  color:#111827;
   font-size:20px;
   line-height:1;
 }
 .buildingSwitch .buildingBtn:not(.active){
-  background:#64748b;
-  color:#fff;
-  font-size:20px;
+  background:transparent;
+  color:#2563eb;
+  font-size:30px;
+  font-weight:900;
   line-height:1;
 }
 .bedWrap{
@@ -398,6 +663,7 @@ button:disabled{
   border-radius:8px;
   background:#dbeafe;
   font-size:14px;
+  box-shadow:0 2px 0 #bfdbfe;
   user-select:none;
   -webkit-user-select:none;
   -webkit-touch-callout:none;
@@ -497,6 +763,26 @@ button:disabled{
 .partialHarvestPallet.harvestStart,
 .partialHarvestPallet.harvestEnd{
   box-shadow:inset 0 0 0 2px #f59e0b;
+}
+.plantingSelectablePallet{
+  background:#fef3c7 !important;
+  border-color:#f59e0b !important;
+  color:#78350f !important;
+  font-weight:bold;
+}
+.plantingSelectedPallet{
+  background:#2563eb !important;
+  border-color:#1d4ed8 !important;
+  color:#fff !important;
+  font-weight:bold;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.55);
+}
+.plantingUnavailablePallet{
+  background:#e5e7eb !important;
+  border-color:#9ca3af !important;
+  color:#6b7280 !important;
+  opacity:0.65;
+  cursor:not-allowed;
 }
 .partialHarvestBox{
   margin-top:12px;
@@ -648,6 +934,10 @@ input.seedlingInlineInput{
   padding:0;
   vertical-align:top;
 }
+.instructionRowValue.remainingCaseValue{
+  color:#dc2626;
+  font-weight:900;
+}
 .sectionTitleRow{
   display:flex;
   align-items:center;
@@ -677,6 +967,19 @@ input.seedlingInlineInput{
 }
 .monitorSaveBtn{
   background:#2563eb;
+}
+button.monitorSaveBtn{
+  width:min(100%, 260px);
+  display:block;
+  margin-left:auto;
+  margin-right:auto;
+  background:#2563eb;
+  border-radius:3px;
+  box-shadow:none;
+}
+button.monitorSaveBtn:active{
+  transform:translateY(1px);
+  box-shadow:none;
 }
 .monitorModeOverlay{
   position:fixed;
@@ -710,33 +1013,6 @@ input.seedlingInlineInput{
   justify-content:flex-end;
   gap:12px;
 }
-.monitorScaleControls{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  padding:3px;
-  border-radius:999px;
-  background:rgba(255,255,255,0.72);
-  border:1px solid rgba(37,99,235,0.16);
-}
-.monitorScaleBtn{
-  min-width:34px;
-  border:none;
-  border-radius:999px;
-  padding:7px 10px;
-  background:#0f172a;
-  color:#fff;
-  font-size:12px;
-  font-weight:900;
-  line-height:1.2;
-}
-.monitorScaleLabel{
-  min-width:44px;
-  text-align:center;
-  color:#0f172a;
-  font-size:12px;
-  font-weight:900;
-}
 .monitorModeClose{
   border:none;
   border-radius:999px;
@@ -754,7 +1030,7 @@ input.seedlingInlineInput{
 }
 .monitorModeBody{
   display:grid;
-  grid-template-columns:minmax(320px, 1fr) minmax(320px, 1fr);
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
   gap:14px;
   min-height:0;
   width:var(--monitor-design-width, 1280px);
@@ -804,6 +1080,81 @@ input.seedlingInlineInput{
   line-height:1.6;
   resize:vertical;
 }
+.monitorMemoInputHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:10px;
+}
+.monitorMemoInputTitle{
+  font-size:13px;
+  font-weight:900;
+  color:#334155;
+}
+.monitorMemoAddBtn{
+  border:none;
+  border-radius:999px;
+  padding:7px 12px;
+  background:#2563eb;
+  color:#fff;
+  font-size:16px;
+  font-weight:900;
+  line-height:1;
+}
+.monitorMemoInputList{
+  display:grid;
+  gap:10px;
+  margin-top:8px;
+}
+.monitorMemoInputItem{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
+  gap:6px;
+  align-items:start;
+  border:1px solid rgba(37, 99, 235, 0.18);
+  border-radius:12px;
+  background:rgba(239,246,255,0.72);
+  padding:6px;
+}
+.monitorMemoInputItem.hasRemoveButton{
+  grid-template-columns:38px minmax(0, 1fr);
+}
+.monitorMemoInputList .monitorMemoInput{
+  margin-top:0;
+  width:100%;
+  min-height:33px;
+  border:none;
+  border-radius:8px;
+  background:transparent;
+  padding:4px 6px;
+  font-size:17px;
+  line-height:1.45;
+  font-weight:600;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  overflow:hidden;
+  box-shadow:none;
+  resize:none;
+}
+.monitorMemoInputList .monitorMemoInput:focus{
+  outline:2px solid rgba(37, 99, 235, 0.28);
+  outline-offset:2px;
+}
+.monitorMemoRemoveBtn{
+  border:none;
+  border-radius:999px;
+  width:28px;
+  height:28px;
+  padding:0;
+  background:#fee2e2;
+  color:#dc2626;
+  font-size:16px;
+  font-weight:900;
+  line-height:1;
+  justify-self:center;
+  align-self:start;
+}
 .monitorInstructionText{
   font-size:30px;
   line-height:1.75;
@@ -819,10 +1170,21 @@ input.seedlingInlineInput{
 }
 .monitorMemoText{
   min-height:0;
-  font-size:clamp(20px, 2.8vw, 32px);
-  line-height:1.65;
+  font-size:30px;
+  line-height:1.75;
   font-weight:700;
   white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.monitorMemoDisplayList{
+  display:grid;
+  gap:14px;
+}
+.monitorMemoDisplayItem{
+  border:1px solid rgba(37, 99, 235, 0.16);
+  border-radius:16px;
+  background:rgba(239,246,255,0.72);
+  padding:14px 6px 14px 16px;
 }
 .monitorInstructionText .monitorLine{
   display:block;
@@ -842,7 +1204,7 @@ input.seedlingInlineInput{
   grid-template-columns:repeat(auto-fit, minmax(220px, 240px));
   align-items:stretch;
   gap:16px;
-  justify-content:start;
+  justify-content:space-evenly;
   flex:1 1 auto;
   min-height:0;
   overflow:hidden;
@@ -864,6 +1226,29 @@ input.seedlingInlineInput{
   font-weight:900;
   color:#1d4ed8;
 }
+.monitorMapLegend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px 8px;
+  margin:0 0 4px;
+  font-size:9px;
+  font-weight:900;
+  color:#334155;
+}
+.monitorMapLegendItem{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  white-space:nowrap;
+}
+.monitorMapLegendChip{
+  width:12px;
+  height:8px;
+  border-radius:999px;
+  border:1px solid rgba(15,23,42,0.18);
+}
+.monitorMapLegendChip.selected{background:#22c55e;}
+.monitorMapLegendChip.recorded{background:#9ca3af;}
 .monitorBuildingDirection{
   text-align:center;
   font-size:10px;
@@ -896,7 +1281,7 @@ input.seedlingInlineInput{
   box-shadow:0 1px 4px rgba(30, 64, 175, 0.12);
 }
 .monitorBedCard.full{
-  border-color:#000000;
+  border-color:#16a34a;
   background:#ffffff;
   box-shadow:0 1px 4px rgba(30, 64, 175, 0.12);
 }
@@ -939,18 +1324,17 @@ input.seedlingInlineInput{
   border:1px solid #16a34a;
   border-radius:8px;
   background:#22c55e;
+  border-color:#16a34a;
 }
 .monitorBedSegment{
   min-height:6px;
   border-radius:8px;
-  background:#dbeafe;
-  border:1px solid #bfdbfe;
+  background:#bfdbfe;
+  border:1px solid rgba(37,99,235,0.2);
 }
-.monitorBedCard.full .monitorBedSegment{
-  min-height:0;
-  border:none;
-  border-radius:0;
-  background:#22c55e;
+.monitorBedSegment.recorded{
+  background:#9ca3af;
+  border-color:#6b7280;
 }
 .monitorBedSegment.partial{
   background:#93c5fd;
@@ -959,6 +1343,28 @@ input.seedlingInlineInput{
 .monitorBedSegment.active{
   background:#22c55e;
   border-color:#16a34a;
+}
+.monitorBedSegment.recorded.partial{
+  background:#cbd5e1;
+  border-color:#94a3b8;
+}
+.monitorBedSegment.recorded.active{
+  background:#9ca3af;
+  border-color:#6b7280;
+}
+.monitorBedSegment.selected.partial{
+  background:#86efac;
+  border-color:#22c55e;
+}
+.monitorBedSegment.selected.active{
+  background:#22c55e;
+  border-color:#16a34a;
+}
+.monitorBedCard.full .monitorBedSegment{
+  min-height:0;
+  border:none;
+  border-radius:0;
+  background:#22c55e;
 }
 .monitorMapHint{
   grid-column:1 / -1;
@@ -996,6 +1402,60 @@ input.seedlingInlineInput{
 }
 .monitorEditorModal.show{
   display:block;
+}
+.monitorPreviewWindow{
+  width:min(980px, 100%);
+  margin:0 auto;
+  background:#fff;
+  color:#111827;
+  border-radius:10px;
+  box-shadow:0 24px 64px rgba(15,23,42,0.32);
+  overflow:hidden;
+}
+.monitorPreviewBodyWrap{
+  padding:14px;
+}
+.monitorPreviewNote{
+  margin:0 0 10px;
+  font-size:14px;
+  font-weight:800;
+  color:#334155;
+}
+.monitorPreviewViewport{
+  position:relative;
+  width:100%;
+  aspect-ratio:16 / 9;
+  overflow:hidden;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  background:linear-gradient(180deg, #eff6ff 0%, #dbeafe 38%, #f8fafc 100%);
+}
+.monitorPreviewViewport .monitorModeBody{
+  position:absolute;
+  left:0;
+  top:0;
+}
+.monitorPreviewActions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:12px;
+}
+.monitorPreviewCancelBtn,
+.monitorPreviewOkBtn{
+  border:none;
+  border-radius:10px;
+  padding:12px;
+  font-size:16px;
+  font-weight:900;
+}
+.monitorPreviewCancelBtn{
+  background:#e5e7eb;
+  color:#334155;
+}
+.monitorPreviewOkBtn{
+  background:#2563eb;
+  color:#fff;
 }
 .monitorEditorWindow{
   width:min(620px, 100%);
@@ -1040,28 +1500,32 @@ input.seedlingInlineInput{
   position:fixed;
   inset:0;
   z-index:10000;
-  background:rgba(15,23,42,0.52);
-  padding:18px;
+  background:#f0f7f2;
+  padding:0;
   box-sizing:border-box;
-  overflow:auto;
+  overflow:hidden;
 }
 .dashboardModal.show{
   display:block;
 }
 .dashboardWindow{
-  width:min(980px, 100%);
-  max-height:calc(100dvh - 36px);
-  margin:0 auto;
+  width:100%;
+  height:100dvh;
+  max-height:none;
+  margin:0;
   background:#f0f7f2;
   color:#111827;
-  border-radius:10px;
-  box-shadow:0 24px 64px rgba(15,23,42,0.32);
-  overflow:auto;
+  border-radius:0;
+  box-shadow:none;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
 }
 .dashboardWindowHeader{
   position:sticky;
   top:0;
-  z-index:2;
+  z-index:5;
+  flex:0 0 auto;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -1084,6 +1548,9 @@ input.seedlingInlineInput{
   font-weight:800;
 }
 .dashboardWindowBody{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
   padding:10px;
 }
 .monitorMemoPanel{
@@ -1154,6 +1621,31 @@ input.seedlingInlineInput{
   padding:10px;
   color:#fff;
   font-weight:bold;
+  box-shadow:0 3px 0 rgba(75, 85, 99, .45);
+}
+.recordActions button:active{
+  transform:translateY(1px);
+  box-shadow:0 2px 0 rgba(75, 85, 99, .45);
+}
+#googleSheetResendBtn,
+#recordImportChoiceBtn,
+.recordDashboardOpenBtn{
+  box-shadow:0 3px 0 rgba(30, 64, 175, .45);
+}
+#googleSheetResendBtn:active,
+#recordImportChoiceBtn:active,
+.recordDashboardOpenBtn:active{
+  transform:translateY(1px);
+  box-shadow:0 2px 0 rgba(30, 64, 175, .45);
+}
+.googleSheetSaveBtn,
+.appMenuSaveBtn{
+  box-shadow:0 3px 0 rgba(30, 64, 175, .45);
+}
+.googleSheetSaveBtn:active,
+.appMenuSaveBtn:active{
+  transform:translateY(1px);
+  box-shadow:0 2px 0 rgba(30, 64, 175, .45);
 }
 .summaryCode{
   display:block;
@@ -1278,6 +1770,7 @@ input.seedlingInlineInput{
   header{
     justify-content:flex-start;
     flex-wrap:wrap;
+    padding-left:72px;
   }
   .headerActions{
     position:static;
@@ -1306,6 +1799,72 @@ input.seedlingInlineInput{
   margin:10px 0 14px;
   white-space:nowrap;
 }
+.recordStepIndicator{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:2px 0 12px;
+}
+.recordStepItem{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:9px 8px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  background:#f8fafc;
+  color:#64748b;
+  font-size:13px;
+  font-weight:800;
+}
+.recordStepItem.active{
+  background:#dcfce7;
+  border-color:#22c55e;
+  color:#166534;
+}
+.recordStepNumber{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:22px;
+  height:22px;
+  border-radius:999px;
+  background:#e2e8f0;
+  color:#475569;
+  font-size:12px;
+}
+.recordStepItem.active .recordStepNumber{
+  background:#16a34a;
+  color:#fff;
+}
+.recordPlantingLegend{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin:-4px 0 10px;
+  font-size:12px;
+  font-weight:800;
+  color:#475569;
+}
+.recordPlantingLegend[hidden]{
+  display:none !important;
+}
+.recordLegendItem{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
+.recordLegendSwatch{
+  width:13px;
+  height:13px;
+  border-radius:4px;
+  border:1px solid rgba(0,0,0,0.12);
+}
+.recordLegendSwatch.selectable{background:#fef3c7;border-color:#f59e0b;}
+.recordLegendSwatch.selected{background:#2563eb;border-color:#1d4ed8;}
+.recordLegendSwatch.unavailable{background:#e5e7eb;border-color:#9ca3af;}
 .recordActualRow{
   display:grid;
   grid-template-columns:minmax(112px, 0.9fr) minmax(132px, 1.1fr);
@@ -1324,6 +1883,24 @@ input.seedlingInlineInput{
   font-size:13px;
   font-weight:800;
   color:#475569;
+}
+.recordStageHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin:2px 0 8px;
+}
+.recordStageHeader .recordStageCaption{
+  margin:0;
+}
+.recordStageHeader .recordClearBtn{
+  width:auto;
+  min-width:70px;
+  height:34px;
+  margin-top:0;
+  padding:7px 12px;
+  font-size:13px;
 }
 .recordSeedlingDiffBox{
   margin:2px 0 10px;
@@ -1458,7 +2035,7 @@ input.seedlingInlineInput{
 }
 .recordFormActionRow{
   display:grid;
-  grid-template-columns:minmax(0, 1.55fr) minmax(96px, 0.75fr);
+  grid-template-columns:1fr;
   gap:8px;
   align-items:stretch;
   margin-top:8px;
@@ -1467,6 +2044,25 @@ input.seedlingInlineInput{
   margin-top:0;
   height:48px;
   padding:10px 8px;
+}
+#recordPrimaryActionBtn{
+  width:min(100%, 260px);
+  display:block;
+  margin-left:auto;
+  margin-right:auto;
+  border-radius:3px;
+  box-shadow:none;
+}
+#recordPrimaryActionBtn:active{
+  transform:translateY(1px);
+  box-shadow:none;
+}
+.recordClearBtn{
+  box-shadow:0 3px 0 #4b5563;
+}
+.recordClearBtn:active{
+  transform:translateY(1px);
+  box-shadow:0 2px 0 #4b5563;
 }
 .recordHarvestAdjustBox{
   margin-top:12px;
@@ -1506,6 +2102,12 @@ input.seedlingInlineInput{
 }
 .recordToggleSummary::-webkit-details-marker{
   display:none;
+}
+#recordHelpDetails{
+  display:none;
+}
+.appMenuWindowBody #recordHelpDetails{
+  display:block;
 }
 .recordToggleBody{
   padding:0 12px 12px;
@@ -1633,15 +2235,20 @@ input.seedlingInlineInput{
   cursor:pointer;
   list-style:none;
   padding:14px;
+  display:grid;
+  grid-template-columns:1fr auto;
+  align-items:start;
+  gap:10px;
 }
 .settingClusterSummary::-webkit-details-marker{
   display:none;
 }
 .settingClusterSummary::after{
   content:"▼";
-  float:right;
   font-size:12px;
   color:#64748b;
+  line-height:1;
+  margin-top:3px;
 }
 .settingClusterDetails:not([open]) .settingClusterSummary::after{
   content:"▶";
@@ -1652,8 +2259,163 @@ input.seedlingInlineInput{
 .settingCluster:first-of-type{
   margin-top:12px;
 }
+.forecastSettingsOpenBtn{
+  width:100%;
+  border:1px solid #bfdbfe;
+  border-radius:12px;
+  background:linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+  color:#111827;
+  padding:11px 12px;
+  margin-top:20px;
+  font-size:15px;
+  font-weight:900;
+  text-align:left;
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:10px;
+  box-shadow:0 2px 0 #dbeafe;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.forecastSettingsOpenBtn:active{
+  transform:translateY(1px);
+  box-shadow:0 1px 0 #dbeafe;
+}
+.forecastSettingsOpenBtn:focus-visible{
+  outline:2px solid #60a5fa;
+  outline-offset:2px;
+}
+.forecastSettingsSummary{
+  font-size:12px;
+  color:#64748b;
+  font-weight:800;
+  white-space:nowrap;
+  justify-self:center;
+}
+.forecastSettingsOpenLabel{
+  justify-self:start;
+}
+.forecastSettingsOpenText{
+  justify-self:end;
+  color:#2563eb;
+  font-size:12px;
+  font-weight:900;
+}
+.forecastSettingsModal{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  background:rgba(15,23,42,0.52);
+  padding:18px;
+  box-sizing:border-box;
+  overflow:auto;
+}
+.forecastSettingsModal.show{
+  display:block;
+}
+.forecastSettingsWindow{
+  width:min(720px, 100%);
+  max-height:calc(100dvh - 36px);
+  margin:0 auto;
+  background:#fff;
+  color:#111827;
+  border-radius:12px;
+  box-shadow:0 24px 64px rgba(15,23,42,0.32);
+  overflow:auto;
+}
+.forecastSettingsWindowHeader{
+  position:sticky;
+  top:0;
+  z-index:1;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid #e5e7eb;
+  background:#fff;
+}
+.forecastSettingsWindowTitle{
+  font-size:16px;
+  font-weight:900;
+}
+.forecastSettingsWindowClose{
+  border:none;
+  border-radius:999px;
+  padding:7px 12px;
+  background:#e5e7eb;
+  color:#334155;
+  font-size:13px;
+  font-weight:900;
+}
+.forecastSettingsWindowBody{
+  padding:0 12px 12px;
+}
+.forecastSettingsWindowBody .settingCluster{
+  margin-top:12px;
+}
+.appMenuModal{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  background:rgba(15, 23, 42, .45);
+  padding:18px;
+  box-sizing:border-box;
+  overflow:auto;
+}
+.appMenuModal.show{
+  display:block;
+}
+.appMenuWindow{
+  max-width:560px;
+  margin:24px auto;
+  background:#fff;
+  border-radius:18px;
+  padding:14px;
+  box-shadow:0 18px 45px rgba(15, 23, 42, .22);
+}
+.appMenuWindowHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:4px 4px 10px;
+  border-bottom:1px solid #e5e7eb;
+}
+.appMenuWindowTitle{
+  font-size:18px;
+  font-weight:900;
+  color:#111827;
+}
+.appMenuWindowClose{
+  border:none;
+  border-radius:999px;
+  padding:7px 12px;
+  background:#f1f5f9;
+  color:#334155;
+  font-size:12px;
+  font-weight:900;
+}
+.appMenuWindowBody{
+  padding-top:2px;
+}
+.appUsageText{
+  white-space:pre-line;
+  line-height:1.75;
+  font-size:13px;
+  color:#334155;
+}
+.appMenuWindowFooter{
+  padding-top:12px;
+}
 .clusterHeader{
   margin-bottom:10px;
+}
+.settingClusterSummary .clusterHeader{
+  margin-bottom:0;
 }
 .clusterTitle{
   font-size:15px;
@@ -1914,24 +2676,22 @@ input.seedlingInlineInput{
 }
 
 .dashboardControlRow{
-  display:grid;
-  grid-template-columns:minmax(0, 1fr) auto;
-  gap:8px;
-  align-items:end;
+  display:flex;
+  justify-content:flex-end;
 }
-.dashboardPeriodNote{
-  min-height:44px;
+.dashboardStartDayField{
   display:flex;
   align-items:center;
-  justify-content:center;
-  padding:0 12px;
-  border:1px solid #d1d5db;
-  border-radius:10px;
-  background:#f8fafc;
-  color:#0f172a;
-  font-size:14px;
-  font-weight:700;
-  white-space:nowrap;
+  justify-content:flex-end;
+  gap:8px;
+}
+.dashboardStartDayField label{
+  margin:0;
+}
+#dashboardStartDayInput{
+  width:86px;
+  min-height:36px;
+  padding:6px 8px;
 }
 .dashboardHint{
   margin-top:8px;
@@ -1939,30 +2699,12 @@ input.seedlingInlineInput{
   color:#64748b;
   line-height:1.6;
 }
-.dashboardReferenceBox{
-  margin-top:10px;
-  padding:12px 14px;
-  border:1px solid #c7d2fe;
-  border-radius:12px;
-  background:linear-gradient(180deg, #f5f3ff 0%, #eef2ff 100%);
-}
-.dashboardReferenceLabel{
+.dashboardMetricsNote{
+  margin:6px 4px 10px;
   font-size:12px;
-  font-weight:700;
-  color:#6d28d9;
-}
-.dashboardReferenceValue{
-  margin-top:4px;
-  font-size:16px;
-  font-weight:800;
-  color:#312e81;
-  line-height:1.5;
-}
-.dashboardReferenceSub{
-  margin-top:4px;
-  font-size:12px;
-  color:#5b21b6;
+  color:#64748b;
   line-height:1.6;
+  text-align:left;
 }
 .dashboardRangeBox{
   margin-top:10px;
@@ -2103,12 +2845,6 @@ input.seedlingInlineInput{
   font-weight:800;
   color:#0f172a;
 }
-.dashboardMetricSub{
-  margin-top:6px;
-  font-size:12px;
-  color:#64748b;
-  line-height:1.5;
-}
 .dashboardChartCard{
   padding:12px;
 }
@@ -2222,6 +2958,27 @@ input.seedlingInlineInput{
   align-items:center;
   gap:6px;
 }
+.dashboardChartLegend{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin:4px 0 8px;
+  font-size:12px;
+  color:#475569;
+}
+.dashboardChartLegendItem{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-weight:700;
+}
+.dashboardChartLegendSwatch{
+  width:18px;
+  height:3px;
+  border-radius:999px;
+  display:inline-block;
+}
 .dashboardLegendSwatch{
   width:10px;
   height:10px;
@@ -2315,9 +3072,6 @@ input.seedlingInlineInput{
 }
 
 @media (max-width:640px){
-  .dashboardControlRow{
-    grid-template-columns:1fr;
-  }
   .dashboardTableFilterGrid{
     grid-template-columns:1fr;
   }
@@ -2329,13 +3083,13 @@ input.seedlingInlineInput{
     flex-direction:column;
   }
   .monitorModeShell{
-    padding:8px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    padding:6px 8px calc(10px + env(safe-area-inset-bottom, 0px));
     height:calc(100dvh - 14px);
     max-height:calc(100dvh - 14px);
   }
   .monitorModeHeader{
     align-items:flex-start;
-    flex-wrap:wrap;
+    justify-content:flex-end;
   }
 }
 
@@ -2343,6 +3097,7 @@ input.seedlingInlineInput{
 </head>
 <body>
 <header>
+  <button type="button" class="headerMenuBtn" onclick="openAppMenuWindow()" aria-label="メニューを開く"></button>
   <div class="appTitle">収穫シミュ</div>
   <div class="headerActions">
     <button type="button" class="headerActionBtn" onclick="openMonitorMode()">モニター表示</button>
@@ -2352,97 +3107,119 @@ input.seedlingInlineInput{
 
 <div class="container">
   <div class="tabBar">
-    <button id="forecastTabBtn" class="tabBtn active" onclick="switchTab('forecast')">収穫選択</button>
-    <button id="settingsTabBtn" class="tabBtn" onclick="switchTab('settings')">詳細設定</button>
-    <button id="recordTabBtn" class="tabBtn" onclick="switchTab('record')">記録</button>
+    <button id="forecastTabBtn" class="tabBtn hasTabIcon active" onclick="switchTab('forecast')">
+      <span class="tabIcon forecastTabIcon" aria-hidden="true"></span>
+      <span class="tabBtnText">シミュ</span>
+    </button>
+    <button id="recordTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('record')">
+      <span class="tabIcon recordTabIcon" aria-hidden="true"></span>
+      <span class="tabBtnText">記録</span>
+    </button>
   </div>
 
   <div id="forecastTab">
     <div class="card tabLinkedCard">
-      <div class="sectionTitle">収穫選択</div>
+      <div class="sectionTitle">シミュ</div>
       
       <div class="forecastControlRow">
         <div class="forecastCaseField">
           <label>収穫ケース</label>
           <input id="casesInput" type="number" min="0" value="0" inputmode="numeric" oninput="syncRecordCasesFromMain(false); updateRecordActualLoss(); renderForecastSummary()">
         </div>
-        <button class="actionBtn" onclick="runHarvestPrediction()">計算</button>
-        <button class="actionBtn secondaryBtn" onclick="clearHarvestPrediction()">クリア</button>
+      </div>
+
+      <div class="casePlacementDivider"></div>
+
+      <div class="casePlacementPanel">
+        <div class="casePlacementHeader">
+          <div class="sectionTitle">ケース配置</div>
+          <div class="buildingSwitch casePlacementBuildingSwitch">
+            <button class="buildingBtn" onclick="prevCasePlacementBuilding()">≪</button>
+            <button id="casePlacementBuildingBtn" class="buildingBtn active">2号棟</button>
+            <button class="buildingBtn" onclick="nextCasePlacementBuilding()">≫</button>
+          </div>
+          <div class="casePlacementActions">
+            <button type="button" class="casePlacementDefaultBtn" onclick="setDefaultCasePlacement()">標準</button>
+          </div>
+        </div>
+        <div class="casePlacementGrid">
+          <div class="casePlacementItem">
+            <label>奥</label>
+            <input id="backCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
+          </div>
+          <div class="casePlacementItem">
+            <label>中央</label>
+            <input id="middleCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
+          </div>
+          <div class="casePlacementItem">
+            <label>手前</label>
+            <input id="frontCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
+          </div>
+          <div class="casePlacementTotal">
+            <div class="casePlacementTotalLabelWrap">
+              <button type="button" class="casePlacementClearInlineBtn" onclick="clearCasePlacement()" aria-label="この号棟のケース配置をクリア">×</button>
+              <div class="casePlacementTotalLabel">合計</div>
+            </div>
+            <div id="casePlacementTotalValue" class="casePlacementTotalValue">0</div>
+          </div>
+        </div>
+        <button type="button" class="forecastSettingsOpenBtn" onclick="openForecastSettingsWindow()">
+          <span class="forecastSettingsOpenLabel">計算設定</span>
+          <span id="forecastSettingsSummary" class="forecastSettingsSummary">0% / 20 / 20 / 60(0/3)</span>
+          <span class="forecastSettingsOpenText">開く</span>
+        </button>
+        <button class="actionBtn casePlacementCalculateBtn" onclick="runHarvestPrediction()">> 計算する</button>
       </div>
     </div>
 
     <div class="card">
       <div class="sectionTitleRow">
-        <div class="sectionTitle">指示内容</div>
-        <div class="sectionTitleActions">
-          <button type="button" class="monitorLaunchBtn monitorSaveBtn" onclick="saveCurrentMonitorRemoteContent()">保存しモニターに表示</button>
-        </div>
+        <div id="monitorSectionTitle" class="sectionTitle">モニター</div>
       </div>
       <div id="instructionSummary" class="resultBox instructionBox">苗: 0枚
 収穫ケース数: 0
 収穫場所: -
 残すケース:
 なし</div>
-      <textarea id="monitorMemoInput" class="monitorMemoInput" placeholder="モニター右側に表示したいメモを入力"></textarea>
+      <div class="monitorMemoInputHeader">
+        <div class="monitorMemoInputTitle">追加したいメモ</div>
+        <button type="button" class="monitorMemoAddBtn" onclick="addMonitorMemoInput()">＋</button>
+      </div>
+      <div id="monitorMemoInputList" class="monitorMemoInputList"></div>
+      <button type="button" class="actionBtn monitorSaveBtn" onclick="saveCurrentMonitorRemoteContent()">> 送信してモニターに表示する</button>
     </div>
 
     <div class="buildingSwitch">
-      <button class="buildingBtn" onclick="prevBuilding()">←</button>
+      <button class="buildingBtn" onclick="prevBuilding()">≪</button>
       <button id="currentBuildingBtn" class="buildingBtn active">2号棟</button>
-      <button class="buildingBtn" onclick="nextBuilding()">→</button>
+      <button class="buildingBtn" onclick="nextBuilding()">≫</button>
     </div>
-    <div class="buildingLastHarvest">
-      <span id="buildingLastHarvestInfo" class="buildingInfoItem">前回記録なし</span>
-      <span id="remainingCasesSummary" class="buildingInfoItem">残り収穫可能ケース: 0</span>
-    </div>
-    <details id="plantingAgeDetailWrap" class="plantingAgeDetailWrap">
-      <summary>定植日数の詳細</summary>
-      <div id="plantingAgeDetail" class="plantingAgeDetail">収穫場所を選択してください</div>
-    </details>
-
-    <div class="card casePlacementCard">
-      <div class="casePlacementHeader">
-        <div class="sectionTitle">ケース配置 <span id="casePlacementBuildingLabel">（2号棟）</span></div>
-        <div class="casePlacementActions">
-          <button type="button" class="casePlacementDefaultBtn" onclick="setDefaultCasePlacement()">基本配置</button>
-          <button type="button" class="casePlacementDefaultBtn casePlacementClearBtn" onclick="clearCasePlacement()">クリア</button>
-        </div>
+    <div class="buildingStatusCards">
+      <div id="plantingAgeSummaryCard" class="buildingStatusCard">
+        <button type="button" id="plantingAgeSummary" class="buildingStatusValue plantingAgeSummaryButton" onclick="openPlantingAgeWindow()">収穫場所未選択</button>
       </div>
-      <div class="casePlacementGrid">
-        <div class="casePlacementItem">
-          <label>前</label>
-          <input id="frontCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
-        </div>
-        <div class="casePlacementItem">
-          <label>中央</label>
-          <input id="middleCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
-        </div>
-        <div class="casePlacementItem">
-          <label>後ろ</label>
-          <input id="backCaseInput" type="number" min="0" value="0" inputmode="numeric" oninput="handleCasePlacementInput()">
-        </div>
+      <div id="remainingCasesSummaryCard" class="buildingStatusCard">
+        <div id="remainingCasesSummary" class="buildingStatusValue">残り 0ケース</div>
       </div>
-
     </div>
 
     <div id="beds" class="bedWrap"></div>
 
-    <details class="card">
-      <summary class="sectionTitle">選択結果</summary>
+    <details class="card forecastSummaryCard">
+      <summary class="sectionTitle forecastSummaryTitle">選択結果</summary>
       <div id="forecastSummary" class="resultBox">開始パレット: -
 選択枚数: 0
 終了パレット: -</div>
     </details>
+    <button class="actionBtn secondaryBtn" onclick="clearHarvestPrediction()">クリア</button>
   </div>
 
-  <div id="settingsTab" style="display:none;">
+  <div id="settingsTab" style="display:none;" aria-hidden="true">
     <div class="card tabLinkedCard">
-      <div class="sectionTitle">詳細設定</div>
-      
       <div class="settingCluster">
         <div class="clusterHeader">
-          <div class="clusterTitle">収穫ロス率設定</div>
-          <div class="clusterNote">全体のロス率を決めて、必要なベッドだけ個別に上書きできます。</div>
+          <div class="clusterTitle">収穫ロス率</div>
+          <div class="clusterNote">収穫時のロス率を設定します。</div>
         </div>
         <label>全体ロス率（%）</label>
         <div id="defaultLossRateWrap">
@@ -2474,8 +3251,8 @@ input.seedlingInlineInput{
 
       <div class="settingCluster">
         <div class="clusterHeader">
-          <div class="clusterTitle">収穫時の個数設定</div>
-          <div class="clusterNote">まず全体の基準個数を決めて、必要ならベッド別や手前奥で調整できます。</div>
+          <div class="clusterTitle">収穫時の個数</div>
+          <div class="clusterNote">１パレットで収穫できる理想個数を設定します。</div>
         </div>
         <label>収穫する時１パレットあたり植えられている個数</label>
       <div id="defaultYieldWrap">
@@ -2589,8 +3366,8 @@ input.seedlingInlineInput{
 
       <div class="settingCluster">
         <div class="clusterHeader">
-          <div class="clusterTitle">苗の個数設定</div>
-          <div class="clusterNote">収穫後に植える苗の基準個数を決めて、必要ならベッドごとに調整できます。</div>
+          <div class="clusterTitle">苗の個数</div>
+          <div class="clusterNote">二次定植で１パレットに植える株数を設定します。</div>
         </div>
         <label>収穫後に植える苗の1パレットあたり個数</label>
       <div id="defaultPlantWrap">
@@ -2704,8 +3481,8 @@ input.seedlingInlineInput{
 
       <div class="settingCluster">
         <div class="clusterHeader">
-          <div class="clusterTitle">苗取り補足設定</div>
-          <div class="clusterNote">苗のロス率と、60個用パレットの組み合わせをここで決めます。</div>
+          <div class="clusterTitle">苗取り補足</div>
+          <div class="clusterNote">二次定植時の苗のロス率や、一次定植時の60個用パレットの組み合わせを設定します。</div>
         </div>
         <label>苗のロス率（%）</label>
       <input id="seedlingLossRateInput" onchange="settingsDirty=true" oninput="settingsDirty=true" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら0%">
@@ -2747,21 +3524,32 @@ input.seedlingInlineInput{
           <input id="googleSheetUrlInput" type="url" placeholder="Apps ScriptのWebアプリURL">
           <label>連携トークン（任意）</label>
           <input id="googleSheetTokenInput" type="text" placeholder="Apps Script側と同じ合言葉">
-          <button class="actionBtn thirdBtn" onclick="saveGoogleSheetConfig()">Google連携設定を保存</button>
+          <button class="actionBtn thirdBtn googleSheetSaveBtn" onclick="saveGoogleSheetConfig()">Google連携設定を保存</button>
         </div>
       </details>
-
-      <button class="actionBtn" onclick="saveSettings()">設定を保存</button>
-      <button class="actionBtn secondaryBtn" onclick="resetSettings()">設定を初期化</button>
+      <div id="appMenuSettingsRestorePoint"></div>
     </div>
   </div>
 
   <div id="recordTab" style="display:none;">
     <div class="card">
       <div class="sectionTitle">記録を保存</div>
+      <div id="recordStepIndicator" class="recordStepIndicator">
+        <div id="recordStepHarvest" class="recordStepItem active">
+          <span class="recordStepNumber">1</span>
+          <span>収穫記録</span>
+        </div>
+        <div id="recordStepPlanting" class="recordStepItem">
+          <span class="recordStepNumber">2</span>
+          <span>苗植え記録</span>
+        </div>
+      </div>
 
       <div id="recordHarvestStageSection" class="recordStageSection">
-        <div class="recordStageCaption">第一段階: 収穫記録</div>
+        <div class="recordStageHeader">
+          <div class="recordStageCaption">第一段階: 収穫記録</div>
+          <button class="actionBtn secondaryBtn recordClearBtn" onclick="clearRecordForm()">クリア</button>
+        </div>
 
         <div class="recordDateField">
           <label>日付</label>
@@ -2826,16 +3614,20 @@ input.seedlingInlineInput{
 
       <div class="recordFormActionRow">
         <button id="recordPrimaryActionBtn" class="actionBtn thirdBtn" onclick="handleRecordPrimaryAction()">収穫場所を記録する</button>
-        <button class="actionBtn secondaryBtn recordClearBtn" onclick="clearRecordForm()">クリア</button>
       </div>
 
       <div class="recordHarvestAdjustBox">
         <div id="recordEditNotice" class="recordEditNotice">実際の収穫場所に調整してください。</div>
+        <div id="recordPlantingLegend" class="recordPlantingLegend" hidden>
+          <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch selected"></span>選択済み</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+        </div>
 
         <div class="buildingSwitch">
-          <button class="buildingBtn" onclick="prevBuilding()">←</button>
+          <button class="buildingBtn" onclick="prevBuilding()">≪</button>
           <button id="recordCurrentBuildingBtn" class="buildingBtn active">2号棟</button>
-          <button class="buildingBtn" onclick="nextBuilding()">→</button>
+          <button class="buildingBtn" onclick="nextBuilding()">≫</button>
         </div>
 
         <div id="recordBeds" class="recordBedWrap"></div>
@@ -2865,8 +3657,8 @@ input.seedlingInlineInput{
           </div>
         </div>
         <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
-        <button type="button" class="actionBtn thirdBtn" onclick="openDashboardWindow()">集計を見る</button>
-        <details class="recordToggleWrap">
+        <button type="button" class="actionBtn thirdBtn recordDashboardOpenBtn" onclick="openDashboardWindow()">集計を見る</button>
+        <details id="recordHelpDetails" class="recordToggleWrap">
           <summary class="recordToggleSummary">ヘルプ</summary>
           <div class="recordToggleBody">
             <details class="recordToggleWrap">
@@ -2913,29 +3705,24 @@ input.seedlingInlineInput{
             <button type="button" class="actionBtn secondaryBtn" onclick="confirmResetGoogleSheetSyncStatusFromHelp()">未送信の記録がなくならない</button>
           </div>
         </details>
+        <div id="recordHelpRestorePoint"></div>
       </div>
     </div>
   </div>
 
   <div id="dashboardTab" style="display:none;">
+    <div class="dashboardCardGrid" id="dashboardMetrics"></div>
+    <div class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
+
     <div class="card tabLinkedCard">
       <div class="sectionTitle">集計ダッシュボード</div>
       <div class="dashboardControlRow">
-        <div>
+        <div class="dashboardStartDayField">
           <label>集計の基準日</label>
           <select id="dashboardStartDayInput"></select>
         </div>
-        <div id="dashboardPeriodNote" class="dashboardPeriodNote">--</div>
-      </div>
-      <div class="dashboardHint">上の4つのカードと一覧は、選んだ日が最後に来た日から今日までを集計します。グラフは右上の「日・月・年」で表示単位を切り替えられます。</div>
-      <div id="dashboardReferencePeriod" class="dashboardReferenceBox">
-        <div class="dashboardReferenceLabel">集計カードの参照期間</div>
-        <div class="dashboardReferenceValue">--</div>
-        <div class="dashboardReferenceSub">--</div>
       </div>
     </div>
-
-    <div class="dashboardCardGrid" id="dashboardMetrics"></div>
 
     <details id="dashboardHistoryDetails" class="card dashboardRangeBox dashboardRangeDetails dashboardHistoryDetails">
       <summary class="sectionTitle">集計カードの履歴</summary>
@@ -2950,29 +3737,9 @@ input.seedlingInlineInput{
         </div>
         <div class="dashboardChartControls">
           <select id="dashboardCasesGranularityInput" class="dashboardChartSelect">
-            <option value="day">日</option>
             <option value="month">月</option>
             <option value="year">年</option>
           </select>
-          <details id="dashboardRangeDetails" class="dashboardRangeDetails dashboardChartRangeDetails">
-            <summary class="dashboardChartRangeSummary">期間指定</summary>
-            <div class="dashboardChartRangePanel">
-              <div class="dashboardRangeGrid">
-                <div>
-                  <label>開始日</label>
-                  <input id="dashboardGraphStartDateInput" type="date">
-                </div>
-                <div>
-                  <label>終了日</label>
-                  <input id="dashboardGraphEndDateInput" type="date">
-                </div>
-              </div>
-              <div class="dashboardHint">未入力なら通常表示です。日別は過去1か月、月別・年別は基準日からの履歴を表示します。</div>
-              <div class="dashboardRangeActions">
-                <button type="button" class="dashboardInlineBtn" onclick="clearDashboardGraphRange()">期間指定を解除</button>
-              </div>
-            </div>
-          </details>
         </div>
       </div>
       <div id="dashboardCasesChart"></div>
@@ -2986,7 +3753,6 @@ input.seedlingInlineInput{
         </div>
         <div class="dashboardChartControls">
           <select id="dashboardLossGranularityInput" class="dashboardChartSelect">
-            <option value="day">日</option>
             <option value="month">月</option>
             <option value="year">年</option>
           </select>
@@ -3022,6 +3788,108 @@ input.seedlingInlineInput{
 </div>
 
 <div id="toast" class="toast">保存しました</div>
+<div id="appMenuModal" class="appMenuModal" role="dialog" aria-modal="true" aria-labelledby="appMenuWindowTitle">
+  <div class="appMenuWindow">
+    <div class="appMenuWindowHeader">
+      <div id="appMenuWindowTitle" class="appMenuWindowTitle">MENU</div>
+      <button type="button" class="appMenuWindowClose" onclick="closeAppMenuWindow()">閉じる</button>
+    </div>
+    <div id="appMenuWindowBody" class="appMenuWindowBody">
+      <details class="recordToggleWrap">
+        <summary class="recordToggleSummary">アプリの使い方</summary>
+        <div class="recordToggleBody appUsageText">このアプリは、
+収穫前のシミュレーション → モニター表示 → 実績記録 → 苗植え管理
+までを、順番に進められるようになっています。
+
+⸻
+
+1. 次回の仕事開始までにすること
+
+まずは、次回の収穫に向けた準備を行います。
+
+① シミュ欄に数値を入力する
+
+出荷ケース数や必要な数値を入力し、収穫シミュレーションを計算します。
+
+② 収穫順を調整する
+
+通常とは異なる順番で収穫する場合は、
+下のパレットをタップしたり、アルファベットを長押ししたりして、実際の収穫予定に合わせて自由に調整できます。
+
+③ メモを追加する
+
+作業者に伝えたい内容や注意点があれば、メモ欄に入力します。
+
+④ モニターに送信する
+
+入力内容を送信すると、収穫場所・指示内容・メモなどがモニターに表示されます。
+
+ここまでで、収穫前の準備は完了です。
+
+⸻
+
+2. 実際に収穫したあとにすること
+
+収穫が終わったら、記録タブで実績を入力します。
+
+① 実際に収穫した場所に合わせて調整する
+
+予定と実際の収穫場所が違う場合は、実際に収穫した範囲になるように調整します。
+
+② 収穫場所を記録する
+
+内容を確認したら、「収穫場所を記録する」ボタンを押します。
+
+③ 必要な苗枚数を確認する
+
+予定と実績の差は自動で計算されます。
+モニターに表示されていた苗枚数をもとに、あと何枚必要かが分かります。
+
+④ 残りケース数を確認する
+
+シミュタブの棟表示欄では、その棟にあと何ケース分残っているかを確認できます。
+
+⸻
+
+3. 苗植えが終わったあとにすること
+
+苗植えが完了したら、実際に苗植えした場所を入力します。
+
+① 実際の苗植え場所に合わせて入力する
+
+予定ではなく、実際に苗を植えた場所になるように調整して記録します。
+
+② 追加で取った枚数も含めた苗枚数を記録する
+
+これにより、次回以降の収穫シミュレーションや苗管理に正しく反映されます。</div>
+      </details>
+    </div>
+    <div class="appMenuWindowFooter">
+      <button type="button" class="actionBtn appMenuSaveBtn" onclick="saveAppMenuSettingsAndClose()">設定を保存</button>
+    </div>
+  </div>
+</div>
+<div id="forecastSettingsModal" class="forecastSettingsModal" role="dialog" aria-modal="true" aria-labelledby="forecastSettingsWindowTitle">
+  <div class="forecastSettingsWindow">
+    <div class="forecastSettingsWindowHeader">
+      <div id="forecastSettingsWindowTitle" class="forecastSettingsWindowTitle">計算設定</div>
+      <button type="button" class="forecastSettingsWindowClose" onclick="closeForecastSettingsWindow()">閉じる</button>
+    </div>
+    <div id="forecastSettingsWindowBody" class="forecastSettingsWindowBody"></div>
+    <div class="forecastSettingsWindowBody">
+      <button class="actionBtn" onclick="saveForecastSettingsAndClose()">設定を保存</button>
+    </div>
+  </div>
+</div>
+<div id="plantingAgeModal" class="plantingAgeModal" role="dialog" aria-modal="true" aria-labelledby="plantingAgeWindowTitle">
+  <div class="plantingAgeWindow">
+    <div class="plantingAgeWindowHeader">
+      <div id="plantingAgeWindowTitle" class="plantingAgeWindowTitle">定植日数の詳細</div>
+      <button type="button" class="plantingAgeWindowClose" onclick="closePlantingAgeWindow()">閉じる</button>
+    </div>
+    <div id="plantingAgeDetail" class="plantingAgeDetail plantingAgeWindowBody">収穫場所を選択してください</div>
+  </div>
+</div>
 <div id="bedActionMenu" class="bedActionMenu">
   <div id="bedActionTitle" class="bedActionTitle">ベッド操作</div>
   <button type="button" onclick="selectBedToNeed('front')">必要数まで前から選択</button>
@@ -3044,12 +3912,6 @@ input.seedlingInlineInput{
 <div id="monitorModeOverlay" class="monitorModeOverlay">
   <div class="monitorModeShell">
     <div class="monitorModeHeader">
-      <div class="monitorScaleControls" aria-label="モニター表示倍率">
-        <button type="button" class="monitorScaleBtn" onclick="adjustMonitorFitScale(-0.05)">−</button>
-        <span id="monitorScaleLabel" class="monitorScaleLabel">自動</span>
-        <button type="button" class="monitorScaleBtn" onclick="adjustMonitorFitScale(0.05)">＋</button>
-        <button type="button" class="monitorScaleBtn" onclick="resetMonitorFitScale()">自動</button>
-      </div>
       <button type="button" class="monitorModeClose" onclick="closeMonitorMode()">閉じる</button>
     </div>
     <div id="monitorModeViewport" class="monitorModeViewport">
@@ -3065,7 +3927,6 @@ input.seedlingInlineInput{
         </div>
         <div class="monitorModeRight">
           <div class="monitorPanel monitorMemoPanel">
-            <div class="monitorSectionTitle">メモ欄</div>
             <div id="monitorMemoText" class="monitorMemoText"></div>
           </div>
         </div>
@@ -3073,10 +3934,27 @@ input.seedlingInlineInput{
     </div>
   </div>
 </div>
+<div id="monitorPreviewModal" class="monitorEditorModal" role="dialog" aria-modal="true" aria-labelledby="monitorPreviewTitle">
+  <div class="monitorPreviewWindow">
+    <div class="monitorEditorWindowHeader">
+      <div id="monitorPreviewTitle" class="monitorEditorWindowTitle">preview</div>
+    </div>
+    <div class="monitorPreviewBodyWrap">
+      <p class="monitorPreviewNote">このようにモニターに表示されます</p>
+      <div id="monitorPreviewViewport" class="monitorPreviewViewport">
+        <div id="monitorPreviewBody" class="monitorModeBody"></div>
+      </div>
+      <div class="monitorPreviewActions">
+        <button type="button" class="monitorPreviewCancelBtn" onclick="resolveMonitorPreview(false)">キャンセル</button>
+        <button type="button" class="monitorPreviewOkBtn" onclick="resolveMonitorPreview(true)">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="monitorEditorModal" class="monitorEditorModal" role="dialog" aria-modal="true" aria-labelledby="monitorEditorWindowTitle">
   <div class="monitorEditorWindow">
     <div class="monitorEditorWindowHeader">
-      <div id="monitorEditorWindowTitle" class="monitorEditorWindowTitle">モニター遠隔編集</div>
+      <div id="monitorEditorWindowTitle" class="monitorEditorWindowTitle">モニター編集</div>
       <button type="button" class="monitorEditorCloseBtn" onclick="closeMonitorEditorWindow()">閉じる</button>
     </div>
     <div id="monitorEditorModalBody" class="monitorEditorWindowBody"></div>
@@ -3084,6 +3962,12 @@ input.seedlingInlineInput{
 </div>
 <div id="monitorEditorStorage" style="display:none;">
   <div id="monitorRemoteEditorContent" class="settingClusterDetailsBody">
+    <label>メモ欄</label>
+    <div class="monitorMemoInputHeader">
+      <div class="monitorMemoInputTitle">表示するメモ</div>
+      <button type="button" class="monitorMemoAddBtn" onclick="addMonitorRemoteMemoInput()">＋</button>
+    </div>
+    <div id="monitorRemoteMemoInputList" class="monitorMemoInputList"></div>
     <label>苗</label>
     <input id="monitorRemoteSeedlingValueInput" type="text" placeholder="例: 3枚">
     <label>収穫ケース数</label>
@@ -3092,8 +3976,6 @@ input.seedlingInlineInput{
     <textarea id="monitorRemoteHarvestLocationValueInput" placeholder="例: 2号棟 A 後ろ3ピンとる"></textarea>
     <label>残すケース</label>
     <textarea id="monitorRemoteRemainingCasesValueInput" placeholder="例: 手前 10ケース"></textarea>
-    <label>メモ欄</label>
-    <textarea id="monitorRemoteMemoInput" placeholder="モニター右側に表示するメモ"></textarea>
     <div id="monitorRemoteEditorStatus" class="smallText" style="margin-top:6px;">Google連携URLを設定すると読み書きできます。</div>
     <button class="actionBtn secondaryBtn" onclick="loadMonitorRemoteEditor()">最新の保存内容を読み込む</button>
     <button class="actionBtn thirdBtn" onclick="saveMonitorRemoteEditor()">内容を保存しモニターに表示</button>
@@ -3134,9 +4016,9 @@ const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
 const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
-const MONITOR_SCALE_ADJUST_KEY = "harvestForecastMonitorScaleAdjust_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
-const MONITOR_DESIGN_HEIGHT = 690;
+const MONITOR_DESIGN_HEIGHT = 720;
+const MONITOR_MAX_SCALE = 2;
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 30000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
@@ -3160,6 +4042,8 @@ const PALLETS_PER_PIN = 4;
 const ALLOWED_YIELDS = [20, 16, 12];
 const BED_LONG_PRESS_MS = 450;
 const PRESET_ACCESS_PASSWORD = "1234";
+const DEFAULT_CASE_PLACEMENT = { front: "", middle: "", back: "" };
+const STANDARD_CASE_PLACEMENT = { front: "", middle: 80, back: 40 };
 
 const defaultSettings = {
   defaultLossRate: 0,
@@ -3184,6 +4068,7 @@ const defaultSettings = {
 
 let settings = loadSettings();
 let currentBuilding = 2;
+let casePlacementBuilding = 2;
 let harvestFillKeys = [];
 let harvestSummary = null;
 let records = loadRecords();
@@ -3193,6 +4078,12 @@ let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let recordCasesEdited = false;
 let recordPlantingSummaryEdited = false;
+let activeAppTab = "forecast";
+const tabScrollPositions = {
+  forecast: 0,
+  record: 0,
+  dashboard: 0
+};
 let recordBaseFillKeys = [];
 let recordSelectionMode = "harvest";
 let activePlantingRecordId = null;
@@ -3212,7 +4103,8 @@ let monitorRemotePollInFlight = false;
 let monitorRemoteEditorHarvestFillKeys = [];
 let monitorModeOpenInProgress = false;
 let monitorModeLoading = false;
-let monitorScaleAdjust = loadMonitorScaleAdjust();
+let monitorViewportResizeObserver = null;
+let monitorPreviewResolver = null;
 
 function deepClone(obj){
   return JSON.parse(JSON.stringify(obj));
@@ -3360,15 +4252,18 @@ async function openMonitorEditorWindow(){
   const modal = document.getElementById("monitorEditorModal");
   const body = document.getElementById("monitorEditorModalBody");
   const content = document.getElementById("monitorRemoteEditorContent");
+  const tabBar = document.querySelector(".tabBar");
   if(!modal || !body || !content) return;
   body.innerHTML = `<div class="monitorEmpty monitorLoading">最新のモニター内容を読み込み中です</div>`;
   modal.classList.add("show");
+  if(tabBar) tabBar.classList.add("monitorHidden");
   document.body.style.overflow = "hidden";
 
   const config = loadGoogleSheetConfig();
   if(!config.url){
     body.innerHTML = "";
     body.appendChild(content);
+    renderMonitorRemoteMemoInputs([]);
     setMonitorRemoteEditorStatus("Google連携URLが未設定です。");
     return;
   }
@@ -3379,6 +4274,7 @@ async function openMonitorEditorWindow(){
     populateMonitorRemoteEditor(contentFromRemote);
     setMonitorRemoteEditorStatus("最新のモニター内容を読み込みました。");
   }else{
+    renderMonitorRemoteMemoInputs([]);
     setMonitorRemoteEditorStatus("最新のモニター内容を読み込めませんでした。");
   }
   body.innerHTML = "";
@@ -3389,10 +4285,14 @@ function closeMonitorEditorWindow(){
   const modal = document.getElementById("monitorEditorModal");
   const content = document.getElementById("monitorRemoteEditorContent");
   const storage = document.getElementById("monitorEditorStorage");
+  const tabBar = document.querySelector(".tabBar");
   if(content && storage){
     storage.appendChild(content);
   }
   if(modal) modal.classList.remove("show");
+  if(tabBar && !isMonitorModeOpen){
+    tabBar.classList.remove("monitorHidden");
+  }
   if(!isMonitorModeOpen){
     document.body.style.overflow = "";
   }
@@ -3420,59 +4320,230 @@ function closeDashboardWindow(){
     body.appendChild(dashboard);
   }
   if(modal) modal.classList.remove("show");
-  if(!isMonitorModeOpen && !document.getElementById("monitorEditorModal")?.classList.contains("show")){
+  if(
+    !isMonitorModeOpen &&
+    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
+    !document.getElementById("forecastSettingsModal")?.classList.contains("show")
+  ){
     document.body.style.overflow = "";
   }
 }
 
-function loadMonitorScaleAdjust(){
-  try{
-    const value = Number(localStorage.getItem(MONITOR_SCALE_ADJUST_KEY) || 0);
-    return Number.isFinite(value) ? Math.min(0.4, Math.max(-0.4, value)) : 0;
-  }catch(e){
-    return 0;
+function moveMenuSettingsToWindow(){
+  const body = document.getElementById("appMenuWindowBody");
+  const accessDetails = document.getElementById("accessProtectionDetails");
+  const googleDetails = document.getElementById("googleSheetConfigDetails");
+  const recordHelpDetails = document.getElementById("recordHelpDetails");
+  if(!body || !accessDetails || !googleDetails) return;
+  if(recordHelpDetails) body.appendChild(recordHelpDetails);
+  body.appendChild(accessDetails);
+  body.appendChild(googleDetails);
+}
+
+function restoreMenuSettingsToSettingsTab(){
+  const restorePoint = document.getElementById("appMenuSettingsRestorePoint");
+  const accessDetails = document.getElementById("accessProtectionDetails");
+  const googleDetails = document.getElementById("googleSheetConfigDetails");
+  const recordHelpRestorePoint = document.getElementById("recordHelpRestorePoint");
+  const recordHelpDetails = document.getElementById("recordHelpDetails");
+  if(!restorePoint || !accessDetails || !googleDetails) return;
+  if(recordHelpRestorePoint && recordHelpDetails){
+    recordHelpRestorePoint.before(recordHelpDetails);
+  }
+  restorePoint.before(accessDetails);
+  restorePoint.before(googleDetails);
+}
+
+function openAppMenuWindow(){
+  const modal = document.getElementById("appMenuModal");
+  if(!modal) return;
+  moveMenuSettingsToWindow();
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function closeAppMenuWindow(){
+  const modal = document.getElementById("appMenuModal");
+  if(settingsDirty){
+    const shouldSave = confirm("設定が変更されています。保存しますか？");
+    if(shouldSave){
+      if(!saveSettings()) return;
+    }else{
+      populateSettingsForm();
+      settingsDirty = false;
+    }
+  }
+  restoreMenuSettingsToSettingsTab();
+  if(modal) modal.classList.remove("show");
+  if(
+    !isMonitorModeOpen &&
+    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
+    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardModal")?.classList.contains("show") &&
+    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
+    !isMonitorPreviewOpen()
+  ){
+    document.body.style.overflow = "";
   }
 }
 
-function saveMonitorScaleAdjust(){
-  try{
-    localStorage.setItem(MONITOR_SCALE_ADJUST_KEY, String(monitorScaleAdjust));
-  }catch(e){}
+function saveAppMenuSettingsAndClose(){
+  if(!saveSettings()) return;
+  closeAppMenuWindow();
+}
+
+function openPlantingAgeWindow(){
+  const modal = document.getElementById("plantingAgeModal");
+  if(!modal) return;
+  renderPlantingAgeInfo();
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function closePlantingAgeWindow(){
+  const modal = document.getElementById("plantingAgeModal");
+  if(modal) modal.classList.remove("show");
+  if(
+    !isMonitorModeOpen &&
+    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardModal")?.classList.contains("show") &&
+    !isMonitorPreviewOpen()
+  ){
+    document.body.style.overflow = "";
+  }
+}
+
+function openForecastSettingsWindow(){
+  const modal = document.getElementById("forecastSettingsModal");
+  if(!modal) return;
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function closeForecastSettingsWindow(){
+  const modal = document.getElementById("forecastSettingsModal");
+  if(settingsDirty){
+    const shouldSave = confirm("計算設定が変更されています。保存しますか？");
+    if(shouldSave){
+      if(!saveSettings()) return;
+    }else{
+      populateSettingsForm();
+      settingsDirty = false;
+    }
+  }
+  document.querySelectorAll("#forecastSettingsWindowBody details[open]").forEach(details => {
+    details.open = false;
+  });
+  if(modal) modal.classList.remove("show");
+  if(
+    !isMonitorModeOpen &&
+    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardModal")?.classList.contains("show") &&
+    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
+    !isMonitorPreviewOpen()
+  ){
+    document.body.style.overflow = "";
+  }
+}
+
+function saveForecastSettingsAndClose(){
+  if(!saveSettings()) return;
+  closeForecastSettingsWindow();
 }
 
 function updateMonitorFitScale(){
   const viewport = document.getElementById("monitorModeViewport");
   const body = document.getElementById("monitorModeBody");
-  const label = document.getElementById("monitorScaleLabel");
   if(!viewport || !body) return;
 
   body.style.setProperty("--monitor-design-width", MONITOR_DESIGN_WIDTH + "px");
   body.style.setProperty("--monitor-design-height", MONITOR_DESIGN_HEIGHT + "px");
+  const isNarrowViewport = viewport.clientWidth <= 640;
 
   const widthScale = viewport.clientWidth / MONITOR_DESIGN_WIDTH;
   const heightScale = viewport.clientHeight / MONITOR_DESIGN_HEIGHT;
   const autoScale = Math.min(widthScale, heightScale);
-  const scale = Math.min(1.35, Math.max(0.35, autoScale + monitorScaleAdjust));
+  const narrowViewportSafetyScale = isNarrowViewport ? 0.98 : 1;
+  const minScale = isNarrowViewport ? 0.18 : 0.35;
+  const scale = Math.min(MONITOR_MAX_SCALE, Math.max(minScale, autoScale * narrowViewportSafetyScale));
   body.style.setProperty("--monitor-fit-scale", String(scale));
+}
 
-  if(label){
-    label.textContent = monitorScaleAdjust === 0
-      ? "自動"
-      : Math.round(scale * 100) + "%";
+function installMonitorViewportResizeObserver(){
+  const viewport = document.getElementById("monitorModeViewport");
+  if(!viewport || typeof ResizeObserver === "undefined" || monitorViewportResizeObserver) return;
+  monitorViewportResizeObserver = new ResizeObserver(() => {
+    if(isMonitorModeOpen) updateMonitorFitScale();
+  });
+  monitorViewportResizeObserver.observe(viewport);
+}
+
+function updateMonitorPreviewScale(){
+  const viewport = document.getElementById("monitorPreviewViewport");
+  const body = document.getElementById("monitorPreviewBody");
+  if(!viewport || !body) return;
+  body.style.setProperty("--monitor-design-width", MONITOR_DESIGN_WIDTH + "px");
+  body.style.setProperty("--monitor-design-height", MONITOR_DESIGN_HEIGHT + "px");
+  const scale = Math.min(
+    viewport.clientWidth / MONITOR_DESIGN_WIDTH,
+    viewport.clientHeight / MONITOR_DESIGN_HEIGHT
+  );
+  body.style.setProperty("--monitor-fit-scale", String(scale));
+}
+
+function renderMonitorPreviewContent(content){
+  const body = document.getElementById("monitorPreviewBody");
+  if(!body) return;
+  const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
+  const instructionHtml = normalized.instructionText
+    ? `<div class="resultBox instructionBox monitorInstructionMirror">${formatInstructionDisplayHtml(normalized.instructionText)}</div>`
+    : `<div class="monitorEmpty">指示内容がまだありません。</div>`;
+  body.innerHTML = `
+    <div class="monitorModeLeft">
+      <div class="monitorPanel">
+        <div class="monitorInstructionText">${instructionHtml}</div>
+      </div>
+      <div class="monitorPanel monitorHarvestPanel">
+        <div class="monitorSectionTitle">収穫場所</div>
+        <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [])}</div>
+      </div>
+    </div>
+    <div class="monitorModeRight">
+      <div class="monitorPanel monitorMemoPanel">
+        <div class="monitorMemoText">${getMonitorMemoHtml(normalized.memoItems || normalized.memoText || "")}</div>
+      </div>
+    </div>
+  `;
+  requestAnimationFrame(updateMonitorPreviewScale);
+}
+
+function showMonitorPreviewConfirm(content){
+  return new Promise(resolve => {
+    const modal = document.getElementById("monitorPreviewModal");
+    if(!modal){
+      resolve(false);
+      return;
+    }
+    monitorPreviewResolver = resolve;
+    renderMonitorPreviewContent(content);
+    modal.classList.add("show");
+    document.body.style.overflow = "hidden";
+  });
+}
+
+function isMonitorPreviewOpen(){
+  return !!document.getElementById("monitorPreviewModal")?.classList.contains("show");
+}
+
+function resolveMonitorPreview(confirmed){
+  const modal = document.getElementById("monitorPreviewModal");
+  if(modal) modal.classList.remove("show");
+  if(!isMonitorModeOpen && !document.getElementById("monitorEditorModal")?.classList.contains("show")){
+    document.body.style.overflow = "";
   }
-}
-
-function adjustMonitorFitScale(delta){
-  monitorScaleAdjust = Math.min(0.4, Math.max(-0.4, monitorScaleAdjust + delta));
-  monitorScaleAdjust = Math.round(monitorScaleAdjust * 100) / 100;
-  saveMonitorScaleAdjust();
-  updateMonitorFitScale();
-}
-
-function resetMonitorFitScale(){
-  monitorScaleAdjust = 0;
-  saveMonitorScaleAdjust();
-  updateMonitorFitScale();
+  const resolver = monitorPreviewResolver;
+  monitorPreviewResolver = null;
+  if(resolver) resolver(!!confirmed);
 }
 
 async function openMonitorMode(){
@@ -3492,6 +4563,7 @@ async function openMonitorMode(){
     overlay.classList.add("show");
     if(tabBar) tabBar.classList.add("monitorHidden");
     document.body.style.overflow = "hidden";
+    installMonitorViewportResizeObserver();
     updateMonitorFitScale();
     renderMonitorMode();
 
@@ -3533,11 +4605,13 @@ function saveHarvestStateToStorage(){
   syncCurrentCasePlacementFromInputs();
   const payload = {
     currentBuilding,
+    casePlacementBuilding,
     harvestFillKeys,
     harvestSummary,
     manualSeedlingCount,
     casesInput: document.getElementById("casesInput")?.value || "",
-    monitorMemoInput: document.getElementById("monitorMemoInput")?.value || "",
+    monitorMemoInput: getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
+    monitorMemoItems: getMonitorMemoInputValues(),
     casePlacementByBuilding,
     recordCasesInput: document.getElementById("recordCasesInput")?.value || "",
     recordActualSeedlingTrayCountInput: document.getElementById("recordActualSeedlingTrayCountInput")?.value || "",
@@ -3561,11 +4635,13 @@ function loadHarvestStateFromStorage(){
     const parsed = JSON.parse(raw);
     return {
       currentBuilding: BUILDINGS.includes(Number(parsed.currentBuilding)) ? Number(parsed.currentBuilding) : 2,
+      casePlacementBuilding: BUILDINGS.includes(Number(parsed.casePlacementBuilding)) ? Number(parsed.casePlacementBuilding) : null,
       harvestFillKeys: Array.isArray(parsed.harvestFillKeys) ? parsed.harvestFillKeys.filter(v => typeof v === "string") : [],
       harvestSummary: parsed.harvestSummary && typeof parsed.harvestSummary === "object" ? parsed.harvestSummary : null,
       manualSeedlingCount: normalizeManualSeedlingCount(parsed.manualSeedlingCount),
       casesInput: parsed.casesInput ?? "",
       monitorMemoInput: parsed.monitorMemoInput ?? "",
+      monitorMemoItems: Array.isArray(parsed.monitorMemoItems) ? parsed.monitorMemoItems.map(item => String(item ?? "")) : null,
       casePlacementByBuilding: parsed.casePlacementByBuilding && typeof parsed.casePlacementByBuilding === "object" ? parsed.casePlacementByBuilding : null,
       frontCaseInput: parsed.frontCaseInput ?? "",
       middleCaseInput: parsed.middleCaseInput ?? "",
@@ -3648,6 +4724,26 @@ function getBedTabSummaryText(groupName, bedName){
   return value === "" ? "未入力" : `${value}個`;
 }
 
+function getForecastSettingsSummaryText(){
+  const lossInput = document.getElementById("defaultLossRateInput");
+  const yieldInput = document.getElementById("defaultYieldInput");
+  const plantInput = document.getElementById("defaultPlantingCountInput");
+  const special60Input = document.getElementById("specialPallet60CountInput");
+  const loss = String(lossInput?.value || "0").trim() || "0";
+  const yieldValue = String(yieldInput?.value || "").trim() || "-";
+  const plantValue = String(plantInput?.value || "").trim() || "-";
+  const special60 = String(special60Input?.value || "0").trim() || "0";
+  const lossMark = document.getElementById("useBedLossSettings")?.checked ? "*" : "";
+  const yieldMark = document.getElementById("useBedYieldSettings")?.checked ? "*" : "";
+  const plantMark = document.getElementById("useBedPlantSettings")?.checked ? "*" : "";
+  return `${loss}%${lossMark} / ${yieldValue}${yieldMark} / ${plantValue}${plantMark} / 60(${special60}/3)`;
+}
+
+function updateForecastSettingsSummary(){
+  const el = document.getElementById("forecastSettingsSummary");
+  if(el) el.textContent = getForecastSettingsSummaryText();
+}
+
 function refreshYieldFrontBackVisibility(){
   bedOrder.forEach(bedName => {
     const wrap = document.getElementById(`yieldSplitBox_${bedName}`);
@@ -3664,7 +4760,7 @@ function refreshPlantFrontBackVisibility(){
     const wrap = document.getElementById(`plantSplitBox_${bedName}`);
     const checkbox = document.getElementById(`plantUseFrontBack_${bedName}`);
     if(wrap && checkbox){
-      const enabled = !!document.getElementById("useBedYieldSettings")?.checked;
+      const enabled = !!document.getElementById("useBedPlantSettings")?.checked;
       wrap.classList.toggle("disabled", !enabled || !checkbox.checked);
     }
   });
@@ -3701,6 +4797,7 @@ function refreshOverrideControls(){
 
   refreshYieldFrontBackVisibility();
   refreshPlantFrontBackVisibility();
+  updateForecastSettingsSummary();
 }
 
 function refreshBedTabSummaries(){
@@ -3711,6 +4808,48 @@ function refreshBedTabSummaries(){
         el.textContent = getBedTabSummaryText(groupName, bedName);
       }
     });
+  });
+  updateForecastSettingsSummary();
+}
+
+function makeSettingClusterCollapsible(cluster){
+  if(!cluster || cluster.tagName === "DETAILS") return cluster;
+
+  const details = document.createElement("details");
+  details.className = cluster.className + " settingClusterDetails";
+
+  const summary = document.createElement("summary");
+  summary.className = "settingClusterSummary";
+
+  const body = document.createElement("div");
+  body.className = "settingClusterDetailsBody";
+
+  const header = cluster.querySelector(":scope > .clusterHeader");
+  if(header){
+    summary.appendChild(header);
+  }
+
+  while(cluster.firstChild){
+    body.appendChild(cluster.firstChild);
+  }
+
+  details.appendChild(summary);
+  details.appendChild(body);
+  cluster.replaceWith(details);
+  return details;
+}
+
+function moveCalculationSettingsToForecast(){
+  const target = document.getElementById("forecastSettingsWindowBody");
+  if(!target) return;
+
+  const titlesToMove = new Set(["収穫ロス率", "収穫時の個数", "苗の個数", "苗取り補足"]);
+  const clusters = Array.from(document.querySelectorAll("#settingsTab .settingCluster"));
+  clusters.forEach(cluster => {
+    const title = cluster.querySelector(".clusterTitle")?.textContent?.trim();
+    if(titlesToMove.has(title)){
+      target.appendChild(makeSettingClusterCollapsible(cluster));
+    }
   });
 }
 
@@ -3756,6 +4895,29 @@ function installNumberInputAutoSelect(){
   });
 }
 
+function isEmptyHighlightTarget(el){
+  if(!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return false;
+  if(el instanceof HTMLInputElement){
+    return !["checkbox", "radio", "button", "submit", "reset", "file", "hidden"].includes(el.type);
+  }
+  return true;
+}
+
+function updateEmptyInputHighlight(el){
+  if(!isEmptyHighlightTarget(el)) return;
+  el.classList.toggle("emptyInputField", el.value === "");
+}
+
+function refreshEmptyInputHighlights(){
+  document.querySelectorAll("input, textarea").forEach(updateEmptyInputHighlight);
+}
+
+function installEmptyInputHighlights(){
+  refreshEmptyInputHighlights();
+  document.addEventListener("input", event => updateEmptyInputHighlight(event.target));
+  document.addEventListener("change", event => updateEmptyInputHighlight(event.target));
+}
+
 
 function captureRecordBaseSelection(){
   recordBaseFillKeys = [...harvestFillKeys];
@@ -3766,31 +4928,33 @@ function restoreRecordSelectionToBase(){
   refreshAfterHarvestSelectionChanged();
 }
 
+function saveCurrentTabScrollPosition(){
+  if(!activeAppTab) return;
+  tabScrollPositions[activeAppTab] = window.pageYOffset || 0;
+}
+
+function restoreTabScrollPosition(tabName){
+  const top = tabScrollPositions[tabName] || 0;
+  requestAnimationFrame(() => {
+    window.scrollTo({ top, behavior: "auto" });
+  });
+}
+
 function switchTab(tabName){
+  if(tabName === "settings") tabName = "forecast";
+  saveCurrentTabScrollPosition();
   hideBedActionMenu();
   hideRecordBedActionMenu();
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();
   hideRecordImportError();
   resolveGoogleSheetConfirm(false);
-  const settingsVisible = document.getElementById("settingsTab").style.display !== "none";
-
-  if(settingsVisible && tabName !== "settings" && settingsDirty){
-    const shouldSave = confirm("設定が変更されています。保存しますか？");
-    if(shouldSave){
-      if(!saveSettings()) return;
-    }else{
-      populateSettingsForm();
-      settingsDirty = false;
-    }
-  }
 
   document.getElementById("forecastTab").style.display = tabName === "forecast" ? "block" : "none";
-  document.getElementById("settingsTab").style.display = tabName === "settings" ? "block" : "none";
+  document.getElementById("settingsTab").style.display = "none";
   document.getElementById("recordTab").style.display = tabName === "record" ? "block" : "none";
   document.getElementById("dashboardTab").style.display = tabName === "dashboard" ? "block" : "none";
   document.getElementById("forecastTabBtn").classList.toggle("active", tabName === "forecast");
-  document.getElementById("settingsTabBtn").classList.toggle("active", tabName === "settings");
   document.getElementById("recordTabBtn").classList.toggle("active", tabName === "record");
   document.getElementById("dashboardTabBtn")?.classList.toggle("active", tabName === "dashboard");
   if(tabName === "record"){
@@ -3806,6 +4970,8 @@ function switchTab(tabName){
   if(tabName === "dashboard"){
     renderDashboard();
   }
+  activeAppTab = tabName;
+  restoreTabScrollPosition(tabName);
 }
 
 function loadSettings(){
@@ -4598,6 +5764,28 @@ function extractMonitorContentFromGoogleSheetResponse(result){
   return result;
 }
 
+function normalizeMonitorMemoItems(items, fallbackText = ""){
+  if(Array.isArray(items)){
+    return items.map(item => String(item ?? ""));
+  }
+  const legacyText = String(fallbackText || "");
+  return legacyText ? [legacyText] : [];
+}
+
+function getMonitorMemoTextFromItems(items){
+  return normalizeMonitorMemoItems(items)
+    .map(item => String(item || "").trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function getMonitorMemoItemsFromText(text){
+  return String(text || "")
+    .split(/\n{2,}/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 function normalizeRemoteMonitorContent(content){
   if(!content || typeof content !== "object") return null;
   const enabled = content.enabled === true || ["true", "1", "yes", "on", "有効", "使う"].includes(String(content.enabled || "").trim().toLowerCase());
@@ -4605,12 +5793,14 @@ function normalizeRemoteMonitorContent(content){
     ...expandPalletKeyItemsToKeys(content.harvestFillKeys),
     ...expandPalletRangesToKeys(content.palletRanges)
   ];
+  const memoItems = normalizeMonitorMemoItems(content.memoItems, content.memoText);
   return {
     enabled,
     version: String(content.version || ""),
     updatedAt: String(content.updatedAt || ""),
     instructionText: String(content.instructionText || ""),
-    memoText: String(content.memoText || ""),
+    memoText: String(content.memoText || memoItems.join("\n\n")),
+    memoItems,
     harvestFillKeys: [...new Set(harvestKeys)].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b))
   };
 }
@@ -4622,6 +5812,7 @@ function getMonitorRemoteSignature(content){
     updatedAt: content.updatedAt,
     instructionText: content.instructionText,
     memoText: content.memoText,
+    memoItems: content.memoItems,
     harvestFillKeys: content.harvestFillKeys
   });
 }
@@ -4726,7 +5917,7 @@ function renderMonitorEditHistoryList(history){
       .filter(Boolean)
       .slice(0, 3)
       .join(" / ");
-    const memoPreview = String(item.memoText || "").trim();
+    const memoPreview = getMonitorMemoTextFromItems(item.memoItems) || String(item.memoText || "").trim();
     return `
       <div class="recordItem">
         <div class="recordTitle">${escapeHtml(item.savedAt || "-")} 更新番号 ${escapeHtml(item.version || "-")}</div>
@@ -4742,8 +5933,7 @@ function getMonitorRemoteEditorElements(){
     seedlingInput: document.getElementById("monitorRemoteSeedlingValueInput"),
     casesInput: document.getElementById("monitorRemoteCasesValueInput"),
     harvestLocationInput: document.getElementById("monitorRemoteHarvestLocationValueInput"),
-    remainingCasesInput: document.getElementById("monitorRemoteRemainingCasesValueInput"),
-    memoInput: document.getElementById("monitorRemoteMemoInput")
+    remainingCasesInput: document.getElementById("monitorRemoteRemainingCasesValueInput")
   };
 }
 
@@ -4826,6 +6016,7 @@ function populateMonitorRemoteEditor(content){
     enabled: false,
     instructionText: "",
     memoText: "",
+    memoItems: [],
     harvestFillKeys: []
   };
   const fields = parseMonitorInstructionFields(normalized.instructionText || "");
@@ -4834,7 +6025,7 @@ function populateMonitorRemoteEditor(content){
   if(els.casesInput) els.casesInput.value = fields.cases;
   if(els.harvestLocationInput) els.harvestLocationInput.value = fields.harvestLocation;
   if(els.remainingCasesInput) els.remainingCasesInput.value = fields.remainingCases;
-  if(els.memoInput) els.memoInput.value = normalized.memoText || "";
+  renderMonitorRemoteMemoInputs(normalized.memoItems || normalizeMonitorMemoItems(null, normalized.memoText || ""));
 }
 
 function readMonitorRemoteEditorContent(){
@@ -4848,25 +6039,50 @@ function readMonitorRemoteEditorContent(){
   return {
     enabled: true,
     instructionText: buildMonitorInstructionTextFromFields(fields),
-    memoText: String(els.memoInput?.value || ""),
+    memoText: getMonitorMemoTextFromItems(getMonitorRemoteMemoInputValues()),
+    memoItems: getMonitorRemoteMemoInputValues(),
     harvestFillKeys: compressPalletKeysToRanges(monitorRemoteEditorHarvestFillKeys)
   };
 }
 
-function fillMonitorRemoteEditorFromCurrentState(){
-  populateMonitorRemoteEditor({
+function buildCurrentMonitorRemoteContent(options = {}){
+  const currentMemoItems = getMonitorMemoInputValues()
+    .map(item => String(item || "").trim())
+    .filter(Boolean);
+  const existingMemoItems = normalizeMonitorMemoItems(options.existingMemoItems)
+    .map(item => String(item || "").trim())
+    .filter(Boolean);
+  const memoItems = options.appendMemo ? [...existingMemoItems, ...currentMemoItems] : getMonitorMemoInputValues();
+
+  return {
     enabled: true,
     instructionText: buildMonitorInstructionTextFromFields(getCurrentMonitorInstructionFields()),
-    memoText: document.getElementById("monitorMemoInput")?.value || "",
+    memoText: getMonitorMemoTextFromItems(memoItems),
+    memoItems,
+    harvestFillKeys: compressPalletKeysToRanges(harvestFillKeys)
+  };
+}
+
+function fillMonitorRemoteEditorFromCurrentState(options = {}){
+  const content = buildCurrentMonitorRemoteContent(options);
+  populateMonitorRemoteEditor({
+    ...content,
     harvestFillKeys
   });
   setMonitorRemoteEditorStatus("現在の計算内容を編集欄に反映しました。保存するとモニターへ配信されます。");
 }
 
-function saveCurrentMonitorRemoteContent(){
-  const shouldSave = window.confirm("現在の内容を保存してモニターに表示しますか？");
+async function saveCurrentMonitorRemoteContent(){
+  const latestContent = await fetchMonitorRemoteContent({ silentErrors: true, force: true });
+  const existingContent = latestContent || monitorRemoteContent || {};
+  const existingMemoItems = normalizeMonitorMemoItems(existingContent.memoItems, existingContent.memoText);
+  const content = buildCurrentMonitorRemoteContent({ appendMemo: true, existingMemoItems });
+  const shouldSave = await showMonitorPreviewConfirm(content);
   if(!shouldSave) return;
-  fillMonitorRemoteEditorFromCurrentState();
+  populateMonitorRemoteEditor({
+    ...content,
+    harvestFillKeys
+  });
   saveMonitorRemoteEditor();
 }
 
@@ -4890,7 +6106,7 @@ async function loadMonitorRemoteEditor(){
 }
 
 async function saveMonitorRemoteEditor(){
-  if(!ensureProtectedOperationAccess("モニター遠隔編集")) return;
+  if(!ensureProtectedOperationAccess("モニター編集")) return;
 
   const config = loadGoogleSheetConfig();
   if(!config.url){
@@ -5481,12 +6697,28 @@ function normalizeCasePlacement(value){
   };
 }
 
+function normalizeCasePlacementInput(value){
+  return {
+    front: value?.front === "" ? "" : clampNumber(value?.front, 0, 999999, 0),
+    middle: value?.middle === "" ? "" : clampNumber(value?.middle, 0, 999999, 0),
+    back: value?.back === "" ? "" : clampNumber(value?.back, 0, 999999, 0)
+  };
+}
+
 function getCasePlacementForBuilding(building){
   const key = String(building);
   if(!casePlacementByBuilding[key]){
-    casePlacementByBuilding[key] = { front: 0, middle: 0, back: 0 };
+    casePlacementByBuilding[key] = { ...DEFAULT_CASE_PLACEMENT };
   }
   return normalizeCasePlacement(casePlacementByBuilding[key]);
+}
+
+function getCasePlacementInputForBuilding(building){
+  const key = String(building);
+  if(!casePlacementByBuilding[key]){
+    casePlacementByBuilding[key] = { ...DEFAULT_CASE_PLACEMENT };
+  }
+  return normalizeCasePlacementInput(casePlacementByBuilding[key]);
 }
 
 function syncCurrentCasePlacementFromInputs(){
@@ -5495,21 +6727,31 @@ function syncCurrentCasePlacementFromInputs(){
   const backInput = document.getElementById("backCaseInput");
   if(!frontInput || !middleInput || !backInput) return;
 
-  casePlacementByBuilding[String(currentBuilding)] = {
-    front: clampNumber(frontInput.value || 0, 0, 999999, 0),
-    middle: clampNumber(middleInput.value || 0, 0, 999999, 0),
-    back: clampNumber(backInput.value || 0, 0, 999999, 0)
+  casePlacementByBuilding[String(casePlacementBuilding)] = {
+    front: frontInput.value === "" ? "" : clampNumber(frontInput.value, 0, 999999, 0),
+    middle: middleInput.value === "" ? "" : clampNumber(middleInput.value, 0, 999999, 0),
+    back: backInput.value === "" ? "" : clampNumber(backInput.value, 0, 999999, 0)
   };
 }
 
 function populateCasePlacementInputs(){
-  const placement = getCasePlacementForBuilding(currentBuilding);
+  const placement = getCasePlacementInputForBuilding(casePlacementBuilding);
   const frontInput = document.getElementById("frontCaseInput");
   const middleInput = document.getElementById("middleCaseInput");
   const backInput = document.getElementById("backCaseInput");
   if(frontInput) frontInput.value = placement.front;
   if(middleInput) middleInput.value = placement.middle;
   if(backInput) backInput.value = placement.back;
+  updateCasePlacementTotal();
+  refreshEmptyInputHighlights();
+}
+
+function updateCasePlacementTotal(){
+  const front = clampNumber(document.getElementById("frontCaseInput")?.value || 0, 0, 999999, 0);
+  const middle = clampNumber(document.getElementById("middleCaseInput")?.value || 0, 0, 999999, 0);
+  const back = clampNumber(document.getElementById("backCaseInput")?.value || 0, 0, 999999, 0);
+  const totalValue = document.getElementById("casePlacementTotalValue");
+  if(totalValue) totalValue.textContent = String(front + middle + back);
 }
 
 function formatSettingValue(value){
@@ -5648,14 +6890,16 @@ function parsePalletKey(key){
 function updateBuildingLabel(){
   const mainBtn = document.getElementById("currentBuildingBtn");
   const recordBtn = document.getElementById("recordCurrentBuildingBtn");
-  const caseLabel = document.getElementById("casePlacementBuildingLabel");
   const partialBuildingInput = document.getElementById("partialHarvestBuildingInput");
   if(mainBtn) mainBtn.textContent = currentBuilding + "号棟";
   if(recordBtn) recordBtn.textContent = currentBuilding + "号棟";
-  if(caseLabel) caseLabel.textContent = "（" + currentBuilding + "号棟）";
   if(partialBuildingInput) partialBuildingInput.value = String(currentBuilding);
-  populateCasePlacementInputs();
   updateBuildingLastHarvestInfo();
+}
+
+function updateCasePlacementBuildingLabel(){
+  const caseBtn = document.getElementById("casePlacementBuildingBtn");
+  if(caseBtn) caseBtn.textContent = casePlacementBuilding + "号棟";
 }
 
 function getHarvestCycleStartsForBuilding(building){
@@ -5730,6 +6974,26 @@ function prevBuilding(){
   renderForecastSummary();
 }
 
+function nextCasePlacementBuilding(){
+  syncCurrentCasePlacementFromInputs();
+  casePlacementBuilding++;
+  if(casePlacementBuilding > MAX_BUILDING) casePlacementBuilding = MIN_BUILDING;
+  updateCasePlacementBuildingLabel();
+  populateCasePlacementInputs();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+}
+
+function prevCasePlacementBuilding(){
+  syncCurrentCasePlacementFromInputs();
+  casePlacementBuilding--;
+  if(casePlacementBuilding < MIN_BUILDING) casePlacementBuilding = MAX_BUILDING;
+  updateCasePlacementBuildingLabel();
+  populateCasePlacementInputs();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+}
+
 function parseDateOnlyString(value){
   if(typeof value !== "string") return null;
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -5771,20 +7035,20 @@ function loadDashboardFilter(){
       startDay: getDefaultDashboardStartDay(),
       graphStartDate: "",
       graphEndDate: "",
-      casesGranularity: "day",
-      lossGranularity: "day",
+      casesGranularity: "month",
+      lossGranularity: "month",
       recordSearch: "",
       recordStartDate: "",
       recordEndDate: ""
     };
     const parsed = JSON.parse(raw);
-    const normalizeGranularity = value => ["day", "month", "year"].includes(value) ? value : "day";
+    const normalizeGranularity = value => ["month", "year"].includes(value) ? value : "month";
     const startDay = clampNumber(parsed?.startDay, 1, 31, getDefaultDashboardStartDay());
     return {
       startDay,
       historyPeriodStart: parseDateOnlyString(parsed?.historyPeriodStart || "") ? String(parsed.historyPeriodStart) : "",
-      graphStartDate: parseDateOnlyString(parsed?.graphStartDate || "") ? String(parsed.graphStartDate) : "",
-      graphEndDate: parseDateOnlyString(parsed?.graphEndDate || "") ? String(parsed.graphEndDate) : "",
+      graphStartDate: "",
+      graphEndDate: "",
       casesGranularity: normalizeGranularity(parsed?.casesGranularity),
       lossGranularity: normalizeGranularity(parsed?.lossGranularity),
       recordSearch: String(parsed?.recordSearch || "").trim(),
@@ -5797,8 +7061,8 @@ function loadDashboardFilter(){
       historyPeriodStart: "",
       graphStartDate: "",
       graphEndDate: "",
-      casesGranularity: "day",
-      lossGranularity: "day",
+      casesGranularity: "month",
+      lossGranularity: "month",
       recordSearch: "",
       recordStartDate: "",
       recordEndDate: ""
@@ -5876,19 +7140,9 @@ function getDashboardGranularityLabel(granularity){
 }
 
 function getDashboardChartPeriod(startDate, granularity){
-  const customPeriod = getDashboardCustomGraphPeriod();
-  if(customPeriod){
-    return {
-      ...customPeriod,
-      granularity
-    };
-  }
   const endInclusive = startOfLocalDay(new Date());
   const endExclusive = addDays(endInclusive, 1);
   let start = startOfLocalDay(startDate);
-  if(granularity === "day"){
-    start = addMonthsClamped(endInclusive, -1);
-  }
   if(granularity === "month"){
     start = addMonthsClamped(start, -11);
   }else if(granularity === "year"){
@@ -5902,35 +7156,6 @@ function getDashboardChartPeriod(startDate, granularity){
     endLabel: formatDateOnlyString(endInclusive),
     granularity
   };
-}
-
-function getDashboardCustomGraphPeriod(){
-  const startValue = String(document.getElementById("dashboardGraphStartDateInput")?.value || dashboardFilter.graphStartDate || "").trim();
-  const endValue = String(document.getElementById("dashboardGraphEndDateInput")?.value || dashboardFilter.graphEndDate || "").trim();
-  const start = parseDateOnlyString(startValue);
-  const end = parseDateOnlyString(endValue);
-  if(!start || !end) return null;
-
-  const startDay = startOfLocalDay(start.getTime() <= end.getTime() ? start : end);
-  const endDay = startOfLocalDay(end.getTime() >= start.getTime() ? end : start);
-  return {
-    start: startDay,
-    endInclusive: endDay,
-    endExclusive: addDays(endDay, 1),
-    startLabel: formatDateOnlyString(startDay),
-    endLabel: formatDateOnlyString(endDay)
-  };
-}
-
-function clearDashboardGraphRange(){
-  dashboardFilter.graphStartDate = "";
-  dashboardFilter.graphEndDate = "";
-  const startInput = document.getElementById("dashboardGraphStartDateInput");
-  const endInput = document.getElementById("dashboardGraphEndDateInput");
-  if(startInput) startInput.value = "";
-  if(endInput) endInput.value = "";
-  saveDashboardFilter();
-  renderDashboard();
 }
 
 function clearDashboardRecordFilters(){
@@ -6172,27 +7397,69 @@ function getDashboardSummary(recordsInPeriod){
   };
 }
 
-function buildDashboardMetricsMarkup(recordsInPeriod){
+function getRecentOneMonthDashboardPeriod(){
+  const endInclusive = startOfLocalDay(new Date());
+  const endExclusive = addDays(endInclusive, 1);
+  const start = addMonthsClamped(endExclusive, -1);
+  return {
+    start,
+    endInclusive,
+    endExclusive,
+    startLabel: formatDateOnlyString(start),
+    endLabel: formatDateOnlyString(endInclusive)
+  };
+}
+
+function getDashboardRecentMetrics(recordsInPeriod){
   const summary = getDashboardSummary(recordsInPeriod);
+  const dailyCaseTotals = recordsInPeriod.reduce((map, record) => {
+    const dateKey = String(record?.date || "").trim();
+    if(!parseDateOnlyString(dateKey)) return map;
+    map[dateKey] = (map[dateKey] || 0) + clampNumber(record.cases, 0, 999999, 0);
+    return map;
+  }, {});
+  const harvestDays = Object.values(dailyCaseTotals).filter(total => total > 0).length;
+  const averageCases = harvestDays > 0 ? summary.totalCases / harvestDays : null;
+  const fullRecords = recordsInPeriod.filter(record => record.type !== "partialHarvest");
+  const seedlingLossValues = fullRecords
+    .map(record => Number(record.actualSeedlingLossRate))
+    .filter(value => Number.isFinite(value));
+  const averageSeedlingLoss = seedlingLossValues.length
+    ? seedlingLossValues.reduce((sum, value) => sum + value, 0) / seedlingLossValues.length
+    : null;
+
+  return {
+    averageCases,
+    harvestDays,
+    averageLoss: summary.averageLoss,
+    averageSeedlingLoss,
+    seedlingLossRecordCount: seedlingLossValues.length,
+    qualityMemoCount: summary.qualityMemoCount
+  };
+}
+
+function formatDashboardMetricNumber(value, suffix = ""){
+  return value === null ? "--" : (Math.round(value * 10) / 10).toFixed(1) + suffix;
+}
+
+function buildDashboardMetricsMarkup(recordsInPeriod, options = {}){
+  const metrics = getDashboardRecentMetrics(recordsInPeriod);
   return `
     <div class="dashboardMetricCard">
-      <div class="dashboardMetricLabel">期間の収穫ケース合計</div>
-      <div class="dashboardMetricValue">${Math.round(summary.totalCases * 10) / 10}</div>
+      <div class="dashboardMetricLabel">平均収穫ケース数</div>
+      <div class="dashboardMetricValue">${formatDashboardMetricNumber(metrics.averageCases)}</div>
     </div>
     <div class="dashboardMetricCard">
-      <div class="dashboardMetricLabel">平均ロス率</div>
-      <div class="dashboardMetricValue">${summary.averageLoss === null ? "--" : summary.averageLoss.toFixed(1) + "%"}</div>
-      <div class="dashboardMetricSub">通常収穫 ${summary.fullRecords} 件をケース数で加重平均</div>
+      <div class="dashboardMetricLabel">平均収穫ロス率</div>
+      <div class="dashboardMetricValue">${formatDashboardMetricNumber(metrics.averageLoss, "%")}</div>
     </div>
     <div class="dashboardMetricCard">
-      <div class="dashboardMetricLabel">収穫日数</div>
-      <div class="dashboardMetricValue">${summary.recordDays}${summary.underThresholdRecordDays ? `（${summary.underThresholdRecordDays}）` : ""}</div>
-      <div class="dashboardMetricSub">記録 ${summary.totalRecords} 件 / 先取り ${summary.partialRecords} 件</div>
+      <div class="dashboardMetricLabel">平均苗ロス率</div>
+      <div class="dashboardMetricValue">${formatDashboardMetricNumber(metrics.averageSeedlingLoss, "%")}</div>
     </div>
     <div class="dashboardMetricCard">
-      <div class="dashboardMetricLabel">品質メモあり</div>
-      <div class="dashboardMetricValue">${summary.qualityMemoCount}</div>
-      <div class="dashboardMetricSub">大きい・小さい・徒長・チップ・その他を含む記録</div>
+      <div class="dashboardMetricLabel">品質メモ数</div>
+      <div class="dashboardMetricValue">${metrics.qualityMemoCount}</div>
     </div>
   `;
 }
@@ -6200,7 +7467,9 @@ function buildDashboardMetricsMarkup(recordsInPeriod){
 function renderDashboardMetrics(recordsInPeriod, period){
   const box = document.getElementById("dashboardMetrics");
   if(!box) return;
-  box.innerHTML = buildDashboardMetricsMarkup(recordsInPeriod);
+  const recentPeriod = getRecentOneMonthDashboardPeriod();
+  const recentRecords = getDashboardRecordsForPeriod(recentPeriod);
+  box.innerHTML = buildDashboardMetricsMarkup(recentRecords);
 }
 
 function getDashboardHistoryPeriods(period = getDashboardPeriod()){
@@ -6323,10 +7592,60 @@ function buildDashboardLossSeries(recordsInPeriod, period, granularity){
   return Object.keys(casesByBucket)
     .sort()
     .map(key => ({
+      key,
       label: getDashboardBucketLabel(key, granularity),
       fullLabel: getDashboardBucketFullLabel(key, granularity),
       value: casesByBucket[key] > 0 ? totals[key] / casesByBucket[key] : null
     }));
+}
+
+function buildDashboardSeedlingLossSeries(recordsInPeriod, period, granularity){
+  const totals = {};
+  const countsByBucket = {};
+
+  recordsInPeriod.forEach(record => {
+    if(record.type === "partialHarvest") return;
+    const loss = Number(record.actualSeedlingLossRate);
+    if(!Number.isFinite(loss)) return;
+    const recordDate = parseDateOnlyString(record.date);
+    if(!recordDate) return;
+    const key = getDashboardBucketKey(recordDate, granularity);
+    totals[key] = (totals[key] || 0) + loss;
+    countsByBucket[key] = (countsByBucket[key] || 0) + 1;
+  });
+
+  return Object.keys(countsByBucket)
+    .sort()
+    .map(key => ({
+      key,
+      label: getDashboardBucketLabel(key, granularity),
+      fullLabel: getDashboardBucketFullLabel(key, granularity),
+      value: countsByBucket[key] > 0 ? totals[key] / countsByBucket[key] : null
+    }));
+}
+
+function buildDashboardLossComparisonSeries(recordsInPeriod, period, granularity){
+  const harvestLossSeries = buildDashboardLossSeries(recordsInPeriod, period, granularity);
+  const seedlingLossSeries = buildDashboardSeedlingLossSeries(recordsInPeriod, period, granularity);
+  const seriesByName = [
+    { name: "平均収穫ロス率", color: "#ef4444", source: harvestLossSeries },
+    { name: "平均苗ロス率", color: "#2563eb", source: seedlingLossSeries }
+  ];
+  const keys = [...new Set(seriesByName.flatMap(series => series.source.map(point => point.key)))].sort();
+
+  return seriesByName.map(series => {
+    const pointMap = new Map(series.source.map(point => [point.key, point]));
+    return {
+      name: series.name,
+      color: series.color,
+      points: keys.map(key => pointMap.get(key) || {
+        key,
+        label: getDashboardBucketLabel(key, granularity),
+        fullLabel: getDashboardBucketFullLabel(key, granularity),
+        value: null
+      })
+    };
+  });
 }
 
 function renderDashboardEmpty(containerId, message){
@@ -6399,6 +7718,89 @@ function renderDashboardLineChart(containerId, series, options = {}){
         <line x1="${padding.left}" y1="${padding.top + innerHeight}" x2="${width - padding.right}" y2="${padding.top + innerHeight}" stroke="#cbd5e1" stroke-width="1.2" />
         <polyline fill="none" stroke="${options.color || "#2563eb"}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${points}" />
         ${pointDots}
+        ${xLabels}
+      </svg>
+    </div>
+  `;
+}
+
+function renderDashboardMultiLineChart(containerId, seriesList, options = {}){
+  const container = document.getElementById(containerId);
+  if(!container) return;
+
+  const allPoints = seriesList.flatMap(series => series.points || []);
+  const validPoints = allPoints.filter(point => Number.isFinite(point.value));
+  if(!validPoints.length){
+    renderDashboardEmpty(containerId, options.emptyMessage || "この期間のデータがありません。");
+    return;
+  }
+
+  const axisPoints = seriesList.find(series => Array.isArray(series.points) && series.points.length)?.points || [];
+  const minWidth = 640;
+  const width = Math.max(minWidth, 84 + Math.max(axisPoints.length - 1, 0) * 54);
+  const height = 240;
+  const padding = { top: 18, right: 12, bottom: 28, left: 40 };
+  const innerWidth = width - padding.left - padding.right;
+  const innerHeight = height - padding.top - padding.bottom;
+  const maxValue = Math.max(...validPoints.map(point => Number(point.value)), 1);
+  const roundedMax = options.roundMaxToStep
+    ? Math.max(options.roundMaxToStep, Math.ceil(maxValue / options.roundMaxToStep) * options.roundMaxToStep)
+    : maxValue;
+  const yMax = options.suggestedMax ? Math.max(roundedMax, options.suggestedMax) : roundedMax;
+  const xStep = axisPoints.length > 1 ? innerWidth / (axisPoints.length - 1) : innerWidth / 2;
+  const yTicks = 4;
+
+  const tickLines = Array.from({ length: yTicks + 1 }, (_, index) => {
+    const value = yMax * (index / yTicks);
+    const y = padding.top + innerHeight - (value / yMax) * innerHeight;
+    const label = options.formatValue ? options.formatValue(value, true) : String(Math.round(value));
+    return `
+      <line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#e5e7eb" stroke-width="1" />
+      <text x="${padding.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="#64748b">${escapeHtml(label)}</text>
+    `;
+  }).join("");
+
+  const xLabelIndexes = axisPoints.length <= 3
+    ? axisPoints.map((_, index) => index)
+    : [...new Set([0, Math.floor((axisPoints.length - 1) / 2), axisPoints.length - 1])];
+  const xLabels = xLabelIndexes.map(index => {
+    const x = padding.left + (axisPoints.length > 1 ? xStep * index : innerWidth / 2);
+    return `<text x="${x}" y="${height - 8}" text-anchor="middle" font-size="11" fill="#64748b">${escapeHtml(axisPoints[index].label)}</text>`;
+  }).join("");
+
+  const lineMarkup = seriesList.map(series => {
+    const color = series.color || "#2563eb";
+    const points = (series.points || []).map((point, index) => {
+      if(!Number.isFinite(point.value)) return null;
+      const x = padding.left + (axisPoints.length > 1 ? xStep * index : innerWidth / 2);
+      const y = padding.top + innerHeight - (Number(point.value) / yMax) * innerHeight;
+      return { point, x, y };
+    }).filter(Boolean);
+    const polylinePoints = points.map(item => `${item.x},${item.y}`).join(" ");
+    const dots = points.map(item => {
+      const title = `${item.point.fullLabel} ${series.name} ${options.formatValue ? options.formatValue(item.point.value) : item.point.value}`;
+      return `<circle cx="${item.x}" cy="${item.y}" r="3.5" fill="${color}"><title>${escapeHtml(title)}</title></circle>`;
+    }).join("");
+    return `
+      <polyline fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${polylinePoints}" />
+      ${dots}
+    `;
+  }).join("");
+
+  const legend = seriesList.map(series => `
+    <span class="dashboardChartLegendItem">
+      <span class="dashboardChartLegendSwatch" style="background:${series.color || "#2563eb"}"></span>
+      ${escapeHtml(series.name)}
+    </span>
+  `).join("");
+
+  container.innerHTML = `
+    <div class="dashboardChartLegend">${legend}</div>
+    <div class="dashboardChartScroll">
+      <svg class="dashboardChartSvg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(options.ariaLabel || "")}">
+        ${tickLines}
+        <line x1="${padding.left}" y1="${padding.top + innerHeight}" x2="${width - padding.right}" y2="${padding.top + innerHeight}" stroke="#cbd5e1" stroke-width="1.2" />
+        ${lineMarkup}
         ${xLabels}
       </svg>
     </div>
@@ -6567,40 +7969,17 @@ function renderDashboard(){
   }
 
   const period = getDashboardPeriod();
-  const periodNote = document.getElementById("dashboardPeriodNote");
-  if(periodNote){
-    periodNote.textContent = `${period.startLabel} 〜 ${period.endLabel}`;
-  }
-  const referenceBox = document.getElementById("dashboardReferencePeriod");
-  if(referenceBox){
-    const value = referenceBox.querySelector(".dashboardReferenceValue");
-    const sub = referenceBox.querySelector(".dashboardReferenceSub");
-    if(value){
-      value.textContent = `${period.startLabel} 〜 ${period.endLabel}`;
-    }
-    if(sub){
-      sub.textContent = `基準日 ${period.dayOfMonth}日をもとに、直近の ${period.startLabel} から今日 ${period.endLabel} までを集計しています。`;
-    }
-  }
 
   const recordsInPeriod = getDashboardRecords();
   renderDashboardMetrics(recordsInPeriod, period);
   renderDashboardHistory(period);
 
-  const casesGranularity = ["day", "month", "year"].includes(dashboardFilter.casesGranularity) ? dashboardFilter.casesGranularity : "day";
-  const lossGranularity = ["day", "month", "year"].includes(dashboardFilter.lossGranularity) ? dashboardFilter.lossGranularity : "day";
+  const casesGranularity = ["month", "year"].includes(dashboardFilter.casesGranularity) ? dashboardFilter.casesGranularity : "month";
+  const lossGranularity = ["month", "year"].includes(dashboardFilter.lossGranularity) ? dashboardFilter.lossGranularity : "month";
   const dashboardCasesGranularityInput = document.getElementById("dashboardCasesGranularityInput");
   const dashboardLossGranularityInput = document.getElementById("dashboardLossGranularityInput");
-  const dashboardGraphStartDateInput = document.getElementById("dashboardGraphStartDateInput");
-  const dashboardGraphEndDateInput = document.getElementById("dashboardGraphEndDateInput");
-  const dashboardRangeDetails = document.getElementById("dashboardRangeDetails");
   if(dashboardCasesGranularityInput) dashboardCasesGranularityInput.value = casesGranularity;
   if(dashboardLossGranularityInput) dashboardLossGranularityInput.value = lossGranularity;
-  if(dashboardGraphStartDateInput && dashboardGraphStartDateInput.value !== (dashboardFilter.graphStartDate || "")) dashboardGraphStartDateInput.value = dashboardFilter.graphStartDate || "";
-  if(dashboardGraphEndDateInput && dashboardGraphEndDateInput.value !== (dashboardFilter.graphEndDate || "")) dashboardGraphEndDateInput.value = dashboardFilter.graphEndDate || "";
-  if(dashboardRangeDetails){
-    dashboardRangeDetails.open = !!(dashboardFilter.graphStartDate || dashboardFilter.graphEndDate);
-  }
 
   const casesPeriod = getDashboardChartPeriod(period.start, casesGranularity);
   const lossPeriod = getDashboardChartPeriod(period.start, lossGranularity);
@@ -6623,8 +8002,7 @@ function renderDashboard(){
   if(lossChartNote){
     lossChartNote.textContent = `通常収穫のみ / ${getDashboardGranularityLabel(lossGranularity)}別 / ${lossPeriod.startLabel} 〜 ${lossPeriod.endLabel}`;
   }
-  renderDashboardLineChart("dashboardLossChart", buildDashboardLossSeries(lossRecords, lossPeriod, lossGranularity), {
-    color: "#ef4444",
+  renderDashboardMultiLineChart("dashboardLossChart", buildDashboardLossComparisonSeries(lossRecords, lossPeriod, lossGranularity), {
     ariaLabel: "平均ロス率",
     tooltipLabel: "ロス率 ",
     suggestedMax: 20,
@@ -6715,13 +8093,13 @@ function getSelectedPlantingAgeItemsForBuilding(building){
 }
 
 function formatPlantingAgeMainText(items){
-  if(!items.length) return "定植日数: 収穫場所未選択";
+  if(!items.length) return "収穫場所未選択";
 
   const ages = items
     .map(item => item.ageDays)
     .filter(age => Number.isFinite(age));
 
-  if(!ages.length) return "定植日数: 前回記録なし";
+  if(!ages.length) return "定植記録なし";
 
   const minAge = Math.min(...ages);
   const maxAge = Math.max(...ages);
@@ -6770,7 +8148,7 @@ function formatPlantingAgeDetailRows(items, format){
 
     const rangeText = ranges.map(range => {
       const numberText = range.start === range.end ? `${range.start}` : `${range.start}〜${range.end}`;
-      const ageText = Number.isFinite(range.ageDays) ? `${range.ageDays}日目` : "前回記録なし";
+      const ageText = Number.isFinite(range.ageDays) ? `${range.ageDays}日目` : "定植記録なし";
       return `${numberText}: ${ageText}`;
     }).join("、");
 
@@ -6847,7 +8225,7 @@ function renderPlantingAgeInfo(){
   const mainText = formatPlantingAgeMainText(items);
   const detailHtml = formatPlantingAgeDetailHtml(items);
 
-  const mainInfo = document.getElementById("buildingLastHarvestInfo");
+  const mainInfo = document.getElementById("plantingAgeSummary");
   const recordInfo = document.getElementById("recordBuildingLastHarvestInfo");
   const detail = document.getElementById("plantingAgeDetail");
   const recordDetail = document.getElementById("recordPlantingAgeDetail");
@@ -6902,12 +8280,12 @@ function isFilled(building, bed, number){
   return harvestFillKeys.includes(getPalletKey(building, bed, number));
 }
 
-function isBedFullyFilledInCurrentBuilding(bed, recordedSet = getRecordedPalletSet()){
+function isBedFullyFilledInCurrentBuilding(bed, recordedSet = getRecordedPalletSet(), selectedSet = new Set(harvestFillKeys || [])){
   let hasTarget = false;
   for(let number=1; number<=PALLETS_PER_BED; number++){
     if(isRecorded(currentBuilding, bed, number, { recordedSet })) continue;
     hasTarget = true;
-    if(!isFilled(currentBuilding, bed, number)) return false;
+    if(!selectedSet.has(getPalletKey(currentBuilding, bed, number))) return false;
   }
   return hasTarget;
 }
@@ -7535,7 +8913,9 @@ function runHarvestPrediction(){
     showToast("記録済みを除外して1周分見ても必要個数に届きませんでした");
   }
 
+  manualSeedlingCount = null;
   refreshAfterHarvestSelectionChanged();
+  scrollToMonitorSection();
 }
 
 function recalcHarvestSummary(){
@@ -7548,6 +8928,14 @@ function recalcHarvestSummary(){
     totalHarvest: getCurrentHarvestTotal(),
     needHeads: getHarvestCasePlan().regularCases * CASE_SIZE
   };
+}
+
+function scrollToMonitorSection(){
+  const target = document.getElementById("monitorSectionTitle");
+  if(!target) return;
+  const headerOffset = 10;
+  const top = target.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+  window.scrollTo({ top, behavior: "smooth" });
 }
 
 
@@ -7590,7 +8978,7 @@ function getRequiredSeedlingsWithLossFromPlantingTotal(totalPlanting){
   const surviveRate = (100 - lossRate) / 100;
   if(totalPlanting <= 0) return 0;
   if(surviveRate <= 0) return 0;
-  return Math.ceil(totalPlanting / surviveRate);
+  return Math.floor(totalPlanting / surviveRate);
 }
 
 function getSeedlingNeedForKeys(keys){
@@ -7607,6 +8995,7 @@ function getSeedlingNeedForKeys(keys){
 function getRemainingCasesForCurrentBuilding(){
   const recordedSet = getRecordedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
+  const hasPartialHarvestRecords = records.some(record => record.type === "partialHarvest");
   let remainingHeads = 0;
 
   for(const bed of bedOrder){
@@ -7614,7 +9003,9 @@ function getRemainingCasesForCurrentBuilding(){
       const key = getPalletKey(currentBuilding, bed, number);
       if(recordedSet.has(key)) continue;
       if(selectedSet.has(key)) continue;
-      remainingHeads += getPredictedHarvestForPallet(currentBuilding, bed, number);
+      remainingHeads += hasPartialHarvestRecords
+        ? getPredictedHarvestForPallet(currentBuilding, bed, number)
+        : getPredictedHarvestForBed(bed, number);
     }
   }
 
@@ -7647,8 +9038,10 @@ function getSpecialPalletCountForRequiredSeedlings(requiredSeedlings){
   let count = 0;
   let index = 0;
 
-  while(total < requiredSeedlings){
-    total += pattern[index % pattern.length];
+  while(true){
+    const nextCount = pattern[index % pattern.length];
+    if(total + nextCount > requiredSeedlings) break;
+    total += nextCount;
     count++;
     index++;
   }
@@ -8017,8 +9410,16 @@ function refreshRecordModeUi(){
   const plantingInput = document.getElementById("recordPlantingSummaryInput");
   const harvestStageSection = document.getElementById("recordHarvestStageSection");
   const plantingStageSection = document.getElementById("recordPlantingStageSection");
+  const harvestStep = document.getElementById("recordStepHarvest");
+  const plantingStep = document.getElementById("recordStepPlanting");
+  const plantingLegend = document.getElementById("recordPlantingLegend");
+  const isPlantingMode = recordSelectionMode === "planting";
 
-  if(recordSelectionMode === "planting"){
+  if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
+  if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
+  if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
+
+  if(isPlantingMode){
     if(notice) notice.textContent = "実際に苗植えした場所を選択してください。";
     if(button) button.textContent = "苗植え場所を記録して送信する";
     if(plantingInput) plantingInput.placeholder = "表で実際に苗植えした場所を選ぶと入ります";
@@ -8260,27 +9661,38 @@ function setDefaultCasePlacement(){
   const front = document.getElementById("frontCaseInput");
   const middle = document.getElementById("middleCaseInput");
   const back = document.getElementById("backCaseInput");
-  if(front) front.value = 0;
-  if(middle) middle.value = 80;
-  if(back) back.value = 40;
+  if(front) front.value = STANDARD_CASE_PLACEMENT.front;
+  if(middle) middle.value = STANDARD_CASE_PLACEMENT.middle;
+  if(back) back.value = STANDARD_CASE_PLACEMENT.back;
+  updateCasePlacementTotal();
+  refreshEmptyInputHighlights();
   syncCurrentCasePlacementFromInputs();
   renderForecastSummary();
   saveHarvestStateToStorage();
+}
+
+function resetCasePlacementToDefault(){
+  casePlacementByBuilding[String(casePlacementBuilding)] = { ...DEFAULT_CASE_PLACEMENT };
+  populateCasePlacementInputs();
+  renderForecastSummary();
 }
 
 function clearCasePlacement(){
   const front = document.getElementById("frontCaseInput");
   const middle = document.getElementById("middleCaseInput");
   const back = document.getElementById("backCaseInput");
-  if(front) front.value = 0;
-  if(middle) middle.value = 0;
-  if(back) back.value = 0;
+  if(front) front.value = "";
+  if(middle) middle.value = "";
+  if(back) back.value = "";
+  updateCasePlacementTotal();
+  refreshEmptyInputHighlights();
   syncCurrentCasePlacementFromInputs();
   renderForecastSummary();
   saveHarvestStateToStorage();
 }
 
 function handleCasePlacementInput(){
+  updateCasePlacementTotal();
   syncCurrentCasePlacementFromInputs();
   renderForecastSummary();
   saveHarvestStateToStorage();
@@ -8290,7 +9702,7 @@ function formatInstructionLineHtml(text){
   return escapeHtml(String(text || ""))
     .replace(/(苗:\s*)(\d+枚)（自動:\s*(\d+枚)）/g, '$1<span class="instructionManualEmphasis">$2</span><span class="instructionAutoNote">（自動: $3）</span>')
     .replace(/(苗:\s*)(\d+枚)/g, '$1<span class="instructionEmphasis">$2</span>')
-    .replace(/(収穫ケース数:\s*)(\d+)/g, '$1<span class="instructionEmphasis">$2</span>')
+    .replace(/(収穫ケース数:\s*)(\d+)(?:\s*ケース)?/g, '$1<span class="instructionEmphasis">$2ケース</span>')
     .replace(/([A-F])\s*((前|後ろ)(\d+ピン)(とる|残す))/g, '<span class="instructionEmphasis">$1 $2</span>')
     .replace(/(^|[^A-Z])((前|後ろ)(\d+ピン)(とる|残す))/g, '$1<span class="instructionEmphasis">$2</span>');
 }
@@ -8307,13 +9719,17 @@ function formatInstructionDisplayHtml(text){
       const detailLines = [line.slice(label.length)];
       const isRemainingCaseLine = label === "残すケース: ";
       index++;
-      while(index < lines.length && lines[index] && !/^[^:\n]+:\s/.test(lines[index] || "")){
+      while(index < lines.length && lines[index] && (
+        isRemainingCaseLine
+          ? !/^(苗:|収穫ケース数:|収穫場所:|残すケース:)\s*/.test(lines[index] || "")
+          : !/^[^:\n]+:\s/.test(lines[index] || "")
+      )){
         detailLines.push(lines[index] || "");
         index++;
       }
       const detailHtml = detailLines.map(formatInstructionLineHtml).join("<br>");
-      const valueHtml = isRemainingCaseLine ? `<span class="instructionEmphasis">${detailHtml}</span>` : detailHtml;
-      html.push(`<div class="monitorLine instructionRow"><div class="instructionRowLabel">${label}</div><div class="instructionRowValue">${valueHtml}</div></div>`);
+      const valueClass = isRemainingCaseLine ? "instructionRowValue remainingCaseValue" : "instructionRowValue";
+      html.push(`<div class="monitorLine instructionRow"><div class="instructionRowLabel">${label}</div><div class="${valueClass}">${detailHtml}</div></div>`);
       continue;
     }
     html.push(`<div class="monitorLine">${formatInstructionLineHtml(line || " ")}</div>`);
@@ -8341,27 +9757,203 @@ function buildInstructionSummaryText(){
   );
 }
 
-function getMonitorMemoHtml(memoTextOverride){
-  const memoText = typeof memoTextOverride === "string"
-    ? memoTextOverride.trim()
-    : String(document.getElementById("monitorMemoInput")?.value || "").trim();
-  if(!memoText){
-    return `<div class="monitorEmpty">右半分に表示したい注意点や引き継ぎメモを入力してください。</div>`;
-  }
-  return escapeHtml(memoText).replace(/\n/g, "<br>");
+function getMonitorMemoInputValues(){
+  const inputs = Array.from(document.querySelectorAll(".monitorMemoItemInput"));
+  return inputs.map(input => String(input.value || ""));
 }
 
-function buildMonitorBedSegments(numbers, segmentCount = 6){
-  const selected = Array.isArray(numbers) ? numbers : [];
+function getMonitorRemoteMemoInputValues(){
+  const inputs = Array.from(document.querySelectorAll(".monitorRemoteMemoItemInput"));
+  return inputs.map(input => String(input.value || ""));
+}
+
+function resizeMonitorMemoInput(textarea){
+  if(!textarea) return;
+  const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 25;
+  const verticalPadding = 8;
+  const oneLineHeight = Math.ceil(lineHeight + verticalPadding);
+  if(String(textarea.value || "") === ""){
+    textarea.style.height = oneLineHeight + "px";
+    return;
+  }
+  textarea.style.height = "0px";
+  textarea.style.height = Math.max(oneLineHeight, textarea.scrollHeight) + "px";
+}
+
+function resizeAllMonitorMemoInputs(){
+  document.querySelectorAll(".monitorMemoItemInput").forEach(resizeMonitorMemoInput);
+  document.querySelectorAll(".monitorRemoteMemoItemInput").forEach(resizeMonitorMemoInput);
+}
+
+function renderMemoInputsToList(listId, items = [], options = {}){
+  const list = document.getElementById(listId);
+  if(!list) return;
+  const memoItems = normalizeMonitorMemoItems(items);
+  const values = memoItems.length ? memoItems : [""];
+  list.innerHTML = "";
+  values.forEach(value => {
+    list.appendChild(createMonitorMemoInputItem(value, options));
+  });
+  updateMonitorMemoRemoveButtons(list);
+  resizeAllMonitorMemoInputs();
+  refreshEmptyInputHighlights();
+}
+
+function renderMonitorMemoInputs(items = []){
+  renderMemoInputsToList("monitorMemoInputList", items, {
+    inputClass: "monitorMemoItemInput",
+    kind: "main",
+    onInput: handleMonitorMemoInput
+  });
+}
+
+function renderMonitorRemoteMemoInputs(items = []){
+  renderMemoInputsToList("monitorRemoteMemoInputList", items, {
+    inputClass: "monitorRemoteMemoItemInput",
+    kind: "remote",
+    onInput: handleMonitorRemoteMemoInput
+  });
+}
+
+function addMemoInputToList(listId, value = "", options = {}){
+  const list = document.getElementById(listId);
+  if(!list) return;
+  const item = createMonitorMemoInputItem(value, options);
+  list.appendChild(item);
+  updateMonitorMemoRemoveButtons(list);
+  resizeMonitorMemoInput(item.querySelector(".monitorMemoItemInput"));
+  resizeMonitorMemoInput(item.querySelector(".monitorRemoteMemoItemInput"));
+  refreshEmptyInputHighlights();
+  item.querySelector(".monitorMemoItemInput, .monitorRemoteMemoItemInput")?.focus();
+}
+
+function addMonitorMemoInput(value = ""){
+  addMemoInputToList("monitorMemoInputList", value, {
+    inputClass: "monitorMemoItemInput",
+    kind: "main",
+    onInput: handleMonitorMemoInput
+  });
+}
+
+function addMonitorRemoteMemoInput(value = ""){
+  addMemoInputToList("monitorRemoteMemoInputList", value, {
+    inputClass: "monitorRemoteMemoItemInput",
+    kind: "remote",
+    onInput: handleMonitorRemoteMemoInput
+  });
+}
+
+function createMonitorMemoInputItem(value = "", options = {}){
+  const item = document.createElement("div");
+  item.className = "monitorMemoInputItem";
+  item.dataset.memoInputKind = options.kind || "main";
+  const textarea = document.createElement("textarea");
+  const inputClass = options.inputClass || "monitorMemoItemInput";
+  textarea.className = "monitorMemoInput " + inputClass;
+  textarea.rows = 1;
+  textarea.placeholder = "モニター右側に表示したいメモを入力";
+  textarea.value = String(value || "");
+  const handleInputResize = () => {
+    resizeMonitorMemoInput(textarea);
+    if(typeof options.onInput === "function") options.onInput();
+  };
+  textarea.addEventListener("input", handleInputResize);
+  textarea.addEventListener("change", handleInputResize);
+  textarea.addEventListener("compositionend", handleInputResize);
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "monitorMemoRemoveBtn";
+  removeButton.textContent = "×";
+  removeButton.setAttribute("aria-label", "このメモ入力欄を削除");
+  removeButton.onclick = () => removeMonitorMemoInput(item);
+
+  item.appendChild(removeButton);
+  item.appendChild(textarea);
+  return item;
+}
+
+function updateMonitorMemoRemoveButtons(list = document.getElementById("monitorMemoInputList")){
+  if(!list) return;
+  const items = Array.from(list.querySelectorAll(".monitorMemoInputItem"));
+  items.forEach(item => {
+    const button = item.querySelector(".monitorMemoRemoveBtn");
+    const showButton = items.length > 1;
+    item.classList.toggle("hasRemoveButton", showButton);
+    if(button) button.style.display = showButton ? "" : "none";
+  });
+}
+
+function removeMonitorMemoInput(item){
+  const list = item?.parentElement;
+  const items = Array.from(list?.querySelectorAll(".monitorMemoInputItem") || []);
+  if(items.length <= 1) return;
+  const kind = item.dataset.memoInputKind || "main";
+  item.remove();
+  updateMonitorMemoRemoveButtons(list);
+  refreshEmptyInputHighlights();
+  if(kind === "remote"){
+    handleMonitorRemoteMemoInput();
+  }else{
+    handleMonitorMemoInput();
+  }
+}
+
+function handleMonitorMemoInput(){
+  saveHarvestStateToStorage();
+  if(isMonitorModeOpen){
+    renderMonitorMode();
+  }
+}
+
+function handleMonitorRemoteMemoInput(){
+  setMonitorRemoteEditorStatus("メモ欄を編集中です。保存するとモニターへ配信されます。");
+}
+
+function getMonitorMemoHtml(memoItemsOverride){
+  const sourceItems = Array.isArray(memoItemsOverride)
+    ? memoItemsOverride
+    : (typeof memoItemsOverride === "string" ? normalizeMonitorMemoItems(null, memoItemsOverride) : getMonitorMemoInputValues());
+  const memoItems = normalizeMonitorMemoItems(sourceItems)
+    .map(item => String(item || "").trim())
+    .filter(Boolean);
+  if(!memoItems.length){
+    return `<div class="monitorEmpty">右半分に表示したい注意点や引き継ぎメモを入力してください。</div>`;
+  }
+  return `<div class="monitorMemoDisplayList">${memoItems.map(item => {
+    return `<div class="monitorMemoDisplayItem">${escapeHtml(item).replace(/\n/g, "<br>")}</div>`;
+  }).join("")}</div>`;
+}
+
+function getMonitorSegmentLocationClass(index, segmentCount){
+  const ratio = (index + 0.5) / Math.max(1, segmentCount);
+  if(ratio <= 1 / 3) return "front";
+  if(ratio <= 2 / 3) return "middle";
+  return "back";
+}
+
+function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCount = 6){
+  const selected = new Set(Array.isArray(numbers) ? numbers : []);
   return Array.from({ length: segmentCount }, (_, index) => {
     const start = Math.floor(index * PALLETS_PER_BED / segmentCount) + 1;
     const end = Math.floor((index + 1) * PALLETS_PER_BED / segmentCount);
     const bucketLength = Math.max(1, end - start + 1);
-    const count = selected.filter(number => number >= start && number <= end).length;
-    const ratio = count / bucketLength;
+    let selectedCount = 0;
+    let recordedCount = 0;
+    for(let number = start; number <= end; number++){
+      if(selected.has(number)) selectedCount++;
+      if(recordedSet?.has(getPalletKey(building, bed, number))) recordedCount++;
+    }
+    const selectedRatio = selectedCount / bucketLength;
+    const recordedRatio = recordedCount / bucketLength;
     return {
-      active: ratio >= 0.68,
-      partial: count > 0 && ratio < 0.68
+      location: getMonitorSegmentLocationClass(index, segmentCount),
+      selectedCount,
+      recordedCount,
+      selectedActive: selectedRatio >= 0.68,
+      selectedPartial: selectedCount > 0 && selectedRatio < 0.68,
+      recordedActive: selectedCount === 0 && recordedRatio >= 0.68,
+      recordedPartial: selectedCount === 0 && recordedCount > 0 && recordedRatio < 0.68
     };
   });
 }
@@ -8371,6 +9963,7 @@ function getMonitorSelectionMapHtml(keysOverride){
   if(!sourceKeys.length){
     return `<div class="monitorEmpty">収穫場所が未選択です。通常画面で収穫場所を選ぶと、ここに簡易表示されます。</div>`;
   }
+  const recordedSet = getRecordedPalletSet();
 
   const grouped = {};
   sourceKeys.forEach(key => {
@@ -8393,26 +9986,48 @@ function getMonitorSelectionMapHtml(keysOverride){
       return `
         <div class="monitorBuildingBlock">
           <div class="monitorBuildingTitle">${building}号棟</div>
+          <div class="monitorMapLegend">
+            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回</span>
+            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+          </div>
           <div class="monitorBuildingDirection top">奥</div>
           <div class="monitorBedGrid">
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
               const selectedCount = new Set(numbers).size;
               const isFullBed = selectedCount >= PALLETS_PER_BED;
-              const segments = buildMonitorBedSegments(numbers).reverse();
-              const cardClass = numbers.length
+              let recordedCount = 0;
+              for(let number = 1; number <= PALLETS_PER_BED; number++){
+                if(recordedSet.has(getPalletKey(building, bed, number))) recordedCount++;
+              }
+              const segments = buildMonitorBedSegments(numbers, building, bed, recordedSet).reverse();
+              const cardClass = numbers.length || recordedCount
                 ? `monitorBedCard${isFullBed ? " full" : ""}`
                 : "monitorBedCard inactive";
               return `
                 <div class="${cardClass}">
                   <div class="monitorBedHead">
                     <div class="monitorBedName">${bed}</div>
-                    <div class="monitorBedCount">${numbers.length ? `${numbers.length}枚` : "選択なし"}</div>
                   </div>
                   <div class="monitorBedBar">
-                    ${segments.map(segment => `
-                      <span class="monitorBedSegment ${segment.active ? "active" : (segment.partial ? "partial" : "")}"></span>
-                    `).join("")}
+                    ${segments.map(segment => {
+                      const segmentClasses = [
+                        "monitorBedSegment",
+                        segment.location,
+                        segment.selectedActive || segment.selectedPartial ? "selected" : "",
+                        segment.selectedActive ? "active" : "",
+                        segment.selectedPartial ? "partial" : "",
+                        segment.recordedActive || segment.recordedPartial ? "recorded" : "",
+                        segment.recordedActive ? "active" : "",
+                        segment.recordedPartial ? "partial" : ""
+                      ].filter(Boolean).join(" ");
+                      const title = [
+                        segment.location === "back" ? "奥" : (segment.location === "middle" ? "中央" : "手前"),
+                        segment.selectedCount ? `今回:${segment.selectedCount}枚` : "",
+                        segment.recordedCount ? `収穫済み:${segment.recordedCount}枚` : ""
+                      ].filter(Boolean).join(" ");
+                      return `<span class="${segmentClasses}" title="${escapeHtml(title)}"></span>`;
+                    }).join("")}
                   </div>
                 </div>
               `;
@@ -8447,7 +10062,7 @@ function renderMonitorMode(){
     }
   }
   if(map) map.innerHTML = getMonitorSelectionMapHtml(remote?.harvestFillKeys);
-  if(memo) memo.innerHTML = getMonitorMemoHtml(remote?.memoText);
+  if(memo) memo.innerHTML = getMonitorMemoHtml(remote?.memoItems || remote?.memoText);
 }
 
 function renderForecastSummary(){
@@ -8480,7 +10095,7 @@ function renderForecastSummary(){
 
   const instructionBox = document.getElementById("instructionSummary");
   if(instructionBox){
-    const caseLineHtml = `収穫ケース数: <span class="instructionEmphasis">${escapeHtml(String(cases))}</span>`;
+    const caseLineHtml = `収穫ケース数: <span class="instructionEmphasis">${escapeHtml(String(cases))}ケース</span>`;
     const harvestLocationLine = formatHarvestLocationInstruction();
     const remainingCasesLine = "残すケース: " + getCasePlacementSummaryText();
     instructionBox.innerHTML = [
@@ -8493,7 +10108,11 @@ function renderForecastSummary(){
 
   const remainingBox = document.getElementById("remainingCasesSummary");
   if(remainingBox){
-    remainingBox.textContent = "残り収穫可能ケース: " + remainingCases;
+    remainingBox.textContent = "残り " + remainingCases + "ケース";
+  }
+  const remainingCard = document.getElementById("remainingCasesSummaryCard");
+  if(remainingCard){
+    remainingCard.classList.remove("warning", "danger");
   }
 
   updateBuildingLastHarvestInfo();
@@ -8507,6 +10126,8 @@ function drawBeds(){
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const recordedSet = getRecordedPalletSet();
+  const selectedSet = new Set(harvestFillKeys || []);
+  const hasPartialHarvestRecords = records.some(record => record.type === "partialHarvest");
 
   bedMap.forEach(b => {
     const bed = document.createElement("div");
@@ -8515,7 +10136,7 @@ function drawBeds(){
 
     const title = document.createElement("div");
     let titleCls = "bedTitle";
-    if(isBedFullyFilledInCurrentBuilding(b)) titleCls += " bedFullySelected";
+    if(isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)) titleCls += " bedFullySelected";
     title.className = titleCls;
     title.textContent = currentBuilding + "号棟 " + b;
     title.onmousedown = () => handleBedTitlePressStart(b);
@@ -8546,9 +10167,9 @@ function drawBeds(){
         }
         if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
         if(number === 39 || number === 40) cls += " centerStrong";
-        const partialHarvestCount = getPartialHarvestCountForPallet(currentBuilding, b, number);
+        const partialHarvestCount = hasPartialHarvestRecords ? getPartialHarvestCountForPallet(currentBuilding, b, number) : 0;
         if(partialHarvestCount > 0) cls += " partialHarvestPallet";
-        if(isFilled(currentBuilding, b, number)) cls += " harvestFill";
+        if(selectedSet.has(key)) cls += " harvestFill";
         if(recordedSet.has(key)) cls += " recordedPallet";
 
         if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
@@ -8613,6 +10234,9 @@ function toggleRecordPallet(building, bed, number){
 }
 
 function drawRecordBeds(){
+  const recordTab = document.getElementById("recordTab");
+  if(recordTab && recordTab.style.display === "none") return;
+
   const container = document.getElementById("recordBeds");
   if(!container) return;
   container.innerHTML = "";
@@ -8658,9 +10282,16 @@ function drawRecordBeds(){
         if(number === 39 || number === 40) cls += " centerStrong";
         const partialHarvestCount = getPartialHarvestCountForPallet(currentBuilding, b, number);
         if(partialHarvestCount > 0) cls += " partialHarvestPallet";
-        if(isFilled(currentBuilding, b, number)) cls += " harvestFill";
+        const isSelected = isFilled(currentBuilding, b, number);
+        if(isSelected) cls += " harvestFill";
         if(recordSelectionMode === "planting"){
-          if(!plantingAllowedSet.has(key)) cls += " recordedPallet";
+          if(!plantingAllowedSet.has(key)){
+            cls += " plantingUnavailablePallet";
+          }else if(isSelected){
+            cls += " plantingSelectedPallet";
+          }else{
+            cls += " plantingSelectablePallet";
+          }
         }else if(recordedSet.has(key)){
           cls += " recordedPallet";
         }
@@ -8670,7 +10301,13 @@ function drawRecordBeds(){
 
         pallet.className = cls;
         pallet.textContent = number;
-        pallet.title = `${currentBuilding}号棟 ${b}-${number}` + (partialHarvestCount > 0 ? ` 先取り:${partialHarvestCount}株` : "");
+        let statusText = "";
+        if(recordSelectionMode === "planting"){
+          statusText = plantingAllowedSet.has(key)
+            ? (isSelected ? " 選択済み" : " 選択可能")
+            : " 選択不可";
+        }
+        pallet.title = `${currentBuilding}号棟 ${b}-${number}` + statusText + (partialHarvestCount > 0 ? ` 先取り:${partialHarvestCount}株` : "");
         pallet.style.gridRowStart = r + 1;
         pallet.style.gridColumnStart = c + 1;
         pallet.onclick = () => toggleRecordPallet(currentBuilding, b, number);
@@ -9060,6 +10697,37 @@ function saveRecord(){
   showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");
 }
 
+function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, actualSeedlingTrayCount, actualSeedlingLossRate){
+  const actualTakenText = actualSeedlingTrayCount > 0
+    ? `${actualSeedlingTrayCount}枚（換算 ${getSeedlingCountFromTrayCount(actualSeedlingTrayCount)}株）`
+    : "-";
+  const plantedTotal = getActualPlantedSeedlingTotal(selectedKeys);
+  const plantingSummary = formatPlantingSummaryForKeys(selectedKeys) || "-";
+  const qualityText = formatQualityMemo(record.qualityMemo) || "-";
+  const memoText = String(record.memo || "").trim() || "-";
+  const actualLossText = String(record.actualLoss || "").trim();
+
+  return window.confirm([
+    "この内容で苗植え場所を記録して送信しますか？",
+    "",
+    `日付: ${plantingDate || "-"}`,
+    `収穫ケース数: ${record.cases || 0}ケース`,
+    `実際のロス率: ${actualLossText ? actualLossText + "%" : "-"}`,
+    `品質メモ: ${qualityText}`,
+    `メモ: ${memoText}`,
+    "",
+    "実際の収穫場所:",
+    record.palletSummary || "-",
+    "",
+    `実際に取った苗: ${actualTakenText}`,
+    `実際に苗植えした株数: ${plantedTotal}株`,
+    `実際の苗ロス率: ${actualSeedlingLossRate ? actualSeedlingLossRate + "%" : "-"}`,
+    "",
+    "実際に苗植えした場所:",
+    plantingSummary
+  ].join("\n"));
+}
+
 function savePlantingRecord(){
   if(!ensureProtectedOperationAccess("苗植え場所の保存")) return;
   const record = getActivePlantingRecord();
@@ -9091,6 +10759,11 @@ function savePlantingRecord(){
   const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
   const actualSeedlingLossRate = getActualSeedlingLossRateValue();
   const recordsToSend = [];
+
+  if(!confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, actualSeedlingTrayCount, actualSeedlingLossRate)){
+    showToast("送信をキャンセルしました");
+    return;
+  }
 
   records.forEach(targetRecord => {
     if(targetRecord?.type !== "fullHarvest") return;
@@ -9126,7 +10799,7 @@ function savePlantingRecord(){
   updateGoogleSheetResendButtonState();
   updateBuildingLastHarvestInfo();
   clearHarvestPrediction();
-  clearCasePlacement();
+  resetCasePlacementToDefault();
   captureRecordBaseSelection();
   clearRecordForm();
   saveHarvestStateToStorage();
@@ -9625,21 +11298,27 @@ function importRecordsFromFile(file){
 window.onload = () => {
   window.addEventListener("resize", () => {
     if(isMonitorModeOpen) updateMonitorFitScale();
+    if(isMonitorPreviewOpen()) updateMonitorPreviewScale();
   });
   document.addEventListener("fullscreenchange", () => {
     if(isMonitorModeOpen) updateMonitorFitScale();
+    if(isMonitorPreviewOpen()) updateMonitorPreviewScale();
   });
 
+  moveCalculationSettingsToForecast();
   populateSettingsForm();
   populateGoogleSheetConfigForm();
   populateDashboardStartDayOptions();
   installSettingsDirtyWatchers();
   installNumberInputAutoSelect();
+  installEmptyInputHighlights();
+  installMonitorViewportResizeObserver();
   if(records.length) saveRecordsToStorage();
 
   const savedHarvestState = loadHarvestStateFromStorage();
   if(savedHarvestState){
     currentBuilding = savedHarvestState.currentBuilding;
+    casePlacementBuilding = savedHarvestState.casePlacementBuilding || savedHarvestState.currentBuilding;
     harvestFillKeys = savedHarvestState.harvestFillKeys;
     harvestSummary = savedHarvestState.harvestSummary;
     manualSeedlingCount = savedHarvestState.manualSeedlingCount;
@@ -9654,7 +11333,7 @@ window.onload = () => {
     casePlacementByBuilding = savedHarvestState.casePlacementByBuilding || {};
 
     if(!savedHarvestState.casePlacementByBuilding && (savedHarvestState.frontCaseInput !== "" || savedHarvestState.middleCaseInput !== "" || savedHarvestState.backCaseInput !== "")){
-      casePlacementByBuilding[String(currentBuilding)] = {
+      casePlacementByBuilding[String(casePlacementBuilding)] = {
         front: clampNumber(savedHarvestState.frontCaseInput || 0, 0, 999999, 0),
         middle: clampNumber(savedHarvestState.middleCaseInput || 0, 0, 999999, 0),
         back: clampNumber(savedHarvestState.backCaseInput || 0, 0, 999999, 0)
@@ -9664,8 +11343,7 @@ window.onload = () => {
     const casesInput = document.getElementById("casesInput");
     if(casesInput) casesInput.value = savedHarvestState.casesInput;
 
-    const monitorMemoInput = document.getElementById("monitorMemoInput");
-    if(monitorMemoInput) monitorMemoInput.value = savedHarvestState.monitorMemoInput || "";
+    renderMonitorMemoInputs(savedHarvestState.monitorMemoItems || normalizeMonitorMemoItems(null, savedHarvestState.monitorMemoInput || ""));
 
     const recordCasesInput = document.getElementById("recordCasesInput");
     if(recordCasesInput) recordCasesInput.value = savedHarvestState.recordCasesInput;
@@ -9696,6 +11374,8 @@ window.onload = () => {
   }
 
   updateBuildingLabel();
+  updateCasePlacementBuildingLabel();
+  populateCasePlacementInputs();
   refreshRecordModeUi();
   drawBeds();
   drawRecordBeds();
@@ -9703,7 +11383,8 @@ window.onload = () => {
   populateMonitorRemoteEditor({
     enabled: false,
     instructionText: buildMonitorInstructionTextFromFields(getCurrentMonitorInstructionFields()),
-    memoText: document.getElementById("monitorMemoInput")?.value || "",
+    memoText: getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
+    memoItems: getMonitorMemoInputValues(),
     harvestFillKeys
   });
   setTodayToRecordDate();
@@ -9711,14 +11392,10 @@ window.onload = () => {
   if(dashboardStartDayInput){
     dashboardStartDayInput.value = String(dashboardFilter.startDay || getDefaultDashboardStartDay());
   }
-  const dashboardGraphStartDateInput = document.getElementById("dashboardGraphStartDateInput");
-  const dashboardGraphEndDateInput = document.getElementById("dashboardGraphEndDateInput");
-  if(dashboardGraphStartDateInput) dashboardGraphStartDateInput.value = dashboardFilter.graphStartDate || "";
-  if(dashboardGraphEndDateInput) dashboardGraphEndDateInput.value = dashboardFilter.graphEndDate || "";
   const dashboardCasesGranularityInput = document.getElementById("dashboardCasesGranularityInput");
   const dashboardLossGranularityInput = document.getElementById("dashboardLossGranularityInput");
-  if(dashboardCasesGranularityInput) dashboardCasesGranularityInput.value = dashboardFilter.casesGranularity || "day";
-  if(dashboardLossGranularityInput) dashboardLossGranularityInput.value = dashboardFilter.lossGranularity || "day";
+  if(dashboardCasesGranularityInput) dashboardCasesGranularityInput.value = dashboardFilter.casesGranularity || "month";
+  if(dashboardLossGranularityInput) dashboardLossGranularityInput.value = dashboardFilter.lossGranularity || "month";
   const dashboardRecordSearchInput = document.getElementById("dashboardRecordSearchInput");
   const dashboardRecordStartDateInput = document.getElementById("dashboardRecordStartDateInput");
   const dashboardRecordEndDateInput = document.getElementById("dashboardRecordEndDateInput");
@@ -9727,6 +11404,7 @@ window.onload = () => {
   if(dashboardRecordEndDateInput) dashboardRecordEndDateInput.value = dashboardFilter.recordEndDate || "";
   if(!savedHarvestState){
     setSelectedQualityMemo(null);
+    renderMonitorMemoInputs();
   }
   updateBuildingLastHarvestInfo();
   renderRecordList();
@@ -9825,16 +11503,6 @@ window.onload = () => {
     });
   }
 
-  const monitorMemoInput = document.getElementById("monitorMemoInput");
-  if(monitorMemoInput){
-    monitorMemoInput.addEventListener("input", () => {
-      saveHarvestStateToStorage();
-      if(isMonitorModeOpen){
-        renderMonitorMode();
-      }
-    });
-  }
-
   if(dashboardStartDayInput){
     const handleDashboardInput = () => {
       dashboardFilter.startDay = clampNumber(dashboardStartDayInput.value, 1, 31, getDefaultDashboardStartDay());
@@ -9846,31 +11514,13 @@ window.onload = () => {
   }
 
   [
-    ["dashboardGraphStartDateInput", "graphStartDate"],
-    ["dashboardGraphEndDateInput", "graphEndDate"]
-  ].forEach(([id, key]) => {
-    const input = document.getElementById(id);
-    if(!input) return;
-    input.addEventListener("input", () => {
-      dashboardFilter[key] = input.value || "";
-      saveDashboardFilter();
-      renderDashboard();
-    });
-    input.addEventListener("change", () => {
-      dashboardFilter[key] = input.value || "";
-      saveDashboardFilter();
-      renderDashboard();
-    });
-  });
-
-  [
     ["dashboardCasesGranularityInput", "casesGranularity"],
     ["dashboardLossGranularityInput", "lossGranularity"]
   ].forEach(([id, key]) => {
     const input = document.getElementById(id);
     if(!input) return;
     input.addEventListener("change", () => {
-      dashboardFilter[key] = input.value;
+      dashboardFilter[key] = ["month", "year"].includes(input.value) ? input.value : "month";
       saveDashboardFilter();
       renderDashboard();
     });
@@ -9913,6 +11563,25 @@ window.onload = () => {
 
   document.addEventListener("keydown", (event) => {
     if(event.key !== "Escape") return;
+    const appMenuModal = document.getElementById("appMenuModal");
+    if(appMenuModal?.classList.contains("show")){
+      closeAppMenuWindow();
+      return;
+    }
+    const forecastSettingsModal = document.getElementById("forecastSettingsModal");
+    if(forecastSettingsModal?.classList.contains("show")){
+      closeForecastSettingsWindow();
+      return;
+    }
+    const plantingAgeModal = document.getElementById("plantingAgeModal");
+    if(plantingAgeModal?.classList.contains("show")){
+      closePlantingAgeWindow();
+      return;
+    }
+    if(isMonitorPreviewOpen()){
+      resolveMonitorPreview(false);
+      return;
+    }
     const dashboardModal = document.getElementById("dashboardModal");
     if(dashboardModal?.classList.contains("show")){
       closeDashboardWindow();
@@ -9937,6 +11606,24 @@ window.onload = () => {
     });
   }
 
+  const appMenuModal = document.getElementById("appMenuModal");
+  if(appMenuModal){
+    appMenuModal.addEventListener("click", (event) => {
+      if(event.target === appMenuModal){
+        closeAppMenuWindow();
+      }
+    });
+  }
+
+  const monitorPreviewModal = document.getElementById("monitorPreviewModal");
+  if(monitorPreviewModal){
+    monitorPreviewModal.addEventListener("click", (event) => {
+      if(event.target === monitorPreviewModal){
+        resolveMonitorPreview(false);
+      }
+    });
+  }
+
   const dashboardModal = document.getElementById("dashboardModal");
   if(dashboardModal){
     dashboardModal.addEventListener("click", (event) => {
@@ -9946,9 +11633,28 @@ window.onload = () => {
     });
   }
 
+  const plantingAgeModal = document.getElementById("plantingAgeModal");
+  if(plantingAgeModal){
+    plantingAgeModal.addEventListener("click", (event) => {
+      if(event.target === plantingAgeModal){
+        closePlantingAgeWindow();
+      }
+    });
+  }
+
+  const forecastSettingsModal = document.getElementById("forecastSettingsModal");
+  if(forecastSettingsModal){
+    forecastSettingsModal.addEventListener("click", (event) => {
+      if(event.target === forecastSettingsModal){
+        closeForecastSettingsWindow();
+      }
+    });
+  }
+
   saveHarvestStateToStorage();
   refreshProtectedAccessState();
   updateAccessProtectionStatus();
+  refreshEmptyInputHighlights();
 };
 </script>
 </body>
