@@ -9570,14 +9570,76 @@ function getCasePlacementProcessingOrder(){
   return [...BUILDINGS.slice(startIndex), ...BUILDINGS.slice(0, startIndex)];
 }
 
+function getTotalCasePlacementCount(){
+  return BUILDINGS.reduce((sum, building) => {
+    const placement = getCasePlacementForBuilding(building);
+    return sum + placement.front + placement.middle + placement.back;
+  }, 0);
+}
+
+function getRemainingCaseTotal(remainingByBuilding){
+  return Object.values(remainingByBuilding).reduce((sum, remaining) => {
+    return sum + remaining.front + remaining.middle + remaining.back;
+  }, 0);
+}
+
+function ensureRemainingCaseEntry(remainingByBuilding, building){
+  const key = String(building);
+  if(!remainingByBuilding[key]){
+    remainingByBuilding[key] = { front: 0, middle: 0, back: 0 };
+  }
+  return remainingByBuilding[key];
+}
+
+function adjustRemainingCasesToTarget(remainingByBuilding, targetTotal, options = {}){
+  let diff = targetTotal - getRemainingCaseTotal(remainingByBuilding);
+  if(diff === 0) return;
+
+  const processingOrder = getCasePlacementProcessingOrder();
+  if(diff > 0){
+    const addOrder = processingOrder.filter(building => !isBuildingCompletedByCurrentSelection(building));
+    if(!addOrder.length) addOrder.push(...processingOrder);
+    for(const building of addOrder){
+      const placement = getCasePlacementForBuilding(building);
+      const remaining = ensureRemainingCaseEntry(remainingByBuilding, building);
+      const carriedFrontCases = clampNumber(options.carriedCasesByBuilding?.[String(building)], 0, 999999, 0);
+      const borrowedFrontCases = clampNumber(options.borrowedFrontCasesByBuilding?.[String(building)], 0, 999999, 0);
+      for(const location of ["front", "middle", "back"]){
+        if(diff <= 0) return;
+        const capacityBase = location === "front"
+          ? placement.front + carriedFrontCases - borrowedFrontCases
+          : placement[location];
+        const capacity = Math.max(0, capacityBase - remaining[location]);
+        const add = Math.min(capacity, diff);
+        remaining[location] += add;
+        diff -= add;
+      }
+    }
+    return;
+  }
+
+  diff = Math.abs(diff);
+  for(const building of processingOrder){
+    const remaining = ensureRemainingCaseEntry(remainingByBuilding, building);
+    for(const location of ["front", "middle", "back"]){
+      if(diff <= 0) return;
+      const remove = Math.min(remaining[location], diff);
+      remaining[location] -= remove;
+      diff -= remove;
+    }
+  }
+}
+
 function getCasePlacementSummaryText(){
-  const totalCases = getHarvestCasePlan().regularCases;
+  const totalCases = getHarvestCasePlan().totalCases;
   syncCurrentCasePlacementFromInputs();
+  const totalPlacementCases = getTotalCasePlacementCount();
+  const targetRemainingTotal = Math.max(0, totalPlacementCases - totalCases);
+  const targetShortage = Math.max(0, totalCases - totalPlacementCases);
   const demandByBuilding = distributeCaseDemandByHarvestLocation(totalCases);
   const carriedCasesByBuilding = {};
   const borrowedFrontCasesByBuilding = {};
   const remainingByBuilding = {};
-  let totalShortage = 0;
 
   getCasePlacementProcessingOrder().forEach(building => {
     const demand = demandByBuilding[String(building)] || { front: 0, middle: 0, back: 0 };
@@ -9625,7 +9687,11 @@ function getCasePlacementSummaryText(){
     }
 
     remainingByBuilding[String(building)] = remaining;
-    totalShortage += shortage;
+  });
+
+  adjustRemainingCasesToTarget(remainingByBuilding, targetRemainingTotal, {
+    carriedCasesByBuilding,
+    borrowedFrontCasesByBuilding
   });
 
   const remainingLines = [];
@@ -9641,10 +9707,10 @@ function getCasePlacementSummaryText(){
 
   let text = remainingLines.length ? remainingLines.join("\n") : "なし";
 
-  if(totalShortage > 0){
+  if(targetShortage > 0){
     text = remainingLines.length
-      ? text + "\n" + totalShortage + "ケース不足"
-      : totalShortage + "ケース不足";
+      ? text + "\n" + targetShortage + "ケース不足"
+      : targetShortage + "ケース不足";
   }
 
   return text;
