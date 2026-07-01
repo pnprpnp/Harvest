@@ -175,8 +175,12 @@ header{
   background:currentColor;
 }
 .forecastTabIcon{
-  mask:url("シミュモニターのアイコン.svg") center / contain no-repeat;
-  -webkit-mask:url("シミュモニターのアイコン.svg") center / contain no-repeat;
+  mask:url("シミュのアイコン.svg") center / contain no-repeat;
+  -webkit-mask:url("シミュのアイコン.svg") center / contain no-repeat;
+}
+.monitorTabIcon{
+  mask:url("モニターのアイコン.svg") center / contain no-repeat;
+  -webkit-mask:url("モニターのアイコン.svg") center / contain no-repeat;
 }
 .recordTabIcon{
   mask:url("記録のアイコン.svg") center / contain no-repeat;
@@ -3575,10 +3579,6 @@ button.monitorSaveBtn:active{
 <header>
   <button type="button" class="headerMenuBtn" onclick="openAppMenuWindow()" aria-label="メニューを開く"></button>
   <div class="appTitle">収穫シミュ</div>
-  <div class="headerActions">
-    <button type="button" class="headerActionBtn" onclick="openMonitorMode()">モニター表示</button>
-    <button type="button" class="headerActionBtn" onclick="openMonitorEditorWindow()">モニター編集</button>
-  </div>
 </header>
 
 <div class="container">
@@ -3590,6 +3590,10 @@ button.monitorSaveBtn:active{
     <button id="forecastTabBtn" class="tabBtn hasTabIcon active" onclick="switchTab('forecast')">
       <span class="tabIcon forecastTabIcon" aria-hidden="true"></span>
       <span class="tabBtnText">シミュ</span>
+    </button>
+    <button id="monitorTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('monitor')">
+      <span class="tabIcon monitorTabIcon" aria-hidden="true"></span>
+      <span class="tabBtnText">モニター</span>
     </button>
     <button id="recordTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('record')">
       <span class="tabIcon recordTabIcon" aria-hidden="true"></span>
@@ -3657,10 +3661,14 @@ button.monitorSaveBtn:active{
     </div>
   </div>
 
-  <div id="forecastTab">
-    <div class="card">
+  <div id="monitorTab" style="display:none;">
+    <div id="monitorCard" class="card tabLinkedCard">
       <div class="sectionTitleRow">
         <div id="monitorSectionTitle" class="sectionTitle">モニター</div>
+        <div class="sectionTitleActions">
+          <button type="button" class="headerActionBtn" onclick="openMonitorMode()">モニター表示</button>
+          <button type="button" class="headerActionBtn" onclick="openMonitorEditorWindow()">モニター編集</button>
+        </div>
       </div>
       <div id="instructionSummary" class="resultBox instructionBox">苗: 0枚
 収穫ケース数: 0
@@ -3674,7 +3682,9 @@ button.monitorSaveBtn:active{
       <div id="monitorMemoInputList" class="monitorMemoInputList"></div>
       <button type="button" class="actionBtn monitorSaveBtn" onclick="saveCurrentMonitorRemoteContent()">> 送信してモニターに表示する</button>
     </div>
+  </div>
 
+  <div id="forecastTab">
     <div id="forecastSimulationCard" class="card tabLinkedCard">
       <div class="sectionTitle">シミュ</div>
       
@@ -4355,6 +4365,26 @@ button.monitorSaveBtn:active{
 
 入力内容を送信すると、収穫場所・指示内容・メモなどがモニターに表示されます。
 
+⑤ 苗枚数の計算式
+
+シミュカードに表示される苗枚数は、次の流れで計算されます。
+
+今回必要な苗株数 =
+今回選択したパレットの苗株数合計 + 未定植として残っているパレットの苗株数合計
+
+ロス込み必要株数 =
+今回必要な苗株数 ÷ (1 - 苗ロス率)
+
+苗枚数 =
+ロス込み必要株数を、苗取り補足の「120個用・60個用パレットの並び」に当てはめて計算した枚数
+
+例: 3枚中の60個用パレット枚数が2の場合、
+120株 → 60株 → 60株 の順で繰り返して苗枚数を計算します。
+
+表示の（未定植分 +○枚）は、
+「今回選択したパレットだけで計算した苗枚数」と
+「未定植分も含めて計算した苗枚数」の差です。
+
 ここまでで、収穫前の準備は完了です。
 
 ⸻
@@ -4627,6 +4657,7 @@ let activeAppTab = "forecast";
 const tabScrollPositions = {
   navigation: 0,
   forecast: 0,
+  monitor: 0,
   record: 0,
   dashboard: 0
 };
@@ -4634,6 +4665,7 @@ let recordBaseFillKeys = [];
 let recordSelectionMode = "harvest";
 let activePlantingRecordId = null;
 let plantingRecordDraft = null;
+let editingHarvestRecordId = null;
 let forecastSelectionState = null;
 let settingsDirty = false;
 let casePlacementByBuilding = {};
@@ -5615,11 +5647,13 @@ function switchTab(tabName){
 
   document.getElementById("navigationTab").style.display = tabName === "navigation" ? "block" : "none";
   document.getElementById("forecastTab").style.display = tabName === "forecast" ? "block" : "none";
+  document.getElementById("monitorTab").style.display = tabName === "monitor" ? "block" : "none";
   document.getElementById("settingsTab").style.display = "none";
   document.getElementById("recordTab").style.display = tabName === "record" ? "block" : "none";
   document.getElementById("dashboardTab").style.display = tabName === "dashboard" ? "block" : "none";
   document.getElementById("navigationTabBtn").classList.toggle("active", tabName === "navigation");
   document.getElementById("forecastTabBtn").classList.toggle("active", tabName === "forecast");
+  document.getElementById("monitorTabBtn")?.classList.toggle("active", tabName === "monitor");
   document.getElementById("recordTabBtn").classList.toggle("active", tabName === "record");
   document.getElementById("dashboardTabBtn")?.classList.toggle("active", tabName === "dashboard");
   if(tabName === "record"){
@@ -5639,6 +5673,10 @@ function switchTab(tabName){
   }
   if(tabName === "forecast"){
     syncCurrentBuildingToCasePlacement();
+  }
+  if(tabName === "monitor"){
+    renderForecastSummary();
+    resizeAllMonitorMemoInputs();
   }
   activeAppTab = tabName;
   restoreTabScrollPosition(tabName);
@@ -6672,9 +6710,9 @@ function removeSeedlingAutoNote(value){
 
 function getCurrentMonitorInstructionFields(){
   const casePlan = getHarvestCasePlan();
-  const requiredSpecialPalletCount = getRequiredSpecialPalletCount();
+  const seedlingCounts = getSeedlingInstructionCounts();
   return {
-    seedling: removeSeedlingAutoNote(getSeedlingInstructionText(requiredSpecialPalletCount).replace(/^苗:\s*/, "")),
+    seedling: getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount).replace(/^苗:\s*/, ""),
     cases: String(casePlan.totalCases),
     harvestLocation: formatHarvestLocationInstruction().replace(/^収穫場所:\s*/, ""),
     remainingCases: getCasePlacementSummaryText()
@@ -6754,7 +6792,10 @@ async function saveCurrentMonitorRemoteContent(){
     ...content,
     harvestFillKeys
   });
-  saveMonitorRemoteEditor();
+  const saved = await saveMonitorRemoteEditor();
+  if(saved){
+    switchToRecordSaveCard();
+  }
 }
 
 async function loadMonitorRemoteEditor(){
@@ -6777,13 +6818,13 @@ async function loadMonitorRemoteEditor(){
 }
 
 async function saveMonitorRemoteEditor(){
-  if(!ensureProtectedOperationAccess("モニター編集")) return;
+  if(!ensureProtectedOperationAccess("モニター編集")) return false;
 
   const config = loadGoogleSheetConfig();
   if(!config.url){
     showToast("Google連携URLを設定してください");
     setMonitorRemoteEditorStatus("Google連携URLが未設定です。");
-    return;
+    return false;
   }
 
   const content = readMonitorRemoteEditorContent();
@@ -6828,9 +6869,11 @@ async function saveMonitorRemoteEditor(){
       setMonitorRemoteEditorStatus("保存しました。履歴に追加しました。モニター画面は最大30秒ほどで更新されます。");
       loadMonitorEditHistory({ silentErrors: true });
     }
+    return true;
   }catch(e){
     showToast("モニター内容の保存に失敗しました");
     setMonitorRemoteEditorStatus("保存に失敗しました: " + String(e && e.message ? e.message : e));
+    return false;
   }finally{
     clearTimeout(timer);
   }
@@ -9985,6 +10028,57 @@ function getUnharvestedCountForBuilding(building){
   return count;
 }
 
+function getRecordedCountForBuilding(building, recordedSet = getRecordedPalletSet()){
+  let count = 0;
+  for(const bed of bedOrder){
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      if(recordedSet.has(getPalletKey(building, bed, number))) count++;
+    }
+  }
+  return count;
+}
+
+function getNextBuildingInOrder(building){
+  const index = BUILDINGS.indexOf(building);
+  if(index < 0) return MIN_BUILDING;
+  return BUILDINGS[(index + 1) % BUILDINGS.length];
+}
+
+function getLatestRecordedBuildingWithinLookback(referenceDate = new Date()){
+  const latestRecord = [...records]
+    .sort(compareRecordsByDateDesc)
+    .find(record => {
+      if(!Array.isArray(record.palletKeys) || !record.palletKeys.length) return false;
+      return isRecordWithinLookbackDays(record.date, RECORDED_LOOKBACK_DAYS, referenceDate);
+    });
+  if(!latestRecord) return null;
+
+  const buildings = [...new Set(latestRecord.palletKeys.map(key => parsePalletKey(String(key || "")).building))]
+    .filter(building => BUILDINGS.includes(building))
+    .sort((a, b) => BUILDINGS.indexOf(a) - BUILDINGS.indexOf(b));
+  return buildings.length ? buildings[buildings.length - 1] : null;
+}
+
+function getStartupHarvestBuilding(){
+  const recordedSet = getRecordedPalletSet();
+  const palletsPerBuilding = bedOrder.length * PALLETS_PER_BED;
+
+  const inProgressBuilding = BUILDINGS.find(building => {
+    const count = getRecordedCountForBuilding(building, recordedSet);
+    return count > 0 && count < palletsPerBuilding;
+  });
+  if(inProgressBuilding) return inProgressBuilding;
+
+  const latestBuilding = getLatestRecordedBuildingWithinLookback();
+  if(!latestBuilding) return MIN_BUILDING;
+
+  const latestCount = getRecordedCountForBuilding(latestBuilding, recordedSet);
+  if(latestCount >= palletsPerBuilding){
+    return getNextBuildingInOrder(latestBuilding);
+  }
+  return latestBuilding;
+}
+
 function alertIfPreviousBuildingHasLeftovers(){
   const previousBuilding = getPreviousBuilding(currentBuilding);
   if(!previousBuilding) return;
@@ -10063,7 +10157,7 @@ function runHarvestPrediction(){
 
   manualSeedlingCount = null;
   refreshAfterHarvestSelectionChanged();
-  scrollToMonitorSection();
+  switchToMonitorCard();
 }
 
 function recalcHarvestSummary(){
@@ -10079,7 +10173,7 @@ function recalcHarvestSummary(){
 }
 
 function scrollToMonitorSection(){
-  const target = document.getElementById("monitorSectionTitle");
+  const target = document.getElementById("monitorCard") || document.getElementById("monitorSectionTitle");
   if(!target) return;
   const headerOffset = 10;
   const top = target.getBoundingClientRect().top + window.pageYOffset - headerOffset;
@@ -10102,7 +10196,7 @@ function switchToForecastSimulationCard(){
 }
 
 function switchToMonitorCard(){
-  if(switchTab("forecast") === false) return;
+  if(switchTab("monitor") === false) return;
   requestAnimationFrame(() => {
     requestAnimationFrame(scrollToMonitorSection);
   });
@@ -10209,8 +10303,7 @@ function getSpecialPalletPattern(n){
 }
 
 function getRequiredSpecialPalletCount(){
-  const requiredSeedlings = getRequiredSeedlingsWithLoss();
-  return getSpecialPalletCountForRequiredSeedlings(requiredSeedlings);
+  return getSeedlingInstructionCounts().totalCount;
 }
 
 function getSpecialPalletCountForRequiredSeedlings(requiredSeedlings){
@@ -10240,6 +10333,23 @@ function getSeedlingTrayCountNeededForKeys(keys){
   return getSpecialPalletCountForRequiredSeedlings(requiredSeedlings);
 }
 
+function getSeedlingKeysWithUnplanted(keys = harvestFillKeys){
+  const combined = new Set(Array.isArray(keys) ? keys : []);
+  getUnplantedPalletSet().forEach(key => combined.add(key));
+  return [...combined];
+}
+
+function getSeedlingInstructionCounts(keys = harvestFillKeys){
+  const baseKeys = Array.isArray(keys) ? keys : [];
+  const baseCount = getSeedlingTrayCountNeededForKeys(baseKeys);
+  const totalCount = getSeedlingTrayCountNeededForKeys(getSeedlingKeysWithUnplanted(baseKeys));
+  return {
+    baseCount,
+    totalCount,
+    additionalCount: Math.max(0, totalCount - baseCount)
+  };
+}
+
 function normalizeManualSeedlingCount(value){
   if(value === null || value === "" || typeof value === "undefined") return null;
   if(!Number.isFinite(Number(value))) return null;
@@ -10259,20 +10369,34 @@ function getDisplayedSeedlingCount(autoCount){
     : autoCount;
 }
 
-function getSeedlingInstructionText(autoCount){
-  if(!hasManualSeedlingCount()){
-    return "苗: " + autoCount + "枚";
-  }
-  const manualCount = getDisplayedSeedlingCount(autoCount);
-  return "苗: " + manualCount + "枚（自動: " + autoCount + "枚）";
+function getSeedlingAdditionalNote(additionalCount){
+  const safeCount = clampNumber(additionalCount, 0, 999999, 0);
+  return safeCount > 0 ? `（未定植分 +${safeCount}枚）` : "";
 }
 
-function getSeedlingInstructionEditorHtml(autoCount){
+function getSeedlingInstructionText(autoCount, additionalCount = 0){
+  const additionalNote = getSeedlingAdditionalNote(additionalCount);
+  if(!hasManualSeedlingCount()){
+    return "苗: " + autoCount + "枚" + additionalNote;
+  }
+  const manualCount = getDisplayedSeedlingCount(autoCount);
+  return "苗: " + manualCount + "枚（自動: " + autoCount + "枚）" + additionalNote;
+}
+
+function getSeedlingInstructionTextForMonitor(autoCount){
+  return "苗: " + getDisplayedSeedlingCount(autoCount) + "枚";
+}
+
+function getSeedlingInstructionEditorHtml(autoCount, additionalCount = 0){
   const displayedCount = getDisplayedSeedlingCount(autoCount);
   const autoNote = hasManualSeedlingCount()
     ? `<span class="instructionAutoNote">（自動: ${autoCount}枚）</span>`
     : "";
-  return `苗: <span class="seedlingInlineWrap"><input id="seedlingInlineInput" class="seedlingInlineInput" type="number" min="0" inputmode="numeric" value="${escapeHtml(String(displayedCount))}" placeholder="${escapeHtml(String(autoCount))}" aria-label="苗枚数"><span class="seedlingInlineSuffix">枚</span></span>${autoNote}`;
+  const additionalNote = getSeedlingAdditionalNote(additionalCount);
+  const additionalHtml = additionalNote
+    ? `<span class="instructionAutoNote">${escapeHtml(additionalNote)}</span>`
+    : "";
+  return `苗: <span class="seedlingInlineWrap"><input id="seedlingInlineInput" class="seedlingInlineInput" type="number" min="0" inputmode="numeric" value="${escapeHtml(String(displayedCount))}" placeholder="${escapeHtml(String(autoCount))}" aria-label="苗枚数"><span class="seedlingInlineSuffix">枚</span></span>${autoNote}${additionalHtml}`;
 }
 
 function handleSeedlingInlineCommit(rawValue){
@@ -10504,10 +10628,11 @@ function getPlannedSeedlingTrayCountForRecord(){
   const plannedKeys = Array.isArray(recordBaseFillKeys) && recordBaseFillKeys.length
     ? recordBaseFillKeys
     : harvestFillKeys;
+  const seedlingCounts = getSeedlingInstructionCounts(plannedKeys);
   if(hasManualSeedlingCount()){
-    return getDisplayedSeedlingCount(getSeedlingTrayCountNeededForKeys(plannedKeys));
+    return getDisplayedSeedlingCount(seedlingCounts.totalCount);
   }
-  return getSeedlingTrayCountNeededForKeys(plannedKeys);
+  return seedlingCounts.totalCount;
 }
 
 function syncRecordActualSeedlingTrayCountInput(record = getActivePlantingRecord(), options = {}){
@@ -10582,6 +10707,7 @@ function enterPlantingRecordMode(record){
   recordSelectionMode = "planting";
   activePlantingRecordId = Number(record.id);
   recordPlantingSummaryEdited = false;
+  editingHarvestRecordId = null;
   applyPlantingRecordDraft(record);
   refreshAfterHarvestSelectionChanged();
   refreshRecordModeUi();
@@ -10610,8 +10736,8 @@ function refreshRecordModeUi(){
     if(plantingStageSection) plantingStageSection.hidden = false;
     updateRecordSeedlingDiffDisplay();
   }else{
-    if(notice) notice.textContent = "実際の収穫場所に調整してください。";
-    if(button) button.textContent = "収穫場所を記録する";
+    if(notice) notice.textContent = editingHarvestRecordId ? "保存済みの収穫記録を編集中です。" : "実際の収穫場所に調整してください。";
+    if(button) button.textContent = editingHarvestRecordId ? "収穫記録を更新する" : "収穫場所を記録する";
     if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
@@ -10991,7 +11117,7 @@ function formatInstructionDisplayHtml(text){
 function buildInstructionSummaryText(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
-  const requiredSpecialPalletCount = getRequiredSpecialPalletCount();
+  const seedlingCounts = getSeedlingInstructionCounts();
   const caseLine = "収穫ケース数: " + cases;
   const additionalCaseLines = casePlan.partialCases > 0
     ? "先取り収穫: " + casePlan.partialCases + "ケース\n" +
@@ -10999,7 +11125,7 @@ function buildInstructionSummaryText(){
     : "";
 
   return (
-    getSeedlingInstructionText(requiredSpecialPalletCount) + " / " + caseLine + "\n" +
+    getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount) + " / " + caseLine + "\n" +
     (additionalCaseLines ? additionalCaseLines + "\n" : "") +
     formatHarvestLocationInstruction() + "\n" +
     "残すケース: " + getCasePlacementSummaryText().replace(/\n/g, "\n")
@@ -11319,7 +11445,7 @@ function renderMonitorMode(){
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
-  const requiredSpecialPalletCount = getRequiredSpecialPalletCount();
+  const seedlingCounts = getSeedlingInstructionCounts();
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
@@ -11350,7 +11476,7 @@ function renderForecastSummary(){
     const harvestLocationLine = formatHarvestLocationInstruction();
     const remainingCasesLine = "残すケース: " + getCasePlacementSummaryText();
     instructionBox.innerHTML = [
-      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(requiredSpecialPalletCount)} / ${caseLineHtml}</div>`,
+      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount)} / ${caseLineHtml}</div>`,
       formatInstructionDisplayHtml(harvestLocationLine),
       formatInstructionDisplayHtml(remainingCasesLine)
     ].join("");
@@ -11857,6 +11983,7 @@ function setTodayToRecordDate(){
 }
 
 function clearRecordForm(){
+  editingHarvestRecordId = null;
   enterHarvestRecordMode();
   restoreRecordSelectionToBase();
   setTodayToRecordDate();
@@ -11918,6 +12045,7 @@ function resetPlantingRecordChanges(){
 
 function saveRecord(){
   if(!ensureProtectedOperationAccess("記録の保存")) return;
+  const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
   const date = document.getElementById("recordDateInput").value;
   const totalCases = clampNumber(document.getElementById("recordCasesInput").value || 0, 0, 999999, 0);
   const cases = getRegularHarvestCases(totalCases, date);
@@ -11953,6 +12081,37 @@ function saveRecord(){
   }
   if(!harvestFillKeys.length){
     showToast("保存する選択結果がありません");
+    return;
+  }
+
+  if(editingRecord && editingRecord.type === "fullHarvest"){
+    editingRecord.date = date;
+    editingRecord.cases = cases;
+    editingRecord.palletSummary = palletSummary;
+    editingRecord.plannedSeedlingTrayCount = getPlannedSeedlingTrayCountForRecord();
+    editingRecord.actualSeedlingTrayCount = actualSeedlingTrayCount;
+    editingRecord.memo = memo;
+    editingRecord.actualLoss = actualLoss;
+    editingRecord.qualityMemo = qualityMemo;
+    editingRecord.plantingAge = plantingAge;
+    editingRecord.palletKeys = [...harvestFillKeys];
+    editingRecord.duplicateKey = getRecordDuplicateKey(editingRecord);
+
+    saveRecordsToStorage();
+    setGoogleSheetSyncStatus(editingRecord, "edited");
+    renderRecordList();
+    renderDashboard();
+    updateGoogleSheetResendButtonState();
+    updateBuildingLastHarvestInfo();
+    editingHarvestRecordId = null;
+    captureRecordBaseSelection();
+    if(editingRecord.plantingPending){
+      enterPlantingRecordMode(editingRecord);
+    }else{
+      clearRecordForm();
+    }
+    saveHarvestStateToStorage();
+    showToast("収穫記録を更新しました");
     return;
   }
 
@@ -12229,6 +12388,65 @@ function confirmDeleteRecord(id){
   deleteRecord(id);
 }
 
+function editHarvestRecord(id){
+  if(!ensureProtectedOperationAccess("収穫記録の編集")) return;
+  const record = getRecordById(id);
+  if(!record || record.type !== "fullHarvest"){
+    showToast("編集する収穫記録が見つかりません");
+    return;
+  }
+
+  if(switchTab("record") === false) return;
+  enterHarvestRecordMode();
+  editingHarvestRecordId = Number(record.id);
+  recordSelectionMode = "harvest";
+  activePlantingRecordId = null;
+  plantingRecordDraft = null;
+  recordPlantingSummaryEdited = false;
+
+  const dateInput = document.getElementById("recordDateInput");
+  if(dateInput){
+    dateInput.value = record.date || "";
+    updateRecordWeekdayDisplay();
+  }
+
+  const casesInput = document.getElementById("recordCasesInput");
+  if(casesInput){
+    const totalCasesForInput = clampNumber(record.cases, 0, 999999, 0) + getPartialHarvestCasesForDate(record.date);
+    casesInput.value = totalCasesForInput > 0 ? String(totalCasesForInput) : "";
+  }
+  recordCasesEdited = true;
+
+  harvestFillKeys = Array.isArray(record.palletKeys) && record.palletKeys.length
+    ? [...record.palletKeys]
+    : getPalletKeysFromRecord(record);
+  captureRecordBaseSelection();
+  recalcHarvestSummary();
+
+  const palletSummaryInput = document.getElementById("recordPalletSummaryInput");
+  if(palletSummaryInput) palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
+
+  const memoInput = document.getElementById("recordMemoInput");
+  if(memoInput) memoInput.value = record.memo || "";
+
+  const seedlingInput = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(seedlingInput){
+    seedlingInput.value = clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0) || "";
+    delete seedlingInput.dataset.userEdited;
+  }
+
+  setSelectedQualityMemo(record.qualityMemo);
+  refreshRecordModeUi();
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  updateRecordActualLoss();
+  updateRecordActualSeedlingDisplays();
+  saveHarvestStateToStorage();
+  requestAnimationFrame(() => requestAnimationFrame(scrollToRecordSaveCard));
+  showToast("収穫記録を編集できます");
+}
+
 function renderRecordList(){
   const box = document.getElementById("recordList");
   if(!records.length){
@@ -12297,6 +12515,7 @@ function renderRecordItemHtml(r){
       ${!r.plantingPending && r.plantingSummary ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">苗植え場所: ${escapeHtml(r.plantingSummary)}</div>` : ""}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <div class="recordActions">
+        <button class="thirdBtn" onclick="editHarvestRecord(${r.id})">編集</button>
         ${r.plantingPending ? `<button class="thirdBtn" onclick="resumePlantingRecord(${r.id})">苗植え場所を記録</button>` : ""}
         <button class="secondaryBtn" onclick="confirmDeleteRecord(${r.id})">削除</button>
       </div>
@@ -12668,7 +12887,9 @@ window.onload = () => {
     }
   }
 
-  currentBuilding = BUILDINGS.includes(Number(casePlacementBuilding)) ? Number(casePlacementBuilding) : currentBuilding;
+  const startupHarvestBuilding = getStartupHarvestBuilding();
+  casePlacementBuilding = startupHarvestBuilding;
+  currentBuilding = startupHarvestBuilding;
   updateBuildingLabel();
   updateCasePlacementBuildingLabel();
   populateCasePlacementInputs();
