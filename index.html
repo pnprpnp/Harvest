@@ -6377,6 +6377,7 @@ function loadRecords(){
 
 function saveRecordsToStorage(){
   invalidatePlantingAllowedPalletSetCache();
+  records.sort(compareRecordsByDateDesc);
   localStorage.setItem(RECORDS_KEY, JSON.stringify(records.map(serializeRecordForStorage)));
 }
 
@@ -9087,15 +9088,18 @@ function getLatestPlantingDateByPallet(targetDate){
   const map = new Map();
   const targetDay = startOfLocalDay(targetDate);
 
-  records.forEach(record => {
-    const plantingKeys = getPlantingPalletKeysFromRecord(record);
-    if(!plantingKeys.length) return;
+  for(const record of records){
     const effectivePlantingDate = getEffectivePlantingDateForRecord(record);
-    if(!effectivePlantingDate) return;
+    if(!effectivePlantingDate) continue;
 
     const recordDay = startOfLocalDay(effectivePlantingDate);
-    if(recordDay.getTime() >= targetDay.getTime()) return;
-    if(getLocalDayDiff(recordDay, targetDay) > CALCULATION_LOOKBACK_DAYS) return;
+    const diffDays = getLocalDayDiff(recordDay, targetDay);
+    if(diffDays < 0) continue;
+    if(diffDays > CALCULATION_LOOKBACK_DAYS) break;
+    if(recordDay.getTime() >= targetDay.getTime()) continue;
+
+    const plantingKeys = getPlantingPalletKeysFromRecord(record);
+    if(!plantingKeys.length) continue;
 
     plantingKeys.forEach(key => {
       const palletKey = String(key || "");
@@ -9104,7 +9108,7 @@ function getLatestPlantingDateByPallet(targetDate){
         map.set(palletKey, recordDay);
       }
     });
-  });
+  }
 
   return map;
 }
@@ -9290,14 +9294,24 @@ function isRecordWithinLookbackDays(recordDateStr, lookbackDays = RECORDED_LOOKB
   return diffDays >= 0 && diffDays <= lookbackDays;
 }
 
+function getRecordLookbackDiffDays(recordDateStr, referenceDate = new Date()){
+  const recordDate = parseDateOnlyString(recordDateStr);
+  if(!recordDate) return null;
+
+  return getLocalDayDiff(recordDate, referenceDate);
+}
+
 function getRecordedPalletSet(referenceDate = new Date()){
   const set = new Set();
-  records.forEach(record => {
-    if(!isRecordWithinLookbackDays(record.date, RECORDED_LOOKBACK_DAYS, referenceDate)) return;
+  for(const record of records){
+    const diffDays = getRecordLookbackDiffDays(record.date, referenceDate);
+    if(diffDays === null) continue;
+    if(diffDays < 0) continue;
+    if(diffDays > RECORDED_LOOKBACK_DAYS) break;
     if(Array.isArray(record.palletKeys)){
       record.palletKeys.forEach(key => set.add(key));
     }
-  });
+  }
   return set;
 }
 
@@ -10169,22 +10183,22 @@ function getPredictedHarvestForBed(bed, number){
 
 function getLatestFullHarvestDateForPallet(key, targetDate){
   const targetDay = startOfLocalDay(targetDate || new Date());
-  let latestDate = null;
 
-  records.forEach(record => {
-    if(record.type === "partialHarvest") return;
-    if(!Array.isArray(record.palletKeys) || !record.palletKeys.includes(key)) return;
+  for(const record of records){
     const recordDate = parseDateOnlyString(record.date);
-    if(!recordDate) return;
+    if(!recordDate) continue;
     const recordDay = startOfLocalDay(recordDate);
-    if(recordDay.getTime() >= targetDay.getTime()) return;
-    if(getLocalDayDiff(recordDay, targetDay) > CALCULATION_LOOKBACK_DAYS) return;
-    if(!latestDate || recordDay.getTime() > latestDate.getTime()){
-      latestDate = recordDay;
-    }
-  });
+    const diffDays = getLocalDayDiff(recordDay, targetDay);
+    if(diffDays < 0) continue;
+    if(diffDays > CALCULATION_LOOKBACK_DAYS) break;
+    if(recordDay.getTime() >= targetDay.getTime()) continue;
+    if(record.type === "partialHarvest") continue;
+    if(!Array.isArray(record.palletKeys) || !record.palletKeys.includes(key)) continue;
 
-  return latestDate;
+    return recordDay;
+  }
+
+  return null;
 }
 
 function getPartialHarvestCountForPallet(building, bed, number, targetDate = null){
@@ -10193,21 +10207,23 @@ function getPartialHarvestCountForPallet(building, bed, number, targetDate = nul
   const latestFullHarvestDate = getLatestFullHarvestDateForPallet(key, targetDay);
   let total = 0;
 
-  records.forEach(record => {
-    if(record.type !== "partialHarvest") return;
+  for(const record of records){
     const recordDate = parseDateOnlyString(record.date);
-    if(!recordDate) return;
+    if(!recordDate) continue;
     const recordDay = startOfLocalDay(recordDate);
-    if(recordDay.getTime() > targetDay.getTime()) return;
-    if(latestFullHarvestDate && recordDay.getTime() <= latestFullHarvestDate.getTime()) return;
-    if(getLocalDayDiff(recordDay, targetDay) > CALCULATION_LOOKBACK_DAYS) return;
+    const diffDays = getLocalDayDiff(recordDay, targetDay);
+    if(diffDays < 0) continue;
+    if(diffDays > CALCULATION_LOOKBACK_DAYS) break;
+    if(recordDay.getTime() > targetDay.getTime()) continue;
+    if(latestFullHarvestDate && recordDay.getTime() <= latestFullHarvestDate.getTime()) break;
+    if(record.type !== "partialHarvest") continue;
 
     normalizePartialHarvestTargets(record.targets).forEach(target => {
       if(target.building !== building || target.bed !== bed) return;
       if(number < target.start || number > target.end) return;
       total += target.plantsPerPallet;
     });
-  });
+  }
 
   return total;
 }
@@ -10344,12 +10360,16 @@ function getNextBuildingInOrder(building){
 }
 
 function getLatestRecordedBuildingWithinLookback(referenceDate = new Date()){
-  const latestRecord = [...records]
-    .sort(compareRecordsByDateDesc)
-    .find(record => {
-      if(!Array.isArray(record.palletKeys) || !record.palletKeys.length) return false;
-      return isRecordWithinLookbackDays(record.date, RECORDED_LOOKBACK_DAYS, referenceDate);
-    });
+  let latestRecord = null;
+  for(const record of records){
+    const diffDays = getRecordLookbackDiffDays(record.date, referenceDate);
+    if(diffDays === null) continue;
+    if(diffDays < 0) continue;
+    if(diffDays > RECORDED_LOOKBACK_DAYS) break;
+    if(!Array.isArray(record.palletKeys) || !record.palletKeys.length) continue;
+    latestRecord = record;
+    break;
+  }
   if(!latestRecord) return null;
 
   const buildings = [...new Set(latestRecord.palletKeys.map(key => parsePalletKey(String(key || "")).building))]
@@ -10770,9 +10790,9 @@ function getRecordSeedlingCarryoverMode(){
 function getSeedlingCarryoverHintText(mode, averageInfo = null){
   if(normalizeSeedlingCarryoverMode(mode) === "carryover"){
     if(averageInfo && Number.isFinite(averageInfo.averageLossRate) && averageInfo.recordCount > 0){
-      return `余りあり: 直近10件の平均苗ロス率 ${formatDashboardMetricNumber(averageInfo.averageLossRate, "%")} を使って繰越分を計算します。`;
+      return `余りあり: 前回記録の苗ロス率 ${formatDashboardMetricNumber(averageInfo.averageLossRate, "%")} を使って繰越分を計算します。`;
     }
-    return `余りあり: 直近10件の平均苗ロス率がないため、設定の苗ロス率 ${formatDashboardMetricNumber(settings.seedlingLossRate || 0, "%")} を使って繰越分を計算します。`;
+    return `余りあり: 前回記録の苗ロス率がないため、設定の苗ロス率 ${formatDashboardMetricNumber(settings.seedlingLossRate || 0, "%")} を使って繰越分を計算します。`;
   }
   return "";
 }
@@ -10781,7 +10801,7 @@ function formatSeedlingCarryoverLossSourceText(usage){
   if(!usage || normalizeSeedlingCarryoverMode(usage.mode) !== "carryover") return "";
   const hasAverage = Number.isFinite(usage.averageInfo?.averageLossRate) && usage.averageInfo?.recordCount > 0;
   return hasAverage
-    ? `直近10件平均 ${formatDashboardMetricNumber(usage.effectiveLossRate, "%")}`
+    ? `前回記録 ${formatDashboardMetricNumber(usage.effectiveLossRate, "%")}`
     : `設定値 ${formatDashboardMetricNumber(usage.effectiveLossRate, "%")}`;
 }
 
@@ -10811,33 +10831,15 @@ function bindRecordSeedlingCarryoverModeInputs(){
 }
 
 function getAverageRecentSeedlingLossRate(referenceDateValue = "", options = {}){
-  const referenceDate = parseDateOnlyString(String(referenceDateValue || "").trim()) || new Date();
-  const excludeRecordId = Number(options.excludeRecordId);
-  const seedlingLossValues = records
-    .filter(record => {
-      if(record?.type !== "fullHarvest" || record.plantingPending) return false;
-      if(Number.isFinite(excludeRecordId) && Number(record.id) === excludeRecordId) return false;
-      const recordDate = getEffectivePlantingDateForRecord(record);
-      if(!recordDate) return false;
-      return Number.isFinite(Number(record.actualSeedlingLossRate));
-    })
-    .map(record => ({
-      record,
-      time: getEffectivePlantingDateForRecord(record).getTime()
-    }))
-    .filter(item => item.time <= startOfLocalDay(referenceDate).getTime())
-    .sort((a, b) => {
-      if(b.time !== a.time) return b.time - a.time;
-      return Number(b.record?.id || 0) - Number(a.record?.id || 0);
-    })
-    .slice(0, 10)
-    .map(item => Number(item.record.actualSeedlingLossRate));
+  const previousRecord = getPreviousCompletedFullHarvestRecord({
+    referenceDateValue,
+    excludeRecordId: options.excludeRecordId
+  });
+  const previousLossRate = Number(previousRecord?.actualSeedlingLossRate);
 
   return {
-    averageLossRate: seedlingLossValues.length
-      ? seedlingLossValues.reduce((sum, value) => sum + value, 0) / seedlingLossValues.length
-      : null,
-    recordCount: seedlingLossValues.length
+    averageLossRate: Number.isFinite(previousLossRate) ? previousLossRate : null,
+    recordCount: Number.isFinite(previousLossRate) ? 1 : 0
   };
 }
 
@@ -10864,6 +10866,36 @@ function getCompletedFullHarvestRecordsInPlantingOrder(){
       if(timeA !== timeB) return timeA - timeB;
       return Number(a?.id || 0) - Number(b?.id || 0);
     });
+}
+
+function getPlantingOrderDateForRecord(record){
+  return getEffectivePlantingDateForRecord(record) || parseDateOnlyString(String(record?.plantingDate || record?.date || "").trim());
+}
+
+function getPreviousCompletedFullHarvestRecord(options = {}){
+  const targetId = Number(options.recordId ?? options.excludeRecordId);
+  const targetRecord = Number.isFinite(targetId) ? getRecordById(targetId) : null;
+  const targetDate = targetRecord
+    ? getPlantingOrderDateForRecord(targetRecord)
+    : (parseDateOnlyString(String(options.referenceDateValue || "").trim()) || new Date());
+  const targetTime = targetDate ? startOfLocalDay(targetDate).getTime() : Infinity;
+  const orderedRecords = getCompletedFullHarvestRecordsInPlantingOrder();
+  let previousRecord = null;
+
+  for(const record of orderedRecords){
+    if(Number.isFinite(targetId) && Number(record.id) === targetId) break;
+    const recordDate = getPlantingOrderDateForRecord(record);
+    if(!recordDate) continue;
+    const recordTime = startOfLocalDay(recordDate).getTime();
+    const recordId = Number(record.id);
+
+    if(recordTime > targetTime) break;
+    if(recordTime === targetTime && Number.isFinite(targetId) && Number.isFinite(recordId) && recordId >= targetId) break;
+
+    previousRecord = record;
+  }
+
+  return previousRecord;
 }
 
 function getActualTakenSeedlingTotalForTrayCount(trayCount){
@@ -10939,26 +10971,21 @@ function getSeedlingUsageContext(options = {}){
 }
 
 function getCarryoverSeedlingStockBeforeRecord(recordId = null){
-  const targetId = Number(recordId);
-  let stock = 0;
-  const orderedRecords = getCompletedFullHarvestRecordsInPlantingOrder();
+  const previousRecord = getPreviousCompletedFullHarvestRecord({ recordId });
+  if(!previousRecord) return 0;
 
-  for(const record of orderedRecords){
-    if(Number.isFinite(targetId) && Number(record.id) === targetId) break;
-    const usage = getSeedlingUsageContext({
-      recordId: record.id,
-      mode: record.actualSeedlingCarryoverMode || "loss",
-      carryoverBeforeSeedlings: stock,
-      takenTotalSeedlings: getActualTakenSeedlingTotalForTrayCount(
-        clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0)
-      ),
-      plantedTotalSeedlings: getActualPlantedSeedlingTotalForRecord(record),
-      lossRateOverride: Number(record.actualSeedlingLossRate)
-    });
-    stock = usage.carryoverAfter;
-  }
+  const usage = getSeedlingUsageContext({
+    recordId: previousRecord.id,
+    mode: previousRecord.actualSeedlingCarryoverMode || "loss",
+    carryoverBeforeSeedlings: 0,
+    takenTotalSeedlings: getActualTakenSeedlingTotalForTrayCount(
+      clampNumber(previousRecord.actualSeedlingTrayCount, 0, 999999, 0)
+    ),
+    plantedTotalSeedlings: getActualPlantedSeedlingTotalForRecord(previousRecord),
+    lossRateOverride: Number(previousRecord.actualSeedlingLossRate)
+  });
 
-  return stock;
+  return usage.carryoverAfter;
 }
 
 function getCurrentCarryoverSeedlingStock(){
@@ -11439,22 +11466,35 @@ function repairLegacyPendingPlantingRecords(savedHarvestState = null){
   return changed;
 }
 
-function getUnplantedPalletSet(options = {}){
+function getPreviousFullHarvestRecord(options = {}){
   const excludeId = Number(options.excludeRecordId);
-  const unplanted = new Set();
-  const orderedRecords = [...records].sort(compareRecordsByDateDesc).reverse();
+  const orderedRecords = [...records]
+    .filter(record => record?.type === "fullHarvest")
+    .sort(compareRecordsByDateDesc);
 
-  orderedRecords.forEach(record => {
-    if(record?.type !== "fullHarvest") return;
-
-    const harvestKeys = Array.isArray(record.palletKeys) ? record.palletKeys : getPalletKeysFromRecord(record);
-    const plantingKeys = getPlantingPalletKeysFromRecord(record, harvestKeys);
-
-    if(!(Number.isFinite(excludeId) && Number(record.id) === excludeId)){
-      harvestKeys.forEach(key => unplanted.add(key));
+  if(Number.isFinite(excludeId)){
+    const activeIndex = orderedRecords.findIndex(record => Number(record.id) === excludeId);
+    if(activeIndex >= 0){
+      return orderedRecords[activeIndex + 1] || null;
     }
-    plantingKeys.forEach(key => unplanted.delete(key));
-  });
+    return orderedRecords.find(record => Number(record.id) !== excludeId) || null;
+  }
+
+  return orderedRecords[0] || null;
+}
+
+function getUnplantedPalletSet(options = {}){
+  const unplanted = new Set();
+  const previousRecord = getPreviousFullHarvestRecord(options);
+  if(!previousRecord) return unplanted;
+
+  const harvestKeys = Array.isArray(previousRecord.palletKeys)
+    ? previousRecord.palletKeys
+    : getPalletKeysFromRecord(previousRecord);
+  const plantingKeys = getPlantingPalletKeysFromRecord(previousRecord, harvestKeys);
+
+  harvestKeys.forEach(key => unplanted.add(key));
+  plantingKeys.forEach(key => unplanted.delete(key));
 
   return unplanted;
 }
@@ -13059,6 +13099,28 @@ function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, act
   ].join("\n"));
 }
 
+function applyPlantingSelectionToRecord(targetRecord, keysToApply, options = {}){
+  if(!targetRecord || targetRecord.type !== "fullHarvest" || !Array.isArray(keysToApply) || !keysToApply.length) return false;
+
+  const harvestKeys = Array.isArray(targetRecord.palletKeys) ? targetRecord.palletKeys : getPalletKeysFromRecord(targetRecord);
+  const beforePending = !!targetRecord.plantingPending;
+  const existingPlantingKeys = getPlantingPalletKeysFromRecord(targetRecord, harvestKeys);
+  targetRecord.plantingPalletKeys = [...new Set([...existingPlantingKeys, ...keysToApply])]
+    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  targetRecord.plantingSummary = formatPlantingSummaryForKeys(targetRecord.plantingPalletKeys);
+  targetRecord.plantingDate = options.plantingDate || targetRecord.plantingDate || targetRecord.date || "";
+
+  if(options.isActiveRecord){
+    targetRecord.actualSeedlingTrayCount = options.actualSeedlingTrayCount;
+    targetRecord.actualSeedlingCarryoverMode = options.actualSeedlingCarryoverMode;
+    targetRecord.actualSeedlingLossRate = options.actualSeedlingLossRate;
+  }
+
+  targetRecord.plantingPending = false;
+  targetRecord.duplicateKey = getRecordDuplicateKey(targetRecord);
+  return options.isActiveRecord || beforePending;
+}
+
 function savePlantingRecord(){
   if(!ensureProtectedOperationAccess("苗植え場所の保存")) return;
   const record = getActivePlantingRecord();
@@ -13099,36 +13161,37 @@ function savePlantingRecord(){
     return;
   }
 
-  records.forEach(targetRecord => {
-    if(targetRecord?.type !== "fullHarvest") return;
-    const harvestKeys = Array.isArray(targetRecord.palletKeys) ? targetRecord.palletKeys : getPalletKeysFromRecord(targetRecord);
-    const selectedHarvestKeys = harvestKeys.filter(key => selectedSet.has(key));
-    const isActiveRecord = Number(targetRecord.id) === Number(record.id);
-    const keysToApply = isActiveRecord ? selectedKeys : selectedHarvestKeys;
-    if(!keysToApply.length) return;
+  if(applyPlantingSelectionToRecord(record, selectedKeys, {
+    isActiveRecord: true,
+    plantingDate,
+    actualSeedlingTrayCount,
+    actualSeedlingCarryoverMode,
+    actualSeedlingLossRate
+  })){
+    recordsToSend.push(record);
+  }
 
-    const beforePending = !!targetRecord.plantingPending;
-    const existingPlantingKeys = getPlantingPalletKeysFromRecord(targetRecord, harvestKeys);
-    targetRecord.plantingPalletKeys = [...new Set([...existingPlantingKeys, ...keysToApply])]
-      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-    targetRecord.plantingSummary = formatPlantingSummaryForKeys(targetRecord.plantingPalletKeys);
-    targetRecord.plantingDate = plantingDate;
-    if(isActiveRecord){
-      targetRecord.actualSeedlingTrayCount = actualSeedlingTrayCount;
-      targetRecord.actualSeedlingCarryoverMode = actualSeedlingCarryoverMode;
-      targetRecord.actualSeedlingLossRate = actualSeedlingLossRate;
+  const previousRecord = getPreviousFullHarvestRecord({ excludeRecordId: record.id });
+  if(previousRecord){
+    const previousHarvestKeys = Array.isArray(previousRecord.palletKeys) ? previousRecord.palletKeys : getPalletKeysFromRecord(previousRecord);
+    const selectedPreviousKeys = previousHarvestKeys.filter(key => selectedSet.has(key));
+    if(applyPlantingSelectionToRecord(previousRecord, selectedPreviousKeys, { plantingDate })){
+      recordsToSend.push(previousRecord);
     }
-    targetRecord.plantingPending = false;
-    targetRecord.duplicateKey = getRecordDuplicateKey(targetRecord);
+  }
 
-    if(isActiveRecord || beforePending){
-      recordsToSend.push(targetRecord);
-    }
+  const uniqueRecordsToSend = [];
+  const sentIds = new Set();
+  recordsToSend.forEach(recordToSend => {
+    const id = Number(recordToSend?.id);
+    if(!Number.isFinite(id) || sentIds.has(id)) return;
+    sentIds.add(id);
+    uniqueRecordsToSend.push(recordToSend);
   });
 
   saveRecordsToStorage();
   maybePromptRecordExport();
-  recordsToSend.forEach(recordToSend => sendRecordToGoogleSheet(recordToSend));
+  uniqueRecordsToSend.forEach(recordToSend => sendRecordToGoogleSheet(recordToSend));
   renderRecordList();
   renderDashboard();
   updateGoogleSheetResendButtonState();
