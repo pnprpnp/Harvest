@@ -5735,6 +5735,39 @@ function restoreForecastSelectionState(){
   return true;
 }
 
+function closeRecordFloatingUi(){
+  closeBedDetailWindow();
+  hideBedActionMenu();
+  hideRecordBedActionMenu();
+  hideRecordImportMenu();
+  hideGoogleSheetResendHelp();
+  hideRecordImportError();
+}
+
+function preservePlantingStateBeforeTabSwitch(){
+  try{
+    capturePlantingRecordDraft();
+    restoreForecastSelectionState();
+    saveHarvestStateToStorage({ skipPlantingDraftCapture: true });
+  }catch(e){
+    console.error("Failed to preserve planting state before tab switch", e);
+    try{
+      saveHarvestStateToStorage({ skipPlantingDraftCapture: true });
+    }catch(storageError){
+      console.error("Failed to save fallback harvest state", storageError);
+    }
+  }
+}
+
+function preserveForecastStateBeforeRecordTab(){
+  try{
+    captureForecastSelectionState();
+    saveHarvestStateToStorage();
+  }catch(e){
+    console.error("Failed to preserve forecast state before record tab", e);
+  }
+}
+
 function saveCurrentTabScrollPosition(){
   if(!activeAppTab) return;
   tabScrollPositions[activeAppTab] = window.pageYOffset || 0;
@@ -5752,21 +5785,13 @@ function switchTab(tabName){
   if(!ensureProtectedTabAccess(tabName)) return false;
   const previousTab = activeAppTab;
   if(tabName === "record" && previousTab !== "record" && recordSelectionMode === "planting"){
-    captureForecastSelectionState();
-    saveHarvestStateToStorage();
+    preserveForecastStateBeforeRecordTab();
   }
   if(previousTab === "record" && tabName !== "record" && recordSelectionMode === "planting"){
-    capturePlantingRecordDraft();
-    restoreForecastSelectionState();
-    saveHarvestStateToStorage({ skipPlantingDraftCapture: true });
+    preservePlantingStateBeforeTabSwitch();
   }
   saveCurrentTabScrollPosition();
-  hideBedActionMenu();
-  hideRecordBedActionMenu();
-  hideRecordImportMenu();
-  hideGoogleSheetResendHelp();
-  hideRecordImportError();
-  closeBedDetailWindow();
+  closeRecordFloatingUi();
   resolveGoogleSheetConfirm(false);
 
   document.getElementById("navigationTab").style.display = tabName === "navigation" ? "block" : "none";
@@ -10408,6 +10433,15 @@ function scrollToRecordSaveCard(){
   window.scrollTo({ top, behavior: "smooth" });
 }
 
+function scrollToRecordActiveStage(){
+  const targetId = recordSelectionMode === "planting" ? "recordPlantingStageSection" : "recordSaveCard";
+  const target = document.getElementById(targetId);
+  if(!target) return;
+  const headerOffset = 10;
+  const top = target.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+  window.scrollTo({ top, behavior: "smooth" });
+}
+
 function switchToRecordSaveCard(){
   if(switchTab("record") === false) return;
   requestAnimationFrame(() => {
@@ -11368,6 +11402,7 @@ function enterHarvestRecordMode(){
 
 function enterPlantingRecordMode(record){
   if(!record) return;
+  closeRecordFloatingUi();
   recordSelectionMode = "planting";
   activePlantingRecordId = Number(record.id);
   recordPlantingSummaryEdited = false;
@@ -11378,12 +11413,12 @@ function enterPlantingRecordMode(record){
   }else{
     harvestSummary = null;
   }
+  refreshRecordModeUi();
   drawBeds();
   drawRecordBeds();
   renderForecastSummary();
   saveHarvestStateToStorage();
-  refreshRecordModeUi();
-  requestAnimationFrame(() => requestAnimationFrame(scrollToRecordSaveCard));
+  requestAnimationFrame(() => requestAnimationFrame(scrollToRecordActiveStage));
 }
 
 function refreshRecordModeUi(){
@@ -11393,6 +11428,7 @@ function refreshRecordModeUi(){
   const harvestStageSection = document.getElementById("recordHarvestStageSection");
   const plantingStageSection = document.getElementById("recordPlantingStageSection");
   const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
+  const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
   const plantingStep = document.getElementById("recordStepPlanting");
   const plantingLegend = document.getElementById("recordPlantingLegend");
@@ -11409,6 +11445,7 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = true;
     if(plantingStageSection) plantingStageSection.hidden = false;
     if(harvestMemoSection) harvestMemoSection.hidden = true;
+    if(actualLossField) actualLossField.hidden = true;
     updateRecordSeedlingDiffDisplay();
   }else{
     if(notice) notice.textContent = editingHarvestRecordId ? "保存済みの収穫記録を編集中です。" : "実際の収穫場所に調整してください。";
@@ -11417,10 +11454,12 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
+    if(actualLossField) actualLossField.hidden = false;
   }
 }
 
 function handleRecordPrimaryAction(){
+  closeRecordFloatingUi();
   if(recordSelectionMode === "planting"){
     savePlantingRecord();
     return;
