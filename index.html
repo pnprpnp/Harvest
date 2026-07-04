@@ -11341,7 +11341,15 @@ function enterPlantingRecordMode(record){
   recordPlantingSummaryEdited = false;
   editingHarvestRecordId = null;
   applyPlantingRecordDraft(record);
-  refreshAfterHarvestSelectionChanged();
+  if(harvestFillKeys.length){
+    recalcHarvestSummary();
+  }else{
+    harvestSummary = null;
+  }
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
   refreshRecordModeUi();
   requestAnimationFrame(() => requestAnimationFrame(scrollToRecordSaveCard));
 }
@@ -12259,10 +12267,7 @@ function toggleRecordPallet(building, bed, number){
 }
 
 function getRecordMapBuildings(allowedSet = null){
-  const sourceKeys = [
-    ...(harvestFillKeys || []),
-    ...(allowedSet ? [...allowedSet] : [])
-  ];
+  const sourceKeys = [...(harvestFillKeys || [])];
   const buildings = [...new Set(sourceKeys.map(key => parsePalletKey(key).building))]
     .filter(building => BUILDINGS.includes(building))
     .sort((a, b) => a - b);
@@ -12418,7 +12423,17 @@ function getRecordActualLossValue(){
 }
 
 function getRecordActualSeedlingTrayCount(){
-  return clampNumber(document.getElementById("recordActualSeedlingTrayCountInput")?.value || 0, 0, 999999, 0);
+  const input = document.getElementById("recordActualSeedlingTrayCountInput");
+  const inputValue = String(input?.value || "").trim();
+  if(inputValue !== ""){
+    return clampNumber(inputValue, 0, 999999, 0);
+  }
+  const activeRecord = getActivePlantingRecord();
+  if(activeRecord?.type === "fullHarvest"){
+    return clampNumber(activeRecord.actualSeedlingTrayCount, 0, 999999, 0)
+      || clampNumber(activeRecord.plannedSeedlingTrayCount, 0, 999999, 0);
+  }
+  return 0;
 }
 
 function getSeedlingCountFromTrayCount(trayCount){
@@ -12948,9 +12963,9 @@ function resumePlantingRecord(id, options = {}){
   if(recordCasesInput) recordCasesInput.value = String(record.cases || "");
   const recordActualSeedlingTrayCountInput = document.getElementById("recordActualSeedlingTrayCountInput");
   if(recordActualSeedlingTrayCountInput){
-    recordActualSeedlingTrayCountInput.value = "";
     delete recordActualSeedlingTrayCountInput.dataset.userEdited;
   }
+  syncRecordActualSeedlingTrayCountInput(record, { force: true });
   setRecordSeedlingCarryoverMode(record.actualSeedlingCarryoverMode || "loss", { silent: true });
   const recordMemoInput = document.getElementById("recordMemoInput");
   if(recordMemoInput) recordMemoInput.value = record.memo || "";
@@ -13291,7 +13306,10 @@ function normalizeImportedRecord(record, index){
     : qualityMemoFromLegacySizeRating(record.sizeRating);
   const plantingAge = normalizePlantingAgeSnapshot(record.plantingAge);
   const palletKeys = getPalletKeysFromRecord(record);
-  const plantingPalletKeys = getPlantingPalletKeysFromRecord(record, palletKeys);
+  let plantingPalletKeys = getPlantingPalletKeysFromRecord(record, palletKeys);
+  if(!plantingPalletKeys.length){
+    plantingPalletKeys = [...palletKeys];
+  }
 
   if(!date || !Number.isFinite(cases) || cases <= 0 || !palletSummary || !actualLoss || !palletKeys.length){
     return null;
@@ -13315,7 +13333,7 @@ function normalizeImportedRecord(record, index){
     actualSeedlingTrayCount,
     actualSeedlingCarryoverMode,
     actualSeedlingLossRate,
-    plantingPending: !!record.plantingPending && !plantingPalletKeys.length,
+    plantingPending: false,
     memo,
     actualLoss,
     qualityMemo,
