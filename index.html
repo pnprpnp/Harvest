@@ -4778,6 +4778,9 @@ let recordBaseFillKeys = [];
 let recordSelectionMode = "harvest";
 let activePlantingRecordId = null;
 let plantingRecordDraft = null;
+let plantingAllowedPalletSetCache = null;
+let plantingAllowedPalletSetCacheRecordId = null;
+let plantingAllowedPalletSetCacheRecordCount = 0;
 let editingHarvestRecordId = null;
 let forecastSelectionState = null;
 let settingsDirty = false;
@@ -6076,11 +6079,34 @@ function parsePalletSummaryToKeys(summary){
   return [...new Set(keys)].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
 }
 
+function isValidPalletKeyString(key){
+  const text = String(key || "").trim();
+  if(!/^\d+-[A-Z]-\d+$/.test(text)) return false;
+  const p = parsePalletKey(text);
+  return BUILDINGS.includes(p.building) && bedOrder.includes(p.bed) && Number.isFinite(p.number) && p.number >= 1 && p.number <= PALLETS_PER_BED;
+}
+
+function getDirectPalletKeys(items){
+  if(!Array.isArray(items)) return null;
+  const keys = [];
+  for(const item of items){
+    if(typeof item !== "string") return null;
+    const key = item.trim();
+    if(!isValidPalletKeyString(key)) return null;
+    keys.push(key);
+  }
+  return [...new Set(keys)].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+}
+
 function getPalletKeysFromRecord(record){
   if(!record || typeof record !== "object") return [];
   if(record.type === "partialHarvest") return [];
+  const directKeys = getDirectPalletKeys(record.palletKeys);
+  if(directKeys && directKeys.length && !record.palletRanges?.length && !String(record.palletSummary || "").trim()){
+    return directKeys;
+  }
   return [...new Set([
-    ...expandPalletKeyItemsToKeys(record.palletKeys),
+    ...(directKeys || expandPalletKeyItemsToKeys(record.palletKeys)),
     ...expandPalletRangesToKeys(record.palletRanges),
     ...parsePalletSummaryToKeys(record.palletSummary)
   ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
@@ -6088,8 +6114,12 @@ function getPalletKeysFromRecord(record){
 
 function getPlantingPalletKeysFromRecord(record, harvestKeys = null){
   if(!record || typeof record !== "object" || record.type === "partialHarvest") return [];
+  const directKeys = getDirectPalletKeys(record.plantingPalletKeys);
+  if(directKeys && directKeys.length && !record.plantingRanges?.length){
+    return directKeys;
+  }
   const keys = [...new Set([
-    ...expandPalletKeyItemsToKeys(record.plantingPalletKeys),
+    ...(directKeys || expandPalletKeyItemsToKeys(record.plantingPalletKeys)),
     ...expandPalletRangesToKeys(record.plantingRanges)
   ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   if(keys.length) return keys;
@@ -6346,6 +6376,7 @@ function loadRecords(){
 }
 
 function saveRecordsToStorage(){
+  invalidatePlantingAllowedPalletSetCache();
   localStorage.setItem(RECORDS_KEY, JSON.stringify(records.map(serializeRecordForStorage)));
 }
 
@@ -9506,7 +9537,7 @@ function applyRecordBedRange(action){
   const startValue = Number(document.getElementById("recordBedRangeStartInput")?.value || 0);
   const endValue = Number(document.getElementById("recordBedRangeEndInput")?.value || 0);
   const recordedSet = getRecordTabRecordedPalletSet();
-  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet() : null;
+  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   hideRecordBedActionMenu();
   if(!bed) return;
   if(!Number.isFinite(startValue) || !Number.isFinite(endValue) || startValue <= 0 || endValue <= 0){
@@ -9775,7 +9806,7 @@ function applyRecordPalletDragChange(building, bed, number, mode){
   const key = getPalletKey(building, bed, number);
   const recordedSet = getRecordTabRecordedPalletSet();
 
-  if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key)){
+  if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key, { fast: true })){
     showPalletDragToast("苗植え場所は、今回収穫した場所か前回苗植えしなかった場所だけ選択できます");
     return false;
   }
@@ -9984,7 +10015,7 @@ function appendRecordBedDetail(container, b){
   bed.className = "bed bedExpanded";
   const splitInfo = getYieldSplitVisualInfo(b);
   const recordedSet = getRecordTabRecordedPalletSet();
-  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet() : null;
+  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
 
   const grid = document.createElement("div");
   grid.className = "palletGrid";
@@ -11357,6 +11388,15 @@ function getLatestPendingPlantingRecord(){
   return records.find(record => record?.type === "fullHarvest" && record.plantingPending) || null;
 }
 
+function shouldOfferPlantingRecordResume(record){
+  if(!record || record.type !== "fullHarvest") return false;
+  if(record.plantingPending) return true;
+  if(String(record.plantingSummary || "").trim()) return false;
+  if(String(record.plantingDate || "").trim()) return false;
+  if(String(record.actualSeedlingLossRate || "").trim()) return false;
+  return Array.isArray(record.palletKeys) && record.palletKeys.length > 0;
+}
+
 function getStartupPlantingRecordToResume(savedHarvestState = null){
   if(savedHarvestState?.recordSelectionMode === "planting"){
     const savedRecord = getRecordById(savedHarvestState.activePlantingRecordId);
@@ -11419,19 +11459,53 @@ function getUnplantedPalletSet(options = {}){
   return unplanted;
 }
 
-function getPlantingAllowedPalletSet(){
+function invalidatePlantingAllowedPalletSetCache(){
+  plantingAllowedPalletSetCache = null;
+  plantingAllowedPalletSetCacheRecordId = null;
+  plantingAllowedPalletSetCacheRecordCount = 0;
+}
+
+function getFastPlantingAllowedPalletSet(){
   const activeRecord = getActivePlantingRecord();
+  const allowed = new Set(harvestFillKeys || []);
+  if(activeRecord && Array.isArray(activeRecord.palletKeys)){
+    activeRecord.palletKeys.forEach(key => allowed.add(key));
+  }
+  if(plantingAllowedPalletSetCache && Number(plantingAllowedPalletSetCacheRecordId) === Number(activeRecord?.id)){
+    plantingAllowedPalletSetCache.forEach(key => allowed.add(key));
+  }
+  return allowed;
+}
+
+function getPlantingAllowedPalletSet(options = {}){
+  const activeRecord = getActivePlantingRecord();
+  if(options.fast){
+    return getFastPlantingAllowedPalletSet();
+  }
+
+  const activeRecordId = Number(activeRecord?.id);
+  if(
+    plantingAllowedPalletSetCache &&
+    Number(plantingAllowedPalletSetCacheRecordId) === activeRecordId &&
+    plantingAllowedPalletSetCacheRecordCount === records.length
+  ){
+    return new Set(plantingAllowedPalletSetCache);
+  }
+
   const allowed = getUnplantedPalletSet({ excludeRecordId: activeRecord?.id });
 
   if(activeRecord && Array.isArray(activeRecord.palletKeys)){
     activeRecord.palletKeys.forEach(key => allowed.add(key));
   }
 
+  plantingAllowedPalletSetCache = new Set(allowed);
+  plantingAllowedPalletSetCacheRecordId = activeRecordId;
+  plantingAllowedPalletSetCacheRecordCount = records.length;
   return allowed;
 }
 
-function isPlantingSelectionAllowed(key){
-  return getPlantingAllowedPalletSet().has(key);
+function isPlantingSelectionAllowed(key, options = {}){
+  return getPlantingAllowedPalletSet(options).has(key);
 }
 
 function enterHarvestRecordMode(){
@@ -11458,8 +11532,8 @@ function enterPlantingRecordMode(record){
     harvestSummary = null;
   }
   refreshRecordModeUi();
-  drawRecordBeds();
   saveHarvestStateToStorage();
+  drawRecordBeds();
   runAfterUiSettles(() => {
     drawBeds();
     renderForecastSummary();
@@ -12352,7 +12426,7 @@ function toggleRecordPallet(building, bed, number){
   const key = getPalletKey(building, bed, number);
   const recordedSet = getRecordTabRecordedPalletSet();
 
-  if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key)){
+  if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key, { fast: true })){
     showToast("苗植え場所は、今回収穫した場所か前回苗植えしなかった場所だけ選択できます");
     return;
   }
@@ -12418,7 +12492,7 @@ function drawRecordBeds(){
   container.innerHTML = "";
   const recordedSet = getRecordTabRecordedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
-  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet() : null;
+  const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const buildings = getRecordMapBuildings(plantingAllowedSet);
 
   if(!buildings.length){
@@ -12847,7 +12921,6 @@ function resetPlantingRecordChanges(){
 function saveRecord(){
   if(!ensureProtectedOperationAccess("記録の保存")) return;
   const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
-  repairLegacyPendingPlantingRecords();
   const pendingPlantingRecord = !editingRecord ? getLatestPendingPlantingRecord() : null;
   if(pendingPlantingRecord){
     showToast("未完了の苗植え記録があります。先に苗植え場所を記録してください");
@@ -13320,6 +13393,7 @@ function renderRecordItemHtml(r){
   const plantingSummaryText = r.plantingPending
     ? "未記録（送信待ち）"
     : (r.plantingSummary || "-");
+  const showPlantingResumeButton = shouldOfferPlantingRecordResume(r);
 
   return `
     <div class="recordItem">
@@ -13340,7 +13414,7 @@ function renderRecordItemHtml(r){
       </details>
       <div class="recordActions">
         <button class="thirdBtn" onclick="editHarvestRecord(${r.id})">編集</button>
-        ${r.plantingPending ? `<button class="thirdBtn" onclick="resumePlantingRecord(${r.id})">苗植え場所を記録</button>` : ""}
+        ${showPlantingResumeButton ? `<button class="thirdBtn" onclick="resumePlantingRecord(${r.id})">苗植え場所を記録</button>` : ""}
         <button class="secondaryBtn" onclick="confirmDeleteRecord(${r.id})">削除</button>
       </div>
     </div>
@@ -13854,7 +13928,6 @@ window.onload = () => {
     });
   }
 
-  repairLegacyPendingPlantingRecords(savedHarvestState);
   const startupPlantingRecord = getStartupPlantingRecordToResume(savedHarvestState);
   if(startupPlantingRecord){
     resumePlantingRecord(startupPlantingRecord.id, { auto: true, switchToRecordTab: true });
