@@ -5742,6 +5742,24 @@ function closeRecordFloatingUi(){
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();
   hideRecordImportError();
+  unlockPageAfterRecordUiClose();
+}
+
+function unlockPageAfterRecordUiClose(){
+  const blockingModalOpen = [
+    "monitorEditorModal",
+    "monitorPreviewModal",
+    "appMenuModal",
+    "forecastSettingsModal",
+    "dashboardModal",
+    "plantingAgeModal"
+  ].some(id => document.getElementById(id)?.classList.contains("show"));
+
+  if(!isMonitorModeOpen && !blockingModalOpen){
+    const tabBar = document.querySelector(".tabBar");
+    if(tabBar) tabBar.classList.remove("monitorHidden");
+    document.body.style.overflow = "";
+  }
 }
 
 function preservePlantingStateBeforeTabSwitch(){
@@ -5766,6 +5784,32 @@ function preserveForecastStateBeforeRecordTab(){
   }catch(e){
     console.error("Failed to preserve forecast state before record tab", e);
   }
+}
+
+function runAfterUiSettles(callback){
+  requestAnimationFrame(() => {
+    setTimeout(callback, 0);
+  });
+}
+
+function renderDashboardIfVisible(){
+  const dashboardTab = document.getElementById("dashboardTab");
+  if(dashboardTab && dashboardTab.style.display === "block"){
+    renderDashboard();
+  }
+}
+
+function scheduleRecordDataUiRefresh(){
+  runAfterUiSettles(() => {
+    try{
+      renderRecordList();
+      renderDashboardIfVisible();
+      updateGoogleSheetResendButtonState();
+      updateBuildingLastHarvestInfo();
+    }catch(e){
+      console.error("Failed to refresh record data UI", e);
+    }
+  });
 }
 
 function saveCurrentTabScrollPosition(){
@@ -10433,13 +10477,13 @@ function scrollToRecordSaveCard(){
   window.scrollTo({ top, behavior: "smooth" });
 }
 
-function scrollToRecordActiveStage(){
+function scrollToRecordActiveStage(options = {}){
   const targetId = recordSelectionMode === "planting" ? "recordPlantingStageSection" : "recordSaveCard";
   const target = document.getElementById(targetId);
   if(!target) return;
   const headerOffset = 10;
   const top = target.getBoundingClientRect().top + window.pageYOffset - headerOffset;
-  window.scrollTo({ top, behavior: "smooth" });
+  window.scrollTo({ top, behavior: options.behavior || "auto" });
 }
 
 function switchToRecordSaveCard(){
@@ -11414,10 +11458,12 @@ function enterPlantingRecordMode(record){
     harvestSummary = null;
   }
   refreshRecordModeUi();
-  drawBeds();
   drawRecordBeds();
-  renderForecastSummary();
   saveHarvestStateToStorage();
+  runAfterUiSettles(() => {
+    drawBeds();
+    renderForecastSummary();
+  });
   requestAnimationFrame(() => requestAnimationFrame(scrollToRecordActiveStage));
 }
 
@@ -11459,12 +11505,18 @@ function refreshRecordModeUi(){
 }
 
 function handleRecordPrimaryAction(){
-  closeRecordFloatingUi();
-  if(recordSelectionMode === "planting"){
-    savePlantingRecord();
-    return;
+  try{
+    closeRecordFloatingUi();
+    if(recordSelectionMode === "planting"){
+      savePlantingRecord();
+      return;
+    }
+    saveRecord();
+  }catch(e){
+    console.error("Record action failed", e);
+    closeRecordFloatingUi();
+    showToast("記録処理中にエラーが発生しました。再読み込みしてもう一度試してください");
   }
-  saveRecord();
 }
 
 function getCaseLocationForPallet(bed, number){
@@ -12857,10 +12909,6 @@ function saveRecord(){
 
     saveRecordsToStorage();
     setGoogleSheetSyncStatus(editingRecord, "edited");
-    renderRecordList();
-    renderDashboard();
-    updateGoogleSheetResendButtonState();
-    updateBuildingLastHarvestInfo();
     editingHarvestRecordId = null;
     captureRecordBaseSelection();
     if(editingRecord.plantingPending){
@@ -12869,6 +12917,7 @@ function saveRecord(){
       clearRecordForm();
     }
     saveHarvestStateToStorage();
+    scheduleRecordDataUiRefresh();
     showToast("収穫記録を更新しました");
     return;
   }
@@ -12898,12 +12947,9 @@ function saveRecord(){
 
   saveRecordsToStorage();
   maybePromptRecordExport();
-  renderRecordList();
-  renderDashboard();
-  updateGoogleSheetResendButtonState();
-  updateBuildingLastHarvestInfo();
   enterPlantingRecordMode(record);
   saveHarvestStateToStorage();
+  scheduleRecordDataUiRefresh();
   showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");
 }
 
