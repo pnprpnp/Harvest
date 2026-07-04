@@ -6029,7 +6029,7 @@ function getPlantingPalletKeysFromRecord(record, harvestKeys = null){
   if(String(record.plantingSummary || "").trim()){
     return parsePalletSummaryToKeys(record.plantingSummary);
   }
-  return [];
+  return Array.isArray(harvestKeys) ? [...harvestKeys] : getPalletKeysFromRecord(record);
 }
 
 function normalizePartialHarvestTargets(targets){
@@ -11289,6 +11289,38 @@ function getStartupPlantingRecordToResume(savedHarvestState = null){
   return getLatestPendingPlantingRecord();
 }
 
+function repairLegacyPendingPlantingRecords(savedHarvestState = null){
+  const keepPendingIds = new Set();
+  if(savedHarvestState?.recordSelectionMode === "planting"){
+    const activeId = Number(savedHarvestState.activePlantingRecordId);
+    if(Number.isFinite(activeId)) keepPendingIds.add(activeId);
+  }
+
+  let changed = false;
+  records.forEach(record => {
+    if(record?.type !== "fullHarvest" || !record.plantingPending) return;
+    if(keepPendingIds.has(Number(record.id))) return;
+
+    const harvestKeys = getPalletKeysFromRecord(record);
+    if(!harvestKeys.length) return;
+
+    const explicitPlantingKeys = [
+      ...expandPalletKeyItemsToKeys(record.plantingPalletKeys),
+      ...expandPalletRangesToKeys(record.plantingRanges)
+    ];
+    if(!explicitPlantingKeys.length){
+      record.plantingPalletKeys = [...harvestKeys];
+    }
+    record.plantingPending = false;
+    changed = true;
+  });
+
+  if(changed){
+    saveRecordsToStorage();
+  }
+  return changed;
+}
+
 function getUnplantedPalletSet(options = {}){
   const excludeId = Number(options.excludeRecordId);
   const unplanted = new Set();
@@ -12724,6 +12756,7 @@ function resetPlantingRecordChanges(){
 function saveRecord(){
   if(!ensureProtectedOperationAccess("記録の保存")) return;
   const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
+  repairLegacyPendingPlantingRecords();
   const pendingPlantingRecord = !editingRecord ? getLatestPendingPlantingRecord() : null;
   if(pendingPlantingRecord){
     showToast("未完了の苗植え記録があります。先に苗植え場所を記録してください");
@@ -13476,6 +13509,7 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, op
   }
 
   records = [...imported, ...records].sort(compareRecordsByDateDesc);
+  repairLegacyPendingPlantingRecords();
   saveRecordsToStorage();
   if(options.markGoogleSheetSynced){
     markGoogleSheetRecordsSynced(imported, "confirmed");
@@ -13735,6 +13769,7 @@ window.onload = () => {
     });
   }
 
+  repairLegacyPendingPlantingRecords(savedHarvestState);
   const startupPlantingRecord = getStartupPlantingRecordToResume(savedHarvestState);
   if(startupPlantingRecord){
     resumePlantingRecord(startupPlantingRecord.id, { auto: true, switchToRecordTab: true });
