@@ -5958,6 +5958,10 @@ button.forecastClearBtn{border-radius:13px;}
     <div class="card">
       <div class="sectionTitle">記録一覧</div>
       <div id="recordList" class="smallText">まだ記録がありません。</div>
+      <details id="recordTrashDetails" class="recordToggleWrap" style="margin-top:12px;">
+        <summary id="recordTrashSummary" class="recordToggleSummary">削除済みの記録（0）</summary>
+        <div id="recordTrashList" class="recordToggleBody smallText">削除済みの記録はありません。</div>
+      </details>
       <div class="externalSaveTools">
         <div class="googleSheetResendHelpWrap">
           <button id="googleSheetResendBtn" class="actionBtn secondaryBtn" onclick="sendPendingRecordsToGoogleSheet()">未送信の記録（0）</button>
@@ -6380,6 +6384,7 @@ const RECORDS_KEY = "harvestForecastRecords_v9";
 const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
 const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
+const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
 const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
@@ -6389,6 +6394,8 @@ const MONITOR_MAX_SCALE = 2;
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 30000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
+const RECORD_TRASH_RETENTION_DAYS = 30;
+const RECORD_TRASH_RETENTION_MS = RECORD_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const MONITOR_REMOTE_POLL_INTERVAL_MS = 30000;
 const RECORDED_LOOKBACK_COUNT = 10;
 const GOOGLE_SHEET_STARTUP_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
@@ -6442,6 +6449,7 @@ let casePlacementBuilding = 2;
 let harvestFillKeys = [];
 let harvestSummary = null;
 let records = loadRecords();
+let deletedRecords = loadDeletedRecords();
 let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
@@ -8432,6 +8440,74 @@ function saveRecordsToStorage(){
   scheduleWorkflowGuideUpdate();
 }
 
+function loadDeletedRecords(){
+  try{
+    const raw = localStorage.getItem(RECORD_TRASH_KEY);
+    if(!raw) return [];
+    const parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    const activeEntries = parsed.map(entry => {
+      const record = normalizeStoredRecord(entry?.record);
+      const deletedAt = String(entry?.deletedAt || "");
+      const deletedTime = new Date(deletedAt).getTime();
+      const expiresAt = String(entry?.expiresAt || "");
+      const expiresTime = new Date(expiresAt).getTime();
+      if(!record || !Number.isFinite(expiresTime) || expiresTime <= now) return null;
+      return {
+        record,
+        deletedAt: Number.isFinite(deletedTime) ? new Date(deletedTime).toISOString() : new Date(now).toISOString(),
+        expiresAt: new Date(expiresTime).toISOString(),
+        sheetDeleted: !!entry?.sheetDeleted
+      };
+    }).filter(Boolean);
+    localStorage.setItem(RECORD_TRASH_KEY, JSON.stringify(activeEntries.map(serializeDeletedRecordEntry)));
+    return activeEntries;
+  }catch(e){
+    return [];
+  }
+}
+
+function serializeDeletedRecordEntry(entry){
+  return {
+    record: serializeRecordForStorage(entry.record),
+    deletedAt: entry.deletedAt,
+    expiresAt: entry.expiresAt,
+    sheetDeleted: !!entry.sheetDeleted
+  };
+}
+
+function saveDeletedRecordsToStorage(){
+  const now = Date.now();
+  deletedRecords = deletedRecords.filter(entry => new Date(entry.expiresAt).getTime() > now);
+  localStorage.setItem(RECORD_TRASH_KEY, JSON.stringify(deletedRecords.map(serializeDeletedRecordEntry)));
+}
+
+function addRecordToTrash(record, options = {}){
+  if(!record) return;
+  const recordId = String(record.id ?? "");
+  const now = new Date();
+  deletedRecords = deletedRecords.filter(entry => String(entry.record?.id ?? "") !== recordId);
+  deletedRecords.unshift({
+    record: normalizeStoredRecord(serializeRecordForStorage(record)),
+    deletedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + RECORD_TRASH_RETENTION_MS).toISOString(),
+    sheetDeleted: !!options.sheetDeleted
+  });
+  saveDeletedRecordsToStorage();
+}
+
+function isRecordTemporarilyDeleted(record){
+  const id = String(record?.id ?? "").trim();
+  const duplicateKey = String(getRecordDuplicateKey(record) || record?.duplicateKey || "").trim();
+  return deletedRecords.some(entry => {
+    const deletedRecord = entry.record;
+    const deletedId = String(deletedRecord?.id ?? "").trim();
+    const deletedKey = String(getRecordDuplicateKey(deletedRecord) || deletedRecord?.duplicateKey || "").trim();
+    return (id && deletedId === id) || (duplicateKey && deletedKey === duplicateKey);
+  });
+}
+
 function loadGoogleSheetConfig(){
   try{
     const raw = localStorage.getItem(GOOGLE_SHEET_CONFIG_KEY);
@@ -8734,6 +8810,75 @@ function buildGoogleSheetBatchPayload(recordsToSend, config){
     token: config.token || "",
     records: recordsToSend.map(record => buildGoogleSheetRecordPayload(record, config).record)
   };
+}
+
+function buildGoogleSheetRecordDeletePayload(record, config){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-record-delete",
+    action: "deleteRecord",
+    version: 1,
+    token: config.token || "",
+    record: buildGoogleSheetRecordPayload(record, config).record
+  };
+}
+
+function buildGoogleSheetRecordRestorePayload(record, config){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-record-restore",
+    action: "restoreRecord",
+    version: 1,
+    token: config.token || "",
+    record: buildGoogleSheetRecordPayload(record, config).record
+  };
+}
+
+async function sendGoogleSheetRecordMutation(payload, failureMessage){
+  const config = loadGoogleSheetConfig();
+  if(!config.url) throw new Error("Google連携URLが設定されていません");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
+
+  try{
+    const response = await fetch(config.url, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let result;
+    try{
+      result = text ? JSON.parse(text) : {};
+    }catch(e){
+      throw new Error("スプレッドシートの応答を読み込めません");
+    }
+    if(result.ok === false) throw new Error(result.message || failureMessage);
+    return result;
+  }catch(e){
+    if(e?.name === "AbortError") throw new Error("スプレッドシートとの通信がタイムアウトしました");
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+function deleteRecordFromGoogleSheet(record){
+  const config = loadGoogleSheetConfig();
+  return sendGoogleSheetRecordMutation(
+    buildGoogleSheetRecordDeletePayload(record, config),
+    "スプレッドシート側の記録を削除できませんでした"
+  );
+}
+
+function restoreRecordToGoogleSheet(record){
+  const config = loadGoogleSheetConfig();
+  return sendGoogleSheetRecordMutation(
+    buildGoogleSheetRecordRestorePayload(record, config),
+    "スプレッドシート側の記録を復元できませんでした"
+  );
 }
 
 function buildGoogleSheetMonitorContentPayload(config){
@@ -15846,12 +15991,17 @@ function savePartialHarvestRecord(){
   showToast("先取り収穫を記録しました");
 }
 
-function deleteRecord(id){
-  if(!ensureProtectedOperationAccess("記録の削除")) return;
+function deleteRecord(id, options = {}){
+  if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
+  if(!deletedRecord){
+    showToast("削除する記録が見つかりません");
+    return;
+  }
   const deletingActivePlantingRecord = Number(activePlantingRecordId) === Number(id);
   const deletingEditedRecord = Number(editingHarvestRecordId) === Number(id);
-  records = records.filter(r => r.id !== id);
+  addRecordToTrash(deletedRecord, { sheetDeleted: !!options.sheetDeleted });
+  records = records.filter(r => Number(r.id) !== Number(id));
   saveRecordsToStorage();
   if(deletingActivePlantingRecord && deletedRecord?.type === "fullHarvest"){
     harvestFillKeys = Array.isArray(deletedRecord.palletKeys) ? [...deletedRecord.palletKeys] : [];
@@ -15875,12 +16025,42 @@ function deleteRecord(id){
   renderForecastSummary();
   updateBuildingLastHarvestInfo();
   updateHeaderLatestRecordDate();
-  showToast("記録を削除しました");
+  showToast(options.sheetDeleted ? "アプリとスプレッドシートから削除しました" : "アプリから削除しました");
 }
 
-function confirmDeleteRecord(id){
-  if(!window.confirm("この記録を削除しますか？")) return;
-  deleteRecord(id);
+async function confirmDeleteRecord(id){
+  if(!ensureProtectedOperationAccess("記録の削除")) return;
+  const record = getRecordById(id);
+  if(!record){
+    showToast("削除する記録が見つかりません");
+    return;
+  }
+  if(!window.confirm("この記録をアプリから削除しますか？\n\n削除後30日以内なら、削除済みの記録から復元できます。")) return;
+
+  const config = loadGoogleSheetConfig();
+  const shouldDeleteFromSheet = !!config.url && window.confirm(
+    "スプレッドシート側の記録も削除しますか？\n\n「OK」: アプリとスプレッドシートから削除\n「キャンセル」: アプリからのみ削除"
+  );
+  let sheetDeleted = false;
+
+  if(shouldDeleteFromSheet){
+    showToast("スプレッドシート側の記録を削除中です...");
+    try{
+      const result = await deleteRecordFromGoogleSheet(record);
+      sheetDeleted = !!(result.deleted || result.alreadyDeleted);
+      if(result.notFound){
+        showToast("スプレッドシート側に該当記録がないため、アプリからのみ削除します");
+      }
+    }catch(e){
+      showRecordImportError(
+        "スプレッドシート側の削除に失敗したため、アプリ側の記録も残しています。\n\n詳細: " + String(e?.message || e),
+        "削除失敗"
+      );
+      return;
+    }
+  }
+
+  deleteRecord(id, { accessChecked: true, sheetDeleted });
 }
 
 function editHarvestRecord(id){
@@ -15945,6 +16125,7 @@ function editHarvestRecord(id){
 
 function renderRecordList(){
   const box = document.getElementById("recordList");
+  renderDeletedRecordList();
   if(!records.length){
     box.textContent = "まだ記録がありません。";
     return;
@@ -15979,6 +16160,80 @@ function renderRecordList(){
       </div>
     </details>
   ` : "");
+}
+
+function renderDeletedRecordList(){
+  saveDeletedRecordsToStorage();
+  const summary = document.getElementById("recordTrashSummary");
+  const box = document.getElementById("recordTrashList");
+  if(summary) summary.textContent = "削除済みの記録（" + deletedRecords.length + "）";
+  if(!box) return;
+  if(!deletedRecords.length){
+    box.textContent = "削除済みの記録はありません。";
+    return;
+  }
+
+  const now = Date.now();
+  box.innerHTML = deletedRecords.map(entry => {
+    const record = entry.record;
+    const remainingDays = Math.max(1, Math.ceil((new Date(entry.expiresAt).getTime() - now) / (24 * 60 * 60 * 1000)));
+    const typeText = record.type === "partialHarvest" ? "先取り収穫" : "収穫記録";
+    const sheetText = entry.sheetDeleted ? "スプレッドシートも削除済み" : "アプリのみ削除";
+    return `
+      <div class="recordItem">
+        <div class="recordTitle">${escapeHtml(record.date || "日付なし")} ${typeText}</div>
+        <div class="recordMeta">収穫ケース数: ${escapeHtml(String(record.cases || 0))}\n${sheetText}\n復元可能: あと${remainingDays}日</div>
+        <div class="recordActions">
+          <button class="thirdBtn" onclick="restoreDeletedRecord(${Number(record.id)})">復元する</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function restoreDeletedRecord(id){
+  if(!ensureProtectedOperationAccess("削除した記録の復元")) return;
+  const entry = deletedRecords.find(item => Number(item.record?.id) === Number(id));
+  if(!entry){
+    showToast("復元する記録が見つかりません");
+    renderDeletedRecordList();
+    return;
+  }
+
+  if(entry.sheetDeleted){
+    if(!loadGoogleSheetConfig().url){
+      showRecordImportError("スプレッドシート側も削除した記録です。Google連携URLを設定してから復元してください。", "復元できません");
+      return;
+    }
+    showToast("スプレッドシート側の記録を復元中です...");
+    try{
+      await restoreRecordToGoogleSheet(entry.record);
+    }catch(e){
+      showRecordImportError(
+        "スプレッドシート側の復元に失敗したため、アプリ側も削除済みのまま保持しています。\n\n詳細: " + String(e?.message || e),
+        "復元失敗"
+      );
+      return;
+    }
+  }
+
+  const restoredRecord = normalizeStoredRecord(serializeRecordForStorage(entry.record));
+  if(restoredRecord && !records.some(record => Number(record.id) === Number(restoredRecord.id))){
+    records.push(restoredRecord);
+    saveRecordsToStorage();
+  }
+  deletedRecords = deletedRecords.filter(item => Number(item.record?.id) !== Number(id));
+  saveDeletedRecordsToStorage();
+  if(entry.sheetDeleted) setGoogleSheetSyncStatus(restoredRecord, "confirmed");
+  renderRecordList();
+  renderDashboard();
+  updateGoogleSheetResendButtonState();
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  updateBuildingLastHarvestInfo();
+  updateHeaderLatestRecordDate();
+  showToast(entry.sheetDeleted ? "アプリとスプレッドシートに復元しました" : "記録を復元しました");
 }
 
 function renderRecordItemHtml(r){
@@ -16261,6 +16516,7 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, op
   sourceRecords.forEach((record, index) => {
     const normalized = normalizeImportedRecord(record, index);
     if(!normalized) return;
+    if(isRecordTemporarilyDeleted(normalized)) return;
     const signature = makeRecordSignature(normalized);
     if(existing.has(signature)) return;
     existing.add(signature);
