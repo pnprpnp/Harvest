@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f5f5f7">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -3831,6 +3831,7 @@ button.monitorSaveBtn:active{
   Calm iOS-like surfaces, agricultural green accents and shared component states.
 */
 :root{
+  --app-top-chrome-height:132px;
   --ui-bg:#f5f5f7;
   --ui-surface:rgba(255,255,255,.9);
   --ui-surface-solid:#ffffff;
@@ -3883,7 +3884,7 @@ header{
   z-index:9500;
   min-height:68px;
   box-sizing:border-box;
-  padding:max(10px,env(safe-area-inset-top)) 18px 10px;
+  padding:max(10px,env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right, 0px)) 10px calc(18px + env(safe-area-inset-left, 0px));
   background:rgba(250,250,252,.78);
   color:var(--ui-text);
   border-bottom:1px solid var(--ui-line);
@@ -3983,7 +3984,7 @@ header{
   .welcomeImage{object-fit:contain;}
 }
 .headerMenuBtn{
-  left:18px;
+  left:calc(18px + env(safe-area-inset-left, 0px));
   width:42px;
   height:42px;
   border:1px solid transparent;
@@ -4001,7 +4002,7 @@ header{
 }
 .headerMenuBtn:hover{background:#e8e8ed;}
 .headerMenuBtn:active{transform:translateY(calc(-50% + 1px)) scale(.97);}
-.headerActions{right:18px;}
+.headerActions{right:calc(18px + env(safe-area-inset-right, 0px));}
 .headerActionBtn,
 .monitorLaunchBtn{
   min-height:38px;
@@ -4051,16 +4052,25 @@ header{
   width:min(100%,1080px);
   box-sizing:border-box;
   margin:0 auto;
-  padding:24px 18px calc(114px + env(safe-area-inset-bottom));
+  padding:24px calc(18px + env(safe-area-inset-right, 0px)) calc(114px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left, 0px));
 }
 .tabBar{
-  left:50%;
-  right:auto;
+  position:fixed;
+  top:auto;
+  left:calc(12px + env(safe-area-inset-left, 0px));
+  right:calc(12px + env(safe-area-inset-right, 0px));
   bottom:max(10px,env(safe-area-inset-bottom));
-  width:min(520px,calc(100vw - 24px));
+  z-index:9000;
+  width:auto;
+  max-width:520px;
   min-height:70px;
   box-sizing:border-box;
-  transform:translateX(-50%);
+  margin:0 auto;
+  -webkit-transform:translate3d(0,0,0);
+  transform:translate3d(0,0,0);
+  -webkit-backface-visibility:hidden;
+  backface-visibility:hidden;
+  will-change:transform;
   align-items:stretch;
   gap:3px;
   padding:6px;
@@ -4097,10 +4107,18 @@ header{
 .dashboardTabIcon{border-width:1.8px;}
 
 .appTopChrome{
-  position:sticky;
+  position:fixed;
   top:0;
+  left:0;
+  right:0;
+  width:100%;
+  box-sizing:border-box;
   z-index:9500;
   isolation:isolate;
+  -webkit-transform:translateZ(0);
+  transform:translateZ(0);
+  -webkit-backface-visibility:hidden;
+  backface-visibility:hidden;
 }
 .appTopChrome > header{
   position:relative;
@@ -4115,11 +4133,14 @@ header{
   -webkit-backdrop-filter:saturate(180%) blur(22px);
   backdrop-filter:saturate(180%) blur(22px);
 }
+.container{
+  margin-top:var(--app-top-chrome-height);
+}
 .workflowBarInner{
   width:min(100%,1080px);
   box-sizing:border-box;
   margin:0 auto;
-  padding:8px 18px 10px;
+  padding:8px calc(18px + env(safe-area-inset-right, 0px)) 10px calc(18px + env(safe-area-inset-left, 0px));
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
   align-items:center;
@@ -5289,11 +5310,11 @@ button.forecastClearBtn{border-radius:13px;}
   header{
     justify-content:center;
     flex-wrap:nowrap;
-    padding-left:66px;
-    padding-right:112px;
+    padding-left:calc(66px + env(safe-area-inset-left, 0px));
+    padding-right:calc(112px + env(safe-area-inset-right, 0px));
   }
-  .headerActions{position:absolute;right:12px;top:50%;transform:translateY(-50%);margin-left:0;}
-  .headerMenuBtn{left:12px;}
+  .headerActions{position:absolute;right:calc(12px + env(safe-area-inset-right, 0px));top:50%;transform:translateY(-50%);margin-left:0;}
+  .headerMenuBtn{left:calc(12px + env(safe-area-inset-left, 0px));}
   .appTitleWrap{gap:8px;}
   .appMark{width:30px;height:30px;border-radius:10px;}
   .appMark::before{left:9px;top:11px;width:12px;height:9px;}
@@ -5301,7 +5322,7 @@ button.forecastClearBtn{border-radius:13px;}
   .appTitle{font-size:16px;}
   .appSubtitle{display:none;}
   .headerLatestRefreshBtn{min-width:82px;}
-  .workflowBarInner{padding:7px 12px 8px;gap:8px;}
+  .workflowBarInner{padding:7px calc(12px + env(safe-area-inset-right, 0px)) 8px calc(12px + env(safe-area-inset-left, 0px));gap:8px;}
   .workflowStep{gap:3px;}
   .workflowStepMarker{width:22px;height:22px;font-size:10px;}
   .workflowStep:not(:last-child)::after{top:10px;left:calc(50% + 14px);right:calc(-50% + 14px);}
@@ -5313,12 +5334,12 @@ button.forecastClearBtn{border-radius:13px;}
   .workflowNextActionGroup{gap:0;}
   .workflowNextActionBtn{min-width:90px;min-height:40px;padding:8px 9px;font-size:10px;}
   .workflowNextMobilePrefix{display:inline;}
-  .container{padding:16px 12px calc(106px + env(safe-area-inset-bottom));}
+  .container{padding:16px calc(12px + env(safe-area-inset-right, 0px)) calc(106px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left, 0px));}
   .card,.tabLinkedCard,#recordTab > .card:first-child{padding:18px;border-radius:21px;}
   .sectionTitle{margin-bottom:16px;font-size:22px;}
   .sectionTitleRow{align-items:flex-start;gap:12px;}
   .sectionTitleActions{width:100%;justify-content:flex-start;}
-  .tabBar{bottom:max(8px,env(safe-area-inset-bottom));width:calc(100vw - 16px);}
+  .tabBar{left:calc(8px + env(safe-area-inset-left, 0px));right:calc(8px + env(safe-area-inset-right, 0px));bottom:max(8px,env(safe-area-inset-bottom));width:auto;}
   .forecastCaseField{padding:14px 15px;}
   .casePlacementGrid{padding:15px;}
   .qualityChoiceRow{grid-template-columns:repeat(3,minmax(0,1fr));}
@@ -5331,7 +5352,7 @@ button.forecastClearBtn{border-radius:13px;}
   .appMark{display:none;}
   .tabBtn{font-size:9px;}
   .tabIcon{width:21px;height:21px;}
-  .workflowBarInner{padding-left:8px;padding-right:8px;gap:6px;}
+  .workflowBarInner{padding-left:calc(8px + env(safe-area-inset-left, 0px));padding-right:calc(8px + env(safe-area-inset-right, 0px));gap:6px;}
   .workflowNextActionBtn{min-width:78px;padding-left:7px;padding-right:7px;font-size:10px;}
   .casePlacementBuildingSwitch .buildingBtn,
   .casePlacementBuildingSwitch .buildingBtn:not(.active){width:38px;min-width:38px;}
@@ -5417,8 +5438,7 @@ requestAnimationFrame(function(){
 </nav>
 </div>
 
-<div class="container">
-  <div class="tabBar">
+<nav class="tabBar" aria-label="メインタブ">
     <button id="forecastTabBtn" class="tabBtn hasTabIcon active" onclick="switchTab('forecast')">
       <span class="tabIcon forecastTabIcon" aria-hidden="true"></span>
       <span class="tabBtnText">シミュ</span>
@@ -5435,8 +5455,9 @@ requestAnimationFrame(function(){
       <span class="tabIcon dashboardTabIcon" aria-hidden="true"></span>
       <span class="tabBtnText">集計</span>
     </button>
-  </div>
+</nav>
 
+<div class="container">
   <div id="monitorTab" style="display:none;">
     <div id="monitorCard" class="card tabLinkedCard">
       <div class="sectionTitleRow">
@@ -6522,6 +6543,7 @@ let workflowHarvestRecordingActive = false;
 let workflowGuideUpdateFrame = null;
 let workflowCompletionCelebrationUntil = 0;
 let workflowCompletionCelebrationTimer = null;
+let appTopChromeResizeObserver = null;
 
 function deepClone(obj){
   return JSON.parse(JSON.stringify(obj));
@@ -7871,6 +7893,32 @@ function scheduleWorkflowGuideUpdate(){
     return;
   }
   workflowGuideUpdateFrame = requestAnimationFrame(updateWorkflowGuide);
+}
+
+function syncAppTopChromeHeight(){
+  const chrome = document.querySelector(".appTopChrome");
+  if(!chrome) return;
+  const height = Math.ceil(chrome.getBoundingClientRect().height);
+  if(!Number.isFinite(height) || height <= 0) return;
+  const value = height + "px";
+  if(document.documentElement.style.getPropertyValue("--app-top-chrome-height") !== value){
+    document.documentElement.style.setProperty("--app-top-chrome-height", value);
+  }
+}
+
+function installAppTopChromeLayoutSync(){
+  const chrome = document.querySelector(".appTopChrome");
+  if(!chrome) return;
+  syncAppTopChromeHeight();
+  if(typeof ResizeObserver !== "undefined" && !appTopChromeResizeObserver){
+    appTopChromeResizeObserver = new ResizeObserver(syncAppTopChromeHeight);
+    appTopChromeResizeObserver.observe(chrome);
+  }
+  window.addEventListener("resize", syncAppTopChromeHeight, { passive:true });
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", syncAppTopChromeHeight, { passive:true });
+  }
+  requestAnimationFrame(syncAppTopChromeHeight);
 }
 
 function getAppTopChromeOffset(){
@@ -16613,6 +16661,7 @@ function hideWelcomeScreen(){
 
 window.onload = () => {
   try{
+  installAppTopChromeLayoutSync();
   window.addEventListener("resize", () => {
     if(isMonitorModeOpen) updateMonitorFitScale();
     if(isMonitorPreviewOpen()) updateMonitorPreviewScale();
