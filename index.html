@@ -7,7 +7,7 @@
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="apple--touch-icon.png">
-<link rel="preload" as="image" href="ウェルカム画面.PNG" fetchpriority="high">
+<link rel="preload" as="image" href="welcome-screen.png?v=20260713" fetchpriority="high">
 <style>
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -3954,9 +3954,17 @@ header{
 .welcomeScreen{
   position:fixed;
   inset:0;
+  width:100vw;
+  width:100dvw;
+  height:100vh;
+  height:100dvh;
   z-index:30000;
   overflow:hidden;
   background:#fbf8f2;
+  opacity:1;
+  visibility:visible;
+  transform:translateZ(0);
+  -webkit-transform:translateZ(0);
   transition:opacity .42s ease,visibility .42s ease;
 }
 .welcomeScreen.hide{
@@ -5337,8 +5345,16 @@ button.forecastClearBtn{border-radius:13px;}
 </head>
 <body>
 <div id="welcomeScreen" class="welcomeScreen" role="status" aria-live="polite" aria-label="アプリを読み込み中">
-  <img class="welcomeImage" src="ウェルカム画面.PNG" alt="" aria-hidden="true" decoding="sync" fetchpriority="high">
+  <img class="welcomeImage" src="welcome-screen.png?v=20260713" alt="" aria-hidden="true" decoding="sync" fetchpriority="high">
 </div>
+<script>
+window.__harvestnaviWelcomePaintAt = Date.now();
+window.__harvestnaviWelcomeHasPainted = false;
+requestAnimationFrame(function(){
+  window.__harvestnaviWelcomePaintAt = Date.now();
+  window.__harvestnaviWelcomeHasPainted = true;
+});
+</script>
 <div class="appTopChrome">
 <header>
   <button type="button" class="headerMenuBtn" onclick="openAppMenuWindow()" aria-label="メニューを開く"></button>
@@ -16581,8 +16597,13 @@ function importRecordsFromFile(file){
 function hideWelcomeScreen(){
   const screen = document.getElementById("welcomeScreen");
   if(!screen) return;
-  const minimumVisibleMs = 650;
-  const elapsedMs = window.performance && typeof performance.now === "function" ? performance.now() : minimumVisibleMs;
+  if(!window.__harvestnaviWelcomeHasPainted){
+    requestAnimationFrame(hideWelcomeScreen);
+    return;
+  }
+  const minimumVisibleMs = 1100;
+  const shownAt = Number(window.__harvestnaviWelcomePaintAt) || Date.now();
+  const elapsedMs = Math.max(0, Date.now() - shownAt);
   const delayMs = Math.max(0, minimumVisibleMs - elapsedMs);
   setTimeout(() => {
     screen.classList.add("hide");
