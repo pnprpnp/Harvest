@@ -2346,9 +2346,10 @@ button.monitorSaveBtn:active{
   gap:12px;
 }
 .recordActualCasesRow input{
-  width:180px;
-  max-width:180px;
-  flex:0 1 180px;
+  width:168px;
+  max-width:168px;
+  min-height:44px;
+  flex:0 0 168px;
   text-align:right;
 }
 .recordStageSection{
@@ -2521,7 +2522,7 @@ button.monitorSaveBtn:active{
   white-space:nowrap;
 }
 .recordDateInputRow{
-  width:180px;
+  width:168px;
   margin-left:0;
   min-height:44px;
   box-sizing:border-box;
@@ -2551,13 +2552,27 @@ button.monitorSaveBtn:active{
   border-radius:0;
   background:transparent !important;
   box-shadow:none !important;
+  padding-left:9px;
+  padding-right:2px;
+  color:#2563eb;
+  -webkit-text-fill-color:#2563eb;
+  font-weight:800;
+}
+.recordDateInputRow #recordDateInput::-webkit-date-and-time-value{
+  color:#2563eb;
+  -webkit-text-fill-color:#2563eb;
+  font-weight:800;
+}
+.recordDateInputRow #recordDateInput::-webkit-calendar-picker-indicator{
+  margin:0;
+  padding:2px;
 }
 .recordWeekdayDisplay{
   width:auto;
   min-height:44px;
   box-sizing:border-box;
   border:0;
-  padding:10px 12px 10px 0;
+  padding:10px 9px 10px 1px;
   background:transparent;
   color:#111827;
   display:flex;
@@ -5211,6 +5226,25 @@ button.forecastClearBtn{border-radius:13px;}
   border-radius:17px;
   background:var(--ui-surface-muted);
 }
+.recordDateGroup{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+  gap:10px;
+  margin-top:12px;
+  align-items:start;
+}
+.recordDateColumn{
+  display:grid;
+  gap:10px;
+  min-width:0;
+}
+.recordDateColumn:only-child{
+  grid-column:1 / -1;
+}
+.recordDateGroup .recordItem{
+  margin-top:0;
+  min-width:0;
+}
 .recordTitle{color:var(--ui-text);}
 .recordMeta{color:var(--ui-text-secondary);}
 .recordDetailSummary{
@@ -6338,7 +6372,7 @@ requestAnimationFrame(function(){
 シミュカードに表示される苗枚数は、次の流れで計算されます。
 
 今回必要な苗株数 =
-今回選択したパレットの苗株数合計 + 未定植として残っているパレットの苗株数合計
+今回選択したパレットの苗株数合計 + 直近3件の収穫記録に未定植として残っているパレットの苗株数合計
 
 ロス込み必要株数 =
 今回必要な苗株数 ÷ (1 - 苗ロス率)
@@ -6354,7 +6388,10 @@ requestAnimationFrame(function(){
 
 表示の（未定植分 +○枚）は、
 「今回選択したパレットだけで計算した苗枚数」と
-「未定植分も含めて計算した苗枚数」の差です。
+「直近3件の収穫記録の未定植分も含めて計算した苗枚数」の差です。
+
+苗植え場所の記録対象には、最新の通常収穫記録3件だけが表示されます。
+それより古い記録は履歴として保持されますが、新しい苗植え対象には含まれません。
 
 ここまでで、収穫前の準備は完了です。
 
@@ -6569,6 +6606,7 @@ const GOOGLE_SHEET_MAX_RESPONSE_CHARS = 1000000;
 const GOOGLE_SHEET_MAX_RESPONSE_BYTES = 2000000;
 const GOOGLE_SHEET_MAX_BATCH_RECORDS = 100;
 const GOOGLE_SHEET_MAX_LIST_RECORDS = 1000;
+const PLANTING_CANDIDATE_RECORD_LIMIT = 3;
 const GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES = 10000;
 const GOOGLE_SHEET_MAX_RECORD_SYNC_PAGES = 10;
 const GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS = 1000;
@@ -9649,6 +9687,23 @@ function buildValidatedGoogleSheetRequestBody(payload){
   return text;
 }
 
+async function fetchGoogleSheetReadRequest(url, options){
+  try{
+    return await fetch(url, options);
+  }catch(firstError){
+    if(firstError?.name === "AbortError" || options?.signal?.aborted) throw firstError;
+    await new Promise(resolve => setTimeout(resolve, 500));
+    try{
+      return await fetch(url, options);
+    }catch(secondError){
+      if(secondError?.name === "AbortError" || options?.signal?.aborted) throw secondError;
+      throw new Error(
+        "Apps Scriptに接続できませんでした。通信状態とGoogle連携URLを確認し、Webアプリを再デプロイした直後は少し待ってから再試行してください"
+      );
+    }
+  }
+}
+
 function getUtf8ByteLength(text){
   const value = String(text || "");
   return typeof TextEncoder === "function"
@@ -11106,10 +11161,18 @@ function validateRecordForGoogleTransfer(record, options = {}){
     return invalid("実際の苗ロス率が0〜100の範囲ではありません");
   }
 
-  for(const field of ["plannedSeedlingTrayCount", "actualSeedlingTrayCount", "actualSeedling60TrayCount", "actualSeedling120TrayCount"]){
+  const seedlingTrayFields = {
+    plannedSeedlingTrayCount: "予定苗枚数",
+    actualSeedlingTrayCount: "実苗枚数",
+    actualSeedling60TrayCount: "旧60穴苗枚数",
+    actualSeedling120TrayCount: "旧120穴苗枚数"
+  };
+  for(const field of Object.keys(seedlingTrayFields)){
     if(record[field] !== undefined && record[field] !== null && record[field] !== ""
       && getStrictIntegerInRange(record[field], 0, RECORD_MAX_SEEDLING_TRAYS) === null){
-      return invalid("苗枚数が正しくありません");
+      return invalid(
+        seedlingTrayFields[field] + "が0以上の整数ではありません（現在値: " + String(record[field]) + "）"
+      );
     }
   }
   if(record.actualSeedlingCarryoverMode !== undefined && record.actualSeedlingCarryoverMode !== null && record.actualSeedlingCarryoverMode !== ""
@@ -11739,7 +11802,7 @@ async function importPlantingEventsFromGoogleSheet(options = {}){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_IMPORT_TIMEOUT_MS);
   try{
-    const response = await fetch(config.url, {
+    const response = await fetchGoogleSheetReadRequest(config.url, {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -11907,7 +11970,7 @@ async function fetchGoogleSheetRecordSyncPages(config, options, signal){
       cursor,
       limit: GOOGLE_SHEET_MAX_LIST_RECORDS
     }));
-    const response = await fetch(config.url, {
+    const response = await fetchGoogleSheetReadRequest(config.url, {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -15061,13 +15124,16 @@ function sortHarvestFillKeys(){
   harvestFillKeys.sort((a,b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
 }
 
-function findFirstAvailableInCurrentBuilding(){
-  const recordedSet = getRecordedPalletSet();
-  for(const bed of bedOrder){
-    for(let number = 1; number <= PALLETS_PER_BED; number++){
-      const key = getPalletKey(currentBuilding, bed, number);
-      if(!recordedSet.has(key)){
-        return key;
+function findFirstAvailableInHarvestOrder(startBuilding, recordedSet = getRecordedPalletSet()){
+  const startIndex = Math.max(0, BUILDINGS.indexOf(startBuilding));
+  for(let buildingOffset = 0; buildingOffset < BUILDINGS.length; buildingOffset++){
+    const building = BUILDINGS[(startIndex + buildingOffset) % BUILDINGS.length];
+    for(const bed of bedOrder){
+      for(let number = 1; number <= PALLETS_PER_BED; number++){
+        const key = getPalletKey(building, bed, number);
+        if(!recordedSet.has(key)){
+          return key;
+        }
       }
     }
   }
@@ -15217,8 +15283,8 @@ function getStartupHarvestBuilding(){
   return latestBuilding;
 }
 
-function alertIfPreviousBuildingHasLeftovers(){
-  const previousBuilding = getPreviousBuilding(currentBuilding);
+function alertIfPreviousBuildingHasLeftovers(building = currentBuilding){
+  const previousBuilding = getPreviousBuilding(building);
   if(!previousBuilding) return;
 
   const unharvestedCount = getUnharvestedCountForBuilding(previousBuilding);
@@ -15241,12 +15307,23 @@ function runHarvestPrediction(){
     return;
   }
 
-  alertIfPreviousBuildingHasLeftovers();
+  const startBuilding = getStartupHarvestBuilding();
+  alertIfPreviousBuildingHasLeftovers(startBuilding);
 
-  const autoStartKey = findFirstAvailableInCurrentBuilding();
+  const autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
   if(!autoStartKey){
-    showToast("この号棟に未収穫パレットがありません");
+    showToast("未収穫パレットがありません");
     return;
+  }
+
+  const resolvedStartBuilding = parsePalletKey(autoStartKey).building;
+  if(currentBuilding !== resolvedStartBuilding || casePlacementBuilding !== resolvedStartBuilding){
+    syncCurrentCasePlacementFromInputs();
+    currentBuilding = resolvedStartBuilding;
+    casePlacementBuilding = resolvedStartBuilding;
+    updateBuildingLabel();
+    updateCasePlacementBuildingLabel();
+    populateCasePlacementInputs();
   }
 
   harvestFillKeys = [];
@@ -15675,9 +15752,11 @@ function getSeedlingTrayCountNeededForKeys(keys, options = {}){
   return getSpecialPalletCountForRequiredSeedlings(requiredSeedlings);
 }
 
-function getSeedlingKeysWithUnplanted(keys = harvestFillKeys){
+function getSeedlingKeysWithUnplanted(keys = harvestFillKeys, options = {}){
   const combined = new Set(Array.isArray(keys) ? keys : []);
-  getUnplantedPalletSet().forEach(key => combined.add(key));
+  getUnplantedPalletSet({
+    excludeEventId: options.excludeEventId ?? editingPlantingEventId
+  }).forEach(key => combined.add(key));
   return [...combined];
 }
 
@@ -15685,7 +15764,10 @@ function getSeedlingInstructionCounts(keys = harvestFillKeys, options = {}){
   const baseKeys = Array.isArray(keys) ? keys : [];
   const carryoverSeedlings = clampNumber(options.carryoverSeedlings, 0, 999999, getCurrentCarryoverSeedlingStock());
   const baseCount = getSeedlingTrayCountNeededForKeys(baseKeys, { carryoverSeedlings });
-  const totalCount = getSeedlingTrayCountNeededForKeys(getSeedlingKeysWithUnplanted(baseKeys), { carryoverSeedlings });
+  const totalCount = getSeedlingTrayCountNeededForKeys(
+    getSeedlingKeysWithUnplanted(baseKeys, { recordId: options.recordId }),
+    { carryoverSeedlings }
+  );
   return {
     baseCount,
     totalCount,
@@ -16017,14 +16099,37 @@ function getActivePlantingRecord(){
   return getRecordById(activePlantingRecordId);
 }
 
+function getPlantingCandidateRecordIdSet(){
+  const candidateIds = new Set(
+    [...records]
+      .filter(record => record?.type === "fullHarvest")
+      .sort(compareRecordsByDateDesc)
+      .slice(0, PLANTING_CANDIDATE_RECORD_LIMIT)
+      .map(record => Number(record.id))
+      .filter(Number.isFinite)
+  );
+
+  // 過去の苗植え記録を編集する場合は、その記録元だけ一時的に候補へ戻す。
+  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
+  (editingEvent?.sourceAllocations || []).forEach(allocation => {
+    const recordId = Number(allocation.harvestRecordId);
+    if(Number.isFinite(recordId)) candidateIds.add(recordId);
+  });
+  return candidateIds;
+}
+
 function getLatestPendingPlantingRecord(){
-  return records.find(record => record?.type === "fullHarvest"
-    && getUnplantedPalletKeysForHarvest(record.id).length > 0) || null;
+  const candidateIds = getPlantingCandidateRecordIdSet();
+  return [...records]
+    .filter(record => record?.type === "fullHarvest" && candidateIds.has(Number(record.id)))
+    .sort(compareRecordsByDateDesc)
+    .find(record => getUnplantedPalletKeysForHarvest(record.id).length > 0) || null;
 }
 
 function shouldOfferPlantingRecordResume(record){
   if(!record || record.type !== "fullHarvest") return false;
-  return getUnplantedPalletKeysForHarvest(record.id).length > 0;
+  return getPlantingCandidateRecordIdSet().has(Number(record.id))
+    && getUnplantedPalletKeysForHarvest(record.id).length > 0;
 }
 
 function getStartupPlantingRecordToResume(savedHarvestState = null){
@@ -16069,7 +16174,12 @@ function getUnplantedPalletSet(options = {}){
   const state = options.excludeEventId
     ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
     : getPlantingEventStateIndex();
-  return new Set(state.allowedPalletSet);
+  const candidateIds = getPlantingCandidateRecordIdSet();
+  const allowed = new Set();
+  candidateIds.forEach(recordId => {
+    (state.pendingByHarvestId.get(Number(recordId)) || new Set()).forEach(key => allowed.add(key));
+  });
+  return allowed;
 }
 
 function invalidatePlantingAllowedPalletSetCache(){
@@ -16082,7 +16192,7 @@ function invalidatePlantingAllowedPalletSetCache(){
 function getFastPlantingAllowedPalletSet(){
   const activeRecord = getActivePlantingRecord();
   const allowed = new Set(harvestFillKeys || []);
-  getPlantingEventStateIndex().allowedPalletSet.forEach(key => allowed.add(key));
+  getUnplantedPalletSet().forEach(key => allowed.add(key));
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
   (editingEvent?.plantingPalletKeys || []).forEach(key => allowed.add(key));
   if(plantingAllowedPalletSetCache
@@ -17537,6 +17647,20 @@ function getSeedlingCountFromTrayCount(trayCount){
   return total;
 }
 
+function getEstimatedSeedlingTrayCountFromSeedlings(seedlingCount){
+  const safeSeedlingCount = clampNumber(seedlingCount, 0, 999999999, 0);
+  if(safeSeedlingCount <= 0) return 0;
+  const pattern = getSpecialPalletPattern(settings.specialPallet60CountPer3);
+  if(!pattern.length) return 0;
+  let total = 0;
+  let trayCount = 0;
+  while(total < safeSeedlingCount && trayCount < RECORD_MAX_SEEDLING_TRAYS){
+    total += pattern[trayCount % pattern.length];
+    trayCount++;
+  }
+  return trayCount;
+}
+
 function getActualTakenSeedlingTotal(){
   return getSeedlingCountFromTrayCount(getRecordActualSeedlingTrayCount());
 }
@@ -17592,7 +17716,7 @@ function getRecordSeedlingDiffSummaryText(record = getActivePlantingRecord()){
 
   const plannedCount = clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0);
   const carryoverSeedlings = getCarryoverSeedlingStockBeforeRecord(record.id);
-  const actualSeedlingKeys = getSeedlingKeysWithUnplanted(record.palletKeys);
+  const actualSeedlingKeys = getSeedlingKeysWithUnplanted(record.palletKeys, { recordId: record.id });
   const actualRequiredCount = getSeedlingTrayCountNeededForKeys(actualSeedlingKeys, { carryoverSeedlings });
   const usage = getSeedlingUsageContext({
     recordId: record.id
@@ -17651,7 +17775,7 @@ function updateRecordSeedlingDiffDisplay(){
 
   const plannedCount = clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0);
   const carryoverSeedlings = getCarryoverSeedlingStockBeforeRecord(record.id);
-  const actualSeedlingKeys = getSeedlingKeysWithUnplanted(record.palletKeys);
+  const actualSeedlingKeys = getSeedlingKeysWithUnplanted(record.palletKeys, { recordId: record.id });
   const actualRequiredCount = getSeedlingTrayCountNeededForKeys(actualSeedlingKeys, { carryoverSeedlings });
   const additionalCount = Math.max(0, actualRequiredCount - plannedCount);
   const caseText = getBuildingCaseInstructionSummary(
@@ -18712,7 +18836,7 @@ function renderRecordList(){
     const timeA = parseDateOnlyString(String(a.date || ""))?.getTime() ?? -Infinity;
     const timeB = parseDateOnlyString(String(b.date || ""))?.getTime() ?? -Infinity;
     if(timeA !== timeB) return timeB - timeA;
-    if(a.kind !== b.kind) return a.kind === "planting" ? -1 : 1;
+    if(a.kind !== b.kind) return a.kind === "harvest" ? -1 : 1;
     return b.id - a.id;
   });
   if(!historyItems.length){
@@ -18728,7 +18852,10 @@ function renderRecordList(){
   }
 
   if(!visibleItems.length){
-    visibleItems = [historyItems[0]];
+    const latestDate = historyItems[0].date;
+    visibleItems = historyItems
+      .filter(item => item.date === latestDate)
+      .slice(0, RECORD_LIST_DISPLAY_LIMIT);
   }
 
   const getItemKey = item => item.kind + ":" + item.id;
@@ -18742,8 +18869,24 @@ function renderRecordList(){
   const renderHistoryItem = item => item.kind === "planting"
     ? renderPlantingEventItemHtml(item.value)
     : renderRecordItemHtml(item.value);
-  const visibleHtml = visibleItems.map(renderHistoryItem).join("");
-  const hiddenHtml = hiddenItems.map(renderHistoryItem).join("");
+  const renderHistoryGroups = items => {
+    const groups = new Map();
+    items.forEach(item => {
+      const dateKey = String(item.date || "");
+      if(!groups.has(dateKey)) groups.set(dateKey, { harvest: [], planting: [] });
+      groups.get(dateKey)[item.kind].push(item);
+    });
+    return [...groups.values()].map(group => {
+      const harvestHtml = group.harvest.map(renderHistoryItem).join("");
+      const plantingHtml = group.planting.map(renderHistoryItem).join("");
+      return `<div class="recordDateGroup">
+        ${harvestHtml ? `<div class="recordDateColumn recordDateHarvestColumn">${harvestHtml}</div>` : ""}
+        ${plantingHtml ? `<div class="recordDateColumn recordDatePlantingColumn">${plantingHtml}</div>` : ""}
+      </div>`;
+    }).join("");
+  };
+  const visibleHtml = renderHistoryGroups(visibleItems);
+  const hiddenHtml = renderHistoryGroups(hiddenItems);
 
   box.innerHTML = visibleHtml + (hiddenItems.length ? `
     <details class="recordToggleWrap">
@@ -18930,10 +19073,10 @@ function renderRecordItemHtml(r){
   }
 
   const plantingAgeText = formatPlantingAgeForRecord(r);
-  const showPlantingResumeButton = shouldOfferPlantingRecordResume(r);
   const totalPalletCount = getPalletKeysFromRecord(r).length;
   const pendingPalletCount = getUnplantedPalletKeysForHarvest(r.id).length;
   const plantingEventCount = getPlantingEventsForHarvest(r.id).length;
+  const showPlantingResumeButton = plantingEventCount === 0 && shouldOfferPlantingRecordResume(r);
   const actualLossNumber = getFiniteNumberInRange(r?.actualLoss, -999999, 100);
   const safeActualLoss = actualLossNumber === null ? "-" : escapeHtml(String(actualLossNumber));
 
@@ -18943,7 +19086,6 @@ function renderRecordItemHtml(r){
       <div class="recordMeta">収穫ケース数: ${safeCases}
 実際のロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
 未定植パレット: ${pendingPalletCount} / ${totalPalletCount}
-苗植え履歴: ${plantingEventCount}件
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
@@ -18970,19 +19112,31 @@ function renderPlantingEventItemHtml(event){
     return `${source?.date || "日付不明"}の収穫 ${allocation.palletKeys.length}パレット`;
   }).join(" / ");
   const carryoverText = event.actualSeedlingCarryoverMode === "carryover" ? "余った" : "余っていない";
-  const lossRateText = String(event.actualSeedlingLossRate || "").trim();
+  const rawLossRateText = String(event.actualSeedlingLossRate || "").trim();
+  const lossRateText = rawLossRateText || (usage
+    ? String(Math.round(clampNumber(usage.effectiveLossRate, 0, 100, 0) * 10) / 10)
+    : "");
   const syncText = isPlantingEventUnsent(event) ? "\nGoogle: 未送信" : "";
+  const estimatedCarryoverTrayCount = getEstimatedSeedlingTrayCountFromSeedlings(usage?.carryoverAfter ?? 0);
+  const pendingPalletCount = new Set(
+    event.sourceAllocations.flatMap(allocation => (
+      getUnplantedPalletKeysForHarvest(allocation.harvestRecordId)
+    ))
+  ).size;
   return `
     <div class="recordItem">
       <div class="recordTitle">${escapeHtml(event.plantingDate)} 苗植え記録</div>
-      <div class="recordMeta">実際に取った苗: ${escapeHtml(String(event.actualSeedlingTrayCount))}枚（${escapeHtml(String(event.actualTakenSeedlingCount))}株）
-苗植えした株数: ${escapeHtml(String(event.actualPlantedSeedlingCount))}株
-今回余った苗: ${escapeHtml(carryoverText)}
+      <div class="recordMeta">苗: ${escapeHtml(String(event.actualSeedlingTrayCount))}枚
 実際の苗ロス率: ${escapeHtml(lossRateText ? lossRateText + "%" : "-")}
-作業後の繰越苗: ${escapeHtml(String(usage?.carryoverAfter ?? 0))}株${escapeHtml(syncText)}</div>
+余った苗: ${escapeHtml(String(estimatedCarryoverTrayCount))}枚分（想定）
+未定植パレット: ${escapeHtml(String(pendingPalletCount))}枚</div>
       <details class="recordDetailToggle">
         <summary class="recordDetailSummary">詳細</summary>
-        <div class="recordDetailBody smallText" style="white-space:pre-wrap;">収穫元: ${escapeHtml(sourceText || "-")}
+        <div class="recordDetailBody smallText" style="white-space:pre-wrap;">実際に取った苗: ${escapeHtml(String(event.actualTakenSeedlingCount))}株
+苗植えした株数: ${escapeHtml(String(event.actualPlantedSeedlingCount))}株
+今回余った苗の設定: ${escapeHtml(carryoverText)}
+作業後の繰越苗: ${escapeHtml(String(usage?.carryoverAfter ?? 0))}株${escapeHtml(syncText)}
+収穫元: ${escapeHtml(sourceText || "-")}
 苗植え場所: ${escapeHtml(formatPlantingSummaryForKeys(event.plantingPalletKeys) || "-")}</div>
       </details>
       <div class="recordActions">
