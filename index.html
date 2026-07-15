@@ -19424,7 +19424,20 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
   const normalizedIncomingRaw = sourceRecords.map((source, index) => {
     const row = normalizeGoogleSheetRowRecord(source);
     const record = normalizeImportedRecord(row, index);
-    if(!record) throw new Error("同期する収穫記録" + (index + 1) + "件目に不正な値があります");
+    if(!record){
+      const validation = row && typeof row === "object"
+        ? validateRecordForGoogleTransfer(row)
+        : { ok: false, message: "記録の形式または同期情報が正しくありません" };
+      const detail = validation.ok
+        ? "同期に必要な日付・ケース数・収穫場所・ロス率・パレット情報のいずれかがありません"
+        : validation.message;
+      const identity = row && typeof row === "object"
+        ? "（記録ID: " + String(row.id ?? "なし") + "、日付: " + String(row.date || "なし") + "）"
+        : "";
+      throw new Error(
+        "同期する収穫記録" + (index + 1) + "件目" + identity + "に不正な値があります: " + detail
+      );
+    }
     return record;
   });
   const incomingByIdentity = new Map();
