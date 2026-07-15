@@ -3590,10 +3590,19 @@ button.monitorSaveBtn:active{
 }
 .dashboardForecastBedDelay{
   display:block;
-  margin-top:1px;
+  margin-top:2px;
   color:#6e6e73;
-  font-size:10px;
-  font-weight:700;
+  font-size:clamp(13px,1.6vw,15px);
+  font-weight:800;
+  line-height:1.25;
+}
+.dashboardForecastBedPlantingAge{
+  display:block;
+  margin-top:4px;
+  color:#7c3aed;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.3;
 }
 .dashboardForecastBed .bedMiniMapBar{
   min-height:62px;
@@ -4567,6 +4576,18 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   border-color:var(--ui-blue);
   box-shadow:0 0 0 4px rgba(10,132,255,.14),var(--ui-shadow-sm);
 }
+.forecastCaseField input.harvestCasesAutoEstimated{
+  border-color:#f59e0b;
+  background:#fffaf0;
+  color:#c2410c;
+}
+.forecastCaseField input.harvestCasesAutoEstimated:hover{
+  border-color:#d97706;
+}
+.forecastCaseField input.harvestCasesAutoEstimated:focus{
+  border-color:#d97706;
+  box-shadow:0 0 0 4px rgba(245,158,11,.18),var(--ui-shadow-sm);
+}
 .casePlacementDivider{height:0;margin:14px 0 4px;background:transparent;}
 .casePlacementPanel{margin-top:0;}
 .casePlacementHeader{min-height:56px;margin-bottom:4px;padding:6px 0;}
@@ -5246,6 +5267,8 @@ button.forecastClearBtn{border-radius:13px;}
   min-width:0;
 }
 .recordTitle{color:var(--ui-text);}
+.recordTitleHarvest{color:#15803d;}
+.recordTitlePlanting{color:#2563eb;}
 .recordMeta{color:var(--ui-text-secondary);}
 .recordDetailSummary{
   border-radius:12px;
@@ -5632,7 +5655,7 @@ requestAnimationFrame(function(){
           <div class="forecastFieldHeader">
             <label class="fieldAccentLabel" for="casesInput">収穫ケース数</label>
           </div>
-          <input id="casesInput" type="number" min="0" value="" inputmode="numeric" aria-label="収穫ケース数" oninput="invalidateWorkflowMonitorCheckpoint(); syncRecordCasesFromMain(false); updateRecordActualLoss(); renderForecastSummary()">
+          <input id="casesInput" type="number" min="0" value="" inputmode="numeric" aria-label="収穫ケース数" oninput="markHarvestCasesAsManuallyEdited(); invalidateWorkflowMonitorCheckpoint(); syncRecordCasesFromMain(false); updateRecordActualLoss(); renderForecastSummary()">
         </div>
       </div>
 
@@ -6241,7 +6264,7 @@ requestAnimationFrame(function(){
       <div class="dashboardHarvestForecastHead">
         <div>
           <div class="sectionTitle">収穫時期予想</div>
-          <div class="dashboardHarvestForecastLead">直近1ヶ月の平均ケース数で収穫を続けた場合の目安です。</div>
+          <div class="dashboardHarvestForecastLead">直近1ヶ月の平均ケース数と平均収穫ロス率を使った目安です。</div>
         </div>
         <div id="dashboardHarvestForecastStatus" class="dashboardHarvestForecastStatus"></div>
       </div>
@@ -6254,7 +6277,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。この予想に限り、直近1件で収穫済みのパレットを除き、現在の収穫途中の号棟から通常の順番で進みます。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近1件で収穫済みのパレットを除いて、現在の収穫途中の号棟から通常の順番で進みます。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -6706,6 +6729,7 @@ let activeBedDetailContext = null;
 let activeBedDetailBed = null;
 let palletDragState = null;
 let recordCasesEdited = false;
+let harvestCasesAutoEstimated = false;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
 let dashboardHarvestForecastBuilding = null;
@@ -7246,6 +7270,7 @@ function saveHarvestStateToStorage(options = {}){
     harvestSummary,
     manualSeedlingCount,
     casesInput: document.getElementById("casesInput")?.value || "",
+    harvestCasesAutoEstimated,
     monitorMemoInput: getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
     monitorMemoItems: getMonitorMemoInputValues(),
     casePlacementByBuilding,
@@ -7283,6 +7308,7 @@ function loadHarvestStateFromStorage(){
       harvestSummary: parsed.harvestSummary && typeof parsed.harvestSummary === "object" ? parsed.harvestSummary : null,
       manualSeedlingCount: normalizeManualSeedlingCount(parsed.manualSeedlingCount),
       casesInput: parsed.casesInput ?? "",
+      harvestCasesAutoEstimated: !!parsed.harvestCasesAutoEstimated,
       monitorMemoInput: parsed.monitorMemoInput ?? "",
       monitorMemoItems: Array.isArray(parsed.monitorMemoItems) ? parsed.monitorMemoItems.map(item => String(item ?? "")) : null,
       casePlacementByBuilding: parsed.casePlacementByBuilding && typeof parsed.casePlacementByBuilding === "object" ? parsed.casePlacementByBuilding : null,
@@ -7315,6 +7341,46 @@ function clearHarvestStateFromStorage(){
   localStorage.removeItem(HARVEST_STATE_KEY);
 }
 
+function updateHarvestCasesAutoEstimatedAppearance(){
+  const casesInput = document.getElementById("casesInput");
+  if(!casesInput) return;
+  const isAutoEstimated = harvestCasesAutoEstimated && String(casesInput.value || "").trim() !== "";
+  casesInput.classList.toggle("harvestCasesAutoEstimated", isAutoEstimated);
+  casesInput.title = isAutoEstimated ? "パレット選択から自動計算された値" : "";
+}
+
+function markHarvestCasesAsManuallyEdited(){
+  harvestCasesAutoEstimated = false;
+  updateHarvestCasesAutoEstimatedAppearance();
+}
+
+function updateEstimatedHarvestCasesFromSelection(){
+  if(activeAppTab !== "forecast") return;
+  const casesInput = document.getElementById("casesInput");
+  if(!casesInput) return;
+  if(casesInput.value !== "" && !harvestCasesAutoEstimated) return;
+
+  const estimatedRegularCases = harvestFillKeys.length
+    ? Math.max(0, Math.floor(getCurrentHarvestTotal() / CASE_SIZE))
+    : 0;
+  const estimatedCases = estimatedRegularCases > 0
+    ? estimatedRegularCases + getPartialHarvestCasesForDate(getHarvestTargetDateString())
+    : 0;
+  casesInput.value = estimatedCases > 0 ? String(estimatedCases) : "";
+  harvestCasesAutoEstimated = estimatedCases > 0;
+  updateHarvestCasesAutoEstimatedAppearance();
+  syncRecordCasesFromMain(false);
+  updateEmptyInputHighlight(casesInput);
+}
+
+function getManualHarvestNeedHeads(){
+  const casesInput = document.getElementById("casesInput");
+  if(!casesInput || harvestCasesAutoEstimated || String(casesInput.value || "").trim() === "") {
+    return null;
+  }
+  return getHarvestCasePlan().regularCases * CASE_SIZE;
+}
+
 function refreshAfterHarvestSelectionChanged(options = {}){
   const keepRecordSummary = !!options.keepRecordSummary;
   if(activeAppTab === "forecast") invalidateWorkflowMonitorCheckpoint();
@@ -7325,6 +7391,7 @@ function refreshAfterHarvestSelectionChanged(options = {}){
     harvestSummary = null;
   }
 
+  updateEstimatedHarvestCasesFromSelection();
   drawBeds();
   drawRecordBeds();
   renderForecastSummary();
@@ -11608,6 +11675,23 @@ async function sendPendingRecordsToGoogleSheet(){
     const config = getValidatedGoogleSheetConfig();
     if(!config) return;
 
+    const plantingStatusBeforeSend = loadPlantingEventSyncStatus();
+    const hasFailedLegacyPlantingEvents = plantingEvents.some(event => (
+      event.legacyMigrated
+      && String(plantingStatusBeforeSend[String(event.eventId)]?.state || "") === "failed"
+    ));
+    if(hasFailedLegacyPlantingEvents){
+      try{
+        await importPlantingEventsFromGoogleSheet({
+          config,
+          silentErrors: true,
+          throwOnError: true
+        });
+      }catch(e){
+        console.warn("Failed legacy planting event reconciliation failed:", e);
+      }
+    }
+
     const unsentRecords = getGoogleSheetUnsentRecords();
     const unsentPlantingEvents = getGoogleSheetUnsentPlantingEvents().sort(comparePlantingEventsAsc);
 
@@ -11637,14 +11721,27 @@ async function sendPendingRecordsToGoogleSheet(){
     const addedCount = Math.max(0, successCount - updatedCount);
     let plantingSuccessCount = 0;
     let plantingFailCount = 0;
+    const plantingFailureDetails = [];
     for(const event of unsentPlantingEvents){
       const result = await syncPlantingEventWithSources(event, { manageSendState: false });
       if(result.ok) plantingSuccessCount++;
-      else plantingFailCount++;
+      else{
+        plantingFailCount++;
+        plantingFailureDetails.push(
+          String(event.plantingDate || "日付なし") + "（ID: " + String(event.eventId) + "）: " +
+          String(result.message || "更新できませんでした")
+        );
+      }
     }
 
     if(failCount > 0 || plantingFailCount > 0){
       showToast("送信完了: 収穫 追加" + addedCount + "・更新" + updatedCount + "・重複" + duplicateCount + "・失敗" + failCount + " / 苗植え 成功" + plantingSuccessCount + "・失敗" + plantingFailCount);
+      if(plantingFailureDetails.length){
+        showRecordImportError(
+          "苗植え記録を更新できませんでした。\n\n" + plantingFailureDetails.slice(0, 10).join("\n"),
+          "苗植え記録の送信失敗"
+        );
+      }
     }else{
       showToast("送信完了: 収穫" + (successCount + duplicateCount) + "件 / 苗植え" + plantingSuccessCount + "件");
     }
@@ -11679,7 +11776,7 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
   const removableLegacyIds = new Set();
   plantingEvents.forEach(event => {
     const syncState = String(status[String(event.eventId)]?.state || "");
-    if(!event.legacyMigrated || ["edited", "failed", "pending"].includes(syncState)) return;
+    if(!event.legacyMigrated || ["edited", "pending"].includes(syncState)) return;
     const legacyLotKeys = event.sourceAllocations.flatMap(allocation => (
       allocation.palletKeys.map(key => getPlantingLotKey(allocation.harvestRecordId, key))
     ));
@@ -12906,12 +13003,16 @@ function getDashboardSummary(recordsInPeriod){
   }, {});
   const lossBase = fullRecords.reduce((sum, record) => {
     const cases = clampNumber(record.cases, 0, 999999, 0);
-    const loss = Number(record.actualLoss);
+    const lossText = String(record.actualLoss ?? "").trim();
+    if(lossText === "") return sum;
+    const loss = Number(lossText);
     if(!Number.isFinite(loss)) return sum;
     return sum + loss * cases;
   }, 0);
   const lossCases = fullRecords.reduce((sum, record) => {
-    const loss = Number(record.actualLoss);
+    const lossText = String(record.actualLoss ?? "").trim();
+    if(lossText === "") return sum;
+    const loss = Number(lossText);
     if(!Number.isFinite(loss)) return sum;
     return sum + clampNumber(record.cases, 0, 999999, 0);
   }, 0);
@@ -13131,7 +13232,9 @@ function buildDashboardLossSeries(recordsInPeriod, period, granularity){
 
   recordsInPeriod.forEach(record => {
     if(record.type === "partialHarvest") return;
-    const loss = Number(record.actualLoss);
+    const lossText = String(record.actualLoss ?? "").trim();
+    if(lossText === "") return;
+    const loss = Number(lossText);
     const cases = clampNumber(record.cases, 0, 999999, 0);
     if(!Number.isFinite(loss) || cases <= 0) return;
     const recordDate = parseDateOnlyString(record.date);
@@ -13587,22 +13690,29 @@ function buildDashboardHarvestForecastModel(){
   const recentRecords = getDashboardRecordsForPeriod(recentPeriod);
   const metrics = getDashboardRecentMetrics(recentRecords);
   const averageCases = Number(metrics.averageCases);
+  const averageLoss = metrics.averageLoss === null ? NaN : Number(metrics.averageLoss);
   const recordedSet = getRecordedPalletSetFromRecords(getRecentHarvestRecordsByCount(referenceDate, 1));
+  const plantingDateByPallet = getLatestPlantingDateByPallet(referenceDate, { includeTargetDate: true });
   const startBuilding = getStartupHarvestBuilding();
   const totalPalletCount = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
+  const normalizedAverageCases = Number.isFinite(averageCases) && averageCases > 0 ? averageCases : null;
+  const normalizedAverageLoss = Number.isFinite(averageLoss) && averageLoss <= 100 ? averageLoss : null;
 
   const model = {
-    averageCases: Number.isFinite(averageCases) && averageCases > 0 ? averageCases : null,
+    averageCases: normalizedAverageCases,
+    averageLoss: normalizedAverageLoss,
+    canForecast: normalizedAverageCases !== null && normalizedAverageLoss !== null && normalizedAverageLoss < 100,
     harvestDays: metrics.harvestDays,
     recentPeriod,
     referenceDate,
     recordedSet,
+    plantingDateByPallet,
     startBuilding,
     palletForecasts: new Map(),
     bedRanges: new Map(),
     buildingRanges: new Map()
   };
-  if(!model.averageCases) return model;
+  if(!model.canForecast) return model;
 
   let startPallet = null;
   const startBuildingIndex = Math.max(0, BUILDINGS.indexOf(startBuilding));
@@ -13632,10 +13742,11 @@ function buildDashboardHarvestForecastModel(){
 
   let cursor = { ...startPallet };
   let cumulativeHeads = 0;
+  const harvestRate = Math.max(0, (100 - model.averageLoss) / 100);
   for(let index = 0; index < totalPalletCount; index++){
     const key = getPalletKey(cursor.building, cursor.bed, cursor.number);
     if(!recordedSet.has(key)){
-      cumulativeHeads += getPredictedHarvestForBed(cursor.bed, cursor.number);
+      cumulativeHeads += getHarvestPlantCountForPallet(cursor.bed, cursor.number) * harvestRate;
       const harvestDateIndex = Math.max(0, Math.ceil(cumulativeHeads / capacityPerHarvestDay) - 1);
       const date = ensureHarvestDate(harvestDateIndex);
       model.palletForecasts.set(key, {
@@ -13726,11 +13837,40 @@ function getDashboardForecastBedMiniMapHtml(model, building, bed){
   }).join("")}</div>`;
 }
 
+function getDashboardForecastBedPlantingAgeText(model, building, bed){
+  const ages = [];
+  let forecastCount = 0;
+
+  for(let number = 1; number <= PALLETS_PER_BED; number++){
+    const key = getPalletKey(building, bed, number);
+    const forecast = model.palletForecasts.get(key);
+    if(!forecast) continue;
+    forecastCount++;
+
+    const plantingDate = model.plantingDateByPallet.get(key);
+    if(!plantingDate) continue;
+    const ageDays = getLocalDayDiff(plantingDate, forecast.date);
+    if(Number.isFinite(ageDays) && ageDays >= 0) ages.push(ageDays);
+  }
+
+  if(forecastCount === 0) return "";
+  if(ages.length === 0) return "予想時：定植記録なし";
+
+  const minAge = Math.min(...ages);
+  const maxAge = Math.max(...ages);
+  const ageText = minAge === maxAge ? `${minAge}日目` : `${minAge}〜${maxAge}日目`;
+  return `予想時：定植から${ageText}${ages.length < forecastCount ? "（一部不明）" : ""}`;
+}
+
 function renderDashboardHarvestForecastBeds(model){
   const container = document.getElementById("dashboardHarvestForecastBeds");
   if(!container) return;
-  if(!model.averageCases){
-    container.innerHTML = `<div class="dashboardEmpty" style="grid-column:1/-1;">直近1ヶ月に収穫ケース数の記録がないため、まだ予想できません。</div>`;
+  if(!model.canForecast){
+    const reasons = [];
+    if(model.averageCases === null) reasons.push("直近1ヶ月に収穫ケース数の記録がありません");
+    if(model.averageLoss === null) reasons.push("直近1ヶ月に収穫ロス率を計算できる通常収穫記録がありません");
+    if(model.averageLoss !== null && model.averageLoss >= 100) reasons.push("平均収穫ロス率が100%のため見込み収穫数を計算できません");
+    container.innerHTML = `<div class="dashboardEmpty" style="grid-column:1/-1;">${escapeHtml(reasons.join("。"))}。</div>`;
     return;
   }
 
@@ -13739,12 +13879,14 @@ function renderDashboardHarvestForecastBeds(model){
     : model.startBuilding;
   container.innerHTML = bedMap.map(bed => {
     const rangeText = formatDashboardForecastRange(model.bedRanges.get(`${building}-${bed}`));
+    const plantingAgeText = getDashboardForecastBedPlantingAgeText(model, building, bed);
     return `
       <div class="bed bedCollapsed dashboardForecastBed">
         <div class="bedTitle">
           <span class="dashboardForecastBedName">${bed}ベッド</span>
           <span class="dashboardForecastBedDate">${escapeHtml(rangeText.dateText)}</span>
           <span class="dashboardForecastBedDelay">${escapeHtml(rangeText.delayText)}</span>
+          ${plantingAgeText ? `<span class="dashboardForecastBedPlantingAge">${escapeHtml(plantingAgeText)}</span>` : ""}
         </div>
         ${getDashboardForecastBedMiniMapHtml(model, building, bed)}
       </div>
@@ -13774,12 +13916,11 @@ function renderDashboardHarvestForecast(){
     dashboardHarvestForecastBuilding = model.startBuilding;
   }
 
-  status.innerHTML = model.averageCases
-    ? `平均 ${escapeHtml(formatDashboardMetricNumber(model.averageCases))}ケース／日<br><span style="font-weight:650;">実績 ${model.harvestDays}日</span>`
-    : `平均 -- ケース／日`;
+  status.innerHTML = `平均 ${escapeHtml(formatDashboardMetricNumber(model.averageCases))}ケース／日<br>`
+    + `<span style="font-weight:650;">平均ロス ${escapeHtml(formatDashboardMetricNumber(model.averageLoss, "%"))} / 実績 ${model.harvestDays}日</span>`;
   tabs.innerHTML = BUILDINGS.map(building => {
     const rangeText = formatDashboardForecastRange(model.buildingRanges.get(building));
-    const buildingDelayText = model.averageCases ? rangeText.shortDelayText : "--";
+    const buildingDelayText = model.canForecast ? rangeText.shortDelayText : "--";
     return `
       <button type="button" class="dashboardForecastBuildingBtn ${building === dashboardHarvestForecastBuilding ? "active" : ""}"
         data-dashboard-forecast-building="${building}" onclick="setDashboardHarvestForecastBuilding(${building})">
@@ -13886,9 +14027,10 @@ function getEffectivePlantingDateForRecord(record){
   return parseDateOnlyString(String(record.date || "").trim());
 }
 
-function getLatestPlantingDateByPallet(targetDate){
+function getLatestPlantingDateByPallet(targetDate, options = {}){
   const map = new Map();
   const targetDay = startOfLocalDay(targetDate);
+  const includeTargetDate = !!options.includeTargetDate;
 
   for(const event of plantingEvents){
     const plantingDate = parseDateOnlyString(String(event?.plantingDate || "").trim());
@@ -13897,7 +14039,7 @@ function getLatestPlantingDateByPallet(targetDate){
     const diffDays = getLocalDayDiff(recordDay, targetDay);
     if(diffDays < 0) continue;
     if(diffDays > CALCULATION_LOOKBACK_DAYS) continue;
-    if(recordDay.getTime() >= targetDay.getTime()) continue;
+    if(includeTargetDate ? recordDay.getTime() > targetDay.getTime() : recordDay.getTime() >= targetDay.getTime()) continue;
 
     const plantingKeys = Array.isArray(event.plantingPalletKeys) ? event.plantingPalletKeys : [];
     if(!plantingKeys.length) continue;
@@ -14168,13 +14310,9 @@ function togglePallet(building, bed, number){
     refreshAfterHarvestSelectionChanged();
     return;
   }else{
-    const needHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
-    if(needHeads <= 0){
-      showToast("先に収穫ケースを入力してください");
-      return;
-    }
+    const needHeads = getManualHarvestNeedHeads();
     const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForPallet(building, bed, number);
-    if(nextTotal > needHeads){
+    if(needHeads !== null && nextTotal > needHeads){
       showToast("必要個数を超えるため追加できません");
       return;
     }
@@ -14186,11 +14324,7 @@ function togglePallet(building, bed, number){
 }
 
 function addOrRemoveWholeBed(bed){
-  const needHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
-  if(needHeads <= 0){
-    showToast("先に収穫ケースを入力してください");
-    return;
-  }
+  const needHeads = getManualHarvestNeedHeads();
 
   const fullyFilled = isBedFullyFilledInCurrentBuilding(bed);
 
@@ -14199,12 +14333,7 @@ function addOrRemoveWholeBed(bed){
       const p = parsePalletKey(key);
       return !(p.building === currentBuilding && p.bed === bed);
     });
-    recalcHarvestSummary();
-    drawBeds();
-    drawRecordBeds();
-    renderForecastSummary();
-    document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
-    updateRecordActualLoss();
+    refreshAfterHarvestSelectionChanged();
     showToast(currentBuilding + "号棟 " + bed + "ベッドを全削除しました");
     return;
   }
@@ -14216,14 +14345,14 @@ function addOrRemoveWholeBed(bed){
     if(harvestFillKeys.includes(key)) continue;
 
     const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForPallet(currentBuilding, bed, number);
-    if(nextTotal > needHeads) break;
+    if(needHeads !== null && nextTotal > needHeads) break;
 
     harvestFillKeys.push(key);
     added++;
   }
 
   if(added === 0){
-    showToast("必要個数を超えるため追加できません");
+    showToast(needHeads === null ? "追加できるパレットがありません" : "必要個数を超えるため追加できません");
     return;
   }
 
@@ -14440,11 +14569,7 @@ function selectBedToNeed(direction){
   hideBedActionMenu();
   if(!bed) return;
 
-  const needHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
-  if(needHeads <= 0){
-    showToast("先に収穫ケースを入力してください");
-    return;
-  }
+  const needHeads = getManualHarvestNeedHeads();
 
   const originalKeys = [...harvestFillKeys];
   harvestFillKeys = harvestFillKeys.filter(key => {
@@ -14452,7 +14577,7 @@ function selectBedToNeed(direction){
     return !(p.building === currentBuilding && p.bed === bed);
   });
 
-  if(getCurrentHarvestTotal() >= needHeads){
+  if(needHeads !== null && getCurrentHarvestTotal() >= needHeads){
     harvestFillKeys = originalKeys;
     showToast("すでに必要個数に達しています");
     return;
@@ -14473,7 +14598,7 @@ function selectBedToNeed(direction){
     if(harvestFillKeys.includes(key)) continue;
 
     const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForPallet(currentBuilding, bed, number);
-    if(nextTotal > needHeads) break;
+    if(needHeads !== null && nextTotal > needHeads) break;
 
     harvestFillKeys.push(key);
     added++;
@@ -14481,7 +14606,7 @@ function selectBedToNeed(direction){
 
   if(added === 0){
     harvestFillKeys = originalKeys;
-    showToast("必要個数を超えるため追加できません");
+    showToast(needHeads === null ? "追加できるパレットがありません" : "必要個数を超えるため追加できません");
     return;
   }
 
@@ -14611,13 +14736,9 @@ function applyForecastPalletDragChange(building, bed, number, mode){
 
   if(fillIndex >= 0) return false;
 
-  const needHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
-  if(needHeads <= 0){
-    showPalletDragToast("先に収穫ケースを入力してください");
-    return false;
-  }
+  const needHeads = getManualHarvestNeedHeads();
   const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForPallet(building, bed, number);
-  if(nextTotal > needHeads){
+  if(needHeads !== null && nextTotal > needHeads){
     showPalletDragToast("必要個数を超えるため追加できません");
     return false;
   }
@@ -14923,6 +15044,13 @@ function clearHarvestPrediction(){
   harvestSummary = null;
   manualSeedlingCount = null;
   forecastSelectionState = null;
+  if(harvestCasesAutoEstimated){
+    const casesInput = document.getElementById("casesInput");
+    if(casesInput) casesInput.value = "";
+    harvestCasesAutoEstimated = false;
+    updateHarvestCasesAutoEstimatedAppearance();
+    syncRecordCasesFromMain(false);
+  }
   drawBeds();
   drawRecordBeds();
   renderForecastSummary();
@@ -16668,6 +16796,8 @@ function resetForecastCasesInput(){
   invalidateWorkflowMonitorCheckpoint();
   const casesInput = document.getElementById("casesInput");
   if(casesInput) casesInput.value = "";
+  harvestCasesAutoEstimated = false;
+  updateHarvestCasesAutoEstimatedAppearance();
   refreshEmptyInputHighlights();
   renderForecastSummary();
 }
@@ -17972,54 +18102,18 @@ function resetPlantingRecordChanges(){
     clearRecordForm();
     return;
   }
+  if(!ensureProtectedOperationAccess("収穫記録に戻る")) return;
 
   hideBedActionMenu();
   hideRecordBedActionMenu();
-  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
-  if(editingEvent){
-    plantingRecordDraft = {
-      recordId: Number(record.id),
-      keys: [...editingEvent.plantingPalletKeys],
-      date: editingEvent.plantingDate,
-      actualSeedlingTrayCount: String(editingEvent.actualSeedlingTrayCount || ""),
-      actualSeedlingCarryoverMode: editingEvent.actualSeedlingCarryoverMode,
-      actualSeedlingUserEdited: true,
-      plantingSummaryInput: formatPlantingSummaryForKeys(editingEvent.plantingPalletKeys),
-      recordPlantingSummaryEdited: false
-    };
-    invalidatePlantingAllowedPalletSetCache();
-    applyPlantingRecordDraft(record);
-    refreshAfterHarvestSelectionChanged();
-    updateRecordSeedlingDiffDisplay();
-    updateRecordActualSeedlingDisplays();
-    saveHarvestStateToStorage();
-    showToast("苗植え記録の変更を戻しました");
-    return;
-  }
   plantingRecordDraft = null;
-  harvestFillKeys = getUnplantedPalletKeysForHarvest(record.id);
-  recordPlantingSummaryEdited = false;
-
-  const dateInput = document.getElementById("recordDateInput");
-  if(dateInput){
-    dateInput.value = formatDateOnlyString(new Date());
-    updateRecordWeekdayDisplay();
-  }
-
-  const input = document.getElementById("recordActualSeedlingTrayCountInput");
-  if(input){
-    delete input.dataset.userEdited;
-    delete input.dataset.clearedOnFocus;
-    delete input.dataset.enteredSinceFocus;
-    delete input.dataset.previousValue;
-  }
-  setRecordSeedlingCarryoverMode(record.actualSeedlingCarryoverMode || "loss", { silent: true });
-  syncRecordActualSeedlingTrayCountInput(record, { force: true });
-  refreshAfterHarvestSelectionChanged();
-  updateRecordSeedlingDiffDisplay();
-  updateRecordActualSeedlingDisplays();
-  saveHarvestStateToStorage();
-  showToast("苗植え記録の変更を戻しました");
+  editingPlantingEventId = null;
+  invalidatePlantingAllowedPalletSetCache();
+  editHarvestRecord(record.id, {
+    accessChecked: true,
+    skipForecastCapture: true,
+    returnFromPlantingClear: true
+  });
 }
 
 function saveRecord(){
@@ -18759,8 +18853,8 @@ async function confirmDeleteRecord(id){
   deleteRecord(id, { accessChecked: true, sheetDeleted, deletedRecordOverride });
 }
 
-function editHarvestRecord(id){
-  if(!ensureProtectedOperationAccess("収穫記録の編集")) return;
+function editHarvestRecord(id, options = {}){
+  if(!options.accessChecked && !ensureProtectedOperationAccess("収穫記録の編集")) return;
   if(googleSheetSendState !== "idle"){
     showToast("送信完了後に記録を編集してください");
     return;
@@ -18773,7 +18867,7 @@ function editHarvestRecord(id){
 
   const wasAlreadyEditingHarvestRecord = !!editingHarvestRecordId;
   if(switchTab("record") === false) return;
-  if(!wasAlreadyEditingHarvestRecord) captureForecastSelectionState();
+  if(!wasAlreadyEditingHarvestRecord && !options.skipForecastCapture) captureForecastSelectionState();
   enterHarvestRecordMode();
   editingHarvestRecordId = Number(record.id);
   recordSelectionMode = "harvest";
@@ -18823,7 +18917,9 @@ function editHarvestRecord(id){
   updateRecordActualSeedlingDisplays();
   saveHarvestStateToStorage();
   requestAnimationFrame(() => requestAnimationFrame(scrollToRecordSaveCard));
-  showToast("収穫記録を編集できます");
+  showToast(options.returnFromPlantingClear
+    ? "苗植え入力を破棄して収穫記録に戻りました"
+    : "収穫記録を編集できます");
 }
 
 function renderRecordList(){
@@ -19061,7 +19157,7 @@ function renderRecordItemHtml(r){
   if(r.type === "partialHarvest"){
     return `
     <div class="recordItem">
-      <div class="recordTitle">${safeDate} 先取り収穫</div>
+      <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">先取り収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}${escapeHtml(syncWarningText)}</div>
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
@@ -19073,19 +19169,24 @@ function renderRecordItemHtml(r){
   }
 
   const plantingAgeText = formatPlantingAgeForRecord(r);
-  const totalPalletCount = getPalletKeysFromRecord(r).length;
-  const pendingPalletCount = getUnplantedPalletKeysForHarvest(r.id).length;
   const plantingEventCount = getPlantingEventsForHarvest(r.id).length;
   const showPlantingResumeButton = plantingEventCount === 0 && shouldOfferPlantingRecordResume(r);
   const actualLossNumber = getFiniteNumberInRange(r?.actualLoss, -999999, 100);
   const safeActualLoss = actualLossNumber === null ? "-" : escapeHtml(String(actualLossNumber));
+  const harvestBuildingText = [...new Set(
+    getPalletKeysFromRecord(r)
+      .map(key => parsePalletKey(String(key || "")).building)
+      .filter(building => BUILDINGS.includes(building))
+  )]
+    .sort((a, b) => BUILDINGS.indexOf(a) - BUILDINGS.indexOf(b))
+    .join("・") || "-";
 
   return `
     <div class="recordItem">
-      <div class="recordTitle">${safeDate} 収穫記録</div>
+      <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}
-実際のロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
-未定植パレット: ${pendingPalletCount} / ${totalPalletCount}
+ロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
+収穫場所: ${escapeHtml(harvestBuildingText)}
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
@@ -19125,10 +19226,10 @@ function renderPlantingEventItemHtml(event){
   ).size;
   return `
     <div class="recordItem">
-      <div class="recordTitle">${escapeHtml(event.plantingDate)} 苗植え記録</div>
+      <div class="recordTitle">${escapeHtml(event.plantingDate)} <span class="recordTitlePlanting">苗植え</span></div>
       <div class="recordMeta">苗: ${escapeHtml(String(event.actualSeedlingTrayCount))}枚
-実際の苗ロス率: ${escapeHtml(lossRateText ? lossRateText + "%" : "-")}
-余った苗: ${escapeHtml(String(estimatedCarryoverTrayCount))}枚分（想定）
+苗ロス率: ${escapeHtml(lossRateText ? lossRateText + "%" : "-")}
+余った苗:約 ${escapeHtml(String(estimatedCarryoverTrayCount))}枚分
 未定植パレット: ${escapeHtml(String(pendingPalletCount))}枚</div>
       <details class="recordDetailToggle">
         <summary class="recordDetailSummary">詳細</summary>
@@ -20244,6 +20345,7 @@ window.onload = () => {
     harvestFillKeys = savedHarvestState.harvestFillKeys;
     harvestSummary = savedHarvestState.harvestSummary;
     manualSeedlingCount = savedHarvestState.manualSeedlingCount;
+    harvestCasesAutoEstimated = !!savedHarvestState.harvestCasesAutoEstimated;
     recordCasesEdited = !!savedHarvestState.recordCasesEdited;
     recordPlantingSummaryEdited = !!savedHarvestState.recordPlantingSummaryEdited;
     recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
@@ -20275,6 +20377,7 @@ window.onload = () => {
 
     const casesInput = document.getElementById("casesInput");
     if(casesInput) casesInput.value = savedHarvestState.casesInput;
+    updateHarvestCasesAutoEstimatedAppearance();
 
     renderMonitorMemoInputs(savedHarvestState.monitorMemoItems || normalizeMonitorMemoItems(null, savedHarvestState.monitorMemoInput || ""));
 
