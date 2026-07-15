@@ -6264,7 +6264,7 @@ requestAnimationFrame(function(){
       <div class="dashboardHarvestForecastHead">
         <div>
           <div class="sectionTitle">収穫時期予想</div>
-          <div class="dashboardHarvestForecastLead">直近1ヶ月の平均ケース数と平均収穫ロス率を使った目安です。</div>
+          <div class="dashboardHarvestForecastLead">収穫時の計算設定、直近1ヶ月の平均ケース数と平均収穫ロス率を使った目安です。</div>
         </div>
         <div id="dashboardHarvestForecastStatus" class="dashboardHarvestForecastStatus"></div>
       </div>
@@ -6776,6 +6776,7 @@ let monitorPreviewResolver = null;
 let monitorTodayRefreshTimer = null;
 let workflowMonitorCheckpointSignature = "";
 let workflowHarvestRecordingActive = false;
+let workflowPlantingSessionActive = false;
 let workflowGuideUpdateFrame = null;
 let workflowCompletionCelebrationUntil = 0;
 let workflowCompletionCelebrationTimer = null;
@@ -7290,6 +7291,7 @@ function saveHarvestStateToStorage(options = {}){
     forecastSelectionState,
     workflowMonitorCheckpointSignature,
     workflowHarvestRecordingActive,
+    workflowPlantingSessionActive,
     savedAt: new Date().toISOString()
   };
   localStorage.setItem(HARVEST_STATE_KEY, JSON.stringify(payload));
@@ -7330,7 +7332,8 @@ function loadHarvestStateFromStorage(){
       plantingRecordDraft: normalizePlantingRecordDraft(parsed.plantingRecordDraft),
       forecastSelectionState: normalizeForecastSelectionState(parsed.forecastSelectionState),
       workflowMonitorCheckpointSignature: typeof parsed.workflowMonitorCheckpointSignature === "string" ? parsed.workflowMonitorCheckpointSignature : "",
-      workflowHarvestRecordingActive: !!parsed.workflowHarvestRecordingActive
+      workflowHarvestRecordingActive: !!parsed.workflowHarvestRecordingActive,
+      workflowPlantingSessionActive: !!parsed.workflowPlantingSessionActive
     };
   }catch(e){
     return null;
@@ -8066,14 +8069,9 @@ function getWorkflowPlanFingerprint(){
 }
 
 function getWorkflowActivePendingRecord(){
-  if(!workflowPendingRecordCacheReady){
-    workflowPendingRecordCache = getLatestPendingPlantingRecord();
-    workflowPendingRecordCacheReady = true;
-  }
-  if(workflowPendingRecordCache?.type === "fullHarvest" && workflowPendingRecordCache.plantingPending){
-    return workflowPendingRecordCache;
-  }
-  return null;
+  if(recordSelectionMode !== "planting" || !workflowPlantingSessionActive) return null;
+  const activeRecord = getActivePlantingRecord();
+  return activeRecord?.type === "fullHarvest" ? activeRecord : null;
 }
 
 function getWorkflowGuideState(){
@@ -16266,13 +16264,13 @@ function getStartupPlantingRecordToResume(savedHarvestState = null){
     const sourceRecord = getRecordById(editingEvent?.sourceAllocations?.[0]?.harvestRecordId);
     if(sourceRecord?.type === "fullHarvest") return sourceRecord;
   }
-  if(savedHarvestState?.recordSelectionMode === "planting"){
+  if(savedHarvestState?.recordSelectionMode === "planting" && savedHarvestState.workflowPlantingSessionActive){
     const savedRecord = getRecordById(savedHarvestState.activePlantingRecordId);
     if(savedRecord?.type === "fullHarvest" && shouldOfferPlantingRecordResume(savedRecord)){
       return savedRecord;
     }
   }
-  return getLatestPendingPlantingRecord();
+  return null;
 }
 
 function repairLegacyPendingPlantingRecords(savedHarvestState = null){
@@ -16364,6 +16362,7 @@ function isPlantingSelectionAllowed(key, options = {}){
 function enterHarvestRecordMode(){
   recordSelectionMode = "harvest";
   activePlantingRecordId = null;
+  workflowPlantingSessionActive = false;
   editingPlantingEventId = null;
   plantingRecordDraft = null;
   recordPlantingSummaryEdited = false;
@@ -16377,6 +16376,7 @@ function enterPlantingRecordMode(record){
   closeRecordFloatingUi();
   recordSelectionMode = "planting";
   activePlantingRecordId = Number(record.id);
+  workflowPlantingSessionActive = true;
   recordPlantingSummaryEdited = false;
   editingHarvestRecordId = null;
   applyPlantingRecordDraft(record);
@@ -20355,15 +20355,18 @@ window.onload = () => {
     forecastSelectionState = savedHarvestState.forecastSelectionState;
     workflowMonitorCheckpointSignature = savedHarvestState.workflowMonitorCheckpointSignature || "";
     workflowHarvestRecordingActive = !!savedHarvestState.workflowHarvestRecordingActive;
+    workflowPlantingSessionActive = !!savedHarvestState.workflowPlantingSessionActive;
     if(editingPlantingEventId && !getPlantingEventById(editingPlantingEventId)){
       editingPlantingEventId = null;
       recordSelectionMode = "harvest";
       activePlantingRecordId = null;
       plantingRecordDraft = null;
-    }else if(recordSelectionMode === "planting" && !getActivePlantingRecord()){
+      workflowPlantingSessionActive = false;
+    }else if(recordSelectionMode === "planting" && (!getActivePlantingRecord() || (!editingPlantingEventId && !workflowPlantingSessionActive))){
       recordSelectionMode = "harvest";
       activePlantingRecordId = null;
       plantingRecordDraft = null;
+      workflowPlantingSessionActive = false;
     }
     casePlacementByBuilding = savedHarvestState.casePlacementByBuilding || {};
 
