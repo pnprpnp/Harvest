@@ -6435,7 +6435,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近1件で収穫済みのパレットを除いて進みます。収穫途中の号棟が複数ある場合は小さい号棟を優先し、2号棟と9号棟がともに途中なら9号棟を優先します。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近1件で収穫済みのパレットを除いて進みます。全て収穫済みの棟がある場合は、その続きの未完了棟から通常の順番で進みます。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -15564,10 +15564,37 @@ function getPriorityInProgressBuilding(inProgressBuildings){
   return candidates[0];
 }
 
+function getFirstIncompleteBuildingAfterCompletedRun(completedBuildings){
+  const completedSet = new Set(
+    completedBuildings.filter(building => BUILDINGS.includes(building))
+  );
+  if(!completedSet.size) return null;
+
+  // 9号棟まで収穫済みなら2号棟側へ一周したものとして扱う。
+  // その後も全収穫済みの棟が続く場合は、最初の未完了棟まで進める。
+  let building = completedSet.has(MAX_BUILDING)
+    ? MAX_BUILDING
+    : Math.max(...completedSet);
+
+  for(let offset = 0; offset < BUILDINGS.length; offset++){
+    building = getNextBuildingInOrder(building);
+    if(!completedSet.has(building)) return building;
+  }
+  return null;
+}
+
 function getStartupHarvestBuilding(){
   const recentRecords = getRecentHarvestRecordsByCount();
   const recordedSet = getRecordedPalletSetFromRecords(recentRecords);
   const palletsPerBuilding = bedOrder.length * PALLETS_PER_BED;
+
+  const completedBuildings = BUILDINGS.filter(building =>
+    getRecordedCountForBuilding(building, recordedSet) >= palletsPerBuilding
+  );
+  const firstAfterCompletedRun = getFirstIncompleteBuildingAfterCompletedRun(completedBuildings);
+  if(firstAfterCompletedRun !== null){
+    return firstAfterCompletedRun;
+  }
 
   const inProgressBuildings = BUILDINGS.filter(building => {
     const count = getRecordedCountForBuilding(building, recordedSet);
