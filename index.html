@@ -4,10 +4,105 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f5f5f7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="apple--touch-icon.png">
 <link rel="preload" as="image" href="welcome-screen.png?v=20260713" fetchpriority="high">
+<script>
+(() => {
+  const VERSION_STORAGE_KEY = "harvestnaviAppSourceVersion_v1";
+  const UPDATED_NOTICE_KEY = "harvestnaviAppUpdatedNotice_v1";
+  const VERSION_QUERY_KEY = "__hnv";
+  const CHECK_QUERY_KEY = "__hncheck";
+  let updateCheckPromise = null;
+
+  function getCanonicalAppUrl(){
+    const url = new URL(window.location.href);
+    url.hash = "";
+    url.searchParams.delete(VERSION_QUERY_KEY);
+    url.searchParams.delete(CHECK_QUERY_KEY);
+    return url;
+  }
+
+  async function getSourceVersion(source){
+    if(window.crypto?.subtle && typeof TextEncoder !== "undefined"){
+      const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
+      return Array.from(new Uint8Array(digest))
+        .slice(0, 12)
+        .map(value => value.toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    let first = 2166136261;
+    let second = 5381;
+    for(let index = 0; index < source.length; index++){
+      const code = source.charCodeAt(index);
+      first = Math.imul(first ^ code, 16777619);
+      second = Math.imul(second, 33) ^ code;
+    }
+    return `${source.length.toString(36)}-${(first >>> 0).toString(36)}-${(second >>> 0).toString(36)}`;
+  }
+
+  function openAppVersion(version){
+    const target = getCanonicalAppUrl();
+    target.searchParams.set(VERSION_QUERY_KEY, version);
+    try{
+      sessionStorage.setItem(UPDATED_NOTICE_KEY, "1");
+    }catch(e){}
+    window.location.replace(target.toString());
+  }
+
+  async function checkForAppUpdate(){
+    const now = Date.now();
+    if(updateCheckPromise) return updateCheckPromise;
+
+    updateCheckPromise = (async () => {
+      const checkUrl = getCanonicalAppUrl();
+      checkUrl.searchParams.set(CHECK_QUERY_KEY, String(now));
+      const response = await fetch(checkUrl.toString(), {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Cache-Control": "no-cache" }
+      });
+      if(!response.ok) return false;
+
+      const source = await response.text();
+      const latestVersion = await getSourceVersion(source);
+      const currentVersion = new URL(window.location.href).searchParams.get(VERSION_QUERY_KEY) || "";
+      let savedVersion = "";
+      try{
+        savedVersion = localStorage.getItem(VERSION_STORAGE_KEY) || "";
+      }catch(e){}
+
+      if(savedVersion !== latestVersion){
+        try{
+          localStorage.setItem(VERSION_STORAGE_KEY, latestVersion);
+        }catch(e){}
+        openAppVersion(latestVersion);
+        return true;
+      }
+
+      if(currentVersion !== latestVersion){
+        openAppVersion(latestVersion);
+        return true;
+      }
+      return false;
+    })().catch(error => {
+      console.warn("アプリの更新確認に失敗しました", error);
+      return false;
+    }).finally(() => {
+      updateCheckPromise = null;
+    });
+
+    return updateCheckPromise;
+  }
+
+  window.checkHarvestnaviAppUpdate = checkForAppUpdate;
+})();
+</script>
 <style>
 body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -4125,6 +4220,29 @@ header{
   to{transform:rotate(360deg);}
 }
 .headerLatestRefreshSub{color:var(--ui-accent-dark);font-size:9px;font-weight:650;}
+.headerLatestRefreshBtn.appMenuLatestBtn{
+  width:100%;
+  min-width:0;
+  min-height:64px;
+  margin:12px 0 14px;
+  padding:11px 14px;
+  display:grid;
+  grid-template-columns:36px minmax(0,1fr);
+  align-items:center;
+  gap:11px;
+  text-align:left;
+}
+.appMenuLatestBtn .headerLatestRefreshMain{
+  width:32px;
+  height:32px;
+}
+.appMenuLatestBtn .headerLatestRefreshMain svg{
+  width:26px;
+  height:26px;
+}
+.appMenuLatestCopy{display:flex;min-width:0;flex-direction:column;gap:3px;}
+.appMenuLatestTitle{color:var(--ui-accent-dark);font-size:14px;font-weight:800;}
+.appMenuLatestBtn .headerLatestRefreshSub{font-size:11px;}
 .workflowVisibilityBtn{
   width:44px;
   min-width:44px;
@@ -5465,7 +5583,7 @@ button.forecastClearBtn{border-radius:13px;}
     justify-content:center;
     flex-wrap:nowrap;
     padding-left:calc(66px + env(safe-area-inset-left, 0px));
-    padding-right:calc(112px + env(safe-area-inset-right, 0px));
+    padding-right:calc(66px + env(safe-area-inset-right, 0px));
   }
   .headerActions{position:absolute;right:calc(12px + env(safe-area-inset-right, 0px));top:50%;transform:translateY(-50%);margin-left:0;}
   .headerMenuBtn{left:calc(12px + env(safe-area-inset-left, 0px));}
@@ -5546,17 +5664,6 @@ requestAnimationFrame(function(){
         </svg>
       </span>
       <span class="workflowVisibilityText">ナビ</span>
-    </button>
-  </div>
-  <div class="headerActions">
-    <button id="headerRefreshBtn" type="button" class="headerActionBtn headerLatestRefreshBtn" onclick="refreshRecentRecordsFromHeader()" aria-label="収穫・苗植え記録を同期する">
-      <span class="headerLatestRefreshMain" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
-          <path d="M20 6v5h-5"></path>
-          <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
-        </svg>
-      </span>
-      <span id="headerLatestRecordDate" class="headerLatestRefreshSub">最新: --</span>
     </button>
   </div>
 </header>
@@ -6361,6 +6468,18 @@ requestAnimationFrame(function(){
       <button type="button" class="appMenuWindowClose" onclick="closeAppMenuWindow()">閉じる</button>
     </div>
     <div id="appMenuWindowBody" class="appMenuWindowBody">
+      <button id="headerRefreshBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn" onclick="refreshRecentRecordsFromHeader()" aria-label="アプリの最新版を確認して収穫・苗植え記録を同期する">
+        <span class="headerLatestRefreshMain" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M20 6v5h-5"></path>
+            <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
+          </svg>
+        </span>
+        <span class="appMenuLatestCopy">
+          <span class="appMenuLatestTitle">最新版を確認・記録を同期</span>
+          <span id="headerLatestRecordDate" class="headerLatestRefreshSub">最新記録: --</span>
+        </span>
+      </button>
       <details class="recordToggleWrap">
         <summary class="recordToggleSummary">アプリの使い方</summary>
         <div class="recordToggleBody appUsageText">このアプリは、
@@ -12002,7 +12121,7 @@ function formatLatestRecordDateForHeader(date){
 function updateHeaderLatestRecordDate(){
   const label = document.getElementById("headerLatestRecordDate");
   if(!label) return;
-  label.textContent = "最新: " + formatLatestRecordDateForHeader(getLatestRecordDate());
+  label.textContent = "最新記録: " + formatLatestRecordDateForHeader(getLatestRecordDate());
 }
 
 function setHeaderRefreshLoading(isLoading){
@@ -12011,7 +12130,7 @@ function setHeaderRefreshLoading(isLoading){
   button.disabled = !!isLoading;
   button.classList.toggle("is-loading", !!isLoading);
   button.setAttribute("aria-busy", isLoading ? "true" : "false");
-  button.setAttribute("aria-label", isLoading ? "収穫・苗植え記録を同期中" : "収穫・苗植え記録を同期する");
+  button.setAttribute("aria-label", isLoading ? "最新版の確認と記録の同期中" : "アプリの最新版を確認して収穫・苗植え記録を同期する");
 }
 
 async function refreshRecentRecordsFromHeader(){
@@ -12020,9 +12139,13 @@ async function refreshRecentRecordsFromHeader(){
 
   setHeaderRefreshLoading(true);
   try{
+    if(typeof window.checkHarvestnaviAppUpdate === "function"){
+      const updating = await window.checkHarvestnaviAppUpdate();
+      if(updating) return;
+    }
     await importRecordsFromGoogleSheet({
-      successMessage: "スプレッドシートと記録を同期しました",
-      emptyMessage: "スプレッドシートと同期済みです"
+      successMessage: "アプリは最新版です。スプレッドシートと記録を同期しました",
+      emptyMessage: "アプリは最新版です。スプレッドシートとも同期済みです"
     });
   }finally{
     updateHeaderLatestRecordDate();
@@ -20740,6 +20863,10 @@ window.onload = () => {
   refreshEmptyInputHighlights();
   updateWorkflowGuide();
   sessionStorage.removeItem("harvestForecastStartupRecovered");
+  if(sessionStorage.getItem("harvestnaviAppUpdatedNotice_v1") === "1"){
+    sessionStorage.removeItem("harvestnaviAppUpdatedNotice_v1");
+    showToast("アプリを最新版に更新しました");
+  }
   hideWelcomeScreen();
   }catch(error){
     console.error(error);
