@@ -10533,23 +10533,48 @@ async function syncPlantingEventWithSources(event, options = {}){
   }
   try{
     if(!options.sourcesAlreadySent){
-      const sourceRecords = getPlantingEventSourceRecords(event);
-      if(sourceRecords.length !== event.sourceAllocations.length){
-        throw new Error("苗植え元の収穫記録がアプリ内にありません");
-      }
-      const recordStatus = loadGoogleSheetSyncStatus();
-      const sourceRecordsToSend = sourceRecords.filter(source => !isGoogleSheetRecordConfirmed(source, recordStatus));
-      if(sourceRecordsToSend.length){
-        const sourceResult = await sendRecordsBatchToGoogleSheet(sourceRecordsToSend, {
-          showFailureDialog: false,
-          showConfigNotice: false
+      try{
+        const sourceRecords = getPlantingEventSourceRecords(event);
+        const sourceReferences = (event?.sourceAllocations || []).slice(0, 3).map(allocation => {
+          const source = sourceRecords.find(record => Number(record.id) === Number(allocation.harvestRecordId));
+          const sourceDate = String(source?.date || "日付不明").slice(0, 10);
+          return `${sourceDate} / ID:${String(allocation.harvestRecordId || "不明").slice(0, 20)}`;
         });
-        if(sourceResult.failCount > 0){
-          throw new Error(sourceResult.errorMessage || "苗植え元の収穫記録を先に送信できませんでした");
+        const remainingSourceCount = Math.max(0, (event?.sourceAllocations || []).length - sourceReferences.length);
+        const sourceReferenceText = sourceReferences.length
+          ? `（${sourceReferences.join("、")}${remainingSourceCount ? `、ほか${remainingSourceCount}件` : ""}）`
+          : "";
+        if(sourceRecords.length !== event.sourceAllocations.length){
+          throw new Error("苗植え元の収穫記録がアプリ内にありません" + sourceReferenceText);
         }
+        const recordStatus = loadGoogleSheetSyncStatus();
+        const sourceRecordsToSend = sourceRecords.filter(source => !isGoogleSheetRecordConfirmed(source, recordStatus));
+        if(sourceRecordsToSend.length){
+          const sourceResult = await sendRecordsBatchToGoogleSheet(sourceRecordsToSend, {
+            showFailureDialog: false,
+            showConfigNotice: false
+          });
+          if(sourceResult.failCount > 0){
+            throw new Error(
+              (sourceResult.errorMessage || "苗植え元の収穫記録を先に送信できませんでした") +
+              sourceReferenceText
+            );
+          }
+        }
+      }catch(e){
+        throw new Error("苗植え元の収穫記録の送信中に失敗しました: " + String(e?.message || e));
       }
     }
-    const result = await postGoogleSheetPlantingEvent(event, "save", { config, silent: true });
+    let result;
+    try{
+      result = await postGoogleSheetPlantingEvent(event, "save", { config, silent: true });
+    }catch(e){
+      const eventReference = `苗植え日:${String(event?.plantingDate || "不明").slice(0, 10)} / ID:${String(event?.eventId || "不明").slice(0, 20)}`;
+      throw new Error(
+        "苗植えイベント本体の送信中に失敗しました（" + eventReference + "）: " +
+        String(e?.message || e)
+      );
+    }
     return { ok: true, updated: !!result.updated, message: result.message || "" };
   }catch(e){
     setPlantingEventSyncStatus(event, "failed");
@@ -11685,6 +11710,7 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
     }
 
     const totals = { successCount: 0, updatedCount: 0, duplicateCount: 0, failCount: 0 };
+    let firstError = "";
     const handledIndexes = new Set();
     result.results.forEach(item => {
       const index = Number(item?.index);
@@ -11703,6 +11729,7 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
         }
       }else{
         totals.failCount++;
+        firstError ||= String(item?.message || "").trim();
         setGoogleSheetSyncStatusAfterSend(recordSnapshots[index], sentSignatures[index], config, "failed");
       }
     });
@@ -11711,7 +11738,7 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
       totals.failCount++;
       setGoogleSheetSyncStatusAfterSend(record, sentSignatures[index], config, "failed");
     });
-    return totals;
+    return { ...totals, errorMessage: firstError };
   }catch(e){
     recordSnapshots.forEach((record, index) => {
       setGoogleSheetSyncStatusAfterSend(record, sentSignatures[index], config, "failed");
@@ -11757,6 +11784,7 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
     try{
       const chunkTotals = await sendGoogleSheetBatchChunk(chunk, config);
       Object.keys(totals).forEach(key => { totals[key] += chunkTotals[key] || 0; });
+      firstError ||= String(chunkTotals.errorMessage || "").trim();
     }catch(e){
       firstError ||= String(e?.name === "AbortError" ? "スプレッドシートとの通信がタイムアウトしました" : (e?.message || e));
       totals.failCount += chunk.length;
