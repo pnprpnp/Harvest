@@ -18428,7 +18428,13 @@ async function savePlantingRecord(){
   if(sheetSendResult.ok){
     showToast(existingEvent ? "苗植え記録を更新して送信しました" : "苗植え場所を記録して送信しました");
   }else{
-    showToast("苗植え場所は記録しました。未送信: " + sheetSendResult.message);
+    const failureMessage = String(sheetSendResult.message || "不明なエラー");
+    showToast("苗植え場所はアプリに記録しました。スプレッドシートは未送信です");
+    showRecordImportError(
+      "苗植え場所はアプリ内に保存されています。スプレッドシートへの送信だけ失敗しました。\n\n詳細: " + failureMessage +
+      "\n\nApps Scriptを更新後、「修正・未送信」から再送信してください。",
+      "苗植え記録の送信失敗"
+    );
   }
 }
 
