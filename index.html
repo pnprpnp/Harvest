@@ -67,7 +67,7 @@
         credentials: "same-origin",
         headers: { "Cache-Control": "no-cache" }
       });
-      if(!response.ok) return false;
+      if(!response.ok) throw new Error("最新版の情報を取得できませんでした");
 
       const source = await response.text();
       const latestVersion = await getSourceVersion(source);
@@ -92,7 +92,7 @@
       return false;
     })().catch(error => {
       console.warn("アプリの更新確認に失敗しました", error);
-      return false;
+      throw error;
     }).finally(() => {
       updateCheckPromise = null;
     });
@@ -4220,6 +4220,34 @@ header{
   to{transform:rotate(360deg);}
 }
 .headerLatestRefreshSub{color:var(--ui-accent-dark);font-size:9px;font-weight:650;}
+.headerRecordSyncBtn{
+  min-width:78px;
+  padding:5px 8px 4px;
+}
+.headerRecordSyncMain{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  color:var(--ui-accent-dark);
+  font-size:11px;
+  font-weight:800;
+  line-height:1;
+}
+.headerRecordSyncMain .headerLatestRefreshMain{
+  width:17px;
+  height:17px;
+}
+.headerRecordSyncMain .headerLatestRefreshMain svg{
+  width:17px;
+  height:17px;
+}
+.headerRecordSyncBtn .headerLatestRefreshSub{
+  max-width:76px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
 .headerLatestRefreshBtn.appMenuLatestBtn{
   width:100%;
   min-width:0;
@@ -5583,7 +5611,7 @@ button.forecastClearBtn{border-radius:13px;}
     justify-content:center;
     flex-wrap:nowrap;
     padding-left:calc(66px + env(safe-area-inset-left, 0px));
-    padding-right:calc(66px + env(safe-area-inset-right, 0px));
+    padding-right:calc(96px + env(safe-area-inset-right, 0px));
   }
   .headerActions{position:absolute;right:calc(12px + env(safe-area-inset-right, 0px));top:50%;transform:translateY(-50%);margin-left:0;}
   .headerMenuBtn{left:calc(12px + env(safe-area-inset-left, 0px));}
@@ -5594,6 +5622,7 @@ button.forecastClearBtn{border-radius:13px;}
   .appTitle{font-size:16px;}
   .appSubtitle{display:none;}
   .headerLatestRefreshBtn{min-width:82px;}
+  .headerRecordSyncBtn{min-width:76px;}
   .workflowBarInner{padding:7px calc(12px + env(safe-area-inset-right, 0px)) 8px calc(12px + env(safe-area-inset-left, 0px));gap:8px;}
   .workflowStep{gap:3px;}
   .workflowStepMarker{width:22px;height:22px;font-size:10px;}
@@ -5619,6 +5648,15 @@ button.forecastClearBtn{border-radius:13px;}
   .dashboardMetricValue{font-size:24px;}
   .forecastSettingsModal,.appMenuModal,.bedDetailModal,.plantingAgeModal{padding:10px;}
   .appMenuWindow{margin:8px auto;padding:14px;}
+}
+@media (max-width:360px){
+  header{padding-right:calc(90px + env(safe-area-inset-right, 0px));}
+  .appTitleWrap{gap:6px;}
+  .appMark{width:28px;height:28px;}
+  .appTitle{font-size:14px;}
+  .workflowVisibilityBtn{width:40px;min-width:40px;}
+  .headerActions{right:calc(8px + env(safe-area-inset-right, 0px));}
+  .headerRecordSyncBtn{min-width:72px;padding-left:6px;padding-right:6px;}
 }
 @media (max-width:390px){
   .appMark{display:none;}
@@ -5664,6 +5702,20 @@ requestAnimationFrame(function(){
         </svg>
       </span>
       <span class="workflowVisibilityText">ナビ</span>
+    </button>
+  </div>
+  <div class="headerActions">
+    <button id="headerRecordSyncBtn" type="button" class="headerActionBtn headerLatestRefreshBtn headerRecordSyncBtn" onclick="syncRecordsFromHeader()" aria-label="収穫・苗植え記録をスプレッドシートと同期する">
+      <span class="headerRecordSyncMain">
+        <span class="headerLatestRefreshMain" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M20 6v5h-5"></path>
+            <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
+          </svg>
+        </span>
+        <span>記録同期</span>
+      </span>
+      <span id="headerLatestRecordDate" class="headerLatestRefreshSub">最新: --</span>
     </button>
   </div>
 </header>
@@ -6468,7 +6520,7 @@ requestAnimationFrame(function(){
       <button type="button" class="appMenuWindowClose" onclick="closeAppMenuWindow()">閉じる</button>
     </div>
     <div id="appMenuWindowBody" class="appMenuWindowBody">
-      <button id="headerRefreshBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn" onclick="refreshRecentRecordsFromHeader()" aria-label="アプリの最新版を確認して収穫・苗植え記録を同期する">
+      <button id="appUpdateCheckBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn" onclick="checkLatestAppFromMenu()" aria-label="アプリの最新版を確認する">
         <span class="headerLatestRefreshMain" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
             <path d="M20 6v5h-5"></path>
@@ -6476,8 +6528,8 @@ requestAnimationFrame(function(){
           </svg>
         </span>
         <span class="appMenuLatestCopy">
-          <span class="appMenuLatestTitle">最新版を確認・記録を同期</span>
-          <span id="headerLatestRecordDate" class="headerLatestRefreshSub">最新記録: --</span>
+          <span class="appMenuLatestTitle">最新版を確認</span>
+          <span id="appUpdateCheckStatus" class="headerLatestRefreshSub">押した時だけアプリの更新を確認します</span>
         </span>
       </button>
       <details class="recordToggleWrap">
@@ -12149,35 +12201,68 @@ function formatLatestRecordDateForHeader(date){
 function updateHeaderLatestRecordDate(){
   const label = document.getElementById("headerLatestRecordDate");
   if(!label) return;
-  label.textContent = "最新記録: " + formatLatestRecordDateForHeader(getLatestRecordDate());
+  label.textContent = "最新: " + formatLatestRecordDateForHeader(getLatestRecordDate());
 }
 
-function setHeaderRefreshLoading(isLoading){
-  const button = document.getElementById("headerRefreshBtn");
+function setHeaderRecordSyncLoading(isLoading){
+  const button = document.getElementById("headerRecordSyncBtn");
   if(!button) return;
   button.disabled = !!isLoading;
   button.classList.toggle("is-loading", !!isLoading);
   button.setAttribute("aria-busy", isLoading ? "true" : "false");
-  button.setAttribute("aria-label", isLoading ? "最新版の確認と記録の同期中" : "アプリの最新版を確認して収穫・苗植え記録を同期する");
+  button.setAttribute("aria-label", isLoading
+    ? "収穫・苗植え記録を同期中"
+    : "収穫・苗植え記録をスプレッドシートと同期する");
 }
 
-async function refreshRecentRecordsFromHeader(){
-  const button = document.getElementById("headerRefreshBtn");
+async function syncRecordsFromHeader(){
+  const button = document.getElementById("headerRecordSyncBtn");
   if(button?.disabled) return;
 
-  setHeaderRefreshLoading(true);
+  setHeaderRecordSyncLoading(true);
   try{
-    if(typeof window.checkHarvestnaviAppUpdate === "function"){
-      const updating = await window.checkHarvestnaviAppUpdate();
-      if(updating) return;
-    }
     await importRecordsFromGoogleSheet({
-      successMessage: "アプリは最新版です。スプレッドシートと記録を同期しました",
-      emptyMessage: "アプリは最新版です。スプレッドシートとも同期済みです"
+      successMessage: "スプレッドシートと記録を同期しました",
+      emptyMessage: "スプレッドシートと同期済みです"
     });
   }finally{
     updateHeaderLatestRecordDate();
-    setHeaderRefreshLoading(false);
+    setHeaderRecordSyncLoading(false);
+  }
+}
+
+function setAppUpdateCheckLoading(isLoading, statusText = ""){
+  const button = document.getElementById("appUpdateCheckBtn");
+  const status = document.getElementById("appUpdateCheckStatus");
+  if(button){
+    button.disabled = !!isLoading;
+    button.classList.toggle("is-loading", !!isLoading);
+    button.setAttribute("aria-busy", isLoading ? "true" : "false");
+    button.setAttribute("aria-label", isLoading
+      ? "アプリの最新版を確認中"
+      : "アプリの最新版を確認する");
+  }
+  if(statusText && status) status.textContent = statusText;
+}
+
+async function checkLatestAppFromMenu(){
+  const button = document.getElementById("appUpdateCheckBtn");
+  if(button?.disabled) return;
+
+  setAppUpdateCheckLoading(true, "最新版を確認中です...");
+  try{
+    if(typeof window.checkHarvestnaviAppUpdate !== "function"){
+      throw new Error("更新確認機能を読み込めませんでした");
+    }
+    const updating = await window.checkHarvestnaviAppUpdate();
+    if(updating){
+      setAppUpdateCheckLoading(true, "最新版を開いています...");
+      return;
+    }
+    setAppUpdateCheckLoading(false, "現在のアプリは最新版です");
+  }catch(e){
+    console.warn("最新版の確認に失敗しました", e);
+    setAppUpdateCheckLoading(false, "最新版を確認できませんでした。通信状態を確認してください");
   }
 }
 
