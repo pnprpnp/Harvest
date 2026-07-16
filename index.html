@@ -6435,7 +6435,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近1件で収穫済みのパレットを除いて、現在の収穫途中の号棟から通常の順番で進みます。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近1件で収穫済みのパレットを除いて進みます。収穫途中の号棟が複数ある場合は小さい号棟を優先し、2号棟と9号棟がともに途中なら9号棟を優先します。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -15550,47 +15550,18 @@ function getLatestRecordedBuildingFromRecords(sourceRecords){
   return buildings.length ? buildings[buildings.length - 1] : null;
 }
 
-function getLatestHarvestTouchTimeByBuilding(sourceRecords){
-  const latestByBuilding = new Map();
+function getPriorityInProgressBuilding(inProgressBuildings){
+  const candidates = [...new Set(inProgressBuildings)]
+    .filter(building => BUILDINGS.includes(building))
+    .sort((a, b) => a - b);
+  if(!candidates.length) return null;
 
-  (Array.isArray(sourceRecords) ? sourceRecords : []).forEach(record => {
-    const recordDate = parseDateOnlyString(record?.date);
-    if(!recordDate || !Array.isArray(record?.palletKeys)) return;
-    const touchTime = startOfLocalDay(recordDate).getTime();
-    const touchedBuildings = new Set(
-      record.palletKeys
-        .map(key => parsePalletKey(String(key || "")).building)
-        .filter(building => BUILDINGS.includes(building))
-    );
-
-    touchedBuildings.forEach(building => {
-      const current = latestByBuilding.get(building);
-      if(!Number.isFinite(current) || touchTime > current){
-        latestByBuilding.set(building, touchTime);
-      }
-    });
-  });
-
-  return latestByBuilding;
-}
-
-function getOldestUnharvestedPlantingTimeForBuilding(building, recordedSet, plantingDateByPallet){
-  let oldestTime = null;
-
-  for(const bed of bedOrder){
-    for(let number = 1; number <= PALLETS_PER_BED; number++){
-      const key = getPalletKey(building, bed, number);
-      if(recordedSet.has(key)) continue;
-      const plantingDate = plantingDateByPallet.get(key);
-      if(!plantingDate) continue;
-      const plantingTime = startOfLocalDay(plantingDate).getTime();
-      if(oldestTime === null || plantingTime < oldestTime){
-        oldestTime = plantingTime;
-      }
-    }
+  // 通常は号棟番号が小さい方を優先する。ただし2号棟と9号棟が
+  // ともに途中なら、収穫順が一周する境目として2号棟を後回しにする。
+  if(candidates.includes(2) && candidates.includes(9)){
+    return candidates.find(building => building !== 2) ?? 9;
   }
-
-  return oldestTime;
+  return candidates[0];
 }
 
 function getStartupHarvestBuilding(){
@@ -15603,35 +15574,7 @@ function getStartupHarvestBuilding(){
     return count > 0 && count < palletsPerBuilding;
   });
   if(inProgressBuildings.length){
-    const latestTouchByBuilding = getLatestHarvestTouchTimeByBuilding(recentRecords);
-    const latestTouchTime = Math.max(
-      ...inProgressBuildings.map(building => latestTouchByBuilding.get(building) ?? -Infinity)
-    );
-    const latestTouchedBuildings = inProgressBuildings.filter(
-      building => (latestTouchByBuilding.get(building) ?? -Infinity) === latestTouchTime
-    );
-
-    if(latestTouchedBuildings.length === 1) return latestTouchedBuildings[0];
-
-    const plantingDateByPallet = getLatestPlantingDateByPallet(new Date());
-    return latestTouchedBuildings
-      .map(building => ({
-        building,
-        oldestPlantingTime: getOldestUnharvestedPlantingTimeForBuilding(
-          building,
-          recordedSet,
-          plantingDateByPallet
-        )
-      }))
-      .sort((a, b) => {
-        const aHasPlantingDate = Number.isFinite(a.oldestPlantingTime);
-        const bHasPlantingDate = Number.isFinite(b.oldestPlantingTime);
-        if(aHasPlantingDate && bHasPlantingDate && a.oldestPlantingTime !== b.oldestPlantingTime){
-          return a.oldestPlantingTime - b.oldestPlantingTime;
-        }
-        if(aHasPlantingDate !== bHasPlantingDate) return aHasPlantingDate ? -1 : 1;
-        return BUILDINGS.indexOf(a.building) - BUILDINGS.indexOf(b.building);
-      })[0].building;
+    return getPriorityInProgressBuilding(inProgressBuildings);
   }
 
   const latestBuilding = getLatestRecordedBuildingFromRecords(recentRecords);
