@@ -2803,15 +2803,29 @@ button.monitorSaveBtn:active{
 }
 .recordFormActionRow{
   display:grid;
-  grid-template-columns:1fr;
+  grid-template-columns:70px minmax(0,1fr);
   gap:8px;
   align-items:stretch;
-  margin-top:18px;
+  width:min(100%,360px);
+  margin:18px auto 0;
 }
 .recordFormActionRow .actionBtn{
   margin-top:0;
   height:48px;
   padding:10px 8px;
+}
+.recordFormActionRow .recordClearBtn{
+  width:100%;
+  min-width:0;
+  margin:0;
+}
+.recordFormActionRow #recordPrimaryActionBtn{
+  width:100%;
+  min-width:0;
+  margin:0;
+}
+.recordFormActionRow.recordPlantingMode #recordPrimaryActionBtn{
+  grid-column:1 / -1;
 }
 #recordPrimaryActionBtn{
   width:min(100%, 260px);
@@ -6306,7 +6320,6 @@ requestAnimationFrame(function(){
       <div id="recordHarvestStageSection" class="recordStageSection">
         <div class="recordStageHeader">
           <div class="recordStageCaption">第一段階: 収穫記録</div>
-          <button class="actionBtn secondaryBtn recordClearBtn" onclick="clearRecordForm()">クリア</button>
         </div>
 
         <div class="recordDateField">
@@ -6420,6 +6433,7 @@ requestAnimationFrame(function(){
         <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
       </div>
       <div class="recordFormActionRow">
+        <button id="recordHarvestClearActionBtn" class="actionBtn secondaryBtn recordClearBtn" onclick="clearRecordForm()">クリア</button>
         <button id="recordPrimaryActionBtn" class="actionBtn thirdBtn" onclick="handleRecordPrimaryAction()">収穫場所を記録する</button>
       </div>
     </div>
@@ -16760,6 +16774,8 @@ function refreshRecordModeUi(){
   const plantingInput = document.getElementById("recordPlantingSummaryInput");
   const harvestStageSection = document.getElementById("recordHarvestStageSection");
   const plantingStageSection = document.getElementById("recordPlantingStageSection");
+  const recordActionRow = document.querySelector(".recordFormActionRow");
+  const harvestClearActionButton = document.getElementById("recordHarvestClearActionBtn");
   const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
   const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
@@ -16781,6 +16797,8 @@ function refreshRecordModeUi(){
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
+  if(recordActionRow) recordActionRow.classList.toggle("recordPlantingMode", isPlantingMode);
+  if(harvestClearActionButton) harvestClearActionButton.hidden = isPlantingMode;
 
   if(isPlantingMode){
     if(notice) notice.textContent = editingPlantingEventId
