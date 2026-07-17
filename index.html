@@ -6734,7 +6734,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映します。未収穫の場所を現在周期として先に予想し、直近10件で収穫済みの場所は、その後に次回収穫として予想します。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均ケース数と平均収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の次回収穫日を求めます。実際の記録は変更しません。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -14539,72 +14539,72 @@ function buildDashboardHarvestForecastModel(){
   };
   if(!model.canForecast) return model;
 
-  let startPallet = null;
-  const startBuildingIndex = Math.max(0, BUILDINGS.indexOf(startBuilding));
-  for(let buildingOffset = 0; buildingOffset < BUILDINGS.length && !startPallet; buildingOffset++){
-    const building = BUILDINGS[(startBuildingIndex + buildingOffset) % BUILDINGS.length];
-    for(const bed of bedOrder){
-      for(let number = 1; number <= PALLETS_PER_BED; number++){
-        const key = getPalletKey(building, bed, number);
-        if(!recordedSet.has(key)){
-          startPallet = { building, bed, number };
-          break;
-        }
-      }
-      if(startPallet) break;
-    }
-  }
-  if(!startPallet){
-    startPallet = {
-      building: BUILDINGS.includes(startBuilding) ? startBuilding : MIN_BUILDING,
-      bed: bedOrder[0],
-      number: 1
-    };
-  }
-
-  const capacityPerHarvestDay = model.averageCases * CASE_SIZE;
-  const harvestDates = [getFirstDashboardHarvestDate(referenceDate)];
-  const ensureHarvestDate = index => {
-    while(harvestDates.length <= index){
-      harvestDates.push(getNextDashboardHarvestDate(harvestDates[harvestDates.length - 1]));
-    }
-    return harvestDates[index];
-  };
-
-  let cursor = { ...startPallet };
-  const orderedPallets = [];
-  for(let index = 0; index < totalPalletCount; index++){
-    orderedPallets.push({ ...cursor });
-    cursor = getNextPallet(cursor.building, cursor.bed, cursor.number);
-  }
-  const forecastPallets = [
-    ...orderedPallets.filter(pallet => !recordedSet.has(getPalletKey(pallet.building, pallet.bed, pallet.number))),
-    ...orderedPallets.filter(pallet => recordedSet.has(getPalletKey(pallet.building, pallet.bed, pallet.number)))
-  ];
-
-  let cumulativeHeads = 0;
-  let nextCycleStarted = false;
+  const virtualRecords = [...records].sort(compareRecordsByDateDesc);
   const harvestRate = Math.max(0, (100 - model.averageLoss) / 100);
-  forecastPallets.forEach(pallet => {
-    const key = getPalletKey(pallet.building, pallet.bed, pallet.number);
-    const isNextCycle = recordedSet.has(key);
-    if(isNextCycle && !nextCycleStarted){
-      cumulativeHeads = Math.max(
-        capacityPerHarvestDay,
-        Math.ceil(cumulativeHeads / capacityPerHarvestDay) * capacityPerHarvestDay
-      );
-      nextCycleStarted = true;
+  const maxIterations = totalPalletCount + RECORDED_LOOKBACK_COUNT * 2;
+  const actualHarvestDates = new Set(records.filter(record =>
+    record?.type !== "partialHarvest"
+    && Array.isArray(record?.palletKeys)
+    && record.palletKeys.length > 0
+  ).map(record => record.date));
+  let forecastDate = getFirstDashboardHarvestDate(referenceDate);
+  let iterationsWithoutNewForecast = 0;
+
+  for(let iteration = 0; iteration < maxIterations && model.palletForecasts.size < totalPalletCount; iteration++){
+    const forecastDateText = formatDateOnlyString(forecastDate);
+    // すでに通常収穫が保存されている日は実記録をそのまま使い、
+    // 同じ日に平均1日分を重ねて仮想実行しない。
+    if(actualHarvestDates.has(forecastDateText)){
+      forecastDate = getNextDashboardHarvestDate(forecastDate);
+      continue;
     }
-    cumulativeHeads += getHarvestPlantCountForPallet(pallet.bed, pallet.number) * harvestRate;
-    const harvestDateIndex = Math.max(0, Math.ceil(cumulativeHeads / capacityPerHarvestDay) - 1);
-    const date = ensureHarvestDate(harvestDateIndex);
-    model.palletForecasts.set(key, {
-      date,
-      daysAfter: getLocalDayDiff(referenceDate, date),
-      harvestDateIndex,
-      isNextCycle
+    // 実際の「計算する」と同じく、その日にすでに部分収穫したケースは
+    // 1日分の平均ケース数から差し引いて通常収穫分だけを選ぶ。
+    const partialCases = getPartialHarvestCasesForDate(
+      forecastDateText,
+      virtualRecords
+    );
+    const needHeads = Math.max(0, model.averageCases - partialCases) * CASE_SIZE;
+    if(needHeads <= 0){
+      forecastDate = getNextDashboardHarvestDate(forecastDate);
+      continue;
+    }
+    const selection = calculateHarvestSelectionFromRecords({
+      referenceDate: forecastDate,
+      partialTargetDate: forecastDate,
+      sourceRecords: virtualRecords,
+      needHeads,
+      harvestRate,
+      additionalExcludedPalletKeys: model.palletForecasts.keys(),
+      releaseOldestIfBlocked: true
     });
-  });
+    if(!selection.palletKeys.length) break;
+
+    let newForecastCount = 0;
+    selection.palletKeys.forEach(key => {
+      if(model.palletForecasts.has(key)) return;
+      model.palletForecasts.set(key, {
+        date: new Date(forecastDate),
+        daysAfter: getLocalDayDiff(referenceDate, forecastDate),
+        harvestDateIndex: iteration,
+        isNextCycle: recordedSet.has(key)
+      });
+      newForecastCount++;
+    });
+    iterationsWithoutNewForecast = newForecastCount > 0 ? 0 : iterationsWithoutNewForecast + 1;
+
+    virtualRecords.unshift({
+      id: `dashboard-forecast-${iteration}`,
+      type: "fullHarvest",
+      date: forecastDateText,
+      cases: Math.max(0, model.averageCases - partialCases),
+      palletKeys: [...selection.palletKeys]
+    });
+    virtualRecords.sort(compareRecordsByDateDesc);
+
+    if(iterationsWithoutNewForecast > RECORDED_LOOKBACK_COUNT * 2) break;
+    forecastDate = getNextDashboardHarvestDate(forecastDate);
+  }
 
   const buildRange = forecasts => {
     if(!forecasts.length) return null;
@@ -14694,7 +14694,8 @@ function getDashboardForecastBedCycleText(model, building, bed){
     forecastCount++;
     if(forecast.isNextCycle) nextCycleCount++;
   }
-  if(!forecastCount || nextCycleCount === 0) return "現在周期";
+  if(!forecastCount) return "予想なし";
+  if(nextCycleCount === 0) return "現在周期";
   if(nextCycleCount === forecastCount) return "次回収穫";
   return "現在周期＋次回収穫";
 }
@@ -15089,12 +15090,12 @@ function renderPlantingAgeInfo(){
   if(recordDetail) recordDetail.innerHTML = detailHtml;
 }
 
-function getRecentHarvestRecordsByCount(referenceDate = new Date(), limit = RECORDED_LOOKBACK_COUNT){
+function getRecentHarvestRecordsByCount(referenceDate = new Date(), limit = RECORDED_LOOKBACK_COUNT, sourceRecords = records){
   const referenceDay = startOfLocalDay(referenceDate);
   const safeLimit = clampNumber(limit, 1, 1000, RECORDED_LOOKBACK_COUNT);
   const recentRecords = [];
 
-  for(const record of records){
+  for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
     if(record?.type === "partialHarvest") continue;
     if(!Array.isArray(record?.palletKeys) || !record.palletKeys.length) continue;
     const recordDate = parseDateOnlyString(record?.date);
@@ -15993,10 +15994,10 @@ function getPredictedHarvestForBed(bed, number){
   return plantCount * (100 - lossRate) / 100;
 }
 
-function getLatestFullHarvestDateForPallet(key, targetDate){
+function getLatestFullHarvestDateForPallet(key, targetDate, sourceRecords = records){
   const targetDay = startOfLocalDay(targetDate || new Date());
 
-  for(const record of records){
+  for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
     const recordDate = parseDateOnlyString(record.date);
     if(!recordDate) continue;
     const recordDay = startOfLocalDay(recordDate);
@@ -16013,13 +16014,13 @@ function getLatestFullHarvestDateForPallet(key, targetDate){
   return null;
 }
 
-function getPartialHarvestCountForPallet(building, bed, number, targetDate = null){
+function getPartialHarvestCountForPallet(building, bed, number, targetDate = null, sourceRecords = records){
   const key = getPalletKey(building, bed, number);
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
-  const latestFullHarvestDate = getLatestFullHarvestDateForPallet(key, targetDay);
+  const latestFullHarvestDate = getLatestFullHarvestDateForPallet(key, targetDay, sourceRecords);
   let total = 0;
 
-  for(const record of records){
+  for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
     const recordDate = parseDateOnlyString(record.date);
     if(!recordDate) continue;
     const recordDay = startOfLocalDay(recordDate);
@@ -16040,15 +16041,15 @@ function getPartialHarvestCountForPallet(building, bed, number, targetDate = nul
   return total;
 }
 
-function getPredictedHarvestForPallet(building, bed, number, targetDate = null){
+function getPredictedHarvestForPallet(building, bed, number, targetDate = null, sourceRecords = records){
   const baseHarvest = getPredictedHarvestForBed(bed, number);
-  const partialCount = getPartialHarvestCountForPallet(building, bed, number, targetDate);
+  const partialCount = getPartialHarvestCountForPallet(building, bed, number, targetDate, sourceRecords);
   return Math.max(0, baseHarvest - partialCount);
 }
 
-function getPartialHarvestCasesForDate(dateStr){
+function getPartialHarvestCasesForDate(dateStr, sourceRecords = records){
   if(!dateStr) return 0;
-  return records.reduce((total, record) => {
+  return (Array.isArray(sourceRecords) ? sourceRecords : []).reduce((total, record) => {
     if(record.type !== "partialHarvest") return total;
     if(record.date !== dateStr) return total;
     return total + clampNumber(record.cases, 0, 999999, 0);
@@ -16211,8 +16212,7 @@ function getFirstIncompleteBuildingAfterCompletedRun(completedBuildings){
   return null;
 }
 
-function getStartupHarvestBuilding(){
-  const recentRecords = getRecentHarvestRecordsByCount();
+function getStartupHarvestBuildingFromRecentRecords(recentRecords){
   const recordedSet = getRecordedPalletSetFromRecords(recentRecords);
   const palletsPerBuilding = bedOrder.length * PALLETS_PER_BED;
 
@@ -16242,6 +16242,102 @@ function getStartupHarvestBuilding(){
   return latestBuilding;
 }
 
+function getStartupHarvestBuilding(referenceDate = new Date(), sourceRecords = records){
+  const recentRecords = getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords);
+  return getStartupHarvestBuildingFromRecentRecords(recentRecords);
+}
+
+function calculateHarvestSelectionFromRecords(options = {}){
+  const referenceDate = startOfLocalDay(options.referenceDate || new Date());
+  const partialTargetDate = startOfLocalDay(options.partialTargetDate || referenceDate);
+  const sourceRecords = Array.isArray(options.sourceRecords) ? options.sourceRecords : records;
+  const needHeads = Math.max(0, Number(options.needHeads) || 0);
+  const harvestRate = Number.isFinite(Number(options.harvestRate))
+    ? clampNumber(options.harvestRate, 0, 1, 1)
+    : null;
+  const additionalExcludedSet = new Set(
+    options.additionalExcludedPalletKeys
+      && typeof options.additionalExcludedPalletKeys[Symbol.iterator] === "function"
+      ? options.additionalExcludedPalletKeys
+      : []
+  );
+  const buildSelectionRecordedSet = harvestRecords => {
+    const set = getRecordedPalletSetFromRecords(harvestRecords);
+    additionalExcludedSet.forEach(key => set.add(key));
+    return set;
+  };
+  let recentRecords = getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords);
+  let recordedSet = buildSelectionRecordedSet(recentRecords);
+  let startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
+  let autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+  let releasedRecordCount = 0;
+
+  while(!autoStartKey && options.releaseOldestIfBlocked && recentRecords.length){
+    // 直近10件だけで全パレットが埋まる特殊な状態でも予想を止めない。
+    // 仮想記録が1件増えるたび、本来この順で外れる古い記録から解放する。
+    recentRecords = recentRecords.slice(0, -1);
+    releasedRecordCount++;
+    recordedSet = buildSelectionRecordedSet(recentRecords);
+    startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
+    autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+  }
+
+  if(!autoStartKey || needHeads <= 0){
+    return {
+      palletKeys: [],
+      start: autoStartKey,
+      end: null,
+      totalHarvest: 0,
+      hasEnough: false,
+      needHeads,
+      startBuilding,
+      recentRecords,
+      recordedSet,
+      releasedRecordCount
+    };
+  }
+
+  const palletKeys = [];
+  let current = parsePalletKey(autoStartKey);
+  let totalHarvest = 0;
+  let guard = 0;
+  const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
+
+  while(totalHarvest < needHeads && guard < maxLoop){
+    const key = getPalletKey(current.building, current.bed, current.number);
+    if(!recordedSet.has(key)){
+      const partialCount = getPartialHarvestCountForPallet(
+        current.building,
+        current.bed,
+        current.number,
+        partialTargetDate,
+        sourceRecords
+      );
+      const baseHarvest = harvestRate === null
+        ? getPredictedHarvestForBed(current.bed, current.number)
+        : getHarvestPlantCountForPallet(current.bed, current.number) * harvestRate;
+      const harvest = Math.max(0, baseHarvest - partialCount);
+      palletKeys.push(key);
+      totalHarvest += harvest;
+    }
+    current = getNextPallet(current.building, current.bed, current.number);
+    guard++;
+  }
+
+  return {
+    palletKeys,
+    start: autoStartKey,
+    end: palletKeys.length ? palletKeys[palletKeys.length - 1] : null,
+    totalHarvest: Math.round(totalHarvest * 10) / 10,
+    hasEnough: totalHarvest >= needHeads,
+    needHeads,
+    startBuilding,
+    recentRecords,
+    recordedSet,
+    releasedRecordCount
+  };
+}
+
 function alertIfPreviousBuildingHasLeftovers(building = currentBuilding){
   const previousBuilding = getPreviousBuilding(building);
   if(!previousBuilding) return;
@@ -16255,7 +16351,6 @@ function alertIfPreviousBuildingHasLeftovers(building = currentBuilding){
 function runHarvestPrediction(){
   const casePlan = getHarvestCasePlan();
   const needHeads = casePlan.regularCases * CASE_SIZE;
-  const recordedSet = getRecordedPalletSet();
 
   if(casePlan.totalCases <= 0){
     showToast("収穫ケースを入力してください");
@@ -16266,10 +16361,15 @@ function runHarvestPrediction(){
     return;
   }
 
-  const startBuilding = getStartupHarvestBuilding();
-  alertIfPreviousBuildingHasLeftovers(startBuilding);
+  const selection = calculateHarvestSelectionFromRecords({
+    referenceDate: new Date(),
+    sourceRecords: records,
+    needHeads,
+    partialTargetDate: getHarvestTargetDate()
+  });
+  alertIfPreviousBuildingHasLeftovers(selection.startBuilding);
 
-  const autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+  const autoStartKey = selection.start;
   if(!autoStartKey){
     showToast("未収穫パレットがありません");
     return;
@@ -16285,47 +16385,16 @@ function runHarvestPrediction(){
     populateCasePlacementInputs();
   }
 
-  harvestFillKeys = [];
-  harvestSummary = null;
+  harvestFillKeys = [...selection.palletKeys];
+  harvestSummary = {
+    start: autoStartKey,
+    end: selection.end || "-",
+    filledCount: harvestFillKeys.length,
+    totalHarvest: selection.totalHarvest,
+    needHeads
+  };
 
-  let current = parsePalletKey(autoStartKey);
-  let total = 0;
-  let guard = 0;
-  const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
-
-  while(total < needHeads && guard < maxLoop){
-    const key = getPalletKey(current.building, current.bed, current.number);
-
-    if(!recordedSet.has(key)){
-      const harvest = getPredictedHarvestForPallet(current.building, current.bed, current.number);
-      harvestFillKeys.push(key);
-      total += harvest;
-
-      if(total >= needHeads){
-        harvestSummary = {
-          start: autoStartKey,
-          end: key,
-          filledCount: harvestFillKeys.length,
-          totalHarvest: Math.round(total * 10) / 10,
-          needHeads: needHeads
-        };
-        break;
-      }
-    }
-
-    current = getNextPallet(current.building, current.bed, current.number);
-    guard++;
-  }
-
-  if(!harvestSummary){
-    const endKey = harvestFillKeys.length > 0 ? harvestFillKeys[harvestFillKeys.length - 1] : "-";
-    harvestSummary = {
-      start: autoStartKey,
-      end: endKey,
-      filledCount: harvestFillKeys.length,
-      totalHarvest: Math.round(total * 10) / 10,
-      needHeads: needHeads
-    };
+  if(!selection.hasEnough){
     showToast("記録済みを除外して1周分見ても必要個数に届きませんでした");
   }
 
