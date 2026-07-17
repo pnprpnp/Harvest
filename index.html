@@ -6592,10 +6592,10 @@ requestAnimationFrame(function(){
           <summary class="recordToggleSummary">ヘルプ</summary>
           <div class="recordToggleBody">
             <details class="recordToggleWrap">
-              <summary class="recordToggleSummary">先に一部だけ収穫したいとき</summary>
+              <summary class="recordToggleSummary">順番外の場所を一部だけ収穫したとき</summary>
               <div class="recordToggleBody">
-                <div class="smallText" style="white-space:pre-line; margin-bottom:12px;">先取りした場所とケース数だけを記録します。
-株数やロス率の入力は不要です。選んだ場所の通常予測から先取り済みケース数を差し引き、残りの収穫量を予測します。</div>
+                <div class="smallText" style="white-space:pre-line; margin-bottom:12px;">今回の収穫のうち、通常の順番ではない場所から一部だけ取ったときに記録します。
+株数やロス率の入力は不要です。今回の総ケース数からこの分を差し引いて通常順の場所を計算し、選んだ場所では残りの収穫量を予測します。</div>
                 <div class="partialHarvestGrid" style="margin-bottom:10px;">
                   <div>
                     <label>号棟</label>
@@ -6620,9 +6620,9 @@ requestAnimationFrame(function(){
                   <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="E">E</label>
                   <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="F">F</label>
                 </div>
-                <label>取れたケース数</label>
+                <label>今回の総ケースのうち、この場所から取れたケース数</label>
                 <input id="partialHarvestCasesInput" type="number" min="0" inputmode="numeric">
-                <button class="actionBtn thirdBtn" onclick="savePartialHarvestRecord()">先取り収穫を記録する</button>
+                <button class="actionBtn thirdBtn" onclick="savePartialHarvestRecord()">順番外の一部収穫を記録する</button>
               </div>
             </details>
             <button class="actionBtn secondaryBtn" onclick="exportRecordsToFile()">記録を外部保存(JSON)</button>
@@ -7719,7 +7719,9 @@ function updateEstimatedHarvestCasesFromSelection(){
   const estimatedRegularCases = harvestFillKeys.length
     ? Math.max(0, Math.floor(getCurrentHarvestTotal() / CASE_SIZE))
     : 0;
-  const estimatedCases = estimatedRegularCases;
+  const estimatedCases = estimatedRegularCases > 0
+    ? estimatedRegularCases + getPartialHarvestCasesForDate(getHarvestTargetDateString())
+    : 0;
   casesInput.value = estimatedCases > 0 ? String(estimatedCases) : "";
   harvestCasesAutoEstimated = estimatedCases > 0;
   updateHarvestCasesAutoEstimatedAppearance();
@@ -11573,7 +11575,7 @@ function validateRecordForGoogleTransfer(record, options = {}){
 
   if(record.type === "partialHarvest"){
     if(!Array.isArray(record.targets) || !record.targets.length || record.targets.length > RECORD_MAX_TARGETS){
-      return invalid("先取り収穫場所の件数が正しくありません");
+      return invalid("順番外の一部収穫場所の件数が正しくありません");
     }
     const targetsAreValid = record.targets.every(target => {
       if(!target || typeof target !== "object" || Array.isArray(target)) return false;
@@ -11584,7 +11586,7 @@ function validateRecordForGoogleTransfer(record, options = {}){
       return building !== null && typeof target.bed === "string" && bedOrder.includes(target.bed)
         && start !== null && end !== null && start <= end && plantsPerPallet !== null;
     });
-    if(!targetsAreValid) return invalid("先取り収穫場所に不正な値があります");
+    if(!targetsAreValid) return invalid("順番外の一部収穫場所に不正な値があります");
     return { ok: true, message: "" };
   }
 
@@ -11738,7 +11740,7 @@ function formatGoogleSheetSendRecordLine(record, index){
   if(record?.type === "partialHarvest"){
     const targetText = String(formatPartialHarvestSummary(record.targets) || "")
       .split("\n")[0] || "場所未設定";
-    return (index + 1) + ". " + date + " 先取り収穫 " + cases + "ケース / " + targetText;
+    return (index + 1) + ". " + date + " 順番外の一部収穫 " + cases + "ケース / " + targetText;
   }
 
   const locationText = String(record?.palletSummary || "")
@@ -13691,7 +13693,7 @@ function getDashboardBucketFullLabel(bucketKey, granularity){
 }
 
 function getDashboardRecordTypeLabel(record){
-  return record?.type === "partialHarvest" ? "先取り収穫" : "通常収穫";
+  return record?.type === "partialHarvest" ? "順番外収穫" : "通常収穫";
 }
 
 function getDashboardRecordBuildings(record){
@@ -15689,7 +15691,7 @@ function appendForecastBedDetail(container, b){
 
       pallet.className = cls;
       pallet.textContent = number;
-      pallet.title = `${currentBuilding}号棟 ${b}-${number}` + (partialHarvestCount > 0 ? " 先取りあり" : "");
+      pallet.title = `${currentBuilding}号棟 ${b}-${number}` + (partialHarvestCount > 0 ? " 順番外収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
       pallet.style.gridColumnStart = c + 1;
       attachPalletDragHandlers(pallet, "forecast", currentBuilding, b, number);
@@ -15756,7 +15758,7 @@ function appendRecordBedDetail(container, b){
           ? (isSelected ? " 選択済み" : " 選択可能")
           : " 選択不可";
       }
-      pallet.title = `${currentBuilding}号棟 ${b}-${number}` + statusText + (partialHarvestCount > 0 ? " 先取りあり" : "");
+      pallet.title = `${currentBuilding}号棟 ${b}-${number}` + statusText + (partialHarvestCount > 0 ? " 順番外収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
       pallet.style.gridColumnStart = c + 1;
       attachPalletDragHandlers(pallet, "record", currentBuilding, b, number);
@@ -15924,8 +15926,19 @@ function getPredictedHarvestForPallet(building, bed, number, targetDate = null){
   return Math.max(0, baseHarvest - partialCount);
 }
 
+function getPartialHarvestCasesForDate(dateStr){
+  if(!dateStr) return 0;
+  return records.reduce((total, record) => {
+    if(record.type !== "partialHarvest") return total;
+    if(record.date !== dateStr) return total;
+    return total + clampNumber(record.cases, 0, 999999, 0);
+  }, 0);
+}
+
 function getRegularHarvestCases(totalCases, dateStr = getHarvestTargetDateString()){
-  return clampNumber(totalCases, 0, 999999, 0);
+  const safeTotal = clampNumber(totalCases, 0, 999999, 0);
+  const partialCases = getPartialHarvestCasesForDate(dateStr);
+  return Math.max(0, safeTotal - partialCases);
 }
 
 function getHarvestCasePlan(totalCases = null){
@@ -15933,10 +15946,12 @@ function getHarvestCasePlan(totalCases = null){
   const total = totalCases === null
     ? clampNumber(document.getElementById("casesInput")?.value || 0, 0, 999999, 0)
     : clampNumber(totalCases, 0, 999999, 0);
+  const partial = getPartialHarvestCasesForDate(dateStr);
   return {
     date: dateStr,
     totalCases: total,
-    regularCases: total
+    partialCases: partial,
+    regularCases: Math.max(0, total - partial)
   };
 }
 
@@ -16127,7 +16142,7 @@ function runHarvestPrediction(){
     return;
   }
   if(needHeads <= 0){
-    showToast("先取り収穫で収穫ケース数に達しています");
+    showToast("順番外の一部収穫だけで今回の収穫ケース数に達しています");
     return;
   }
 
@@ -17577,9 +17592,14 @@ function buildInstructionSummaryText(){
   const cases = casePlan.totalCases;
   const seedlingCounts = getSeedlingInstructionCounts();
   const caseLine = "収穫ケース数: " + cases;
+  const additionalCaseLines = casePlan.partialCases > 0
+    ? "順番外の一部収穫: " + casePlan.partialCases + "ケース\n" +
+      "通常順の収穫: " + casePlan.regularCases + "ケース"
+    : "";
 
   return (
     getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount, seedlingCounts.carryoverSeedlings) + " / " + caseLine + "\n" +
+    (additionalCaseLines ? additionalCaseLines + "\n" : "") +
     formatHarvestLocationInstruction() + "\n" +
     "残すケース: " + getCasePlacementSummaryText().replace(/\n/g, "\n")
   );
@@ -18232,7 +18252,7 @@ function drawBeds(){
 
         pallet.className = cls;
         pallet.textContent = number;
-        pallet.title = `${currentBuilding}号棟 ${b}-${number}` + (partialHarvestCount > 0 ? " 先取りあり" : "");
+        pallet.title = `${currentBuilding}号棟 ${b}-${number}` + (partialHarvestCount > 0 ? " 順番外収穫あり" : "");
         pallet.style.gridRowStart = r + 1;
         pallet.style.gridColumnStart = c + 1;
         pallet.onclick = () => togglePallet(currentBuilding, b, number);
@@ -18840,7 +18860,7 @@ function saveRecord(){
     return;
   }
   if(cases <= 0){
-    showToast("先取り収穫で収穫ケース数に達しています");
+    showToast("順番外の一部収穫だけで今回の収穫ケース数に達しています");
     return;
   }
   if(palletSummary === ""){
@@ -19389,7 +19409,7 @@ function getPartialHarvestRemainingCaseEstimate(building, beds, cases, date){
 }
 
 async function savePartialHarvestRecord(){
-  if(!ensureProtectedOperationAccess("先取り収穫の保存")) return;
+  if(!ensureProtectedOperationAccess("順番外の一部収穫の保存")) return;
   const date = document.getElementById("recordDateInput").value;
   const cases = clampNumber(document.getElementById("partialHarvestCasesInput")?.value || 0, 0, 999999, 0);
   const building = clampNumber(document.getElementById("partialHarvestBuildingInput")?.value || currentBuilding, MIN_BUILDING, MAX_BUILDING, NaN);
@@ -19403,11 +19423,11 @@ async function savePartialHarvestRecord(){
     return;
   }
   if(!BUILDINGS.includes(building) || !beds.length){
-    showToast("先取り収穫の号棟とベッドを入力してください");
+    showToast("順番外に一部収穫した号棟とベッドを入力してください");
     return;
   }
   if(cases <= 0){
-    showToast("先取りで取れたケース数を入力してください");
+    showToast("順番外の場所から取れたケース数を入力してください");
     return;
   }
 
@@ -19420,7 +19440,7 @@ async function savePartialHarvestRecord(){
     plantsPerPallet
   }));
   const remainingEstimate = getPartialHarvestRemainingCaseEstimate(building, beds, cases, date);
-  const memo = appendAutoMemo(enteredMemo, `先取り後の残り予想: 約${remainingEstimate}ケース（目安）`);
+  const memo = appendAutoMemo(enteredMemo, `順番外収穫後の残り予想: 約${remainingEstimate}ケース（目安）`);
 
   const record = {
     ...getCurrentRecordSyncMetadata(),
@@ -19452,11 +19472,11 @@ async function savePartialHarvestRecord(){
   document.getElementById("partialHarvestCasesInput").value = "";
   const sheetSent = await sheetSendPromise;
   if(sheetSent){
-    showToast(`先取り収穫を記録・送信しました。残り予想は約${remainingEstimate}ケースです`);
+    showToast(`順番外の一部収穫を記録・送信しました。残り予想は約${remainingEstimate}ケースです`);
   }else if(!sheetConfigValidation.ok){
-    showToast(`先取り収穫を記録しました。残り予想は約${remainingEstimate}ケースです（未送信）`);
+    showToast(`順番外の一部収穫を記録しました。残り予想は約${remainingEstimate}ケースです（未送信）`);
   }else{
-    showToast(`先取り収穫を記録しました。残り予想は約${remainingEstimate}ケースです（未送信）`);
+    showToast(`順番外の一部収穫を記録しました。残り予想は約${remainingEstimate}ケースです（未送信）`);
   }
 }
 
@@ -19589,7 +19609,7 @@ function editHarvestRecord(id, options = {}){
 
   const casesInput = document.getElementById("recordCasesInput");
   if(casesInput){
-    const totalCasesForInput = clampNumber(record.cases, 0, 999999, 0);
+    const totalCasesForInput = clampNumber(record.cases, 0, 999999, 0) + getPartialHarvestCasesForDate(record.date);
     casesInput.value = totalCasesForInput > 0 ? String(totalCasesForInput) : "";
   }
   recordCasesEdited = true;
@@ -19721,7 +19741,7 @@ function renderDeletedRecordList(){
     const safeRecordId = getSafePositiveRecordId(record.id) ?? 0;
     const safeRecordUuidArgument = JSON.stringify(normalizeRecordUuid(record.recordUuid));
     const remainingDays = Math.max(1, Math.ceil((new Date(entry.expiresAt).getTime() - now) / (24 * 60 * 60 * 1000)));
-    const typeText = record.type === "partialHarvest" ? "先取り収穫" : "収穫記録";
+    const typeText = record.type === "partialHarvest" ? "順番外の一部収穫" : "収穫記録";
     const sheetText = entry.syncConflict
       ? (entry.remoteDeleted ? "別端末の削除と競合した未送信内容を退避" : "別端末の更新と競合した未送信内容を退避")
       : (entry.sheetDeleted ? "スプレッドシートも削除済み" : "アプリのみ削除");
@@ -19865,7 +19885,7 @@ function renderRecordItemHtml(r){
   if(r.type === "partialHarvest"){
     return `
     <div class="recordItem">
-      <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">先取り収穫</span></div>
+      <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">順番外収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}${escapeHtml(syncWarningText)}</div>
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
