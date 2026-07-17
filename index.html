@@ -229,6 +229,30 @@ header{
 .headerLatestRefreshBtn:disabled{
   opacity:.72;
 }
+.availabilityNoticeTarget{
+  position:relative;
+  overflow:visible;
+}
+.availabilityNoticeTarget::after{
+  content:"";
+  position:absolute;
+  left:-3px;
+  top:-3px;
+  width:10px;
+  height:10px;
+  box-sizing:border-box;
+  border:2px solid #fff;
+  border-radius:999px;
+  background:#ff3b30;
+  opacity:0;
+  pointer-events:none;
+  transform:scale(.7);
+  transition:opacity .18s ease,transform .18s ease;
+}
+.availabilityNoticeTarget.hasAvailabilityNotice::after{
+  opacity:1;
+  transform:scale(1);
+}
 .headerLatestRefreshMain{
   font-size:12px;
 }
@@ -5820,7 +5844,7 @@ requestAnimationFrame(function(){
     </button>
   </div>
   <div class="headerActions">
-    <button id="headerRecordSyncBtn" type="button" class="headerActionBtn headerLatestRefreshBtn headerRecordSyncBtn" onclick="syncRecordsFromHeader()" aria-label="収穫・苗植え記録をスプレッドシートと同期する">
+    <button id="headerRecordSyncBtn" type="button" class="headerActionBtn headerLatestRefreshBtn headerRecordSyncBtn availabilityNoticeTarget" onclick="syncRecordsFromHeader()" aria-label="収穫・苗植え記録をスプレッドシートと同期する">
       <span class="headerRecordSyncMain">
         <span class="headerLatestRefreshMain" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
@@ -6640,7 +6664,7 @@ requestAnimationFrame(function(){
       <button type="button" class="appMenuWindowClose" onclick="closeAppMenuWindow()">閉じる</button>
     </div>
     <div id="appMenuWindowBody" class="appMenuWindowBody">
-      <button id="appUpdateCheckBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn" onclick="checkLatestAppFromMenu()" aria-label="アプリの最新版を確認する">
+      <button id="appUpdateCheckBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn availabilityNoticeTarget" onclick="checkLatestAppFromMenu()" aria-label="アプリの最新版を確認する">
         <span class="headerLatestRefreshMain" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
             <path d="M20 6v5h-5"></path>
@@ -6649,7 +6673,7 @@ requestAnimationFrame(function(){
         </span>
         <span class="appMenuLatestCopy">
           <span class="appMenuLatestTitle">最新版を確認</span>
-          <span id="appUpdateCheckStatus" class="headerLatestRefreshSub">押した時だけアプリの更新を確認します</span>
+          <span id="appUpdateCheckStatus" class="headerLatestRefreshSub">更新がある場合は丸印でお知らせします</span>
         </span>
       </button>
       <details class="recordToggleWrap">
@@ -6924,6 +6948,7 @@ const MONITOR_MAX_SCALE = 2;
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 30000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
+const AVAILABILITY_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const GOOGLE_SHEET_MAX_REQUEST_CHARS = 500000;
 const GOOGLE_SHEET_MAX_REQUEST_BYTES = 1000000;
 const GOOGLE_SHEET_MAX_RESPONSE_CHARS = 1000000;
@@ -7058,6 +7083,8 @@ let forecastSelectionState = null;
 let settingsDirty = false;
 let casePlacementByBuilding = {};
 let appUpdateConfirmResolver = null;
+let availabilityCheckLastStartedAt = 0;
+let availabilityCheckPromise = null;
 let googleSheetConfirmResolver = null;
 let googleSheetSendState = "idle";
 let googleSheetStartupImportStarted = false;
@@ -10523,6 +10550,22 @@ function buildGoogleSheetImportPayload(config, options = {}){
   };
 }
 
+function buildGoogleSheetUpdateCheckPayload(config, options = {}){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-update-check",
+    action: "checkUpdates",
+    version: 1,
+    token: config.token || "",
+    cursor: normalizeGoogleSheetSyncCursor(options.cursor) || undefined,
+    includePlanting: options.includePlanting !== false,
+    fallbackSeedlingLossRate: clampNumber(settings.seedlingLossRate, 0, 100, 0),
+    fallbackSeedlingPattern: getSpecialPalletPattern(settings.specialPallet60CountPer3),
+    fallbackPlantingCountsByBed: getPlantingEventFallbackPlantingCountsByBed(),
+    limit: GOOGLE_SHEET_MAX_LIST_RECORDS
+  };
+}
+
 function buildGoogleSheetBatchPayload(recordsToSend, config){
   return {
     app: "Harvestnavi",
@@ -12335,6 +12378,193 @@ function updateHeaderLatestRecordDate(){
   label.textContent = "最新: " + formatLatestRecordDateForHeader(getLatestRecordDate());
 }
 
+function setRecordSyncAvailabilityNotice(available){
+  const button = document.getElementById("headerRecordSyncBtn");
+  if(!button) return;
+  button.classList.toggle("hasAvailabilityNotice", !!available);
+  if(!button.disabled){
+    button.setAttribute("aria-label", available
+      ? "未受信の記録があります。収穫・苗植え記録をスプレッドシートと同期する"
+      : "収穫・苗植え記録をスプレッドシートと同期する");
+  }
+}
+
+function setAppUpdateAvailabilityNotice(available){
+  const button = document.getElementById("appUpdateCheckBtn");
+  if(!button) return;
+  button.classList.toggle("hasAvailabilityNotice", !!available);
+  if(!button.disabled){
+    button.setAttribute("aria-label", available
+      ? "アプリの最新版があります"
+      : "アプリの最新版を確認する");
+  }
+}
+
+function getLocalRecordForRemoteVersion(version){
+  const recordUuid = normalizeRecordUuid(version?.recordUuid);
+  if(recordUuid){
+    const byUuid = records.find(record => normalizeRecordUuid(record?.recordUuid) === recordUuid);
+    if(byUuid) return byUuid;
+  }
+  const recordId = getSafePositiveRecordId(version?.id);
+  return recordId === null ? null : (records.find(record => getSafePositiveRecordId(record?.id) === recordId) || null);
+}
+
+function isRemoteRecordVersionAlreadyLocal(version){
+  const localRecord = getLocalRecordForRemoteVersion(version);
+  const remoteUpdatedAt = String(version?.updatedAt || "").trim();
+  if(localRecord){
+    return !!remoteUpdatedAt && String(localRecord.updatedAt || "").trim() === remoteUpdatedAt;
+  }
+
+  const recordUuid = normalizeRecordUuid(version?.recordUuid);
+  const recordId = getSafePositiveRecordId(version?.id);
+  return deletedRecords.some(entry => {
+    if(entry?.sheetDeleted || entry?.syncConflict) return false;
+    const deletedRecord = entry?.record;
+    const deletedUuid = normalizeRecordUuid(deletedRecord?.recordUuid);
+    const deletedId = getSafePositiveRecordId(deletedRecord?.id);
+    const sameIdentity = recordUuid && deletedUuid
+      ? recordUuid === deletedUuid
+      : recordId !== null && deletedId === recordId;
+    return sameIdentity && !!remoteUpdatedAt && String(deletedRecord?.updatedAt || "").trim() === remoteUpdatedAt;
+  });
+}
+
+function hasActiveLocalRecordForRemoteDeletion(recordUuidValue, recordIdValue){
+  const recordUuid = normalizeRecordUuid(recordUuidValue);
+  const recordId = getSafePositiveRecordId(recordIdValue);
+  return records.some(record => {
+    const localUuid = normalizeRecordUuid(record?.recordUuid);
+    if(recordUuid && localUuid) return recordUuid === localUuid;
+    return !recordUuid && recordId !== null && getSafePositiveRecordId(record?.id) === recordId;
+  });
+}
+
+function isRemotePlantingVersionAlreadyLocal(version){
+  const eventId = getSafePositiveRecordId(version?.eventId);
+  const remoteUpdatedAt = String(version?.updatedAt || "").trim();
+  if(eventId === null || !remoteUpdatedAt) return false;
+  const localEvent = plantingEvents.find(event => getSafePositiveRecordId(event?.eventId) === eventId);
+  if(localEvent) return String(localEvent.updatedAt || "").trim() === remoteUpdatedAt;
+  return deletedPlantingEvents.some(entry => (
+    !entry?.sheetDeleted
+    && getSafePositiveRecordId(entry?.event?.eventId) === eventId
+    && String(entry?.event?.updatedAt || "").trim() === remoteUpdatedAt
+  ));
+}
+
+async function checkGoogleSheetUpdateAvailabilitySilently(){
+  const config = getValidatedGoogleSheetConfig({ silent: true });
+  if(!config) return;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
+  const initialCursor = loadGoogleSheetSyncCursor(config);
+  let cursor = initialCursor;
+  let finalCursor = initialCursor;
+  let includePlanting = true;
+  let updateAvailable = false;
+
+  try{
+    for(let page = 0; page < GOOGLE_SHEET_MAX_RECORD_SYNC_PAGES; page++){
+      const response = await fetchGoogleSheetReadRequest(config.url, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: buildValidatedGoogleSheetRequestBody(buildGoogleSheetUpdateCheckPayload(config, {
+          cursor,
+          includePlanting
+        })),
+        signal: controller.signal
+      });
+      const text = await response.text();
+      if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("更新確認の応答が大きすぎます");
+      const result = text ? JSON.parse(text) : {};
+      if(result.ok !== true) throw new Error(result.message || "更新情報を確認できませんでした");
+
+      const recordVersions = Array.isArray(result.recordVersions) ? result.recordVersions : [];
+      if(recordVersions.length > GOOGLE_SHEET_MAX_LIST_RECORDS) throw new Error("更新情報の件数が正しくありません");
+      if(recordVersions.some(version => !isRemoteRecordVersionAlreadyLocal(version))) updateAvailable = true;
+
+      const deletedRecordUuids = Array.isArray(result.deletedRecordUuids) ? result.deletedRecordUuids : [];
+      const deletedRecordIds = Array.isArray(result.deletedRecordIds) ? result.deletedRecordIds : [];
+      if(deletedRecordUuids.length > GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES
+        || deletedRecordIds.length > GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES){
+        throw new Error("削除済み記録の更新情報が多すぎます");
+      }
+      if(deletedRecordUuids.some(recordUuid => hasActiveLocalRecordForRemoteDeletion(recordUuid, null))
+        || deletedRecordIds.some(recordId => hasActiveLocalRecordForRemoteDeletion("", recordId))){
+        updateAvailable = true;
+      }
+
+      if(includePlanting){
+        const plantingVersions = Array.isArray(result.plantingVersions) ? result.plantingVersions : [];
+        const deletedEventIds = Array.isArray(result.deletedEventIds) ? result.deletedEventIds : [];
+        if(plantingVersions.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS
+          || deletedEventIds.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES){
+          throw new Error("苗植え記録の更新情報が多すぎます");
+        }
+        if(plantingVersions.some(version => !isRemotePlantingVersionAlreadyLocal(version))) updateAvailable = true;
+        if(deletedEventIds.some(eventId => plantingEvents.some(event => (
+          getSafePositiveRecordId(event?.eventId) === getSafePositiveRecordId(eventId)
+        )))) updateAvailable = true;
+        includePlanting = false;
+      }
+
+      const nextCursor = normalizeGoogleSheetSyncCursor(result.nextCursor);
+      if(nextCursor) finalCursor = nextCursor;
+      if(result.hasMore !== true) break;
+      if(!nextCursor || JSON.stringify(nextCursor) === JSON.stringify(cursor)){
+        throw new Error("更新確認の続き位置を取得できません");
+      }
+      cursor = nextCursor;
+    }
+
+    if(!updateAvailable && finalCursor) saveGoogleSheetSyncCursor(config, finalCursor);
+    setRecordSyncAvailabilityNotice(updateAvailable);
+  }catch(e){
+    console.warn("Background record update check failed", e);
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+async function checkAppUpdateAvailabilitySilently(){
+  try{
+    if(typeof window.checkHarvestnaviAppUpdate !== "function") return;
+    const result = await window.checkHarvestnaviAppUpdate();
+    setAppUpdateAvailabilityNotice(!!result?.updateAvailable);
+  }catch(e){
+    console.warn("Background app update check failed", e);
+  }
+}
+
+function runAvailabilityChecksIfDue(){
+  if(document.visibilityState === "hidden") return Promise.resolve();
+  if(typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
+  const now = Date.now();
+  if(availabilityCheckPromise) return availabilityCheckPromise;
+  if(now - availabilityCheckLastStartedAt < AVAILABILITY_CHECK_INTERVAL_MS) return Promise.resolve();
+
+  availabilityCheckLastStartedAt = now;
+  availabilityCheckPromise = Promise.allSettled([
+    checkAppUpdateAvailabilitySilently(),
+    checkGoogleSheetUpdateAvailabilitySilently()
+  ]).finally(() => {
+    availabilityCheckPromise = null;
+  });
+  return availabilityCheckPromise;
+}
+
+function installAvailabilityChecks(){
+  setTimeout(() => runAvailabilityChecksIfDue(), 0);
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "visible") runAvailabilityChecksIfDue();
+  });
+  window.addEventListener("pageshow", () => runAvailabilityChecksIfDue());
+}
+
 function setHeaderRecordSyncLoading(isLoading){
   const button = document.getElementById("headerRecordSyncBtn");
   if(!button) return;
@@ -12343,7 +12573,9 @@ function setHeaderRecordSyncLoading(isLoading){
   button.setAttribute("aria-busy", isLoading ? "true" : "false");
   button.setAttribute("aria-label", isLoading
     ? "収穫・苗植え記録を同期中"
-    : "収穫・苗植え記録をスプレッドシートと同期する");
+    : (button.classList.contains("hasAvailabilityNotice")
+      ? "未受信の記録があります。収穫・苗植え記録をスプレッドシートと同期する"
+      : "収穫・苗植え記録をスプレッドシートと同期する"));
 }
 
 async function syncRecordsFromHeader(){
@@ -12371,7 +12603,9 @@ function setAppUpdateCheckLoading(isLoading, statusText = ""){
     button.setAttribute("aria-busy", isLoading ? "true" : "false");
     button.setAttribute("aria-label", isLoading
       ? "アプリの最新版を確認中"
-      : "アプリの最新版を確認する");
+      : (button.classList.contains("hasAvailabilityNotice")
+        ? "アプリの最新版があります"
+        : "アプリの最新版を確認する"));
   }
   if(statusText && status) status.textContent = statusText;
 }
@@ -12423,10 +12657,12 @@ async function checkLatestAppFromMenu(){
     }
     const updateResult = await window.checkHarvestnaviAppUpdate();
     if(!updateResult?.updateAvailable){
+      setAppUpdateAvailabilityNotice(false);
       setAppUpdateCheckLoading(false, "現在のアプリは最新版です");
       return;
     }
 
+    setAppUpdateAvailabilityNotice(true);
     setAppUpdateCheckLoading(true, "最新版が見つかりました");
     const shouldUpdate = await askAppUpdateConfirm();
     if(!shouldUpdate){
@@ -12578,6 +12814,9 @@ async function importRecordsFromGoogleSheet(options = {}){
     // 編集中などで反映を保留した記録がある間はcursorを進めず、次回も同じ変更を取得する。
     if(!recordResult.conflictCount){
       saveGoogleSheetSyncCursor(config, recordSync.finalCursor);
+      setRecordSyncAvailabilityNotice(false);
+    }else{
+      setRecordSyncAvailabilityNotice(true);
     }
 
     const totalChanged = Number(recordResult.changedCount || 0) + Number(importedEventCount || 0);
@@ -20858,6 +21097,7 @@ window.onload = () => {
   renderRecordList();
   updateGoogleSheetResendButtonState();
   updateHeaderLatestRecordDate();
+  installAvailabilityChecks();
   syncRecordCasesFromMain(true);
   captureRecordBaseSelection();
 
