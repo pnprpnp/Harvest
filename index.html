@@ -17,8 +17,44 @@
   const UPDATED_NOTICE_KEY = "harvestnaviAppUpdatedNotice_v1";
   const VERSION_QUERY_KEY = "__hnv";
   const CHECK_QUERY_KEY = "__hncheck";
+  const SERVICE_WORKER_MESSAGE_TIMEOUT_MS = 45000;
   let updateCheckPromise = null;
   let loadedSourceVersionPromise = null;
+  let serviceWorkerRegistrationPromise = null;
+
+  function ensureAppServiceWorker(){
+    if(!("serviceWorker" in navigator)){
+      return Promise.reject(new Error("この端末では固定更新を利用できません"));
+    }
+    if(!serviceWorkerRegistrationPromise){
+      serviceWorkerRegistrationPromise = navigator.serviceWorker
+        .register("./sw.js", { scope: "./", updateViaCache: "none" })
+        .then(() => navigator.serviceWorker.ready)
+        .catch(error => {
+          serviceWorkerRegistrationPromise = null;
+          throw error;
+        });
+    }
+    return serviceWorkerRegistrationPromise;
+  }
+
+  async function sendServiceWorkerCommand(type, payload = {}){
+    const registration = await ensureAppServiceWorker();
+    const worker = registration.active || navigator.serviceWorker.controller;
+    if(!worker) throw new Error("固定更新の準備が完了していません");
+
+    return new Promise((resolve, reject) => {
+      const channel = new MessageChannel();
+      const timer = setTimeout(() => reject(new Error("固定更新の処理がタイムアウトしました")), SERVICE_WORKER_MESSAGE_TIMEOUT_MS);
+      channel.port1.onmessage = event => {
+        clearTimeout(timer);
+        const result = event.data || {};
+        if(result.ok === true) resolve(result);
+        else reject(new Error(result.message || "固定更新を完了できませんでした"));
+      };
+      worker.postMessage({ type, ...payload }, [channel.port2]);
+    });
+  }
 
   function getCanonicalAppUrl(){
     const url = new URL(window.location.href);
@@ -73,22 +109,45 @@
     captureLoadedSourceVersion();
   }
 
-  function openAppVersion(version){
+  function openAppVersion(version, notice = "updated"){
     const target = getCanonicalAppUrl();
     target.searchParams.set(VERSION_QUERY_KEY, version);
     try{
-      sessionStorage.setItem(UPDATED_NOTICE_KEY, "1");
+      sessionStorage.setItem(UPDATED_NOTICE_KEY, notice);
     }catch(e){}
     window.location.replace(target.toString());
   }
 
-  function applyAppUpdate(version){
+  async function applyAppUpdate(version, indexSource){
     const nextVersion = String(version || "").trim();
     if(!nextVersion) throw new Error("更新するバージョンが見つかりません");
+    const source = String(indexSource || "");
+    if(!source) throw new Error("最新版の内容が見つかりません");
+    const verifiedVersion = await getComparableSourceVersion(source);
+    if(verifiedVersion !== nextVersion) throw new Error("最新版の確認結果が一致しません");
+    await sendServiceWorkerCommand("HARVESTNAVI_STAGE_UPDATE", {
+      version: nextVersion,
+      indexSource: source
+    });
     try{
       localStorage.setItem(VERSION_STORAGE_KEY, nextVersion);
     }catch(e){}
     openAppVersion(nextVersion);
+  }
+
+  async function rollbackAppUpdate(){
+    const result = await sendServiceWorkerCommand("HARVESTNAVI_ROLLBACK");
+    const previousVersion = String(result?.meta?.activeVersion || "").trim();
+    if(!previousVersion) throw new Error("戻すバージョンを確認できません");
+    try{
+      localStorage.setItem(VERSION_STORAGE_KEY, previousVersion);
+    }catch(e){}
+    openAppVersion(previousVersion, "rollback");
+  }
+
+  async function getAppCacheState(){
+    const result = await sendServiceWorkerCommand("HARVESTNAVI_GET_CACHE_STATE");
+    return result?.meta || null;
   }
 
   async function checkForAppUpdate(){
@@ -121,7 +180,8 @@
 
       return {
         updateAvailable: !currentVersion || currentVersion !== latestVersion,
-        latestVersion
+        latestVersion,
+        latestSource: source
       };
     })().catch(error => {
       console.warn("アプリの更新確認に失敗しました", error);
@@ -135,6 +195,22 @@
 
   window.checkHarvestnaviAppUpdate = checkForAppUpdate;
   window.applyHarvestnaviAppUpdate = applyAppUpdate;
+  window.rollbackHarvestnaviAppUpdate = rollbackAppUpdate;
+  window.getHarvestnaviAppCacheState = getAppCacheState;
+  window.recoverHarvestnaviPreviousVersion = async button => {
+    const status = button?.nextElementSibling;
+    if(button) button.disabled = true;
+    if(status) status.textContent = "前の安定版に戻しています...";
+    try{
+      await rollbackAppUpdate();
+    }catch(e){
+      if(button) button.disabled = false;
+      if(status) status.textContent = "戻せませんでした: " + String(e?.message || e);
+    }
+  };
+  ensureAppServiceWorker().catch(error => {
+    console.warn("Service Worker registration failed", error);
+  });
 })();
 </script>
 <style>
@@ -4373,6 +4449,19 @@ header{
 .appMenuLatestCopy{display:flex;min-width:0;flex-direction:column;gap:3px;}
 .appMenuLatestTitle{color:var(--ui-accent-dark);font-size:14px;font-weight:800;}
 .appMenuLatestBtn .headerLatestRefreshSub{font-size:11px;}
+.appRollbackBtn{
+  margin-top:0;
+  background:var(--ui-surface-muted);
+  color:var(--ui-text-secondary);
+  box-shadow:none;
+}
+.appRollbackBtn[hidden],.appRollbackStatus[hidden]{display:none;}
+.appRollbackStatus{
+  margin:-4px 2px 12px;
+  color:var(--ui-text-tertiary);
+  font-size:11px;
+  line-height:1.5;
+}
 .workflowVisibilityBtn{
   width:44px;
   min-width:44px;
@@ -6670,6 +6759,8 @@ requestAnimationFrame(function(){
           <span id="appUpdateCheckStatus" class="headerLatestRefreshSub">更新がある場合は丸印でお知らせします</span>
         </span>
       </button>
+      <button id="appRollbackBtn" type="button" class="actionBtn secondaryBtn appRollbackBtn" onclick="confirmAppVersionRollback()" hidden>前の安定版に戻す</button>
+      <div id="appRollbackStatus" class="appRollbackStatus" hidden></div>
     </div>
     <div class="appMenuWindowFooter">
       <button type="button" class="actionBtn appMenuSaveBtn" onclick="saveAppMenuSettingsAndClose()">設定を保存</button>
@@ -6825,6 +6916,8 @@ window.addEventListener("error", event => {
     <h1 style="font-size:20px;">アプリの起動に失敗しました</h1>
     <p>記録データは削除していません。下の内容を確認してください。</p>
     <pre style="white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px;">${String(message).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</pre>
+    <button type="button" onclick="recoverHarvestnaviPreviousVersion(this)" style="width:100%;min-height:48px;border:0;border-radius:12px;background:#334155;color:#fff;font-size:15px;font-weight:800;">前の安定版に戻す</button>
+    <div style="margin-top:8px;color:#64748b;font-size:13px;"></div>
   </div>`;
 });
 const SETTINGS_KEY = "harvestForecastSettings_v16";
@@ -7252,12 +7345,59 @@ function restoreMenuSettingsToSettingsTab(){
   restorePoint.before(googleDetails);
 }
 
+async function refreshAppRollbackAvailability(){
+  const button = document.getElementById("appRollbackBtn");
+  const status = document.getElementById("appRollbackStatus");
+  if(!button) return;
+  button.hidden = true;
+  if(status) status.hidden = true;
+  try{
+    if(typeof window.getHarvestnaviAppCacheState !== "function") return;
+    const state = await window.getHarvestnaviAppCacheState();
+    if(!state?.previousCache || !state?.previousVersion) return;
+    button.hidden = false;
+    button.textContent = "前の安定版に戻す";
+    if(status){
+      status.textContent = "現在版で問題が起きた場合だけ使用してください。";
+      status.hidden = false;
+    }
+  }catch(e){}
+}
+
+async function confirmAppVersionRollback(){
+  const button = document.getElementById("appRollbackBtn");
+  const status = document.getElementById("appRollbackStatus");
+  if(button?.disabled) return;
+  if(!window.confirm("現在のアプリを終了して、前の安定版に戻しますか？\n\n記録データは削除されません。")) return;
+  if(settingsDirty && !saveSettings()) return;
+
+  if(button) button.disabled = true;
+  if(status){
+    status.textContent = "前の安定版に戻しています...";
+    status.hidden = false;
+  }
+  try{
+    saveHarvestStateToStorage();
+    if(typeof window.rollbackHarvestnaviAppUpdate !== "function"){
+      throw new Error("安定版へ戻す機能を読み込めませんでした");
+    }
+    await window.rollbackHarvestnaviAppUpdate();
+  }catch(e){
+    if(button) button.disabled = false;
+    if(status){
+      status.textContent = "安定版へ戻せませんでした: " + String(e?.message || e);
+      status.hidden = false;
+    }
+  }
+}
+
 function openAppMenuWindow(){
   const modal = document.getElementById("appMenuModal");
   if(!modal) return;
   moveMenuSettingsToWindow();
   modal.classList.add("show");
   document.body.style.overflow = "hidden";
+  refreshAppRollbackAvailability();
 }
 
 function closeAppMenuWindow(){
@@ -12695,10 +12835,13 @@ async function checkLatestAppFromMenu(){
       throw new Error("更新機能を読み込めませんでした");
     }
     setAppUpdateCheckLoading(true, "最新版を開いています...");
-    window.applyHarvestnaviAppUpdate(updateResult.latestVersion);
+    await window.applyHarvestnaviAppUpdate(updateResult.latestVersion, updateResult.latestSource);
   }catch(e){
     console.warn("最新版の確認に失敗しました", e);
-    setAppUpdateCheckLoading(false, "最新版を確認できませんでした。通信状態を確認してください");
+    const message = String(e?.message || e || "");
+    setAppUpdateCheckLoading(false, message
+      ? "更新できませんでした: " + message
+      : "最新版を確認できませんでした。通信状態を確認してください");
   }
 }
 
@@ -21407,9 +21550,12 @@ window.onload = () => {
   refreshEmptyInputHighlights();
   updateWorkflowGuide();
   sessionStorage.removeItem("harvestForecastStartupRecovered");
-  if(sessionStorage.getItem("harvestnaviAppUpdatedNotice_v1") === "1"){
+  const appVersionNotice = sessionStorage.getItem("harvestnaviAppUpdatedNotice_v1");
+  if(appVersionNotice){
     sessionStorage.removeItem("harvestnaviAppUpdatedNotice_v1");
-    showToast("アプリを最新版に更新しました");
+    showToast(appVersionNotice === "rollback"
+      ? "前の安定版に戻しました"
+      : "アプリを最新版に更新しました");
   }
   hideWelcomeScreen();
   }catch(error){
@@ -21424,6 +21570,8 @@ window.onload = () => {
       <h1 style="font-size:20px;">アプリの起動に失敗しました</h1>
       <p>途中保存データを外しても起動できませんでした。記録データは削除していません。</p>
       <pre style="white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px;">${escapeHtml(error && error.stack ? error.stack : String(error))}</pre>
+      <button type="button" onclick="recoverHarvestnaviPreviousVersion(this)" style="width:100%;min-height:48px;border:0;border-radius:12px;background:#334155;color:#fff;font-size:15px;font-weight:800;">前の安定版に戻す</button>
+      <div style="margin-top:8px;color:#64748b;font-size:13px;"></div>
     </div>`;
   }
 };
