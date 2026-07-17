@@ -13930,13 +13930,14 @@ function buildDashboardMetricsMarkup(recordsInPeriod, plantingEventsInPeriod = [
   `;
 }
 
-function renderDashboardMetrics(recordsInPeriod, period){
+function renderDashboardMetrics(){
   const box = document.getElementById("dashboardMetrics");
-  if(!box) return;
   const recentPeriod = getRecentOneMonthDashboardPeriod();
+  if(!box) return recentPeriod;
   const recentRecords = getDashboardRecordsForPeriod(recentPeriod);
   const recentPlantingEvents = getDashboardPlantingEventsForPeriod(recentPeriod);
   box.innerHTML = buildDashboardMetricsMarkup(recentRecords, recentPlantingEvents);
+  return recentPeriod;
 }
 
 function getDashboardHistoryPeriods(period = getDashboardPeriod()){
@@ -14812,13 +14813,12 @@ function renderDashboard(){
   }
 
   const period = getDashboardPeriod();
+  const metricsPeriod = renderDashboardMetrics();
   const metricsNote = document.getElementById("dashboardMetricsNote");
-  if(metricsNote){
-    metricsNote.textContent = `※直近1ヶ月（${period.startLabel}〜${period.endLabel}）のデータを参照しています。`;
+  if(metricsNote && metricsPeriod){
+    metricsNote.textContent = `※直近1ヶ月（${metricsPeriod.startLabel}〜${metricsPeriod.endLabel}）のデータを参照しています。`;
   }
 
-  const recordsInPeriod = getDashboardRecords();
-  renderDashboardMetrics(recordsInPeriod, period);
   renderDashboardHarvestForecast();
   renderDashboardHistory(period);
 
