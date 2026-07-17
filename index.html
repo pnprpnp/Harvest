@@ -4485,6 +4485,7 @@ header{
 .appMenuLatestCopy{display:flex;min-width:0;flex-direction:column;gap:3px;}
 .appMenuLatestTitle{color:var(--ui-accent-dark);font-size:14px;font-weight:800;}
 .appMenuLatestBtn .headerLatestRefreshSub{font-size:11px;}
+.appMenuLatestBtn .headerLatestRefreshSub:empty{display:none;}
 .appRollbackBtn{
   margin-top:0;
   background:var(--ui-surface-muted);
@@ -6793,7 +6794,7 @@ requestAnimationFrame(function(){
       <button type="button" class="appMenuWindowClose" onclick="closeAppMenuWindow()">閉じる</button>
     </div>
     <div id="appMenuWindowBody" class="appMenuWindowBody">
-      <button id="appUpdateCheckBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn availabilityNoticeTarget" onclick="checkLatestAppFromMenu()" aria-label="アプリの最新版を確認する">
+      <button id="appUpdateCheckBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn availabilityNoticeTarget" onclick="checkLatestAppFromMenu()" aria-label="アプリの最新バージョンを確認する">
         <span class="headerLatestRefreshMain" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
             <path d="M20 6v5h-5"></path>
@@ -6801,8 +6802,8 @@ requestAnimationFrame(function(){
           </svg>
         </span>
         <span class="appMenuLatestCopy">
-          <span class="appMenuLatestTitle">最新版を確認</span>
-          <span id="appUpdateCheckStatus" class="headerLatestRefreshSub">更新がある場合は丸印でお知らせします</span>
+          <span class="appMenuLatestTitle">最新バージョンを確認</span>
+          <span id="appUpdateCheckStatus" class="headerLatestRefreshSub"></span>
         </span>
       </button>
     </div>
@@ -12506,8 +12507,8 @@ function setAppUpdateAvailabilityNotice(available){
   button.classList.toggle("hasAvailabilityNotice", !!available);
   if(!button.disabled){
     button.setAttribute("aria-label", available
-      ? "アプリの最新版があります"
-      : "アプリの最新版を確認する");
+      ? "アプリの最新バージョンがあります"
+      : "アプリの最新バージョンを確認する");
   }
 }
 
@@ -12744,10 +12745,10 @@ function setAppUpdateCheckLoading(isLoading, statusText = ""){
     button.classList.toggle("is-loading", !!isLoading);
     button.setAttribute("aria-busy", isLoading ? "true" : "false");
     button.setAttribute("aria-label", isLoading
-      ? "アプリの最新版を確認中"
+      ? "アプリの最新バージョンを確認中"
       : (button.classList.contains("hasAvailabilityNotice")
-        ? "アプリの最新版があります"
-        : "アプリの最新版を確認する"));
+        ? "アプリの最新バージョンがあります"
+        : "アプリの最新バージョンを確認する"));
   }
   if(statusText && status) status.textContent = statusText;
 }
@@ -12758,7 +12759,7 @@ function askAppUpdateConfirm(){
   const noButton = document.getElementById("appUpdateConfirmNo");
 
   if(!panel){
-    return Promise.resolve(window.confirm("最新版が見つかりました。更新しますか？"));
+    return Promise.resolve(window.confirm("最新バージョンが見つかりました。更新しますか？"));
   }
   if(appUpdateConfirmResolver){
     resolveAppUpdateConfirm(false);
@@ -12793,7 +12794,7 @@ async function checkLatestAppFromMenu(){
   if(button?.disabled) return;
 
   markAppUpdateCheckStarted();
-  setAppUpdateCheckLoading(true, "最新版を確認中です...");
+  setAppUpdateCheckLoading(true, "最新バージョンを確認中です...");
   try{
     if(typeof window.checkHarvestnaviAppUpdate !== "function"){
       throw new Error("更新確認機能を読み込めませんでした");
@@ -12828,7 +12829,7 @@ async function checkLatestAppFromMenu(){
     const message = String(e?.message || e || "");
     setAppUpdateCheckLoading(false, message
       ? "更新できませんでした: " + message
-      : "最新版を確認できませんでした。通信状態を確認してください");
+      : "最新バージョンを確認できませんでした。通信状態を確認してください");
   }
 }
 
