@@ -6942,13 +6942,15 @@ const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
 const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
 const WORKFLOW_BAR_VISIBILITY_KEY = "harvestForecastWorkflowBarVisible_v1";
+const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
 const MONITOR_DESIGN_HEIGHT = 720;
 const MONITOR_MAX_SCALE = 2;
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 30000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
-const AVAILABILITY_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const RECORD_AVAILABILITY_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const APP_UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const GOOGLE_SHEET_MAX_REQUEST_CHARS = 500000;
 const GOOGLE_SHEET_MAX_REQUEST_BYTES = 1000000;
 const GOOGLE_SHEET_MAX_RESPONSE_CHARS = 1000000;
@@ -7083,7 +7085,7 @@ let forecastSelectionState = null;
 let settingsDirty = false;
 let casePlacementByBuilding = {};
 let appUpdateConfirmResolver = null;
-let availabilityCheckLastStartedAt = 0;
+let recordAvailabilityCheckLastStartedAt = 0;
 let availabilityCheckPromise = null;
 let googleSheetConfirmResolver = null;
 let googleSheetSendState = "idle";
@@ -12540,18 +12542,39 @@ async function checkAppUpdateAvailabilitySilently(){
   }
 }
 
+function getLastAutomaticAppUpdateCheckAt(){
+  try{
+    const value = Number(localStorage.getItem(APP_UPDATE_AUTO_CHECK_AT_KEY));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }catch(e){
+    return 0;
+  }
+}
+
+function markAppUpdateCheckStarted(at = Date.now()){
+  try{
+    localStorage.setItem(APP_UPDATE_AUTO_CHECK_AT_KEY, String(at));
+  }catch(e){}
+}
+
 function runAvailabilityChecksIfDue(){
   if(document.visibilityState === "hidden") return Promise.resolve();
   if(typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
   const now = Date.now();
   if(availabilityCheckPromise) return availabilityCheckPromise;
-  if(now - availabilityCheckLastStartedAt < AVAILABILITY_CHECK_INTERVAL_MS) return Promise.resolve();
 
-  availabilityCheckLastStartedAt = now;
-  availabilityCheckPromise = Promise.allSettled([
-    checkAppUpdateAvailabilitySilently(),
-    checkGoogleSheetUpdateAvailabilitySilently()
-  ]).finally(() => {
+  const checks = [];
+  if(now - recordAvailabilityCheckLastStartedAt >= RECORD_AVAILABILITY_CHECK_INTERVAL_MS){
+    recordAvailabilityCheckLastStartedAt = now;
+    checks.push(checkGoogleSheetUpdateAvailabilitySilently());
+  }
+  if(now - getLastAutomaticAppUpdateCheckAt() >= APP_UPDATE_AUTO_CHECK_INTERVAL_MS){
+    markAppUpdateCheckStarted(now);
+    checks.push(checkAppUpdateAvailabilitySilently());
+  }
+  if(!checks.length) return Promise.resolve();
+
+  availabilityCheckPromise = Promise.allSettled(checks).finally(() => {
     availabilityCheckPromise = null;
   });
   return availabilityCheckPromise;
@@ -12650,6 +12673,7 @@ async function checkLatestAppFromMenu(){
   const button = document.getElementById("appUpdateCheckBtn");
   if(button?.disabled) return;
 
+  markAppUpdateCheckStarted();
   setAppUpdateCheckLoading(true, "最新版を確認中です...");
   try{
     if(typeof window.checkHarvestnaviAppUpdate !== "function"){
