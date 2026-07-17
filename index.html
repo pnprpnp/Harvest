@@ -18,6 +18,7 @@
   const VERSION_QUERY_KEY = "__hnv";
   const CHECK_QUERY_KEY = "__hncheck";
   let updateCheckPromise = null;
+  let loadedSourceVersionPromise = null;
 
   function getCanonicalAppUrl(){
     const url = new URL(window.location.href);
@@ -46,6 +47,32 @@
     return `${source.length.toString(36)}-${(first >>> 0).toString(36)}-${(second >>> 0).toString(36)}`;
   }
 
+  function normalizeAppSource(source){
+    const text = String(source || "");
+    if(typeof DOMParser !== "undefined"){
+      try{
+        const parsed = new DOMParser().parseFromString(text, "text/html");
+        if(parsed?.documentElement) return parsed.documentElement.outerHTML;
+      }catch(e){}
+    }
+    return text.replace(/^\s*<!doctype[^>]*>\s*/i, "").trim();
+  }
+
+  function getComparableSourceVersion(source){
+    return getSourceVersion(normalizeAppSource(source));
+  }
+
+  function captureLoadedSourceVersion(){
+    const source = document.documentElement?.outerHTML || "";
+    loadedSourceVersionPromise = getComparableSourceVersion(source);
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", captureLoadedSourceVersion, { once: true });
+  }else{
+    captureLoadedSourceVersion();
+  }
+
   function openAppVersion(version){
     const target = getCanonicalAppUrl();
     target.searchParams.set(VERSION_QUERY_KEY, version);
@@ -53,6 +80,15 @@
       sessionStorage.setItem(UPDATED_NOTICE_KEY, "1");
     }catch(e){}
     window.location.replace(target.toString());
+  }
+
+  function applyAppUpdate(version){
+    const nextVersion = String(version || "").trim();
+    if(!nextVersion) throw new Error("更新するバージョンが見つかりません");
+    try{
+      localStorage.setItem(VERSION_STORAGE_KEY, nextVersion);
+    }catch(e){}
+    openAppVersion(nextVersion);
   }
 
   async function checkForAppUpdate(){
@@ -71,26 +107,22 @@
       if(!response.ok) throw new Error("最新版の情報を取得できませんでした");
 
       const source = await response.text();
-      const latestVersion = await getSourceVersion(source);
-      const currentVersion = new URL(window.location.href).searchParams.get(VERSION_QUERY_KEY) || "";
+      const latestVersion = await getComparableSourceVersion(source);
+      let loadedVersion = "";
+      try{
+        loadedVersion = await loadedSourceVersionPromise || "";
+      }catch(e){}
+      const urlVersion = new URL(window.location.href).searchParams.get(VERSION_QUERY_KEY) || "";
       let savedVersion = "";
       try{
         savedVersion = localStorage.getItem(VERSION_STORAGE_KEY) || "";
       }catch(e){}
+      const currentVersion = loadedVersion || urlVersion || savedVersion;
 
-      if(savedVersion !== latestVersion){
-        try{
-          localStorage.setItem(VERSION_STORAGE_KEY, latestVersion);
-        }catch(e){}
-        openAppVersion(latestVersion);
-        return true;
-      }
-
-      if(currentVersion !== latestVersion){
-        openAppVersion(latestVersion);
-        return true;
-      }
-      return false;
+      return {
+        updateAvailable: !currentVersion || currentVersion !== latestVersion,
+        latestVersion
+      };
     })().catch(error => {
       console.warn("アプリの更新確認に失敗しました", error);
       throw error;
@@ -102,6 +134,7 @@
   }
 
   window.checkHarvestnaviAppUpdate = checkForAppUpdate;
+  window.applyHarvestnaviAppUpdate = applyAppUpdate;
 })();
 </script>
 <style>
@@ -3318,6 +3351,34 @@ button.monitorSaveBtn:active{
 }
 .googleSheetConfirmSend{
   background:#2563eb;
+}
+.appUpdateConfirmOverlay{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:10002;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  padding:18px 12px;
+  background:rgba(15,23,42,.48);
+}
+.appUpdateConfirmOverlay.show{
+  display:flex;
+}
+.googleSheetConfirmPanel.appUpdateConfirmWindow{
+  display:block;
+  position:relative;
+  left:auto;
+  top:auto;
+  transform:none;
+  opacity:1;
+  z-index:auto;
+  pointer-events:auto;
+  box-shadow:0 22px 48px rgba(15,23,42,.34);
+}
+.appUpdateConfirmYes{
+  background:#16a34a;
 }
 .recordImportErrorPanel{
   display:none;
@@ -6757,6 +6818,16 @@ requestAnimationFrame(function(){
     <button type="button" class="googleSheetConfirmSend" onclick="resolveGoogleSheetConfirm(true)">送信する</button>
   </div>
 </div>
+<div id="appUpdateConfirmPanel" class="appUpdateConfirmOverlay">
+  <div class="googleSheetConfirmPanel appUpdateConfirmWindow" role="dialog" aria-modal="true" aria-labelledby="appUpdateConfirmTitle" aria-describedby="appUpdateConfirmMessage">
+    <div id="appUpdateConfirmTitle" class="googleSheetConfirmTitle">アプリの更新</div>
+    <div id="appUpdateConfirmMessage" class="googleSheetConfirmMessage">最新版が見つかりました。更新しますか？</div>
+    <div class="googleSheetConfirmActions">
+      <button id="appUpdateConfirmNo" type="button" class="googleSheetConfirmCancel" onclick="resolveAppUpdateConfirm(false)">いいえ</button>
+      <button id="appUpdateConfirmYes" type="button" class="googleSheetConfirmSend appUpdateConfirmYes" onclick="resolveAppUpdateConfirm(true)">はい</button>
+    </div>
+  </div>
+</div>
 <div id="recordImportErrorPanel" class="recordImportErrorPanel" role="dialog" aria-modal="true" aria-labelledby="recordImportErrorTitle">
   <div id="recordImportErrorTitle" class="recordImportErrorTitle">読み込み失敗</div>
   <div id="recordImportErrorMessage" class="recordImportErrorMessage"></div>
@@ -6926,6 +6997,7 @@ let editingHarvestSelectionKeys = null;
 let forecastSelectionState = null;
 let settingsDirty = false;
 let casePlacementByBuilding = {};
+let appUpdateConfirmResolver = null;
 let googleSheetConfirmResolver = null;
 let googleSheetSendState = "idle";
 let googleSheetStartupImportStarted = false;
@@ -12244,6 +12316,42 @@ function setAppUpdateCheckLoading(isLoading, statusText = ""){
   if(statusText && status) status.textContent = statusText;
 }
 
+function askAppUpdateConfirm(){
+  const panel = document.getElementById("appUpdateConfirmPanel");
+  const yesButton = document.getElementById("appUpdateConfirmYes");
+  const noButton = document.getElementById("appUpdateConfirmNo");
+
+  if(!panel){
+    return Promise.resolve(window.confirm("最新版が見つかりました。更新しますか？"));
+  }
+  if(appUpdateConfirmResolver){
+    resolveAppUpdateConfirm(false);
+  }
+
+  if(yesButton) yesButton.disabled = false;
+  if(noButton) noButton.disabled = false;
+  panel.classList.add("show");
+  requestAnimationFrame(() => yesButton?.focus());
+
+  return new Promise(resolve => {
+    appUpdateConfirmResolver = resolve;
+  });
+}
+
+function resolveAppUpdateConfirm(shouldUpdate){
+  const panel = document.getElementById("appUpdateConfirmPanel");
+  const yesButton = document.getElementById("appUpdateConfirmYes");
+  const noButton = document.getElementById("appUpdateConfirmNo");
+  if(panel) panel.classList.remove("show");
+  if(yesButton) yesButton.disabled = true;
+  if(noButton) noButton.disabled = true;
+
+  if(appUpdateConfirmResolver){
+    appUpdateConfirmResolver(!!shouldUpdate);
+    appUpdateConfirmResolver = null;
+  }
+}
+
 async function checkLatestAppFromMenu(){
   const button = document.getElementById("appUpdateCheckBtn");
   if(button?.disabled) return;
@@ -12253,12 +12361,29 @@ async function checkLatestAppFromMenu(){
     if(typeof window.checkHarvestnaviAppUpdate !== "function"){
       throw new Error("更新確認機能を読み込めませんでした");
     }
-    const updating = await window.checkHarvestnaviAppUpdate();
-    if(updating){
-      setAppUpdateCheckLoading(true, "最新版を開いています...");
+    const updateResult = await window.checkHarvestnaviAppUpdate();
+    if(!updateResult?.updateAvailable){
+      setAppUpdateCheckLoading(false, "現在のアプリは最新版です");
       return;
     }
-    setAppUpdateCheckLoading(false, "現在のアプリは最新版です");
+
+    setAppUpdateCheckLoading(true, "最新版が見つかりました");
+    const shouldUpdate = await askAppUpdateConfirm();
+    if(!shouldUpdate){
+      setAppUpdateCheckLoading(false, "更新をキャンセルしました");
+      return;
+    }
+
+    if(settingsDirty && !saveSettings()){
+      setAppUpdateCheckLoading(false, "設定を保存してから、もう一度確認してください");
+      return;
+    }
+    saveHarvestStateToStorage();
+    if(typeof window.applyHarvestnaviAppUpdate !== "function"){
+      throw new Error("更新機能を読み込めませんでした");
+    }
+    setAppUpdateCheckLoading(true, "最新版を開いています...");
+    window.applyHarvestnaviAppUpdate(updateResult.latestVersion);
   }catch(e){
     console.warn("最新版の確認に失敗しました", e);
     setAppUpdateCheckLoading(false, "最新版を確認できませんでした。通信状態を確認してください");
@@ -20833,6 +20958,11 @@ window.onload = () => {
 
   document.addEventListener("keydown", (event) => {
     if(event.key !== "Escape") return;
+    const appUpdateConfirmPanel = document.getElementById("appUpdateConfirmPanel");
+    if(appUpdateConfirmPanel?.classList.contains("show")){
+      resolveAppUpdateConfirm(false);
+      return;
+    }
     const appMenuModal = document.getElementById("appMenuModal");
     if(appMenuModal?.classList.contains("show")){
       closeAppMenuWindow();
