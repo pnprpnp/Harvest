@@ -7349,13 +7349,18 @@ async function refreshAppRollbackAvailability(){
   const button = document.getElementById("appRollbackBtn");
   const status = document.getElementById("appRollbackStatus");
   if(!button) return;
-  button.hidden = true;
-  if(status) status.hidden = true;
+  button.hidden = false;
+  button.disabled = true;
+  button.textContent = "前の安定版に戻す";
+  if(status){
+    status.textContent = "前の安定版は、次回の手動更新後から利用できます。";
+    status.hidden = false;
+  }
   try{
     if(typeof window.getHarvestnaviAppCacheState !== "function") return;
     const state = await window.getHarvestnaviAppCacheState();
     if(!state?.previousCache || !state?.previousVersion) return;
-    button.hidden = false;
+    button.disabled = false;
     button.textContent = "前の安定版に戻す";
     if(status){
       status.textContent = "現在版で問題が起きた場合だけ使用してください。";
