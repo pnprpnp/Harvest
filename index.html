@@ -6407,8 +6407,6 @@ requestAnimationFrame(function(){
           <label>解除用パスワード</label>
           <input id="accessPasswordInput" type="password" placeholder="あらかじめ設定した固定パスワード">
           <div id="accessProtectionStatus" class="smallText" style="margin-top:6px;">ロック状態を確認中です。</div>
-          <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="protectRecordTabInput" onchange="settingsDirty=true"><span class="checkText">記録タブにパスワードをかける</span></label></div>
-          <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="protectDashboardTabInput" onchange="settingsDirty=true"><span class="checkText">集計タブにパスワードをかける</span></label></div>
         </div>
       </details>
 
@@ -7018,8 +7016,6 @@ const defaultSettings = {
   useBedPlantSettings: false,
   seedlingLossRate: 0,
   specialPallet60CountPer3: 2,
-  protectRecordTab: true,
-  protectDashboardTab: true,
   beds: {
     A: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
     B: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
@@ -7143,9 +7139,7 @@ function normalizeLossInput(value){
 }
 
 function isProtectedTab(tabName){
-  if(tabName === "record") return !!settings?.protectRecordTab;
-  if(tabName === "dashboard") return !!settings?.protectDashboardTab;
-  return false;
+  return tabName === "record" || tabName === "dashboard";
 }
 
 function hasPresetAccessPassword(){
@@ -7190,14 +7184,8 @@ function syncAccessProtectionDetails(options = {}){
 function updateAccessProtectionStatus(){
   const box = document.getElementById("accessProtectionStatus");
   if(!box) return;
-  const protectedEnabled = !!settings?.protectRecordTab || !!settings?.protectDashboardTab;
   if(!hasPresetAccessPassword()){
     box.textContent = "固定パスワードが未設定です。コード内の PRESET_ACCESS_PASSWORD を設定してください。";
-    return;
-  }
-  if(!protectedEnabled){
-    box.textContent = "現在は保護がOFFです。";
-    syncAccessProtectionDetails();
     return;
   }
   box.textContent = protectedAccessUnlocked
@@ -7218,11 +7206,6 @@ function applyAccessUnlockInput(value){
   return isValid;
 }
 
-function isAccessProtectionConfigChanged(previousSettings, nextSettings){
-  return !!previousSettings?.protectRecordTab !== !!nextSettings?.protectRecordTab
-    || !!previousSettings?.protectDashboardTab !== !!nextSettings?.protectDashboardTab;
-}
-
 function ensureProtectedTabAccess(tabName){
   if(!isProtectedTab(tabName)) return true;
   if(protectedAccessUnlocked) return true;
@@ -7231,7 +7214,7 @@ function ensureProtectedTabAccess(tabName){
 }
 
 function isAnyProtectedOperationEnabled(){
-  return !!settings?.protectRecordTab || !!settings?.protectDashboardTab;
+  return true;
 }
 
 function ensureProtectedOperationAccess(actionLabel){
@@ -7954,7 +7937,7 @@ function moveCalculationSettingsToForecast(){
 function installSettingsDirtyWatchers(){
   [
     "defaultLossRateInput","defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
-    "accessPasswordInput","protectRecordTabInput","protectDashboardTabInput",
+    "accessPasswordInput",
     "useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
     "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",
     "yield_D","loss_D","plant_D","yield_E","loss_E","plant_E","yield_F","loss_F","plant_F",
@@ -8790,9 +8773,6 @@ function loadSettings(){
     merged.useBedPlantSettings = !!parsed.useBedPlantSettings;
     merged.seedlingLossRate = clampNumber(parsed.seedlingLossRate, 0, 100, defaultSettings.seedlingLossRate);
     merged.specialPallet60CountPer3 = clampNumber(parsed.specialPallet60CountPer3, 0, 3, defaultSettings.specialPallet60CountPer3);
-    merged.protectRecordTab = !!parsed.protectRecordTab;
-    merged.protectDashboardTab = !!parsed.protectDashboardTab;
-
     if(parsed.beds){
       ["A","B","C","D","E","F"].forEach(b => {
         if(parsed.beds[b]){
@@ -13057,8 +13037,6 @@ function populateSettingsForm(){
   document.getElementById("seedlingLossRateInput").value = settings.seedlingLossRate;
   document.getElementById("specialPallet60CountInput").value = String(settings.specialPallet60CountPer3);
   document.getElementById("accessPasswordInput").value = "";
-  document.getElementById("protectRecordTabInput").checked = !!settings.protectRecordTab;
-  document.getElementById("protectDashboardTabInput").checked = !!settings.protectDashboardTab;
 
   ["A","B","C","D","E","F"].forEach(b => {
     document.getElementById("yield_" + b).value = String(settings.beds[b].yield);
@@ -13090,8 +13068,6 @@ function readSettingsForm(){
   next.useBedPlantSettings = !!document.getElementById("useBedPlantSettings").checked;
   next.seedlingLossRate = clampNumber(document.getElementById("seedlingLossRateInput").value, 0, 100, defaultSettings.seedlingLossRate);
   next.specialPallet60CountPer3 = clampNumber(document.getElementById("specialPallet60CountInput").value, 0, 3, defaultSettings.specialPallet60CountPer3);
-  next.protectRecordTab = !!document.getElementById("protectRecordTabInput").checked;
-  next.protectDashboardTab = !!document.getElementById("protectDashboardTabInput").checked;
 
   ["A","B","C","D","E","F"].forEach(b => {
     next.beds[b].yield = normalizeYield(document.getElementById("yield_" + b).value, next.defaultYieldPerPallet);
@@ -13256,16 +13232,12 @@ function saveSettings(){
   }
   const previousSettings = deepClone(settings);
   const nextSettings = readSettingsForm();
-  if((nextSettings.protectRecordTab || nextSettings.protectDashboardTab) && !hasPresetAccessPassword()){
+  if(!hasPresetAccessPassword()){
     showToast("固定パスワードが未設定です");
     return false;
   }
   if(unlockResult === null){
     unlockResult = applyAccessUnlockInput(document.getElementById("accessPasswordInput")?.value || "");
-  }
-  if(isAccessProtectionConfigChanged(previousSettings, nextSettings) && !protectedAccessUnlocked && unlockResult !== true){
-    showToast("保護設定を変えるには正しい固定パスワードを入力して保存してください");
-    return false;
   }
   appendSettingsChangeMemo(previousSettings, nextSettings);
   settings = nextSettings;
