@@ -3905,6 +3905,17 @@ button.monitorSaveBtn:active{
   font-weight:800;
   line-height:1.25;
 }
+.dashboardForecastBedCycle{
+  display:inline-block;
+  margin-top:4px;
+  padding:2px 7px;
+  border-radius:999px;
+  background:#fff3e0;
+  color:#b45309;
+  font-size:10px;
+  font-weight:850;
+  line-height:1.35;
+}
 .dashboardForecastBedPlantingAge{
   display:block;
   margin-top:4px;
@@ -6718,13 +6729,12 @@ requestAnimationFrame(function(){
       <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
       <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
       <div class="dashboardForecastLegend" aria-label="収穫時期の色分け">
-        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#9ca3af"></span>収穫済み</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#34c759"></span>7日以内</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#0a84ff"></span>8〜14日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近10件で収穫済みのパレットを除いて進みます。全て収穫済みの棟がある場合は、その続きの未完了棟から通常の順番で進みます。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映します。未収穫の場所を現在周期として先に予想し、直近10件で収穫済みの場所は、その後に次回収穫として予想します。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -14544,7 +14554,13 @@ function buildDashboardHarvestForecastModel(){
       if(startPallet) break;
     }
   }
-  if(!startPallet) return model;
+  if(!startPallet){
+    startPallet = {
+      building: BUILDINGS.includes(startBuilding) ? startBuilding : MIN_BUILDING,
+      bed: bedOrder[0],
+      number: 1
+    };
+  }
 
   const capacityPerHarvestDay = model.averageCases * CASE_SIZE;
   const harvestDates = [getFirstDashboardHarvestDate(referenceDate)];
@@ -14556,22 +14572,39 @@ function buildDashboardHarvestForecastModel(){
   };
 
   let cursor = { ...startPallet };
-  let cumulativeHeads = 0;
-  const harvestRate = Math.max(0, (100 - model.averageLoss) / 100);
+  const orderedPallets = [];
   for(let index = 0; index < totalPalletCount; index++){
-    const key = getPalletKey(cursor.building, cursor.bed, cursor.number);
-    if(!recordedSet.has(key)){
-      cumulativeHeads += getHarvestPlantCountForPallet(cursor.bed, cursor.number) * harvestRate;
-      const harvestDateIndex = Math.max(0, Math.ceil(cumulativeHeads / capacityPerHarvestDay) - 1);
-      const date = ensureHarvestDate(harvestDateIndex);
-      model.palletForecasts.set(key, {
-        date,
-        daysAfter: getLocalDayDiff(referenceDate, date),
-        harvestDateIndex
-      });
-    }
+    orderedPallets.push({ ...cursor });
     cursor = getNextPallet(cursor.building, cursor.bed, cursor.number);
   }
+  const forecastPallets = [
+    ...orderedPallets.filter(pallet => !recordedSet.has(getPalletKey(pallet.building, pallet.bed, pallet.number))),
+    ...orderedPallets.filter(pallet => recordedSet.has(getPalletKey(pallet.building, pallet.bed, pallet.number)))
+  ];
+
+  let cumulativeHeads = 0;
+  let nextCycleStarted = false;
+  const harvestRate = Math.max(0, (100 - model.averageLoss) / 100);
+  forecastPallets.forEach(pallet => {
+    const key = getPalletKey(pallet.building, pallet.bed, pallet.number);
+    const isNextCycle = recordedSet.has(key);
+    if(isNextCycle && !nextCycleStarted){
+      cumulativeHeads = Math.max(
+        capacityPerHarvestDay,
+        Math.ceil(cumulativeHeads / capacityPerHarvestDay) * capacityPerHarvestDay
+      );
+      nextCycleStarted = true;
+    }
+    cumulativeHeads += getHarvestPlantCountForPallet(pallet.bed, pallet.number) * harvestRate;
+    const harvestDateIndex = Math.max(0, Math.ceil(cumulativeHeads / capacityPerHarvestDay) - 1);
+    const date = ensureHarvestDate(harvestDateIndex);
+    model.palletForecasts.set(key, {
+      date,
+      daysAfter: getLocalDayDiff(referenceDate, date),
+      harvestDateIndex,
+      isNextCycle
+    });
+  });
 
   const buildRange = forecasts => {
     if(!forecasts.length) return null;
@@ -14598,7 +14631,7 @@ function buildDashboardHarvestForecastModel(){
 }
 
 function formatDashboardForecastRange(range){
-  if(!range) return { dateText: "収穫済み", delayText: "直近10件の記録", shortDelayText: "収穫済" };
+  if(!range) return { dateText: "予想なし", delayText: "", shortDelayText: "--" };
   const sameDay = range.start.date.getTime() === range.end.date.getTime();
   if(sameDay){
     return {
@@ -14630,26 +14663,38 @@ function getDashboardForecastBedMiniMapHtml(model, building, bed){
   return `<div class="bedMiniMapBar">${segments.map(segment => {
     const colors = [];
     const forecasts = [];
-    let recordedCount = 0;
+    let nextCycleCount = 0;
     for(let number = segment.start; number <= segment.end; number++){
       const key = getPalletKey(building, bed, number);
-      if(model.recordedSet.has(key)){
-        colors.push("#9ca3af");
-        recordedCount++;
-        continue;
-      }
       const forecast = model.palletForecasts.get(key);
       colors.push(getDashboardForecastDateColor(forecast?.daysAfter));
-      if(forecast) forecasts.push(forecast);
+      if(forecast){
+        forecasts.push(forecast);
+        if(forecast.isNextCycle) nextCycleCount++;
+      }
     }
     forecasts.sort((a, b) => a.date.getTime() - b.date.getTime());
     const range = forecasts.length
       ? { start: forecasts[0], end: forecasts[forecasts.length - 1] }
       : null;
-    const rangeText = range ? formatDashboardForecastRange(range).dateText : "収穫済み";
-    const title = `${segment.start}〜${segment.end}番 ${rangeText}${recordedCount ? ` / 収穫済み${recordedCount}枚` : ""}`;
+    const rangeText = range ? formatDashboardForecastRange(range).dateText : "予想なし";
+    const title = `${segment.start}〜${segment.end}番 ${rangeText}${nextCycleCount ? ` / 次回収穫${nextCycleCount}枚` : ""}`;
     return `<span class="bedMiniMapSegment dashboardForecastSegment ${segment.location}" style="background:${buildDashboardForecastSegmentGradient(colors)}" title="${escapeHtml(title)}"></span>`;
   }).join("")}</div>`;
+}
+
+function getDashboardForecastBedCycleText(model, building, bed){
+  let forecastCount = 0;
+  let nextCycleCount = 0;
+  for(let number = 1; number <= PALLETS_PER_BED; number++){
+    const forecast = model.palletForecasts.get(getPalletKey(building, bed, number));
+    if(!forecast) continue;
+    forecastCount++;
+    if(forecast.isNextCycle) nextCycleCount++;
+  }
+  if(!forecastCount || nextCycleCount === 0) return "現在周期";
+  if(nextCycleCount === forecastCount) return "次回収穫";
+  return "現在周期＋次回収穫";
 }
 
 function getDashboardForecastBedPlantingAgeText(model, building, bed){
@@ -14694,6 +14739,7 @@ function renderDashboardHarvestForecastBeds(model){
     : model.startBuilding;
   container.innerHTML = bedMap.map(bed => {
     const rangeText = formatDashboardForecastRange(model.bedRanges.get(`${building}-${bed}`));
+    const cycleText = getDashboardForecastBedCycleText(model, building, bed);
     const plantingAgeText = getDashboardForecastBedPlantingAgeText(model, building, bed);
     return `
       <div class="bed bedCollapsed dashboardForecastBed">
@@ -14701,6 +14747,7 @@ function renderDashboardHarvestForecastBeds(model){
           <span class="dashboardForecastBedName">${bed}ベッド</span>
           <span class="dashboardForecastBedDate">${escapeHtml(rangeText.dateText)}</span>
           <span class="dashboardForecastBedDelay">${escapeHtml(rangeText.delayText)}</span>
+          <span class="dashboardForecastBedCycle">${escapeHtml(cycleText)}</span>
           ${plantingAgeText ? `<span class="dashboardForecastBedPlantingAge">${escapeHtml(plantingAgeText)}</span>` : ""}
         </div>
         ${getDashboardForecastBedMiniMapHtml(model, building, bed)}
