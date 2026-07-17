@@ -6734,7 +6734,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映します。未収穫の場所を現在周期として先に予想し、直近10件で収穫済みの場所は、その後に次回収穫として予想します。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映します。未収穫の場所を現在周期として先に予想し、直近10件で収穫済みの場所は、過去の収穫周期を基準に次回収穫を予想します。周期履歴が足りない場合は20日を基準にします。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -7058,6 +7058,9 @@ const GOOGLE_SHEET_HEADER_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const CASE_SIZE = 12;
 const CALCULATION_LOOKBACK_DAYS = 35;
 const HARVEST_CYCLE_GAP_DAYS = 7;
+const DEFAULT_NEXT_HARVEST_INTERVAL_DAYS = 20;
+const MIN_NEXT_HARVEST_INTERVAL_DAYS = 18;
+const MAX_NEXT_HARVEST_INTERVAL_DAYS = 90;
 const RECORD_LIST_DISPLAY_LIMIT = 30;
 const DASHBOARD_RECORD_INITIAL_DISPLAY_LIMIT = 8;
 const RECORD_EXPORT_PROMPT_COUNT = 300;
@@ -14509,6 +14512,45 @@ function getFirstDashboardHarvestDate(referenceDate = new Date()){
   return cursor;
 }
 
+function getDashboardForecastCycleIntervals(){
+  const measured = BUILDINGS.map(building => ({
+    building,
+    days: getHarvestCycleIntervalDaysForBuilding(building)
+  }));
+  const validDays = measured
+    .map(item => Number(item.days))
+    .filter(days => Number.isFinite(days) && days >= MIN_NEXT_HARVEST_INTERVAL_DAYS && days <= MAX_NEXT_HARVEST_INTERVAL_DAYS)
+    .sort((a, b) => a - b);
+  const fallbackDays = validDays.length
+    ? validDays[Math.floor(validDays.length / 2)]
+    : DEFAULT_NEXT_HARVEST_INTERVAL_DAYS;
+  return {
+    fallbackDays,
+    byBuilding: new Map(measured.map(item => {
+      const days = Number(item.days);
+      const normalized = Number.isFinite(days) && days >= MIN_NEXT_HARVEST_INTERVAL_DAYS && days <= MAX_NEXT_HARVEST_INTERVAL_DAYS
+        ? days
+        : fallbackDays;
+      return [item.building, normalized];
+    }))
+  };
+}
+
+function getLatestFullHarvestDateByPallet(targetDate){
+  const targetDay = startOfLocalDay(targetDate || new Date());
+  const map = new Map();
+  records.forEach(record => {
+    if(record?.type === "partialHarvest") return;
+    const recordDate = parseDateOnlyString(String(record?.date || ""));
+    if(!recordDate || recordDate.getTime() > targetDay.getTime()) return;
+    getPalletKeysFromRecord(record).forEach(key => {
+      const current = map.get(key);
+      if(!current || recordDate.getTime() > current.getTime()) map.set(key, recordDate);
+    });
+  });
+  return map;
+}
+
 function buildDashboardHarvestForecastModel(){
   const referenceDate = startOfLocalDay(new Date());
   const recentPeriod = getRecentOneMonthDashboardPeriod();
@@ -14518,6 +14560,8 @@ function buildDashboardHarvestForecastModel(){
   const averageLoss = metrics.averageLoss === null ? NaN : Number(metrics.averageLoss);
   const recordedSet = getRecordedPalletSetFromRecords(getRecentHarvestRecordsByCount(referenceDate));
   const plantingDateByPallet = getLatestPlantingDateByPallet(referenceDate, { includeTargetDate: true });
+  const lastHarvestDateByPallet = getLatestFullHarvestDateByPallet(referenceDate);
+  const cycleIntervals = getDashboardForecastCycleIntervals();
   const startBuilding = getStartupHarvestBuilding();
   const totalPalletCount = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
   const normalizedAverageCases = Number.isFinite(averageCases) && averageCases > 0 ? averageCases : null;
@@ -14532,6 +14576,9 @@ function buildDashboardHarvestForecastModel(){
     referenceDate,
     recordedSet,
     plantingDateByPallet,
+    lastHarvestDateByPallet,
+    cycleIntervalByBuilding: cycleIntervals.byBuilding,
+    fallbackCycleIntervalDays: cycleIntervals.fallbackDays,
     startBuilding,
     palletForecasts: new Map(),
     bedRanges: new Map(),
@@ -14582,22 +14629,50 @@ function buildDashboardHarvestForecastModel(){
     ...orderedPallets.filter(pallet => recordedSet.has(getPalletKey(pallet.building, pallet.bed, pallet.number)))
   ];
 
-  let cumulativeHeads = 0;
+  let harvestDateIndex = 0;
+  let headsOnHarvestDate = 0;
   let nextCycleStarted = false;
   const harvestRate = Math.max(0, (100 - model.averageLoss) / 100);
+  const getHarvestDateIndexOnOrAfter = targetDate => {
+    let index = 0;
+    while(ensureHarvestDate(index).getTime() < targetDate.getTime()) index++;
+    return index;
+  };
   forecastPallets.forEach(pallet => {
     const key = getPalletKey(pallet.building, pallet.bed, pallet.number);
     const isNextCycle = recordedSet.has(key);
     if(isNextCycle && !nextCycleStarted){
-      cumulativeHeads = Math.max(
-        capacityPerHarvestDay,
-        Math.ceil(cumulativeHeads / capacityPerHarvestDay) * capacityPerHarvestDay
-      );
+      harvestDateIndex++;
+      headsOnHarvestDate = 0;
       nextCycleStarted = true;
     }
-    cumulativeHeads += getHarvestPlantCountForPallet(pallet.bed, pallet.number) * harvestRate;
-    const harvestDateIndex = Math.max(0, Math.ceil(cumulativeHeads / capacityPerHarvestDay) - 1);
+
+    if(isNextCycle){
+      const lastHarvestDate = model.lastHarvestDateByPallet.get(key) || null;
+      const plantingDate = model.plantingDateByPallet.get(key) || null;
+      const baseDate = lastHarvestDate && plantingDate
+        ? (lastHarvestDate.getTime() >= plantingDate.getTime() ? lastHarvestDate : plantingDate)
+        : (plantingDate || lastHarvestDate);
+      if(baseDate){
+        const intervalDays = model.cycleIntervalByBuilding.get(pallet.building)
+          || model.fallbackCycleIntervalDays
+          || DEFAULT_NEXT_HARVEST_INTERVAL_DAYS;
+        const readyDate = getFirstDashboardHarvestDate(addDays(baseDate, intervalDays));
+        const readyDateIndex = getHarvestDateIndexOnOrAfter(readyDate);
+        if(readyDateIndex > harvestDateIndex){
+          harvestDateIndex = readyDateIndex;
+          headsOnHarvestDate = 0;
+        }
+      }
+    }
+
+    const palletHeads = getHarvestPlantCountForPallet(pallet.bed, pallet.number) * harvestRate;
+    if(headsOnHarvestDate > 0 && headsOnHarvestDate + palletHeads > capacityPerHarvestDay){
+      harvestDateIndex++;
+      headsOnHarvestDate = 0;
+    }
     const date = ensureHarvestDate(harvestDateIndex);
+    headsOnHarvestDate += palletHeads;
     model.palletForecasts.set(key, {
       date,
       daysAfter: getLocalDayDiff(referenceDate, date),
