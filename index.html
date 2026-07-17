@@ -3237,13 +3237,35 @@ button.monitorSaveBtn:active{
 }
 .googleSheetResendHelpWrap{
   display:grid;
-  grid-template-columns:minmax(0, 1fr) 44px;
+  grid-template-columns:minmax(0, 1fr) auto;
   gap:8px;
   align-items:start;
 }
 .googleSheetResendHelpWrap .actionBtn{
   margin-top:0;
 }
+.recordTrashDetailsInline{margin:0;}
+.recordTrashIconBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  width:70px;
+  min-height:44px;
+  box-sizing:border-box;
+  border:none;
+  border-radius:10px;
+  padding:8px 9px;
+  background:#f3f4f6;
+  color:#4b5563;
+  font-size:14px;
+  font-weight:800;
+  line-height:1;
+  cursor:pointer;
+  list-style:none;
+}
+.recordTrashIconBtn::-webkit-details-marker{display:none;}
+.recordTrashIconBtn svg{width:20px;height:20px;flex:0 0 auto;}
 .googleSheetHelpBtn{
   width:44px;
   height:44px;
@@ -6439,20 +6461,17 @@ requestAnimationFrame(function(){
     <div class="card">
       <div class="sectionTitle">記録一覧</div>
       <div id="recordList" class="smallText">まだ記録がありません。</div>
-      <details id="recordTrashDetails" class="recordToggleWrap" style="margin-top:12px;">
-        <summary id="recordTrashSummary" class="recordToggleSummary">削除済みの記録（0）</summary>
-        <div id="recordTrashList" class="recordToggleBody smallText">削除済みの記録はありません。</div>
-      </details>
       <div class="externalSaveTools">
         <div class="googleSheetResendHelpWrap">
           <button id="googleSheetResendBtn" class="actionBtn secondaryBtn" onclick="sendPendingRecordsToGoogleSheet()">未送信の記録（0）</button>
-          <button type="button" class="googleSheetHelpBtn" aria-label="再送信の説明を表示" onclick="toggleGoogleSheetResendHelp()">?</button>
-          <div id="googleSheetResendHelpPanel" class="googleSheetHelpPanel">
-            <div class="googleSheetHelpTitle">スプレッドシート連携について</div>
-            <div>スプレッドシートへまだ送信できていない記録の件数が表示されます。</div>
-            <div style="margin-top:8px;">誤った情報を送信した場合は、記録一覧の「編集」で修正して保存し、このボタンから再送信してください。修正版は同じ記録IDの行を更新します。</div>
-            <button type="button" class="googleSheetHelpClose" onclick="hideGoogleSheetResendHelp()">閉じる</button>
-          </div>
+          <details id="recordTrashDetails" class="recordToggleWrap recordTrashDetailsInline">
+            <summary id="recordTrashSummary" class="recordTrashIconBtn" aria-label="削除済みの記録">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 13h10l1-13"></path><path d="M9 7V4h6v3"></path>
+              </svg><span aria-hidden="true">（</span><span id="recordTrashCount">0</span><span aria-hidden="true">）</span>
+            </summary>
+            <div id="recordTrashList" class="recordToggleBody smallText">削除済みの記録はありません。</div>
+          </details>
         </div>
         <div class="recordImportChoice">
           <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" onclick="toggleRecordImportMenu()">記録を読み込む</button>
@@ -19383,9 +19402,11 @@ function renderDeletedRecordList(){
   saveDeletedRecordsToStorage();
   saveDeletedPlantingEventsToStorage();
   const summary = document.getElementById("recordTrashSummary");
+  const count = document.getElementById("recordTrashCount");
   const box = document.getElementById("recordTrashList");
   const deletedTotal = deletedRecords.length + deletedPlantingEvents.length;
-  if(summary) summary.textContent = "削除済みの記録（" + deletedTotal + "）";
+  if(count) count.textContent = String(deletedTotal);
+  else if(summary) summary.textContent = "削除済みの記録（" + deletedTotal + "）";
   if(!box) return;
   if(!deletedTotal){
     box.textContent = "削除済みの記録はありません。";
