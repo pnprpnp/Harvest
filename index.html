@@ -6556,7 +6556,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近1件で収穫済みのパレットを除いて進みます。全て収穫済みの棟がある場合は、その続きの未完了棟から通常の順番で進みます。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均収穫ロス率を各パレットの見込み収穫数に反映し、直近10件で収穫済みのパレットを除いて進みます。全て収穫済みの棟がある場合は、その続きの未完了棟から通常の順番で進みます。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -14109,7 +14109,7 @@ function buildDashboardHarvestForecastModel(){
   const metrics = getDashboardRecentMetrics(recentRecords);
   const averageCases = Number(metrics.averageCases);
   const averageLoss = metrics.averageLoss === null ? NaN : Number(metrics.averageLoss);
-  const recordedSet = getRecordedPalletSetFromRecords(getRecentHarvestRecordsByCount(referenceDate, 1));
+  const recordedSet = getRecordedPalletSetFromRecords(getRecentHarvestRecordsByCount(referenceDate));
   const plantingDateByPallet = getLatestPlantingDateByPallet(referenceDate, { includeTargetDate: true });
   const startBuilding = getStartupHarvestBuilding();
   const totalPalletCount = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
@@ -14201,7 +14201,7 @@ function buildDashboardHarvestForecastModel(){
 }
 
 function formatDashboardForecastRange(range){
-  if(!range) return { dateText: "収穫済み", delayText: "直近1件の記録", shortDelayText: "収穫済" };
+  if(!range) return { dateText: "収穫済み", delayText: "直近10件の記録", shortDelayText: "収穫済" };
   const sameDay = range.start.date.getTime() === range.end.date.getTime();
   if(sameDay){
     return {
