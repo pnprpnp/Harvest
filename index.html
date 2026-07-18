@@ -6050,6 +6050,7 @@ button.forecastClearBtn{border-radius:13px;}
   border-radius:var(--ui-radius-sm);
   background:#fff;
   box-shadow:var(--ui-shadow-sm);
+  cursor:text;
   transition:border-color .18s ease,background .18s ease,box-shadow .18s ease;
 }
 .inputUnitWrap:hover{
@@ -6133,6 +6134,7 @@ button.forecastClearBtn{border-radius:13px;}
   border:1px solid rgba(255,159,10,.48);
   border-radius:11px;
   background:#fff9ed;
+  cursor:text;
 }
 .seedlingInlineWrap:focus-within{
   border-color:#d97706;
@@ -8374,6 +8376,18 @@ function installNumberInputAutoSelect(){
     });
     input.dataset.autoSelectInstalled = "1";
   });
+}
+
+function installUnitInputTapFocus(){
+  if(document.documentElement.dataset.unitInputTapFocusInstalled) return;
+  document.addEventListener("click", event => {
+    const target = event.target;
+    if(!(target instanceof Element) || target instanceof HTMLInputElement) return;
+    const wrap = target.closest(".inputUnitWrap, .seedlingInlineWrap");
+    const input = wrap?.querySelector("input:not(:disabled)");
+    if(input) input.focus();
+  });
+  document.documentElement.dataset.unitInputTapFocusInstalled = "1";
 }
 
 function isEmptyHighlightTarget(el){
@@ -21920,6 +21934,7 @@ window.onload = () => {
   populateDashboardStartDayOptions();
   installSettingsDirtyWatchers();
   installNumberInputAutoSelect();
+  installUnitInputTapFocus();
   installEmptyInputHighlights();
   installMonitorViewportResizeObserver();
   if(records.length) saveRecordsToStorage();
