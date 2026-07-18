@@ -2279,31 +2279,84 @@ button.monitorSaveBtn:active{
   white-space:pre-line;
   line-height:1.6;
 }
-.recordDetailToggle{
-  margin-top:8px;
-}
 .recordDetailSummary{
   cursor:pointer;
-  list-style:none;
+  display:block;
   width:100%;
+  margin-top:8px;
   box-sizing:border-box;
   border:none;
   border-radius:8px;
   padding:10px;
   background:#2563eb;
   color:#fff;
+  font:inherit;
   text-align:center;
   font-weight:bold;
+  -webkit-appearance:none;
+  appearance:none;
 }
-.recordDetailSummary::-webkit-details-marker{
+.recordDetailModal{
   display:none;
+  position:fixed;
+  inset:0;
+  z-index:10000;
+  box-sizing:border-box;
+  padding:18px;
+  background:rgba(15,23,42,0.45);
 }
-.recordDetailBody{
-  margin-top:8px;
-  padding:10px;
-  border:1px solid #dbeafe;
-  border-radius:10px;
+.recordDetailModal.show{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.recordDetailWindow{
+  display:flex;
+  flex-direction:column;
+  width:min(480px, 100%);
+  max-height:calc(100dvh - 36px);
+  overflow:hidden;
+  border-radius:16px;
   background:#fff;
+  box-shadow:0 24px 64px rgba(15,23,42,0.28);
+}
+.recordDetailWindowHeader{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border-bottom:1px solid #e5e7eb;
+}
+.recordDetailWindowTitle{
+  min-width:0;
+  color:#111827;
+  font-size:16px;
+  font-weight:900;
+}
+.recordDetailWindowClose{
+  flex:0 0 auto;
+  border:none;
+  border-radius:999px;
+  padding:6px 10px;
+  background:#e5e7eb;
+  color:#334155;
+  font-size:12px;
+  font-weight:900;
+}
+.recordDetailWindowBody{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:16px;
+  color:#374151;
+  font-size:14px;
+  line-height:1.75;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
 }
 .recordActions{
   display:flex;
@@ -5710,7 +5763,6 @@ button.forecastClearBtn{border-radius:13px;}
   background:#fff;
   color:var(--ui-accent-dark);
 }
-.recordDetailBody{border:0;border-radius:14px;background:#fff;}
 .recordActions button{border-radius:12px;box-shadow:none;}
 .recordActions .recordListDeleteBtn{background:#dc2626;color:#fff;}
 .recordActions .recordListDeleteBtn:hover{background:#b91c1c;}
@@ -5763,19 +5815,19 @@ button.forecastClearBtn{border-radius:13px;}
 .bedTabPanels{border:0;border-radius:15px;background:#fff;}
 .yieldSplitBox{border:0;border-radius:15px;background:var(--ui-surface-muted);}
 .inlineNote{color:var(--ui-text-secondary);}
-.forecastSettingsModal,.appMenuModal,.bedDetailModal,.plantingAgeModal,.monitorEditorModal{
+.forecastSettingsModal,.appMenuModal,.bedDetailModal,.plantingAgeModal,.recordDetailModal,.monitorEditorModal{
   background:rgba(20,20,22,.42);
   -webkit-backdrop-filter:blur(10px);
   backdrop-filter:blur(10px);
 }
-.forecastSettingsWindow,.appMenuWindow,.bedDetailWindow,.plantingAgeWindow,.monitorPreviewWindow,.monitorEditorWindow{
+.forecastSettingsWindow,.appMenuWindow,.bedDetailWindow,.plantingAgeWindow,.recordDetailWindow,.monitorPreviewWindow,.monitorEditorWindow{
   border:1px solid rgba(255,255,255,.72);
   border-radius:24px;
   background:rgba(255,255,255,.96);
   box-shadow:var(--ui-shadow-float);
 }
 .appMenuWindow{max-width:620px;padding:18px;}
-.forecastSettingsWindowHeader,.appMenuWindowHeader,.bedDetailWindowHeader,.plantingAgeWindowHeader,.monitorEditorWindowHeader{
+.forecastSettingsWindowHeader,.appMenuWindowHeader,.bedDetailWindowHeader,.plantingAgeWindowHeader,.recordDetailWindowHeader,.monitorEditorWindowHeader{
   padding:14px 16px;
   border-color:var(--ui-line);
   background:rgba(255,255,255,.88);
@@ -5785,7 +5837,7 @@ button.forecastClearBtn{border-radius:13px;}
 }
 .appMenuWindowTitle,.forecastSettingsWindowTitle{color:var(--ui-text);font-weight:750;letter-spacing:-.025em;}
 .appMenuWindowTitle{font-size:20px;}
-.forecastSettingsWindowClose,.appMenuWindowClose,.bedDetailWindowClose,.plantingAgeWindowClose,.monitorEditorCloseBtn{
+.forecastSettingsWindowClose,.appMenuWindowClose,.bedDetailWindowClose,.plantingAgeWindowClose,.recordDetailWindowClose,.monitorEditorCloseBtn{
   min-height:36px;
   padding:7px 12px;
   border:0;
@@ -5937,7 +5989,7 @@ button.forecastClearBtn{border-radius:13px;}
   .qualityChoiceRow{grid-template-columns:repeat(3,minmax(0,1fr));}
   .dashboardMetricCard{padding:15px;}
   .dashboardMetricValue{font-size:24px;}
-  .forecastSettingsModal,.appMenuModal,.bedDetailModal,.plantingAgeModal{padding:10px;}
+  .forecastSettingsModal,.appMenuModal,.bedDetailModal,.plantingAgeModal,.recordDetailModal{padding:10px;}
   .appMenuWindow{margin:8px auto;padding:14px;}
 }
 @media (max-width:360px){
@@ -6857,6 +6909,15 @@ requestAnimationFrame(function(){
     <div id="plantingAgeDetail" class="plantingAgeDetail plantingAgeWindowBody">収穫場所を選択してください</div>
   </div>
 </div>
+<div id="recordDetailModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="recordDetailWindowTitle" aria-describedby="recordDetailWindowBody">
+  <div class="recordDetailWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="recordDetailWindowTitle" class="recordDetailWindowTitle">記録の詳細</div>
+      <button id="recordDetailWindowCloseBtn" type="button" class="recordDetailWindowClose" onclick="closeRecordDetailWindow()">閉じる</button>
+    </div>
+    <div id="recordDetailWindowBody" class="recordDetailWindowBody"></div>
+  </div>
+</div>
 <div id="bedActionMenu" class="bedActionMenu">
   <div id="bedActionTitle" class="bedActionTitle">ベッド操作</div>
   <button type="button" onclick="selectBedToNeed('front')">必要数まで前から選択</button>
@@ -7116,6 +7177,7 @@ let expandedForecastBed = null;
 let expandedRecordBed = null;
 let activeBedDetailContext = null;
 let activeBedDetailBed = null;
+let recordDetailReturnFocus = null;
 let palletDragState = null;
 let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
@@ -8273,6 +8335,7 @@ function restoreForecastSelectionState(){
 }
 
 function closeRecordFloatingUi(){
+  closeRecordDetailWindow({ restoreFocus: false });
   closeBedDetailWindow();
   hideBedActionMenu();
   hideRecordBedActionMenu();
@@ -8289,7 +8352,8 @@ function unlockPageAfterRecordUiClose(){
     "appMenuModal",
     "forecastSettingsModal",
     "dashboardModal",
-    "plantingAgeModal"
+    "plantingAgeModal",
+    "recordDetailModal"
   ].some(id => document.getElementById(id)?.classList.contains("show"));
 
   if(!isMonitorModeOpen && !blockingModalOpen){
@@ -20219,6 +20283,86 @@ async function restoreDeletedRecord(id, recordUuid = ""){
   }
 }
 
+function openRecordDetailWindow(kind, id){
+  const modal = document.getElementById("recordDetailModal");
+  const title = document.getElementById("recordDetailWindowTitle");
+  const body = document.getElementById("recordDetailWindowBody");
+  const closeButton = document.getElementById("recordDetailWindowCloseBtn");
+  if(!modal || !title || !body) return;
+
+  const safeId = getSafePositiveRecordId(id);
+  if(!safeId){
+    showToast("詳細を表示する記録が見つかりません");
+    return;
+  }
+
+  let titleText = "記録の詳細";
+  let detailLines = [];
+  if(kind === "harvest"){
+    const record = getRecordById(safeId);
+    if(!record || record.type !== "fullHarvest"){
+      showToast("詳細を表示する収穫記録が見つかりません");
+      return;
+    }
+    titleText = `${record.date || "日付なし"} 収穫の詳細`;
+    detailLines = [
+      `予定苗枚数: ${record.plannedSeedlingTrayCount || 0}枚`,
+      `定植日数の詳細: ${formatPlantingAgeForRecord(record) || "-"}`,
+      `収穫場所: ${record.palletSummary || "-"}`
+    ];
+  }else if(kind === "planting"){
+    const event = getPlantingEventById(safeId);
+    if(!event){
+      showToast("詳細を表示する苗植え記録が見つかりません");
+      return;
+    }
+    const usage = getPlantingEventUsage(event.eventId);
+    const sourceText = event.sourceAllocations.map(allocation => {
+      const source = getRecordById(allocation.harvestRecordId);
+      return `${source?.date || "日付不明"}の収穫 ${allocation.palletKeys.length}パレット`;
+    }).join(" / ");
+    const carryoverText = event.actualSeedlingCarryoverMode === "carryover"
+      ? "余った"
+      : "余っていない";
+    titleText = `${event.plantingDate || "日付なし"} 苗植えの詳細`;
+    detailLines = [
+      `実際に取った苗: ${event.actualTakenSeedlingCount}株`,
+      `苗植えした株数: ${event.actualPlantedSeedlingCount}株`,
+      `今回余った苗の設定: ${carryoverText}`,
+      `作業後の繰越苗: ${usage?.carryoverAfter ?? 0}株`,
+      ...(isPlantingEventUnsent(event) ? ["Google: 未送信"] : []),
+      `収穫元: ${sourceText || "-"}`,
+      `苗植え場所: ${formatPlantingSummaryForKeys(event.plantingPalletKeys) || "-"}`
+    ];
+  }else{
+    return;
+  }
+
+  recordDetailReturnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  title.textContent = titleText;
+  body.textContent = detailLines.join("\n");
+  body.scrollTop = 0;
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => closeButton?.focus({ preventScroll: true }));
+}
+
+function closeRecordDetailWindow(options = {}){
+  const modal = document.getElementById("recordDetailModal");
+  const body = document.getElementById("recordDetailWindowBody");
+  const shouldRestoreFocus = options.restoreFocus !== false;
+  const returnFocus = recordDetailReturnFocus;
+  if(modal) modal.classList.remove("show");
+  if(body) body.textContent = "";
+  recordDetailReturnFocus = null;
+  unlockPageAfterRecordUiClose();
+  if(shouldRestoreFocus && returnFocus?.isConnected){
+    requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
+  }
+}
+
 function renderRecordItemHtml(r){
   const safeRecordId = getSafePositiveRecordId(r?.id) ?? 0;
   const safeDate = escapeHtml(String(r?.date || "日付なし"));
@@ -20244,7 +20388,6 @@ function renderRecordItemHtml(r){
     `;
   }
 
-  const plantingAgeText = formatPlantingAgeForRecord(r);
   const plantingEventCount = getPlantingEventsForHarvest(r.id).length;
   const showPlantingResumeButton = plantingEventCount === 0 && shouldOfferPlantingRecordResume(r);
   const actualLossNumber = getFiniteNumberInRange(r?.actualLoss, -999999, 100);
@@ -20266,12 +20409,7 @@ function renderRecordItemHtml(r){
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
-      <details class="recordDetailToggle">
-        <summary class="recordDetailSummary">詳細</summary>
-        <div class="recordDetailBody smallText" style="white-space:pre-wrap;">予定苗枚数: ${escapeHtml(String(r.plannedSeedlingTrayCount || 0))}枚
-定植日数の詳細: ${escapeHtml(plantingAgeText || "-")}
-収穫場所: ${escapeHtml(r.palletSummary || "-")}</div>
-      </details>
+      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('harvest', ${safeRecordId})">詳細</button>
       <div class="recordActions">
         <button class="thirdBtn" onclick="editHarvestRecord(${safeRecordId})">編集</button>
         ${showPlantingResumeButton ? `<button class="thirdBtn" onclick="resumePlantingRecord(${safeRecordId})">苗植え場所を記録</button>` : ""}
@@ -20284,16 +20422,10 @@ ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309
 function renderPlantingEventItemHtml(event){
   const safeEventId = getSafePositiveRecordId(event?.eventId) ?? 0;
   const usage = getPlantingEventUsage(event.eventId);
-  const sourceText = event.sourceAllocations.map(allocation => {
-    const source = getRecordById(allocation.harvestRecordId);
-    return `${source?.date || "日付不明"}の収穫 ${allocation.palletKeys.length}パレット`;
-  }).join(" / ");
-  const carryoverText = event.actualSeedlingCarryoverMode === "carryover" ? "余った" : "余っていない";
   const rawLossRateText = String(event.actualSeedlingLossRate || "").trim();
   const lossRateText = rawLossRateText || (usage
     ? String(Math.round(clampNumber(usage.effectiveLossRate, 0, 100, 0) * 10) / 10)
     : "");
-  const syncText = isPlantingEventUnsent(event) ? "\nGoogle: 未送信" : "";
   const estimatedCarryoverTrayCount = getEstimatedSeedlingTrayCountFromSeedlings(usage?.carryoverAfter ?? 0);
   const pendingPalletCount = new Set(
     event.sourceAllocations.flatMap(allocation => (
@@ -20307,15 +20439,7 @@ function renderPlantingEventItemHtml(event){
 苗ロス率: ${escapeHtml(lossRateText ? lossRateText + "%" : "-")}
 余った苗:約 ${escapeHtml(String(estimatedCarryoverTrayCount))}枚分
 未定植パレット: ${escapeHtml(String(pendingPalletCount))}枚</div>
-      <details class="recordDetailToggle">
-        <summary class="recordDetailSummary">詳細</summary>
-        <div class="recordDetailBody smallText" style="white-space:pre-wrap;">実際に取った苗: ${escapeHtml(String(event.actualTakenSeedlingCount))}株
-苗植えした株数: ${escapeHtml(String(event.actualPlantedSeedlingCount))}株
-今回余った苗の設定: ${escapeHtml(carryoverText)}
-作業後の繰越苗: ${escapeHtml(String(usage?.carryoverAfter ?? 0))}株${escapeHtml(syncText)}
-収穫元: ${escapeHtml(sourceText || "-")}
-苗植え場所: ${escapeHtml(formatPlantingSummaryForKeys(event.plantingPalletKeys) || "-")}</div>
-      </details>
+      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('planting', ${safeEventId})">詳細</button>
       <div class="recordActions">
         <button class="thirdBtn" onclick="editPlantingEvent(${safeEventId})">編集</button>
         <button class="secondaryBtn recordListDeleteBtn" onclick="confirmDeletePlantingEvent(${safeEventId})">削除</button>
@@ -21716,6 +21840,11 @@ window.onload = () => {
       resolveAppUpdateConfirm(false);
       return;
     }
+    const recordDetailModal = document.getElementById("recordDetailModal");
+    if(recordDetailModal?.classList.contains("show")){
+      closeRecordDetailWindow();
+      return;
+    }
     const appMenuModal = document.getElementById("appMenuModal");
     if(appMenuModal?.classList.contains("show")){
       closeAppMenuWindow();
@@ -21801,6 +21930,20 @@ window.onload = () => {
       if(event.target === plantingAgeModal){
         closePlantingAgeWindow();
       }
+    });
+  }
+
+  const recordDetailModal = document.getElementById("recordDetailModal");
+  if(recordDetailModal){
+    recordDetailModal.addEventListener("click", (event) => {
+      if(event.target === recordDetailModal){
+        closeRecordDetailWindow();
+      }
+    });
+    recordDetailModal.addEventListener("keydown", (event) => {
+      if(event.key !== "Tab") return;
+      event.preventDefault();
+      document.getElementById("recordDetailWindowCloseBtn")?.focus({ preventScroll: true });
     });
   }
 
