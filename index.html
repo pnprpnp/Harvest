@@ -3890,6 +3890,84 @@ button.monitorSaveBtn:active{
   text-align:right;
   line-height:1.45;
 }
+.dashboardForecastControls{
+  display:grid;
+  grid-template-columns:minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  gap:8px;
+  align-items:end;
+  margin-bottom:12px;
+  padding:12px;
+  border-radius:14px;
+  background:#f2f2f7;
+}
+.dashboardForecastControlField{
+  display:grid;
+  gap:5px;
+  min-width:0;
+}
+.dashboardForecastControlLabel{
+  color:#3a3a3c;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.35;
+}
+.dashboardForecastValueInput{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  min-height:44px;
+  overflow:hidden;
+  border:1px solid #d1d1d6;
+  border-radius:12px;
+  background:#fff;
+}
+.dashboardForecastValueInput:focus-within{
+  border-color:#248a4b;
+  box-shadow:0 0 0 3px rgba(36,138,75,.13);
+}
+.dashboardForecastValueInput.invalid{
+  border-color:#dc2626;
+  box-shadow:0 0 0 2px rgba(220,38,38,.1);
+}
+.dashboardForecastValueInput input{
+  width:100%;
+  min-width:0;
+  min-height:42px;
+  margin:0;
+  padding:9px 4px 9px 12px;
+  border:0 !important;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none !important;
+  color:#1d1d1f;
+  font-size:17px;
+  font-weight:800;
+}
+.dashboardForecastValueInput input:focus{
+  outline:none;
+}
+.dashboardForecastInputSuffix{
+  flex:0 0 auto;
+  padding:0 11px 0 5px;
+  color:#6e6e73;
+  font-size:12px;
+  font-weight:700;
+}
+.dashboardForecastAverageBtn{
+  min-height:44px;
+  border:0;
+  border-radius:12px;
+  padding:9px 13px;
+  background:#fff;
+  color:#176637;
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.dashboardForecastAverageBtn:disabled{
+  color:#8e8e93;
+  opacity:.62;
+}
 .dashboardForecastBuildingTabs{
   display:grid;
   grid-template-columns:repeat(8, minmax(64px, 1fr));
@@ -4242,6 +4320,12 @@ button.monitorSaveBtn:active{
     display:inline-block;
     margin-top:8px;
     text-align:left;
+  }
+  .dashboardForecastControls{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+  .dashboardForecastAverageBtn{
+    grid-column:1 / -1;
   }
   .dashboardForecastBuildingTabs{
     grid-template-columns:repeat(8, 70px);
@@ -6763,9 +6847,26 @@ requestAnimationFrame(function(){
       <div class="dashboardHarvestForecastHead">
         <div>
           <div class="sectionTitle">収穫時期予想</div>
-          <div class="dashboardHarvestForecastLead">収穫時の計算設定、直近1ヶ月の平均ケース数と平均収穫ロス率を使った目安です。</div>
+          <div class="dashboardHarvestForecastLead">初期値は直近1ヶ月の平均です。ケース数とロス率を変更して試算できます。</div>
         </div>
         <div id="dashboardHarvestForecastStatus" class="dashboardHarvestForecastStatus"></div>
+      </div>
+      <div class="dashboardForecastControls">
+        <label class="dashboardForecastControlField" for="dashboardForecastCasesInput">
+          <span class="dashboardForecastControlLabel">1日あたり収穫ケース数</span>
+          <span id="dashboardForecastCasesInputWrap" class="dashboardForecastValueInput">
+            <input id="dashboardForecastCasesInput" type="number" min="0.1" max="999999" step="0.1" inputmode="decimal" oninput="handleDashboardHarvestForecastInput('cases')">
+            <span class="dashboardForecastInputSuffix">ケース</span>
+          </span>
+        </label>
+        <label class="dashboardForecastControlField" for="dashboardForecastLossInput">
+          <span class="dashboardForecastControlLabel">収穫ロス率</span>
+          <span id="dashboardForecastLossInputWrap" class="dashboardForecastValueInput">
+            <input id="dashboardForecastLossInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" oninput="handleDashboardHarvestForecastInput('loss')">
+            <span class="dashboardForecastInputSuffix">%</span>
+          </span>
+        </label>
+        <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" onclick="resetDashboardHarvestForecastInputs()">平均に戻す</button>
       </div>
       <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
       <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
@@ -6775,7 +6876,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均ケース数と平均収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。実際の記録は変更しません。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。実際の記録は変更しません。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -7174,6 +7275,9 @@ let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
 let dashboardHarvestForecastBuilding = null;
 let dashboardHarvestForecastModelCache = null;
+let dashboardHarvestForecastCasesValue = null;
+let dashboardHarvestForecastLossValue = null;
+let dashboardHarvestForecastRenderTimer = null;
 const tabScrollPositions = {
   forecast: 0,
   monitor: 0,
@@ -14689,6 +14793,81 @@ function getFirstDashboardHarvestDate(referenceDate = new Date()){
   return cursor;
 }
 
+function formatDashboardHarvestForecastInputValue(value){
+  if(!Number.isFinite(value)) return "";
+  return String(Math.round(value * 10) / 10);
+}
+
+function parseDashboardHarvestForecastCasesValue(value){
+  const text = String(value ?? "").trim();
+  if(!text) return null;
+  const number = Number(text);
+  return Number.isFinite(number) && number > 0 && number <= RECORD_MAX_CASES
+    ? number
+    : null;
+}
+
+function parseDashboardHarvestForecastLossValue(value){
+  const text = String(value ?? "").trim();
+  if(!text) return null;
+  const number = Number(text);
+  return Number.isFinite(number) && number >= 0 && number <= 100
+    ? number
+    : null;
+}
+
+function handleDashboardHarvestForecastInput(kind){
+  if(kind === "cases"){
+    dashboardHarvestForecastCasesValue = document.getElementById("dashboardForecastCasesInput")?.value ?? "";
+  }else if(kind === "loss"){
+    dashboardHarvestForecastLossValue = document.getElementById("dashboardForecastLossInput")?.value ?? "";
+  }else{
+    return;
+  }
+  dashboardHarvestForecastModelCache = null;
+  clearTimeout(dashboardHarvestForecastRenderTimer);
+  dashboardHarvestForecastRenderTimer = setTimeout(() => {
+    dashboardHarvestForecastRenderTimer = null;
+    renderDashboardHarvestForecast();
+  }, 180);
+}
+
+function resetDashboardHarvestForecastInputs(){
+  clearTimeout(dashboardHarvestForecastRenderTimer);
+  dashboardHarvestForecastRenderTimer = null;
+  dashboardHarvestForecastCasesValue = null;
+  dashboardHarvestForecastLossValue = null;
+  dashboardHarvestForecastModelCache = null;
+  renderDashboardHarvestForecast();
+}
+
+function syncDashboardHarvestForecastInputs(model){
+  const casesInput = document.getElementById("dashboardForecastCasesInput");
+  const lossInput = document.getElementById("dashboardForecastLossInput");
+  const casesWrap = document.getElementById("dashboardForecastCasesInputWrap");
+  const lossWrap = document.getElementById("dashboardForecastLossInputWrap");
+  const averageButton = document.getElementById("dashboardForecastAverageBtn");
+  const casesText = dashboardHarvestForecastCasesValue === null
+    ? formatDashboardHarvestForecastInputValue(model.averageCases)
+    : dashboardHarvestForecastCasesValue;
+  const lossText = dashboardHarvestForecastLossValue === null
+    ? formatDashboardHarvestForecastInputValue(model.averageLoss)
+    : dashboardHarvestForecastLossValue;
+
+  if(casesInput && casesInput.value !== casesText) casesInput.value = casesText;
+  if(lossInput && lossInput.value !== lossText) lossInput.value = lossText;
+  const casesInvalid = model.forecastCases === null;
+  const lossInvalid = model.forecastLoss === null || model.forecastLoss >= 100;
+  casesWrap?.classList.toggle("invalid", casesInvalid);
+  lossWrap?.classList.toggle("invalid", lossInvalid);
+  casesInput?.setAttribute("aria-invalid", casesInvalid ? "true" : "false");
+  lossInput?.setAttribute("aria-invalid", lossInvalid ? "true" : "false");
+  if(averageButton){
+    averageButton.disabled = dashboardHarvestForecastCasesValue === null
+      && dashboardHarvestForecastLossValue === null;
+  }
+}
+
 function buildDashboardHarvestForecastModel(){
   const referenceDate = startOfLocalDay(new Date());
   const recentPeriod = getRecentOneMonthDashboardPeriod();
@@ -14701,12 +14880,26 @@ function buildDashboardHarvestForecastModel(){
   const startBuilding = getStartupHarvestBuilding();
   const totalPalletCount = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
   const normalizedAverageCases = Number.isFinite(averageCases) && averageCases > 0 ? averageCases : null;
-  const normalizedAverageLoss = Number.isFinite(averageLoss) && averageLoss <= 100 ? averageLoss : null;
+  const normalizedAverageLoss = Number.isFinite(averageLoss) && averageLoss >= 0 && averageLoss <= 100
+    ? averageLoss
+    : null;
+  const casesUsesAverage = dashboardHarvestForecastCasesValue === null;
+  const lossUsesAverage = dashboardHarvestForecastLossValue === null;
+  const forecastCases = casesUsesAverage
+    ? normalizedAverageCases
+    : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesValue);
+  const forecastLoss = lossUsesAverage
+    ? normalizedAverageLoss
+    : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossValue);
 
   const model = {
     averageCases: normalizedAverageCases,
     averageLoss: normalizedAverageLoss,
-    canForecast: normalizedAverageCases !== null && normalizedAverageLoss !== null && normalizedAverageLoss < 100,
+    forecastCases,
+    forecastLoss,
+    casesUsesAverage,
+    lossUsesAverage,
+    canForecast: forecastCases !== null && forecastLoss !== null && forecastLoss < 100,
     harvestDays: metrics.harvestDays,
     recentPeriod,
     referenceDate,
@@ -14720,7 +14913,7 @@ function buildDashboardHarvestForecastModel(){
   if(!model.canForecast) return model;
 
   const virtualRecords = [...records].sort(compareRecordsByDateDesc);
-  const harvestRate = Math.max(0, (100 - model.averageLoss) / 100);
+  const harvestRate = Math.max(0, (100 - model.forecastLoss) / 100);
   const maxIterations = totalPalletCount + RECORDED_LOOKBACK_COUNT * 2;
   const actualHarvestDates = new Set(records.filter(record =>
     record?.type !== "partialHarvest"
@@ -14744,7 +14937,7 @@ function buildDashboardHarvestForecastModel(){
       forecastDateText,
       virtualRecords
     );
-    const needHeads = Math.max(0, model.averageCases - partialCases) * CASE_SIZE;
+    const needHeads = Math.max(0, model.forecastCases - partialCases) * CASE_SIZE;
     if(needHeads <= 0){
       forecastDate = getNextDashboardHarvestDate(forecastDate);
       continue;
@@ -14776,7 +14969,7 @@ function buildDashboardHarvestForecastModel(){
       id: `dashboard-forecast-${iteration}`,
       type: "fullHarvest",
       date: forecastDateText,
-      cases: Math.max(0, model.averageCases - partialCases),
+      cases: Math.max(0, model.forecastCases - partialCases),
       palletKeys: [...selection.palletKeys]
     });
     virtualRecords.sort(compareRecordsByDateDesc);
@@ -14892,9 +15085,19 @@ function renderDashboardHarvestForecastBeds(model){
   if(!container) return;
   if(!model.canForecast){
     const reasons = [];
-    if(model.averageCases === null) reasons.push("直近1ヶ月に収穫ケース数の記録がありません");
-    if(model.averageLoss === null) reasons.push("直近1ヶ月に収穫ロス率を計算できる通常収穫記録がありません");
-    if(model.averageLoss !== null && model.averageLoss >= 100) reasons.push("平均収穫ロス率が100%のため見込み収穫数を計算できません");
+    if(model.forecastCases === null){
+      reasons.push(model.casesUsesAverage
+        ? "直近1ヶ月に収穫ケース数の記録がありません"
+        : "1日あたり収穫ケース数を0より大きい数で入力してください");
+    }
+    if(model.forecastLoss === null){
+      reasons.push(model.lossUsesAverage
+        ? "直近1ヶ月に収穫ロス率を計算できる通常収穫記録がありません"
+        : "収穫ロス率を0〜100%で入力してください");
+    }
+    if(model.forecastLoss !== null && model.forecastLoss >= 100){
+      reasons.push("収穫ロス率が100%のため見込み収穫数を計算できません");
+    }
     container.innerHTML = `<div class="dashboardEmpty" style="grid-column:1/-1;">${escapeHtml(reasons.join("。"))}。</div>`;
     return;
   }
@@ -14937,12 +15140,13 @@ function renderDashboardHarvestForecast(){
 
   const model = buildDashboardHarvestForecastModel();
   dashboardHarvestForecastModelCache = model;
+  syncDashboardHarvestForecastInputs(model);
   if(!BUILDINGS.includes(dashboardHarvestForecastBuilding)){
     dashboardHarvestForecastBuilding = model.startBuilding;
   }
 
-  status.innerHTML = `平均 ${escapeHtml(formatDashboardMetricNumber(model.averageCases))}ケース／日<br>`
-    + `<span style="font-weight:650;">平均ロス ${escapeHtml(formatDashboardMetricNumber(model.averageLoss, "%"))} / 実績 ${model.harvestDays}日</span>`;
+  status.innerHTML = `直近1ヶ月平均<br>`
+    + `<span style="font-weight:650;">${escapeHtml(formatDashboardMetricNumber(model.averageCases))}ケース／日 / ロス ${escapeHtml(formatDashboardMetricNumber(model.averageLoss, "%"))} / 実績 ${model.harvestDays}日</span>`;
   tabs.innerHTML = BUILDINGS.map(building => {
     const rangeText = formatDashboardForecastRange(model.buildingRanges.get(building));
     const buildingDelayText = model.canForecast ? rangeText.shortDelayText : "--";
