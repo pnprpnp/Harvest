@@ -5404,6 +5404,8 @@ button.forecastClearBtn{border-radius:13px;}
   grid-row:1;
   display:flex;
   align-items:center;
+  justify-content:space-between;
+  gap:24px;
   padding:0 6px;
 }
 .monitorTodayDate{
@@ -5413,6 +5415,21 @@ button.forecastClearBtn{border-radius:13px;}
   line-height:1;
   font-weight:720;
   letter-spacing:-.025em;
+}
+.monitorUpdatedAt{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  color:var(--ui-text-secondary);
+  font-size:15px;
+  line-height:1;
+  font-weight:650;
+  white-space:nowrap;
+}
+.monitorUpdatedAtValue{
+  color:var(--ui-text);
+  font-variant-numeric:tabular-nums;
+  font-weight:720;
 }
 .monitorSummaryGrid{
   min-width:0;
@@ -7393,6 +7410,7 @@ const MONITOR_MAX_MEMO_ITEM_LENGTH = 5000;
 const RECORD_TRASH_RETENTION_DAYS = 30;
 const RECORD_TRASH_RETENTION_MS = RECORD_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const MONITOR_REMOTE_POLL_INTERVAL_MS = 30000;
+const MONITOR_PREVIEW_PREFETCH_MAX_AGE_MS = 30000;
 const RECORDED_LOOKBACK_COUNT = 10;
 const GOOGLE_SHEET_STARTUP_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const GOOGLE_SHEET_HEADER_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
@@ -7506,6 +7524,9 @@ let isMonitorModeOpen = false;
 let manualSeedlingCount = null;
 let monitorRemoteContent = null;
 let monitorRemoteSignature = "";
+let monitorRemoteFetchedContent = null;
+let monitorRemoteFetchedAt = 0;
+let monitorRemotePrefetchPromise = null;
 let monitorRemotePollTimer = null;
 let monitorRemotePollInFlight = false;
 let monitorRemoteEditorHarvestFillKeys = [];
@@ -8010,7 +8031,7 @@ async function openMonitorMode(){
     }
 
     if(config){
-      await fetchMonitorRemoteContent({ silentErrors: true, force: true });
+      await getFreshMonitorRemoteContent();
       monitorModeLoading = false;
       renderMonitorMode();
       updateMonitorFitScale();
@@ -8780,6 +8801,7 @@ function switchTab(tabName){
   if(tabName === "monitor"){
     renderForecastSummary();
     resizeAllMonitorMemoInputs();
+    prefetchMonitorRemoteContent();
   }
   activeAppTab = tabName;
   scheduleWorkflowGuideUpdate();
@@ -11515,6 +11537,42 @@ function getMonitorRemoteSignature(content){
   });
 }
 
+function isMonitorRemoteContentFresh(maxAgeMs = MONITOR_PREVIEW_PREFETCH_MAX_AGE_MS){
+  if(!monitorRemoteFetchedAt) return false;
+  const elapsed = Date.now() - monitorRemoteFetchedAt;
+  return elapsed >= 0 && elapsed <= maxAgeMs;
+}
+
+function prefetchMonitorRemoteContent(){
+  const config = getValidatedGoogleSheetConfig({ silent: true });
+  if(!config) return Promise.resolve(null);
+  if(isMonitorRemoteContentFresh()) return Promise.resolve(monitorRemoteFetchedContent);
+  if(monitorRemotePrefetchPromise) return monitorRemotePrefetchPromise;
+
+  const request = fetchMonitorRemoteContent({ silentErrors: true });
+  monitorRemotePrefetchPromise = request;
+  const clearRequest = () => {
+    if(monitorRemotePrefetchPromise === request){
+      monitorRemotePrefetchPromise = null;
+    }
+  };
+  request.then(clearRequest, clearRequest);
+  return request;
+}
+
+async function getFreshMonitorRemoteContent(){
+  if(isMonitorRemoteContentFresh()) return monitorRemoteFetchedContent;
+
+  if(monitorRemotePrefetchPromise){
+    await monitorRemotePrefetchPromise;
+    if(isMonitorRemoteContentFresh()) return monitorRemoteFetchedContent;
+  }
+
+  const latestContent = await fetchMonitorRemoteContent({ silentErrors: true, force: true });
+  if(isMonitorRemoteContentFresh()) return monitorRemoteFetchedContent;
+  return latestContent || monitorRemoteFetchedContent;
+}
+
 async function fetchMonitorRemoteContent(options = {}){
   const config = getValidatedGoogleSheetConfig({ silent: !!options.silentErrors });
   if(!config || (monitorRemotePollInFlight && !options.force)) return null;
@@ -11555,6 +11613,8 @@ async function fetchMonitorRemoteContent(options = {}){
     const nextSignature = getMonitorRemoteSignature(nextContent);
     const changed = nextSignature !== monitorRemoteSignature;
     monitorRemoteSignature = nextSignature;
+    monitorRemoteFetchedContent = nextContent;
+    monitorRemoteFetchedAt = Date.now();
     monitorRemoteContent = nextContent && nextContent.enabled ? nextContent : null;
 
     if(changed && isMonitorModeOpen){
@@ -11578,6 +11638,8 @@ function startMonitorRemotePolling(){
   if(!config){
     monitorRemoteContent = null;
     monitorRemoteSignature = "";
+    monitorRemoteFetchedContent = null;
+    monitorRemoteFetchedAt = 0;
     return;
   }
 
@@ -11595,6 +11657,8 @@ function stopMonitorRemotePolling(options = {}){
   if(!options.keepContent){
     monitorRemoteContent = null;
     monitorRemoteSignature = "";
+    monitorRemoteFetchedContent = null;
+    monitorRemoteFetchedAt = 0;
   }
 }
 
@@ -11800,7 +11864,7 @@ async function saveCurrentMonitorRemoteContent(){
   setCurrentMonitorSaveLoading(true, "プレビューを準備中…");
 
   try{
-    const latestContent = await fetchMonitorRemoteContent({ silentErrors: true, force: true });
+    const latestContent = await getFreshMonitorRemoteContent();
     const existingContent = latestContent || monitorRemoteContent || {};
     const existingMemoItems = normalizeMonitorMemoItems(existingContent.memoItems, existingContent.memoText);
     const content = buildCurrentMonitorRemoteContent({ appendMemo: true, existingMemoItems });
@@ -11900,6 +11964,8 @@ async function saveMonitorRemoteContent(content, options = {}){
     }
     monitorRemoteContent = savedContent && savedContent.enabled ? savedContent : null;
     monitorRemoteSignature = getMonitorRemoteSignature(savedContent);
+    monitorRemoteFetchedContent = savedContent || validatedContent;
+    monitorRemoteFetchedAt = Date.now();
     if(isMonitorModeOpen) renderMonitorMode();
     if(result.unchanged){
       showToast("前回と同じ内容です");
@@ -18704,6 +18770,27 @@ function getMonitorTodayDisplay(date = new Date()){
   };
 }
 
+function getMonitorUpdatedAtDisplay(value){
+  const text = String(value || "").trim();
+  if(!text) return "";
+
+  const parts = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::\d{2})?/);
+  if(parts){
+    return `${Number(parts[1])}/${Number(parts[2])}/${Number(parts[3])} ${String(parts[4]).padStart(2, "0")}:${parts[5]}`;
+  }
+
+  const date = new Date(text);
+  if(Number.isNaN(date.getTime())) return text;
+  return new Intl.DateTimeFormat("ja-JP", {
+    year:"numeric",
+    month:"numeric",
+    day:"numeric",
+    hour:"2-digit",
+    minute:"2-digit",
+    hour12:false
+  }).format(date);
+}
+
 function updateMonitorTodayDisplays(){
   const today = getMonitorTodayDisplay();
   document.querySelectorAll("[data-monitor-today]").forEach(element => {
@@ -18862,6 +18949,7 @@ function buildMonitorDashboardHtml(content){
   const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
   const fields = parseMonitorInstructionFields(normalized.instructionText || "");
   const today = getMonitorTodayDisplay();
+  const updatedAt = getMonitorUpdatedAtDisplay(normalized.updatedAt);
   const memoSource = Array.isArray(normalized.memoItems)
     ? normalized.memoItems
     : String(normalized.memoText || "");
@@ -18872,6 +18960,7 @@ function buildMonitorDashboardHtml(content){
         <div>
           <time class="monitorTodayDate" data-monitor-today datetime="${escapeHtml(today.dateTime)}">${escapeHtml(today.text)}</time>
         </div>
+        ${updatedAt ? `<div class="monitorUpdatedAt"><span>最終更新</span><span class="monitorUpdatedAtValue">${escapeHtml(updatedAt)}</span></div>` : ""}
       </div>
       <div class="monitorSummaryGrid">
         ${getMonitorMetricCardHtml("苗枚数", fields.seedling, "枚")}
