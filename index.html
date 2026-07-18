@@ -6039,6 +6039,127 @@ button.forecastClearBtn{border-radius:13px;}
 .dashboardTable th,.dashboardTable td{border-bottom-color:var(--ui-line);}
 .dashboardEmpty,.dashboardHistoryEmpty{border-color:var(--ui-line-strong);border-radius:16px;background:var(--ui-surface-muted);}
 
+/* Unit suffixes inside numeric inputs */
+.inputUnitWrap{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  box-sizing:border-box;
+  overflow:hidden;
+  border:1px solid var(--ui-line-strong);
+  border-radius:var(--ui-radius-sm);
+  background:#fff;
+  box-shadow:var(--ui-shadow-sm);
+  transition:border-color .18s ease,background .18s ease,box-shadow .18s ease;
+}
+.inputUnitWrap:hover{
+  border-color:rgba(10,132,255,.42);
+}
+.inputUnitWrap:focus-within{
+  border-color:var(--ui-blue);
+  box-shadow:0 0 0 4px rgba(10,132,255,.14),var(--ui-shadow-sm);
+}
+.inputUnitWrap > input,
+.inputUnitWrap > input:hover,
+.inputUnitWrap > input:focus{
+  flex:1 1 auto !important;
+  width:100% !important;
+  min-width:0 !important;
+  max-width:none !important;
+  height:100% !important;
+  min-height:0 !important;
+  margin:0;
+  padding:8px 4px 8px 12px;
+  border:0 !important;
+  border-radius:0;
+  outline:none;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+.inputUnitSuffix{
+  flex:0 0 auto;
+  padding:0 11px 0 4px;
+  color:var(--ui-text-secondary);
+  font-size:12px;
+  font-weight:700;
+  line-height:1;
+  pointer-events:none;
+  white-space:nowrap;
+}
+.forecastCaseField .forecastCaseUnitWrap{
+  width:100%;
+  max-width:140px;
+  height:52px;
+  justify-self:end;
+}
+.casePlacementItem .casePlacementUnitWrap{
+  width:100%;
+  height:48px;
+}
+.recordActualCasesRow .recordCasesUnitWrap{
+  width:168px;
+  height:48px;
+  flex:0 0 168px;
+}
+.recordSeedlingRow .recordSeedlingUnitWrap{
+  width:100%;
+  max-width:180px;
+  height:48px;
+  justify-self:end;
+}
+.inputUnitWrap:has(> input.emptyInputField),
+.inputUnitWrap:has(> input.recordInputNeedsAttention){
+  border-color:#2563eb;
+  background:#eff6ff;
+}
+.inputUnitWrap:has(> input.emptyInputField):focus-within,
+.inputUnitWrap:has(> input.recordInputNeedsAttention):focus-within{
+  box-shadow:0 0 0 4px rgba(37,99,235,.16);
+}
+.forecastCaseUnitWrap:has(> input.harvestCasesAutoEstimated){
+  border-color:#f59e0b;
+  background:#fffaf0;
+}
+.forecastCaseUnitWrap:has(> input.harvestCasesAutoEstimated):focus-within{
+  border-color:#d97706;
+  box-shadow:0 0 0 4px rgba(245,158,11,.18),var(--ui-shadow-sm);
+}
+.seedlingInlineWrap{
+  width:7.25em;
+  height:42px;
+  box-sizing:border-box;
+  gap:0;
+  overflow:hidden;
+  border:1px solid rgba(255,159,10,.48);
+  border-radius:11px;
+  background:#fff9ed;
+}
+.seedlingInlineWrap:focus-within{
+  border-color:#d97706;
+  box-shadow:0 0 0 4px rgba(245,158,11,.16);
+}
+.seedlingInlineWrap > input.seedlingInlineInput,
+.seedlingInlineWrap > input.seedlingInlineInput:hover,
+.seedlingInlineWrap > input.seedlingInlineInput:focus{
+  flex:1 1 auto !important;
+  width:0 !important;
+  min-width:0 !important;
+  max-width:none !important;
+  height:100%;
+  min-height:0;
+  padding:6px 3px 6px 9px;
+  border:0 !important;
+  border-radius:0;
+  outline:none;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+.seedlingInlineWrap > .seedlingInlineSuffix{
+  flex:0 0 auto;
+  padding:0 8px 0 3px;
+  line-height:1;
+}
+
 @media (min-width:760px){
   .container{padding-top:34px;}
   .card{padding:28px;}
@@ -6266,7 +6387,10 @@ requestAnimationFrame(function(){
           <div class="forecastFieldHeader">
             <label class="fieldAccentLabel" for="casesInput">収穫ケース数</label>
           </div>
-          <input id="casesInput" type="number" min="0" value="" inputmode="numeric" aria-label="収穫ケース数" oninput="markHarvestCasesAsManuallyEdited(); invalidateWorkflowMonitorCheckpoint(); syncRecordCasesFromMain(false); updateRecordActualLoss(); renderForecastSummary()">
+          <span class="inputUnitWrap forecastCaseUnitWrap">
+            <input id="casesInput" type="number" min="0" value="" inputmode="numeric" aria-label="収穫ケース数" oninput="markHarvestCasesAsManuallyEdited(); invalidateWorkflowMonitorCheckpoint(); syncRecordCasesFromMain(false); updateRecordActualLoss(); renderForecastSummary()">
+            <span class="inputUnitSuffix">ケース</span>
+          </span>
         </div>
       </div>
 
@@ -6295,15 +6419,24 @@ requestAnimationFrame(function(){
               <button type="button" class="casePlacementDefaultBtn" onclick="setDefaultCasePlacement()">標準配置</button>
             </div>
             <label>奥</label>
-            <input id="backCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+            <span class="inputUnitWrap casePlacementUnitWrap">
+              <input id="backCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
           </div>
           <div class="casePlacementItem">
             <label>中央</label>
-            <input id="middleCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+            <span class="inputUnitWrap casePlacementUnitWrap">
+              <input id="middleCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
           </div>
           <div class="casePlacementItem">
             <label>手前</label>
-            <input id="frontCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+            <span class="inputUnitWrap casePlacementUnitWrap">
+              <input id="frontCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
           </div>
           <div class="casePlacementTotal">
             <div class="casePlacementTotalLabelWrap">
@@ -6681,7 +6814,10 @@ requestAnimationFrame(function(){
         <div class="recordActualRow recordActualCasesRow">
           <div>
             <label class="fieldAccentLabel">実際の収穫ケース数</label>
-            <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
+            <span class="inputUnitWrap recordCasesUnitWrap">
+              <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
           </div>
         </div>
       </div>
@@ -6717,7 +6853,10 @@ requestAnimationFrame(function(){
         <div class="recordSeedlingRow">
           <div>
             <label class="fieldAccentLabel">実際に取った苗</label>
-            <input id="recordActualSeedlingTrayCountInput" type="number" min="0" inputmode="numeric" placeholder="0">
+            <span class="inputUnitWrap recordSeedlingUnitWrap">
+              <input id="recordActualSeedlingTrayCountInput" type="number" min="0" inputmode="numeric" placeholder="0">
+              <span class="inputUnitSuffix">枚</span>
+            </span>
           </div>
         </div>
         <div>
