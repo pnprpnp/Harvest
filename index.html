@@ -4063,11 +4063,28 @@ button.monitorSaveBtn:active{
   font-weight:800;
   line-height:1.3;
 }
-.dashboardForecastBed .bedMiniMapBar{
-  min-height:62px;
+.dashboardForecastColorScale{
+  display:grid;
+  grid-template-rows:auto 54px auto;
+  justify-items:center;
+  gap:3px;
+  min-height:76px;
+  margin-top:auto;
 }
-.dashboardForecastSegment{
-  border-color:rgba(60,60,67,.13);
+.dashboardForecastColorDirection{
+  color:#6e6e73;
+  font-size:9px;
+  font-weight:800;
+  line-height:1;
+}
+.dashboardForecastColorBar{
+  display:block;
+  width:12px;
+  height:54px;
+  overflow:hidden;
+  border:1px solid rgba(60,60,67,.16);
+  border-radius:999px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);
 }
 .dashboardForecastLegend{
   display:flex;
@@ -15242,7 +15259,7 @@ function formatDashboardForecastRange(range){
   };
 }
 
-function buildDashboardForecastSegmentGradient(colors){
+function buildDashboardForecastColorBarGradient(colors){
   const safeColors = Array.isArray(colors) && colors.length ? colors : ["#e5e5ea"];
   const stops = [];
   safeColors.forEach((color, index) => {
@@ -15250,30 +15267,30 @@ function buildDashboardForecastSegmentGradient(colors){
     const end = Math.round((index + 1) / safeColors.length * 10000) / 100;
     stops.push(`${color} ${start}%`, `${color} ${end}%`);
   });
-  return `linear-gradient(90deg, ${stops.join(",")})`;
+  return `linear-gradient(180deg, ${stops.join(",")})`;
 }
 
-function getDashboardForecastBedMiniMapHtml(model, building, bed){
-  const segments = buildMonitorBedSegments([], building, bed, model.recordedSet).reverse();
-  return `<div class="bedMiniMapBar">${segments.map(segment => {
-    const colors = [];
-    const forecasts = [];
-    for(let number = segment.start; number <= segment.end; number++){
-      const key = getPalletKey(building, bed, number);
-      const forecast = model.palletForecasts.get(key);
-      colors.push(getDashboardForecastDateColor(forecast?.daysAfter));
-      if(forecast){
-        forecasts.push(forecast);
-      }
-    }
-    forecasts.sort((a, b) => a.date.getTime() - b.date.getTime());
-    const range = forecasts.length
-      ? { start: forecasts[0], end: forecasts[forecasts.length - 1] }
-      : null;
-    const rangeText = range ? formatDashboardForecastRange(range).dateText : "予想なし";
-    const title = `${segment.start}〜${segment.end}番 ${rangeText}`;
-    return `<span class="bedMiniMapSegment dashboardForecastSegment ${segment.location}" style="background:${buildDashboardForecastSegmentGradient(colors)}" title="${escapeHtml(title)}"></span>`;
-  }).join("")}</div>`;
+function getDashboardForecastBedColorBarHtml(model, building, bed){
+  const colors = [];
+  const forecasts = [];
+  for(let number = PALLETS_PER_BED; number >= 1; number--){
+    const forecast = model.palletForecasts.get(getPalletKey(building, bed, number));
+    colors.push(getDashboardForecastDateColor(forecast?.daysAfter));
+    if(forecast) forecasts.push(forecast);
+  }
+  forecasts.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const range = forecasts.length
+    ? { start: forecasts[0], end: forecasts[forecasts.length - 1] }
+    : null;
+  const rangeText = range ? formatDashboardForecastRange(range).dateText.replace(/\n/g, "、") : "予想なし";
+  const label = `${bed}ベッド 奥から手前の収穫時期 ${rangeText}`;
+  return `
+    <div class="dashboardForecastColorScale" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+      <span class="dashboardForecastColorDirection">奥</span>
+      <span class="dashboardForecastColorBar" style="background:${buildDashboardForecastColorBarGradient(colors)}"></span>
+      <span class="dashboardForecastColorDirection">手前</span>
+    </div>
+  `;
 }
 
 function getDashboardForecastBedPlantingAgeText(model, building, bed){
@@ -15337,7 +15354,7 @@ function renderDashboardHarvestForecastBeds(model){
           <span class="dashboardForecastBedDelay">${escapeHtml(rangeText.delayText)}</span>
           ${plantingAgeText ? `<span class="dashboardForecastBedPlantingAge">${escapeHtml(plantingAgeText)}</span>` : ""}
         </div>
-        ${getDashboardForecastBedMiniMapHtml(model, building, bed)}
+        ${getDashboardForecastBedColorBarHtml(model, building, bed)}
       </div>
     `;
   }).join("");
