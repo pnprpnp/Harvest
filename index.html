@@ -10828,7 +10828,7 @@ function getPlantingEventSourceRecords(event){
 }
 
 function isGoogleSheetRecordConfirmed(record, status = loadGoogleSheetSyncStatus()){
-  return getGoogleSheetRecordSyncKeys(record).some(key => String(status[key]?.state || "") === "confirmed");
+  return getGoogleSheetRecordSyncState(record, status) === "confirmed";
 }
 
 async function syncPlantingEventWithSources(event, options = {}){
@@ -11867,6 +11867,9 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
       0
     );
     if(!normalizedServerRecord) return false;
+    // plantingPendingはアプリ内だけの状態で、Apps Scriptの応答には含まれない。
+    // 苗植え完了後の収穫記録を同じ状態に揃えてから内容を照合する。
+    normalizedServerRecord.plantingPending = !!currentRecord.plantingPending;
     const serverUuid = normalizeRecordUuid(normalizedServerRecord.recordUuid);
     if(snapshotUuid && serverUuid && snapshotUuid !== serverUuid) return false;
     if(getHarvestRecordSyncContentSignature(currentRecord)
@@ -11902,7 +11905,6 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
       saveDeletedRecordsToStorage();
       saveHarvestStateToStorage();
     }
-    normalizedServerRecord.plantingPending = !!currentRecord.plantingPending;
     const index = records.indexOf(currentRecord);
     if(index < 0) return false;
     clearGoogleSheetRecordSyncStatus(status, currentRecord);
@@ -12042,6 +12044,9 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
           }
         }else{
           totals.failCount++;
+          const failedRecord = recordSnapshots[index];
+          firstError ||= "送信先には保存されましたが、アプリ内の収穫記録との照合に失敗しました" +
+            `（${String(failedRecord?.date || "日付不明")} / ID:${String(failedRecord?.id || "不明")}）`;
         }
       }else{
         totals.failCount++;
@@ -12052,6 +12057,7 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
     recordSnapshots.forEach((record, index) => {
       if(handledIndexes.has(index)) return;
       totals.failCount++;
+      firstError ||= "スプレッドシートの応答に収穫記録の結果がありません";
       setGoogleSheetSyncStatusAfterSend(record, sentSignatures[index], config, "failed");
     });
     return { ...totals, errorMessage: firstError };
@@ -20467,7 +20473,9 @@ function getHarvestRecordSyncContent(record){
     actualSeedlingLossRate: String(record?.actualSeedlingLossRate ?? "").trim(),
     actualLoss: String(record?.actualLoss ?? "").trim(),
     qualityMemo: normalizeQualityMemo(record?.qualityMemo),
-    plantingAge: normalizePlantingAgeSnapshot(record?.plantingAge),
+    // Apps Scriptでは定植日数を表示用文字列で保存するため、
+    // アプリ内の構造化データも同じ文字列にして送信結果を照合する。
+    plantingAge: formatPlantingAgeForRecord(record),
     memo: String(record?.memo || ""),
     palletKeys: getPalletKeysFromRecord(record),
     plantingPalletKeys: getPlantingPalletKeysFromRecord(record, getPalletKeysFromRecord(record))
