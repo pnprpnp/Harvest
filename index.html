@@ -3958,17 +3958,6 @@ button.monitorSaveBtn:active{
   font-weight:800;
   line-height:1.25;
 }
-.dashboardForecastBedCycle{
-  display:inline-block;
-  margin-top:4px;
-  padding:2px 7px;
-  border-radius:999px;
-  background:#fff3e0;
-  color:#b45309;
-  font-size:10px;
-  font-weight:850;
-  line-height:1.35;
-}
 .dashboardForecastBedPlantingAge{
   display:block;
   margin-top:4px;
@@ -6786,7 +6775,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均ケース数と平均収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の次回収穫日を求めます。実際の記録は変更しません。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。直近1ヶ月の平均ケース数と平均収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。実際の記録は変更しません。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -14778,7 +14767,6 @@ function buildDashboardHarvestForecastModel(){
         date: new Date(forecastDate),
         daysAfter: getLocalDayDiff(referenceDate, forecastDate),
         harvestDateIndex: iteration,
-        isNextCycle: recordedSet.has(key)
       });
       newForecastCount++;
     });
@@ -14856,14 +14844,12 @@ function getDashboardForecastBedMiniMapHtml(model, building, bed){
   return `<div class="bedMiniMapBar">${segments.map(segment => {
     const colors = [];
     const forecasts = [];
-    let nextCycleCount = 0;
     for(let number = segment.start; number <= segment.end; number++){
       const key = getPalletKey(building, bed, number);
       const forecast = model.palletForecasts.get(key);
       colors.push(getDashboardForecastDateColor(forecast?.daysAfter));
       if(forecast){
         forecasts.push(forecast);
-        if(forecast.isNextCycle) nextCycleCount++;
       }
     }
     forecasts.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -14871,24 +14857,9 @@ function getDashboardForecastBedMiniMapHtml(model, building, bed){
       ? { start: forecasts[0], end: forecasts[forecasts.length - 1] }
       : null;
     const rangeText = range ? formatDashboardForecastRange(range).dateText : "予想なし";
-    const title = `${segment.start}〜${segment.end}番 ${rangeText}${nextCycleCount ? ` / 次回収穫${nextCycleCount}枚` : ""}`;
+    const title = `${segment.start}〜${segment.end}番 ${rangeText}`;
     return `<span class="bedMiniMapSegment dashboardForecastSegment ${segment.location}" style="background:${buildDashboardForecastSegmentGradient(colors)}" title="${escapeHtml(title)}"></span>`;
   }).join("")}</div>`;
-}
-
-function getDashboardForecastBedCycleText(model, building, bed){
-  let forecastCount = 0;
-  let nextCycleCount = 0;
-  for(let number = 1; number <= PALLETS_PER_BED; number++){
-    const forecast = model.palletForecasts.get(getPalletKey(building, bed, number));
-    if(!forecast) continue;
-    forecastCount++;
-    if(forecast.isNextCycle) nextCycleCount++;
-  }
-  if(!forecastCount) return "予想なし";
-  if(nextCycleCount === 0) return "現在周期";
-  if(nextCycleCount === forecastCount) return "次回収穫";
-  return "現在周期＋次回収穫";
 }
 
 function getDashboardForecastBedPlantingAgeText(model, building, bed){
@@ -14933,7 +14904,6 @@ function renderDashboardHarvestForecastBeds(model){
     : model.startBuilding;
   container.innerHTML = bedMap.map(bed => {
     const rangeText = formatDashboardForecastRange(model.bedRanges.get(`${building}-${bed}`));
-    const cycleText = getDashboardForecastBedCycleText(model, building, bed);
     const plantingAgeText = getDashboardForecastBedPlantingAgeText(model, building, bed);
     return `
       <div class="bed bedCollapsed dashboardForecastBed">
@@ -14941,7 +14911,6 @@ function renderDashboardHarvestForecastBeds(model){
           <span class="dashboardForecastBedName">${bed}ベッド</span>
           <span class="dashboardForecastBedDate">${escapeHtml(rangeText.dateText)}</span>
           <span class="dashboardForecastBedDelay">${escapeHtml(rangeText.delayText)}</span>
-          <span class="dashboardForecastBedCycle">${escapeHtml(cycleText)}</span>
           ${plantingAgeText ? `<span class="dashboardForecastBedPlantingAge">${escapeHtml(plantingAgeText)}</span>` : ""}
         </div>
         ${getDashboardForecastBedMiniMapHtml(model, building, bed)}
