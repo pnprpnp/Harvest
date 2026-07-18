@@ -6490,7 +6490,7 @@ requestAnimationFrame(function(){
           <input id="googleSheetUrlInput" type="url" placeholder="Apps ScriptのWebアプリURL" required autocomplete="url">
           <label>連携トークン（必須）</label>
           <input id="googleSheetTokenInput" type="password" placeholder="Apps Script側と同じ合言葉" required autocomplete="new-password" spellcheck="false">
-          <button class="actionBtn thirdBtn googleSheetSaveBtn" onclick="saveGoogleSheetConfig()">Google連携設定を保存</button>
+          <button id="googleSheetConfigSaveBtn" class="actionBtn thirdBtn googleSheetSaveBtn" onclick="saveGoogleSheetConfig()">Google連携設定を保存</button>
         </div>
       </details>
       <div id="appMenuSettingsRestorePoint"></div>
@@ -7150,6 +7150,8 @@ let recordAvailabilityCheckLastStartedAt = 0;
 let availabilityCheckPromise = null;
 let googleSheetConfirmResolver = null;
 let googleSheetSendState = "idle";
+let googleSheetOperationOwner = null;
+let googleSheetOperationSequence = 0;
 let googleSheetStartupImportStarted = false;
 let dashboardFilter = loadDashboardFilter();
 let protectedAccessUnlocked = false;
@@ -10370,6 +10372,7 @@ function readGoogleSheetConfigForm(){
 }
 
 function saveGoogleSheetConfig(){
+  if(!ensureGoogleSheetLocalMutationAllowed("Google連携設定を保存")) return;
   const config = readGoogleSheetConfigForm();
   const validation = validateGoogleSheetConfig(config);
   if(!validation.ok){
@@ -10499,6 +10502,70 @@ function getGoogleSheetUnsentRecords(){
   return records.filter(record => isGoogleSheetRecordUnsent(record, status));
 }
 
+function getGoogleSheetOperationBusyMessage(action = "操作"){
+  if(googleSheetSendState === "syncing"){
+    return `記録の同期完了後に${action}してください`;
+  }
+  if(googleSheetSendState === "confirming"){
+    return `送信確認の完了後に${action}してください`;
+  }
+  return `記録の送信完了後に${action}してください`;
+}
+
+function updateGoogleSheetOperationControls(){
+  updateGoogleSheetResendButtonState();
+  const busy = googleSheetSendState !== "idle";
+  const syncing = googleSheetSendState === "syncing";
+  const headerButton = document.getElementById("headerRecordSyncBtn");
+  if(headerButton){
+    headerButton.disabled = busy;
+    headerButton.classList.toggle("is-loading", syncing);
+    headerButton.setAttribute("aria-busy", syncing ? "true" : "false");
+    headerButton.setAttribute("aria-label", syncing
+      ? "収穫・苗植え記録を同期中"
+      : (headerButton.classList.contains("hasAvailabilityNotice")
+        ? "未受信の記録があります。収穫・苗植え記録をスプレッドシートと同期する"
+        : "収穫・苗植え記録をスプレッドシートと同期する"));
+  }
+  const importButton = document.getElementById("googleSheetImportBtn");
+  if(importButton){
+    importButton.disabled = busy;
+    importButton.textContent = syncing ? "同期中..." : "スプレッドシートと同期する";
+  }
+  const configSaveButton = document.getElementById("googleSheetConfigSaveBtn");
+  if(configSaveButton) configSaveButton.disabled = busy;
+}
+
+function beginGoogleSheetOperation(nextState){
+  if(googleSheetSendState !== "idle" || googleSheetOperationOwner) return null;
+  const owner = { id: ++googleSheetOperationSequence };
+  googleSheetOperationOwner = owner;
+  googleSheetSendState = nextState;
+  updateGoogleSheetOperationControls();
+  return owner;
+}
+
+function changeGoogleSheetOperationState(owner, nextState){
+  if(!owner || owner !== googleSheetOperationOwner) return false;
+  googleSheetSendState = nextState;
+  updateGoogleSheetOperationControls();
+  return true;
+}
+
+function endGoogleSheetOperation(owner){
+  if(!owner || owner !== googleSheetOperationOwner) return false;
+  googleSheetOperationOwner = null;
+  googleSheetSendState = "idle";
+  updateGoogleSheetOperationControls();
+  return true;
+}
+
+function ensureGoogleSheetLocalMutationAllowed(action){
+  if(googleSheetSendState === "idle" && !googleSheetOperationOwner) return true;
+  showToast(getGoogleSheetOperationBusyMessage(action));
+  return false;
+}
+
 function updateGoogleSheetResendButtonState(){
   const btn = document.getElementById("googleSheetResendBtn");
   if(!btn) return;
@@ -10516,6 +10583,14 @@ function updateGoogleSheetResendButtonState(){
     btn.classList.remove("resendNeedsAttention");
     btn.textContent = "送信中...";
     btn.title = "スプレッドシートへ送信中です";
+    return;
+  }
+
+  if(googleSheetSendState === "syncing"){
+    btn.disabled = true;
+    btn.classList.remove("resendNeedsAttention");
+    btn.textContent = "同期中...";
+    btn.title = "スプレッドシートとの記録同期中です";
     return;
   }
 
@@ -10833,19 +10908,15 @@ function isGoogleSheetRecordConfirmed(record, status = loadGoogleSheetSyncStatus
 
 async function syncPlantingEventWithSources(event, options = {}){
   const manageSendState = options.manageSendState !== false;
-  if(manageSendState && googleSheetSendState !== "idle"){
-    setPlantingEventSyncStatus(event, "failed");
-    return { ok: false, message: "別の記録を送信中です" };
+  const operationOwner = manageSendState ? beginGoogleSheetOperation("sending") : null;
+  if(manageSendState && !operationOwner){
+    return { ok: false, message: getGoogleSheetOperationBusyMessage("送信") };
   }
   const config = getValidatedGoogleSheetConfig({ silent: true });
   if(!config){
     setPlantingEventSyncStatus(event, "failed");
+    if(operationOwner) endGoogleSheetOperation(operationOwner);
     return { ok: false, message: validateGoogleSheetConfig(loadGoogleSheetConfig()).message };
-  }
-
-  if(manageSendState){
-    googleSheetSendState = "sending";
-    updateGoogleSheetResendButtonState();
   }
   try{
     if(!options.sourcesAlreadySent){
@@ -10896,23 +10967,21 @@ async function syncPlantingEventWithSources(event, options = {}){
     setPlantingEventSyncStatus(event, "failed");
     return { ok: false, message: String(e?.message || e) };
   }finally{
-    if(manageSendState){
-      googleSheetSendState = "idle";
-      updateGoogleSheetResendButtonState();
-    }
+    if(operationOwner) endGoogleSheetOperation(operationOwner);
   }
 }
 
-async function sendGoogleSheetRecordMutation(payload, failureMessage){
+async function sendGoogleSheetRecordMutation(payload, failureMessage, options = {}){
   const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
   if(!validation.ok) throw new Error(validation.message);
   const config = validation.config;
   const recordValidation = validateRecordForGoogleTransfer(payload?.record, { enforceDuplicateKey: false });
   if(!recordValidation.ok) throw new Error(recordValidation.message);
-  if(googleSheetSendState !== "idle") throw new Error("別の記録を送信中です。完了後にもう一度お試しください");
-
-  googleSheetSendState = "sending";
-  updateGoogleSheetResendButtonState();
+  const suppliedOwner = options.operationOwner || null;
+  const operationOwner = suppliedOwner || beginGoogleSheetOperation("sending");
+  if(!operationOwner || operationOwner !== googleSheetOperationOwner){
+    throw new Error(getGoogleSheetOperationBusyMessage("操作"));
+  }
   let timer = null;
 
   try{
@@ -10941,24 +11010,25 @@ async function sendGoogleSheetRecordMutation(payload, failureMessage){
     throw e;
   }finally{
     if(timer !== null) clearTimeout(timer);
-    googleSheetSendState = "idle";
-    updateGoogleSheetResendButtonState();
+    if(!suppliedOwner) endGoogleSheetOperation(operationOwner);
   }
 }
 
-function deleteRecordFromGoogleSheet(record){
+function deleteRecordFromGoogleSheet(record, options = {}){
   const config = loadGoogleSheetConfig();
   return sendGoogleSheetRecordMutation(
     buildGoogleSheetRecordDeletePayload(record, config),
-    "スプレッドシート側の記録を削除できませんでした"
+    "スプレッドシート側の記録を削除できませんでした",
+    options
   );
 }
 
-function restoreRecordToGoogleSheet(record){
+function restoreRecordToGoogleSheet(record, options = {}){
   const config = loadGoogleSheetConfig();
   return sendGoogleSheetRecordMutation(
     buildGoogleSheetRecordRestorePayload(record, config),
-    "スプレッドシート側の記録を復元できませんでした"
+    "スプレッドシート側の記録を復元できませんでした",
+    options
   );
 }
 
@@ -11958,14 +12028,11 @@ async function sendRecordToGoogleSheet(record, options = {}){
   const config = getValidatedGoogleSheetConfig({ silent: !showNotice });
 
   if(!config) return false;
-  if(googleSheetSendState !== "idle"){
-    setGoogleSheetSyncStatus(record, "failed");
-    if(showNotice) showToast("別の記録を送信中です。完了後に再送してください");
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    if(showNotice) showToast(getGoogleSheetOperationBusyMessage("送信"));
     return false;
   }
-
-  googleSheetSendState = "sending";
-  updateGoogleSheetResendButtonState();
   let recordSnapshot = null;
   let sentSignature = "";
   let timer = null;
@@ -12028,8 +12095,7 @@ async function sendRecordToGoogleSheet(record, options = {}){
     return false;
   }finally{
     if(timer !== null) clearTimeout(timer);
-    googleSheetSendState = "idle";
-    updateGoogleSheetResendButtonState();
+    endGoogleSheetOperation(operationOwner);
   }
 }
 
@@ -12160,13 +12226,15 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
 
 async function sendPendingRecordsToGoogleSheet(){
   if(!ensureProtectedOperationAccess("スプレッドシートへの送信")) return;
-  if(googleSheetSendState !== "idle"){
-    showToast(googleSheetSendState === "confirming" ? "送信確認中です" : "送信中です");
+  if(editingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
+    showToast("編集中の記録を保存またはクリアしてから送信してください");
     return;
   }
-
-  googleSheetSendState = "confirming";
-  updateGoogleSheetResendButtonState();
+  const operationOwner = beginGoogleSheetOperation("confirming");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("送信"));
+    return;
+  }
 
   try{
     if(!records.length && !plantingEvents.length){
@@ -12216,8 +12284,7 @@ async function sendPendingRecordsToGoogleSheet(){
     );
     if(!shouldSend) return;
 
-    googleSheetSendState = "sending";
-    updateGoogleSheetResendButtonState();
+    changeGoogleSheetOperationState(operationOwner, "sending");
 
     const { successCount, updatedCount, duplicateCount, failCount } = await sendRecordsBatchToGoogleSheet(recordsToSend);
     const addedCount = Math.max(0, successCount - updatedCount);
@@ -12248,8 +12315,7 @@ async function sendPendingRecordsToGoogleSheet(){
       showToast("送信完了: 収穫" + (successCount + duplicateCount) + "件 / 苗植え" + plantingSuccessCount + "件");
     }
   }finally{
-    googleSheetSendState = "idle";
-    updateGoogleSheetResendButtonState();
+    endGoogleSheetOperation(operationOwner);
   }
 }
 
@@ -12632,6 +12698,8 @@ function isRemotePlantingVersionAlreadyLocal(version){
 }
 
 async function checkGoogleSheetUpdateAvailabilitySilently(){
+  if(googleSheetSendState !== "idle" || googleSheetOperationOwner) return;
+  const operationSequenceAtStart = googleSheetOperationSequence;
   const config = getValidatedGoogleSheetConfig({ silent: true });
   if(!config) return;
 
@@ -12705,6 +12773,10 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
       cursor = nextCursor;
     }
 
+    // 確認中に送信・同期が始まった場合、古い応答でcursorや丸印を更新しない。
+    if(googleSheetSendState !== "idle"
+      || googleSheetOperationOwner
+      || googleSheetOperationSequence !== operationSequenceAtStart) return;
     if(!recordUpdateAvailable && finalCursor) saveGoogleSheetSyncCursor(config, finalCursor);
     if(!plantingUpdateAvailable && finalPlantingCursor){
       saveGoogleSheetPlantingSyncCursor(config, finalPlantingCursor);
@@ -12776,7 +12848,7 @@ function installAvailabilityChecks(){
 function setHeaderRecordSyncLoading(isLoading){
   const button = document.getElementById("headerRecordSyncBtn");
   if(!button) return;
-  button.disabled = !!isLoading;
+  button.disabled = !!isLoading || googleSheetSendState !== "idle";
   button.classList.toggle("is-loading", !!isLoading);
   button.setAttribute("aria-busy", isLoading ? "true" : "false");
   button.setAttribute("aria-label", isLoading
@@ -12788,7 +12860,10 @@ function setHeaderRecordSyncLoading(isLoading){
 
 async function syncRecordsFromHeader(){
   const button = document.getElementById("headerRecordSyncBtn");
-  if(button?.disabled) return;
+  if(button?.disabled){
+    if(googleSheetSendState !== "idle") showToast(getGoogleSheetOperationBusyMessage("同期"));
+    return;
+  }
 
   setHeaderRecordSyncLoading(true);
   try{
@@ -13002,8 +13077,17 @@ async function fetchGoogleSheetRecordSyncPages(config, options, signal){
 
 async function importRecordsFromGoogleSheet(options = {}){
   const silentErrors = !!options.silentErrors;
+  if(editingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
+    if(!silentErrors) showToast("編集中の記録を保存またはクリアしてから同期してください");
+    return false;
+  }
   const config = getValidatedGoogleSheetConfig({ silent: silentErrors, showImportError: !silentErrors });
   if(!config) return false;
+  const operationOwner = beginGoogleSheetOperation("syncing");
+  if(!operationOwner){
+    if(!silentErrors) showToast(getGoogleSheetOperationBusyMessage("同期"));
+    return false;
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_IMPORT_TIMEOUT_MS);
@@ -13079,6 +13163,7 @@ async function importRecordsFromGoogleSheet(options = {}){
     return 0;
   }finally{
     clearTimeout(timer);
+    endGoogleSheetOperation(operationOwner);
   }
 }
 
@@ -19058,6 +19143,7 @@ function resetPlantingRecordChanges(){
     return;
   }
   if(!ensureProtectedOperationAccess("収穫記録に戻る")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("収穫記録に戻る操作を")) return;
 
   hideBedActionMenu();
   hideRecordBedActionMenu();
@@ -19073,6 +19159,7 @@ function resetPlantingRecordChanges(){
 
 function saveRecord(){
   if(!ensureProtectedOperationAccess("記録の保存")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("記録を保存")) return;
   const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
   const date = document.getElementById("recordDateInput").value;
   const totalCases = clampNumber(document.getElementById("recordCasesInput").value || 0, 0, 999999, 0);
@@ -19247,6 +19334,7 @@ function applyPlantingSelectionToRecord(targetRecord, keysToApply, options = {})
 
 async function savePlantingRecord(){
   if(!ensureProtectedOperationAccess("苗植え場所の保存")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("苗植え場所を保存")) return;
   const record = getActivePlantingRecord();
   const plantingDate = document.getElementById("recordDateInput")?.value || record?.date || "";
   if(!record || record.type !== "fullHarvest"){
@@ -19391,6 +19479,7 @@ async function savePlantingRecord(){
 }
 
 function resumePlantingRecord(id, options = {}){
+  if(!options.auto && !ensureGoogleSheetLocalMutationAllowed("苗植え記録を再開")) return;
   const record = getRecordById(id);
   if(!record || record.type !== "fullHarvest"){
     showToast("苗植え場所を記録する収穫記録が見つかりません");
@@ -19424,10 +19513,7 @@ function resumePlantingRecord(id, options = {}){
 
 function editPlantingEvent(eventId){
   if(!ensureProtectedOperationAccess("苗植え記録の編集")) return;
-  if(googleSheetSendState !== "idle"){
-    showToast("送信完了後に苗植え記録を編集してください");
-    return;
-  }
+  if(!ensureGoogleSheetLocalMutationAllowed("苗植え記録を編集")) return;
   const event = getPlantingEventById(eventId);
   const preferredHarvestId = event?.sourceAllocations?.[0]?.harvestRecordId;
   const record = getRecordById(preferredHarvestId);
@@ -19460,10 +19546,7 @@ function editPlantingEvent(eventId){
 
 async function confirmDeletePlantingEvent(eventId){
   if(!ensureProtectedOperationAccess("苗植え記録の削除")) return;
-  if(googleSheetSendState !== "idle"){
-    showToast("送信完了後に苗植え記録を削除してください");
-    return;
-  }
+  if(!ensureGoogleSheetLocalMutationAllowed("苗植え記録を削除")) return;
   const event = getPlantingEventById(eventId);
   if(!event){
     showToast("削除する苗植え記録が見つかりません");
@@ -19498,54 +19581,59 @@ async function confirmDeletePlantingEvent(eventId){
   }
   let sheetDeleted = false;
   let remoteMissing = false;
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("苗植え記録を削除"));
+    return;
+  }
 
-  if(shouldDeleteFromSheet){
-    googleSheetSendState = "sending";
+  try{
+    if(shouldDeleteFromSheet){
+      try{
+        const result = await postGoogleSheetPlantingEvent(event, "delete", { config: configValidation.config, silent: true });
+        sheetDeleted = !!(result.deleted || result.alreadyDeleted || result.notFound);
+        remoteMissing = !!result.notFound;
+      }catch(e){
+        showRecordImportError("スプレッドシート側の削除に失敗したため、アプリ側も残しています。\n\n詳細: " + String(e?.message || e), "削除失敗");
+        return;
+      }
+    }
+
+    addPlantingEventToTrash(event, { sheetDeleted, wasSynced: wasSynced && !remoteMissing });
+    if(event.openingCarryoverBefore !== null
+      && event.openingCarryoverBefore !== undefined
+      && String(event.openingCarryoverBefore).trim() !== ""){
+      const nextEvent = plantingEvents
+        .filter(item => Number(item.eventId) !== Number(event.eventId)
+          && comparePlantingEventsAsc(item, event) > 0)
+        .sort(comparePlantingEventsAsc)[0];
+      if(nextEvent && (nextEvent.openingCarryoverBefore === null
+        || nextEvent.openingCarryoverBefore === undefined)){
+        nextEvent.openingCarryoverBefore = event.openingCarryoverBefore;
+      }
+    }
+    plantingEvents = plantingEvents.filter(item => Number(item.eventId) !== Number(event.eventId));
+    const status = loadPlantingEventSyncStatus();
+    delete status[String(event.eventId)];
+    savePlantingEventSyncStatus(status);
+    savePlantingEventsToStorage();
+    syncHarvestPlantingPendingFlags();
+    if(Number(editingPlantingEventId) === Number(event.eventId)) clearRecordForm();
+    renderRecordList();
+    renderDashboard();
     updateGoogleSheetResendButtonState();
-    try{
-      const result = await postGoogleSheetPlantingEvent(event, "delete", { config: configValidation.config, silent: true });
-      sheetDeleted = !!(result.deleted || result.alreadyDeleted || result.notFound);
-      remoteMissing = !!result.notFound;
-    }catch(e){
-      showRecordImportError("スプレッドシート側の削除に失敗したため、アプリ側も残しています。\n\n詳細: " + String(e?.message || e), "削除失敗");
-      return;
-    }finally{
-      googleSheetSendState = "idle";
-      updateGoogleSheetResendButtonState();
-    }
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    showToast(sheetDeleted ? "苗植え記録をアプリとスプレッドシートから削除しました" : "苗植え記録をアプリから削除しました");
+  }finally{
+    endGoogleSheetOperation(operationOwner);
   }
-
-  addPlantingEventToTrash(event, { sheetDeleted, wasSynced: wasSynced && !remoteMissing });
-  if(event.openingCarryoverBefore !== null
-    && event.openingCarryoverBefore !== undefined
-    && String(event.openingCarryoverBefore).trim() !== ""){
-    const nextEvent = plantingEvents
-      .filter(item => Number(item.eventId) !== Number(event.eventId)
-        && comparePlantingEventsAsc(item, event) > 0)
-      .sort(comparePlantingEventsAsc)[0];
-    if(nextEvent && (nextEvent.openingCarryoverBefore === null
-      || nextEvent.openingCarryoverBefore === undefined)){
-      nextEvent.openingCarryoverBefore = event.openingCarryoverBefore;
-    }
-  }
-  plantingEvents = plantingEvents.filter(item => Number(item.eventId) !== Number(event.eventId));
-  const status = loadPlantingEventSyncStatus();
-  delete status[String(event.eventId)];
-  savePlantingEventSyncStatus(status);
-  savePlantingEventsToStorage();
-  syncHarvestPlantingPendingFlags();
-  if(Number(editingPlantingEventId) === Number(event.eventId)) clearRecordForm();
-  renderRecordList();
-  renderDashboard();
-  updateGoogleSheetResendButtonState();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
-  showToast(sheetDeleted ? "苗植え記録をアプリとスプレッドシートから削除しました" : "苗植え記録をアプリから削除しました");
 }
 
 async function restoreDeletedPlantingEvent(eventId){
   if(!ensureProtectedOperationAccess("削除した苗植え記録の復元")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("削除した苗植え記録を復元")) return;
   const entry = deletedPlantingEvents.find(item => Number(item.event?.eventId) === Number(eventId));
   if(!entry){
     showToast("復元する苗植え記録が見つかりません");
@@ -19564,56 +19652,58 @@ async function restoreDeletedPlantingEvent(eventId){
     showToast("収穫元が変わったか、同じパレットが別の苗植え記録で使用中のため復元できません");
     return;
   }
+  const config = entry.sheetDeleted
+    ? getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "復元前に設定してください" })
+    : null;
+  if(entry.sheetDeleted && !config) return;
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("復元"));
+    return;
+  }
   let eventToRestore = entry.event;
-  if(entry.sheetDeleted){
-    const config = getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "復元前に設定してください" });
-    if(!config) return;
-    if(googleSheetSendState !== "idle"){
-      showToast("送信完了後に復元してください");
-      return;
-    }
-    googleSheetSendState = "sending";
-    updateGoogleSheetResendButtonState();
-    try{
-      const result = await postGoogleSheetPlantingEvent(entry.event, "restore", { config, silent: true });
-      const restoredRemoteEvent = normalizePlantingEvent(result?.event);
-      if(restoredRemoteEvent){
-        eventToRestore = {
-          ...restoredRemoteEvent,
-          openingCarryoverBefore: restoredRemoteEvent.openingCarryoverBefore
-            ?? entry.event.openingCarryoverBefore
-            ?? null
-        };
+  try{
+    if(entry.sheetDeleted){
+      try{
+        const result = await postGoogleSheetPlantingEvent(entry.event, "restore", { config, silent: true });
+        const restoredRemoteEvent = normalizePlantingEvent(result?.event);
+        if(restoredRemoteEvent){
+          eventToRestore = {
+            ...restoredRemoteEvent,
+            openingCarryoverBefore: restoredRemoteEvent.openingCarryoverBefore
+              ?? entry.event.openingCarryoverBefore
+              ?? null
+          };
+        }
+      }catch(e){
+        showRecordImportError("スプレッドシート側の復元に失敗したため、削除済みのまま保持しています。\n\n詳細: " + String(e?.message || e), "復元失敗");
+        return;
       }
-    }catch(e){
-      showRecordImportError("スプレッドシート側の復元に失敗したため、削除済みのまま保持しています。\n\n詳細: " + String(e?.message || e), "復元失敗");
-      return;
-    }finally{
-      googleSheetSendState = "idle";
-      updateGoogleSheetResendButtonState();
     }
-  }
 
-  if(eventToRestore.openingCarryoverBefore !== null
-    && eventToRestore.openingCarryoverBefore !== undefined){
-    plantingEvents.forEach(item => {
-      if(comparePlantingEventsAsc(item, eventToRestore) > 0){
-        item.openingCarryoverBefore = null;
-      }
-    });
+    if(eventToRestore.openingCarryoverBefore !== null
+      && eventToRestore.openingCarryoverBefore !== undefined){
+      plantingEvents.forEach(item => {
+        if(comparePlantingEventsAsc(item, eventToRestore) > 0){
+          item.openingCarryoverBefore = null;
+        }
+      });
+    }
+    if(!getPlantingEventById(eventToRestore.eventId)) plantingEvents.push(eventToRestore);
+    deletedPlantingEvents = deletedPlantingEvents.filter(item => Number(item.event?.eventId) !== Number(eventId));
+    saveDeletedPlantingEventsToStorage();
+    savePlantingEventsToStorage();
+    setPlantingEventSyncStatus(eventToRestore, entry.sheetDeleted || entry.wasSynced ? "confirmed" : "edited");
+    syncHarvestPlantingPendingFlags();
+    renderRecordList();
+    renderDashboard();
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    showToast(entry.sheetDeleted ? "苗植え記録をアプリとスプレッドシートに復元しました" : "苗植え記録を復元しました");
+  }finally{
+    endGoogleSheetOperation(operationOwner);
   }
-  if(!getPlantingEventById(eventToRestore.eventId)) plantingEvents.push(eventToRestore);
-  deletedPlantingEvents = deletedPlantingEvents.filter(item => Number(item.event?.eventId) !== Number(eventId));
-  saveDeletedPlantingEventsToStorage();
-  savePlantingEventsToStorage();
-  setPlantingEventSyncStatus(eventToRestore, entry.sheetDeleted || entry.wasSynced ? "confirmed" : "edited");
-  syncHarvestPlantingPendingFlags();
-  renderRecordList();
-  renderDashboard();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
-  showToast(entry.sheetDeleted ? "苗植え記録をアプリとスプレッドシートに復元しました" : "苗植え記録を復元しました");
 }
 
 function formatPartialHarvestSummary(targets){
@@ -19651,6 +19741,7 @@ function getPartialHarvestRemainingCaseEstimate(building, beds, cases, date){
 
 async function savePartialHarvestRecord(){
   if(!ensureProtectedOperationAccess("各パレット部分収穫の保存")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("各パレット部分収穫を保存")) return;
   const date = document.getElementById("recordDateInput").value;
   const cases = clampNumber(document.getElementById("partialHarvestCasesInput")?.value || 0, 0, 999999, 0);
   const building = clampNumber(document.getElementById("partialHarvestBuildingInput")?.value || currentBuilding, MIN_BUILDING, MAX_BUILDING, NaN);
@@ -19768,10 +19859,7 @@ function deleteRecord(id, options = {}){
 
 async function confirmDeleteRecord(id){
   if(!ensureProtectedOperationAccess("記録の削除")) return;
-  if(googleSheetSendState !== "idle"){
-    showToast("送信完了後に記録を削除してください");
-    return;
-  }
+  if(!ensureGoogleSheetLocalMutationAllowed("記録を削除")) return;
   const record = getRecordById(id);
   if(!record){
     showToast("削除する記録が見つかりません");
@@ -19795,37 +19883,43 @@ async function confirmDeleteRecord(id){
   );
   let sheetDeleted = false;
   let deletedRecordOverride = null;
-
-  if(shouldDeleteFromSheet){
-    showToast("スプレッドシート側の記録を削除中です...");
-    try{
-      const result = await deleteRecordFromGoogleSheet(record);
-      sheetDeleted = !!(result.deleted || result.alreadyDeleted || result.notFound);
-      deletedRecordOverride = normalizeImportedRecord(
-        normalizeGoogleSheetRowRecord(result.record),
-        0
-      );
-      if(result.notFound){
-        showToast("スプレッドシート側へ削除情報を登録しました");
-      }
-    }catch(e){
-      showRecordImportError(
-        "スプレッドシート側の削除に失敗したため、アプリ側の記録も残しています。\n\n詳細: " + String(e?.message || e),
-        "削除失敗"
-      );
-      return;
-    }
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("記録を削除"));
+    return;
   }
 
-  deleteRecord(id, { accessChecked: true, sheetDeleted, deletedRecordOverride });
+  try{
+    if(shouldDeleteFromSheet){
+      showToast("スプレッドシート側の記録を削除中です...");
+      try{
+        const result = await deleteRecordFromGoogleSheet(record, { operationOwner });
+        sheetDeleted = !!(result.deleted || result.alreadyDeleted || result.notFound);
+        deletedRecordOverride = normalizeImportedRecord(
+          normalizeGoogleSheetRowRecord(result.record),
+          0
+        );
+        if(result.notFound){
+          showToast("スプレッドシート側へ削除情報を登録しました");
+        }
+      }catch(e){
+        showRecordImportError(
+          "スプレッドシート側の削除に失敗したため、アプリ側の記録も残しています。\n\n詳細: " + String(e?.message || e),
+          "削除失敗"
+        );
+        return;
+      }
+    }
+
+    deleteRecord(id, { accessChecked: true, sheetDeleted, deletedRecordOverride });
+  }finally{
+    endGoogleSheetOperation(operationOwner);
+  }
 }
 
 function editHarvestRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("収穫記録の編集")) return;
-  if(googleSheetSendState !== "idle"){
-    showToast("送信完了後に記録を編集してください");
-    return;
-  }
+  if(!ensureGoogleSheetLocalMutationAllowed("収穫記録を編集")) return;
   const record = getRecordById(id);
   if(!record || record.type !== "fullHarvest"){
     showToast("編集する収穫記録が見つかりません");
@@ -20016,6 +20110,7 @@ function renderDeletedRecordList(){
 
 async function restoreDeletedRecord(id, recordUuid = ""){
   if(!ensureProtectedOperationAccess("削除した記録の復元")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("削除した記録を復元")) return;
   const requestedUuid = normalizeRecordUuid(recordUuid);
   const entry = deletedRecords.find(item => {
     const itemUuid = normalizeRecordUuid(item.record?.recordUuid);
@@ -20029,87 +20124,99 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     return;
   }
 
-  let serverCanonical = null;
-  if(entry.sheetDeleted){
-    const config = getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "復元前に設定してください" });
-    if(!config) return;
-    showToast("スプレッドシート側の記録を復元中です...");
-    try{
-      const result = await restoreRecordToGoogleSheet(entry.record);
-      serverCanonical = normalizeImportedRecord(
-        normalizeGoogleSheetRowRecord(result.record),
-        0
-      );
-    }catch(e){
-      showRecordImportError(
-        "スプレッドシート側の復元に失敗したため、アプリ側も削除済みのまま保持しています。\n\n詳細: " + String(e?.message || e),
-        "復元失敗"
-      );
-      return;
-    }
-  }
-
-  const entryRecordUuid = normalizeRecordUuid(entry.record?.recordUuid);
-  const activeByUuid = getRecordByUuid(entryRecordUuid);
-  const activeIdCandidate = getRecordById(entry.record?.id);
-  const activeIdCandidateUuid = normalizeRecordUuid(activeIdCandidate?.recordUuid);
-  // UUIDが異なる記録は、数値IDが同じでも別物として扱う。
-  const activeById = activeIdCandidate && (
-    entryRecordUuid
-      ? (!activeIdCandidateUuid || activeIdCandidateUuid === entryRecordUuid)
-      : !activeIdCandidateUuid
-  ) ? activeIdCandidate : null;
-  const activeRecord = activeByUuid || activeById;
-  let restoredSource = serverCanonical || entry.record;
-  let restoredState = entry.sheetDeleted ? "confirmed" : "edited";
-  if(entry.syncConflict){
-    const versionSource = activeRecord || serverCanonical;
-    restoredSource = {
-      ...entry.record,
-      id: versionSource?.id ?? entry.record.id,
-      recordUuid: normalizeRecordUuid(versionSource?.recordUuid)
-        || normalizeRecordUuid(entry.record.recordUuid),
-      createdAt: versionSource?.createdAt || entry.record.createdAt || "",
-      updatedAt: versionSource?.updatedAt || entry.record.updatedAt || "",
-      plantingPending: versionSource?.plantingPending ?? entry.record.plantingPending
-    };
-    restoredState = "edited";
-  }
-  const restoredRecord = normalizeStoredRecord(serializeRecordForStorage(restoredSource));
-  if(!restoredRecord){
-    showRecordImportError("復元する記録の形式が正しくありません", "復元失敗");
+  const restoreConfig = entry.sheetDeleted
+    ? getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "復元前に設定してください" })
+    : null;
+  if(entry.sheetDeleted && !restoreConfig) return;
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("復元"));
     return;
   }
-  if(activeRecord){
-    const activeIndex = records.indexOf(activeRecord);
-    if(activeIndex >= 0) records[activeIndex] = restoredRecord;
-  }else{
-    const idConflict = records.some(record => Number(record.id) === Number(restoredRecord.id));
-    if(idConflict){
-      showRecordImportError("同じ記録IDの別記録があるため復元できません", "復元失敗");
+
+  try{
+    let serverCanonical = null;
+    if(entry.sheetDeleted){
+      showToast("スプレッドシート側の記録を復元中です...");
+      try{
+        const result = await restoreRecordToGoogleSheet(entry.record, { operationOwner });
+        serverCanonical = normalizeImportedRecord(
+          normalizeGoogleSheetRowRecord(result.record),
+          0
+        );
+      }catch(e){
+        showRecordImportError(
+          "スプレッドシート側の復元に失敗したため、アプリ側も削除済みのまま保持しています。\n\n詳細: " + String(e?.message || e),
+          "復元失敗"
+        );
+        return;
+      }
+    }
+
+    const entryRecordUuid = normalizeRecordUuid(entry.record?.recordUuid);
+    const activeByUuid = getRecordByUuid(entryRecordUuid);
+    const activeIdCandidate = getRecordById(entry.record?.id);
+    const activeIdCandidateUuid = normalizeRecordUuid(activeIdCandidate?.recordUuid);
+    // UUIDが異なる記録は、数値IDが同じでも別物として扱う。
+    const activeById = activeIdCandidate && (
+      entryRecordUuid
+        ? (!activeIdCandidateUuid || activeIdCandidateUuid === entryRecordUuid)
+        : !activeIdCandidateUuid
+    ) ? activeIdCandidate : null;
+    const activeRecord = activeByUuid || activeById;
+    let restoredSource = serverCanonical || entry.record;
+    let restoredState = entry.sheetDeleted ? "confirmed" : "edited";
+    if(entry.syncConflict){
+      const versionSource = activeRecord || serverCanonical;
+      restoredSource = {
+        ...entry.record,
+        id: versionSource?.id ?? entry.record.id,
+        recordUuid: normalizeRecordUuid(versionSource?.recordUuid)
+          || normalizeRecordUuid(entry.record.recordUuid),
+        createdAt: versionSource?.createdAt || entry.record.createdAt || "",
+        updatedAt: versionSource?.updatedAt || entry.record.updatedAt || "",
+        plantingPending: versionSource?.plantingPending ?? entry.record.plantingPending
+      };
+      restoredState = "edited";
+    }
+    const restoredRecord = normalizeStoredRecord(serializeRecordForStorage(restoredSource));
+    if(!restoredRecord){
+      showRecordImportError("復元する記録の形式が正しくありません", "復元失敗");
       return;
     }
-    records.push(restoredRecord);
+    if(activeRecord){
+      const activeIndex = records.indexOf(activeRecord);
+      if(activeIndex >= 0) records[activeIndex] = restoredRecord;
+    }else{
+      const idConflict = records.some(record => Number(record.id) === Number(restoredRecord.id));
+      if(idConflict){
+        showRecordImportError("同じ記録IDの別記録があるため復元できません", "復元失敗");
+        return;
+      }
+      records.push(restoredRecord);
+    }
+    saveRecordsToStorage();
+    deletedRecords = deletedRecords.filter(item => item !== entry);
+    saveDeletedRecordsToStorage();
+    setGoogleSheetSyncStatus(restoredRecord, restoredState);
+    if(!entry.sheetDeleted && !entry.syncConflict){
+      // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
+      localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
+    }
+    renderRecordList();
+    renderDashboard();
+    updateGoogleSheetResendButtonState();
+    drawBeds();
+    drawRecordBeds();
+    renderForecastSummary();
+    updateBuildingLastHarvestInfo();
+    updateHeaderLatestRecordDate();
+    showToast(entry.syncConflict
+      ? "退避していた内容を戻しました。確認後に再送信してください"
+      : (entry.sheetDeleted ? "アプリとスプレッドシートに復元しました" : "記録を復元しました"));
+  }finally{
+    endGoogleSheetOperation(operationOwner);
   }
-  saveRecordsToStorage();
-  deletedRecords = deletedRecords.filter(item => item !== entry);
-  saveDeletedRecordsToStorage();
-  setGoogleSheetSyncStatus(restoredRecord, restoredState);
-  if(!entry.sheetDeleted && !entry.syncConflict){
-    // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
-  }
-  renderRecordList();
-  renderDashboard();
-  updateGoogleSheetResendButtonState();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
-  updateBuildingLastHarvestInfo();
-  updateHeaderLatestRecordDate();
-  showToast(entry.syncConflict
-    ? "退避していた内容を戻しました。確認後に再送信してください"
-    : (entry.sheetDeleted ? "アプリとスプレッドシートに復元しました" : "記録を復元しました"));
 }
 
 function renderRecordItemHtml(r){
@@ -20414,6 +20521,7 @@ function exportRecordsToFile(){
 }
 
 function triggerImportRecords(){
+  if(!ensureGoogleSheetLocalMutationAllowed("記録ファイルを読み込む操作を")) return;
   const input = document.getElementById("recordImportInput");
   if(!input) return;
   input.value = "";
@@ -21196,6 +21304,7 @@ function importRecordsFromFile(file){
 
   const reader = new FileReader();
   reader.onload = () => {
+    if(!ensureGoogleSheetLocalMutationAllowed("記録ファイルを読み込む操作を")) return;
     let snapshot = null;
     try{
       snapshot = createBackupImportSnapshot();
