@@ -3976,6 +3976,12 @@ button.monitorSaveBtn:active{
   font-weight:800;
   white-space:nowrap;
 }
+.dashboardForecastApplyBtn:disabled{
+  background:#dcebe1;
+  color:#789082;
+  opacity:1;
+  box-shadow:none;
+}
 .dashboardForecastAverageBtn:disabled{
   color:#8e8e93;
   opacity:.62;
@@ -14852,8 +14858,6 @@ function handleDashboardHarvestForecastInput(kind){
   }else{
     return;
   }
-  dashboardHarvestForecastInputsDirty = dashboardHarvestForecastCasesDraftValue !== dashboardHarvestForecastCasesValue
-    || dashboardHarvestForecastLossDraftValue !== dashboardHarvestForecastLossValue;
   const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   syncDashboardHarvestForecastInputs(model);
 }
@@ -14861,8 +14865,6 @@ function handleDashboardHarvestForecastInput(kind){
 function resetDashboardHarvestForecastInputs(){
   dashboardHarvestForecastCasesDraftValue = null;
   dashboardHarvestForecastLossDraftValue = null;
-  dashboardHarvestForecastInputsDirty = dashboardHarvestForecastCasesValue !== null
-    || dashboardHarvestForecastLossValue !== null;
   const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   syncDashboardHarvestForecastInputs(model);
 }
@@ -14911,6 +14913,13 @@ function syncDashboardHarvestForecastInputs(model){
     : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
   const casesInvalid = draftForecastCases === null;
   const lossInvalid = draftForecastLoss === null || draftForecastLoss >= 100;
+  const valuesMatchCurrentForecast = Number.isFinite(draftForecastCases)
+    && Number.isFinite(draftForecastLoss)
+    && Number.isFinite(model.forecastCases)
+    && Number.isFinite(model.forecastLoss)
+    && Math.abs(draftForecastCases - model.forecastCases) < 0.000001
+    && Math.abs(draftForecastLoss - model.forecastLoss) < 0.000001;
+  dashboardHarvestForecastInputsDirty = !valuesMatchCurrentForecast;
   casesWrap?.classList.toggle("autoValue", dashboardHarvestForecastCasesDraftValue === null);
   lossWrap?.classList.toggle("autoValue", dashboardHarvestForecastLossDraftValue === null);
   casesWrap?.classList.toggle("invalid", casesInvalid);
