@@ -6852,7 +6852,7 @@ requestAnimationFrame(function(){
             <div class="plantingActionItem">
               <span class="plantingActionNumber">1</span>
               <div>
-                <div class="plantingActionLabel">号棟に残すケース（手前・中央・奥の合計）</div>
+                <div class="plantingActionLabel">その棟の残り収穫可能ケース数</div>
                 <div id="recordPlantingCaseInstruction" class="plantingActionValue">計算中です。</div>
               </div>
             </div>
@@ -17316,24 +17316,39 @@ function getSeedlingNeedForKeys(keys){
   return total;
 }
 
-function getRemainingCasesForCurrentBuilding(){
-  const recordedSet = getRecordedPalletSet();
-  const selectedSet = new Set(harvestFillKeys || []);
-  const hasPartialHarvestRecords = records.some(record => record.type === "partialHarvest");
+function getRemainingHarvestableCasesForBuilding(building, options = {}){
+  const normalizedBuilding = Number(building);
+  if(!BUILDINGS.includes(normalizedBuilding)) return 0;
+  const referenceDate = options.referenceDate instanceof Date
+    ? options.referenceDate
+    : getHarvestTargetDate();
+  const sourceRecords = Array.isArray(options.sourceRecords) ? options.sourceRecords : records;
+  const recordedSet = options.recordedSet instanceof Set
+    ? options.recordedSet
+    : getRecordedPalletSet(referenceDate);
+  const excludedSet = new Set(Array.isArray(options.excludedPalletKeys) ? options.excludedPalletKeys : []);
+  const hasPartialHarvestRecords = sourceRecords.some(record => record.type === "partialHarvest");
   let remainingHeads = 0;
 
   for(const bed of bedOrder){
     for(let number = 1; number <= PALLETS_PER_BED; number++){
-      const key = getPalletKey(currentBuilding, bed, number);
+      const key = getPalletKey(normalizedBuilding, bed, number);
       if(recordedSet.has(key)) continue;
-      if(selectedSet.has(key)) continue;
+      if(excludedSet.has(key)) continue;
       remainingHeads += hasPartialHarvestRecords
-        ? getPredictedHarvestForPallet(currentBuilding, bed, number)
+        ? getPredictedHarvestForPallet(normalizedBuilding, bed, number, referenceDate, sourceRecords)
         : getPredictedHarvestForBed(bed, number);
     }
   }
 
   return Math.floor((remainingHeads / CASE_SIZE) * 10) / 10;
+}
+
+function getRemainingCasesForCurrentBuilding(){
+  return getRemainingHarvestableCasesForBuilding(currentBuilding, {
+    recordedSet: getRecordedPalletSet(),
+    excludedPalletKeys: harvestFillKeys
+  });
 }
 
 function getSpecialPalletPattern(n){
@@ -19385,21 +19400,26 @@ function getRecordSeedlingDiffSummaryText(record = getActivePlantingRecord()){
   return lines.join("\n");
 }
 
-function getBuildingCaseInstructionSummary(sourceText = getCasePlacementSummaryText()){
-  const totals = new Map();
-  String(sourceText || "").split(/\r?\n/).forEach(line => {
-    const match = line.trim().match(/^(\d+)号棟(?:\s+[^:：]+)?[:：]\s*([0-9.]+)ケース$/);
-    if(!match) return;
-    const building = Number(match[1]);
-    const cases = Number(match[2]);
-    if(!BUILDINGS.includes(building) || !Number.isFinite(cases) || cases <= 0) return;
-    totals.set(building, (totals.get(building) || 0) + cases);
-  });
+function getRemainingHarvestableCaseInstruction(record){
+  if(!record || record.type !== "fullHarvest") return "対象の収穫記録がありません";
+  const recordKeys = Array.isArray(record.palletKeys)
+    ? record.palletKeys
+    : getPalletKeysFromRecord(record);
+  const targetBuildings = BUILDINGS.filter(building => recordKeys.some(key => {
+    return parsePalletKey(String(key || "")).building === building;
+  }));
+  if(!targetBuildings.length) return "対象の号棟がありません";
 
-  const lines = BUILDINGS
-    .filter(building => totals.has(building))
-    .map(building => `${building}号棟：${formatDashboardMetricNumber(totals.get(building))}ケース`);
-  return lines.length ? lines.join("\n") : "置くケースなし";
+  const referenceDate = parseDateOnlyString(record.date) || new Date();
+  const recordedSet = getRecordedPalletSet(referenceDate);
+  return targetBuildings.map(building => {
+    const remainingCases = getRemainingHarvestableCasesForBuilding(building, {
+      referenceDate,
+      recordedSet,
+      excludedPalletKeys: recordKeys
+    });
+    return `${building}号棟：${formatDashboardMetricNumber(remainingCases)}ケース`;
+  }).join("\n");
 }
 
 function updateRecordSeedlingDiffDisplay(){
@@ -19420,9 +19440,7 @@ function updateRecordSeedlingDiffDisplay(){
   const actualSeedlingKeys = getSeedlingKeysWithUnplanted(record.palletKeys, { recordId: record.id });
   const actualRequiredCount = getSeedlingTrayCountNeededForKeys(actualSeedlingKeys, { carryoverSeedlings });
   const additionalCount = Math.max(0, actualRequiredCount - plannedCount);
-  const caseText = getBuildingCaseInstructionSummary(
-    String(record.plantingCaseInstruction || "").trim() || getCasePlacementSummaryText()
-  );
+  const caseText = getRemainingHarvestableCaseInstruction(record);
 
   if(caseInstruction){
     caseInstruction.textContent = caseText;
@@ -19683,8 +19701,6 @@ function saveRecord(){
     editingRecord.cases = cases;
     editingRecord.palletSummary = palletSummary;
     editingRecord.plannedSeedlingTrayCount = getPlannedSeedlingTrayCountForRecord();
-    editingRecord.plantingCaseInstruction = String(editingRecord.plantingCaseInstruction || "").trim()
-      || getBuildingCaseInstructionSummary();
     editingRecord.actualSeedlingTrayCount = actualSeedlingTrayCount;
     editingRecord.actualSeedlingCarryoverMode = actualSeedlingCarryoverMode;
     editingRecord.memo = memo;
@@ -19692,6 +19708,7 @@ function saveRecord(){
     editingRecord.qualityMemo = qualityMemo;
     editingRecord.plantingAge = plantingAge;
     editingRecord.palletKeys = [...harvestFillKeys];
+    editingRecord.plantingCaseInstruction = getRemainingHarvestableCaseInstruction(editingRecord);
     editingRecord.duplicateKey = getRecordDuplicateKey(editingRecord);
 
     saveRecordsToStorage();
@@ -19718,7 +19735,7 @@ function saveRecord(){
     cases,
     palletSummary,
     plannedSeedlingTrayCount: getPlannedSeedlingTrayCountForRecord(),
-    plantingCaseInstruction: getBuildingCaseInstructionSummary(),
+    plantingCaseInstruction: "",
     plantingSummary: "",
     plantingPending: true,
     actualSeedlingTrayCount,
@@ -19731,9 +19748,9 @@ function saveRecord(){
     palletKeys: [...harvestFillKeys],
     plantingPalletKeys: []
   };
-  record.duplicateKey = getRecordDuplicateKey(record);
-
   records.unshift(record);
+  record.plantingCaseInstruction = getRemainingHarvestableCaseInstruction(record);
+  record.duplicateKey = getRecordDuplicateKey(record);
 
   saveRecordsToStorage();
   maybePromptRecordExport();
