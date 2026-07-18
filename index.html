@@ -3960,6 +3960,22 @@ button.monitorSaveBtn:active{
   font-weight:800;
   white-space:nowrap;
 }
+.dashboardForecastActions{
+  display:flex;
+  align-items:stretch;
+  gap:8px;
+}
+.dashboardForecastApplyBtn{
+  min-height:44px;
+  border:0;
+  border-radius:12px;
+  padding:9px 15px;
+  background:#248a4b;
+  color:#fff;
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+}
 .dashboardForecastAverageBtn:disabled{
   color:#8e8e93;
   opacity:.62;
@@ -4315,8 +4331,11 @@ button.monitorSaveBtn:active{
   .dashboardForecastControls{
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }
-  .dashboardForecastAverageBtn{
+  .dashboardForecastActions{
     grid-column:1 / -1;
+  }
+  .dashboardForecastActions > button{
+    flex:1 1 0;
   }
   .dashboardForecastBuildingTabs{
     grid-template-columns:repeat(8, 70px);
@@ -6851,7 +6870,7 @@ requestAnimationFrame(function(){
       <div class="dashboardHarvestForecastHead">
         <div>
           <div class="sectionTitle">収穫時期予想</div>
-          <div class="dashboardHarvestForecastLead">初期値は直近1ヶ月の平均です。ケース数とロス率を変更して試算できます。</div>
+          <div class="dashboardHarvestForecastLead">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。</div>
         </div>
       </div>
       <div class="dashboardForecastControls">
@@ -6869,7 +6888,10 @@ requestAnimationFrame(function(){
             <span class="dashboardForecastInputSuffix">%</span>
           </span>
         </label>
-        <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" onclick="resetDashboardHarvestForecastInputs()">平均に戻す</button>
+        <div class="dashboardForecastActions">
+          <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" onclick="resetDashboardHarvestForecastInputs()">平均に戻す</button>
+          <button id="dashboardForecastApplyBtn" type="button" class="dashboardForecastApplyBtn" onclick="applyDashboardHarvestForecastInputs()">予測する</button>
+        </div>
       </div>
       <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
       <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
@@ -7280,7 +7302,9 @@ let dashboardHarvestForecastBuilding = null;
 let dashboardHarvestForecastModelCache = null;
 let dashboardHarvestForecastCasesValue = null;
 let dashboardHarvestForecastLossValue = null;
-let dashboardHarvestForecastRenderTimer = null;
+let dashboardHarvestForecastCasesDraftValue = null;
+let dashboardHarvestForecastLossDraftValue = null;
+let dashboardHarvestForecastInputsDirty = false;
 const tabScrollPositions = {
   forecast: 0,
   monitor: 0,
@@ -14822,25 +14846,43 @@ function parseDashboardHarvestForecastLossValue(value){
 
 function handleDashboardHarvestForecastInput(kind){
   if(kind === "cases"){
-    dashboardHarvestForecastCasesValue = document.getElementById("dashboardForecastCasesInput")?.value ?? "";
+    dashboardHarvestForecastCasesDraftValue = document.getElementById("dashboardForecastCasesInput")?.value ?? "";
   }else if(kind === "loss"){
-    dashboardHarvestForecastLossValue = document.getElementById("dashboardForecastLossInput")?.value ?? "";
+    dashboardHarvestForecastLossDraftValue = document.getElementById("dashboardForecastLossInput")?.value ?? "";
   }else{
     return;
   }
-  dashboardHarvestForecastModelCache = null;
-  clearTimeout(dashboardHarvestForecastRenderTimer);
-  dashboardHarvestForecastRenderTimer = setTimeout(() => {
-    dashboardHarvestForecastRenderTimer = null;
-    renderDashboardHarvestForecast();
-  }, 180);
+  dashboardHarvestForecastInputsDirty = dashboardHarvestForecastCasesDraftValue !== dashboardHarvestForecastCasesValue
+    || dashboardHarvestForecastLossDraftValue !== dashboardHarvestForecastLossValue;
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  syncDashboardHarvestForecastInputs(model);
 }
 
 function resetDashboardHarvestForecastInputs(){
-  clearTimeout(dashboardHarvestForecastRenderTimer);
-  dashboardHarvestForecastRenderTimer = null;
-  dashboardHarvestForecastCasesValue = null;
-  dashboardHarvestForecastLossValue = null;
+  dashboardHarvestForecastCasesDraftValue = null;
+  dashboardHarvestForecastLossDraftValue = null;
+  dashboardHarvestForecastInputsDirty = dashboardHarvestForecastCasesValue !== null
+    || dashboardHarvestForecastLossValue !== null;
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  syncDashboardHarvestForecastInputs(model);
+}
+
+function applyDashboardHarvestForecastInputs(){
+  const currentModel = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  const forecastCases = dashboardHarvestForecastCasesDraftValue === null
+    ? currentModel.averageCases
+    : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesDraftValue);
+  const forecastLoss = dashboardHarvestForecastLossDraftValue === null
+    ? currentModel.averageLoss
+    : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
+  if(forecastCases === null || forecastLoss === null || forecastLoss >= 100){
+    syncDashboardHarvestForecastInputs(currentModel);
+    return;
+  }
+
+  dashboardHarvestForecastCasesValue = dashboardHarvestForecastCasesDraftValue;
+  dashboardHarvestForecastLossValue = dashboardHarvestForecastLossDraftValue;
+  dashboardHarvestForecastInputsDirty = false;
   dashboardHarvestForecastModelCache = null;
   renderDashboardHarvestForecast();
 }
@@ -14851,26 +14893,36 @@ function syncDashboardHarvestForecastInputs(model){
   const casesWrap = document.getElementById("dashboardForecastCasesInputWrap");
   const lossWrap = document.getElementById("dashboardForecastLossInputWrap");
   const averageButton = document.getElementById("dashboardForecastAverageBtn");
-  const casesText = dashboardHarvestForecastCasesValue === null
+  const applyButton = document.getElementById("dashboardForecastApplyBtn");
+  const casesText = dashboardHarvestForecastCasesDraftValue === null
     ? formatDashboardHarvestForecastInputValue(model.averageCases)
-    : dashboardHarvestForecastCasesValue;
-  const lossText = dashboardHarvestForecastLossValue === null
+    : dashboardHarvestForecastCasesDraftValue;
+  const lossText = dashboardHarvestForecastLossDraftValue === null
     ? formatDashboardHarvestForecastInputValue(model.averageLoss)
-    : dashboardHarvestForecastLossValue;
+    : dashboardHarvestForecastLossDraftValue;
 
   if(casesInput && casesInput.value !== casesText) casesInput.value = casesText;
   if(lossInput && lossInput.value !== lossText) lossInput.value = lossText;
-  const casesInvalid = model.forecastCases === null;
-  const lossInvalid = model.forecastLoss === null || model.forecastLoss >= 100;
-  casesWrap?.classList.toggle("autoValue", dashboardHarvestForecastCasesValue === null);
-  lossWrap?.classList.toggle("autoValue", dashboardHarvestForecastLossValue === null);
+  const draftForecastCases = dashboardHarvestForecastCasesDraftValue === null
+    ? model.averageCases
+    : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesDraftValue);
+  const draftForecastLoss = dashboardHarvestForecastLossDraftValue === null
+    ? model.averageLoss
+    : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
+  const casesInvalid = draftForecastCases === null;
+  const lossInvalid = draftForecastLoss === null || draftForecastLoss >= 100;
+  casesWrap?.classList.toggle("autoValue", dashboardHarvestForecastCasesDraftValue === null);
+  lossWrap?.classList.toggle("autoValue", dashboardHarvestForecastLossDraftValue === null);
   casesWrap?.classList.toggle("invalid", casesInvalid);
   lossWrap?.classList.toggle("invalid", lossInvalid);
   casesInput?.setAttribute("aria-invalid", casesInvalid ? "true" : "false");
   lossInput?.setAttribute("aria-invalid", lossInvalid ? "true" : "false");
   if(averageButton){
-    averageButton.disabled = dashboardHarvestForecastCasesValue === null
-      && dashboardHarvestForecastLossValue === null;
+    averageButton.disabled = dashboardHarvestForecastCasesDraftValue === null
+      && dashboardHarvestForecastLossDraftValue === null;
+  }
+  if(applyButton){
+    applyButton.disabled = !dashboardHarvestForecastInputsDirty || casesInvalid || lossInvalid;
   }
 }
 
