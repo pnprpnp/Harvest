@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#f5f5f7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<!-- version.json の version と同じ値にする -->
+<meta name="harvestnavi-version" content="20260718-version-manifest-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17,6 +19,9 @@
   const UPDATED_NOTICE_KEY = "harvestnaviAppUpdatedNotice_v1";
   const VERSION_QUERY_KEY = "__hnv";
   const CHECK_QUERY_KEY = "__hncheck";
+  const VERSION_MANIFEST_PATH = "version.json";
+  const APP_VERSION_PATTERN = /^[a-z0-9_-]{8,80}$/;
+  const VERSION_MANIFEST_MAX_LENGTH = 4096;
   const SERVICE_WORKER_MESSAGE_TIMEOUT_MS = 45000;
   let updateCheckPromise = null;
   let loadedSourceVersionPromise = null;
@@ -98,9 +103,35 @@
     return getSourceVersion(normalizeAppSource(source));
   }
 
+  function normalizeDeclaredAppVersion(value){
+    const version = String(value || "").trim().toLowerCase();
+    return APP_VERSION_PATTERN.test(version) ? version : "";
+  }
+
+  function getDeclaredAppVersionFromDocument(root){
+    return normalizeDeclaredAppVersion(
+      root?.querySelector?.('meta[name="harvestnavi-version"]')?.getAttribute("content")
+    );
+  }
+
+  function getDeclaredAppVersionFromSource(source){
+    if(typeof DOMParser === "undefined") return "";
+    try{
+      return getDeclaredAppVersionFromDocument(
+        new DOMParser().parseFromString(String(source || ""), "text/html")
+      );
+    }catch(e){
+      return "";
+    }
+  }
+
   function captureLoadedSourceVersion(){
-    const source = document.documentElement?.outerHTML || "";
-    loadedSourceVersionPromise = getComparableSourceVersion(source);
+    const declaredVersion = getDeclaredAppVersionFromDocument(document);
+    if(declaredVersion){
+      loadedSourceVersionPromise = Promise.resolve(declaredVersion);
+      return;
+    }
+    loadedSourceVersionPromise = getComparableSourceVersion(document.documentElement?.outerHTML || "");
   }
 
   if(document.readyState === "loading"){
@@ -118,12 +149,33 @@
     window.location.replace(target.toString());
   }
 
-  async function applyAppUpdate(version, indexSource){
+  async function downloadAppUpdateSource(version){
+    const expectedVersion = normalizeDeclaredAppVersion(version);
+    if(!expectedVersion) throw new Error("更新するバージョンが正しくありません");
+    const sourceUrl = getCanonicalAppUrl();
+    sourceUrl.searchParams.set(CHECK_QUERY_KEY, "source-" + Date.now());
+    const response = await fetch(sourceUrl.toString(), {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Cache-Control": "no-cache" }
+    });
+    if(!response.ok) throw new Error("最新版の内容を取得できませんでした");
+    const source = await response.text();
+    const declaredVersion = getDeclaredAppVersionFromSource(source);
+    if(declaredVersion !== expectedVersion){
+      throw new Error("最新版の確認結果が一致しません。少し待ってから再確認してください");
+    }
+    return source;
+  }
+
+  async function applyAppUpdate(version, indexSource = ""){
     const nextVersion = String(version || "").trim();
     if(!nextVersion) throw new Error("更新するバージョンが見つかりません");
-    const source = String(indexSource || "");
+    const source = String(indexSource || "") || await downloadAppUpdateSource(nextVersion);
     if(!source) throw new Error("最新版の内容が見つかりません");
-    const verifiedVersion = await getComparableSourceVersion(source);
+    const verifiedVersion = getDeclaredAppVersionFromSource(source)
+      || await getComparableSourceVersion(source);
     if(verifiedVersion !== nextVersion) throw new Error("最新版の確認結果が一致しません");
     await sendServiceWorkerCommand("HARVESTNAVI_STAGE_UPDATE", {
       version: nextVersion,
@@ -155,7 +207,7 @@
     if(updateCheckPromise) return updateCheckPromise;
 
     updateCheckPromise = (async () => {
-      const checkUrl = getCanonicalAppUrl();
+      const checkUrl = new URL(VERSION_MANIFEST_PATH, getCanonicalAppUrl());
       checkUrl.searchParams.set(CHECK_QUERY_KEY, String(now));
       const response = await fetch(checkUrl.toString(), {
         method: "GET",
@@ -165,8 +217,18 @@
       });
       if(!response.ok) throw new Error("最新版の情報を取得できませんでした");
 
-      const source = await response.text();
-      const latestVersion = await getComparableSourceVersion(source);
+      const manifestText = await response.text();
+      if(!manifestText || manifestText.length > VERSION_MANIFEST_MAX_LENGTH){
+        throw new Error("最新版の情報が正しくありません");
+      }
+      let manifest = null;
+      try{
+        manifest = JSON.parse(manifestText);
+      }catch(e){
+        throw new Error("最新版の情報を読み込めませんでした");
+      }
+      const latestVersion = normalizeDeclaredAppVersion(manifest?.version);
+      if(!latestVersion) throw new Error("最新版のバージョンが正しくありません");
       let loadedVersion = "";
       try{
         loadedVersion = await loadedSourceVersionPromise || "";
@@ -180,8 +242,7 @@
 
       return {
         updateAvailable: !currentVersion || currentVersion !== latestVersion,
-        latestVersion,
-        latestSource: source
+        latestVersion
       };
     })().catch(error => {
       console.warn("アプリの更新確認に失敗しました", error);
@@ -13391,7 +13452,7 @@ async function checkLatestAppFromMenu(){
       throw new Error("更新機能を読み込めませんでした");
     }
     setAppUpdateCheckLoading(true, "最新版を開いています...");
-    await window.applyHarvestnaviAppUpdate(updateResult.latestVersion, updateResult.latestSource);
+    await window.applyHarvestnaviAppUpdate(updateResult.latestVersion);
   }catch(e){
     console.warn("最新版の確認に失敗しました", e);
     const message = String(e?.message || e || "");
