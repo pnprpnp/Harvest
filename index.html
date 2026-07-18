@@ -19412,14 +19412,16 @@ function getRemainingHarvestableCaseInstruction(record){
 
   const referenceDate = parseDateOnlyString(record.date) || new Date();
   const recordedSet = getRecordedPalletSet(referenceDate);
-  return targetBuildings.map(building => {
+  const lines = targetBuildings.map(building => {
     const remainingCases = getRemainingHarvestableCasesForBuilding(building, {
       referenceDate,
       recordedSet,
       excludedPalletKeys: recordKeys
     });
+    if(remainingCases <= 0) return "";
     return `${building}号棟：${formatDashboardMetricNumber(remainingCases)}ケース`;
-  }).join("\n");
+  }).filter(Boolean);
+  return lines.length ? lines.join("\n") : "残りなし";
 }
 
 function updateRecordSeedlingDiffDisplay(){
