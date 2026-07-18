@@ -11872,13 +11872,48 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
     normalizedServerRecord.plantingPending = !!currentRecord.plantingPending;
     const serverUuid = normalizeRecordUuid(normalizedServerRecord.recordUuid);
     if(snapshotUuid && serverUuid && snapshotUuid !== serverUuid) return false;
-    if(getHarvestRecordSyncContentSignature(currentRecord)
-      !== getHarvestRecordSyncContentSignature(normalizedServerRecord)) return false;
+    const hasMatchingStableUuid = !!snapshotUuid && snapshotUuid === serverUuid;
+    const contentMatches = getHarvestRecordSyncContentSignature(currentRecord)
+      === getHarvestRecordSyncContentSignature(normalizedServerRecord);
+    // UUIDが一致し、かつ送信中にローカル記録が変わっていなければ、Apps Scriptが
+    // その記録を保存したことは確定している。小数末尾の0や品質メモなど、シートを
+    // 往復したときの表示表現だけを理由に未送信へ戻さない。
+    if(!contentMatches && !hasMatchingStableUuid) return false;
+    if(hasMatchingStableUuid){
+      if(currentRecord.type !== normalizedServerRecord.type
+        || String(currentRecord.date || "") !== String(normalizedServerRecord.date || "")
+        || Number(currentRecord.cases) !== Number(normalizedServerRecord.cases)){
+        return false;
+      }
+    }
+    const confirmedRecord = hasMatchingStableUuid
+      ? {
+          ...currentRecord,
+          id: normalizedServerRecord.id,
+          duplicateKey: normalizedServerRecord.duplicateKey || currentRecord.duplicateKey,
+          recordUuid: serverUuid,
+          createdAt: normalizedServerRecord.createdAt || currentRecord.createdAt,
+          updatedAt: normalizedServerRecord.updatedAt || currentRecord.updatedAt
+        }
+      : normalizedServerRecord;
+    if(hasMatchingStableUuid){
+      // 古い記録でサーバーだけが保持していた同期対象項目は取り込みつつ、
+      // 現在のアプリが送った内容とローカル専用状態はそのまま維持する。
+      const locallyProvidedFields = new Set(normalizeRecordSyncProvidedFields(currentRecord));
+      RECORD_SYNC_FIELD_KEYS.forEach(key => {
+        if(!locallyProvidedFields.has(key)) confirmedRecord[key] = normalizedServerRecord[key];
+      });
+      mergeGoogleSheetRecordSyncFields(confirmedRecord, normalizedServerRecord);
+      if(confirmedRecord.type === "fullHarvest"){
+        confirmedRecord.syncSchemaVersion = RECORD_SYNC_SCHEMA_VERSION;
+        confirmedRecord.syncProvidedFields = [...RECORD_SYNC_FIELD_KEYS];
+      }
+    }
     const status = loadGoogleSheetSyncStatus();
     let eventChanged = false;
     let recordIdChanged = false;
-    if(Number(currentRecord.id) !== Number(normalizedServerRecord.id)){
-      const canonicalId = Number(normalizedServerRecord.id);
+    if(Number(currentRecord.id) !== Number(confirmedRecord.id)){
+      const canonicalId = Number(confirmedRecord.id);
       const canonicalIdOccupant = getRecordById(canonicalId);
       if(canonicalIdOccupant && canonicalIdOccupant !== currentRecord){
         if(!hasPendingGoogleSheetRecordChange(canonicalIdOccupant, status)) return false;
@@ -11908,11 +11943,11 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
     const index = records.indexOf(currentRecord);
     if(index < 0) return false;
     clearGoogleSheetRecordSyncStatus(status, currentRecord);
-    records[index] = normalizedServerRecord;
+    records[index] = confirmedRecord;
     records.sort(compareRecordsByDateDesc);
     saveRecordsToStorage();
     saveGoogleSheetSyncStatus(status);
-    recordForStatus = normalizedServerRecord;
+    recordForStatus = confirmedRecord;
   }
   setGoogleSheetSyncStatus(recordForStatus, state);
   return true;
@@ -20455,7 +20490,7 @@ function getHarvestRecordSyncContent(record){
       type: "partialHarvest",
       date: String(record.date || ""),
       cases: clampNumber(record.cases, 0, RECORD_MAX_CASES, 0),
-      memo: String(record.memo || ""),
+      memo: String(record.memo || "").trim(),
       targets: normalizePartialHarvestTargets(record.targets)
     };
   }
@@ -20470,16 +20505,23 @@ function getHarvestRecordSyncContent(record){
     plantingDate: String(record?.plantingDate || "").trim(),
     actualSeedlingTrayCount: clampNumber(record?.actualSeedlingTrayCount, 0, RECORD_MAX_SEEDLING_TRAYS, 0),
     actualSeedlingCarryoverMode: normalizeSeedlingCarryoverMode(record?.actualSeedlingCarryoverMode),
-    actualSeedlingLossRate: String(record?.actualSeedlingLossRate ?? "").trim(),
-    actualLoss: String(record?.actualLoss ?? "").trim(),
+    actualSeedlingLossRate: normalizeHarvestRecordSyncDecimal(record?.actualSeedlingLossRate),
+    actualLoss: normalizeHarvestRecordSyncDecimal(record?.actualLoss),
     qualityMemo: normalizeQualityMemo(record?.qualityMemo),
     // Apps Scriptでは定植日数を表示用文字列で保存するため、
     // アプリ内の構造化データも同じ文字列にして送信結果を照合する。
     plantingAge: formatPlantingAgeForRecord(record),
-    memo: String(record?.memo || ""),
+    memo: String(record?.memo || "").trim(),
     palletKeys: getPalletKeysFromRecord(record),
     plantingPalletKeys: getPlantingPalletKeysFromRecord(record, getPalletKeysFromRecord(record))
   };
+}
+
+function normalizeHarvestRecordSyncDecimal(value){
+  const text = String(value ?? "").trim();
+  if(!text) return "";
+  const number = Number(text);
+  return Number.isFinite(number) ? String(number) : text;
 }
 
 function getHarvestRecordSyncContentSignature(record){
