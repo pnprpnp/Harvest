@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-bed-detail-press-style-1">
+<meta name="harvestnavi-version" content="20260722-bed-detail-release-guard-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -1380,6 +1380,9 @@ button.forecastClearBtn{
   align-items:center;
   justify-content:center;
 }
+.bedDetailModal.awaitingPointerRelease{
+  pointer-events:none;
+}
 .bedDetailWindow{
   width:min(280px, calc(100vw - 32px));
   max-height:calc(100dvh - 36px);
@@ -1449,6 +1452,9 @@ button.forecastClearBtn{
   color:#334155;
   box-sizing:border-box;
   -webkit-tap-highlight-color: transparent;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
 }
 .bedDetailContent .pallet{
   cursor:pointer;
@@ -7590,6 +7596,7 @@ let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
 let bedLongPressFired = false;
 let bedDetailOpenPressState = null;
+let bedDetailOpenReleasePointerId = null;
 let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let expandedForecastBed = null;
@@ -16358,6 +16365,25 @@ function cancelBedDetailOpenLongPress(pointerId = null){
   bedDetailOpenPressState = null;
 }
 
+function beginBedDetailOpenReleaseGuard(pointerId){
+  bedDetailOpenReleasePointerId = pointerId;
+  document.getElementById("bedDetailModal")?.classList.add("awaitingPointerRelease");
+}
+
+function clearBedDetailOpenReleaseGuard(pointerId = null){
+  if(
+    pointerId !== null &&
+    bedDetailOpenReleasePointerId !== null &&
+    pointerId !== bedDetailOpenReleasePointerId
+  ) return;
+  bedDetailOpenReleasePointerId = null;
+  document.getElementById("bedDetailModal")?.classList.remove("awaitingPointerRelease");
+}
+
+function finishBedDetailOpenReleaseGuard(event){
+  clearBedDetailOpenReleaseGuard(event.pointerId);
+}
+
 function openBedDetailFromLongPress(context, building, bed){
   if(context === "record"){
     handleRecordBuildingBedClick(building, bed);
@@ -16382,6 +16408,7 @@ function startBedDetailOpenLongPress(event, context, building, bed){
     if(bedDetailOpenPressState !== state) return;
     bedDetailOpenPressState = null;
     state.element?.blur?.();
+    beginBedDetailOpenReleaseGuard(state.pointerId);
     openBedDetailFromLongPress(context, building, bed);
   }, BED_LONG_PRESS_MS);
   bedDetailOpenPressState = state;
@@ -16438,6 +16465,7 @@ function openBedDetailWindow(context, bed){
 function closeBedDetailWindow(){
   const modal = document.getElementById("bedDetailModal");
   if(modal) modal.classList.remove("show");
+  clearBedDetailOpenReleaseGuard();
   palletDragState = null;
   hideBedActionMenu();
   hideRecordBedActionMenu();
@@ -22690,6 +22718,8 @@ window.onload = () => {
   document.addEventListener("pointermove", handlePalletDragMove, { passive:false });
   document.addEventListener("pointerup", finishPalletDrag, { passive:false });
   document.addEventListener("pointercancel", finishPalletDrag, { passive:false });
+  document.addEventListener("pointerup", finishBedDetailOpenReleaseGuard);
+  document.addEventListener("pointercancel", finishBedDetailOpenReleaseGuard);
 
   const monitorEditorModal = document.getElementById("monitorEditorModal");
   if(monitorEditorModal){
