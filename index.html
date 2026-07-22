@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-group-harvest-planting-records-1">
+<meta name="harvestnavi-version" content="20260722-simplify-grouped-planting-summary-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -6009,32 +6009,6 @@ button.forecastClearBtn{border-radius:13px;}
 .recordTitle{color:var(--ui-text);}
 .recordTitleHarvest{color:#15803d;}
 .recordMeta{color:var(--ui-text-secondary);}
-.recordPlantingStatusRow{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin-top:10px;
-}
-.recordPlantingStatusBadge{
-  display:inline-flex;
-  align-items:center;
-  min-height:26px;
-  box-sizing:border-box;
-  border-radius:999px;
-  padding:4px 9px;
-  background:#fee2e2;
-  color:#991b1b;
-  font-size:12px;
-  font-weight:900;
-}
-.recordPlantingStatusBadge.partial{
-  background:#fef3c7;
-  color:#92400e;
-}
-.recordPlantingStatusBadge.complete{
-  background:#dcfce7;
-  color:#166534;
-}
 .recordLinkedPlantingList{
   display:grid;
   gap:8px;
@@ -15390,13 +15364,13 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
     const plantingText = !groupModel
       ? ""
       : [
-          `苗植え状況: ${groupModel.statusText}`,
-          ...groupModel.relatedEvents.map(event => {
-            const allocation = event.sourceAllocations.find(item => (
-              Number(item.harvestRecordId) === Number(record.id)
-            ));
-            return `${event.plantingDate || "日付なし"} 苗植え場所: ${formatPlantingSummaryForKeys(allocation?.palletKeys || []) || "-"}`;
-          })
+          ...(groupModel.relatedEvents.length
+            ? groupModel.relatedEvents.map(event => {
+                const metrics = getPlantingEventListMetrics(event);
+                return `${event.plantingDate || "日付なし"} 苗枚数: ${metrics.seedlingTrayText} / 苗ロス率: ${metrics.lossRateText}`;
+              })
+            : ["苗枚数: - / 苗ロス率: -"]),
+          `未定植枚数: ${groupModel.pendingPalletCount}枚`
         ].join("\n");
     const noteText = [summary, plantingText, record.memo || ""].filter(Boolean).join("\n");
 
@@ -15432,7 +15406,7 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
                 <th>ロス率</th>
                 <th>号棟</th>
                 <th>品質メモ</th>
-                <th>メモ / 収穫・苗植え場所</th>
+                <th>メモ / 収穫・苗植え情報</th>
               </tr>
             </thead>
             <tbody>${hiddenRows}</tbody>
@@ -15455,7 +15429,7 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
             <th>ロス率</th>
             <th>号棟</th>
             <th>品質メモ</th>
-            <th>メモ / 収穫・苗植え場所</th>
+            <th>メモ / 収穫・苗植え情報</th>
           </tr>
         </thead>
         <tbody>${visibleRows}</tbody>
@@ -21411,7 +21385,6 @@ function openRecordDetailWindow(kind, id){
       const allocationKeys = allocation?.palletKeys || [];
       const usage = getPlantingEventUsage(event.eventId);
       const detailsUnknown = !!event.detailsUnknown;
-      const otherSourceCount = Math.max(0, event.sourceAllocations.length - 1);
       const carryoverText = event.actualSeedlingCarryoverMode === "carryover"
         ? "余った"
         : "余っていない";
@@ -21421,7 +21394,6 @@ function openRecordDetailWindow(kind, id){
         `苗植え日: ${event.plantingDate || "-"}`,
         `この収穫から苗植え: ${allocationKeys.length}パレット`,
         `苗植え場所: ${formatPlantingSummaryForKeys(allocationKeys) || "-"}`,
-        ...(otherSourceCount ? [`ほかの収穫記録: ${otherSourceCount}件と共通`] : []),
         `実際に取った苗（苗植え全体）: ${detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株"}`,
         `苗植えした株数（苗植え全体）: ${detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株"}`,
         `今回余った苗の設定: ${detailsUnknown ? "不明" : carryoverText}`,
@@ -21441,7 +21413,6 @@ function openRecordDetailWindow(kind, id){
       ...(record.memo ? [`メモ: ${record.memo}`] : []),
       "",
       "【苗植え】",
-      `状況: ${groupModel.statusText}`,
       ...(groupModel.relatedEvents.length ? plantingDetailLines : ["関連する苗植え記録はありません"])
     ];
   }else if(kind === "planting"){
@@ -21499,64 +21470,44 @@ function closeRecordDetailWindow(options = {}){
 }
 
 function getHarvestPlantingGroupModel(record){
-  const harvestKeys = getPalletKeysFromRecord(record);
-  const harvestKeySet = new Set(harvestKeys);
   const relatedEvents = getPlantingEventsForHarvest(record?.id);
-  const plantedKeys = new Set();
-  relatedEvents.forEach(event => {
-    event.sourceAllocations.forEach(allocation => {
-      if(Number(allocation.harvestRecordId) !== Number(record?.id)) return;
-      allocation.palletKeys.forEach(key => {
-        if(harvestKeySet.has(key)) plantedKeys.add(key);
-      });
-    });
-  });
-  const totalPalletCount = harvestKeys.length;
-  const plantedPalletCount = plantedKeys.size;
-  const pendingPalletCount = Math.max(0, totalPalletCount - plantedPalletCount);
-  let status = "pending";
-  let statusText = "苗植え未完了";
-  if(totalPalletCount > 0 && pendingPalletCount === 0){
-    status = "complete";
-    statusText = "苗植え完了";
-  }else if(plantedPalletCount > 0){
-    status = "partial";
-    statusText = `苗植え一部完了（${plantedPalletCount}/${totalPalletCount}パレット）`;
-  }
   return {
     relatedEvents,
-    totalPalletCount,
-    plantedPalletCount,
-    pendingPalletCount,
-    status,
-    statusText
+    pendingPalletCount: getUnplantedPalletKeysForHarvest(record?.id).length
   };
 }
 
-function renderLinkedPlantingEventsHtml(record, groupModel){
-  if(!groupModel.relatedEvents.length) return "";
-  return `<div class="recordLinkedPlantingList">${groupModel.relatedEvents.map(event => {
-    const safeEventId = getSafePositiveRecordId(event?.eventId) ?? 0;
-    const allocation = event.sourceAllocations.find(item => (
-      Number(item.harvestRecordId) === Number(record?.id)
-    ));
-    const allocationKeys = allocation?.palletKeys || [];
-    const otherSourceCount = Math.max(0, event.sourceAllocations.length - 1);
-    const detailsUnknown = !!event.detailsUnknown;
-    const syncText = isPlantingEventUnsent(event) ? "\nGoogle: 未送信" : "";
-    const sharedText = otherSourceCount
-      ? `\nほか${otherSourceCount}件の収穫記録と同じ苗植え`
-      : "";
+function getPlantingEventListMetrics(event){
+  if(!event){
+    return { seedlingTrayText: "-", lossRateText: "-" };
+  }
+  const detailsUnknown = !!event?.detailsUnknown;
+  const usage = getPlantingEventUsage(event?.eventId);
+  const rawLossRateText = String(event?.actualSeedlingLossRate || "").trim();
+  const lossRateText = rawLossRateText || (usage && Number.isFinite(usage.effectiveLossRate)
+    ? String(Math.round(usage.effectiveLossRate * 10) / 10)
+    : "");
+  return {
+    seedlingTrayText: detailsUnknown ? "不明" : String(event?.actualSeedlingTrayCount || 0) + "枚",
+    lossRateText: detailsUnknown ? "不明" : (lossRateText ? lossRateText + "%" : "-")
+  };
+}
+
+function renderLinkedPlantingEventsHtml(groupModel){
+  const displayEvents = groupModel.relatedEvents.length ? groupModel.relatedEvents : [null];
+  return `<div class="recordLinkedPlantingList">${displayEvents.map(event => {
+    const safeEventId = getSafePositiveRecordId(event?.eventId);
+    const metrics = getPlantingEventListMetrics(event);
     return `
       <div class="recordLinkedPlantingItem">
-        <div class="recordLinkedPlantingTitle">${escapeHtml(event.plantingDate || "日付なし")} 苗植え</div>
-        <div class="recordLinkedPlantingMeta">この収穫から: ${escapeHtml(String(allocationKeys.length))}パレット
-苗植え場所: ${escapeHtml(formatPlantingSummaryForKeys(allocationKeys) || "-")}
-苗情報: ${detailsUnknown ? "不明" : escapeHtml(String(event.actualSeedlingTrayCount)) + "枚"}${escapeHtml(sharedText + syncText)}</div>
-        <div class="recordLinkedPlantingActions">
+        <div class="recordLinkedPlantingTitle">${event ? escapeHtml(event.plantingDate || "日付なし") + " " : ""}苗植え</div>
+        <div class="recordLinkedPlantingMeta">苗枚数: ${escapeHtml(metrics.seedlingTrayText)}
+苗ロス率: ${escapeHtml(metrics.lossRateText)}
+未定植枚数: ${escapeHtml(String(groupModel.pendingPalletCount))}枚</div>
+        ${safeEventId === null ? "" : `<div class="recordLinkedPlantingActions">
           <button class="thirdBtn" onclick="editPlantingEvent(${safeEventId})">苗植えを編集</button>
           <button class="recordListDeleteBtn" onclick="confirmDeletePlantingEvent(${safeEventId})">苗植えを削除</button>
-        </div>
+        </div>`}
       </div>`;
   }).join("")}</div>`;
 }
@@ -21605,10 +21556,7 @@ function renderRecordItemHtml(r){
 ロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
 収穫場所: ${escapeHtml(harvestBuildingText)}
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
-      <div class="recordPlantingStatusRow">
-        <span class="recordPlantingStatusBadge ${groupModel.status}">${escapeHtml(groupModel.statusText)}</span>
-      </div>
-      ${renderLinkedPlantingEventsHtml(r, groupModel)}
+      ${renderLinkedPlantingEventsHtml(groupModel)}
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('harvest', ${safeRecordId})">収穫・苗植えの詳細</button>
