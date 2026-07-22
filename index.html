@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-menu-update-notice-1">
+<meta name="harvestnavi-version" content="20260722-bed-detail-long-press-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -1126,6 +1126,9 @@ button.forecastClearBtn{
   min-height:126px;
   cursor:pointer;
   touch-action:manipulation;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
   display:flex;
   flex-direction:column;
   border:2px solid #000000;
@@ -5356,6 +5359,14 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 .casePlacementTotalValue{color:var(--ui-text);font-size:20px;}
 .casePlacementClearInlineBtn{background:#fff;border-color:#dc2626;color:#dc2626;}
 .casePlacementBedPanel{margin-top:16px;}
+.bedDetailOpenHint{
+  margin:8px 4px 0;
+  color:var(--ui-text-tertiary);
+  font-size:11px;
+  font-weight:600;
+  line-height:1.4;
+  text-align:center;
+}
 .bedWrap{gap:9px;}
 .bed{
   border-radius:16px;
@@ -5381,7 +5392,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 .bedMiniStatValue{color:var(--ui-text);}
 .forecastSettingsOpenBtn{
   min-height:50px;
-  margin-top:18px;
+  margin-top:10px;
   padding:12px 14px;
   border:0;
   border-radius:15px;
@@ -6575,6 +6586,7 @@ requestAnimationFrame(function(){
         <div class="casePlacementBedPanel">
           <div id="beds" class="bedWrap"></div>
         </div>
+        <div class="bedDetailOpenHint">ベッドは長押しで詳細表示</div>
         <button type="button" class="forecastSettingsOpenBtn" onclick="openForecastSettingsWindow()">
           <span class="forecastSettingsOpenLabel">計算設定</span>
           <span id="forecastSettingsSummary" class="forecastSettingsSummary">0% / 20 / 20 / 60(0/3)</span>
@@ -7540,6 +7552,7 @@ const DASHBOARD_FORECAST_LATER_COLOR = "#94a3b8";
 const DASHBOARD_FORECAST_EMPTY_COLOR = "#e5e5ea";
 const ALLOWED_YIELDS = [20, 16, 12];
 const BED_LONG_PRESS_MS = 450;
+const BED_DETAIL_OPEN_MOVE_THRESHOLD_PX = 10;
 const PRESET_ACCESS_PASSWORD = "1234";
 const DEFAULT_CASE_PLACEMENT = { front: "", middle: "", back: "" };
 const STANDARD_CASE_PLACEMENT = { front: "", middle: 80, back: 40 };
@@ -7576,6 +7589,7 @@ let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
 let bedLongPressFired = false;
+let bedDetailOpenPressState = null;
 let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let expandedForecastBed = null;
@@ -16331,25 +16345,76 @@ function handleBedTitlePressStart(bed){
   }, BED_LONG_PRESS_MS);
 }
 
-function handleBedTitlePressEnd(){
-  clearTimeout(bedLongPressTimer);
-}
-
 function handleBedDetailTitlePressEnd(){
   clearTimeout(bedLongPressTimer);
   bedLongPressFired = false;
 }
 
-function handleBedTitleClick(bed, context = "forecast"){
-  if(bedLongPressFired){
-    bedLongPressFired = false;
-    return;
-  }
+function cancelBedDetailOpenLongPress(pointerId = null){
+  const state = bedDetailOpenPressState;
+  if(!state) return;
+  if(pointerId !== null && state.pointerId !== pointerId) return;
+  clearTimeout(state.timer);
+  bedDetailOpenPressState = null;
+}
+
+function openBedDetailFromLongPress(context, building, bed){
   if(context === "record"){
-    openBedDetailWindow("record", bed);
+    handleRecordBuildingBedClick(building, bed);
     return;
   }
+  if(currentBuilding !== building) return;
   openBedDetailWindow("forecast", bed);
+}
+
+function startBedDetailOpenLongPress(event, context, building, bed){
+  if(event.pointerType === "mouse" && event.button !== 0) return;
+  cancelBedDetailOpenLongPress();
+
+  const state = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    timer: null
+  };
+  state.timer = setTimeout(() => {
+    if(bedDetailOpenPressState !== state) return;
+    bedDetailOpenPressState = null;
+    openBedDetailFromLongPress(context, building, bed);
+  }, BED_LONG_PRESS_MS);
+  bedDetailOpenPressState = state;
+}
+
+function moveBedDetailOpenLongPress(event){
+  const state = bedDetailOpenPressState;
+  if(!state || state.pointerId !== event.pointerId) return;
+  const distance = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
+  if(distance > BED_DETAIL_OPEN_MOVE_THRESHOLD_PX){
+    cancelBedDetailOpenLongPress(event.pointerId);
+  }
+}
+
+function finishBedDetailOpenLongPress(event){
+  cancelBedDetailOpenLongPress(event.pointerId);
+}
+
+function attachBedDetailOpenLongPressHandlers(element, context, building, bed){
+  element.onpointerdown = (event) => startBedDetailOpenLongPress(event, context, building, bed);
+  element.onpointermove = moveBedDetailOpenLongPress;
+  element.onpointerup = finishBedDetailOpenLongPress;
+  element.onpointercancel = finishBedDetailOpenLongPress;
+  element.onpointerleave = (event) => {
+    if(event.pointerType === "mouse") finishBedDetailOpenLongPress(event);
+  };
+  element.onkeydown = (event) => {
+    if(event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    cancelBedDetailOpenLongPress();
+    openBedDetailFromLongPress(context, building, bed);
+  };
+  element.tabIndex = 0;
+  element.setAttribute("role", "button");
+  element.setAttribute("aria-label", `${building}号棟 ${bed}ベッド。長押しで詳細表示`);
 }
 
 function isBedDetailWindowOpen(){
@@ -19230,6 +19295,7 @@ function renderForecastSummary(){
 }
 
 function drawBeds(){
+  cancelBedDetailOpenLongPress();
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const recordedSet = getRecordedPalletSet();
@@ -19251,16 +19317,11 @@ function drawBeds(){
     if(isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)) titleCls += " bedFullySelected";
     title.className = titleCls;
     title.innerHTML = `<span class="bedTitleMain">${b}</span>`;
-    title.ontouchend = (e) => { e.preventDefault(); handleBedTitleClick(b, "forecast"); };
-    title.onclick = () => handleBedTitleClick(b, "forecast");
     bed.appendChild(title);
 
     if(!isExpanded){
-      bed.onclick = (e) => {
-        if(e.target.closest(".bedTitle")) return;
-        handleBedTitleClick(b, "forecast");
-      };
       appendBedMiniMap(bed, currentBuilding, b, { selectedSet, recordedSet });
+      attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
       container.appendChild(bed);
       return;
     }
@@ -19377,6 +19438,7 @@ function handleRecordBuildingBedClick(building, bed){
 }
 
 function drawRecordBeds(){
+  cancelBedDetailOpenLongPress();
   const recordTab = document.getElementById("recordTab");
   if(recordTab && recordTab.style.display === "none") return;
 
@@ -19421,15 +19483,10 @@ function drawRecordBeds(){
       if(summaryCounts.selected >= PALLETS_PER_BED) titleCls += " bedFullySelected";
       title.className = titleCls;
       title.innerHTML = `<span class="bedTitleMain">${b}</span>`;
-      title.ontouchend = (e) => { e.preventDefault(); handleRecordBuildingBedClick(building, b); };
-      title.onclick = () => handleRecordBuildingBedClick(building, b);
       bed.appendChild(title);
 
-      bed.onclick = (e) => {
-        if(e.target.closest(".bedTitle")) return;
-        handleRecordBuildingBedClick(building, b);
-      };
       appendBedMiniMap(bed, building, b, { selectedSet, recordedSet, allowedSet: plantingAllowedSet });
+      attachBedDetailOpenLongPressHandlers(bed, "record", building, b);
       beds.appendChild(bed);
     });
 
