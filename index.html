@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-pallet-side-ranges-5">
+<meta name="harvestnavi-version" content="20260722-menu-update-notice-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -387,6 +387,26 @@ header{
   transition:opacity .18s ease,transform .18s ease;
 }
 .availabilityNoticeTarget.hasAvailabilityNotice::after{
+  opacity:1;
+  transform:scale(1);
+}
+.headerMenuBtn::after{
+  content:"";
+  position:absolute;
+  right:-3px;
+  top:-3px;
+  width:10px;
+  height:10px;
+  box-sizing:border-box;
+  border:2px solid #fff;
+  border-radius:999px;
+  background:#ff3b30;
+  opacity:0;
+  pointer-events:none;
+  transform:scale(.7);
+  transition:opacity .18s ease,transform .18s ease;
+}
+.headerMenuBtn.hasAvailabilityNotice::after{
   opacity:1;
   transform:scale(1);
 }
@@ -6360,7 +6380,7 @@ requestAnimationFrame(function(){
 </script>
 <div class="appTopChrome">
 <header>
-  <button type="button" class="headerMenuBtn" onclick="openAppMenuWindow()" aria-label="メニューを開く"></button>
+  <button id="headerMenuBtn" type="button" class="headerMenuBtn" onclick="openAppMenuWindow()" aria-label="メニューを開く"></button>
   <div class="appTitleWrap">
     <span class="appMark" aria-hidden="true"></span>
     <div class="appTitleGroup">
@@ -13178,12 +13198,20 @@ function setRecordSyncAvailabilityNotice(available){
 
 function setAppUpdateAvailabilityNotice(available){
   const button = document.getElementById("appUpdateCheckBtn");
-  if(!button) return;
-  button.classList.toggle("hasAvailabilityNotice", !!available);
-  if(!button.disabled){
-    button.setAttribute("aria-label", available
-      ? "アプリの最新バージョンがあります"
-      : "アプリの最新バージョンを確認する");
+  const menuButton = document.getElementById("headerMenuBtn");
+  if(button){
+    button.classList.toggle("hasAvailabilityNotice", !!available);
+    if(!button.disabled){
+      button.setAttribute("aria-label", available
+        ? "アプリの最新バージョンがあります"
+        : "アプリの最新バージョンを確認する");
+    }
+  }
+  if(menuButton){
+    menuButton.classList.toggle("hasAvailabilityNotice", !!available);
+    menuButton.setAttribute("aria-label", available
+      ? "アプリの更新があります。メニューを開く"
+      : "メニューを開く");
   }
 }
 
