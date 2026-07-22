@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-group-planting-records-by-date-1">
+<meta name="harvestnavi-version" content="20260722-hide-offdate-planting-records-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -14653,7 +14653,7 @@ function getDashboardRecordSearchText(record){
     : (record.palletSummary || "");
   const plantingText = record?.type === "partialHarvest"
     ? ""
-    : getPlantingEventsForHarvest(record.id).map(event => {
+    : getSameDayPlantingEventsForHarvest(record).map(event => {
         const allocation = event.sourceAllocations.find(item => (
           Number(item.harvestRecordId) === Number(record.id)
         ));
@@ -14671,7 +14671,7 @@ function getDashboardRecordSearchText(record){
     formatDashboardBuildings(record),
     qualityMemo || "",
     summary || "",
-    plantingText || record?.plantingSummary || "",
+    plantingText,
     record?.memo || ""
   ].join("\n").toLowerCase();
 }
@@ -21128,7 +21128,7 @@ function renderRecordList(){
   renderDeletedRecordList();
   const historyItems = records.map(record => {
     const relatedEvents = record?.type === "fullHarvest"
-      ? getPlantingEventsForHarvest(record.id)
+      ? getSameDayPlantingEventsForHarvest(record)
       : [];
     const activityDates = [
       String(record?.date || ""),
@@ -21469,8 +21469,16 @@ function closeRecordDetailWindow(options = {}){
   }
 }
 
+function getSameDayPlantingEventsForHarvest(record){
+  const harvestDate = String(record?.date || "").trim();
+  if(!isStrictDateOnlyString(harvestDate)) return [];
+  return getPlantingEventsForHarvest(record?.id).filter(event => (
+    String(event?.plantingDate || "").trim() === harvestDate
+  ));
+}
+
 function getHarvestPlantingGroupModel(record){
-  const relatedEvents = getPlantingEventsForHarvest(record?.id);
+  const relatedEvents = getSameDayPlantingEventsForHarvest(record);
   return {
     relatedEvents,
     pendingPalletCount: getUnplantedPalletKeysForHarvest(record?.id).length
