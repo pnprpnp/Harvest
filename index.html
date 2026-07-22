@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-forecast-age-header-left-1">
+<meta name="harvestnavi-version" content="20260723-highlight-forecast-building-number-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4201,6 +4201,10 @@ button.monitorSaveBtn:active{
   font-weight:850;
   overflow-wrap:anywhere;
   white-space:pre-line;
+}
+.dashboardForecastDayBuildingNumber{
+  color:#15803d;
+  font-weight:900;
 }
 .dashboardForecastDayPlantingAge{
   color:#7c3aed;
@@ -15988,6 +15992,17 @@ function formatDashboardForecastDailyLocations(palletKeys){
     .join("\n");
 }
 
+function getDashboardForecastDailyLocationHtml(locationText){
+  return String(locationText || "")
+    .split("\n")
+    .map(line => {
+      const match = line.match(/^(\d+)(-.+)$/);
+      if(!match) return escapeHtml(line);
+      return `<span class="dashboardForecastDayBuildingNumber">${escapeHtml(match[1])}</span>${escapeHtml(match[2])}`;
+    })
+    .join("<br>");
+}
+
 function getDashboardForecastDailyPlantingAgeText(model, palletKeys, forecastDate){
   const keys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])];
   if(!keys.length) return "-";
@@ -16045,7 +16060,7 @@ function renderDashboardHarvestForecastDays(model){
       return `<div class="dashboardForecastDayRow${hasHarvest ? "" : " is-empty"}">
         <span class="dashboardForecastDayDelay">${escapeHtml(formatDashboardForecastDelay(row.daysAfter))}</span>
         <span class="dashboardForecastDayDate">${escapeHtml(formatDashboardForecastDate(row.date))}</span>
-        <span class="dashboardForecastDayLocation">${escapeHtml(hasHarvest ? row.locationText : "なし")}</span>
+        <span class="dashboardForecastDayLocation">${hasHarvest ? getDashboardForecastDailyLocationHtml(row.locationText) : "なし"}</span>
         <span class="dashboardForecastDayPlantingAge">${escapeHtml(hasHarvest ? row.plantingAgeText : "-")}</span>
       </div>`;
     }).join("")}
