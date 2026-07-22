@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-planting-auto-pallets-1">
+<meta name="harvestnavi-version" content="20260722-pallet-side-ranges-5">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4139,13 +4139,21 @@ button.monitorSaveBtn:active{
   line-height:1;
 }
 .dashboardForecastColorBar{
-  display:block;
+  display:flex;
+  flex-direction:column;
   width:22px;
   height:54px;
   overflow:hidden;
   border:1px solid rgba(60,60,67,.16);
   border-radius:0;
+  background:#e5e5ea;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.2);
+}
+.dashboardForecastColorSlice{
+  display:block;
+  width:100%;
+  min-height:0;
+  flex-basis:0;
 }
 .dashboardForecastLegend{
   display:flex;
@@ -7419,6 +7427,7 @@ const PLANTING_EVENTS_KEY = "harvestForecastPlantingEvents_v1";
 const PLANTING_EVENTS_MIGRATION_KEY = "harvestForecastPlantingEventsMigrated_v1";
 const PLANTING_EVENT_SYNC_STATUS_KEY = "harvestForecastPlantingEventSyncStatus_v1";
 const PLANTING_EVENT_TRASH_KEY = "harvestForecastPlantingEventTrash_v1";
+const PALLET_SUMMARY_CANONICAL_START_DATE = "2026-06-18";
 const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
 const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
@@ -9480,6 +9489,22 @@ function parsePalletSummaryToKeys(summary){
       const rangeText = part.trim();
       if(!rangeText) return;
 
+      const sideRangeMatch = rangeText.match(/^(右|左)\s*[（(]\s*(\d+)(?:\s*[-〜~]\s*(\d+))?\s*[）)]$/);
+      if(sideRangeMatch){
+        const expectedParity = sideRangeMatch[1] === "右" ? 0 : 1;
+        const first = Number(sideRangeMatch[2]);
+        const last = Number(sideRangeMatch[3] || sideRangeMatch[2]);
+        const start = Math.min(first, last);
+        const end = Math.max(first, last);
+        if(!Number.isFinite(start) || !Number.isFinite(end)) return;
+        if(start % 2 !== expectedParity || end % 2 !== expectedParity) return;
+        for(let number = start; number <= end; number += 2){
+          if(number < 1 || number > PALLETS_PER_BED) continue;
+          keys.push(getPalletKey(building, bed, number));
+        }
+        return;
+      }
+
       const rangeMatch = rangeText.match(/^(\d+)(?:[-〜~](\d+))?$/);
       if(!rangeMatch) return;
 
@@ -9492,6 +9517,16 @@ function parsePalletSummaryToKeys(summary){
   });
 
   return [...new Set(keys)].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+}
+
+function formatStoredPalletSummaryForDisplay(summary, fallbackKeys = []){
+  const text = String(summary || "").trim();
+  const parsedKeys = parsePalletSummaryToKeys(text);
+  if(parsedKeys.length) return formatPalletSummary(parsedKeys);
+
+  const directKeys = getDirectPalletKeys(fallbackKeys);
+  if(directKeys?.length) return formatPalletSummary(directKeys);
+  return text;
 }
 
 function isValidPalletKeyString(key){
@@ -15406,22 +15441,26 @@ function formatDashboardForecastRange(range){
   };
 }
 
-function buildDashboardForecastColorBarGradient(colors){
+function buildDashboardForecastColorBarRuns(colors){
   const safeColors = Array.isArray(colors) && colors.length
     ? colors
     : [DASHBOARD_FORECAST_EMPTY_COLOR];
-  const stops = [];
-  safeColors.forEach((color, index) => {
-    const start = Math.round(index / safeColors.length * 10000) / 100;
-    const end = Math.round((index + 1) / safeColors.length * 10000) / 100;
-    stops.push(`${color} ${start}%`, `${color} ${end}%`);
+  const runs = [];
+  safeColors.forEach(color => {
+    const lastRun = runs[runs.length - 1];
+    if(lastRun?.color === color){
+      lastRun.count++;
+      return;
+    }
+    runs.push({ color, count: 1 });
   });
-  return `linear-gradient(180deg, ${stops.join(",")})`;
+  return runs;
 }
 
 function getDashboardForecastBedColorBarHtml(model, building, bed){
   const colors = [];
   const forecasts = [];
+  // flex-columnの先頭が上になるため、奥（78番）から手前（1番）の順で色を積む。
   for(let number = PALLETS_PER_BED; number >= 1; number--){
     const forecast = model.palletForecasts.get(getPalletKey(building, bed, number));
     colors.push(getDashboardForecastDateColor(forecast?.daysAfter));
@@ -15433,10 +15472,13 @@ function getDashboardForecastBedColorBarHtml(model, building, bed){
     : null;
   const rangeText = range ? formatDashboardForecastRange(range).dateText.replace(/\n/g, "、") : "予想なし";
   const label = `${bed}ベッド 奥から手前の収穫時期 ${rangeText}`;
+  const colorSlices = buildDashboardForecastColorBarRuns(colors).map(run => {
+    return `<span class="dashboardForecastColorSlice" style="background:${run.color};flex-grow:${run.count}"></span>`;
+  }).join("");
   return `
     <div class="dashboardForecastColorScale" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
       <span class="dashboardForecastColorDirection">奥</span>
-      <span class="dashboardForecastColorBar" style="background:${buildDashboardForecastColorBarGradient(colors)}"></span>
+      <span class="dashboardForecastColorBar" aria-hidden="true">${colorSlices}</span>
       <span class="dashboardForecastColorDirection">手前</span>
     </div>
   `;
@@ -17827,17 +17869,11 @@ function formatHarvestLocationInstruction(keys = harvestFillKeys, referenceDate 
 }
 
 function getPlantingSummaryFromSelection(){
-  return formatHarvestLocationInstruction()
-    .replace(/^収穫場所:\s*/, "")
-    .replace(/^-$/, "")
-    .trim();
+  return formatPalletSummary(harvestFillKeys);
 }
 
 function formatPlantingSummaryForKeys(keys){
-  return formatHarvestLocationInstruction(Array.isArray(keys) ? keys : [])
-    .replace(/^収穫場所:\s*/, "")
-    .replace(/^-$/, "")
-    .trim();
+  return formatPalletSummary(Array.isArray(keys) ? keys : []);
 }
 
 function syncRecordPlantingSummaryFromSelection(options = {}){
@@ -19733,6 +19769,63 @@ function bindRecordActualSeedlingTrayCountInput(){
   input.dataset.bound = "1";
 }
 
+function formatPalletNumberSideRanges(numbers){
+  const normalizedNumbers = [...new Set(Array.isArray(numbers) ? numbers : [])]
+    .map(Number)
+    .filter(number => Number.isInteger(number) && number >= 1 && number <= PALLETS_PER_BED)
+    .sort((a, b) => a - b);
+  const parts = [];
+  const numbersInRegularRanges = new Set();
+
+  // 1ずつ続く通常の範囲を優先し、従来どおり「開始-終了」で表示する。
+  let regularStartIndex = 0;
+  for(let index = 1; index <= normalizedNumbers.length; index++){
+    if(index < normalizedNumbers.length && normalizedNumbers[index] === normalizedNumbers[index - 1] + 1){
+      continue;
+    }
+    if(index - regularStartIndex >= 2){
+      const start = normalizedNumbers[regularStartIndex];
+      const end = normalizedNumbers[index - 1];
+      parts.push({ start, text: `${start}-${end}` });
+      for(let itemIndex = regularStartIndex; itemIndex < index; itemIndex++){
+        numbersInRegularRanges.add(normalizedNumbers[itemIndex]);
+      }
+    }
+    regularStartIndex = index;
+  }
+
+  [
+    { label: "左", parity: 1 },
+    { label: "右", parity: 0 }
+  ].forEach(side => {
+    const sideNumbers = normalizedNumbers.filter(number => (
+      !numbersInRegularRanges.has(number) && number % 2 === side.parity
+    ));
+    if(!sideNumbers.length) return;
+    let start = sideNumbers[0];
+    let previous = sideNumbers[0];
+
+    for(let index = 1; index <= sideNumbers.length; index++){
+      const current = sideNumbers[index];
+      if(current === previous + 2){
+        previous = current;
+        continue;
+      }
+      parts.push({
+        start,
+        text: start === previous ? String(start) : `${side.label}(${start}-${previous})`
+      });
+      start = current;
+      previous = current;
+    }
+  });
+
+  return parts
+    .sort((a, b) => a.start - b.start)
+    .map(part => part.text)
+    .join(",");
+}
+
 function formatPalletSummary(keys){
   if(!keys || keys.length === 0) return "";
 
@@ -19755,23 +19848,7 @@ function formatPalletSummary(keys){
   });
 
   const parts = orderedGroupKeys.map(groupKey => {
-    const nums = [...groups[groupKey]].sort((a,b) => a - b);
-    const ranges = [];
-    let start = nums[0];
-    let prev = nums[0];
-
-    for(let i=1;i<nums.length;i++){
-      const cur = nums[i];
-      if(cur === prev + 1){
-        prev = cur;
-      }else{
-        ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-        start = cur;
-        prev = cur;
-      }
-    }
-    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-    return `${groupKey}:${ranges.join(",")}`;
+    return `${groupKey}:${formatPalletNumberSideRanges(groups[groupKey])}`;
   });
 
   return parts.join("\n");
@@ -20655,7 +20732,11 @@ function editHarvestRecord(id, options = {}){
   recalcHarvestSummary();
 
   const palletSummaryInput = document.getElementById("recordPalletSummaryInput");
-  if(palletSummaryInput) palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
+  if(palletSummaryInput){
+    palletSummaryInput.value = String(record.date || "") < PALLET_SUMMARY_CANONICAL_START_DATE
+      ? String(record.palletSummary || "")
+      : formatPalletSummary(harvestFillKeys);
+  }
 
   const memoInput = document.getElementById("recordMemoInput");
   if(memoInput) memoInput.value = record.memo || "";
@@ -20942,7 +21023,7 @@ function openRecordDetailWindow(kind, id){
     detailLines = [
       `予定苗枚数: ${record.plannedSeedlingTrayCount || 0}枚`,
       `定植日数の詳細: ${formatPlantingAgeForRecord(record) || "-"}`,
-      `収穫場所: ${record.palletSummary || "-"}`
+      `収穫場所: ${formatStoredPalletSummaryForDisplay(record.palletSummary, record.palletKeys) || "-"}`
     ];
   }else if(kind === "planting"){
     const event = getPlantingEventById(safeId);
