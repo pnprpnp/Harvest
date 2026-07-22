@@ -7485,7 +7485,7 @@ const SETTINGS_KEY = "harvestForecastSettings_v16";
 const RECORDS_KEY = "harvestForecastRecords_v9";
 const PLANTING_EVENTS_KEY = "harvestForecastPlantingEvents_v1";
 const PLANTING_EVENTS_MIGRATION_KEY = "harvestForecastPlantingEventsMigrated_v1";
-const LEGACY_PLANTING_EVENT_BACKFILL_KEY = "harvestForecastPlantingEventBackfill_20260722_v1";
+const LEGACY_PLANTING_EVENT_BACKFILL_KEY = "harvestForecastPlantingEventBackfill_20260722_v2";
 const PLANTING_EVENT_SYNC_STATUS_KEY = "harvestForecastPlantingEventSyncStatus_v1";
 const PLANTING_EVENT_TRASH_KEY = "harvestForecastPlantingEventTrash_v1";
 const PALLET_SUMMARY_CANONICAL_START_DATE = "2026-06-18";
@@ -10273,8 +10273,39 @@ function migrateLegacyPlantingEvents(recordsToMigrate = records){
   return changed;
 }
 
+function shouldRunLegacyPlantingEventBackfill(){
+  try{
+    const state = JSON.parse(localStorage.getItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY) || "null");
+    return state?.completed !== true;
+  }catch(e){
+    return true;
+  }
+}
+
+function markLegacyPlantingEventBackfillCompleted(result = {}){
+  localStorage.setItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY, JSON.stringify({
+    completed: true,
+    completedAt: new Date().toISOString(),
+    createdCount: Math.max(0, Number(result.createdCount || 0)),
+    sentCount: Math.max(0, Number(result.sentCount || 0))
+  }));
+}
+
+function getUnsentLegacyPlantingEventsForBackfill(){
+  const recordsById = new Map(records.map(record => [Number(record?.id), record]));
+  const status = loadPlantingEventSyncStatus();
+  return plantingEvents.filter(event => {
+    if(!event?.legacyMigrated || !event.detailsUnknown || !isPlantingEventUnsent(event, status)) return false;
+    return event.sourceAllocations.some(allocation => {
+      const sourceRecord = recordsById.get(Number(allocation?.harvestRecordId));
+      const harvestDate = String(sourceRecord?.date || "").trim();
+      return isStrictDateOnlyString(harvestDate) && harvestDate <= LEGACY_PLANTING_EVENT_CUTOFF_DATE;
+    });
+  }).sort(comparePlantingEventsAsc);
+}
+
 function backfillLegacyPlantingEventsFromRecordSummariesOnce(recordsToMigrate = records){
-  if(localStorage.getItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY)) return [];
+  if(!shouldRunLegacyPlantingEventBackfill()) return [];
 
   const occupiedLots = new Set();
   plantingEvents.forEach(event => {
@@ -10329,10 +10360,6 @@ function backfillLegacyPlantingEventsFromRecordSummariesOnce(recordsToMigrate = 
       createdEvents.push(event);
     });
 
-  localStorage.setItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY, JSON.stringify({
-    completedAt: new Date().toISOString(),
-    createdCount: createdEvents.length
-  }));
   if(createdEvents.length){
     savePlantingEventsToStorage();
     syncHarvestPlantingPendingFlags({ persist: true });
@@ -13801,8 +13828,17 @@ async function importRecordsFromGoogleSheet(options = {}){
   let snapshot = null;
 
   try{
-    const recordSync = await fetchGoogleSheetRecordSyncPages(config, options, controller.signal);
+    const shouldBackfillLegacyPlantingEvents = shouldRunLegacyPlantingEventBackfill();
+    const syncOptions = shouldBackfillLegacyPlantingEvents
+      ? { ...options, resetCursor: true }
+      : options;
+    const recordSync = await fetchGoogleSheetRecordSyncPages(config, syncOptions, controller.signal);
     snapshot = createBackupImportSnapshot();
+    const legacyBackfillSourceRecords = shouldBackfillLegacyPlantingEvents
+      ? recordSync.records.map((source, index) => (
+          normalizeImportedRecord(normalizeGoogleSheetRowRecord(source), index)
+        )).filter(Boolean)
+      : [];
     // 先に収穫IDの競合を解決し、既存のlocal苗植え参照だけを新IDへ移す。
     // その後remote苗植えイベントを入れることで、server IDの参照を誤って付け替えない。
     const recordResult = reconcileGoogleSheetRecords(recordSync.records, recordSync.tombstones, options);
@@ -13813,13 +13849,19 @@ async function importRecordsFromGoogleSheet(options = {}){
       silentErrors: true,
       throwOnError: true,
       deferCursorSave: true,
+      resetCursor: shouldBackfillLegacyPlantingEvents,
       resultTracker: plantingResult
     });
     migrateLegacyPlantingEvents();
-    const backfilledPlantingEvents = backfillLegacyPlantingEventsFromRecordSummariesOnce();
+    const backfilledPlantingEvents = shouldBackfillLegacyPlantingEvents
+      ? backfillLegacyPlantingEventsFromRecordSummariesOnce(legacyBackfillSourceRecords)
+      : [];
+    const legacyPlantingEventsToSend = shouldBackfillLegacyPlantingEvents
+      ? getUnsentLegacyPlantingEventsForBackfill()
+      : [];
     let backfilledPlantingSuccessCount = 0;
     const backfilledPlantingFailures = [];
-    for(const event of backfilledPlantingEvents){
+    for(const event of legacyPlantingEventsToSend){
       const result = await syncPlantingEventWithSources(event, {
         manageSendState: false,
         sourcesAlreadySent: true
@@ -13831,6 +13873,12 @@ async function importRecordsFromGoogleSheet(options = {}){
           `${event.plantingDate}（ID: ${event.eventId}）: ${result.message || "送信できませんでした"}`
         );
       }
+    }
+    if(shouldBackfillLegacyPlantingEvents && !backfilledPlantingFailures.length){
+      markLegacyPlantingEventBackfillCompleted({
+        createdCount: backfilledPlantingEvents.length,
+        sentCount: backfilledPlantingSuccessCount
+      });
     }
     syncHarvestPlantingPendingFlags();
     // 編集中などで反映を保留した記録がある間はcursorを進めず、次回も同じ変更を取得する。
@@ -13846,6 +13894,8 @@ async function importRecordsFromGoogleSheet(options = {}){
     const totalChanged = Number(recordResult.changedCount || 0)
       + Number(importedEventCount || 0)
       + backfilledPlantingEvents.length;
+    const hadBackfillActivity = backfilledPlantingEvents.length > 0
+      || backfilledPlantingSuccessCount > 0;
     renderRecordList();
     renderDashboard();
     updateGoogleSheetResendButtonState();
@@ -13856,9 +13906,9 @@ async function importRecordsFromGoogleSheet(options = {}){
     updateHeaderLatestRecordDate();
     if(!silentErrors){
       if(totalConflictCount){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingSuccessCount}（競合${totalConflictCount}件は保護しました）`);
-      }else if(totalChanged){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingSuccessCount}`);
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件は保護しました）`);
+      }else if(totalChanged || hadBackfillActivity){
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}`);
       }else if(!options.silentNoChange){
         showToast(options.emptyMessage || "スプレッドシートと同期済みです");
       }
@@ -13871,7 +13921,7 @@ async function importRecordsFromGoogleSheet(options = {}){
         );
       }
     }
-    return totalChanged > 0;
+    return totalChanged > 0 || hadBackfillActivity;
   }catch(e){
     if(snapshot){
       try{
@@ -22337,6 +22387,7 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
   PLANTING_EVENTS_KEY,
   PLANTING_EVENT_TRASH_KEY,
   PLANTING_EVENTS_MIGRATION_KEY,
+  LEGACY_PLANTING_EVENT_BACKFILL_KEY,
   GOOGLE_SHEET_SYNC_STATUS_KEY,
   GOOGLE_SHEET_SYNC_CURSOR_KEY,
   GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY,
