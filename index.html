@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-bed-detail-long-press-1">
+<meta name="harvestnavi-version" content="20260722-bed-detail-press-style-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -1126,6 +1126,7 @@ button.forecastClearBtn{
   min-height:126px;
   cursor:pointer;
   touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
   user-select:none;
   -webkit-user-select:none;
   -webkit-touch-callout:none;
@@ -5381,7 +5382,6 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   box-shadow:var(--ui-shadow-sm);
   transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
 }
-.bed.bedCollapsed:active{transform:scale(.985);}
 .bed.bedCollapsedFull{border-color:rgba(36,138,75,.65);}
 .bed.bedCollapsedInactive{border-color:var(--ui-line);background:var(--ui-surface-muted);}
 .bedCollapsed .bedTitleMain{color:var(--ui-text);font-weight:720;}
@@ -16375,11 +16375,13 @@ function startBedDetailOpenLongPress(event, context, building, bed){
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
+    element: event.currentTarget,
     timer: null
   };
   state.timer = setTimeout(() => {
     if(bedDetailOpenPressState !== state) return;
     bedDetailOpenPressState = null;
+    state.element?.blur?.();
     openBedDetailFromLongPress(context, building, bed);
   }, BED_LONG_PRESS_MS);
   bedDetailOpenPressState = state;
