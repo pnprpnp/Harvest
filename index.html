@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260723-highlight-forecast-building-number-1">
+<meta name="harvestnavi-version" content="20260723-forecast-location-wrap-scroll-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4154,7 +4154,10 @@ button.monitorSaveBtn:active{
 }
 .dashboardForecastDayList{
   display:grid;
-  overflow:hidden;
+  max-height:398px;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
   border:1px solid #e5e7eb;
   border-radius:14px;
   background:#fff;
@@ -4174,6 +4177,9 @@ button.monitorSaveBtn:active{
   padding:10px 11px;
 }
 .dashboardForecastDayHeader{
+  position:sticky;
+  top:0;
+  z-index:1;
   background:#f8fafc;
   color:#64748b;
   font-size:10px;
@@ -4199,8 +4205,13 @@ button.monitorSaveBtn:active{
 }
 .dashboardForecastDayLocation{
   font-weight:850;
-  overflow-wrap:anywhere;
-  white-space:pre-line;
+  word-break:normal;
+}
+.dashboardForecastDayBuildingLine{
+  display:block;
+}
+.dashboardForecastDayBedToken{
+  white-space:nowrap;
 }
 .dashboardForecastDayBuildingNumber{
   color:#15803d;
@@ -15998,9 +16009,15 @@ function getDashboardForecastDailyLocationHtml(locationText){
     .map(line => {
       const match = line.match(/^(\d+)(-.+)$/);
       if(!match) return escapeHtml(line);
-      return `<span class="dashboardForecastDayBuildingNumber">${escapeHtml(match[1])}</span>${escapeHtml(match[2])}`;
+      const bedLabels = match[2].slice(1).split(",").filter(Boolean);
+      if(!bedLabels.length) return escapeHtml(line);
+      const firstBedHtml = `<span class="dashboardForecastDayBedToken"><span class="dashboardForecastDayBuildingNumber">${escapeHtml(match[1])}</span>-${escapeHtml(bedLabels[0])}</span>`;
+      const remainingBedsHtml = bedLabels.slice(1).map(bedLabel => (
+        `,<wbr><span class="dashboardForecastDayBedToken">${escapeHtml(bedLabel)}</span>`
+      )).join("");
+      return `<span class="dashboardForecastDayBuildingLine">${firstBedHtml}${remainingBedsHtml}</span>`;
     })
-    .join("<br>");
+    .join("");
 }
 
 function getDashboardForecastDailyPlantingAgeText(model, palletKeys, forecastDate){
