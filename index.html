@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-simplify-grouped-planting-summary-1">
+<meta name="harvestnavi-version" content="20260722-group-planting-records-by-date-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -15365,9 +15365,9 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
       ? ""
       : [
           ...(groupModel.relatedEvents.length
-            ? groupModel.relatedEvents.map(event => {
-                const metrics = getPlantingEventListMetrics(event);
-                return `${event.plantingDate || "日付なし"} 苗枚数: ${metrics.seedlingTrayText} / 苗ロス率: ${metrics.lossRateText}`;
+            ? groupPlantingEventsByDate(groupModel.relatedEvents).map(group => {
+                const metrics = getPlantingEventGroupListMetrics(group.events);
+                return `${group.plantingDate || "日付なし"} 苗枚数: ${metrics.seedlingTrayText} / 苗ロス率: ${metrics.lossRateText}`;
               })
             : ["苗枚数: - / 苗ロス率: -"]),
           `未定植枚数: ${groupModel.pendingPalletCount}枚`
@@ -21477,37 +21477,101 @@ function getHarvestPlantingGroupModel(record){
   };
 }
 
+function groupPlantingEventsByDate(events){
+  const groups = new Map();
+  [...(Array.isArray(events) ? events : [])]
+    .sort(comparePlantingEventsDesc)
+    .forEach(event => {
+      const plantingDate = String(event?.plantingDate || "").trim();
+      const key = isStrictDateOnlyString(plantingDate)
+        ? plantingDate
+        : `event:${String(event?.eventId || "")}`;
+      if(!groups.has(key)) groups.set(key, { plantingDate, events: [] });
+      groups.get(key).events.push(event);
+    });
+  return [...groups.values()];
+}
+
+function getPlantingEventEffectiveLossRate(event){
+  if(!event || event.detailsUnknown) return null;
+  const rawLossRateText = String(event.actualSeedlingLossRate || "").trim();
+  const rawLossRate = Number(rawLossRateText);
+  if(rawLossRateText && Number.isFinite(rawLossRate)) return rawLossRate;
+  const usage = getPlantingEventUsage(event.eventId);
+  return usage && Number.isFinite(usage.effectiveLossRate)
+    ? usage.effectiveLossRate
+    : null;
+}
+
 function getPlantingEventListMetrics(event){
   if(!event){
     return { seedlingTrayText: "-", lossRateText: "-" };
   }
   const detailsUnknown = !!event?.detailsUnknown;
-  const usage = getPlantingEventUsage(event?.eventId);
-  const rawLossRateText = String(event?.actualSeedlingLossRate || "").trim();
-  const lossRateText = rawLossRateText || (usage && Number.isFinite(usage.effectiveLossRate)
-    ? String(Math.round(usage.effectiveLossRate * 10) / 10)
-    : "");
+  const lossRate = getPlantingEventEffectiveLossRate(event);
   return {
     seedlingTrayText: detailsUnknown ? "不明" : String(event?.actualSeedlingTrayCount || 0) + "枚",
-    lossRateText: detailsUnknown ? "不明" : (lossRateText ? lossRateText + "%" : "-")
+    lossRateText: detailsUnknown
+      ? "不明"
+      : (lossRate === null ? "-" : String(Math.round(lossRate * 10) / 10) + "%")
+  };
+}
+
+function getPlantingEventGroupListMetrics(events){
+  const groupEvents = Array.isArray(events) ? events : [];
+  if(!groupEvents.length) return getPlantingEventListMetrics(null);
+  if(groupEvents.some(event => event?.detailsUnknown)){
+    return { seedlingTrayText: "不明", lossRateText: "不明" };
+  }
+
+  const seedlingTrayCount = groupEvents.reduce((sum, event) => (
+    sum + clampNumber(event?.actualSeedlingTrayCount, 0, RECORD_MAX_SEEDLING_TRAYS, 0)
+  ), 0);
+  const lossItems = groupEvents.map(event => ({
+    lossRate: getPlantingEventEffectiveLossRate(event),
+    weight: clampNumber(
+      event?.actualTakenSeedlingCount,
+      0,
+      999999999,
+      getSeedlingCountFromTrayCount(event?.actualSeedlingTrayCount || 0)
+    )
+  }));
+  const hasMissingLossRate = lossItems.some(item => item.lossRate === null);
+  const totalWeight = lossItems.reduce((sum, item) => sum + item.weight, 0);
+  const averageLossRate = hasMissingLossRate
+    ? null
+    : (totalWeight > 0
+      ? lossItems.reduce((sum, item) => sum + item.lossRate * item.weight, 0) / totalWeight
+      : lossItems.reduce((sum, item) => sum + item.lossRate, 0) / lossItems.length);
+  return {
+    seedlingTrayText: String(seedlingTrayCount) + "枚",
+    lossRateText: averageLossRate === null
+      ? "-"
+      : String(Math.round(averageLossRate * 10) / 10) + "%"
   };
 }
 
 function renderLinkedPlantingEventsHtml(groupModel){
-  const displayEvents = groupModel.relatedEvents.length ? groupModel.relatedEvents : [null];
-  return `<div class="recordLinkedPlantingList">${displayEvents.map(event => {
-    const safeEventId = getSafePositiveRecordId(event?.eventId);
-    const metrics = getPlantingEventListMetrics(event);
+  const dateGroups = groupModel.relatedEvents.length
+    ? groupPlantingEventsByDate(groupModel.relatedEvents)
+    : [{ plantingDate: "", events: [] }];
+  return `<div class="recordLinkedPlantingList">${dateGroups.map(group => {
+    const metrics = getPlantingEventGroupListMetrics(group.events);
     return `
       <div class="recordLinkedPlantingItem">
-        <div class="recordLinkedPlantingTitle">${event ? escapeHtml(event.plantingDate || "日付なし") + " " : ""}苗植え</div>
+        <div class="recordLinkedPlantingTitle">${group.plantingDate ? escapeHtml(group.plantingDate) + " " : ""}苗植え</div>
         <div class="recordLinkedPlantingMeta">苗枚数: ${escapeHtml(metrics.seedlingTrayText)}
 苗ロス率: ${escapeHtml(metrics.lossRateText)}
 未定植枚数: ${escapeHtml(String(groupModel.pendingPalletCount))}枚</div>
-        ${safeEventId === null ? "" : `<div class="recordLinkedPlantingActions">
-          <button class="thirdBtn" onclick="editPlantingEvent(${safeEventId})">苗植えを編集</button>
-          <button class="recordListDeleteBtn" onclick="confirmDeletePlantingEvent(${safeEventId})">苗植えを削除</button>
-        </div>`}
+        ${group.events.map((event, index) => {
+          const safeEventId = getSafePositiveRecordId(event?.eventId);
+          if(safeEventId === null) return "";
+          const itemLabel = group.events.length > 1 ? `${index + 1}件目を` : "苗植えを";
+          return `<div class="recordLinkedPlantingActions">
+            <button class="thirdBtn" onclick="editPlantingEvent(${safeEventId})">${itemLabel}編集</button>
+            <button class="recordListDeleteBtn" onclick="confirmDeletePlantingEvent(${safeEventId})">${itemLabel}削除</button>
+          </div>`;
+        }).join("")}
       </div>`;
   }).join("")}</div>`;
 }
