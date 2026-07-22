@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-legacy-planting-forecast-1">
+<meta name="harvestnavi-version" content="20260722-legacy-planting-partial-event-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -15778,11 +15778,17 @@ function getLatestPlantingDateByPallet(targetDate, options = {}){
     });
   };
 
-  const harvestRecordIdsWithPlantingEvents = new Set();
+  const plantingEventKeysByHarvestRecordId = new Map();
   for(const event of plantingEvents){
     (event?.sourceAllocations || []).forEach(allocation => {
       const recordId = getSafePositiveRecordId(allocation?.harvestRecordId);
-      if(recordId !== null) harvestRecordIdsWithPlantingEvents.add(recordId);
+      if(recordId === null) return;
+      if(!plantingEventKeysByHarvestRecordId.has(recordId)){
+        plantingEventKeysByHarvestRecordId.set(recordId, new Set());
+      }
+      (allocation?.palletKeys || []).forEach(key => {
+        plantingEventKeysByHarvestRecordId.get(recordId).add(String(key || ""));
+      });
     });
     applyPlantingDate(event?.plantingDate, event?.plantingPalletKeys);
   }
@@ -15792,7 +15798,9 @@ function getLatestPlantingDateByPallet(targetDate, options = {}){
   records.forEach(record => {
     if(record?.type !== "fullHarvest") return;
     const recordId = getSafePositiveRecordId(record.id);
-    if(recordId !== null && harvestRecordIdsWithPlantingEvents.has(recordId)) return;
+    const plantingEventKeys = recordId === null
+      ? null
+      : plantingEventKeysByHarvestRecordId.get(recordId);
 
     const harvestDateValue = String(record.date || "").trim();
     if(!isStrictDateOnlyString(harvestDateValue)) return;
@@ -15800,7 +15808,7 @@ function getLatestPlantingDateByPallet(targetDate, options = {}){
 
     const harvestKeySet = new Set(getPalletKeysFromRecord(record));
     const plantingKeys = parsePalletSummaryToKeys(record.plantingSummary)
-      .filter(key => harvestKeySet.has(key));
+      .filter(key => harvestKeySet.has(key) && !plantingEventKeys?.has(key));
     if(!plantingKeys.length) return;
 
     applyPlantingDate(record.plantingDate || harvestDateValue, plantingKeys);
