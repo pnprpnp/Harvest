@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-daily-harvest-forecast-view-1">
+<meta name="harvestnavi-version" content="20260722-forecast-unplanted-age-and-counts-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4197,6 +4197,7 @@ button.monitorSaveBtn:active{
 .dashboardForecastDayLocation{
   font-weight:850;
   overflow-wrap:anywhere;
+  white-space:pre-line;
 }
 .dashboardForecastDayPlantingAge{
   color:#7c3aed;
@@ -7319,7 +7320,7 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#8b5cf6"></span>7日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。実際の記録は変更しません。</div>
+      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -15694,6 +15695,8 @@ function buildDashboardHarvestForecastModel(){
     referenceDate,
     recordedSet,
     plantingDateByPallet,
+    plantingDateRangeByPallet: new Map(),
+    estimatedPlantingPalletKeys: new Set(),
     startBuilding,
     palletForecasts: new Map(),
     bedRanges: new Map(),
@@ -15767,6 +15770,8 @@ function buildDashboardHarvestForecastModel(){
     forecastDate = getNextDashboardHarvestDate(forecastDate);
   }
 
+  applyDashboardForecastPlantingDateRanges(model);
+
   const buildRange = forecasts => {
     if(!forecasts.length) return null;
     const sorted = forecasts.slice().sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -15789,6 +15794,31 @@ function buildDashboardHarvestForecastModel(){
   });
 
   return model;
+}
+
+function applyDashboardForecastPlantingDateRanges(model){
+  model.plantingDateByPallet.forEach((plantingDate, key) => {
+    model.plantingDateRangeByPallet.set(key, {
+      start: new Date(plantingDate),
+      end: new Date(plantingDate)
+    });
+  });
+  const futureForecastDates = [...new Map(
+    [...model.palletForecasts.values()]
+      .filter(forecast => Number(forecast?.daysAfter) >= 1)
+      .map(forecast => [formatDateOnlyString(forecast.date), new Date(forecast.date)])
+  ).values()].sort((left, right) => left.getTime() - right.getTime());
+  const nextPlantingDate = futureForecastDates[0]
+    || getFirstDashboardHarvestDate(addDays(model.referenceDate, 1));
+  const nextNextPlantingDate = futureForecastDates[1]
+    || getNextDashboardHarvestDate(nextPlantingDate);
+  getUnplantedPalletSet().forEach(key => {
+    model.plantingDateRangeByPallet.set(key, {
+      start: new Date(nextPlantingDate),
+      end: new Date(nextNextPlantingDate)
+    });
+    model.estimatedPlantingPalletKeys.add(key);
+  });
 }
 
 function formatDashboardForecastRange(range){
@@ -15853,29 +15883,58 @@ function getDashboardForecastBedColorBarHtml(model, building, bed){
   `;
 }
 
-function getDashboardForecastBedPlantingAgeText(model, building, bed){
+function getDashboardForecastPlantingAgeStats(model, palletKeys, forecastDate){
+  const keys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])];
   const ages = [];
-  let forecastCount = 0;
+  let knownCount = 0;
+  let includesEstimate = false;
+  keys.forEach(key => {
+    const keyForecastDate = forecastDate || model.palletForecasts.get(key)?.date;
+    if(!keyForecastDate) return;
+    const actualDate = model.plantingDateByPallet.get(key);
+    const range = model.plantingDateRangeByPallet?.get(key) || (
+      actualDate ? { start: actualDate, end: actualDate } : null
+    );
+    if(!range) return;
+    const keyAges = [range.start, range.end]
+      .map(plantingDate => getLocalDayDiff(plantingDate, keyForecastDate))
+      .filter(ageDays => Number.isFinite(ageDays) && ageDays >= 0);
+    if(!keyAges.length) return;
+    knownCount++;
+    ages.push(...keyAges);
+    if(model.estimatedPlantingPalletKeys?.has(key)) includesEstimate = true;
+  });
+  return {
+    totalCount: keys.length,
+    knownCount,
+    minAge: ages.length ? Math.min(...ages) : null,
+    maxAge: ages.length ? Math.max(...ages) : null,
+    includesEstimate
+  };
+}
 
+function getDashboardForecastPlantingAgeNote(stats){
+  const notes = [];
+  if(stats.knownCount < stats.totalCount) notes.push("一部不明");
+  if(stats.includesEstimate) notes.push("未定植分の予想含む");
+  return notes.length ? `（${notes.join("・")}）` : "";
+}
+
+function getDashboardForecastBedPlantingAgeText(model, building, bed){
+  const palletKeys = [];
   for(let number = 1; number <= PALLETS_PER_BED; number++){
     const key = getPalletKey(building, bed, number);
     const forecast = model.palletForecasts.get(key);
     if(!forecast) continue;
-    forecastCount++;
-
-    const plantingDate = model.plantingDateByPallet.get(key);
-    if(!plantingDate) continue;
-    const ageDays = getLocalDayDiff(plantingDate, forecast.date);
-    if(Number.isFinite(ageDays) && ageDays >= 0) ages.push(ageDays);
+    palletKeys.push(key);
   }
-
-  if(forecastCount === 0) return "";
-  if(ages.length === 0) return "(定植記録なし)";
-
-  const minAge = Math.min(...ages);
-  const maxAge = Math.max(...ages);
-  const ageText = minAge === maxAge ? `${minAge}日目` : `${minAge}〜${maxAge}日目`;
-  return `(定植から${ageText}${ages.length < forecastCount ? "（一部不明）" : ""})`;
+  if(!palletKeys.length) return "";
+  const stats = getDashboardForecastPlantingAgeStats(model, palletKeys);
+  if(stats.knownCount === 0) return "(定植記録なし)";
+  const ageText = stats.minAge === stats.maxAge
+    ? `${stats.minAge}日目`
+    : `${stats.minAge}〜${stats.maxAge}日目`;
+  return `(定植から${ageText}${getDashboardForecastPlantingAgeNote(stats)})`;
 }
 
 function getDashboardHarvestForecastUnavailableText(model){
@@ -15900,33 +15959,40 @@ function formatDashboardForecastDailyLocations(palletKeys){
   const bedsByBuilding = new Map();
   [...new Set(Array.isArray(palletKeys) ? palletKeys : [])].forEach(key => {
     const pallet = parsePalletKey(String(key || ""));
-    if(!BUILDINGS.includes(pallet.building) || !bedOrder.includes(pallet.bed)) return;
-    if(!bedsByBuilding.has(pallet.building)) bedsByBuilding.set(pallet.building, new Set());
-    bedsByBuilding.get(pallet.building).add(pallet.bed);
+    if(!BUILDINGS.includes(pallet.building)
+      || !bedOrder.includes(pallet.bed)
+      || !Number.isInteger(pallet.number)
+      || pallet.number < 1
+      || pallet.number > PALLETS_PER_BED) return;
+    if(!bedsByBuilding.has(pallet.building)) bedsByBuilding.set(pallet.building, new Map());
+    const beds = bedsByBuilding.get(pallet.building);
+    if(!beds.has(pallet.bed)) beds.set(pallet.bed, new Set());
+    beds.get(pallet.bed).add(pallet.number);
   });
   return BUILDINGS
     .filter(building => bedsByBuilding.has(building))
     .map(building => {
-      const beds = bedOrder.filter(bed => bedsByBuilding.get(building).has(bed));
-      return `${building}-${beds.join(",")}`;
+      const beds = bedsByBuilding.get(building);
+      const bedLabels = bedOrder
+        .filter(bed => beds.has(bed))
+        .map(bed => {
+          const palletCount = beds.get(bed).size;
+          return palletCount >= PALLETS_PER_BED ? bed : `${bed}(${palletCount})`;
+        });
+      return `${building}-${bedLabels.join(",")}`;
     })
-    .join(" / ");
+    .join("\n");
 }
 
 function getDashboardForecastDailyPlantingAgeText(model, palletKeys, forecastDate){
   const keys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])];
   if(!keys.length) return "-";
-  const ages = keys.map(key => {
-    const plantingDate = model.plantingDateByPallet.get(key);
-    if(!plantingDate) return null;
-    const ageDays = getLocalDayDiff(plantingDate, forecastDate);
-    return Number.isFinite(ageDays) && ageDays >= 0 ? ageDays : null;
-  }).filter(ageDays => ageDays !== null);
-  if(!ages.length) return "定植記録なし";
-  const minAge = Math.min(...ages);
-  const maxAge = Math.max(...ages);
-  const ageText = minAge === maxAge ? `${minAge}日` : `${minAge}〜${maxAge}日`;
-  return ageText + (ages.length < keys.length ? "（一部不明）" : "");
+  const stats = getDashboardForecastPlantingAgeStats(model, keys, forecastDate);
+  if(stats.knownCount === 0) return "定植記録なし";
+  const ageText = stats.minAge === stats.maxAge
+    ? `${stats.minAge}日`
+    : `${stats.minAge}〜${stats.maxAge}日`;
+  return ageText + getDashboardForecastPlantingAgeNote(stats);
 }
 
 function buildDashboardHarvestForecastDayRows(model){
