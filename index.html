@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260722-case-placement-total-unit-1">
+<meta name="harvestnavi-version" content="20260722-legacy-planting-forecast-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7488,6 +7488,7 @@ const PLANTING_EVENTS_MIGRATION_KEY = "harvestForecastPlantingEventsMigrated_v1"
 const PLANTING_EVENT_SYNC_STATUS_KEY = "harvestForecastPlantingEventSyncStatus_v1";
 const PLANTING_EVENT_TRASH_KEY = "harvestForecastPlantingEventTrash_v1";
 const PALLET_SUMMARY_CANONICAL_START_DATE = "2026-06-18";
+const LEGACY_PLANTING_CALCULATION_CUTOFF_DATE = "2026-07-08";
 const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
 const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
@@ -15758,17 +15759,15 @@ function getLatestPlantingDateByPallet(targetDate, options = {}){
   const targetDay = startOfLocalDay(targetDate);
   const includeTargetDate = !!options.includeTargetDate;
 
-  for(const event of plantingEvents){
-    const plantingDate = parseDateOnlyString(String(event?.plantingDate || "").trim());
-    if(!plantingDate) continue;
+  const applyPlantingDate = (plantingDateValue, plantingKeys) => {
+    const plantingDate = parseDateOnlyString(String(plantingDateValue || "").trim());
+    if(!plantingDate) return;
     const recordDay = startOfLocalDay(plantingDate);
     const diffDays = getLocalDayDiff(recordDay, targetDay);
-    if(diffDays < 0) continue;
-    if(diffDays > CALCULATION_LOOKBACK_DAYS) continue;
-    if(includeTargetDate ? recordDay.getTime() > targetDay.getTime() : recordDay.getTime() >= targetDay.getTime()) continue;
-
-    const plantingKeys = Array.isArray(event.plantingPalletKeys) ? event.plantingPalletKeys : [];
-    if(!plantingKeys.length) continue;
+    if(diffDays < 0) return;
+    if(diffDays > CALCULATION_LOOKBACK_DAYS) return;
+    if(includeTargetDate ? recordDay.getTime() > targetDay.getTime() : recordDay.getTime() >= targetDay.getTime()) return;
+    if(!Array.isArray(plantingKeys) || !plantingKeys.length) return;
 
     plantingKeys.forEach(key => {
       const palletKey = String(key || "");
@@ -15777,7 +15776,35 @@ function getLatestPlantingDateByPallet(targetDate, options = {}){
         map.set(palletKey, recordDay);
       }
     });
+  };
+
+  const harvestRecordIdsWithPlantingEvents = new Set();
+  for(const event of plantingEvents){
+    (event?.sourceAllocations || []).forEach(allocation => {
+      const recordId = getSafePositiveRecordId(allocation?.harvestRecordId);
+      if(recordId !== null) harvestRecordIdsWithPlantingEvents.add(recordId);
+    });
+    applyPlantingDate(event?.plantingDate, event?.plantingPalletKeys);
   }
+
+  // 2026年7月8日以前は記録シートの苗植え場所を補助データとして使う。
+  // 苗植え日が空欄の行は、同じ行の収穫日を苗植え日として計算する。
+  records.forEach(record => {
+    if(record?.type !== "fullHarvest") return;
+    const recordId = getSafePositiveRecordId(record.id);
+    if(recordId !== null && harvestRecordIdsWithPlantingEvents.has(recordId)) return;
+
+    const harvestDateValue = String(record.date || "").trim();
+    if(!isStrictDateOnlyString(harvestDateValue)) return;
+    if(harvestDateValue > LEGACY_PLANTING_CALCULATION_CUTOFF_DATE) return;
+
+    const harvestKeySet = new Set(getPalletKeysFromRecord(record));
+    const plantingKeys = parsePalletSummaryToKeys(record.plantingSummary)
+      .filter(key => harvestKeySet.has(key));
+    if(!plantingKeys.length) return;
+
+    applyPlantingDate(record.plantingDate || harvestDateValue, plantingKeys);
+  });
 
   return map;
 }
