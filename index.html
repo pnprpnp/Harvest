@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260718-forecast-age-1">
+<meta name="harvestnavi-version" content="20260722-planting-auto-pallets-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7139,10 +7139,15 @@ requestAnimationFrame(function(){
       <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
       <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
       <div class="dashboardForecastLegend" aria-label="収穫時期の色分け">
-        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#34c759"></span>7日以内</span>
-        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#0a84ff"></span>8〜14日後</span>
-        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#af52de"></span>15〜30日後</span>
-        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ff9f0a"></span>31日後以降</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ef4444"></span>今日</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#f97316"></span>1日後</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#eab308"></span>2日後</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#84cc16"></span>3日後</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#22c55e"></span>4日後</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#14b8a6"></span>5日後</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#0ea5e9"></span>6日後</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#8b5cf6"></span>7日後</span>
+        <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
       </div>
       <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。実際の記録は変更しません。</div>
     </div>
@@ -7492,6 +7497,18 @@ const COLS = 2;
 const PALLETS_PER_BED = 78;
 const PALLETS_PER_PIN = 4;
 const HARVEST_FORECAST_WEEKDAYS = [0, 2, 3, 4, 6];
+const DASHBOARD_FORECAST_DAY_COLORS = Object.freeze([
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#84cc16",
+  "#22c55e",
+  "#14b8a6",
+  "#0ea5e9",
+  "#8b5cf6"
+]);
+const DASHBOARD_FORECAST_LATER_COLOR = "#94a3b8";
+const DASHBOARD_FORECAST_EMPTY_COLOR = "#e5e5ea";
 const ALLOWED_YIELDS = [20, 16, 12];
 const BED_LONG_PRESS_MS = 450;
 const PRESET_ACCESS_PASSWORD = "1234";
@@ -8674,6 +8691,9 @@ function applyPlantingRecordDraft(record){
   }
 
   setRecordSeedlingCarryoverMode(draft?.actualSeedlingCarryoverMode || record.actualSeedlingCarryoverMode || "loss", { silent: true });
+  if(!draft){
+    harvestFillKeys = getSequentialPlantingPalletKeysWithinCapacity(harvestFillKeys, record);
+  }
 
   recordPlantingSummaryEdited = !!draft?.recordPlantingSummaryEdited;
   const plantingSummaryInput = document.getElementById("recordPlantingSummaryInput");
@@ -15091,11 +15111,11 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
 }
 
 function getDashboardForecastDateColor(daysAfter){
-  if(!Number.isFinite(daysAfter)) return "#e5e5ea";
-  if(daysAfter <= 7) return "#34c759";
-  if(daysAfter <= 14) return "#0a84ff";
-  if(daysAfter <= 30) return "#af52de";
-  return "#ff9f0a";
+  if(!Number.isFinite(daysAfter)) return DASHBOARD_FORECAST_EMPTY_COLOR;
+  const dayIndex = Math.max(0, Math.floor(daysAfter));
+  return dayIndex < DASHBOARD_FORECAST_DAY_COLORS.length
+    ? DASHBOARD_FORECAST_DAY_COLORS[dayIndex]
+    : DASHBOARD_FORECAST_LATER_COLOR;
 }
 
 function formatDashboardForecastDate(date){
@@ -15387,7 +15407,9 @@ function formatDashboardForecastRange(range){
 }
 
 function buildDashboardForecastColorBarGradient(colors){
-  const safeColors = Array.isArray(colors) && colors.length ? colors : ["#e5e5ea"];
+  const safeColors = Array.isArray(colors) && colors.length
+    ? colors
+    : [DASHBOARD_FORECAST_EMPTY_COLOR];
   const stops = [];
   safeColors.forEach((color, index) => {
     const start = Math.round(index / safeColors.length * 10000) / 100;
@@ -19495,6 +19517,30 @@ function canPlantSeedlingKeysWithinCapacity(keys, record = getActivePlantingReco
   return getActualPlantedSeedlingTotal(keys) <= getPlantingAvailableSeedlingTotal(record);
 }
 
+function getSequentialPlantingPalletKeysWithinCapacity(keys, record = getActivePlantingRecord()){
+  const orderedKeys = [...new Set(Array.isArray(keys) ? keys : [])]
+    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  const availableTotal = getPlantingAvailableSeedlingTotal(record);
+  const selectedKeys = [];
+  let plantedTotal = 0;
+
+  for(const key of orderedKeys){
+    const pallet = parsePalletKey(String(key || ""));
+    if(!BUILDINGS.includes(pallet.building)
+      || !bedOrder.includes(pallet.bed)
+      || !Number.isFinite(pallet.number)){
+      continue;
+    }
+
+    const plantingCount = getPlantingCountForPallet(pallet.bed, pallet.number);
+    if(plantedTotal + plantingCount > availableTotal) break;
+    selectedKeys.push(key);
+    plantedTotal += plantingCount;
+  }
+
+  return selectedKeys;
+}
+
 function canAddPlantingPallet(key, record = getActivePlantingRecord()){
   if(recordSelectionMode !== "planting" || harvestFillKeys.includes(key)) return true;
   return canPlantSeedlingKeysWithinCapacity([...harvestFillKeys, key], record);
@@ -19658,6 +19704,7 @@ function bindRecordActualSeedlingTrayCountInput(){
 
   input.addEventListener("blur", () => {
     const value = input.value;
+    const actualCountChanged = input.dataset.enteredSinceFocus === "1";
     const restorePrevious = input.dataset.clearedOnFocus === "1"
       && input.dataset.enteredSinceFocus !== "1"
       && String(value || "").trim() === "";
@@ -19668,6 +19715,16 @@ function bindRecordActualSeedlingTrayCountInput(){
     delete input.dataset.previousValue;
     delete input.dataset.clearedOnFocus;
     delete input.dataset.enteredSinceFocus;
+    if(actualCountChanged && recordSelectionMode === "planting" && !editingPlantingEventId){
+      const record = getActivePlantingRecord();
+      const candidateKeys = [
+        ...getUnplantedPalletKeysForHarvest(record?.id),
+        ...harvestFillKeys
+      ];
+      harvestFillKeys = getSequentialPlantingPalletKeysWithinCapacity(candidateKeys, record);
+      refreshAfterHarvestSelectionChanged();
+      return;
+    }
     updateRecordActualSeedlingDisplays();
     updateRecordSeedlingDiffDisplay();
     saveHarvestStateToStorage();
