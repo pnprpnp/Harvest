@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260723-record-edit-discard-1">
+<meta name="harvestnavi-version" content="20260723-edit-relative-planting-candidates-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -18603,17 +18603,23 @@ function getActivePlantingRecord(){
 }
 
 function getPlantingCandidateRecordIdSet(){
+  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
+  const editingDate = parseDateOnlyString(String(editingEvent?.plantingDate || "").trim());
   const candidateIds = new Set(
     [...records]
       .filter(record => record?.type === "fullHarvest")
+      .filter(record => {
+        if(!editingDate) return true;
+        const recordDate = parseDateOnlyString(String(record?.date || "").trim());
+        return !!recordDate && recordDate.getTime() <= editingDate.getTime();
+      })
       .sort(compareRecordsByDateDesc)
       .slice(0, PLANTING_CANDIDATE_RECORD_LIMIT)
       .map(record => Number(record.id))
       .filter(Number.isFinite)
   );
 
-  // 過去の苗植え記録を編集する場合は、その記録元だけ一時的に候補へ戻す。
-  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
+  // 過去の苗植え記録はその日以前の3件を参照し、既存の記録元も編集対象から外さない。
   (editingEvent?.sourceAllocations || []).forEach(allocation => {
     const recordId = Number(allocation.harvestRecordId);
     if(Number.isFinite(recordId)) candidateIds.add(recordId);
