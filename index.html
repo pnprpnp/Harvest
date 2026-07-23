@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260723-background-record-send-1">
+<meta name="harvestnavi-version" content="20260723-previous-unplanted-warning-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3705,6 +3705,13 @@ button.monitorSaveBtn:active{
 }
 .appUpdateConfirmYes{
   background:#16a34a;
+}
+.plantingUnselectedWarningActions[hidden]{
+  display:none;
+}
+.plantingUnselectedWarningAcknowledge{
+  grid-column:1 / -1;
+  background:#2563eb;
 }
 .recordImportErrorPanel{
   display:none;
@@ -7594,6 +7601,19 @@ requestAnimationFrame(function(){
     </div>
   </div>
 </div>
+<div id="plantingUnselectedWarningPanel" class="appUpdateConfirmOverlay">
+  <div class="googleSheetConfirmPanel appUpdateConfirmWindow" role="dialog" aria-modal="true" aria-labelledby="plantingUnselectedWarningTitle" aria-describedby="plantingUnselectedWarningMessage">
+    <div id="plantingUnselectedWarningTitle" class="googleSheetConfirmTitle">未定植場所の確認</div>
+    <div id="plantingUnselectedWarningMessage" class="googleSheetConfirmMessage">以前の未定植の場所が選択されていません。</div>
+    <div id="plantingUnselectedAcknowledgeActions" class="googleSheetConfirmActions plantingUnselectedWarningActions">
+      <button id="plantingUnselectedAcknowledge" type="button" class="plantingUnselectedWarningAcknowledge" onclick="advancePlantingUnselectedWarning()">了解</button>
+    </div>
+    <div id="plantingUnselectedConfirmActions" class="googleSheetConfirmActions plantingUnselectedWarningActions" hidden>
+      <button id="plantingUnselectedConfirmNo" type="button" class="googleSheetConfirmCancel" onclick="resolvePlantingUnselectedWarning(false)">いいえ</button>
+      <button id="plantingUnselectedConfirmYes" type="button" class="googleSheetConfirmSend appUpdateConfirmYes" onclick="resolvePlantingUnselectedWarning(true)">はい</button>
+    </div>
+  </div>
+</div>
 <div id="recordImportErrorPanel" class="recordImportErrorPanel" role="dialog" aria-modal="true" aria-labelledby="recordImportErrorTitle">
   <div id="recordImportErrorTitle" class="recordImportErrorTitle">読み込み失敗</div>
   <div id="recordImportErrorMessage" class="recordImportErrorMessage"></div>
@@ -7794,6 +7814,7 @@ let forecastSelectionState = null;
 let settingsDirty = false;
 let casePlacementByBuilding = {};
 let appUpdateConfirmResolver = null;
+let plantingUnselectedWarningResolver = null;
 let recordAvailabilityCheckLastStartedAt = 0;
 let availabilityCheckPromise = null;
 let googleSheetConfirmResolver = null;
@@ -9051,6 +9072,7 @@ function switchTab(tabName){
   saveCurrentTabScrollPosition();
   closeRecordFloatingUi();
   resolveGoogleSheetConfirm(false);
+  resolvePlantingUnselectedWarning(false);
 
   document.getElementById("forecastTab").style.display = tabName === "forecast" ? "block" : "none";
   document.getElementById("monitorTab").style.display = tabName === "monitor" ? "block" : "none";
@@ -13935,6 +13957,71 @@ function resolveAppUpdateConfirm(shouldUpdate){
   if(appUpdateConfirmResolver){
     appUpdateConfirmResolver(!!shouldUpdate);
     appUpdateConfirmResolver = null;
+  }
+}
+
+function setPlantingUnselectedWarningStage(stage){
+  const message = document.getElementById("plantingUnselectedWarningMessage");
+  const acknowledgeActions = document.getElementById("plantingUnselectedAcknowledgeActions");
+  const confirmActions = document.getElementById("plantingUnselectedConfirmActions");
+  const isConfirmation = stage === "confirm";
+  if(message){
+    message.textContent = isConfirmation
+      ? "このまま保存しますか？"
+      : "以前の未定植の場所が選択されていません。";
+  }
+  if(acknowledgeActions) acknowledgeActions.hidden = isConfirmation;
+  if(confirmActions) confirmActions.hidden = !isConfirmation;
+}
+
+function askPlantingUnselectedWarningConfirm(){
+  const panel = document.getElementById("plantingUnselectedWarningPanel");
+  const acknowledgeButton = document.getElementById("plantingUnselectedAcknowledge");
+  const yesButton = document.getElementById("plantingUnselectedConfirmYes");
+  const noButton = document.getElementById("plantingUnselectedConfirmNo");
+
+  if(!panel){
+    window.alert("以前の未定植の場所が選択されていません。");
+    return Promise.resolve(window.confirm("このまま保存しますか？"));
+  }
+  if(plantingUnselectedWarningResolver){
+    resolvePlantingUnselectedWarning(false);
+  }
+
+  setPlantingUnselectedWarningStage("notice");
+  if(acknowledgeButton) acknowledgeButton.disabled = false;
+  if(yesButton) yesButton.disabled = false;
+  if(noButton) noButton.disabled = false;
+  panel.classList.add("show");
+  requestAnimationFrame(() => acknowledgeButton?.focus());
+
+  return new Promise(resolve => {
+    plantingUnselectedWarningResolver = resolve;
+  });
+}
+
+function advancePlantingUnselectedWarning(){
+  const panel = document.getElementById("plantingUnselectedWarningPanel");
+  const noButton = document.getElementById("plantingUnselectedConfirmNo");
+  if(!panel?.classList.contains("show") || !plantingUnselectedWarningResolver) return;
+  setPlantingUnselectedWarningStage("confirm");
+  requestAnimationFrame(() => noButton?.focus());
+}
+
+function resolvePlantingUnselectedWarning(shouldSave){
+  const panel = document.getElementById("plantingUnselectedWarningPanel");
+  const acknowledgeButton = document.getElementById("plantingUnselectedAcknowledge");
+  const yesButton = document.getElementById("plantingUnselectedConfirmYes");
+  const noButton = document.getElementById("plantingUnselectedConfirmNo");
+  if(panel) panel.classList.remove("show");
+  if(acknowledgeButton) acknowledgeButton.disabled = true;
+  if(yesButton) yesButton.disabled = true;
+  if(noButton) noButton.disabled = true;
+  setPlantingUnselectedWarningStage("notice");
+
+  if(plantingUnselectedWarningResolver){
+    plantingUnselectedWarningResolver(!!shouldSave);
+    plantingUnselectedWarningResolver = null;
   }
 }
 
@@ -18836,6 +18923,39 @@ function getUnplantedPalletSet(options = {}){
   return allowed;
 }
 
+function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecord, options = {}){
+  if(!activeRecord || activeRecord.type !== "fullHarvest") return [];
+  const activeRecordId = Number(activeRecord.id);
+  const state = options.excludeEventId
+    ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
+    : getPlantingEventStateIndex();
+  const selectedLotKeys = new Set(
+    (Array.isArray(sourceAllocations) ? sourceAllocations : []).flatMap(allocation => (
+      (Array.isArray(allocation?.palletKeys) ? allocation.palletKeys : []).map(palletKey => (
+        getPlantingLotKey(allocation.harvestRecordId, palletKey)
+      ))
+    ))
+  );
+  const missingLots = [];
+
+  getPlantingCandidateRecordIdSet().forEach(harvestRecordId => {
+    const safeHarvestRecordId = Number(harvestRecordId);
+    if(!Number.isFinite(safeHarvestRecordId) || safeHarvestRecordId === activeRecordId) return;
+    (state.pendingByHarvestId.get(safeHarvestRecordId) || new Set()).forEach(palletKey => {
+      if(selectedLotKeys.has(getPlantingLotKey(safeHarvestRecordId, palletKey))) return;
+      missingLots.push({ harvestRecordId: safeHarvestRecordId, palletKey });
+    });
+  });
+
+  return missingLots.sort((a, b) => {
+    const recordOrder = compareRecordsByDateDesc(
+      state.harvestById.get(a.harvestRecordId)?.record,
+      state.harvestById.get(b.harvestRecordId)?.record
+    );
+    return recordOrder || getOrderIndexFromKey(a.palletKey) - getOrderIndexFromKey(b.palletKey);
+  });
+}
+
 function invalidatePlantingAllowedPalletSetCache(){
   plantingAllowedPalletSetCache = null;
   plantingAllowedPalletSetCacheRecordId = null;
@@ -21052,7 +21172,20 @@ async function savePlantingRecord(){
     showToast("苗植え記録を作成できませんでした。入力内容を確認してください");
     return;
   }
-  if(!confirmPlantingRecordBeforeSend(
+  const unselectedPreviousLots = getUnselectedPreviousUnplantedPalletLots(
+    sourceAllocations,
+    record,
+    { excludeEventId: existingEvent?.eventId }
+  );
+  const needsPreviousUnplantedWarning = unselectedPreviousLots.length > 0;
+  if(needsPreviousUnplantedWarning){
+    const shouldSave = await askPlantingUnselectedWarningConfirm();
+    if(!shouldSave){
+      showToast("苗植え記録の保存をキャンセルしました");
+      return;
+    }
+  }
+  if(!needsPreviousUnplantedWarning && !confirmPlantingRecordBeforeSend(
     record,
     normalizedSelectedKeys,
     plantingDate,
@@ -23480,6 +23613,11 @@ window.onload = () => {
 
   document.addEventListener("keydown", (event) => {
     if(event.key !== "Escape") return;
+    const plantingUnselectedWarningPanel = document.getElementById("plantingUnselectedWarningPanel");
+    if(plantingUnselectedWarningPanel?.classList.contains("show")){
+      resolvePlantingUnselectedWarning(false);
+      return;
+    }
     const appUpdateConfirmPanel = document.getElementById("appUpdateConfirmPanel");
     if(appUpdateConfirmPanel?.classList.contains("show")){
       resolveAppUpdateConfirm(false);
