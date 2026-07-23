@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260723-forecast-location-wrap-scroll-1">
+<meta name="harvestnavi-version" content="20260723-record-edit-discard-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3091,6 +3091,12 @@ button.monitorSaveBtn:active{
   width:100%;
   min-width:0;
   margin:0;
+}
+.recordFormActionRow.isEditing #recordDiscardEditBtn{
+  grid-column:1 / -1;
+}
+#recordDiscardEditBtn[hidden]{
+  display:none !important;
 }
 #recordPrimaryActionBtn{
   width:min(100%, 260px);
@@ -7203,6 +7209,7 @@ requestAnimationFrame(function(){
         <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
       </div>
       <div class="recordFormActionRow">
+        <button id="recordDiscardEditBtn" class="actionBtn secondaryBtn" onclick="discardRecordEditChanges()" hidden>編集を破棄して戻る</button>
         <button id="recordClearActionBtn" class="actionBtn secondaryBtn recordClearBtn" onclick="handleRecordClearAction()">クリア</button>
         <button id="recordPrimaryActionBtn" class="actionBtn thirdBtn" onclick="handleRecordPrimaryAction()">収穫場所を記録する</button>
       </div>
@@ -18765,7 +18772,14 @@ function enterPlantingRecordMode(record){
   requestAnimationFrame(() => requestAnimationFrame(scrollToRecordActiveStage));
 }
 
+function isRecordEditMode(){
+  return !!editingHarvestRecordId || !!editingPlantingEventId;
+}
+
 function refreshRecordModeUi(){
+  const sectionTitle = document.getElementById("recordSaveSectionTitle");
+  const actionRow = document.querySelector(".recordFormActionRow");
+  const discardEditButton = document.getElementById("recordDiscardEditBtn");
   const notice = document.getElementById("recordEditNotice");
   const button = document.getElementById("recordPrimaryActionBtn");
   const plantingInput = document.getElementById("recordPlantingSummaryInput");
@@ -18777,6 +18791,7 @@ function refreshRecordModeUi(){
   const plantingStep = document.getElementById("recordStepPlanting");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const isPlantingMode = recordSelectionMode === "planting";
+  const isEditing = isRecordEditMode();
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
   const lockPlantingDate = isPlantingMode
     && editingEvent?.openingCarryoverBefore !== null
@@ -18792,6 +18807,9 @@ function refreshRecordModeUi(){
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
+  if(sectionTitle) sectionTitle.textContent = isEditing ? "記録を編集" : "記録を保存";
+  if(discardEditButton) discardEditButton.hidden = !isEditing;
+  if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
 
   if(isPlantingMode){
     if(notice) notice.textContent = editingPlantingEventId
@@ -18826,6 +18844,13 @@ function handleRecordClearAction(){
     return;
   }
   clearRecordForm();
+}
+
+function discardRecordEditChanges(){
+  if(!isRecordEditMode()) return;
+  closeRecordFloatingUi();
+  clearRecordForm();
+  showToast("編集内容を破棄して戻りました");
 }
 
 async function handleRecordPrimaryAction(){
@@ -20542,8 +20567,8 @@ function setTodayToRecordDate(){
 }
 
 function clearRecordForm(){
-  const wasEditingHarvestRecord = !!editingHarvestRecordId;
-  if(wasEditingHarvestRecord && restoreForecastSelectionState()){
+  const wasEditingRecord = isRecordEditMode();
+  if(wasEditingRecord && restoreForecastSelectionState()){
     captureRecordBaseSelection();
   }
   editingHarvestRecordId = null;
@@ -20964,6 +20989,7 @@ function editPlantingEvent(eventId){
     return;
   }
   if(switchTab("record") === false) return;
+  if(!isRecordEditMode()) captureForecastSelectionState();
 
   editingPlantingEventId = Number(event.eventId);
   plantingRecordDraft = {
