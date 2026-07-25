@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260724-recorded-lookback-7-1">
+<meta name="harvestnavi-version" content="20260725-partial-harvest-daily-total-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -5381,6 +5381,20 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   gap:8px;
   text-align:left;
 }
+.forecastFieldLabelStack{
+  min-width:0;
+  display:grid;
+  gap:5px;
+}
+.partialHarvestDeductionNote{
+  color:#b45309;
+  font-size:12px;
+  font-weight:750;
+  line-height:1.35;
+}
+.partialHarvestDeductionNote[hidden]{
+  display:none;
+}
 .forecastCaseField label{font-size:16px;}
 .forecastCaseField input{
   max-width:none;
@@ -6678,7 +6692,10 @@ requestAnimationFrame(function(){
       <div class="forecastControlRow">
         <div class="forecastCaseField">
           <div class="forecastFieldHeader">
-            <label class="fieldAccentLabel" for="casesInput">収穫ケース数</label>
+            <div class="forecastFieldLabelStack">
+              <label class="fieldAccentLabel" for="casesInput">収穫ケース数</label>
+              <div id="partialHarvestDeductionNote" class="partialHarvestDeductionNote" hidden></div>
+            </div>
           </div>
           <span class="inputUnitWrap forecastCaseUnitWrap">
             <input id="casesInput" type="number" min="0" value="" inputmode="numeric" aria-label="収穫ケース数" oninput="markHarvestCasesAsManuallyEdited(); invalidateWorkflowMonitorCheckpoint(); syncRecordCasesFromMain(false); updateRecordActualLoss(); renderForecastSummary()">
@@ -8476,7 +8493,7 @@ function updateEstimatedHarvestCasesFromSelection(){
     ? Math.max(0, Math.floor(getCurrentHarvestTotal() / CASE_SIZE))
     : 0;
   const estimatedCases = estimatedRegularCases > 0
-    ? estimatedRegularCases + getPartialHarvestCasesForDate(getHarvestTargetDateString())
+    ? estimatedRegularCases + getPartialHarvestCaseDeductionForDate(getHarvestTargetDateString())
     : 0;
   casesInput.value = estimatedCases > 0 ? String(estimatedCases) : "";
   harvestCasesAutoEstimated = estimatedCases > 0;
@@ -14981,7 +14998,7 @@ function getDashboardTablePeriod(defaultPeriod = getAllRecordsPeriod()){
   };
 }
 
-function getDashboardRecordSearchText(record){
+function getDashboardRecordSearchText(record, harvestCaseTotalsByDate = null){
   const qualityMemo = record?.type === "partialHarvest" ? "" : formatQualityMemo(record.qualityMemo);
   const summary = record?.type === "partialHarvest"
     ? formatPartialHarvestSummary(record.targets)
@@ -15002,6 +15019,7 @@ function getDashboardRecordSearchText(record){
     record?.date || "",
     getDashboardRecordTypeLabel(record),
     String(record?.cases || ""),
+    getHarvestRecordCaseDisplayText(record, harvestCaseTotalsByDate),
     record?.actualLoss || "",
     formatDashboardBuildings(record),
     qualityMemo || "",
@@ -15014,7 +15032,10 @@ function getDashboardRecordSearchText(record){
 function filterDashboardRecords(recordsInPeriod){
   const keyword = String(document.getElementById("dashboardRecordSearchInput")?.value || dashboardFilter.recordSearch || "").trim().toLowerCase();
   if(!keyword) return recordsInPeriod;
-  return recordsInPeriod.filter(record => getDashboardRecordSearchText(record).includes(keyword));
+  const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(records);
+  return recordsInPeriod.filter(record => (
+    getDashboardRecordSearchText(record, harvestCaseTotalsByDate).includes(keyword)
+  ));
 }
 
 function enumerateDatesInPeriod(period){
@@ -15105,36 +15126,40 @@ function getRecordBuildingCaseAllocations(record){
 }
 
 function getDashboardSummary(recordsInPeriod){
-  const totalCases = recordsInPeriod.reduce((sum, record) => sum + clampNumber(record.cases, 0, 999999, 0), 0);
+  const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(recordsInPeriod);
+  const totalCases = [...harvestCaseTotalsByDate.values()]
+    .reduce((sum, totals) => sum + totals.totalCases, 0);
   const fullRecords = recordsInPeriod.filter(record => record.type !== "partialHarvest");
   const partialRecords = recordsInPeriod.filter(record => record.type === "partialHarvest");
-  const casesByDate = recordsInPeriod.reduce((map, record) => {
+  const lossByDate = new Map();
+  fullRecords.forEach(record => {
     const dateKey = String(record?.date || "").trim();
-    if(!parseDateOnlyString(dateKey)) return map;
-    map[dateKey] = (map[dateKey] || 0) + clampNumber(record.cases, 0, 999999, 0);
-    return map;
-  }, {});
-  const lossBase = fullRecords.reduce((sum, record) => {
+    if(!parseDateOnlyString(dateKey)) return;
     const cases = clampNumber(record.cases, 0, 999999, 0);
     const lossText = String(record.actualLoss ?? "").trim();
-    if(lossText === "") return sum;
+    if(lossText === "" || cases <= 0) return;
     const loss = Number(lossText);
-    if(!Number.isFinite(loss)) return sum;
-    return sum + loss * cases;
-  }, 0);
-  const lossCases = fullRecords.reduce((sum, record) => {
-    const lossText = String(record.actualLoss ?? "").trim();
-    if(lossText === "") return sum;
-    const loss = Number(lossText);
-    if(!Number.isFinite(loss)) return sum;
-    return sum + clampNumber(record.cases, 0, 999999, 0);
-  }, 0);
+    if(!Number.isFinite(loss)) return;
+    if(!lossByDate.has(dateKey)) lossByDate.set(dateKey, { weightedLoss: 0, regularCases: 0 });
+    const dayLoss = lossByDate.get(dateKey);
+    dayLoss.weightedLoss += loss * cases;
+    dayLoss.regularCases += cases;
+  });
+  let lossBase = 0;
+  let lossCases = 0;
+  lossByDate.forEach((dayLoss, dateKey) => {
+    if(dayLoss.regularCases <= 0) return;
+    const totalCasesForDate = harvestCaseTotalsByDate.get(dateKey)?.totalCases || dayLoss.regularCases;
+    const averageLossForDate = dayLoss.weightedLoss / dayLoss.regularCases;
+    lossBase += averageLossForDate * totalCasesForDate;
+    lossCases += totalCasesForDate;
+  });
   const averageLoss = lossCases > 0 ? lossBase / lossCases : null;
   const qualityMemoCount = fullRecords.filter(record => {
     const text = formatQualityMemo(record.qualityMemo);
     return !!String(text || "").trim();
   }).length;
-  const dailyCaseTotals = Object.values(casesByDate);
+  const dailyCaseTotals = [...harvestCaseTotalsByDate.values()].map(totals => totals.totalCases);
   const recordDays = dailyCaseTotals.filter(total => total > 100).length;
   const underThresholdRecordDays = dailyCaseTotals.filter(total => total > 0 && total <= 100).length;
 
@@ -15165,13 +15190,9 @@ function getRecentOneMonthDashboardPeriod(){
 
 function getDashboardRecentMetrics(recordsInPeriod, plantingEventsInPeriod = []){
   const summary = getDashboardSummary(recordsInPeriod);
-  const dailyCaseTotals = recordsInPeriod.reduce((map, record) => {
-    const dateKey = String(record?.date || "").trim();
-    if(!parseDateOnlyString(dateKey)) return map;
-    map[dateKey] = (map[dateKey] || 0) + clampNumber(record.cases, 0, 999999, 0);
-    return map;
-  }, {});
-  const harvestDays = Object.values(dailyCaseTotals).filter(total => total > 0).length;
+  const dailyCaseTotals = [...getHarvestCaseTotalsByDate(recordsInPeriod).values()]
+    .map(totals => totals.totalCases);
+  const harvestDays = dailyCaseTotals.filter(total => total > 0).length;
   const averageCases = harvestDays > 0 ? summary.totalCases / harvestDays : null;
   const seedlingLossValues = plantingEventsInPeriod
     .map(event => String(event.actualSeedlingLossRate ?? "").trim())
@@ -15315,15 +15336,14 @@ function renderDashboardHistory(period){
 function buildDashboardCasesSeries(recordsInPeriod, period, granularity){
   const totals = {};
   const dailyTotalsByBucket = {};
-  recordsInPeriod.forEach(record => {
-    const recordDate = parseDateOnlyString(record.date);
+  getHarvestCaseTotalsByDate(recordsInPeriod).forEach((caseTotals, dateKey) => {
+    const recordDate = parseDateOnlyString(dateKey);
     if(!recordDate) return;
     const key = getDashboardBucketKey(recordDate, granularity);
-    const cases = clampNumber(record.cases, 0, 999999, 0);
-    const dateKey = formatDateOnlyString(recordDate);
+    const cases = clampNumber(caseTotals.totalCases, 0, 999999, 0);
     totals[key] = (totals[key] || 0) + cases;
     if(!dailyTotalsByBucket[key]) dailyTotalsByBucket[key] = {};
-    dailyTotalsByBucket[key][dateKey] = (dailyTotalsByBucket[key][dateKey] || 0) + cases;
+    dailyTotalsByBucket[key][dateKey] = cases;
   });
 
   return Object.keys(totals)
@@ -15343,6 +15363,8 @@ function buildDashboardCasesSeries(recordsInPeriod, period, granularity){
 function buildDashboardLossSeries(recordsInPeriod, period, granularity){
   const totals = {};
   const casesByBucket = {};
+  const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(recordsInPeriod);
+  const lossByDate = new Map();
 
   recordsInPeriod.forEach(record => {
     if(record.type === "partialHarvest") return;
@@ -15351,11 +15373,23 @@ function buildDashboardLossSeries(recordsInPeriod, period, granularity){
     const loss = Number(lossText);
     const cases = clampNumber(record.cases, 0, 999999, 0);
     if(!Number.isFinite(loss) || cases <= 0) return;
-    const recordDate = parseDateOnlyString(record.date);
+    const dateKey = String(record.date || "").trim();
+    if(!parseDateOnlyString(dateKey)) return;
+    if(!lossByDate.has(dateKey)) lossByDate.set(dateKey, { weightedLoss: 0, regularCases: 0 });
+    const dayLoss = lossByDate.get(dateKey);
+    dayLoss.weightedLoss += loss * cases;
+    dayLoss.regularCases += cases;
+  });
+
+  lossByDate.forEach((dayLoss, dateKey) => {
+    if(dayLoss.regularCases <= 0) return;
+    const recordDate = parseDateOnlyString(dateKey);
     if(!recordDate) return;
     const key = getDashboardBucketKey(recordDate, granularity);
-    totals[key] = (totals[key] || 0) + loss * cases;
-    casesByBucket[key] = (casesByBucket[key] || 0) + cases;
+    const totalCasesForDate = harvestCaseTotalsByDate.get(dateKey)?.totalCases || dayLoss.regularCases;
+    const averageLossForDate = dayLoss.weightedLoss / dayLoss.regularCases;
+    totals[key] = (totals[key] || 0) + averageLossForDate * totalCasesForDate;
+    casesByBucket[key] = (casesByBucket[key] || 0) + totalCasesForDate;
   });
 
   return Object.keys(casesByBucket)
@@ -15672,6 +15706,7 @@ function renderDashboardCasesChartTable(series){
 function renderDashboardRecordTable(recordsInPeriod, options = {}){
   const container = document.getElementById("dashboardRecordTable");
   if(!container) return;
+  const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(records);
   const period = options.period || null;
   const hasKeyword = !!String(options.keyword || "").trim();
   const summaryText = period
@@ -15713,7 +15748,7 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
       <tr>
         <td>${escapeHtml(record.date || "-")}</td>
         <td><span class="dashboardTypeBadge ${record.type === "partialHarvest" ? "partial" : "full"}">${escapeHtml(getDashboardRecordTypeLabel(record))}</span></td>
-        <td>${escapeHtml(String(record.cases || 0))}</td>
+        <td>${escapeHtml(getHarvestRecordCaseDisplayText(record, harvestCaseTotalsByDate))}</td>
         <td>${lossText}</td>
         <td>${escapeHtml(formatDashboardBuildings(record))}</td>
         <td>${escapeHtml(qualityMemo)}</td>
@@ -17754,22 +17789,95 @@ function getPartialHarvestCasesForDate(dateStr, sourceRecords = records){
   }, 0);
 }
 
-function getRegularHarvestCases(totalCases, dateStr = getHarvestTargetDateString()){
+function getHarvestCaseTotalsByDate(sourceRecords = records){
+  const totalsByDate = new Map();
+  (Array.isArray(sourceRecords) ? sourceRecords : []).forEach(record => {
+    const dateKey = String(record?.date || "").trim();
+    if(!parseDateOnlyString(dateKey)) return;
+    if(!totalsByDate.has(dateKey)){
+      totalsByDate.set(dateKey, {
+        fullCases: 0,
+        partialCases: 0,
+        totalCases: 0,
+        fullRecordCount: 0,
+        partialRecordCount: 0
+      });
+    }
+    const totals = totalsByDate.get(dateKey);
+    const cases = clampNumber(record?.cases, 0, 999999, 0);
+    if(record?.type === "partialHarvest"){
+      totals.partialCases += cases;
+      totals.partialRecordCount++;
+    }else{
+      totals.fullCases += cases;
+      totals.fullRecordCount++;
+    }
+    totals.totalCases += cases;
+  });
+  return totalsByDate;
+}
+
+function getHarvestCaseTotalsForDate(dateStr, sourceRecords = records, totalsByDate = null){
+  const dateKey = String(dateStr || "").trim();
+  const totals = (totalsByDate instanceof Map ? totalsByDate : getHarvestCaseTotalsByDate(sourceRecords)).get(dateKey);
+  return totals || {
+    fullCases: 0,
+    partialCases: 0,
+    totalCases: 0,
+    fullRecordCount: 0,
+    partialRecordCount: 0
+  };
+}
+
+function getHarvestRecordCaseDisplayText(record, totalsByDate = null){
+  const cases = clampNumber(record?.cases, 0, 999999, 0);
+  const totals = getHarvestCaseTotalsForDate(record?.date, records, totalsByDate);
+  const hasSameDayFullAndPartial = totals.fullRecordCount > 0 && totals.partialRecordCount > 0;
+  if(!hasSameDayFullAndPartial) return String(cases);
+  if(record?.type === "partialHarvest") return `(${cases})`;
+  return String(totals.totalCases);
+}
+
+function hasFullHarvestRecordForDate(dateStr, sourceRecords = records, options = {}){
+  const dateKey = String(dateStr || "").trim();
+  if(!dateKey) return false;
+  const excludedRecordId = options.excludeRecordId === null
+    || typeof options.excludeRecordId === "undefined"
+    ? ""
+    : String(options.excludeRecordId);
+  return (Array.isArray(sourceRecords) ? sourceRecords : []).some(record => (
+    record?.type !== "partialHarvest"
+    && String(record?.date || "").trim() === dateKey
+    && (!excludedRecordId || String(record?.id) !== excludedRecordId)
+  ));
+}
+
+function getPartialHarvestCaseDeductionForDate(dateStr, sourceRecords = records, options = {}){
+  const excludeRecordId = Object.prototype.hasOwnProperty.call(options, "excludeRecordId")
+    ? options.excludeRecordId
+    : editingHarvestRecordId;
+  if(hasFullHarvestRecordForDate(dateStr, sourceRecords, { excludeRecordId })) return 0;
+  return getPartialHarvestCasesForDate(dateStr, sourceRecords);
+}
+
+function getRegularHarvestCases(totalCases, dateStr = getHarvestTargetDateString(), options = {}){
   const safeTotal = clampNumber(totalCases, 0, 999999, 0);
-  const partialCases = getPartialHarvestCasesForDate(dateStr);
+  const partialCases = getPartialHarvestCaseDeductionForDate(dateStr, records, options);
   return Math.max(0, safeTotal - partialCases);
 }
 
-function getHarvestCasePlan(totalCases = null){
+function getHarvestCasePlan(totalCases = null, options = {}){
   const dateStr = getHarvestTargetDateString();
   const total = totalCases === null
     ? clampNumber(document.getElementById("casesInput")?.value || 0, 0, 999999, 0)
     : clampNumber(totalCases, 0, 999999, 0);
-  const partial = getPartialHarvestCasesForDate(dateStr);
+  const recordedPartialCases = getPartialHarvestCasesForDate(dateStr);
+  const partial = getPartialHarvestCaseDeductionForDate(dateStr, records, options);
   return {
     date: dateStr,
     totalCases: total,
     partialCases: partial,
+    recordedPartialCases,
     regularCases: Math.max(0, total - partial)
   };
 }
@@ -17971,7 +18079,7 @@ function calculateHarvestSelectionFromRecords(options = {}){
   let releasedRecordCount = 0;
 
   while(!autoStartKey && options.releaseOldestIfBlocked && recentRecords.length){
-    // 直近10件だけで全パレットが埋まる特殊な状態でも予想を止めない。
+    // 直近の参照件数だけで全パレットが埋まる特殊な状態でも予想を止めない。
     // 仮想記録が1件増えるたび、本来この順で外れる古い記録から解放する。
     recentRecords = recentRecords.slice(0, -1);
     releasedRecordCount++;
@@ -20109,9 +20217,20 @@ function renderMonitorMode(){
   });
 }
 
+function updatePartialHarvestDeductionNote(casePlan = getHarvestCasePlan()){
+  const note = document.getElementById("partialHarvestDeductionNote");
+  if(!note) return;
+  const partialCases = clampNumber(casePlan?.partialCases, 0, 999999, 0);
+  note.hidden = partialCases <= 0;
+  note.textContent = partialCases > 0
+    ? `部分収穫で減ったケース数: ${partialCases}ケース`
+    : "";
+}
+
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
+  updatePartialHarvestDeductionNote(casePlan);
   const seedlingCounts = getSeedlingInstructionCounts();
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
@@ -21032,7 +21151,7 @@ function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, act
     "この内容で苗植え場所を記録して送信しますか？",
     "",
     `日付: ${plantingDate || "-"}`,
-    `収穫ケース数: ${record.cases || 0}ケース`,
+    `収穫ケース数: ${getHarvestRecordCaseDisplayText(record)}ケース`,
     `実際のロス率: ${actualLossText ? actualLossText + "%" : "-"}`,
     `品質メモ: ${qualityText}`,
     `メモ: ${memoText}`,
@@ -21693,7 +21812,10 @@ function editHarvestRecord(id, options = {}){
 
   const casesInput = document.getElementById("recordCasesInput");
   if(casesInput){
-    const totalCasesForInput = clampNumber(record.cases, 0, 999999, 0) + getPartialHarvestCasesForDate(record.date);
+    const partialCaseDeduction = getPartialHarvestCaseDeductionForDate(record.date, records, {
+      excludeRecordId: record.id
+    });
+    const totalCasesForInput = clampNumber(record.cases, 0, 999999, 0) + partialCaseDeduction;
     casesInput.value = totalCasesForInput > 0 ? String(totalCasesForInput) : "";
   }
   recordCasesEdited = true;
@@ -21739,6 +21861,7 @@ function editHarvestRecord(id, options = {}){
 function renderRecordList(){
   const box = document.getElementById("recordList");
   renderDeletedRecordList();
+  const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(records);
   const historyItems = [
     ...records.map(record => ({ kind: "harvest", id: Number(record.id), date: record.date, value: record })),
     ...plantingEvents.map(event => ({ kind: "planting", id: Number(event.eventId), date: event.plantingDate, value: event }))
@@ -21778,7 +21901,7 @@ function renderRecordList(){
 
   const renderHistoryItem = item => item.kind === "planting"
     ? renderPlantingEventItemHtml(item.value)
-    : renderRecordItemHtml(item.value);
+    : renderRecordItemHtml(item.value, harvestCaseTotalsByDate);
   const renderHistoryGroups = items => {
     const groups = new Map();
     items.forEach(item => {
@@ -21995,7 +22118,7 @@ function openRecordDetailWindow(kind, id){
     }
     titleText = `${record.date || "日付なし"} 収穫の詳細`;
     detailLines = [
-      `収穫ケース数: ${record.cases || 0}ケース`,
+      `収穫ケース数: ${getHarvestRecordCaseDisplayText(record)}ケース`,
       `収穫ロス率: ${String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%"}`,
       `品質メモ: ${formatQualityMemo(record.qualityMemo) || "-"}`,
       `予定苗枚数: ${record.plannedSeedlingTrayCount || 0}枚`,
@@ -22147,11 +22270,10 @@ function getPlantingEventGroupListMetrics(events){
   };
 }
 
-function renderRecordItemHtml(r){
+function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
   const safeRecordId = getSafePositiveRecordId(r?.id) ?? 0;
   const safeDate = escapeHtml(String(r?.date || "日付なし"));
-  const casesNumber = getFiniteNumberInRange(r?.cases, 0, RECORD_MAX_CASES);
-  const safeCases = escapeHtml(String(casesNumber ?? 0));
+  const safeCases = escapeHtml(getHarvestRecordCaseDisplayText(r, harvestCaseTotalsByDate));
   const syncState = getGoogleSheetRecordSyncState(r);
   const syncWarningText = syncState === "remoteDeleted"
     ? "\n同期注意: 別端末で削除されています。使用中の苗植え履歴を確認してください"
