@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-partial-harvest-recalculate-1">
+<meta name="harvestnavi-version" content="20260726-partial-harvest-input-note-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -2757,6 +2757,22 @@ button.monitorSaveBtn:active{
   min-height:44px;
   flex:0 0 168px;
   text-align:right;
+}
+.recordCasesInputColumn{
+  width:168px;
+  min-width:168px;
+  flex:0 0 168px;
+}
+.recordPartialHarvestIncludedNote{
+  margin-top:5px;
+  color:#b45309;
+  font-size:11px;
+  font-weight:700;
+  line-height:1.35;
+  white-space:nowrap;
+}
+.recordPartialHarvestIncludedNote[hidden]{
+  display:none;
 }
 .recordStageSection{
   display:grid;
@@ -6424,9 +6440,9 @@ button.forecastClearBtn{border-radius:13px;}
   height:48px;
 }
 .recordActualCasesRow .recordCasesUnitWrap{
-  width:168px;
+  width:100%;
   height:48px;
-  flex:0 0 168px;
+  flex:0 0 auto;
 }
 .recordSeedlingRow .recordSeedlingUnitWrap{
   width:100%;
@@ -7149,10 +7165,13 @@ requestAnimationFrame(function(){
         <div class="recordActualRow recordActualCasesRow">
           <div>
             <label class="fieldAccentLabel">実際の収穫ケース数</label>
-            <span class="inputUnitWrap recordCasesUnitWrap">
-              <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
-              <span class="inputUnitSuffix">ケース</span>
-            </span>
+            <div class="recordCasesInputColumn">
+              <span class="inputUnitWrap recordCasesUnitWrap">
+                <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
+                <span class="inputUnitSuffix">ケース</span>
+              </span>
+              <div id="recordPartialHarvestIncludedNote" class="recordPartialHarvestIncludedNote" hidden></div>
+            </div>
           </div>
         </div>
       </div>
@@ -20378,10 +20397,22 @@ function updatePartialHarvestDeductionNote(casePlan = getHarvestCasePlan()){
     : "";
 }
 
+function updateRecordPartialHarvestIncludedNote(){
+  const note = document.getElementById("recordPartialHarvestIncludedNote");
+  if(!note) return;
+  const partialCases = getPartialHarvestCaseDeductionForDate(getHarvestTargetDateString());
+  const shouldShow = recordSelectionMode !== "planting" && partialCases > 0;
+  note.hidden = !shouldShow;
+  note.textContent = shouldShow
+    ? `（部分収穫分${partialCases}ケースも含む）`
+    : "";
+}
+
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
   updatePartialHarvestDeductionNote(casePlan);
+  updateRecordPartialHarvestIncludedNote();
   const seedlingCounts = getSeedlingInstructionCounts();
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
