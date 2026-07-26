@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-dashboard-cases-all-window-1">
+<meta name="harvestnavi-version" content="20260726-dashboard-layout-cases-ratio-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4581,16 +4581,21 @@ button.monitorSaveBtn:active{
 }
 .dashboardCasesTable th:nth-child(1),
 .dashboardCasesTable td:nth-child(1){
-  width:42%;
+  width:28%;
 }
 .dashboardCasesTable th:nth-child(2),
 .dashboardCasesTable td:nth-child(2){
-  width:24%;
+  width:18%;
   text-align:right;
 }
 .dashboardCasesTable th:nth-child(3),
 .dashboardCasesTable td:nth-child(3){
-  width:34%;
+  width:25%;
+  text-align:right;
+}
+.dashboardCasesTable th:nth-child(4),
+.dashboardCasesTable td:nth-child(4){
+  width:29%;
   text-align:right;
 }
 .dashboardCasesMoreActions{
@@ -7516,9 +7521,6 @@ requestAnimationFrame(function(){
   </div>
 
   <div id="dashboardTab" style="display:none;">
-    <div class="dashboardCardGrid" id="dashboardMetrics"></div>
-    <div id="dashboardMetricsNote" class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
-
     <div class="card dashboardHarvestForecastCard">
       <div class="dashboardHarvestForecastHead">
         <div>
@@ -7578,6 +7580,9 @@ requestAnimationFrame(function(){
         </div>
       </div>
     </div>
+
+    <div class="dashboardCardGrid" id="dashboardMetrics"></div>
+    <div id="dashboardMetricsNote" class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
 
     <details id="dashboardHistoryDetails" class="card dashboardRangeBox dashboardRangeDetails dashboardHistoryDetails">
       <summary class="sectionTitle">集計カードの履歴</summary>
@@ -15978,6 +15983,14 @@ function formatDashboardHarvestDayText(harvestDays, underThresholdHarvestDays){
   return `${mainDays}日${subDays > 0 ? `（${subDays}日）` : ""}`;
 }
 
+function formatDashboardCasesPerHarvestDay(item){
+  const cases = clampNumber(item?.value, 0, 999999, 0);
+  const harvestDays = clampNumber(item?.harvestDays, 0, 999999, 0)
+    + clampNumber(item?.underThresholdHarvestDays, 0, 999999, 0);
+  if(harvestDays <= 0) return "-";
+  return String(Math.round((cases / harvestDays) * 10) / 10);
+}
+
 function renderDashboardCasesChartTable(series, options = {}){
   const container = document.getElementById(options.containerId || "dashboardCasesChartTable");
   if(!container) return;
@@ -15999,14 +16012,16 @@ function renderDashboardCasesChartTable(series, options = {}){
         <thead>
           <tr>
             <th>期間</th>
-            <th>ケース</th>
-            <th>収穫日数</th>
+            <th>A/B</th>
+            <th>A.ケース数</th>
+            <th>B.収穫日数</th>
           </tr>
         </thead>
         <tbody>
           ${orderedSeries.map(item => `
             <tr>
               <td>${escapeHtml(item.fullLabel || item.label || "-")}</td>
+              <td>${escapeHtml(formatDashboardCasesPerHarvestDay(item))}</td>
               <td>${escapeHtml(String(Math.round(clampNumber(item.value, 0, 999999, 0) * 10) / 10))}</td>
               <td>${escapeHtml(formatDashboardHarvestDayText(item.harvestDays, item.underThresholdHarvestDays))}</td>
             </tr>
@@ -16014,7 +16029,7 @@ function renderDashboardCasesChartTable(series, options = {}){
         </tbody>
       </table>
     </div>
-    <div class="smallText" style="margin-top:6px;">※収穫日数の（）内は100ケース以内の日です。</div>
+    <div class="smallText" style="margin-top:6px;">※A/Bは（）内の日も含む1日あたりのケース数です。B.収穫日数の（）内は100ケース以内の日です。</div>
   `;
 }
 
@@ -16030,15 +16045,9 @@ function renderDashboardCasesAllWindow(){
     ? dashboardFilter.casesGranularity
     : "month";
   const allSeries = buildDashboardCasesSeries(records, null, granularity);
-  const harvestDays = allSeries.reduce((sum, item) => (
-    sum + clampNumber(item.harvestDays, 0, 999999, 0)
-  ), 0);
-  const underThresholdHarvestDays = allSeries.reduce((sum, item) => (
-    sum + clampNumber(item.underThresholdHarvestDays, 0, 999999, 0)
-  ), 0);
   const note = document.getElementById("dashboardCasesAllChartNote");
   if(note){
-    note.textContent = `${getDashboardGranularityLabel(granularity)}別 / ${getDashboardCasesSeriesRangeText(allSeries)} / 全${allSeries.length}件 / 収穫日数 ${formatDashboardHarvestDayText(harvestDays, underThresholdHarvestDays)}`;
+    note.textContent = `${getDashboardGranularityLabel(granularity)}別 / ${getDashboardCasesSeriesRangeText(allSeries)} / 全${allSeries.length}件`;
   }
   renderDashboardBarChart("dashboardCasesAllChart", allSeries, {
     color: "#16a34a",
@@ -16861,11 +16870,9 @@ function renderDashboard(){
 
   const allCasesSeries = buildDashboardCasesSeries(records, null, casesGranularity);
   const casesSeries = allCasesSeries.slice(-5);
-  const harvestDays = casesSeries.reduce((sum, item) => sum + clampNumber(item.harvestDays, 0, 999999, 0), 0);
-  const underThresholdHarvestDays = casesSeries.reduce((sum, item) => sum + clampNumber(item.underThresholdHarvestDays, 0, 999999, 0), 0);
   const casesChartNote = document.getElementById("dashboardCasesChartNote");
   if(casesChartNote){
-    casesChartNote.textContent = `${getDashboardGranularityLabel(casesGranularity)}別 / ${getDashboardCasesSeriesRangeText(casesSeries)} / 収穫日数 ${formatDashboardHarvestDayText(harvestDays, underThresholdHarvestDays)}`;
+    casesChartNote.textContent = `${getDashboardGranularityLabel(casesGranularity)}別 / ${getDashboardCasesSeriesRangeText(casesSeries)}`;
   }
   renderDashboardBarChart("dashboardCasesChart", casesSeries, {
     color: "#16a34a",
