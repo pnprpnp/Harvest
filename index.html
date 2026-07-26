@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-partial-loss-warning-details-1">
+<meta name="harvestnavi-version" content="20260726-forecast-scroll-affordance-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4201,16 +4201,50 @@ button.monitorSaveBtn:active{
   grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:8px;
 }
+.dashboardForecastDayListFrame{
+  overflow:hidden;
+  border:2px solid #c4b5fd;
+  border-radius:15px;
+  background:#fff;
+  box-shadow:0 0 0 3px rgba(139,92,246,.08);
+}
 .dashboardForecastDayList{
   display:grid;
   max-height:398px;
   overflow-x:hidden;
   overflow-y:auto;
   overscroll-behavior:contain;
-  border:1px solid #e5e7eb;
-  border-radius:14px;
+  scrollbar-width:thin;
+  scrollbar-color:#8b5cf6 #ede9fe;
   background:#fff;
 }
+.dashboardForecastDayList::-webkit-scrollbar{
+  width:8px;
+}
+.dashboardForecastDayList::-webkit-scrollbar-track{
+  background:#ede9fe;
+}
+.dashboardForecastDayList::-webkit-scrollbar-thumb{
+  border:2px solid #ede9fe;
+  border-radius:999px;
+  background:#8b5cf6;
+}
+.dashboardForecastDayScrollCue{
+  display:flex;
+  min-height:29px;
+  align-items:center;
+  justify-content:center;
+  border-top:1px solid #ddd6fe;
+  background:#f5f3ff;
+  color:#6d28d9;
+  font-size:11px;
+  font-weight:850;
+  letter-spacing:.01em;
+}
+.dashboardForecastDayScrollCue[hidden]{
+  display:none;
+}
+.dashboardForecastDayListFrame[hidden],
 .dashboardForecastDayList[hidden],
 .dashboardForecastBeds[hidden],
 .dashboardForecastBuildingTabs[hidden],
@@ -7399,7 +7433,10 @@ requestAnimationFrame(function(){
       </div>
       <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
       <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
-      <div id="dashboardHarvestForecastDays" class="dashboardForecastDayList" hidden></div>
+      <div id="dashboardHarvestForecastDaysFrame" class="dashboardForecastDayListFrame" hidden>
+        <div id="dashboardHarvestForecastDays" class="dashboardForecastDayList" onscroll="updateDashboardForecastDayScrollCue()"></div>
+        <div id="dashboardHarvestForecastDayScrollCue" class="dashboardForecastDayScrollCue" hidden aria-hidden="true"></div>
+      </div>
       <div id="dashboardHarvestForecastLegend" class="dashboardForecastLegend" aria-label="収穫時期の色分け">
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ef4444"></span>今日</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#f97316"></span>1日後</span>
@@ -16433,16 +16470,35 @@ function buildDashboardHarvestForecastDayRows(model){
   });
 }
 
+function updateDashboardForecastDayScrollCue(){
+  const container = document.getElementById("dashboardHarvestForecastDays");
+  const cue = document.getElementById("dashboardHarvestForecastDayScrollCue");
+  if(!container || !cue) return;
+  const canScroll = container.scrollHeight > container.clientHeight + 1;
+  cue.hidden = !canScroll;
+  if(!canScroll) return;
+
+  const atTop = container.scrollTop <= 2;
+  const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 2;
+  cue.textContent = atTop
+    ? "↓ 8日後以降も表示できます"
+    : atBottom
+      ? "↑ 上へスクロールできます"
+      : "↕ 上下にスクロールできます";
+}
+
 function renderDashboardHarvestForecastDays(model){
   const container = document.getElementById("dashboardHarvestForecastDays");
   if(!container) return;
   if(!model.canForecast){
     container.innerHTML = `<div class="dashboardEmpty">${escapeHtml(getDashboardHarvestForecastUnavailableText(model))}。</div>`;
+    requestAnimationFrame(updateDashboardForecastDayScrollCue);
     return;
   }
   const rows = buildDashboardHarvestForecastDayRows(model);
   if(!rows.length){
     container.innerHTML = `<div class="dashboardEmpty">1日後以降の収穫予想はありません。</div>`;
+    requestAnimationFrame(updateDashboardForecastDayScrollCue);
     return;
   }
   container.innerHTML = `
@@ -16459,6 +16515,7 @@ function renderDashboardHarvestForecastDays(model){
       </div>`;
     }).join("")}
   `;
+  requestAnimationFrame(updateDashboardForecastDayScrollCue);
 }
 
 function renderDashboardHarvestForecastBeds(model){
@@ -16499,6 +16556,7 @@ function renderDashboardHarvestForecastView(model){
   const tabs = document.getElementById("dashboardHarvestForecastBuildingTabs");
   const beds = document.getElementById("dashboardHarvestForecastBeds");
   const days = document.getElementById("dashboardHarvestForecastDays");
+  const daysFrame = document.getElementById("dashboardHarvestForecastDaysFrame");
   const legend = document.getElementById("dashboardHarvestForecastLegend");
   document.querySelectorAll("[data-dashboard-forecast-view]").forEach(button => {
     const active = button.dataset.dashboardForecastView === view;
@@ -16507,7 +16565,8 @@ function renderDashboardHarvestForecastView(model){
   });
   if(tabs) tabs.hidden = showDays;
   if(beds) beds.hidden = showDays;
-  if(days) days.hidden = !showDays;
+  if(daysFrame) daysFrame.hidden = !showDays;
+  else if(days) days.hidden = !showDays;
   if(legend) legend.hidden = showDays;
   if(showDays){
     renderDashboardHarvestForecastDays(model);
