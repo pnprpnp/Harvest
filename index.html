@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260725-partial-harvest-daily-total-1">
+<meta name="harvestnavi-version" content="20260726-partial-harvest-edit-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -2463,6 +2463,26 @@ button.monitorSaveBtn:active{
   line-height:1.75;
   white-space:pre-wrap;
   overflow-wrap:anywhere;
+}
+.partialHarvestEditWindowBody{
+  display:grid;
+  gap:14px;
+  white-space:normal;
+}
+.partialHarvestEditWindowBody label{
+  margin:0 0 7px;
+}
+.partialHarvestEditBedRow{
+  margin-bottom:0;
+}
+.partialHarvestEditActions{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+  gap:8px;
+  margin-top:4px;
+}
+.partialHarvestEditActions .actionBtn{
+  margin-top:0;
 }
 .recordActions{
   display:flex;
@@ -7503,6 +7523,56 @@ requestAnimationFrame(function(){
     <div id="recordDetailWindowBody" class="recordDetailWindowBody"></div>
   </div>
 </div>
+<div id="partialHarvestEditModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="partialHarvestEditWindowTitle">
+  <div class="recordDetailWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="partialHarvestEditWindowTitle" class="recordDetailWindowTitle">部分収穫記録を編集</div>
+      <button id="partialHarvestEditWindowCloseBtn" type="button" class="recordDetailWindowClose" onclick="closePartialHarvestEditWindow()">閉じる</button>
+    </div>
+    <div class="recordDetailWindowBody partialHarvestEditWindowBody">
+      <div>
+        <label for="partialHarvestEditDateInput">日付</label>
+        <input id="partialHarvestEditDateInput" type="date">
+      </div>
+      <div>
+        <label for="partialHarvestEditBuildingInput">号棟</label>
+        <select id="partialHarvestEditBuildingInput">
+          <option value="2">2号棟</option>
+          <option value="3">3号棟</option>
+          <option value="4">4号棟</option>
+          <option value="5">5号棟</option>
+          <option value="6">6号棟</option>
+          <option value="7">7号棟</option>
+          <option value="8">8号棟</option>
+          <option value="9">9号棟</option>
+        </select>
+      </div>
+      <div>
+        <label>ベッド</label>
+        <div class="partialBedChoiceRow partialHarvestEditBedRow">
+          <label class="partialBedChoice"><input type="checkbox" name="partialHarvestEditBed" value="A">A</label>
+          <label class="partialBedChoice"><input type="checkbox" name="partialHarvestEditBed" value="B">B</label>
+          <label class="partialBedChoice"><input type="checkbox" name="partialHarvestEditBed" value="C">C</label>
+          <label class="partialBedChoice"><input type="checkbox" name="partialHarvestEditBed" value="D">D</label>
+          <label class="partialBedChoice"><input type="checkbox" name="partialHarvestEditBed" value="E">E</label>
+          <label class="partialBedChoice"><input type="checkbox" name="partialHarvestEditBed" value="F">F</label>
+        </div>
+      </div>
+      <div>
+        <label for="partialHarvestEditCasesInput">この場所から取れたケース数</label>
+        <input id="partialHarvestEditCasesInput" type="number" min="1" step="1" inputmode="numeric">
+      </div>
+      <div>
+        <label for="partialHarvestEditMemoInput">メモ</label>
+        <textarea id="partialHarvestEditMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
+      </div>
+      <div class="partialHarvestEditActions">
+        <button type="button" class="actionBtn secondaryBtn" onclick="closePartialHarvestEditWindow()">編集を破棄して戻る</button>
+        <button type="button" class="actionBtn thirdBtn" onclick="savePartialHarvestRecordEdit()">変更を保存する</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="bedActionMenu" class="bedActionMenu">
   <div id="bedActionTitle" class="bedActionTitle">ベッド操作</div>
   <button type="button" onclick="selectBedToNeed('front')">必要数まで前から選択</button>
@@ -7796,6 +7866,7 @@ let expandedRecordBed = null;
 let activeBedDetailContext = null;
 let activeBedDetailBed = null;
 let recordDetailReturnFocus = null;
+let partialHarvestEditReturnFocus = null;
 let palletDragState = null;
 let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
@@ -7826,6 +7897,7 @@ let plantingEventStateCache = null;
 let plantingEventStateCacheKey = "";
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
+let editingPartialHarvestRecordId = null;
 let editingHarvestSelectionKeys = null;
 let forecastSelectionState = null;
 let settingsDirty = false;
@@ -8983,6 +9055,7 @@ function restoreForecastSelectionState(){
 
 function closeRecordFloatingUi(){
   closeRecordDetailWindow({ restoreFocus: false });
+  closePartialHarvestEditWindow({ restoreFocus: false });
   closeBedDetailWindow();
   hideBedActionMenu();
   hideRecordBedActionMenu();
@@ -9000,7 +9073,8 @@ function unlockPageAfterRecordUiClose(){
     "forecastSettingsModal",
     "dashboardModal",
     "plantingAgeModal",
-    "recordDetailModal"
+    "recordDetailModal",
+    "partialHarvestEditModal"
   ].some(id => document.getElementById(id)?.classList.contains("show"));
 
   if(!isMonitorModeOpen && !blockingModalOpen){
@@ -13266,7 +13340,7 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
 
 async function sendPendingRecordsToGoogleSheet(){
   if(!ensureProtectedOperationAccess("スプレッドシートへの送信")) return;
-  if(editingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
+  if(editingHarvestRecordId || editingPartialHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
     showToast("編集中の記録を保存またはクリアしてから送信してください");
     return;
   }
@@ -14190,7 +14264,7 @@ async function fetchGoogleSheetRecordSyncPages(config, options, signal){
 
 async function importRecordsFromGoogleSheet(options = {}){
   const silentErrors = !!options.silentErrors;
-  if(editingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
+  if(editingHarvestRecordId || editingPartialHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
     if(!silentErrors) showToast("編集中の記録を保存またはクリアしてから同期してください");
     return false;
   }
@@ -21598,12 +21672,61 @@ function formatPartialHarvestSummary(targets){
   )).join("\n");
 }
 
-function getPartialHarvestRemainingCaseEstimate(building, beds, cases, date){
+function buildPartialHarvestTargets(building, beds, cases){
+  const normalizedBuilding = Number(building);
+  const normalizedCases = clampNumber(cases, 0, 999999, 0);
+  const normalizedBeds = bedOrder.filter(bed => (
+    Array.isArray(beds) && beds.includes(bed)
+  ));
+  if(!BUILDINGS.includes(normalizedBuilding) || !normalizedBeds.length || normalizedCases <= 0) return [];
+
+  const plantsPerPallet = Math.round(
+    (normalizedCases * CASE_SIZE / (PALLETS_PER_BED * normalizedBeds.length)) * 1000000
+  ) / 1000000;
+  return normalizedBeds.map(bed => ({
+    building: normalizedBuilding,
+    bed,
+    start: 1,
+    end: PALLETS_PER_BED,
+    plantsPerPallet
+  }));
+}
+
+function getPartialHarvestEditFormModel(record){
+  if(!record || record.type !== "partialHarvest") return null;
+  const targets = normalizePartialHarvestTargets(record.targets);
+  if(!targets.length) return null;
+  const buildings = [...new Set(targets.map(target => target.building))];
+  const isWholeBedRecord = buildings.length === 1
+    && targets.every(target => (
+      target.building === buildings[0]
+      && target.start === 1
+      && target.end === PALLETS_PER_BED
+    ));
+  if(!isWholeBedRecord) return null;
+  return {
+    date: String(record.date || ""),
+    building: buildings[0],
+    beds: bedOrder.filter(bed => targets.some(target => target.bed === bed)),
+    cases: clampNumber(record.cases, 0, 999999, 0),
+    memo: stripPartialHarvestAutoMemo(record.memo)
+  };
+}
+
+function stripPartialHarvestAutoMemo(memo){
+  return String(memo || "")
+    .split(/\r?\n/)
+    .filter(line => !/^部分収穫後の残り予想: 約[\d,.]+ケース（目安）$/.test(line.trim()))
+    .join("\n")
+    .trim();
+}
+
+function getPartialHarvestRemainingCaseEstimate(building, beds, cases, date, sourceRecords = records){
   const targetDate = parseDateOnlyString(date) || new Date();
   let predictedHeads = 0;
   beds.forEach(bed => {
     for(let number = 1; number <= PALLETS_PER_BED; number++){
-      predictedHeads += getPredictedHarvestForPallet(building, bed, number, targetDate);
+      predictedHeads += getPredictedHarvestForPallet(building, bed, number, targetDate, sourceRecords);
     }
   });
   const predictedCasesBefore = predictedHeads / CASE_SIZE;
@@ -21634,14 +21757,7 @@ async function savePartialHarvestRecord(){
     return;
   }
 
-  const plantsPerPallet = Math.round((cases * CASE_SIZE / (PALLETS_PER_BED * beds.length)) * 1000000) / 1000000;
-  const targets = beds.map(bed => ({
-    building,
-    bed,
-    start: 1,
-    end: PALLETS_PER_BED,
-    plantsPerPallet
-  }));
+  const targets = buildPartialHarvestTargets(building, beds, cases);
   const remainingEstimate = getPartialHarvestRemainingCaseEstimate(building, beds, cases, date);
   const memo = appendAutoMemo(enteredMemo, `部分収穫後の残り予想: 約${remainingEstimate}ケース（目安）`);
 
@@ -21680,6 +21796,150 @@ async function savePartialHarvestRecord(){
     : `各パレット部分収穫を記録しました。残り予想は約${remainingEstimate}ケースです（未送信）`);
 }
 
+function editPartialHarvestRecord(id){
+  if(!ensureProtectedOperationAccess("部分収穫記録の編集")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("部分収穫記録を編集")) return;
+  if(editingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
+    showToast("編集中の記録を保存または破棄してから、部分収穫記録を編集してください");
+    return;
+  }
+
+  const record = getRecordById(id);
+  const formModel = getPartialHarvestEditFormModel(record);
+  if(!record || !formModel){
+    showToast("この部分収穫記録は現在の編集画面では編集できません");
+    return;
+  }
+
+  const returnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  if(switchTab("record") === false) return;
+
+  const modal = document.getElementById("partialHarvestEditModal");
+  const dateInput = document.getElementById("partialHarvestEditDateInput");
+  const buildingInput = document.getElementById("partialHarvestEditBuildingInput");
+  const casesInput = document.getElementById("partialHarvestEditCasesInput");
+  const memoInput = document.getElementById("partialHarvestEditMemoInput");
+  if(!modal || !dateInput || !buildingInput || !casesInput || !memoInput) return;
+
+  editingPartialHarvestRecordId = Number(record.id);
+  partialHarvestEditReturnFocus = returnFocus;
+  dateInput.value = formModel.date;
+  buildingInput.value = String(formModel.building);
+  casesInput.value = formModel.cases > 0 ? String(formModel.cases) : "";
+  memoInput.value = formModel.memo;
+  document.querySelectorAll('input[name="partialHarvestEditBed"]').forEach(input => {
+    input.checked = formModel.beds.includes(input.value);
+  });
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => dateInput.focus({ preventScroll: true }));
+}
+
+function closePartialHarvestEditWindow(options = {}){
+  const modal = document.getElementById("partialHarvestEditModal");
+  const shouldRestoreFocus = options.restoreFocus !== false;
+  const returnFocus = partialHarvestEditReturnFocus;
+  if(modal) modal.classList.remove("show");
+  editingPartialHarvestRecordId = null;
+  partialHarvestEditReturnFocus = null;
+  document.querySelectorAll('input[name="partialHarvestEditBed"]').forEach(input => {
+    input.checked = false;
+  });
+  const casesInput = document.getElementById("partialHarvestEditCasesInput");
+  const memoInput = document.getElementById("partialHarvestEditMemoInput");
+  if(casesInput) casesInput.value = "";
+  if(memoInput) memoInput.value = "";
+  unlockPageAfterRecordUiClose();
+  if(shouldRestoreFocus && returnFocus?.isConnected){
+    requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
+  }
+}
+
+function savePartialHarvestRecordEdit(){
+  if(!ensureProtectedOperationAccess("部分収穫記録の保存")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("部分収穫記録を保存", { allowBackgroundSend: true })) return;
+  const record = editingPartialHarvestRecordId
+    ? getRecordById(editingPartialHarvestRecordId)
+    : null;
+  if(!record || record.type !== "partialHarvest"){
+    showToast("編集する部分収穫記録が見つかりません");
+    closePartialHarvestEditWindow();
+    return;
+  }
+
+  const date = document.getElementById("partialHarvestEditDateInput")?.value || "";
+  const building = clampNumber(
+    document.getElementById("partialHarvestEditBuildingInput")?.value,
+    MIN_BUILDING,
+    MAX_BUILDING,
+    NaN
+  );
+  const beds = Array.from(document.querySelectorAll('input[name="partialHarvestEditBed"]:checked'))
+    .map(input => input.value)
+    .filter(bed => bedOrder.includes(bed));
+  const cases = clampNumber(
+    document.getElementById("partialHarvestEditCasesInput")?.value || 0,
+    0,
+    999999,
+    0
+  );
+  const enteredMemo = document.getElementById("partialHarvestEditMemoInput")?.value.trim() || "";
+
+  if(!parseDateOnlyString(date)){
+    showToast("日付を入力してください");
+    return;
+  }
+  if(!BUILDINGS.includes(building) || !beds.length){
+    showToast("部分収穫した号棟とベッドを入力してください");
+    return;
+  }
+  if(cases <= 0){
+    showToast("部分収穫で取れたケース数を入力してください");
+    return;
+  }
+
+  const targets = buildPartialHarvestTargets(building, beds, cases);
+  const sourceRecords = records.filter(item => item !== record);
+  const remainingEstimate = getPartialHarvestRemainingCaseEstimate(
+    building,
+    beds,
+    cases,
+    date,
+    sourceRecords
+  );
+  record.date = date;
+  record.cases = cases;
+  record.memo = appendAutoMemo(
+    stripPartialHarvestAutoMemo(enteredMemo),
+    `部分収穫後の残り予想: 約${remainingEstimate}ケース（目安）`
+  );
+  record.targets = targets;
+  record.palletKeys = [];
+  record.duplicateKey = getRecordDuplicateKey(record);
+
+  records.sort(compareRecordsByDateDesc);
+  saveRecordsToStorage();
+  const sendQueued = queueGoogleSheetRecordSend(record, {
+    successMessage: "部分収穫記録を更新してスプレッドシートへ送信しました",
+    failureMessage: "部分収穫記録は更新済みです。スプレッドシートは未送信です"
+  });
+  closePartialHarvestEditWindow();
+  renderRecordList();
+  renderDashboard();
+  updateGoogleSheetResendButtonState();
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+  updateRecordActualLoss();
+  updateBuildingLastHarvestInfo();
+  updateHeaderLatestRecordDate();
+  showToast(sendQueued
+    ? "部分収穫記録を更新しました。スプレッドシートへ送信中です"
+    : "部分収穫記録を更新しました。スプレッドシートは未送信です");
+}
+
 function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
@@ -21693,6 +21953,7 @@ function deleteRecord(id, options = {}){
   }
   const deletingActivePlantingRecord = Number(activePlantingRecordId) === Number(id);
   const deletingEditedRecord = Number(editingHarvestRecordId) === Number(id);
+  const deletingEditedPartialRecord = Number(editingPartialHarvestRecordId) === Number(id);
   const recordForTrash = normalizeStoredRecord(options.deletedRecordOverride) || deletedRecord;
   addRecordToTrash(recordForTrash, { sheetDeleted: !!options.sheetDeleted });
   records = records.filter(r => Number(r.id) !== Number(id));
@@ -21713,6 +21974,8 @@ function deleteRecord(id, options = {}){
     clearRecordForm();
   }else if(deletingEditedRecord){
     clearRecordForm();
+  }else if(deletingEditedPartialRecord){
+    closePartialHarvestEditWindow();
   }
   renderRecordList();
   renderDashboard();
@@ -22288,6 +22551,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <div class="recordActions">
+        <button class="thirdBtn" onclick="editPartialHarvestRecord(${safeRecordId})">編集</button>
         <button class="secondaryBtn recordListDeleteBtn" onclick="confirmDeleteRecord(${safeRecordId})">削除</button>
       </div>
     </div>
@@ -22737,6 +23001,7 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   });
   if(Number(activePlantingRecordId) === safeOldId) activePlantingRecordId = safeNewId;
   if(Number(editingHarvestRecordId) === safeOldId) editingHarvestRecordId = safeNewId;
+  if(Number(editingPartialHarvestRecordId) === safeOldId) editingPartialHarvestRecordId = safeNewId;
   if(Number(plantingRecordDraft?.recordId) === safeOldId) plantingRecordDraft.recordId = safeNewId;
 
   const migratedIds = loadMigratedPlantingRecordIds();
@@ -22872,6 +23137,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
       : recordsById.get(Number(tombstone.id));
     if(!local || (!tombstone.recordUuid && normalizeRecordUuid(local.recordUuid))) return;
     const isBeingEdited = Number(editingHarvestRecordId) === Number(local.id)
+      || Number(editingPartialHarvestRecordId) === Number(local.id)
       || Number(activePlantingRecordId) === Number(local.id);
     const dependencies = local.type === "fullHarvest" ? getPlantingEventsForHarvest(local.id) : [];
     if(isBeingEdited || dependencies.length){
@@ -23012,6 +23278,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
     const sameServerVersion = !!local.updatedAt && !!canonicalIncoming.updatedAt
       && local.updatedAt === canonicalIncoming.updatedAt;
     const isBeingEdited = Number(editingHarvestRecordId) === oldId
+      || Number(editingPartialHarvestRecordId) === oldId
       || Number(activePlantingRecordId) === oldId;
 
     if(!sameContent && isBeingEdited){
@@ -23750,6 +24017,11 @@ window.onload = () => {
       closeRecordDetailWindow();
       return;
     }
+    const partialHarvestEditModal = document.getElementById("partialHarvestEditModal");
+    if(partialHarvestEditModal?.classList.contains("show")){
+      closePartialHarvestEditWindow();
+      return;
+    }
     const appMenuModal = document.getElementById("appMenuModal");
     if(appMenuModal?.classList.contains("show")){
       closeAppMenuWindow();
@@ -23851,6 +24123,15 @@ window.onload = () => {
       if(event.key !== "Tab") return;
       event.preventDefault();
       document.getElementById("recordDetailWindowCloseBtn")?.focus({ preventScroll: true });
+    });
+  }
+
+  const partialHarvestEditModal = document.getElementById("partialHarvestEditModal");
+  if(partialHarvestEditModal){
+    partialHarvestEditModal.addEventListener("click", (event) => {
+      if(event.target === partialHarvestEditModal){
+        closePartialHarvestEditWindow();
+      }
     });
   }
 
