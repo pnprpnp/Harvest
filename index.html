@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-partial-harvest-edit-1">
+<meta name="harvestnavi-version" content="20260726-partial-harvest-recalculate-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -5411,6 +5411,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   font-size:12px;
   font-weight:750;
   line-height:1.35;
+  white-space:pre-line;
 }
 .partialHarvestDeductionNote[hidden]{
   display:none;
@@ -18228,17 +18229,18 @@ function alertIfPreviousBuildingHasLeftovers(building = currentBuilding){
   alert(previousBuilding + "号棟に取り残しがあります。\n未収穫パレット: " + unharvestedCount + "枚");
 }
 
-function runHarvestPrediction(){
+function runHarvestPrediction(options = {}){
+  const silent = !!options.silent;
   const casePlan = getHarvestCasePlan();
   const needHeads = casePlan.regularCases * CASE_SIZE;
 
   if(casePlan.totalCases <= 0){
-    showToast("収穫ケースを入力してください");
-    return;
+    if(!silent) showToast("収穫ケースを入力してください");
+    return null;
   }
   if(needHeads <= 0){
-    showToast("各パレット部分収穫だけで今回の収穫ケース数に達しています");
-    return;
+    if(!silent) showToast("各パレット部分収穫だけで今回の収穫ケース数に達しています");
+    return null;
   }
 
   const selection = calculateHarvestSelectionFromRecords({
@@ -18247,12 +18249,12 @@ function runHarvestPrediction(){
     needHeads,
     partialTargetDate: getHarvestTargetDate()
   });
-  alertIfPreviousBuildingHasLeftovers(selection.startBuilding);
+  if(!options.skipLeftoverAlert) alertIfPreviousBuildingHasLeftovers(selection.startBuilding);
 
   const autoStartKey = selection.start;
   if(!autoStartKey){
-    showToast("未収穫パレットがありません");
-    return;
+    if(!silent) showToast("未収穫パレットがありません");
+    return null;
   }
 
   const resolvedStartBuilding = parsePalletKey(autoStartKey).building;
@@ -18274,12 +18276,86 @@ function runHarvestPrediction(){
     needHeads
   };
 
-  if(!selection.hasEnough){
+  if(!selection.hasEnough && !silent){
     showToast("記録済みを除外して1周分見ても必要個数に届きませんでした");
   }
 
-  manualSeedlingCount = null;
+  if(!options.preserveManualSeedlingCount) manualSeedlingCount = null;
   refreshAfterHarvestSelectionChanged();
+  return selection;
+}
+
+function getHarvestPredictionResultSignature(){
+  return JSON.stringify({
+    palletKeys: [...harvestFillKeys],
+    start: harvestSummary?.start || "",
+    end: harvestSummary?.end || "",
+    filledCount: clampNumber(harvestSummary?.filledCount, 0, 999999, 0),
+    totalHarvest: clampNumber(harvestSummary?.totalHarvest, 0, 999999999, 0),
+    needHeads: clampNumber(harvestSummary?.needHeads, 0, 999999999, 0)
+  });
+}
+
+function recalculateHarvestPredictionAfterPartialHarvest(affectedDates){
+  const targetDate = getHarvestTargetDateString();
+  const normalizedDates = new Set(
+    (Array.isArray(affectedDates) ? affectedDates : [affectedDates])
+      .map(value => String(value || "").trim())
+      .filter(Boolean)
+  );
+  const hasExistingPrediction = !!harvestSummary && harvestFillKeys.length > 0;
+  const totalCases = getHarvestCasePlan().totalCases;
+  if(!normalizedDates.has(targetDate) || !hasExistingPrediction || totalCases <= 0){
+    return {
+      attempted: false,
+      recalculated: false,
+      changed: false,
+      hasEnough: true
+    };
+  }
+
+  const previousSignature = getHarvestPredictionResultSignature();
+  const selection = runHarvestPrediction({
+    silent: true,
+    skipLeftoverAlert: true,
+    preserveManualSeedlingCount: true
+  });
+  if(!selection){
+    return {
+      attempted: true,
+      recalculated: false,
+      changed: false,
+      hasEnough: false
+    };
+  }
+  return {
+    attempted: true,
+    recalculated: true,
+    changed: previousSignature !== getHarvestPredictionResultSignature(),
+    hasEnough: !!selection.hasEnough
+  };
+}
+
+function getPartialHarvestSaveToastMessage(options = {}){
+  const actionText = options.edited ? "部分収穫記録を更新しました" : "部分収穫を記録しました";
+  const sendText = String(options.syncState || (options.sendQueued ? "送信中" : "未送信"));
+  const predictionUpdate = options.predictionUpdate || {};
+  if(predictionUpdate.recalculated){
+    const resultText = predictionUpdate.changed
+      ? "計算結果が変わりました。収穫場所を確認してください"
+      : "計算結果を再確認しました";
+    const shortageText = predictionUpdate.hasEnough
+      ? ""
+      : "。なお、必要個数には届いていません";
+    return `${actionText}。${resultText}${shortageText}（${sendText}）`;
+  }
+  if(predictionUpdate.attempted){
+    return `${actionText}。計算結果を更新できなかったため、「計算する」を押してください（${sendText}）`;
+  }
+  if(options.edited){
+    return `${actionText}（${sendText}）`;
+  }
+  return `${actionText}。残り予想は約${options.remainingEstimate}ケースです（${sendText}）`;
 }
 
 function recalcHarvestSummary(){
@@ -20295,9 +20371,10 @@ function updatePartialHarvestDeductionNote(casePlan = getHarvestCasePlan()){
   const note = document.getElementById("partialHarvestDeductionNote");
   if(!note) return;
   const partialCases = clampNumber(casePlan?.partialCases, 0, 999999, 0);
+  const regularCases = clampNumber(casePlan?.regularCases, 0, 999999, 0);
   note.hidden = partialCases <= 0;
   note.textContent = partialCases > 0
-    ? `部分収穫で減ったケース数: ${partialCases}ケース`
+    ? `うち部分収穫済み: ${partialCases}ケース\n通常順で収穫する分: ${regularCases}ケース`
     : "";
 }
 
@@ -21776,9 +21853,19 @@ async function savePartialHarvestRecord(){
   records.unshift(record);
   saveRecordsToStorage();
   maybePromptRecordExport();
+  clearCasePlacement();
+  const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([date]);
   const sendQueued = queueGoogleSheetRecordSend(record, {
-    successMessage: "各パレット部分収穫をスプレッドシートへ送信しました",
-    failureMessage: "各パレット部分収穫は保存済みです。スプレッドシートは未送信です"
+    successMessage: getPartialHarvestSaveToastMessage({
+      syncState: "送信済み",
+      remainingEstimate,
+      predictionUpdate
+    }),
+    failureMessage: getPartialHarvestSaveToastMessage({
+      syncState: "未送信",
+      remainingEstimate,
+      predictionUpdate
+    })
   });
   renderRecordList();
   renderDashboard();
@@ -21789,11 +21876,12 @@ async function savePartialHarvestRecord(){
   updateRecordActualLoss();
   updateBuildingLastHarvestInfo();
   updateHeaderLatestRecordDate();
-  clearCasePlacement();
   document.getElementById("partialHarvestCasesInput").value = "";
-  showToast(sendQueued
-    ? `各パレット部分収穫を記録しました。残り予想は約${remainingEstimate}ケースです（送信中）`
-    : `各パレット部分収穫を記録しました。残り予想は約${remainingEstimate}ケースです（未送信）`);
+  showToast(getPartialHarvestSaveToastMessage({
+    sendQueued,
+    remainingEstimate,
+    predictionUpdate
+  }));
 }
 
 function editPartialHarvestRecord(id){
@@ -21902,6 +21990,7 @@ function savePartialHarvestRecordEdit(){
 
   const targets = buildPartialHarvestTargets(building, beds, cases);
   const sourceRecords = records.filter(item => item !== record);
+  const previousDate = String(record.date || "");
   const remainingEstimate = getPartialHarvestRemainingCaseEstimate(
     building,
     beds,
@@ -21921,11 +22010,20 @@ function savePartialHarvestRecordEdit(){
 
   records.sort(compareRecordsByDateDesc);
   saveRecordsToStorage();
-  const sendQueued = queueGoogleSheetRecordSend(record, {
-    successMessage: "部分収穫記録を更新してスプレッドシートへ送信しました",
-    failureMessage: "部分収穫記録は更新済みです。スプレッドシートは未送信です"
-  });
   closePartialHarvestEditWindow();
+  const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([previousDate, date]);
+  const sendQueued = queueGoogleSheetRecordSend(record, {
+    successMessage: getPartialHarvestSaveToastMessage({
+      edited: true,
+      syncState: "送信済み",
+      predictionUpdate
+    }),
+    failureMessage: getPartialHarvestSaveToastMessage({
+      edited: true,
+      syncState: "未送信",
+      predictionUpdate
+    })
+  });
   renderRecordList();
   renderDashboard();
   updateGoogleSheetResendButtonState();
@@ -21935,9 +22033,11 @@ function savePartialHarvestRecordEdit(){
   updateRecordActualLoss();
   updateBuildingLastHarvestInfo();
   updateHeaderLatestRecordDate();
-  showToast(sendQueued
-    ? "部分収穫記録を更新しました。スプレッドシートへ送信中です"
-    : "部分収穫記録を更新しました。スプレッドシートは未送信です");
+  showToast(getPartialHarvestSaveToastMessage({
+    edited: true,
+    sendQueued,
+    predictionUpdate
+  }));
 }
 
 function deleteRecord(id, options = {}){
