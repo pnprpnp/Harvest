@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-cases-ratio-main-days-1">
+<meta name="harvestnavi-version" content="20260726-forecast-days-window-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4229,41 +4229,34 @@ button.monitorSaveBtn:active{
   background:#fff;
   box-shadow:0 0 0 3px rgba(139,92,246,.08);
 }
-.dashboardForecastDayList{
-  display:grid;
-  max-height:398px;
-  overflow-x:hidden;
-  overflow-y:auto;
-  overscroll-behavior:contain;
-  scrollbar-width:thin;
-  scrollbar-color:#8b5cf6 #ede9fe;
-  background:#fff;
-}
-.dashboardForecastDayList::-webkit-scrollbar{
-  width:8px;
-}
-.dashboardForecastDayList::-webkit-scrollbar-track{
-  background:#ede9fe;
-}
-.dashboardForecastDayList::-webkit-scrollbar-thumb{
-  border:2px solid #ede9fe;
-  border-radius:999px;
-  background:#8b5cf6;
-}
-.dashboardForecastDayScrollCue{
+.dashboardForecastDayListToolbar{
   display:flex;
-  min-height:29px;
+  min-height:31px;
   align-items:center;
-  justify-content:center;
-  border-top:1px solid #ddd6fe;
+  justify-content:flex-end;
+  padding:4px 7px;
+  border-bottom:1px solid #ddd6fe;
   background:#f5f3ff;
+}
+.dashboardForecastDayListToolbar[hidden]{
+  display:none;
+}
+.dashboardForecastDaysMoreBtn{
+  border:0;
+  border-radius:9px;
+  padding:5px 8px;
+  background:#ede9fe;
   color:#6d28d9;
   font-size:11px;
   font-weight:850;
-  letter-spacing:.01em;
 }
-.dashboardForecastDayScrollCue[hidden]{
+.dashboardForecastDaysMoreBtn[hidden]{
   display:none;
+}
+.dashboardForecastDayList{
+  display:grid;
+  overflow-x:hidden;
+  background:#fff;
 }
 .dashboardForecastDayListFrame[hidden],
 .dashboardForecastDayList[hidden],
@@ -4428,13 +4421,15 @@ button.monitorSaveBtn:active{
   border-radius:3px;
   flex:0 0 auto;
 }
-.dashboardForecastAssumption{
-  margin-top:9px;
-  padding-top:9px;
-  border-top:1px solid #e5e7eb;
-  color:#64748b;
-  font-size:11px;
-  line-height:1.6;
+.dashboardForecastDaysAllWindow{
+  width:min(720px, 100%);
+}
+.dashboardForecastDaysAllWindowBody{
+  padding:12px;
+  white-space:normal;
+}
+.dashboardForecastDaysAllWindowBody .dashboardForecastDayListFrame{
+  box-shadow:none;
 }
 .dashboardChartCard{
   padding:12px;
@@ -7582,8 +7577,10 @@ requestAnimationFrame(function(){
       <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
       <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
       <div id="dashboardHarvestForecastDaysFrame" class="dashboardForecastDayListFrame" hidden>
-        <div id="dashboardHarvestForecastDays" class="dashboardForecastDayList" onscroll="updateDashboardForecastDayScrollCue()"></div>
-        <div id="dashboardHarvestForecastDayScrollCue" class="dashboardForecastDayScrollCue" hidden aria-hidden="true"></div>
+        <div id="dashboardForecastDayListToolbar" class="dashboardForecastDayListToolbar" hidden>
+          <button id="dashboardForecastDaysMoreBtn" type="button" class="dashboardForecastDaysMoreBtn" onclick="openDashboardForecastDaysAllWindow()" hidden>8日後以降 ↓</button>
+        </div>
+        <div id="dashboardHarvestForecastDays" class="dashboardForecastDayList"></div>
       </div>
       <div id="dashboardHarvestForecastLegend" class="dashboardForecastLegend" aria-label="収穫時期の色分け">
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ef4444"></span>今日</span>
@@ -7596,7 +7593,6 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#8b5cf6"></span>7日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
       </div>
-      <div class="dashboardForecastAssumption">収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
     </div>
 
     <div class="card dashboardStartDayCard">
@@ -7688,6 +7684,19 @@ requestAnimationFrame(function(){
     <div id="dashboardForecastInfoWindowBody" class="recordDetailWindowBody">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。
 
 収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
+  </div>
+</div>
+<div id="dashboardForecastDaysAllModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardForecastDaysAllWindowTitle" onclick="if(event.target === event.currentTarget) closeDashboardForecastDaysAllWindow()">
+  <div class="recordDetailWindow dashboardForecastDaysAllWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="dashboardForecastDaysAllWindowTitle" class="recordDetailWindowTitle">収穫時期の目安（全日程）</div>
+      <button id="dashboardForecastDaysAllWindowClose" type="button" class="recordDetailWindowClose" onclick="closeDashboardForecastDaysAllWindow()">閉じる</button>
+    </div>
+    <div class="recordDetailWindowBody dashboardForecastDaysAllWindowBody">
+      <div class="dashboardForecastDayListFrame">
+        <div id="dashboardForecastDaysAllList" class="dashboardForecastDayList"></div>
+      </div>
+    </div>
   </div>
 </div>
 <div id="dashboardCasesAllModal" class="dashboardCasesAllModal" role="dialog" aria-modal="true" aria-labelledby="dashboardCasesAllWindowTitle">
@@ -8104,6 +8113,7 @@ let recordDetailReturnFocus = null;
 let partialHarvestEditReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
 let dashboardForecastInfoReturnFocus = null;
+let dashboardForecastDaysAllReturnFocus = null;
 let palletDragState = null;
 let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
@@ -8381,12 +8391,46 @@ function closeDashboardForecastInfoWindow(){
     !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
     !document.getElementById("recordDetailModal")?.classList.contains("show") &&
     !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardForecastDaysAllModal")?.classList.contains("show") &&
     !isMonitorPreviewOpen()
   ){
     document.body.style.overflow = "";
   }
   const returnFocus = dashboardForecastInfoReturnFocus;
   dashboardForecastInfoReturnFocus = null;
+  requestAnimationFrame(() => returnFocus?.focus?.());
+}
+
+function openDashboardForecastDaysAllWindow(){
+  const modal = document.getElementById("dashboardForecastDaysAllModal");
+  const closeButton = document.getElementById("dashboardForecastDaysAllWindowClose");
+  const container = document.getElementById("dashboardForecastDaysAllList");
+  if(!modal || !container) return;
+  dashboardForecastDaysAllReturnFocus = document.activeElement;
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  renderDashboardHarvestForecastDayList(container, model);
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => closeButton?.focus());
+}
+
+function closeDashboardForecastDaysAllWindow(){
+  const modal = document.getElementById("dashboardForecastDaysAllModal");
+  if(modal) modal.classList.remove("show");
+  if(
+    !isMonitorModeOpen &&
+    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
+    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
+    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
+    !document.getElementById("recordDetailModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardForecastInfoModal")?.classList.contains("show") &&
+    !isMonitorPreviewOpen()
+  ){
+    document.body.style.overflow = "";
+  }
+  const returnFocus = dashboardForecastDaysAllReturnFocus;
+  dashboardForecastDaysAllReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
 }
 
@@ -8410,6 +8454,7 @@ function closeDashboardCasesAllWindow(){
     !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
     !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
     !document.getElementById("recordDetailModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardForecastDaysAllModal")?.classList.contains("show") &&
     !isMonitorPreviewOpen()
   ){
     document.body.style.overflow = "";
@@ -9370,6 +9415,7 @@ function unlockPageAfterRecordUiClose(){
     "dashboardModal",
     "dashboardCasesAllModal",
     "dashboardForecastInfoModal",
+    "dashboardForecastDaysAllModal",
     "plantingAgeModal",
     "recordDetailModal",
     "partialHarvestEditModal"
@@ -16759,35 +16805,26 @@ function buildDashboardHarvestForecastDayRows(model){
   });
 }
 
-function updateDashboardForecastDayScrollCue(){
-  const container = document.getElementById("dashboardHarvestForecastDays");
-  const cue = document.getElementById("dashboardHarvestForecastDayScrollCue");
-  if(!container || !cue) return;
-  const canScroll = container.scrollHeight > container.clientHeight + 1;
-  const atTop = container.scrollTop <= 2;
-  cue.hidden = !canScroll || !atTop;
-  cue.textContent = cue.hidden ? "" : "↓";
-}
-
-function renderDashboardHarvestForecastDays(model){
-  const container = document.getElementById("dashboardHarvestForecastDays");
-  if(!container) return;
+function renderDashboardHarvestForecastDayList(container, model, options = {}){
+  if(!container) return 0;
   if(!model.canForecast){
     container.innerHTML = `<div class="dashboardEmpty">${escapeHtml(getDashboardHarvestForecastUnavailableText(model))}。</div>`;
-    requestAnimationFrame(updateDashboardForecastDayScrollCue);
-    return;
+    return 0;
   }
   const rows = buildDashboardHarvestForecastDayRows(model);
   if(!rows.length){
     container.innerHTML = `<div class="dashboardEmpty">1日後以降の収穫予想はありません。</div>`;
-    requestAnimationFrame(updateDashboardForecastDayScrollCue);
-    return;
+    return 0;
   }
+  const maxRows = Number(options.maxRows);
+  const visibleRows = Number.isFinite(maxRows) && maxRows > 0
+    ? rows.slice(0, Math.floor(maxRows))
+    : rows;
   container.innerHTML = `
     <div class="dashboardForecastDayHeader" aria-hidden="true">
       <span>日数</span><span>日付</span><span>収穫場所</span><span>定植日数</span>
     </div>
-    ${rows.map(row => {
+    ${visibleRows.map(row => {
       const hasHarvest = row.palletKeys.length > 0;
       return `<div class="dashboardForecastDayRow${hasHarvest ? "" : " is-empty"}">
         <span class="dashboardForecastDayDelay">${escapeHtml(formatDashboardForecastDelay(row.daysAfter))}</span>
@@ -16797,7 +16834,17 @@ function renderDashboardHarvestForecastDays(model){
       </div>`;
     }).join("")}
   `;
-  requestAnimationFrame(updateDashboardForecastDayScrollCue);
+  return rows.length;
+}
+
+function renderDashboardHarvestForecastDays(model){
+  const container = document.getElementById("dashboardHarvestForecastDays");
+  const toolbar = document.getElementById("dashboardForecastDayListToolbar");
+  const moreButton = document.getElementById("dashboardForecastDaysMoreBtn");
+  const rowCount = renderDashboardHarvestForecastDayList(container, model, { maxRows: 7 });
+  const hasMoreRows = rowCount > 7;
+  if(toolbar) toolbar.hidden = !hasMoreRows;
+  if(moreButton) moreButton.hidden = !hasMoreRows;
 }
 
 function renderDashboardHarvestForecastBeds(model){
