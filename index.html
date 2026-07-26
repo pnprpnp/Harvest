@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-partial-harvest-input-note-1">
+<meta name="harvestnavi-version" content="20260726-partial-loss-warning-details-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7924,6 +7924,7 @@ let settingsDirty = false;
 let casePlacementByBuilding = {};
 let appUpdateConfirmResolver = null;
 let plantingUnselectedWarningResolver = null;
+let plantingUnselectedWarningNoticeText = "";
 let recordAvailabilityCheckLastStartedAt = 0;
 let availabilityCheckPromise = null;
 let googleSheetConfirmResolver = null;
@@ -14079,26 +14080,33 @@ function setPlantingUnselectedWarningStage(stage){
   if(message){
     message.textContent = isConfirmation
       ? "このまま保存しますか？"
-      : "以前の未定植の場所が選択されていません。";
+      : plantingUnselectedWarningNoticeText || "以前の未定植の場所が選択されていません。";
   }
   if(acknowledgeActions) acknowledgeActions.hidden = isConfirmation;
   if(confirmActions) confirmActions.hidden = !isConfirmation;
 }
 
-function askPlantingUnselectedWarningConfirm(){
+function askPlantingUnselectedWarningConfirm(unselectedLots = []){
   const panel = document.getElementById("plantingUnselectedWarningPanel");
   const acknowledgeButton = document.getElementById("plantingUnselectedAcknowledge");
   const yesButton = document.getElementById("plantingUnselectedConfirmYes");
   const noButton = document.getElementById("plantingUnselectedConfirmNo");
 
+  const detail = formatUnselectedPreviousUnplantedPalletLots(unselectedLots);
+  const noticeText = [
+    "以前の未定植の場所が選択されていません。",
+    detail ? `\n未選択のパレット:\n${detail}` : ""
+  ].join("");
+
   if(!panel){
-    window.alert("以前の未定植の場所が選択されていません。");
+    window.alert(noticeText);
     return Promise.resolve(window.confirm("このまま保存しますか？"));
   }
   if(plantingUnselectedWarningResolver){
     resolvePlantingUnselectedWarning(false);
   }
 
+  plantingUnselectedWarningNoticeText = noticeText;
   setPlantingUnselectedWarningStage("notice");
   if(acknowledgeButton) acknowledgeButton.disabled = false;
   if(yesButton) yesButton.disabled = false;
@@ -14128,6 +14136,7 @@ function resolvePlantingUnselectedWarning(shouldSave){
   if(acknowledgeButton) acknowledgeButton.disabled = true;
   if(yesButton) yesButton.disabled = true;
   if(noButton) noButton.disabled = true;
+  plantingUnselectedWarningNoticeText = "";
   setPlantingUnselectedWarningStage("notice");
 
   if(plantingUnselectedWarningResolver){
@@ -19233,6 +19242,27 @@ function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecor
   });
 }
 
+function formatUnselectedPreviousUnplantedPalletLots(lots){
+  const groupedByHarvestRecord = new Map();
+  (Array.isArray(lots) ? lots : []).forEach(lot => {
+    const harvestRecordId = Number(lot?.harvestRecordId);
+    const palletKey = String(lot?.palletKey || "").trim();
+    if(!Number.isFinite(harvestRecordId) || !isValidPalletKeyString(palletKey)) return;
+    if(!groupedByHarvestRecord.has(harvestRecordId)){
+      groupedByHarvestRecord.set(harvestRecordId, []);
+    }
+    groupedByHarvestRecord.get(harvestRecordId).push(palletKey);
+  });
+
+  return [...groupedByHarvestRecord.entries()].map(([harvestRecordId, palletKeys]) => {
+    const sourceRecord = getRecordById(harvestRecordId);
+    const dateLabel = String(sourceRecord?.date || "").trim() || "日付不明";
+    const uniqueKeys = [...new Set(palletKeys)]
+      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+    return `${dateLabel}の収穫\n${formatPlantingSummaryForKeys(uniqueKeys)}`;
+  }).join("\n\n");
+}
+
 function invalidatePlantingAllowedPalletSetCache(){
   plantingAllowedPalletSetCache = null;
   plantingAllowedPalletSetCacheRecordId = null;
@@ -20701,18 +20731,27 @@ function getYieldCountForPallet(bed, number){
   return Number(number) <= frontCount ? frontYield : backYield;
 }
 
-function getActualLossRateFromSelectedPallets(cases){
+function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRecords = records){
   if(!harvestFillKeys.length || cases <= 0) return "";
 
   let plantedTotal = 0;
+  let partialHarvestTotal = 0;
+  const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
   harvestFillKeys.forEach(key => {
     const p = parsePalletKey(key);
     plantedTotal += getYieldCountForPallet(p.bed, p.number);
+    partialHarvestTotal += getPartialHarvestCountForPallet(
+      p.building,
+      p.bed,
+      p.number,
+      targetDay,
+      sourceRecords
+    );
   });
 
   if(plantedTotal <= 0) return "";
 
-  const shippedHeads = cases * CASE_SIZE;
+  const shippedHeads = cases * CASE_SIZE + partialHarvestTotal;
   const actualHarvestRate = (shippedHeads / plantedTotal) * 100;
   const actualLossRate = 100 - actualHarvestRate;
 
@@ -20730,7 +20769,11 @@ function updateRecordActualLoss(){
   );
 
   const date = document.getElementById("recordDateInput")?.value || getHarvestTargetDateString();
-  const value = getActualLossRateFromSelectedPallets(getRegularHarvestCases(cases, date));
+  const targetDate = parseDateOnlyString(date) || getHarvestTargetDate();
+  const value = getActualLossRateFromSelectedPallets(
+    getRegularHarvestCases(cases, date),
+    targetDate
+  );
   display.dataset.value = value === "" ? "" : value;
   display.textContent = value === "" ? "--" : value + "%";
   display.classList.toggle("empty", value === "");
@@ -21480,7 +21523,7 @@ async function savePlantingRecord(){
   );
   const needsPreviousUnplantedWarning = unselectedPreviousLots.length > 0;
   if(needsPreviousUnplantedWarning){
-    const shouldSave = await askPlantingUnselectedWarningConfirm();
+    const shouldSave = await askPlantingUnselectedWarningConfirm(unselectedPreviousLots);
     if(!shouldSave){
       showToast("苗植え記録の保存をキャンセルしました");
       return;
