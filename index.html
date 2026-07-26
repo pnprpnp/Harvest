@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-forecast-scroll-affordance-1">
+<meta name="harvestnavi-version" content="20260726-forecast-scroll-cue-2">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7403,10 +7403,10 @@ requestAnimationFrame(function(){
     <div class="card dashboardHarvestForecastCard">
       <div class="dashboardHarvestForecastHead">
         <div>
-          <div class="sectionTitle">収穫時期予想</div>
+          <div class="sectionTitle">収穫時期の目安</div>
           <div class="dashboardHarvestForecastLead">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。</div>
         </div>
-        <div class="dashboardForecastViewSwitch" role="group" aria-label="収穫時期予想の表示方法">
+        <div class="dashboardForecastViewSwitch" role="group" aria-label="収穫時期の目安の表示方法">
           <button type="button" class="dashboardForecastViewBtn" data-dashboard-forecast-view="beds" onclick="setDashboardHarvestForecastView('beds')" aria-pressed="true">ベッド別</button>
           <button type="button" class="dashboardForecastViewBtn" data-dashboard-forecast-view="days" onclick="setDashboardHarvestForecastView('days')" aria-pressed="false">日別一覧</button>
         </div>
@@ -16475,16 +16475,9 @@ function updateDashboardForecastDayScrollCue(){
   const cue = document.getElementById("dashboardHarvestForecastDayScrollCue");
   if(!container || !cue) return;
   const canScroll = container.scrollHeight > container.clientHeight + 1;
-  cue.hidden = !canScroll;
-  if(!canScroll) return;
-
   const atTop = container.scrollTop <= 2;
-  const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 2;
-  cue.textContent = atTop
-    ? "↓ 8日後以降も表示できます"
-    : atBottom
-      ? "↑ 上へスクロールできます"
-      : "↕ 上下にスクロールできます";
+  cue.hidden = !canScroll || !atTop;
+  cue.textContent = cue.hidden ? "" : "↓";
 }
 
 function renderDashboardHarvestForecastDays(model){
