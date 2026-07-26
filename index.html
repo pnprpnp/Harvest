@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-dashboard-layout-cases-ratio-1">
+<meta name="harvestnavi-version" content="20260726-forecast-info-header-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4026,22 +4026,43 @@ button.monitorSaveBtn:active{
 }
 .dashboardHarvestForecastHead{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:space-between;
-  gap:12px;
+  gap:8px;
   margin-bottom:12px;
 }
-.dashboardHarvestForecastHead .sectionTitle{
-  margin-bottom:2px;
+.dashboardHarvestForecastTitleRow{
+  display:flex;
+  min-width:0;
+  align-items:center;
+  gap:6px;
 }
-.dashboardHarvestForecastLead{
-  font-size:12px;
-  line-height:1.6;
+.dashboardHarvestForecastHead .sectionTitle{
+  margin-bottom:0;
+  font-size:clamp(17px, 4.6vw, 24px);
+  white-space:nowrap;
+}
+.dashboardForecastInfoBtn{
+  display:inline-flex;
+  flex:0 0 25px;
+  width:25px;
+  height:25px;
+  align-items:center;
+  justify-content:center;
+  border:1px solid #cbd5e1;
+  border-radius:999px;
+  padding:0;
+  background:#fff;
   color:#64748b;
+  font-family:Georgia, serif;
+  font-size:15px;
+  font-weight:800;
+  line-height:1;
 }
 .dashboardForecastViewSwitch{
   display:inline-flex;
   flex:0 0 auto;
+  margin-left:auto;
   gap:3px;
   padding:3px;
   border-radius:12px;
@@ -4773,17 +4794,17 @@ button.monitorSaveBtn:active{
     grid-template-columns:1fr 1fr;
   }
   .dashboardHarvestForecastHead{
-    align-items:flex-start;
-    flex-wrap:wrap;
+    align-items:center;
+    flex-wrap:nowrap;
+    gap:6px;
   }
   .dashboardForecastViewSwitch{
-    margin-top:1px;
     margin-left:auto;
   }
   .dashboardForecastViewBtn{
-    min-height:34px;
-    padding:6px 9px;
-    font-size:11px;
+    min-height:32px;
+    padding:5px 7px;
+    font-size:10px;
   }
   .dashboardForecastControls{
     grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -6723,6 +6744,12 @@ button.forecastClearBtn{border-radius:13px;}
   .appMark{width:28px;height:28px;}
   .appTitle{font-size:14px;}
   .workflowVisibilityBtn{width:40px;min-width:40px;}
+  .dashboardHarvestForecastHead{gap:4px;}
+  .dashboardHarvestForecastTitleRow{gap:4px;}
+  .dashboardHarvestForecastHead .sectionTitle{font-size:16px;}
+  .dashboardForecastInfoBtn{flex-basis:22px;width:22px;height:22px;font-size:13px;}
+  .dashboardForecastViewSwitch{gap:2px;padding:2px;}
+  .dashboardForecastViewBtn{min-height:30px;padding:4px 5px;font-size:9px;}
   .headerActions{right:calc(8px + env(safe-area-inset-right, 0px));}
   .headerRecordSyncBtn{min-width:72px;padding-left:6px;padding-right:6px;}
 }
@@ -7523,9 +7550,9 @@ requestAnimationFrame(function(){
   <div id="dashboardTab" style="display:none;">
     <div class="card dashboardHarvestForecastCard">
       <div class="dashboardHarvestForecastHead">
-        <div>
+        <div class="dashboardHarvestForecastTitleRow">
           <div class="sectionTitle">収穫時期の目安</div>
-          <div class="dashboardHarvestForecastLead">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。</div>
+          <button id="dashboardForecastInfoBtn" type="button" class="dashboardForecastInfoBtn" onclick="openDashboardForecastInfoWindow()" aria-label="収穫時期の目安について">i</button>
         </div>
         <div class="dashboardForecastViewSwitch" role="group" aria-label="収穫時期の目安の表示方法">
           <button type="button" class="dashboardForecastViewBtn" data-dashboard-forecast-view="beds" onclick="setDashboardHarvestForecastView('beds')" aria-pressed="true">ベッド別</button>
@@ -7652,6 +7679,15 @@ requestAnimationFrame(function(){
 </div>
 
 <div id="toast" class="toast">保存しました</div>
+<div id="dashboardForecastInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardForecastInfoWindowTitle" aria-describedby="dashboardForecastInfoWindowBody">
+  <div class="recordDetailWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="dashboardForecastInfoWindowTitle" class="recordDetailWindowTitle">収穫時期の目安について</div>
+      <button id="dashboardForecastInfoWindowClose" type="button" class="recordDetailWindowClose" onclick="closeDashboardForecastInfoWindow()">閉じる</button>
+    </div>
+    <div id="dashboardForecastInfoWindowBody" class="recordDetailWindowBody">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。</div>
+  </div>
+</div>
 <div id="dashboardCasesAllModal" class="dashboardCasesAllModal" role="dialog" aria-modal="true" aria-labelledby="dashboardCasesAllWindowTitle">
   <div class="dashboardCasesAllWindow">
     <div class="dashboardCasesAllWindowHeader">
@@ -8065,6 +8101,7 @@ let activeBedDetailBed = null;
 let recordDetailReturnFocus = null;
 let partialHarvestEditReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
+let dashboardForecastInfoReturnFocus = null;
 let palletDragState = null;
 let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
@@ -8320,6 +8357,35 @@ function closeMonitorEditorWindow(){
 
 function openDashboardWindow(){
   switchTab("dashboard");
+}
+
+function openDashboardForecastInfoWindow(){
+  const modal = document.getElementById("dashboardForecastInfoModal");
+  const closeButton = document.getElementById("dashboardForecastInfoWindowClose");
+  if(!modal) return;
+  dashboardForecastInfoReturnFocus = document.activeElement;
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => closeButton?.focus());
+}
+
+function closeDashboardForecastInfoWindow(){
+  const modal = document.getElementById("dashboardForecastInfoModal");
+  if(modal) modal.classList.remove("show");
+  if(
+    !isMonitorModeOpen &&
+    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
+    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
+    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
+    !document.getElementById("recordDetailModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
+    !isMonitorPreviewOpen()
+  ){
+    document.body.style.overflow = "";
+  }
+  const returnFocus = dashboardForecastInfoReturnFocus;
+  dashboardForecastInfoReturnFocus = null;
+  requestAnimationFrame(() => returnFocus?.focus?.());
 }
 
 function openDashboardCasesAllWindow(){
@@ -9301,6 +9367,7 @@ function unlockPageAfterRecordUiClose(){
     "forecastSettingsModal",
     "dashboardModal",
     "dashboardCasesAllModal",
+    "dashboardForecastInfoModal",
     "plantingAgeModal",
     "recordDetailModal",
     "partialHarvestEditModal"
