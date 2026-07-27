@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260727-dashboard-harvest-starts-1">
+<meta name="harvestnavi-version" content="20260727-dashboard-harvest-starts-2">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4108,15 +4108,21 @@ button.monitorSaveBtn:active{
   color:#2563eb;
 }
 .dashboardHarvestStartBuildings{
-  display:grid;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  justify-content:center;
   gap:4px;
   padding:6px 4px 7px;
 }
 .dashboardHarvestStartBuilding{
-  display:block;
+  display:inline-flex;
+  min-height:44px;
+  align-items:center;
+  justify-content:center;
   border:1px solid #86efac;
   border-radius:7px;
-  padding:3px 2px;
+  padding:4px 2px;
   background:#dcfce7;
   color:#166534;
   font-size:10px;
@@ -4124,6 +4130,8 @@ button.monitorSaveBtn:active{
   line-height:1.15;
   text-align:center;
   white-space:nowrap;
+  writing-mode:vertical-rl;
+  text-orientation:upright;
 }
 .dashboardHarvestForecastCard{
   padding:16px;
@@ -7727,7 +7735,7 @@ requestAnimationFrame(function(){
 
     <div class="card dashboardHarvestStartCard">
       <div class="sectionTitle">号棟別 収穫開始日</div>
-      <div class="dashboardHarvestStartHelp">同じ号棟で前回の収穫日から8日以上空いた場合、次の収穫日を開始日として表示します。</div>
+      <div class="dashboardHarvestStartHelp">同じ号棟の通常収穫で前回から8日以上空いた場合、次の通常収穫日を開始日として表示します。</div>
       <div id="dashboardHarvestStartTimeline" class="dashboardHarvestStartMonths"></div>
     </div>
 
@@ -15202,6 +15210,7 @@ function syncCurrentBuildingToCasePlacement(options = {}){
 function getHarvestCycleStartsByBuilding(){
   const dateMapsByBuilding = new Map(BUILDINGS.map(building => [building, new Map()]));
   records.forEach(record => {
+    if(record.type === "partialHarvest") return;
     const date = parseDateOnlyString(record.date);
     if(!date) return;
     getDashboardRecordBuildings(record).forEach(building => {
