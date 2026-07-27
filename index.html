@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260727-compact-header-1">
+<meta name="harvestnavi-version" content="20260727-seedling-quality-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7568,8 +7568,8 @@ requestAnimationFrame(function(){
         <div id="recordActualLossInput" class="recordLossDisplay empty" data-value="">--</div>
       </div>
 
-      <div id="recordHarvestMemoSection" class="recordHarvestMemoSection">
-        <label class="fieldAccentLabel">品質メモ</label>
+      <div id="recordQualityMemoSection" class="recordHarvestMemoSection">
+        <label id="recordQualityMemoLabel" class="fieldAccentLabel">品質メモ</label>
         <div class="qualityChoiceRow">
           <label class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
           <label class="qualityChoice qualitySmall"><input type="checkbox" name="qualityMemoTag" value="small">小さい</label>
@@ -7578,7 +7578,9 @@ requestAnimationFrame(function(){
           <label class="qualityChoice qualityOther"><input type="checkbox" id="qualityMemoOtherToggle" name="qualityMemoTag" value="other">その他</label>
         </div>
         <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他" hidden>
+      </div>
 
+      <div id="recordHarvestMemoSection" class="recordHarvestMemoSection">
         <label class="fieldAccentLabel">メモ</label>
         <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
       </div>
@@ -9429,7 +9431,8 @@ function normalizePlantingRecordDraft(value){
     actualSeedlingCarryoverMode: normalizeSeedlingCarryoverMode(value.actualSeedlingCarryoverMode),
     actualSeedlingUserEdited: !!value.actualSeedlingUserEdited,
     plantingSummaryInput: String(value.plantingSummaryInput || ""),
-    recordPlantingSummaryEdited: !!value.recordPlantingSummaryEdited
+    recordPlantingSummaryEdited: !!value.recordPlantingSummaryEdited,
+    qualityMemo: normalizeOptionalQualityMemo(value.qualityMemo)
   };
 }
 
@@ -9450,7 +9453,8 @@ function capturePlantingRecordDraft(){
     actualSeedlingCarryoverMode: getRecordSeedlingCarryoverMode(),
     actualSeedlingUserEdited: document.getElementById("recordActualSeedlingTrayCountInput")?.dataset.userEdited === "1",
     plantingSummaryInput: document.getElementById("recordPlantingSummaryInput")?.value || "",
-    recordPlantingSummaryEdited
+    recordPlantingSummaryEdited,
+    qualityMemo: normalizeOptionalQualityMemo(getSelectedQualityMemo())
   };
 }
 
@@ -9495,6 +9499,7 @@ function applyPlantingRecordDraft(record){
   if(plantingSummaryInput){
     plantingSummaryInput.value = draft?.plantingSummaryInput || "";
   }
+  setSelectedQualityMemo(draft?.qualityMemo || null);
   syncRecordPlantingSummaryFromSelection({ force: !recordPlantingSummaryEdited });
   updateRecordSeedlingDiffDisplay();
   updateRecordActualSeedlingDisplays();
@@ -10433,6 +10438,16 @@ function normalizeQualityMemo(value){
   return { tags, other };
 }
 
+function normalizeOptionalQualityMemo(value){
+  if(value === null || value === undefined || String(value).trim() === "") return null;
+  const qualityMemo = normalizeQualityMemo(value);
+  return qualityMemo.tags.length || qualityMemo.other ? qualityMemo : null;
+}
+
+function formatPlantingQualityMemo(value){
+  return formatQualityMemo(normalizeOptionalQualityMemo(value)) || "不明";
+}
+
 function qualityMemoFromLegacySizeRating(value){
   const tag = normalizeQualityTag(value);
   return normalizeQualityMemo(tag ? { tags: [tag], other: "" } : null);
@@ -10504,7 +10519,7 @@ function updateRecordInputGuides(){
   if(qualityRow){
     const qualityMemo = getSelectedQualityMemo();
     const hasQualityMemo = qualityMemo.tags.length > 0 || !!qualityMemo.other;
-    qualityRow.classList.toggle("needsAttention", !hasQualityMemo && recordSelectionMode !== "planting");
+    qualityRow.classList.toggle("needsAttention", !hasQualityMemo);
   }
 }
 
@@ -10726,6 +10741,7 @@ function normalizePlantingEvent(value){
   if(rawLossRate !== "" && getStrictDecimalInRange(rawLossRate, 0, 100) === null) return null;
   const detailsUnknown = value.detailsUnknown === true
     || ["true", "1", "不明"].includes(String(value.detailsUnknown || "").trim().toLowerCase());
+  const qualityMemo = normalizeOptionalQualityMemo(value.qualityMemo);
   const hasOpeningCarryover = value.openingCarryoverBefore !== undefined
     && value.openingCarryoverBefore !== null
     && String(value.openingCarryoverBefore).trim() !== "";
@@ -10744,6 +10760,7 @@ function normalizePlantingEvent(value){
     actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode,
     actualSeedlingLossRate: rawLossRate,
+    qualityMemo,
     detailsUnknown,
     openingCarryoverBefore,
     createdAt: String(value.createdAt || "").slice(0, 64),
@@ -12325,6 +12342,7 @@ function getPlantingEventForGoogleTransfer(event){
     actualPlantedSeedlingCount: normalized.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: normalized.actualSeedlingCarryoverMode,
     actualSeedlingLossRate: normalized.actualSeedlingLossRate,
+    qualityMemo: normalized.qualityMemo,
     detailsUnknown: normalized.detailsUnknown,
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt
@@ -15636,7 +15654,8 @@ function getDashboardRecordSearchText(record, harvestCaseTotalsByDate = null){
         return [
           event.plantingDate || "",
           formatPlantingSummaryForKeys(allocation?.palletKeys || []),
-          event.detailsUnknown ? "苗情報 不明" : `${event.actualSeedlingTrayCount}枚`
+          event.detailsUnknown ? "苗情報 不明" : `${event.actualSeedlingTrayCount}枚`,
+          formatPlantingQualityMemo(event.qualityMemo)
         ].join("\n");
       }).join("\n");
   return [
@@ -20002,6 +20021,7 @@ function refreshRecordModeUi(){
   const harvestStageSection = document.getElementById("recordHarvestStageSection");
   const plantingStageSection = document.getElementById("recordPlantingStageSection");
   const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
+  const qualityMemoLabel = document.getElementById("recordQualityMemoLabel");
   const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
   const plantingStep = document.getElementById("recordStepPlanting");
@@ -20040,6 +20060,7 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = true;
     if(plantingStageSection) plantingStageSection.hidden = false;
     if(harvestMemoSection) harvestMemoSection.hidden = true;
+    if(qualityMemoLabel) qualityMemoLabel.textContent = "苗の品質メモ";
     if(actualLossField) actualLossField.hidden = true;
     updateRecordSeedlingDiffDisplay();
   }else{
@@ -20049,6 +20070,7 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
+    if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
     if(actualLossField) actualLossField.hidden = false;
   }
   scheduleWorkflowGuideUpdate();
@@ -21994,7 +22016,7 @@ function saveRecord(){
   showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");
 }
 
-function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, actualSeedlingTrayCount, actualSeedlingLossRate, actualSeedlingCarryoverMode = "loss", actualTakenSeedlingCount = null, actualPlantedSeedlingCount = null){
+function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, actualSeedlingTrayCount, actualSeedlingLossRate, actualSeedlingCarryoverMode = "loss", actualTakenSeedlingCount = null, actualPlantedSeedlingCount = null, plantingQualityMemo = null){
   const takenSeedlings = Number.isFinite(Number(actualTakenSeedlingCount))
     ? Number(actualTakenSeedlingCount)
     : getSeedlingCountFromTrayCount(actualSeedlingTrayCount);
@@ -22026,6 +22048,7 @@ function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, act
     `今回余った苗: ${carryoverModeText}`,
     `実際に苗植えした株数: ${plantedTotal}株`,
     `実際の苗ロス率: ${actualSeedlingLossRate ? actualSeedlingLossRate + "%" : "-"}`,
+    `苗の品質メモ: ${formatPlantingQualityMemo(plantingQualityMemo)}`,
     "",
     "実際に苗植えした場所:",
     plantingSummary
@@ -22085,6 +22108,11 @@ async function savePlantingRecord(){
   const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
   const actualSeedlingCarryoverMode = getRecordSeedlingCarryoverMode();
   const actualSeedlingLossRate = getActualSeedlingLossRateValue();
+  const qualityMemo = normalizeOptionalQualityMemo(getSelectedQualityMemo());
+  if(!qualityMemo){
+    showToast("苗の品質メモを選択してください");
+    return;
+  }
 
   if(!canPlantSeedlingKeysWithinCapacity(selectedKeys, record)){
     const availableTotal = getPlantingAvailableSeedlingTotal(record);
@@ -22144,6 +22172,7 @@ async function savePlantingRecord(){
       && existingEvent.actualSeedlingCarryoverMode === actualSeedlingCarryoverMode
       ? existingEvent.actualSeedlingLossRate
       : actualSeedlingLossRate,
+    qualityMemo,
     createdAt: existingEvent?.createdAt || "",
     updatedAt: existingEvent?.updatedAt || "",
     openingCarryoverBefore: existingEvent?.openingCarryoverBefore ?? null,
@@ -22175,7 +22204,8 @@ async function savePlantingRecord(){
     event.actualSeedlingLossRate,
     actualSeedlingCarryoverMode,
     event.actualTakenSeedlingCount,
-    event.actualPlantedSeedlingCount
+    event.actualPlantedSeedlingCount,
+    event.qualityMemo
   )){
     showToast("送信をキャンセルしました");
     return;
@@ -22231,7 +22261,6 @@ function resumePlantingRecord(id, options = {}){
   setRecordSeedlingCarryoverMode(record.actualSeedlingCarryoverMode || "loss", { silent: true });
   const recordMemoInput = document.getElementById("recordMemoInput");
   if(recordMemoInput) recordMemoInput.value = record.memo || "";
-  setSelectedQualityMemo(record.qualityMemo);
   editingPlantingEventId = null;
   invalidatePlantingAllowedPalletSetCache();
   enterPlantingRecordMode(record);
@@ -22270,7 +22299,8 @@ function editPlantingEvent(eventId){
     actualSeedlingCarryoverMode: event.actualSeedlingCarryoverMode,
     actualSeedlingUserEdited: true,
     plantingSummaryInput: formatPlantingSummaryForKeys(event.plantingPalletKeys),
-    recordPlantingSummaryEdited: false
+    recordPlantingSummaryEdited: false,
+    qualityMemo: event.qualityMemo
   };
   invalidatePlantingAllowedPalletSetCache();
   enterPlantingRecordMode(record);
@@ -23220,6 +23250,7 @@ function openRecordDetailWindow(kind, id){
     detailLines = [
       `実際に取った苗: ${detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株"}`,
       `苗植えした株数: ${detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株"}`,
+      `苗の品質メモ: ${formatPlantingQualityMemo(event.qualityMemo)}`,
       `今回余った苗の設定: ${detailsUnknown ? "不明" : carryoverText}`,
       `作業後の繰越苗: ${detailsUnknown ? "不明" : (usage?.carryoverAfter ?? 0) + "株"}`,
       ...(isPlantingEventUnsent(event) ? ["Google: 未送信"] : []),
