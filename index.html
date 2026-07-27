@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260727-dashboard-period-scroll-1">
+<meta name="harvestnavi-version" content="20260727-dashboard-harvest-starts-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4016,6 +4016,115 @@ button.monitorSaveBtn:active{
   font-weight:800;
   color:#0f172a;
 }
+.dashboardHarvestStartCard{
+  overflow:hidden;
+}
+.dashboardHarvestStartCard .sectionTitle{
+  margin-bottom:4px;
+}
+.dashboardHarvestStartHelp{
+  margin-bottom:12px;
+  color:#64748b;
+  font-size:11px;
+  font-weight:700;
+}
+.dashboardHarvestStartMonths{
+  display:grid;
+  gap:14px;
+}
+.dashboardHarvestStartMonth{
+  min-width:0;
+}
+.dashboardHarvestStartMonthHead{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:6px;
+}
+.dashboardHarvestStartMonthTitle{
+  color:#334155;
+  font-size:13px;
+  font-weight:850;
+}
+.dashboardHarvestStartScrollHint{
+  color:#7c3aed;
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.dashboardHarvestStartScroll{
+  width:100%;
+  overflow-x:auto;
+  overflow-y:hidden;
+  border:1px solid #ddd6fe;
+  border-radius:12px;
+  background:#fff;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+  scrollbar-color:#c4b5fd transparent;
+}
+.dashboardHarvestStartScroll::-webkit-scrollbar{
+  height:5px;
+}
+.dashboardHarvestStartScroll::-webkit-scrollbar-thumb{
+  border-radius:999px;
+  background:#c4b5fd;
+}
+.dashboardHarvestStartDays{
+  display:grid;
+  width:max-content;
+}
+.dashboardHarvestStartDay{
+  min-height:70px;
+  border-right:1px solid #eef0f2;
+  background:#fff;
+}
+.dashboardHarvestStartDay:last-child{
+  border-right:0;
+}
+.dashboardHarvestStartDay.has-start{
+  background:#f0fdf4;
+}
+.dashboardHarvestStartDay.is-today{
+  box-shadow:inset 0 0 0 2px #8b5cf6;
+}
+.dashboardHarvestStartDate{
+  display:flex;
+  min-height:28px;
+  align-items:center;
+  justify-content:center;
+  border-bottom:1px solid #eef0f2;
+  background:#f8fafc;
+  color:#475569;
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.dashboardHarvestStartDate.sunday{
+  color:#dc2626;
+}
+.dashboardHarvestStartDate.saturday{
+  color:#2563eb;
+}
+.dashboardHarvestStartBuildings{
+  display:grid;
+  gap:4px;
+  padding:6px 4px 7px;
+}
+.dashboardHarvestStartBuilding{
+  display:block;
+  border:1px solid #86efac;
+  border-radius:7px;
+  padding:3px 2px;
+  background:#dcfce7;
+  color:#166534;
+  font-size:10px;
+  font-weight:850;
+  line-height:1.15;
+  text-align:center;
+  white-space:nowrap;
+}
 .dashboardHarvestForecastCard{
   padding:16px;
 }
@@ -7614,6 +7723,12 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#8b5cf6"></span>7日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
       </div>
+    </div>
+
+    <div class="card dashboardHarvestStartCard">
+      <div class="sectionTitle">号棟別 収穫開始日</div>
+      <div class="dashboardHarvestStartHelp">同じ号棟で前回の収穫日から8日以上空いた場合、次の収穫日を開始日として表示します。</div>
+      <div id="dashboardHarvestStartTimeline" class="dashboardHarvestStartMonths"></div>
     </div>
 
     <div class="dashboardCardGrid" id="dashboardMetrics"></div>
@@ -15084,39 +15199,32 @@ function syncCurrentBuildingToCasePlacement(options = {}){
   }
 }
 
-function getHarvestCycleStartsForBuilding(building){
-  const dateMap = {};
-
+function getHarvestCycleStartsByBuilding(){
+  const dateMapsByBuilding = new Map(BUILDINGS.map(building => [building, new Map()]));
   records.forEach(record => {
-    if(!Array.isArray(record.palletKeys)) return;
-    const hasBuilding = record.palletKeys.some(key => {
-      const p = parsePalletKey(String(key || ""));
-      return p.building === building;
-    });
-    if(!hasBuilding) return;
-
     const date = parseDateOnlyString(record.date);
     if(!date) return;
-    dateMap[record.date] = date;
+    getDashboardRecordBuildings(record).forEach(building => {
+      dateMapsByBuilding.get(building)?.set(record.date, date);
+    });
   });
 
-  const dates = Object.values(dateMap).sort((a, b) => a.getTime() - b.getTime());
-  const cycleStarts = [];
-
-  dates.forEach((date, index) => {
-    if(index === 0){
-      cycleStarts.push(date);
-      return;
-    }
-
-    const previousDate = dates[index - 1];
-    const diffDays = Math.floor((startOfLocalDay(date).getTime() - startOfLocalDay(previousDate).getTime()) / 86400000);
-    if(diffDays > HARVEST_CYCLE_GAP_DAYS){
-      cycleStarts.push(date);
-    }
+  const startsByBuilding = new Map();
+  dateMapsByBuilding.forEach((dateMap, building) => {
+    const dates = [...dateMap.values()].sort((a, b) => a.getTime() - b.getTime());
+    const cycleStarts = dates.filter((date, index) => {
+      if(index === 0) return true;
+      const previousDate = dates[index - 1];
+      const diffDays = Math.floor((startOfLocalDay(date).getTime() - startOfLocalDay(previousDate).getTime()) / 86400000);
+      return diffDays > HARVEST_CYCLE_GAP_DAYS;
+    });
+    startsByBuilding.set(building, cycleStarts);
   });
+  return startsByBuilding;
+}
 
-  return cycleStarts;
+function getHarvestCycleStartsForBuilding(building){
+  return getHarvestCycleStartsByBuilding().get(building) || [];
 }
 
 function getHarvestCycleIntervalDaysForBuilding(building){
@@ -15126,6 +15234,78 @@ function getHarvestCycleIntervalDaysForBuilding(building){
   const currentStart = startOfLocalDay(cycleStarts[cycleStarts.length - 1]);
   const previousStart = startOfLocalDay(cycleStarts[cycleStarts.length - 2]);
   return Math.max(0, Math.floor((currentStart.getTime() - previousStart.getTime()) / 86400000));
+}
+
+function getDashboardHarvestStartBuildingsByDate(){
+  const buildingsByDate = new Map();
+  const startsByBuilding = getHarvestCycleStartsByBuilding();
+  BUILDINGS.forEach(building => {
+    (startsByBuilding.get(building) || []).forEach(date => {
+      const dateKey = formatDateOnlyString(date);
+      if(!buildingsByDate.has(dateKey)) buildingsByDate.set(dateKey, []);
+      buildingsByDate.get(dateKey).push(building);
+    });
+  });
+  buildingsByDate.forEach(buildings => buildings.sort((a, b) => a - b));
+  return buildingsByDate;
+}
+
+function getDashboardHarvestStartMonths(referenceDate = new Date()){
+  const reference = startOfLocalDay(referenceDate);
+  const currentMonth = new Date(reference.getFullYear(), reference.getMonth(), 1);
+  const previousMonth = new Date(reference.getFullYear(), reference.getMonth() - 1, 1);
+  return [
+    { key: "previous", start: previousMonth, suffix: "先月" },
+    { key: "current", start: currentMonth, suffix: "今月" }
+  ].map(item => ({
+    ...item,
+    label: `${item.start.getFullYear()}年${item.start.getMonth() + 1}月`,
+    daysInMonth: new Date(item.start.getFullYear(), item.start.getMonth() + 1, 0).getDate()
+  }));
+}
+
+function renderDashboardHarvestStartTimeline(referenceDate = new Date()){
+  const container = document.getElementById("dashboardHarvestStartTimeline");
+  if(!container) return;
+  const todayKey = formatDateOnlyString(startOfLocalDay(referenceDate));
+  const buildingsByDate = getDashboardHarvestStartBuildingsByDate();
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+
+  container.innerHTML = getDashboardHarvestStartMonths(referenceDate).map(month => {
+    const dayCells = Array.from({ length: month.daysInMonth }, (_, index) => {
+      const date = new Date(month.start.getFullYear(), month.start.getMonth(), index + 1);
+      const dateKey = formatDateOnlyString(date);
+      const buildings = buildingsByDate.get(dateKey) || [];
+      const weekday = date.getDay();
+      const weekdayClass = weekday === 0 ? " sunday" : (weekday === 6 ? " saturday" : "");
+      const cellClass = [
+        "dashboardHarvestStartDay",
+        buildings.length ? "has-start" : "",
+        dateKey === todayKey ? "is-today" : ""
+      ].filter(Boolean).join(" ");
+      return `
+        <div class="${cellClass}">
+          <div class="dashboardHarvestStartDate${weekdayClass}">${date.getDate()}(${weekdays[weekday]})</div>
+          <div class="dashboardHarvestStartBuildings">
+            ${buildings.map(building => `<span class="dashboardHarvestStartBuilding">${building}号棟</span>`).join("")}
+          </div>
+        </div>
+      `;
+    }).join("");
+    return `
+      <section class="dashboardHarvestStartMonth" aria-label="${escapeHtml(month.label + " " + month.suffix)}">
+        <div class="dashboardHarvestStartMonthHead">
+          <div class="dashboardHarvestStartMonthTitle">${escapeHtml(month.label)}（${escapeHtml(month.suffix)}）</div>
+          <div class="dashboardHarvestStartScrollHint" aria-hidden="true">横にスクロール →</div>
+        </div>
+        <div class="dashboardHarvestStartScroll" aria-label="${escapeHtml(month.label)}の収穫開始日">
+          <div class="dashboardHarvestStartDays" style="grid-template-columns:repeat(${month.daysInMonth}, 56px);">
+            ${dayCells}
+          </div>
+        </div>
+      </section>
+    `;
+  }).join("");
 }
 
 function updateBuildingLastHarvestInfo(){
@@ -17049,6 +17229,7 @@ function renderDashboard(){
   }
 
   renderDashboardHarvestForecast();
+  renderDashboardHarvestStartTimeline();
   renderDashboardHistory(period);
 
   const casesGranularity = ["month", "year"].includes(dashboardFilter.casesGranularity) ? dashboardFilter.casesGranularity : "month";
