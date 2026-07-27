@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260726-forecast-days-window-1">
+<meta name="harvestnavi-version" content="20260727-dashboard-graph-boundaries-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4235,7 +4235,7 @@ button.monitorSaveBtn:active{
   align-items:center;
   justify-content:flex-end;
   padding:4px 7px;
-  border-bottom:1px solid #ddd6fe;
+  border-top:1px solid #ddd6fe;
   background:#f5f3ff;
 }
 .dashboardForecastDayListToolbar[hidden]{
@@ -7577,10 +7577,10 @@ requestAnimationFrame(function(){
       <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
       <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
       <div id="dashboardHarvestForecastDaysFrame" class="dashboardForecastDayListFrame" hidden>
+        <div id="dashboardHarvestForecastDays" class="dashboardForecastDayList"></div>
         <div id="dashboardForecastDayListToolbar" class="dashboardForecastDayListToolbar" hidden>
           <button id="dashboardForecastDaysMoreBtn" type="button" class="dashboardForecastDaysMoreBtn" onclick="openDashboardForecastDaysAllWindow()" hidden>8日後以降 ↓</button>
         </div>
-        <div id="dashboardHarvestForecastDays" class="dashboardForecastDayList"></div>
       </div>
       <div id="dashboardHarvestForecastLegend" class="dashboardForecastLegend" aria-label="収穫時期の色分け">
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ef4444"></span>今日</span>
@@ -7592,15 +7592,6 @@ requestAnimationFrame(function(){
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#0ea5e9"></span>6日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#8b5cf6"></span>7日後</span>
         <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
-      </div>
-    </div>
-
-    <div class="card dashboardStartDayCard">
-      <div class="dashboardControlRow">
-        <div class="dashboardStartDayField">
-          <label>集計の基準日</label>
-          <select id="dashboardStartDayInput"></select>
-        </div>
       </div>
     </div>
 
@@ -7646,6 +7637,15 @@ requestAnimationFrame(function(){
         </div>
       </div>
       <div id="dashboardLossChart"></div>
+    </div>
+
+    <div class="card dashboardStartDayCard">
+      <div class="dashboardControlRow">
+        <div class="dashboardStartDayField">
+          <label>集計の基準日</label>
+          <select id="dashboardStartDayInput"></select>
+        </div>
+      </div>
     </div>
 
     <details class="card dashboardRangeBox dashboardRangeDetails">
@@ -15292,6 +15292,11 @@ function getLatestDashboardBoundaryDate(dayOfMonth, referenceDate = new Date()){
   return candidate;
 }
 
+function getNextDashboardBoundaryDate(boundaryDate, dayOfMonth = getDashboardSelectedStartDay()){
+  const start = startOfLocalDay(boundaryDate);
+  return buildClampedMonthDayDate(start.getFullYear(), start.getMonth() + 1, dayOfMonth);
+}
+
 function getDashboardPeriod(){
   const dayOfMonth = getDashboardSelectedStartDay();
   const endInclusive = startOfLocalDay(new Date());
@@ -15316,11 +15321,12 @@ function getDashboardGranularityLabel(granularity){
 function getDashboardChartPeriod(startDate, granularity){
   const endInclusive = startOfLocalDay(new Date());
   const endExclusive = addDays(endInclusive, 1);
+  const dayOfMonth = getDashboardSelectedStartDay();
   let start = startOfLocalDay(startDate);
   if(granularity === "month"){
-    start = addMonthsClamped(start, -11);
+    start = buildClampedMonthDayDate(start.getFullYear(), start.getMonth() - 11, dayOfMonth);
   }else if(granularity === "year"){
-    start = new Date(start.getFullYear() - 4, start.getMonth(), start.getDate());
+    start = buildClampedMonthDayDate(start.getFullYear() - 4, start.getMonth(), dayOfMonth);
   }
   return {
     start,
@@ -15328,7 +15334,8 @@ function getDashboardChartPeriod(startDate, granularity){
     endInclusive,
     startLabel: formatDateOnlyString(start),
     endLabel: formatDateOnlyString(endInclusive),
-    granularity
+    granularity,
+    dayOfMonth
   };
 }
 
@@ -15474,10 +15481,10 @@ function enumerateDatesInPeriod(period){
   return dates;
 }
 
-function getDashboardBucketKey(date, granularity){
+function getDashboardBucketKey(date, granularity, dayOfMonth = getDashboardSelectedStartDay()){
   const d = startOfLocalDay(date);
   if(granularity === "month"){
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return formatDateOnlyString(getLatestDashboardBoundaryDate(dayOfMonth, d));
   }
   if(granularity === "year"){
     return `${d.getFullYear()}`;
@@ -15485,9 +15492,15 @@ function getDashboardBucketKey(date, granularity){
   return formatDateOnlyString(d);
 }
 
-function getDashboardBucketLabel(bucketKey, granularity){
+function getDashboardBucketLabel(bucketKey, granularity, dayOfMonth = getDashboardSelectedStartDay()){
   if(granularity === "month"){
-    return bucketKey.replace("-", "/");
+    const start = parseDateOnlyString(bucketKey);
+    if(!start) return bucketKey;
+    if(dayOfMonth === 1){
+      return `${start.getFullYear()}/${String(start.getMonth() + 1).padStart(2, "0")}`;
+    }
+    const end = addDays(getNextDashboardBoundaryDate(start, dayOfMonth), -1);
+    return `${start.getMonth() + 1}/${start.getDate()}〜${end.getMonth() + 1}/${end.getDate()}`;
   }
   if(granularity === "year"){
     return bucketKey + "年";
@@ -15495,14 +15508,35 @@ function getDashboardBucketLabel(bucketKey, granularity){
   return bucketKey.slice(5);
 }
 
-function getDashboardBucketFullLabel(bucketKey, granularity){
+function getDashboardBucketFullLabel(bucketKey, granularity, dayOfMonth = getDashboardSelectedStartDay()){
   if(granularity === "month"){
-    return bucketKey.replace("-", "/");
+    const start = parseDateOnlyString(bucketKey);
+    if(!start) return bucketKey;
+    if(dayOfMonth === 1){
+      return `${start.getFullYear()}/${String(start.getMonth() + 1).padStart(2, "0")}`;
+    }
+    const end = addDays(getNextDashboardBoundaryDate(start, dayOfMonth), -1);
+    return `${formatDateOnlyString(start).replaceAll("-", "/")}〜${formatDateOnlyString(end).replaceAll("-", "/")}`;
   }
   if(granularity === "year"){
     return bucketKey + "年";
   }
   return bucketKey;
+}
+
+function getDashboardBucketRangeLabels(bucketKey, granularity, dayOfMonth = getDashboardSelectedStartDay()){
+  if(granularity === "month"){
+    const start = parseDateOnlyString(bucketKey);
+    if(start){
+      const end = addDays(getNextDashboardBoundaryDate(start, dayOfMonth), -1);
+      return {
+        startLabel: formatDateOnlyString(start).replaceAll("-", "/"),
+        endLabel: formatDateOnlyString(end).replaceAll("-", "/")
+      };
+    }
+  }
+  const label = getDashboardBucketFullLabel(bucketKey, granularity, dayOfMonth);
+  return { startLabel: label, endLabel: label };
 }
 
 function getDashboardRecordTypeLabel(record){
@@ -15762,10 +15796,11 @@ function renderDashboardHistory(period){
 function buildDashboardCasesSeries(recordsInPeriod, period, granularity){
   const totals = {};
   const dailyTotalsByBucket = {};
+  const dayOfMonth = clampNumber(period?.dayOfMonth, 1, 31, getDashboardSelectedStartDay());
   getHarvestCaseTotalsByDate(recordsInPeriod).forEach((caseTotals, dateKey) => {
     const recordDate = parseDateOnlyString(dateKey);
     if(!recordDate) return;
-    const key = getDashboardBucketKey(recordDate, granularity);
+    const key = getDashboardBucketKey(recordDate, granularity, dayOfMonth);
     const cases = clampNumber(caseTotals.totalCases, 0, 999999, 0);
     totals[key] = (totals[key] || 0) + cases;
     if(!dailyTotalsByBucket[key]) dailyTotalsByBucket[key] = {};
@@ -15776,10 +15811,13 @@ function buildDashboardCasesSeries(recordsInPeriod, period, granularity){
     .sort()
     .map(key => {
       const dailyTotals = Object.values(dailyTotalsByBucket[key] || {});
+      const range = getDashboardBucketRangeLabels(key, granularity, dayOfMonth);
       return {
         key,
-        label: getDashboardBucketLabel(key, granularity),
-        fullLabel: getDashboardBucketFullLabel(key, granularity),
+        label: getDashboardBucketLabel(key, granularity, dayOfMonth),
+        fullLabel: getDashboardBucketFullLabel(key, granularity, dayOfMonth),
+        rangeStartLabel: range.startLabel,
+        rangeEndLabel: range.endLabel,
         value: totals[key],
         harvestDays: dailyTotals.filter(total => total > 100).length,
         underThresholdHarvestDays: dailyTotals.filter(total => total > 0 && total <= 100).length
@@ -15790,6 +15828,7 @@ function buildDashboardCasesSeries(recordsInPeriod, period, granularity){
 function buildDashboardLossSeries(recordsInPeriod, period, granularity){
   const totals = {};
   const casesByBucket = {};
+  const dayOfMonth = clampNumber(period?.dayOfMonth, 1, 31, getDashboardSelectedStartDay());
   const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(recordsInPeriod);
   const lossByDate = new Map();
 
@@ -15812,7 +15851,7 @@ function buildDashboardLossSeries(recordsInPeriod, period, granularity){
     if(dayLoss.regularCases <= 0) return;
     const recordDate = parseDateOnlyString(dateKey);
     if(!recordDate) return;
-    const key = getDashboardBucketKey(recordDate, granularity);
+    const key = getDashboardBucketKey(recordDate, granularity, dayOfMonth);
     const totalCasesForDate = harvestCaseTotalsByDate.get(dateKey)?.totalCases || dayLoss.regularCases;
     const averageLossForDate = dayLoss.weightedLoss / dayLoss.regularCases;
     totals[key] = (totals[key] || 0) + averageLossForDate * totalCasesForDate;
@@ -15821,17 +15860,23 @@ function buildDashboardLossSeries(recordsInPeriod, period, granularity){
 
   return Object.keys(casesByBucket)
     .sort()
-    .map(key => ({
-      key,
-      label: getDashboardBucketLabel(key, granularity),
-      fullLabel: getDashboardBucketFullLabel(key, granularity),
-      value: casesByBucket[key] > 0 ? totals[key] / casesByBucket[key] : null
-    }));
+    .map(key => {
+      const range = getDashboardBucketRangeLabels(key, granularity, dayOfMonth);
+      return {
+        key,
+        label: getDashboardBucketLabel(key, granularity, dayOfMonth),
+        fullLabel: getDashboardBucketFullLabel(key, granularity, dayOfMonth),
+        rangeStartLabel: range.startLabel,
+        rangeEndLabel: range.endLabel,
+        value: casesByBucket[key] > 0 ? totals[key] / casesByBucket[key] : null
+      };
+    });
 }
 
 function buildDashboardSeedlingLossSeries(plantingEventsInPeriod, period, granularity){
   const totals = {};
   const countsByBucket = {};
+  const dayOfMonth = clampNumber(period?.dayOfMonth, 1, 31, getDashboardSelectedStartDay());
 
   plantingEventsInPeriod.forEach(event => {
     const rawLoss = String(event.actualSeedlingLossRate ?? "").trim();
@@ -15840,22 +15885,28 @@ function buildDashboardSeedlingLossSeries(plantingEventsInPeriod, period, granul
     if(!Number.isFinite(loss)) return;
     const plantingDate = parseDateOnlyString(event.plantingDate);
     if(!plantingDate) return;
-    const key = getDashboardBucketKey(plantingDate, granularity);
+    const key = getDashboardBucketKey(plantingDate, granularity, dayOfMonth);
     totals[key] = (totals[key] || 0) + loss;
     countsByBucket[key] = (countsByBucket[key] || 0) + 1;
   });
 
   return Object.keys(countsByBucket)
     .sort()
-    .map(key => ({
-      key,
-      label: getDashboardBucketLabel(key, granularity),
-      fullLabel: getDashboardBucketFullLabel(key, granularity),
-      value: countsByBucket[key] > 0 ? totals[key] / countsByBucket[key] : null
-    }));
+    .map(key => {
+      const range = getDashboardBucketRangeLabels(key, granularity, dayOfMonth);
+      return {
+        key,
+        label: getDashboardBucketLabel(key, granularity, dayOfMonth),
+        fullLabel: getDashboardBucketFullLabel(key, granularity, dayOfMonth),
+        rangeStartLabel: range.startLabel,
+        rangeEndLabel: range.endLabel,
+        value: countsByBucket[key] > 0 ? totals[key] / countsByBucket[key] : null
+      };
+    });
 }
 
 function buildDashboardLossComparisonSeries(recordsInPeriod, plantingEventsInPeriod, period, granularity){
+  const dayOfMonth = clampNumber(period?.dayOfMonth, 1, 31, getDashboardSelectedStartDay());
   const harvestLossSeries = buildDashboardLossSeries(recordsInPeriod, period, granularity);
   const seedlingLossSeries = buildDashboardSeedlingLossSeries(plantingEventsInPeriod, period, granularity);
   const seriesByName = [
@@ -15869,11 +15920,17 @@ function buildDashboardLossComparisonSeries(recordsInPeriod, plantingEventsInPer
     return {
       name: series.name,
       color: series.color,
-      points: keys.map(key => pointMap.get(key) || {
-        key,
-        label: getDashboardBucketLabel(key, granularity),
-        fullLabel: getDashboardBucketFullLabel(key, granularity),
-        value: null
+      points: keys.map(key => {
+        if(pointMap.has(key)) return pointMap.get(key);
+        const range = getDashboardBucketRangeLabels(key, granularity, dayOfMonth);
+        return {
+          key,
+          label: getDashboardBucketLabel(key, granularity, dayOfMonth),
+          fullLabel: getDashboardBucketFullLabel(key, granularity, dayOfMonth),
+          rangeStartLabel: range.startLabel,
+          rangeEndLabel: range.endLabel,
+          value: null
+        };
       })
     };
   });
@@ -16149,8 +16206,8 @@ function renderDashboardCasesChartTable(series, options = {}){
 
 function getDashboardCasesSeriesRangeText(series){
   if(!Array.isArray(series) || !series.length) return "データなし";
-  const first = String(series[0]?.fullLabel || series[0]?.label || "-");
-  const last = String(series[series.length - 1]?.fullLabel || series[series.length - 1]?.label || "-");
+  const first = String(series[0]?.rangeStartLabel || series[0]?.fullLabel || series[0]?.label || "-");
+  const last = String(series[series.length - 1]?.rangeEndLabel || series[series.length - 1]?.fullLabel || series[series.length - 1]?.label || "-");
   return first === last ? first : `${first} 〜 ${last}`;
 }
 
@@ -16158,10 +16215,11 @@ function renderDashboardCasesAllWindow(){
   const granularity = ["month", "year"].includes(dashboardFilter.casesGranularity)
     ? dashboardFilter.casesGranularity
     : "month";
-  const allSeries = buildDashboardCasesSeries(records, null, granularity);
+  const dayOfMonth = getDashboardSelectedStartDay();
+  const allSeries = buildDashboardCasesSeries(records, { dayOfMonth }, granularity);
   const note = document.getElementById("dashboardCasesAllChartNote");
   if(note){
-    note.textContent = `${getDashboardGranularityLabel(granularity)}別 / ${getDashboardCasesSeriesRangeText(allSeries)} / 全${allSeries.length}件`;
+    note.textContent = `${getDashboardGranularityLabel(granularity)}別 / 基準日 ${dayOfMonth}日 / ${getDashboardCasesSeriesRangeText(allSeries)} / 全${allSeries.length}件`;
   }
   renderDashboardBarChart("dashboardCasesAllChart", allSeries, {
     color: "#16a34a",
@@ -16983,11 +17041,11 @@ function renderDashboard(){
   const lossRecords = getDashboardRecordsForPeriod(lossPeriod);
   const lossPlantingEvents = getDashboardPlantingEventsForPeriod(lossPeriod);
 
-  const allCasesSeries = buildDashboardCasesSeries(records, null, casesGranularity);
+  const allCasesSeries = buildDashboardCasesSeries(records, period, casesGranularity);
   const casesSeries = allCasesSeries.slice(-5);
   const casesChartNote = document.getElementById("dashboardCasesChartNote");
   if(casesChartNote){
-    casesChartNote.textContent = `${getDashboardGranularityLabel(casesGranularity)}別 / ${getDashboardCasesSeriesRangeText(casesSeries)}`;
+    casesChartNote.textContent = `${getDashboardGranularityLabel(casesGranularity)}別 / 基準日 ${period.dayOfMonth}日 / ${getDashboardCasesSeriesRangeText(casesSeries)}`;
   }
   renderDashboardBarChart("dashboardCasesChart", casesSeries, {
     color: "#16a34a",
@@ -17001,7 +17059,7 @@ function renderDashboard(){
 
   const lossChartNote = document.getElementById("dashboardLossChartNote");
   if(lossChartNote){
-    lossChartNote.textContent = `通常収穫のみ / ${getDashboardGranularityLabel(lossGranularity)}別 / ${lossPeriod.startLabel} 〜 ${lossPeriod.endLabel}`;
+    lossChartNote.textContent = `通常収穫のみ / ${getDashboardGranularityLabel(lossGranularity)}別 / 基準日 ${lossPeriod.dayOfMonth}日 / ${lossPeriod.startLabel} 〜 ${lossPeriod.endLabel}`;
   }
   renderDashboardMultiLineChart("dashboardLossChart", buildDashboardLossComparisonSeries(lossRecords, lossPlantingEvents, lossPeriod, lossGranularity), {
     ariaLabel: "平均ロス率",
