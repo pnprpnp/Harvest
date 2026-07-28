@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260728-planting-unplanted-buildings-1">
+<meta name="harvestnavi-version" content="20260728-optional-seedling-quality-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10926,7 +10926,7 @@ function updateRecordInputGuides(){
   if(qualityRow){
     const qualityMemo = getSelectedQualityMemo();
     const hasQualityMemo = qualityMemo.tags.length > 0 || !!qualityMemo.other;
-    qualityRow.classList.toggle("needsAttention", !hasQualityMemo);
+    qualityRow.classList.toggle("needsAttention", recordSelectionMode !== "planting" && !hasQualityMemo);
   }
 }
 
@@ -20830,7 +20830,7 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = true;
     if(plantingStageSection) plantingStageSection.hidden = false;
     if(harvestMemoSection) harvestMemoSection.hidden = true;
-    if(qualityMemoLabel) qualityMemoLabel.textContent = "苗の品質メモ";
+    if(qualityMemoLabel) qualityMemoLabel.textContent = "苗の品質メモ（任意）";
     if(actualLossField) actualLossField.hidden = true;
     updateRecordSeedlingDiffDisplay();
   }else{
@@ -22884,10 +22884,6 @@ async function savePlantingRecord(){
   const actualSeedlingCarryoverMode = getRecordSeedlingCarryoverMode();
   const actualSeedlingLossRate = getActualSeedlingLossRateValue();
   const qualityMemo = normalizeOptionalQualityMemo(getSelectedQualityMemo());
-  if(!qualityMemo){
-    showToast("苗の品質メモを選択してください");
-    return;
-  }
 
   if(!canPlantSeedlingKeysWithinCapacity(selectedKeys, record)){
     const availableTotal = getPlantingAvailableSeedlingTotal(record);
