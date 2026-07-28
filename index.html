@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260728-forecast-bed-delay-row-1">
+<meta name="harvestnavi-version" content="20260728-forecast-bed-delay-lines-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4590,12 +4590,17 @@ button.monitorSaveBtn:active{
   font-size:15px;
   font-weight:800;
 }
+.dashboardForecastBedDateRows{
+  display:grid;
+  min-width:0;
+  gap:1px;
+  margin-top:3px;
+}
 .dashboardForecastBedDateRow{
   display:flex;
   min-width:0;
   align-items:flex-start;
   gap:4px;
-  margin-top:3px;
 }
 .dashboardForecastBedDate{
   display:block;
@@ -4603,7 +4608,7 @@ button.monitorSaveBtn:active{
   font-size:11px;
   font-weight:800;
   line-height:1.35;
-  white-space:pre-line;
+  white-space:nowrap;
 }
 .dashboardForecastBedDelay{
   display:block;
@@ -17307,6 +17312,16 @@ function formatDashboardForecastRange(range){
   };
 }
 
+function formatDashboardForecastBedDateLines(range){
+  if(!range) return [{ dateText: "予想なし", delayText: "" }];
+  const sameDay = range.start.date.getTime() === range.end.date.getTime();
+  const forecasts = sameDay ? [range.start] : [range.start, range.end];
+  return forecasts.map(forecast => ({
+    dateText: formatDashboardForecastDate(forecast.date),
+    delayText: formatDashboardForecastDelay(forecast.daysAfter)
+  }));
+}
+
 function buildDashboardForecastColorBarRuns(colors){
   const safeColors = Array.isArray(colors) && colors.length
     ? colors
@@ -17557,15 +17572,19 @@ function renderDashboardHarvestForecastBeds(model){
     ? dashboardHarvestForecastBuilding
     : model.startBuilding;
   container.innerHTML = bedMap.map(bed => {
-    const rangeText = formatDashboardForecastRange(model.bedRanges.get(`${building}-${bed}`));
+    const dateLines = formatDashboardForecastBedDateLines(model.bedRanges.get(`${building}-${bed}`));
     const plantingAgeText = getDashboardForecastBedPlantingAgeText(model, building, bed);
     return `
       <div class="bed bedCollapsed dashboardForecastBed">
         <div class="bedTitle">
           <span class="dashboardForecastBedName">${bed}ベッド</span>
-          <span class="dashboardForecastBedDateRow">
-            <span class="dashboardForecastBedDate">${escapeHtml(rangeText.dateText)}</span>
-            <span class="dashboardForecastBedDelay">${escapeHtml(rangeText.delayText)}</span>
+          <span class="dashboardForecastBedDateRows">
+            ${dateLines.map(line => `
+              <span class="dashboardForecastBedDateRow">
+                <span class="dashboardForecastBedDate">${escapeHtml(line.dateText)}</span>
+                <span class="dashboardForecastBedDelay">${escapeHtml(line.delayText)}</span>
+              </span>
+            `).join("")}
           </span>
           ${plantingAgeText ? `<span class="dashboardForecastBedPlantingAge">${escapeHtml(plantingAgeText)}</span>` : ""}
         </div>
