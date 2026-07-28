@@ -5628,6 +5628,28 @@ header{
 }
 .sectionTitleRow{margin-bottom:18px;}
 .sectionTitleRow .sectionTitle{margin-bottom:0;}
+#recordSaveSectionTitle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.recordTodayRecordedStatus{
+  display:inline-flex;
+  align-items:center;
+  min-height:26px;
+  box-sizing:border-box;
+  padding:4px 9px;
+  border:1px solid #86efac;
+  border-radius:999px;
+  background:#dcfce7;
+  color:#15803d;
+  font-size:12px;
+  font-weight:750;
+  line-height:1;
+  letter-spacing:0;
+}
+.recordTodayRecordedStatus[hidden]{display:none;}
 .smallText,.clusterNote,.dashboardHint,.dashboardMetricsNote,.dashboardChartNote{
   color:var(--ui-text-secondary);
 }
@@ -7523,7 +7545,10 @@ requestAnimationFrame(function(){
 
   <div id="recordTab" style="display:none;">
     <div id="recordSaveCard" class="card">
-      <h2 id="recordSaveSectionTitle" class="sectionTitle workflowFocusHeading">記録を保存</h2>
+      <h2 id="recordSaveSectionTitle" class="sectionTitle workflowFocusHeading">
+        <span>記録を保存</span>
+        <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
+      </h2>
       <div id="recordStepIndicator" class="recordStepIndicator">
         <div id="recordStepHarvest" class="recordStepItem active">
           <span class="recordStepNumber">1</span>
@@ -9761,6 +9786,7 @@ function switchTab(tabName){
   document.getElementById("recordTabBtn").classList.toggle("active", tabName === "record");
   document.getElementById("dashboardTabBtn")?.classList.toggle("active", tabName === "dashboard");
   if(tabName === "record"){
+    updateTodayHarvestRecordedStatus();
     if(recordSelectionMode === "planting"){
       applyPlantingRecordDraft(getActivePlantingRecord());
     }else if(editingHarvestRecordId && Array.isArray(editingHarvestSelectionKeys)){
@@ -14334,6 +14360,15 @@ function updateHeaderLatestRecordDate(){
   label.textContent = "最新: " + formatLatestRecordDateForHeader(getLatestRecordDate());
 }
 
+function updateTodayHarvestRecordedStatus(referenceDate = new Date()){
+  const status = document.getElementById("recordTodayRecordedStatus");
+  if(!status) return;
+  const today = formatDateOnlyString(referenceDate);
+  status.hidden = !records.some(record => (
+    record?.type === "fullHarvest" && String(record.date || "") === today
+  ));
+}
+
 function setRecordSyncAvailabilityNotice(available){
   const button = document.getElementById("headerRecordSyncBtn");
   if(!button) return;
@@ -14561,9 +14596,15 @@ function runAvailabilityChecksIfDue(){
 function installAvailabilityChecks(){
   setTimeout(() => runAvailabilityChecksIfDue(), 0);
   document.addEventListener("visibilitychange", () => {
-    if(document.visibilityState === "visible") runAvailabilityChecksIfDue();
+    if(document.visibilityState === "visible"){
+      updateTodayHarvestRecordedStatus();
+      runAvailabilityChecksIfDue();
+    }
   });
-  window.addEventListener("pageshow", () => runAvailabilityChecksIfDue());
+  window.addEventListener("pageshow", () => {
+    updateTodayHarvestRecordedStatus();
+    runAvailabilityChecksIfDue();
+  });
 }
 
 function setHeaderRecordSyncLoading(isLoading){
@@ -23128,6 +23169,7 @@ function editHarvestRecord(id, options = {}){
 
 function renderRecordList(){
   const box = document.getElementById("recordList");
+  updateTodayHarvestRecordedStatus();
   renderDeletedRecordList();
   const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(records);
   const historyItems = [
