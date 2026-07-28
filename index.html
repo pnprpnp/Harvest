@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260728-forecast-bed-delay-lines-1">
+<meta name="harvestnavi-version" content="20260728-seedling-bed-status-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3940,6 +3940,12 @@ button.monitorSaveBtn:active{
   line-height:1.6;
   text-align:left;
 }
+.dashboardMetricsGroup{
+  margin-bottom:10px;
+}
+.dashboardMetricsGroup > .sectionTitle{
+  margin:0 0 10px;
+}
 .dashboardRangeBox{
   margin-top:10px;
   padding:10px;
@@ -4626,6 +4632,85 @@ button.monitorSaveBtn:active{
   font-size:12px;
   font-weight:800;
   line-height:1.3;
+}
+.dashboardSeedlingStatusHead{
+  margin-bottom:12px;
+}
+.dashboardSeedlingStatusHead .sectionTitle{
+  margin-bottom:4px;
+}
+.dashboardSeedlingStatusNote{
+  color:#64748b;
+  font-size:12px;
+  line-height:1.55;
+}
+.bed.bedCollapsed.dashboardSeedlingStatusBed{
+  min-height:142px;
+  border-color:#a7f3d0;
+  background:linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+}
+.dashboardSeedlingStatusBed .bedTitle{
+  cursor:default;
+}
+.bed.bedCollapsed.dashboardSeedlingStatusBed.is-empty{
+  border-color:#d1d5db;
+  background:#f8fafc;
+}
+.dashboardSeedlingStatusLots{
+  display:grid;
+  align-content:start;
+  gap:5px;
+  min-width:0;
+}
+.dashboardSeedlingStatusLot{
+  display:grid;
+  gap:2px;
+  min-width:0;
+  padding:6px;
+  border:1px solid #bbf7d0;
+  border-radius:9px;
+  background:rgba(255,255,255,.9);
+}
+.dashboardSeedlingStatusQuality{
+  color:#166534;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.dashboardSeedlingStatusQuality.is-small{
+  color:#1d4ed8;
+}
+.dashboardSeedlingStatusQuality.is-problem{
+  color:#b45309;
+}
+.dashboardSeedlingStatusQuality.is-mixed{
+  color:#7c3aed;
+}
+.dashboardSeedlingStatusQuality.is-unknown{
+  color:#64748b;
+}
+.dashboardSeedlingStatusAge{
+  color:#334155;
+  font-size:11px;
+  font-weight:800;
+  line-height:1.3;
+}
+.dashboardSeedlingStatusCount{
+  color:#64748b;
+  font-size:10px;
+  font-weight:700;
+  line-height:1.25;
+}
+.dashboardSeedlingStatusEmpty{
+  display:grid;
+  flex:1 1 auto;
+  place-items:center;
+  color:#94a3b8;
+  font-size:11px;
+  font-weight:700;
+  line-height:1.45;
+  text-align:center;
 }
 .dashboardForecastColorScale{
   display:grid;
@@ -7872,8 +7957,8 @@ requestAnimationFrame(function(){
       <div class="dashboardSubtabBar" role="tablist" aria-label="集計の表示内容" onkeydown="handleDashboardSubtabKeydown(event)">
         <button id="dashboardSubtabGuideBtn" type="button" class="dashboardSubtabBtn active" role="tab" aria-selected="true" aria-controls="dashboardSubtabGuide" data-dashboard-subtab="guide" onclick="setDashboardSubtab('guide')">目安</button>
         <button id="dashboardSubtabCalendarBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabCalendar" data-dashboard-subtab="calendar" onclick="setDashboardSubtab('calendar')">カレンダー</button>
+        <button id="dashboardSubtabSeedlingsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabSeedlings" data-dashboard-subtab="seedlings" onclick="setDashboardSubtab('seedlings')">苗の状況</button>
         <button id="dashboardSubtabGraphsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGraphs" data-dashboard-subtab="graphs" onclick="setDashboardSubtab('graphs')">グラフ</button>
-        <button id="dashboardSubtabCardsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabCards" data-dashboard-subtab="cards" onclick="setDashboardSubtab('cards')">カード</button>
       </div>
     </div>
 
@@ -7941,7 +8026,24 @@ requestAnimationFrame(function(){
       </div>
     </div>
 
+    <div id="dashboardSubtabSeedlings" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabSeedlingsBtn" data-dashboard-subtab-panel="seedlings" hidden>
+      <div class="card dashboardSeedlingStatusCard">
+        <div class="dashboardSeedlingStatusHead">
+          <div class="sectionTitle">現在の苗の状況</div>
+          <div class="dashboardSeedlingStatusNote">苗植え記録の品質メモと定植日を、現在のベッドごとに表示します。</div>
+        </div>
+        <div id="dashboardSeedlingStatusBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="苗の状況を表示する号棟"></div>
+        <div id="dashboardSeedlingStatusBeds" class="dashboardForecastBeds dashboardSeedlingStatusBeds"></div>
+      </div>
+    </div>
+
     <div id="dashboardSubtabGraphs" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabGraphsBtn" data-dashboard-subtab-panel="graphs" hidden>
+      <section class="dashboardMetricsGroup" aria-labelledby="dashboardMetricsTitle">
+        <div id="dashboardMetricsTitle" class="sectionTitle">集計カード</div>
+        <div class="dashboardCardGrid" id="dashboardMetrics"></div>
+        <div id="dashboardMetricsNote" class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
+      </section>
+
       <div class="card dashboardChartCard">
         <div class="dashboardChartHead">
           <div class="dashboardChartHeadMain">
@@ -7978,6 +8080,11 @@ requestAnimationFrame(function(){
         <div id="dashboardLossChart"></div>
       </div>
 
+      <details id="dashboardHistoryDetails" class="card dashboardRangeBox dashboardRangeDetails dashboardHistoryDetails">
+        <summary class="sectionTitle">集計カードの履歴</summary>
+        <div id="dashboardHistoryContent" class="dashboardHistoryPanel"></div>
+      </details>
+
       <div class="card dashboardStartDayCard">
         <div class="dashboardControlRow">
           <div class="dashboardStartDayField">
@@ -7986,25 +8093,6 @@ requestAnimationFrame(function(){
           </div>
         </div>
       </div>
-    </div>
-
-    <div id="dashboardSubtabCards" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabCardsBtn" data-dashboard-subtab-panel="cards" hidden>
-      <div class="dashboardCardGrid" id="dashboardMetrics"></div>
-      <div id="dashboardMetricsNote" class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
-
-      <div class="card dashboardStartDayCard">
-        <div class="dashboardControlRow">
-          <div class="dashboardStartDayField">
-            <label for="dashboardCardStartDayInput">集計の基準日</label>
-            <select id="dashboardCardStartDayInput" class="dashboardStartDayInput" data-dashboard-start-day-input></select>
-          </div>
-        </div>
-      </div>
-
-      <details id="dashboardHistoryDetails" class="card dashboardRangeBox dashboardRangeDetails dashboardHistoryDetails">
-        <summary class="sectionTitle">集計カードの履歴</summary>
-        <div id="dashboardHistoryContent" class="dashboardHistoryPanel"></div>
-      </details>
 
       <details class="card dashboardRangeBox dashboardRangeDetails">
         <summary class="sectionTitle">記録一覧</summary>
@@ -8541,6 +8629,7 @@ let harvestCasesAutoEstimated = false;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
 let dashboardHarvestForecastBuilding = null;
+let dashboardSeedlingStatusBuilding = null;
 let dashboardHarvestForecastModelCache = null;
 let dashboardHarvestForecastCasesValue = null;
 let dashboardHarvestForecastLossValue = null;
@@ -15780,7 +15869,8 @@ function getDefaultDashboardStartDay(){
 }
 
 function normalizeDashboardSubtab(value){
-  return ["guide", "calendar", "graphs", "cards"].includes(value) ? value : "guide";
+  if(value === "cards") return "graphs";
+  return ["guide", "calendar", "seedlings", "graphs"].includes(value) ? value : "guide";
 }
 
 function loadDashboardFilter(){
@@ -17667,6 +17757,185 @@ function renderDashboardHarvestForecast(){
   renderDashboardHarvestForecastView(model);
 }
 
+function getCurrentPlantingEventByPallet(referenceDate = new Date()){
+  const referenceDay = startOfLocalDay(referenceDate);
+  const changes = [];
+
+  records.forEach(record => {
+    if(record?.type === "partialHarvest") return;
+    const recordDate = parseDateOnlyString(String(record?.date || "").trim());
+    if(!recordDate || startOfLocalDay(recordDate).getTime() > referenceDay.getTime()) return;
+    const palletKeys = getPalletKeysFromRecord(record);
+    if(!palletKeys.length) return;
+    changes.push({
+      date: startOfLocalDay(recordDate),
+      typeOrder: 0,
+      itemOrder: Number(record?.id || 0),
+      palletKeys,
+      event: null
+    });
+  });
+
+  plantingEvents.forEach(event => {
+    const plantingDate = parseDateOnlyString(String(event?.plantingDate || "").trim());
+    if(!plantingDate || startOfLocalDay(plantingDate).getTime() > referenceDay.getTime()) return;
+    const palletKeys = Array.isArray(event?.plantingPalletKeys)
+      ? event.plantingPalletKeys.filter(isValidPalletKeyString)
+      : [];
+    if(!palletKeys.length) return;
+    changes.push({
+      date: startOfLocalDay(plantingDate),
+      typeOrder: 1,
+      itemOrder: Number(event?.eventId || 0),
+      palletKeys,
+      event
+    });
+  });
+
+  changes.sort((left, right) => (
+    left.date.getTime() - right.date.getTime()
+    || left.typeOrder - right.typeOrder
+    || left.itemOrder - right.itemOrder
+  ));
+
+  const currentByPallet = new Map();
+  changes.forEach(change => {
+    change.palletKeys.forEach(key => {
+      if(change.event){
+        currentByPallet.set(key, {
+          event: change.event,
+          plantingDate: change.date
+        });
+      }else{
+        currentByPallet.delete(key);
+      }
+    });
+  });
+  return currentByPallet;
+}
+
+function getDashboardSeedlingQualityClass(value){
+  const qualityMemo = normalizeQualityMemo(value);
+  if(!qualityMemo.tags.length && !qualityMemo.other) return "is-unknown";
+  if(qualityMemo.tags.includes("elongated") || qualityMemo.tags.includes("chip")) return "is-problem";
+  if(qualityMemo.other || qualityMemo.tags.length > 1) return "is-mixed";
+  if(qualityMemo.tags[0] === "small") return "is-small";
+  return "";
+}
+
+function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
+  const referenceDay = startOfLocalDay(referenceDate);
+  const currentByPallet = getCurrentPlantingEventByPallet(referenceDay);
+  const bedLotMaps = new Map();
+
+  currentByPallet.forEach((status, palletKey) => {
+    const pallet = parsePalletKey(palletKey);
+    if(!BUILDINGS.includes(pallet.building)
+      || !bedOrder.includes(pallet.bed)
+      || !Number.isFinite(pallet.number)) return;
+    const bedKey = `${pallet.building}-${pallet.bed}`;
+    if(!bedLotMaps.has(bedKey)) bedLotMaps.set(bedKey, new Map());
+    const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
+    const plantingDateText = formatDateOnlyString(status.plantingDate);
+    const lotKey = `${plantingDateText}\n${qualityText}`;
+    const lots = bedLotMaps.get(bedKey);
+    if(!lots.has(lotKey)){
+      lots.set(lotKey, {
+        plantingDate: status.plantingDate,
+        qualityText,
+        qualityClass: getDashboardSeedlingQualityClass(status.event?.qualityMemo),
+        palletCount: 0,
+        firstPalletNumber: pallet.number
+      });
+    }
+    const lot = lots.get(lotKey);
+    lot.palletCount += 1;
+    lot.firstPalletNumber = Math.min(lot.firstPalletNumber, pallet.number);
+  });
+
+  const bedLots = new Map();
+  bedLotMaps.forEach((lots, bedKey) => {
+    bedLots.set(bedKey, [...lots.values()]
+      .map(lot => ({
+        ...lot,
+        ageDays: Math.max(0, getLocalDayDiff(lot.plantingDate, referenceDay))
+      }))
+      .sort((left, right) => (
+        left.firstPalletNumber - right.firstPalletNumber
+        || left.plantingDate.getTime() - right.plantingDate.getTime()
+      )));
+  });
+
+  return {
+    referenceDate: referenceDay,
+    bedLots
+  };
+}
+
+function renderDashboardSeedlingStatusBeds(model){
+  const container = document.getElementById("dashboardSeedlingStatusBeds");
+  if(!container) return;
+  const building = BUILDINGS.includes(dashboardSeedlingStatusBuilding)
+    ? dashboardSeedlingStatusBuilding
+    : BUILDINGS[0];
+
+  container.innerHTML = bedMap.map(bed => {
+    const lots = model.bedLots.get(`${building}-${bed}`) || [];
+    return `
+      <div class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed${lots.length ? "" : " is-empty"}">
+        <div class="bedTitle">
+          <span class="dashboardForecastBedName">${bed}ベッド</span>
+        </div>
+        ${lots.length ? `
+          <div class="dashboardSeedlingStatusLots">
+            ${lots.map(lot => `
+              <div class="dashboardSeedlingStatusLot">
+                <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
+                <span class="dashboardSeedlingStatusAge">定植から${lot.ageDays}日</span>
+                <span class="dashboardSeedlingStatusCount">${lot.palletCount}パレット</span>
+              </div>
+            `).join("")}
+          </div>
+        ` : `<div class="dashboardSeedlingStatusEmpty">表示できる<br>定植記録なし</div>`}
+      </div>
+    `;
+  }).join("");
+}
+
+function setDashboardSeedlingStatusBuilding(building){
+  const normalized = Number(building);
+  if(!BUILDINGS.includes(normalized)) return;
+  dashboardSeedlingStatusBuilding = normalized;
+  document.querySelectorAll("[data-dashboard-seedling-building]").forEach(button => {
+    button.classList.toggle("active", Number(button.dataset.dashboardSeedlingBuilding) === normalized);
+  });
+  renderDashboardSeedlingStatusBeds(buildDashboardSeedlingStatusModel());
+}
+
+function renderDashboardSeedlingStatus(){
+  const tabs = document.getElementById("dashboardSeedlingStatusBuildingTabs");
+  if(!tabs) return;
+  const model = buildDashboardSeedlingStatusModel();
+  if(!BUILDINGS.includes(dashboardSeedlingStatusBuilding)){
+    const startupBuilding = Number(getStartupHarvestBuilding());
+    dashboardSeedlingStatusBuilding = BUILDINGS.includes(startupBuilding) ? startupBuilding : BUILDINGS[0];
+  }
+
+  tabs.innerHTML = BUILDINGS.map(building => {
+    const bedCount = bedOrder.filter(bed => (
+      (model.bedLots.get(`${building}-${bed}`) || []).length > 0
+    )).length;
+    return `
+      <button type="button" class="dashboardForecastBuildingBtn ${building === dashboardSeedlingStatusBuilding ? "active" : ""}"
+        data-dashboard-seedling-building="${building}" onclick="setDashboardSeedlingStatusBuilding(${building})">
+        ${building}号棟
+        <span class="dashboardForecastBuildingDay">${bedCount}ベッド</span>
+      </button>
+    `;
+  }).join("");
+  renderDashboardSeedlingStatusBeds(model);
+}
+
 function renderDashboard(){
   populateDashboardStartDayOptions();
   const startDayInputs = getDashboardStartDayInputs();
@@ -17689,6 +17958,7 @@ function renderDashboard(){
 
   renderDashboardHarvestForecast();
   renderDashboardHarvestStartTimeline();
+  renderDashboardSeedlingStatus();
   renderDashboardHistory(period);
 
   const casesGranularity = ["month", "year"].includes(dashboardFilter.casesGranularity) ? dashboardFilter.casesGranularity : "month";
