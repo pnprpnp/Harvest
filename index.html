@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260728-partial-harvest-updates-1">
+<meta name="harvestnavi-version" content="20260728-calendar-info-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4085,6 +4085,15 @@ button.monitorSaveBtn:active{
 .dashboardHarvestStartCard .sectionTitle{
   margin-bottom:12px;
 }
+.dashboardHarvestStartTitleRow{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:12px;
+}
+.dashboardHarvestStartCard .dashboardHarvestStartTitleRow .sectionTitle{
+  margin-bottom:0;
+}
 .dashboardHarvestStartMonthColumns{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -4198,6 +4207,61 @@ button.monitorSaveBtn:active{
   font-weight:850;
   line-height:1.1;
   white-space:nowrap;
+}
+.dashboardCalendarInfoBody{
+  display:grid;
+  gap:12px;
+  white-space:normal;
+}
+.dashboardCalendarInfoLead,
+.dashboardCalendarInfoText{
+  margin:0;
+}
+.dashboardCalendarInfoSection{
+  display:grid;
+  gap:8px;
+  padding:12px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#f8fafc;
+}
+.dashboardCalendarInfoSectionTitle{
+  color:#0f172a;
+  font-size:13px;
+  font-weight:850;
+}
+.dashboardCalendarInfoExample{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.dashboardCalendarInfoMonthExample,
+.dashboardCalendarInfoDateExample{
+  display:inline-flex;
+  min-height:24px;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  padding:4px 7px;
+  border:1px solid #ddd6fe;
+  border-radius:7px;
+  background:#f5f3ff;
+  color:#334155;
+  font-size:10px;
+  font-weight:850;
+  white-space:nowrap;
+}
+.dashboardCalendarInfoDateExample{
+  border-color:#e2e8f0;
+  background:#fff;
+}
+.dashboardCalendarInfoNote{
+  margin:0;
+  padding-left:1.4em;
+}
+.dashboardCalendarInfoNote li + li{
+  margin-top:4px;
 }
 .dashboardHarvestForecastCard{
   padding:16px;
@@ -7857,7 +7921,10 @@ requestAnimationFrame(function(){
 
     <div id="dashboardSubtabCalendar" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabCalendarBtn" data-dashboard-subtab-panel="calendar" hidden>
       <div class="card dashboardHarvestStartCard">
-        <div class="sectionTitle">カレンダー</div>
+        <div class="dashboardHarvestStartTitleRow">
+          <div class="sectionTitle">カレンダー</div>
+          <button id="dashboardCalendarInfoBtn" type="button" class="dashboardForecastInfoBtn" onclick="openDashboardCalendarInfoWindow()" aria-label="カレンダーの見方" aria-haspopup="dialog" aria-controls="dashboardCalendarInfoModal">i</button>
+        </div>
         <div id="dashboardHarvestStartTimeline" class="dashboardHarvestStartMonthColumns"></div>
       </div>
     </div>
@@ -7964,6 +8031,67 @@ requestAnimationFrame(function(){
     <div id="dashboardForecastInfoWindowBody" class="recordDetailWindowBody">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。
 
 収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
+  </div>
+</div>
+<div id="dashboardCalendarInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardCalendarInfoWindowTitle" aria-describedby="dashboardCalendarInfoWindowBody" onclick="if(event.target === event.currentTarget) closeDashboardCalendarInfoWindow()">
+  <div class="recordDetailWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="dashboardCalendarInfoWindowTitle" class="recordDetailWindowTitle">カレンダーの見方</div>
+      <button id="dashboardCalendarInfoWindowClose" type="button" class="recordDetailWindowClose" onclick="closeDashboardCalendarInfoWindow()">閉じる</button>
+    </div>
+    <div id="dashboardCalendarInfoWindowBody" class="recordDetailWindowBody dashboardCalendarInfoBody">
+      <p class="dashboardCalendarInfoLead">各行には、その棟で新しい収穫周期を始めた日と、前回の収穫開始日からの経過日数を表示します。</p>
+
+      <section class="dashboardCalendarInfoSection">
+        <div class="dashboardCalendarInfoSectionTitle">月と日付</div>
+        <div class="dashboardCalendarInfoExample">
+          <span class="dashboardCalendarInfoMonthExample">2026年7月（今月）</span>
+          <span class="dashboardCalendarInfoDateExample">27(月)</span>
+        </div>
+        <p class="dashboardCalendarInfoText">「2026」は年、「7」は月です。「27」は日付、「月」は曜日を表します。カレンダーには先月と今月を表示します。</p>
+      </section>
+
+      <section class="dashboardCalendarInfoSection">
+        <div class="dashboardCalendarInfoSectionTitle">通常収穫から始めた場合</div>
+        <div class="dashboardCalendarInfoExample">
+          <span class="dashboardHarvestStartEntry">
+            <span class="dashboardHarvestStartBuilding">7号棟</span>
+            <span class="dashboardHarvestStartElapsed">14日</span>
+          </span>
+        </div>
+        <ul class="dashboardCalendarInfoNote">
+          <li>「7」は収穫を始めた号棟番号です。</li>
+          <li>「14日」は、7号棟の前回の収穫開始日から今回の開始日までの日数です。</li>
+        </ul>
+      </section>
+
+      <section class="dashboardCalendarInfoSection">
+        <div class="dashboardCalendarInfoSectionTitle">部分収穫から始めた場合</div>
+        <div class="dashboardCalendarInfoExample">
+          <span class="dashboardHarvestStartPartial">(7:14日)</span>
+        </div>
+        <ul class="dashboardCalendarInfoNote">
+          <li>かっこ内の「7」は号棟番号です。</li>
+          <li>「14日」は、その棟の前回の収穫開始日からの経過日数です。</li>
+          <li>黄色の短縮表示は、部分収穫から新しい収穫周期を始めたことを表します。</li>
+        </ul>
+      </section>
+
+      <section class="dashboardCalendarInfoSection">
+        <div class="dashboardCalendarInfoSectionTitle">「初回」と開始日の判定</div>
+        <div class="dashboardCalendarInfoExample">
+          <span class="dashboardHarvestStartEntry">
+            <span class="dashboardHarvestStartBuilding">7号棟</span>
+            <span class="dashboardHarvestStartElapsed">初回</span>
+          </span>
+        </div>
+        <ul class="dashboardCalendarInfoNote">
+          <li>「初回」は、比較できる前回の収穫開始記録がないことを表します。</li>
+          <li>同じ棟の収穫記録が7日より長く空いた後の最初の収穫を、新しい収穫開始として表示します。</li>
+          <li>同じ日に通常収穫と部分収穫の開始がある場合は、通常収穫を先に表示します。</li>
+        </ul>
+      </section>
+    </div>
   </div>
 </div>
 <div id="dashboardForecastDaysAllModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardForecastDaysAllWindowTitle" onclick="if(event.target === event.currentTarget) closeDashboardForecastDaysAllWindow()">
@@ -8393,6 +8521,7 @@ let recordDetailReturnFocus = null;
 let partialHarvestEditReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
 let dashboardForecastInfoReturnFocus = null;
+let dashboardCalendarInfoReturnFocus = null;
 let dashboardForecastDaysAllReturnFocus = null;
 let palletDragState = null;
 let recordCasesEdited = false;
@@ -8671,6 +8800,7 @@ function closeDashboardForecastInfoWindow(){
     !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
     !document.getElementById("recordDetailModal")?.classList.contains("show") &&
     !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardCalendarInfoModal")?.classList.contains("show") &&
     !document.getElementById("dashboardForecastDaysAllModal")?.classList.contains("show") &&
     !isMonitorPreviewOpen()
   ){
@@ -8678,6 +8808,37 @@ function closeDashboardForecastInfoWindow(){
   }
   const returnFocus = dashboardForecastInfoReturnFocus;
   dashboardForecastInfoReturnFocus = null;
+  requestAnimationFrame(() => returnFocus?.focus?.());
+}
+
+function openDashboardCalendarInfoWindow(){
+  const modal = document.getElementById("dashboardCalendarInfoModal");
+  const closeButton = document.getElementById("dashboardCalendarInfoWindowClose");
+  if(!modal) return;
+  dashboardCalendarInfoReturnFocus = document.activeElement;
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => closeButton?.focus());
+}
+
+function closeDashboardCalendarInfoWindow(){
+  const modal = document.getElementById("dashboardCalendarInfoModal");
+  if(modal) modal.classList.remove("show");
+  if(
+    !isMonitorModeOpen &&
+    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
+    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
+    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
+    !document.getElementById("recordDetailModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardForecastInfoModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardForecastDaysAllModal")?.classList.contains("show") &&
+    !isMonitorPreviewOpen()
+  ){
+    document.body.style.overflow = "";
+  }
+  const returnFocus = dashboardCalendarInfoReturnFocus;
+  dashboardCalendarInfoReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
 }
 
@@ -8704,6 +8865,7 @@ function closeDashboardForecastDaysAllWindow(){
     !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
     !document.getElementById("recordDetailModal")?.classList.contains("show") &&
     !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
+    !document.getElementById("dashboardCalendarInfoModal")?.classList.contains("show") &&
     !document.getElementById("dashboardForecastInfoModal")?.classList.contains("show") &&
     !isMonitorPreviewOpen()
   ){
@@ -9697,6 +9859,7 @@ function unlockPageAfterRecordUiClose(){
     "forecastSettingsModal",
     "dashboardModal",
     "dashboardCasesAllModal",
+    "dashboardCalendarInfoModal",
     "dashboardForecastInfoModal",
     "dashboardForecastDaysAllModal",
     "plantingAgeModal",
@@ -25151,6 +25314,11 @@ window.onload = () => {
     }
     if(isMonitorPreviewOpen()){
       resolveMonitorPreview(false);
+      return;
+    }
+    const dashboardCalendarInfoModal = document.getElementById("dashboardCalendarInfoModal");
+    if(dashboardCalendarInfoModal?.classList.contains("show")){
+      closeDashboardCalendarInfoWindow();
       return;
     }
     const dashboardModal = document.getElementById("dashboardModal");
