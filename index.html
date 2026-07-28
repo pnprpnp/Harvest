@@ -4183,6 +4183,22 @@ button.monitorSaveBtn:active{
   line-height:1.15;
   white-space:nowrap;
 }
+.dashboardHarvestStartPartial{
+  display:inline-flex;
+  min-height:20px;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  padding:2px 5px;
+  border:1px solid #f59e0b;
+  border-radius:6px;
+  background:#fffbeb;
+  color:#92400e;
+  font-size:9px;
+  font-weight:850;
+  line-height:1.1;
+  white-space:nowrap;
+}
 .dashboardHarvestForecastCard{
   padding:16px;
 }
@@ -15359,24 +15375,35 @@ function syncCurrentBuildingToCasePlacement(options = {}){
   }
 }
 
-function getHarvestCycleStartsByBuilding(){
+function getHarvestCycleStartDetailsByBuilding(sourceRecords = records){
   const dateMapsByBuilding = new Map(BUILDINGS.map(building => [building, new Map()]));
-  records.forEach(record => {
-    if(record.type === "partialHarvest") return;
+  sourceRecords.forEach(record => {
     const date = parseDateOnlyString(record.date);
     if(!date) return;
+    const isPartialHarvest = record.type === "partialHarvest";
     getDashboardRecordBuildings(record).forEach(building => {
-      dateMapsByBuilding.get(building)?.set(record.date, date);
+      const dateMap = dateMapsByBuilding.get(building);
+      if(!dateMap) return;
+      const existing = dateMap.get(record.date) || {
+        date,
+        hasFullHarvest: false,
+        hasPartialHarvest: false
+      };
+      if(isPartialHarvest) existing.hasPartialHarvest = true;
+      else existing.hasFullHarvest = true;
+      dateMap.set(record.date, existing);
     });
   });
 
   const startsByBuilding = new Map();
   dateMapsByBuilding.forEach((dateMap, building) => {
-    const dates = [...dateMap.values()].sort((a, b) => a.getTime() - b.getTime());
-    const cycleStarts = dates.filter((date, index) => {
+    const activities = [...dateMap.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const cycleStarts = activities.filter((activity, index) => {
       if(index === 0) return true;
-      const previousDate = dates[index - 1];
-      const diffDays = Math.floor((startOfLocalDay(date).getTime() - startOfLocalDay(previousDate).getTime()) / 86400000);
+      const previousActivity = activities[index - 1];
+      const diffDays = Math.floor(
+        (startOfLocalDay(activity.date).getTime() - startOfLocalDay(previousActivity.date).getTime()) / 86400000
+      );
       return diffDays > HARVEST_CYCLE_GAP_DAYS;
     });
     startsByBuilding.set(building, cycleStarts);
@@ -15384,22 +15411,47 @@ function getHarvestCycleStartsByBuilding(){
   return startsByBuilding;
 }
 
-function getDashboardHarvestStartItemsByDate(){
+function getHarvestCycleStartsByBuilding(sourceRecords = records){
+  const detailsByBuilding = getHarvestCycleStartDetailsByBuilding(sourceRecords);
+  return new Map([...detailsByBuilding].map(([building, starts]) => (
+    [building, starts.map(start => start.date)]
+  )));
+}
+
+function getDashboardHarvestStartItemsByDate(sourceRecords = records){
   const itemsByDate = new Map();
-  const startsByBuilding = getHarvestCycleStartsByBuilding();
+  const startsByBuilding = getHarvestCycleStartDetailsByBuilding(sourceRecords);
   BUILDINGS.forEach(building => {
     const starts = startsByBuilding.get(building) || [];
-    starts.forEach((date, index) => {
-      const dateKey = formatDateOnlyString(date);
-      const previousDate = index > 0 ? starts[index - 1] : null;
-      const daysSincePreviousStart = previousDate
-        ? Math.max(0, Math.floor((startOfLocalDay(date).getTime() - startOfLocalDay(previousDate).getTime()) / 86400000))
+    starts.forEach((start, index) => {
+      const dateKey = formatDateOnlyString(start.date);
+      const previousStart = index > 0 ? starts[index - 1] : null;
+      const daysSincePreviousStart = previousStart
+        ? Math.max(0, Math.floor(
+          (startOfLocalDay(start.date).getTime() - startOfLocalDay(previousStart.date).getTime()) / 86400000
+        ))
         : null;
       if(!itemsByDate.has(dateKey)) itemsByDate.set(dateKey, []);
-      itemsByDate.get(dateKey).push({ building, daysSincePreviousStart });
+      if(start.hasFullHarvest){
+        itemsByDate.get(dateKey).push({
+          building,
+          daysSincePreviousStart,
+          type: "fullHarvest"
+        });
+      }
+      if(start.hasPartialHarvest){
+        itemsByDate.get(dateKey).push({
+          building,
+          daysSincePreviousStart,
+          type: "partialHarvest"
+        });
+      }
     });
   });
-  itemsByDate.forEach(items => items.sort((a, b) => a.building - b.building));
+  itemsByDate.forEach(items => items.sort((a, b) => (
+    Number(a.type === "partialHarvest") - Number(b.type === "partialHarvest")
+    || a.building - b.building
+  )));
   return itemsByDate;
 }
 
@@ -15444,6 +15496,9 @@ function renderDashboardHarvestStartTimeline(referenceDate = new Date()){
               const elapsedLabel = Number.isFinite(item.daysSincePreviousStart)
                 ? `前回の収穫開始日から${item.daysSincePreviousStart}日`
                 : "記録上の最初の収穫開始日";
+              if(item.type === "partialHarvest"){
+                return `<span class="dashboardHarvestStartPartial" aria-label="${item.building}号棟を部分収穫で開始。${elapsedLabel}">(${item.building}:${elapsedText})</span>`;
+              }
               return `<span class="dashboardHarvestStartEntry"><span class="dashboardHarvestStartBuilding">${item.building}号棟</span><span class="dashboardHarvestStartElapsed" aria-label="${elapsedLabel}">${elapsedText}</span></span>`;
             }).join("")}
           </div>
