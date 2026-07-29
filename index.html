@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-calendar-full-partial-starts-1">
+<meta name="harvestnavi-version" content="20260729-seedling-vertical-map-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4664,6 +4664,44 @@ button.monitorSaveBtn:active{
 .dashboardSeedlingStatusCaution li + li{
   margin-top:3px;
 }
+.dashboardSeedlingStatusMapGuide{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px 10px;
+  margin-top:10px;
+  color:#64748b;
+  font-size:10px;
+  font-weight:750;
+}
+.dashboardSeedlingStatusMapGuideText{
+  flex-basis:100%;
+  line-height:1.4;
+}
+.dashboardSeedlingStatusMapGuideItem{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+}
+.dashboardSeedlingStatusMapGuideSwatch{
+  width:11px;
+  height:11px;
+  box-sizing:border-box;
+  border:1px solid rgba(15,23,42,.12);
+  border-radius:3px;
+  background:#4ade80;
+}
+.dashboardSeedlingStatusMapGuideSwatch.is-small{background:#60a5fa;}
+.dashboardSeedlingStatusMapGuideSwatch.is-problem{background:#f59e0b;}
+.dashboardSeedlingStatusMapGuideSwatch.is-mixed{background:#a78bfa;}
+.dashboardSeedlingStatusMapGuideSwatch.is-unknown{
+  background:repeating-linear-gradient(135deg, #e2e8f0 0 3px, #cbd5e1 3px 6px);
+}
+.dashboardSeedlingStatusMapGuideSwatch.is-unplanted{background:#f1f5f9;}
+.dashboardSeedlingStatusBeds{
+  align-items:start;
+}
 .bed.bedCollapsed.dashboardSeedlingStatusBed{
   min-height:142px;
   border-color:#a7f3d0;
@@ -4676,6 +4714,57 @@ button.monitorSaveBtn:active{
   border-color:#d1d5db;
   background:#f8fafc;
 }
+.dashboardSeedlingBedMap{
+  width:min(112px, 100%);
+  margin:0 auto 8px;
+}
+.dashboardSeedlingBedMapHeader,
+.dashboardSeedlingBedMapFooter{
+  display:grid;
+  grid-template-columns:30px repeat(2, minmax(0, 1fr));
+  align-items:center;
+  color:#64748b;
+  font-size:9px;
+  font-weight:850;
+  line-height:1.2;
+  text-align:center;
+}
+.dashboardSeedlingBedMapHeader{margin-bottom:3px;}
+.dashboardSeedlingBedMapFooter{margin-top:3px;}
+.dashboardSeedlingBedMapDirection{
+  text-align:left;
+}
+.dashboardSeedlingBedMapGrid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  grid-template-rows:repeat(39, minmax(3px, 1fr));
+  height:164px;
+  margin-left:30px;
+  overflow:hidden;
+  border:1px solid #94a3b8;
+  border-radius:5px;
+  background:#f1f5f9;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.45);
+}
+.dashboardSeedlingBedMapCell{
+  display:block;
+  min-height:0;
+  border-bottom:1px solid rgba(255,255,255,.2);
+  background:#4ade80;
+}
+.dashboardSeedlingBedMapCell:nth-child(odd){
+  border-right:1px solid rgba(15,23,42,.24);
+}
+.dashboardSeedlingBedMapCell.is-section-start{
+  border-top:1px solid rgba(15,23,42,.5);
+}
+.dashboardSeedlingBedMapCell.is-small{background:#60a5fa;}
+.dashboardSeedlingBedMapCell.is-problem{background:#f59e0b;}
+.dashboardSeedlingBedMapCell.is-mixed{background:#a78bfa;}
+.dashboardSeedlingBedMapCell.is-unknown{
+  background:repeating-linear-gradient(135deg, #e2e8f0 0 3px, #cbd5e1 3px 6px);
+}
+.dashboardSeedlingBedMapCell.is-unplanted{background:#f1f5f9;}
 .dashboardSeedlingStatusLots{
   display:grid;
   align-content:start;
@@ -5197,6 +5286,9 @@ button.monitorSaveBtn:active{
   }
   .dashboardForecastBeds{
     grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+  .dashboardSeedlingStatusBeds{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
   .dashboardForecastDayHeader,
   .dashboardForecastDayRow{
@@ -8056,6 +8148,15 @@ requestAnimationFrame(function(){
                 <li>「大きい」「小さい」は、記録時の見た目による評価です。時期に応じた適正な大きさとの差を示すものではありません。</li>
                 <li>同じ日に苗植えした場所の品質メモは、ベッドごとではなく一括で記録しています。そのため、実際の苗の状態と異なる場合があります。</li>
               </ul>
+            </div>
+            <div class="dashboardSeedlingStatusMapGuide" aria-label="苗の配置図の色分け">
+              <span class="dashboardSeedlingStatusMapGuideText">縦図は上が奥、下が手前です。左列は奇数、右列は偶数のパレットを表します。</span>
+              <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch"></span>普通・大きい</span>
+              <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-small"></span>小さい</span>
+              <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-problem"></span>徒長・欠け</span>
+              <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-mixed"></span>複数・その他</span>
+              <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unknown"></span>記録なし</span>
+              <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>未定植</span>
             </div>
           </div>
         </div>
@@ -18160,6 +18261,59 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
   };
 }
 
+function getDashboardSeedlingBedMapCellHtml(model, building, bed, number, sectionStart){
+  const status = model.currentByPallet.get(getPalletKey(building, bed, number));
+  if(!status){
+    const label = `${number}番 未定植`;
+    return `<span class="dashboardSeedlingBedMapCell is-unplanted${sectionStart ? " is-section-start" : ""}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"></span>`;
+  }
+
+  const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
+  const qualityClass = getDashboardSeedlingQualityClass(status.event?.qualityMemo);
+  const ageDays = Math.max(0, getLocalDayDiff(status.plantingDate, model.referenceDate));
+  const label = `${number}番 ${qualityText} ${ageDays}日経過`;
+  return `<span class="dashboardSeedlingBedMapCell ${qualityClass}${sectionStart ? " is-section-start" : ""}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"></span>`;
+}
+
+function getDashboardSeedlingBedMapHtml(model, building, bed){
+  const cells = [];
+  for(let row = ROWS; row >= 1; row--){
+    const displayRowIndex = ROWS - row;
+    const sectionStart = displayRowIndex > 0
+      && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
+    cells.push(getDashboardSeedlingBedMapCellHtml(
+      model,
+      building,
+      bed,
+      row * 2 - 1,
+      sectionStart
+    ));
+    cells.push(getDashboardSeedlingBedMapCellHtml(
+      model,
+      building,
+      bed,
+      row * 2,
+      sectionStart
+    ));
+  }
+
+  return `
+    <div class="dashboardSeedlingBedMap" role="group" aria-label="${bed}ベッドの苗配置。上が奥、下が手前。左列が奇数、右列が偶数">
+      <div class="dashboardSeedlingBedMapHeader" aria-hidden="true">
+        <span class="dashboardSeedlingBedMapDirection">奥</span>
+        <span>左・77</span>
+        <span>右・78</span>
+      </div>
+      <div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>
+      <div class="dashboardSeedlingBedMapFooter" aria-hidden="true">
+        <span class="dashboardSeedlingBedMapDirection">手前</span>
+        <span>左・1</span>
+        <span>右・2</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderDashboardSeedlingStatusBeds(model){
   const container = document.getElementById("dashboardSeedlingStatusBeds");
   if(!container) return;
@@ -18175,6 +18329,7 @@ function renderDashboardSeedlingStatusBeds(model){
         <div class="bedTitle">
           <span class="dashboardForecastBedName">${bed}ベッド</span>
         </div>
+        ${getDashboardSeedlingBedMapHtml(model, building, bed)}
         <div class="dashboardSeedlingStatusLots">
           ${lots.map(lot => `
             <div class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}">
