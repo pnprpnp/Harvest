@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-seedling-shared-detail-1">
+<meta name="harvestnavi-version" content="20260729-seedling-exact-age-summary-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -18335,15 +18335,12 @@ function getDashboardSeedlingBedMapHtml(model, building, bed){
 }
 
 function getDashboardSeedlingBedAgeSummary(lots){
-  const ages = (Array.isArray(lots) ? lots : [])
+  const ages = [...new Set((Array.isArray(lots) ? lots : [])
     .map(lot => lot.ageDays)
-    .filter(ageDays => Number.isFinite(ageDays));
+    .filter(ageDays => Number.isFinite(ageDays)))]
+    .sort((left, right) => left - right);
   if(!ages.length) return "経過日数なし";
-  const minAge = Math.min(...ages);
-  const maxAge = Math.max(...ages);
-  return minAge === maxAge
-    ? `${minAge}日経過`
-    : `${minAge}〜${maxAge}日経過`;
+  return `${ages.join("、")}日経過`;
 }
 
 function getDashboardSeedlingStatusLotHtml(lot){
