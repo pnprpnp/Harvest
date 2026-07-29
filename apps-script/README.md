@@ -9,6 +9,8 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
+- Version 70 makes normal record sync read-only: it no longer reformats columns, repairs
+  headers, backfills sync metadata, creates sheets, or purges trash during a read.
 - Version 69 combines harvest-record and planting-event reads into one sync request.
 - Version 68 fixes stored JSON-array parsing so the pallet-numbering migration can read existing harvest records.
 - Version 67 introduced the one-time migration of stored pallet numbers to the left-origin layout after normal API authentication.
