@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-migrate-left-origin-pallet-numbering-1">
+<meta name="harvestnavi-version" content="20260729-side-range-details-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -18052,23 +18052,6 @@ function getDashboardSeedlingQualityClass(value){
   return "";
 }
 
-function getDashboardContiguousPalletNumberGroups(numbers){
-  const sortedNumbers = [...new Set(Array.isArray(numbers) ? numbers : [])]
-    .map(Number)
-    .filter(number => Number.isInteger(number) && number >= 1 && number <= PALLETS_PER_BED)
-    .sort((left, right) => left - right);
-  const groups = [];
-  sortedNumbers.forEach(number => {
-    const current = groups[groups.length - 1];
-    if(!current || number !== current[current.length - 1] + 1){
-      groups.push([number]);
-    }else{
-      current.push(number);
-    }
-  });
-  return groups;
-}
-
 function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
   const referenceDay = startOfLocalDay(referenceDate);
   const currentByPallet = getCurrentPlantingEventByPallet(referenceDay);
@@ -18113,17 +18096,14 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
       if(!unplantedNumbers.length) return;
       if(!bedLotMaps.has(bedKey)) bedLotMaps.set(bedKey, new Map());
       const lots = bedLotMaps.get(bedKey);
-      getDashboardContiguousPalletNumberGroups(unplantedNumbers).forEach(numbers => {
-        const firstPalletNumber = numbers[0];
-        lots.set(`unplanted-${firstPalletNumber}`, {
-          plantingDate: null,
-          qualityText: "未定植",
-          qualityClass: "is-unplanted",
-          palletCount: numbers.length,
-          firstPalletNumber,
-          palletNumbers: numbers,
-          isUnplanted: true
-        });
+      lots.set("unplanted", {
+        plantingDate: null,
+        qualityText: "未定植",
+        qualityClass: "is-unplanted",
+        palletCount: unplantedNumbers.length,
+        firstPalletNumber: unplantedNumbers[0],
+        palletNumbers: unplantedNumbers,
+        isUnplanted: true
       });
     });
   });
@@ -18397,29 +18377,25 @@ function formatPlantingAgeDetailRows(items, format){
       .sort((a, b) => a.number - b.number);
     if(!bedItems.length) return;
 
-    const ranges = [];
-    let start = bedItems[0].number;
-    let prev = bedItems[0].number;
-    let currentAge = bedItems[0].ageDays;
-
-    for(let i = 1; i < bedItems.length; i++){
-      const item = bedItems[i];
-      if(item.number === prev + 1 && item.ageDays === currentAge){
-        prev = item.number;
-        continue;
+    const groupsByAge = new Map();
+    bedItems.forEach(item => {
+      const ageKey = Number.isFinite(item.ageDays) ? String(item.ageDays) : "unknown";
+      if(!groupsByAge.has(ageKey)){
+        groupsByAge.set(ageKey, {
+          ageDays: item.ageDays,
+          palletNumbers: []
+        });
       }
-      ranges.push({ start, end: prev, ageDays: currentAge });
-      start = item.number;
-      prev = item.number;
-      currentAge = item.ageDays;
-    }
-    ranges.push({ start, end: prev, ageDays: currentAge });
+      groupsByAge.get(ageKey).palletNumbers.push(item.number);
+    });
 
-    const rangeText = ranges.map(range => {
-      const numberText = range.start === range.end ? `${range.start}` : `${range.start}〜${range.end}`;
-      const ageText = Number.isFinite(range.ageDays) ? `${range.ageDays}日目` : "定植記録なし";
-      return `${numberText}: ${ageText}`;
-    }).join("、");
+    const rangeText = [...groupsByAge.values()]
+      .sort((left, right) => left.palletNumbers[0] - right.palletNumbers[0])
+      .map(group => {
+        const numberText = formatPalletNumberSideRanges(group.palletNumbers);
+        const ageText = Number.isFinite(group.ageDays) ? `${group.ageDays}日目` : "定植記録なし";
+        return `${numberText}: ${ageText}`;
+      }).join("、");
 
     if(format === "text"){
       rows.push(`${bed}ベッド ${rangeText}`);
