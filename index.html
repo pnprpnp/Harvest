@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-forecast-all-days-inline-1">
+<meta name="harvestnavi-version" content="20260729-extended-record-sync-timeout-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8653,7 +8653,7 @@ const MONITOR_DESIGN_WIDTH = 1280;
 const MONITOR_DESIGN_HEIGHT = 720;
 const MONITOR_MAX_SCALE = 2;
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
-const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 30000;
+const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 3 * 60 * 1000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
 const RECORD_AVAILABILITY_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const APP_UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -15494,8 +15494,8 @@ async function importRecordsFromGoogleSheet(options = {}){
     if(e?.name === "AbortError"){
       if(!silentErrors) showRecordImportError(
         "スプレッドシートとの同期が途中で中断されました。記録は同期前の状態へ戻しています。\n\n" +
-        "30秒以内に応答が返らなかったため、タイムアウトになった可能性があります。\n" +
-        "記録件数が多い、または Apps Script 側の処理が遅い時に起きます。"
+        "3分以内に応答が返らなかったため、タイムアウトになった可能性があります。\n" +
+        "初回の保存データ移行、記録件数の多さ、または Apps Script 側の混雑時に起きます。"
       );
       return false;
     }
