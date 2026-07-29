@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-header-date-inline-1">
+<meta name="harvestnavi-version" content="20260729-dashboard-tab-instant-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8796,6 +8796,7 @@ let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
+let dashboardRenderScheduleId = 0;
 let dashboardHarvestForecastBuilding = null;
 let dashboardSeedlingStatusBuilding = null;
 let dashboardSeedlingStatusSelectedBed = "F";
@@ -10176,6 +10177,14 @@ function runAfterUiSettles(callback){
   });
 }
 
+function scheduleDashboardRenderAfterTabSelection(){
+  const scheduleId = ++dashboardRenderScheduleId;
+  runAfterUiSettles(() => {
+    if(scheduleId !== dashboardRenderScheduleId || activeAppTab !== "dashboard") return;
+    renderDashboard();
+  });
+}
+
 function renderDashboardIfVisible(){
   const dashboardTab = document.getElementById("dashboardTab");
   if(dashboardTab && dashboardTab.style.display === "block"){
@@ -10258,9 +10267,6 @@ function switchTab(tabName){
     updateRecordActualLoss();
     drawRecordBeds();
   }
-  if(tabName === "dashboard"){
-    renderDashboard();
-  }
   if(tabName === "forecast"){
     syncCurrentBuildingToCasePlacement();
   }
@@ -10270,6 +10276,10 @@ function switchTab(tabName){
     prefetchMonitorRemoteContent();
   }
   activeAppTab = tabName;
+  if(tabName === "dashboard"){
+    syncDashboardSubtabUi();
+    scheduleDashboardRenderAfterTabSelection();
+  }
   scheduleWorkflowGuideUpdate();
   restoreTabScrollPosition(tabName);
   return true;
