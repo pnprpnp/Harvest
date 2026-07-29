@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-slim-seedling-map-1">
+<meta name="harvestnavi-version" content="20260729-seedling-shared-detail-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4699,16 +4699,29 @@ button.monitorSaveBtn:active{
   align-items:start;
 }
 .bed.bedCollapsed.dashboardSeedlingStatusBed{
-  min-height:142px;
+  width:100%;
+  height:240px;
+  min-height:240px;
+  box-sizing:border-box;
+  -webkit-appearance:none;
+  appearance:none;
+  color:inherit;
+  font:inherit;
+  text-align:left;
   border-color:#a7f3d0;
   background:linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
 }
 .dashboardSeedlingStatusBed .bedTitle{
-  cursor:default;
+  flex:0 0 auto;
+  cursor:pointer;
 }
 .bed.bedCollapsed.dashboardSeedlingStatusBed.is-unplanted{
   border-color:#d1d5db;
   background:#f8fafc;
+}
+.bed.bedCollapsed.dashboardSeedlingStatusBed.is-selected{
+  border-color:#16a34a;
+  box-shadow:0 0 0 3px rgba(34,197,94,.18), var(--ui-shadow-sm);
 }
 .dashboardSeedlingBedMap{
   width:52px;
@@ -4745,6 +4758,45 @@ button.monitorSaveBtn:active{
   background:repeating-linear-gradient(135deg, #e2e8f0 0 3px, #cbd5e1 3px 6px);
 }
 .dashboardSeedlingBedMapCell.is-unplanted{background:#f1f5f9;}
+.dashboardSeedlingStatusAgeSummary{
+  display:block;
+  min-width:0;
+  margin-top:auto;
+  color:#334155;
+  font-size:10px;
+  font-weight:850;
+  line-height:1.25;
+  text-align:center;
+  overflow-wrap:anywhere;
+}
+.dashboardSeedlingStatusDetail{
+  margin-top:12px;
+  padding:12px;
+  border:1px solid #bbf7d0;
+  border-radius:14px;
+  background:#f8fffa;
+}
+.dashboardSeedlingStatusDetailHeader{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:4px 10px;
+  margin-bottom:8px;
+}
+.dashboardSeedlingStatusDetailTitle{
+  color:#166534;
+  font-size:15px;
+  font-weight:900;
+}
+.dashboardSeedlingStatusDetailSummary{
+  color:#475569;
+  font-size:11px;
+  font-weight:800;
+}
+.dashboardSeedlingStatusDetailLots{
+  grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));
+}
 .dashboardSeedlingStatusLots{
   display:grid;
   align-content:start;
@@ -8138,6 +8190,7 @@ requestAnimationFrame(function(){
         </div>
         <div id="dashboardSeedlingStatusBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="苗の状況を表示する号棟"></div>
         <div id="dashboardSeedlingStatusBeds" class="dashboardForecastBeds dashboardSeedlingStatusBeds"></div>
+        <div id="dashboardSeedlingStatusDetail" class="dashboardSeedlingStatusDetail" aria-live="polite"></div>
       </div>
     </div>
 
@@ -8739,6 +8792,7 @@ let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
 let dashboardHarvestForecastBuilding = null;
 let dashboardSeedlingStatusBuilding = null;
+let dashboardSeedlingStatusSelectedBed = "F";
 let dashboardHarvestForecastModelCache = null;
 let dashboardHarvestForecastCasesValue = null;
 let dashboardHarvestForecastLossValue = null;
@@ -18241,14 +18295,14 @@ function getDashboardSeedlingBedMapCellHtml(model, building, bed, number, sectio
   const status = model.currentByPallet.get(getPalletKey(building, bed, number));
   if(!status){
     const label = `${number}番 未定植`;
-    return `<span class="dashboardSeedlingBedMapCell is-unplanted${sectionStart ? " is-section-start" : ""}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"></span>`;
+    return `<span class="dashboardSeedlingBedMapCell is-unplanted${sectionStart ? " is-section-start" : ""}" title="${escapeHtml(label)}"></span>`;
   }
 
   const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
   const qualityClass = getDashboardSeedlingQualityClass(status.event?.qualityMemo);
   const ageDays = Math.max(0, getLocalDayDiff(status.plantingDate, model.referenceDate));
   const label = `${number}番 ${qualityText} ${ageDays}日経過`;
-  return `<span class="dashboardSeedlingBedMapCell ${qualityClass}${sectionStart ? " is-section-start" : ""}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"></span>`;
+  return `<span class="dashboardSeedlingBedMapCell ${qualityClass}${sectionStart ? " is-section-start" : ""}" title="${escapeHtml(label)}"></span>`;
 }
 
 function getDashboardSeedlingBedMapHtml(model, building, bed){
@@ -18274,8 +18328,52 @@ function getDashboardSeedlingBedMapHtml(model, building, bed){
   }
 
   return `
-    <div class="dashboardSeedlingBedMap" role="group" aria-label="${bed}ベッドの苗配置。上が奥、下が手前。左列が奇数、右列が偶数">
+    <div class="dashboardSeedlingBedMap" aria-hidden="true">
       <div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>
+    </div>
+  `;
+}
+
+function getDashboardSeedlingBedAgeSummary(lots){
+  const ages = (Array.isArray(lots) ? lots : [])
+    .map(lot => lot.ageDays)
+    .filter(ageDays => Number.isFinite(ageDays));
+  if(!ages.length) return "経過日数なし";
+  const minAge = Math.min(...ages);
+  const maxAge = Math.max(...ages);
+  return minAge === maxAge
+    ? `${minAge}日経過`
+    : `${minAge}〜${maxAge}日経過`;
+}
+
+function getDashboardSeedlingStatusLotHtml(lot){
+  return `
+    <div class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}">
+      <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
+      ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
+      <span class="dashboardSeedlingStatusCount">
+        <span>番号 ${escapeHtml(formatPalletNumberSideRanges(lot.palletNumbers))}</span>
+        <span>${lot.palletCount}パレット</span>
+      </span>
+    </div>
+  `;
+}
+
+function renderDashboardSeedlingStatusDetail(model, building){
+  const detail = document.getElementById("dashboardSeedlingStatusDetail");
+  if(!detail) return;
+  const bed = bedMap.includes(dashboardSeedlingStatusSelectedBed)
+    ? dashboardSeedlingStatusSelectedBed
+    : bedMap[0];
+  const lots = model.bedLots.get(`${building}-${bed}`) || [];
+  const ageSummary = getDashboardSeedlingBedAgeSummary(lots);
+  detail.innerHTML = `
+    <div class="dashboardSeedlingStatusDetailHeader">
+      <span class="dashboardSeedlingStatusDetailTitle">${bed}ベッドの詳細</span>
+      <span class="dashboardSeedlingStatusDetailSummary">${escapeHtml(ageSummary)}</span>
+    </div>
+    <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
+      ${lots.map(getDashboardSeedlingStatusLotHtml).join("")}
     </div>
   `;
 }
@@ -18286,31 +18384,36 @@ function renderDashboardSeedlingStatusBeds(model){
   const building = BUILDINGS.includes(dashboardSeedlingStatusBuilding)
     ? dashboardSeedlingStatusBuilding
     : BUILDINGS[0];
+  if(!bedMap.includes(dashboardSeedlingStatusSelectedBed)){
+    dashboardSeedlingStatusSelectedBed = bedMap[0];
+  }
 
   container.innerHTML = bedMap.map(bed => {
     const lots = model.bedLots.get(`${building}-${bed}`) || [];
     const hasPlantedLot = lots.some(lot => !lot.isUnplanted);
+    const ageSummary = getDashboardSeedlingBedAgeSummary(lots);
+    const isSelected = bed === dashboardSeedlingStatusSelectedBed;
     return `
-      <div class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed${hasPlantedLot ? "" : " is-unplanted"}">
+      <button type="button"
+        class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed${hasPlantedLot ? "" : " is-unplanted"}${isSelected ? " is-selected" : ""}"
+        onclick="setDashboardSeedlingStatusBed('${bed}')"
+        aria-pressed="${isSelected ? "true" : "false"}"
+        aria-label="${bed}ベッド ${escapeHtml(ageSummary)}。詳細を表示">
         <div class="bedTitle">
           <span class="dashboardForecastBedName">${bed}ベッド</span>
         </div>
         ${getDashboardSeedlingBedMapHtml(model, building, bed)}
-        <div class="dashboardSeedlingStatusLots">
-          ${lots.map(lot => `
-            <div class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}">
-              <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
-              ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
-              <span class="dashboardSeedlingStatusCount">
-                <span>番号 ${escapeHtml(formatPalletNumberSideRanges(lot.palletNumbers))}</span>
-                <span>${lot.palletCount}パレット</span>
-              </span>
-            </div>
-          `).join("")}
-        </div>
-      </div>
+        <span class="dashboardSeedlingStatusAgeSummary">${escapeHtml(ageSummary)}</span>
+      </button>
     `;
   }).join("");
+  renderDashboardSeedlingStatusDetail(model, building);
+}
+
+function setDashboardSeedlingStatusBed(bed){
+  if(!bedMap.includes(bed)) return;
+  dashboardSeedlingStatusSelectedBed = bed;
+  renderDashboardSeedlingStatusBeds(buildDashboardSeedlingStatusModel());
 }
 
 function setDashboardSeedlingStatusBuilding(building){
