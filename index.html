@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-seedling-exact-age-summary-1">
+<meta name="harvestnavi-version" content="20260729-instant-seedling-detail-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4703,6 +4703,7 @@ button.monitorSaveBtn:active{
   height:240px;
   min-height:240px;
   box-sizing:border-box;
+  touch-action:manipulation;
   -webkit-appearance:none;
   appearance:none;
   color:inherit;
@@ -8793,6 +8794,7 @@ let activeAppTab = "forecast";
 let dashboardHarvestForecastBuilding = null;
 let dashboardSeedlingStatusBuilding = null;
 let dashboardSeedlingStatusSelectedBed = "F";
+let dashboardSeedlingStatusModelCache = null;
 let dashboardHarvestForecastModelCache = null;
 let dashboardHarvestForecastCasesValue = null;
 let dashboardHarvestForecastLossValue = null;
@@ -18378,6 +18380,7 @@ function renderDashboardSeedlingStatusDetail(model, building){
 function renderDashboardSeedlingStatusBeds(model){
   const container = document.getElementById("dashboardSeedlingStatusBeds");
   if(!container) return;
+  dashboardSeedlingStatusModelCache = model;
   const building = BUILDINGS.includes(dashboardSeedlingStatusBuilding)
     ? dashboardSeedlingStatusBuilding
     : BUILDINGS[0];
@@ -18394,6 +18397,7 @@ function renderDashboardSeedlingStatusBeds(model){
       <button type="button"
         class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed${hasPlantedLot ? "" : " is-unplanted"}${isSelected ? " is-selected" : ""}"
         onclick="setDashboardSeedlingStatusBed('${bed}')"
+        data-dashboard-seedling-bed="${bed}"
         aria-pressed="${isSelected ? "true" : "false"}"
         aria-label="${bed}ベッド ${escapeHtml(ageSummary)}。詳細を表示">
         <div class="bedTitle">
@@ -18410,7 +18414,16 @@ function renderDashboardSeedlingStatusBeds(model){
 function setDashboardSeedlingStatusBed(bed){
   if(!bedMap.includes(bed)) return;
   dashboardSeedlingStatusSelectedBed = bed;
-  renderDashboardSeedlingStatusBeds(buildDashboardSeedlingStatusModel());
+  document.querySelectorAll("[data-dashboard-seedling-bed]").forEach(button => {
+    const isSelected = button.dataset.dashboardSeedlingBed === bed;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+  });
+  const building = BUILDINGS.includes(dashboardSeedlingStatusBuilding)
+    ? dashboardSeedlingStatusBuilding
+    : BUILDINGS[0];
+  const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
+  renderDashboardSeedlingStatusDetail(model, building);
 }
 
 function setDashboardSeedlingStatusBuilding(building){
