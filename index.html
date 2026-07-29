@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-extended-record-sync-timeout-1">
+<meta name="harvestnavi-version" content="20260729-combined-record-sync-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -12864,6 +12864,23 @@ function buildGoogleSheetImportPayload(config, options = {}){
   };
 }
 
+function buildGoogleSheetCombinedSyncPayload(config, options = {}){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-sync-all",
+    action: "syncAll",
+    version: 1,
+    token: config.token || "",
+    cursor: normalizeGoogleSheetSyncCursor(options.cursor) || undefined,
+    plantingCursor: normalizeGoogleSheetPlantingSyncCursor(options.plantingCursor) || undefined,
+    fallbackSeedlingLossRate: clampNumber(settings.seedlingLossRate, 0, 100, 0),
+    fallbackSeedlingPattern: getSpecialPalletPattern(settings.specialPallet60CountPer3),
+    fallbackPlantingCountsByBed: getPlantingEventFallbackPlantingCountsByBed(),
+    limit: GOOGLE_SHEET_MAX_LIST_RECORDS,
+    plantingLimit: GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS
+  };
+}
+
 function buildGoogleSheetUpdateCheckPayload(config, options = {}){
   return {
     app: "Harvestnavi",
@@ -15290,6 +15307,126 @@ function hideRecordImportError(){
   if(panel) panel.classList.remove("show");
 }
 
+async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
+  let recordCursor = options.resetCursor ? null : loadGoogleSheetSyncCursor(config);
+  let plantingCursor = options.resetCursor ? null : loadGoogleSheetPlantingSyncCursor(config);
+  let finalRecordCursor = recordCursor;
+  let finalPlantingCursor = plantingCursor;
+  const recordsToSync = [];
+  const eventsToSync = [];
+  let tombstones = [];
+  let deletedEventIds = [];
+  const seenCursorPairs = new Set();
+
+  for(let page = 0; page < GOOGLE_SHEET_MAX_RECORD_SYNC_PAGES; page++){
+    const payload = buildValidatedGoogleSheetRequestBody(buildGoogleSheetCombinedSyncPayload(config, {
+      cursor: recordCursor,
+      plantingCursor
+    }));
+    const response = await fetchGoogleSheetReadRequest(config.url, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: payload,
+      signal
+    });
+    const text = await response.text();
+    if(!isWithinGoogleSheetResponseLimits(text)){
+      throw new Error("スプレッドシートの一括同期応答が大きすぎます");
+    }
+    let result;
+    try{
+      result = text ? JSON.parse(text) : {};
+    }catch(e){
+      throw new Error("スプレッドシートの一括同期応答を読み込めません");
+    }
+    if(result.ok !== true){
+      throw new Error(result.message || "収穫・苗植え記録を同期できませんでした");
+    }
+
+    const pageRecords = extractRecordsFromGoogleSheetResponse(result);
+    if(!Array.isArray(pageRecords) || pageRecords.length > GOOGLE_SHEET_MAX_LIST_RECORDS){
+      throw new Error("同期する収穫記録の件数が正しくありません");
+    }
+    const pageEvents = result.events;
+    if(!Array.isArray(pageEvents) || pageEvents.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS){
+      throw new Error("同期する苗植え記録の件数が正しくありません");
+    }
+    if(result.deletedEventIds !== undefined
+      && (!Array.isArray(result.deletedEventIds)
+        || result.deletedEventIds.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES)){
+      throw new Error("削除済み苗植え記録の件数が正しくありません");
+    }
+
+    recordsToSync.push(...pageRecords);
+    eventsToSync.push(...pageEvents);
+    if(recordsToSync.length > RECORD_BACKUP_MAX_ITEMS
+      || eventsToSync.length > RECORD_BACKUP_MAX_ITEMS){
+      throw new Error("同期する記録が" + RECORD_BACKUP_MAX_ITEMS + "件を超えています");
+    }
+    // Apps Scriptは各ページで現在の永久削除一覧を返す。最後のページを同期時点の正として使う。
+    tombstones = normalizeRemoteHarvestTombstones(result);
+    deletedEventIds = result.deletedEventIds || [];
+
+    const recordHasMore = result.hasMore === true;
+    const plantingHasMore = result.plantingHasMore === true;
+    const nextRecordCursor = normalizeGoogleSheetSyncCursor(result.nextCursor ?? result.cursor);
+    const nextPlantingCursor = normalizeGoogleSheetPlantingSyncCursor(
+      result.plantingNextCursor ?? result.plantingCursor
+    );
+    if(nextRecordCursor) finalRecordCursor = nextRecordCursor;
+    if(nextPlantingCursor) finalPlantingCursor = nextPlantingCursor;
+    if(!recordHasMore && !plantingHasMore){
+      const uniqueTombstones = [];
+      const seenTombstones = new Set();
+      tombstones.forEach(item => {
+        const key = item.recordUuid ? "uuid:" + item.recordUuid : "id:" + item.id;
+        if(seenTombstones.has(key)) return;
+        seenTombstones.add(key);
+        uniqueTombstones.push(item);
+      });
+      const uniqueEvents = [];
+      const eventIndexById = new Map();
+      eventsToSync.forEach(event => {
+        const eventId = getSafePositiveRecordId(event?.eventId);
+        if(eventId === null) return;
+        if(eventIndexById.has(eventId)){
+          uniqueEvents[eventIndexById.get(eventId)] = event;
+          return;
+        }
+        eventIndexById.set(eventId, uniqueEvents.length);
+        uniqueEvents.push(event);
+      });
+      return {
+        records: recordsToSync,
+        tombstones: uniqueTombstones,
+        finalCursor: finalRecordCursor,
+        events: uniqueEvents,
+        deletedEventIds,
+        finalPlantingCursor
+      };
+    }
+
+    const recordCursorAdvanced = !!nextRecordCursor
+      && JSON.stringify(nextRecordCursor) !== JSON.stringify(recordCursor);
+    const plantingCursorAdvanced = !!nextPlantingCursor
+      && JSON.stringify(nextPlantingCursor) !== JSON.stringify(plantingCursor);
+    if(recordCursorAdvanced) recordCursor = nextRecordCursor;
+    if(plantingCursorAdvanced) plantingCursor = nextPlantingCursor;
+    // 応答サイズ調整で片方が次ページへ回された場合は、もう片方のcursorだけが進む。
+    // 2つのcursorがどちらも進まない時だけ、無限ループを防ぐため中断する。
+    if(!recordCursorAdvanced && !plantingCursorAdvanced){
+      throw new Error("一括同期の続き位置を取得できません");
+    }
+    const cursorPairKey = JSON.stringify([recordCursor, plantingCursor]);
+    if(seenCursorPairs.has(cursorPairKey)){
+      throw new Error("一括同期の続き位置が繰り返されています");
+    }
+    seenCursorPairs.add(cursorPairKey);
+  }
+  throw new Error("一括同期ページ数が上限を超えています。記録をバックアップして管理者へ連絡してください");
+}
+
 async function fetchGoogleSheetRecordSyncPages(config, options, signal){
   let cursor = options.resetCursor ? null : loadGoogleSheetSyncCursor(config);
   let recordsToSync = [];
@@ -15393,7 +15530,12 @@ async function importRecordsFromGoogleSheet(options = {}){
     const syncOptions = shouldBackfillLegacyPlantingEvents
       ? { ...options, resetCursor: true }
       : options;
-    const recordSync = await fetchGoogleSheetRecordSyncPages(config, syncOptions, controller.signal);
+    const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, syncOptions, controller.signal);
+    const recordSync = {
+      records: combinedSync.records,
+      tombstones: combinedSync.tombstones,
+      finalCursor: combinedSync.finalCursor
+    };
     snapshot = createBackupImportSnapshot();
     const legacyBackfillSourceRecords = shouldBackfillLegacyPlantingEvents
       ? recordSync.records.map((source, index) => (
@@ -15403,14 +15545,14 @@ async function importRecordsFromGoogleSheet(options = {}){
     // 先に収穫IDの競合を解決し、既存のlocal苗植え参照だけを新IDへ移す。
     // その後remote苗植えイベントを入れることで、server IDの参照を誤って付け替えない。
     const recordResult = reconcileGoogleSheetRecords(recordSync.records, recordSync.tombstones, options);
-    const plantingResult = { conflictCount: 0, finalCursor: null };
-    const importedEventCount = await importPlantingEventsFromGoogleSheet({
-      config,
-      limit: options.eventLimit === undefined ? GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS : options.eventLimit,
-      silentErrors: true,
-      throwOnError: true,
-      deferCursorSave: true,
-      resetCursor: shouldBackfillLegacyPlantingEvents,
+    const plantingResult = {
+      conflictCount: 0,
+      finalCursor: combinedSync.finalPlantingCursor
+    };
+    const deletedEventCount = applyRemoteDeletedPlantingEventIds(combinedSync.deletedEventIds);
+    const importedEventCount = deletedEventCount + importPlantingEventsFromSource(combinedSync.events, {
+      fromGoogleSheetPaged: true,
+      openingCarryoverAuthoritative: false,
       resultTracker: plantingResult
     });
     migrateLegacyPlantingEvents();
