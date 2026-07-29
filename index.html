@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260728-hide-duplicate-partial-start-1">
+<meta name="harvestnavi-version" content="20260729-left-origin-pallet-numbering-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8538,7 +8538,8 @@ const GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS = 1000;
 const GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES = 10000;
 const GOOGLE_SHEET_MAX_HISTORY_ITEMS = 1000;
 const GOOGLE_SHEET_MAX_RECENT_DAYS = 3650;
-const RECORD_SYNC_SCHEMA_VERSION = 3;
+const RECORD_SYNC_SCHEMA_VERSION = 4;
+const RECORD_SYNC_MIN_SUPPORTED_SCHEMA_VERSION = 3;
 const RECORD_SYNC_FIELD_KEYS = [
   "plantingCaseInstruction",
   "actualSeedlingCarryoverMode"
@@ -8582,6 +8583,10 @@ const bedOrder = ["A","B","C","D","E","F"];
 const ROWS = 39;
 const COLS = 2;
 const PALLETS_PER_BED = 78;
+const LEGACY_PALLET_NUMBERING_VERSION = 1;
+const CURRENT_PALLET_NUMBERING_VERSION = 2;
+const CURRENT_NUMBERING_RECORD_ID_MIN = 10000000000000;
+const CURRENT_NUMBERING_EVENT_ID_MIN = 10000000000000;
 const PALLETS_PER_PIN = 4;
 const HARVEST_FORECAST_WEEKDAYS = [0, 2, 3, 4, 6];
 const DASHBOARD_FORECAST_DAY_COLORS = Object.freeze([
@@ -9374,6 +9379,7 @@ function saveHarvestStateToStorage(options = {}){
     capturePlantingRecordDraft();
   }
   const payload = {
+    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
     currentBuilding,
     casePlacementBuilding,
     harvestFillKeys,
@@ -9412,10 +9418,32 @@ function loadHarvestStateFromStorage(){
     const raw = localStorage.getItem(HARVEST_STATE_KEY);
     if(!raw) return null;
     const parsed = JSON.parse(raw);
+    const palletNumberingVersion = getPalletNumberingVersion(parsed);
+    const harvestFillKeys = convertPalletKeysBetweenVersions(
+      Array.isArray(parsed.harvestFillKeys) ? parsed.harvestFillKeys.filter(v => typeof v === "string") : [],
+      palletNumberingVersion,
+      CURRENT_PALLET_NUMBERING_VERSION
+    );
+    const plantingRecordDraft = normalizePlantingRecordDraft(parsed.plantingRecordDraft);
+    if(plantingRecordDraft){
+      plantingRecordDraft.keys = convertPalletKeysBetweenVersions(
+        plantingRecordDraft.keys,
+        palletNumberingVersion,
+        CURRENT_PALLET_NUMBERING_VERSION
+      );
+    }
+    const forecastSelectionState = normalizeForecastSelectionState(parsed.forecastSelectionState);
+    if(forecastSelectionState){
+      forecastSelectionState.keys = convertPalletKeysBetweenVersions(
+        forecastSelectionState.keys,
+        palletNumberingVersion,
+        CURRENT_PALLET_NUMBERING_VERSION
+      );
+    }
     return {
       currentBuilding: BUILDINGS.includes(Number(parsed.currentBuilding)) ? Number(parsed.currentBuilding) : 2,
       casePlacementBuilding: BUILDINGS.includes(Number(parsed.casePlacementBuilding)) ? Number(parsed.casePlacementBuilding) : null,
-      harvestFillKeys: Array.isArray(parsed.harvestFillKeys) ? parsed.harvestFillKeys.filter(v => typeof v === "string") : [],
+      harvestFillKeys,
       harvestSummary: parsed.harvestSummary && typeof parsed.harvestSummary === "object" ? parsed.harvestSummary : null,
       manualSeedlingCount: normalizeManualSeedlingCount(parsed.manualSeedlingCount),
       casesInput: parsed.casesInput ?? "",
@@ -9429,8 +9457,12 @@ function loadHarvestStateFromStorage(){
       recordCasesInput: parsed.recordCasesInput ?? "",
       recordActualSeedlingTrayCountInput: parsed.recordActualSeedlingTrayCountInput ?? "",
       recordActualSeedlingCarryoverMode: normalizeSeedlingCarryoverMode(parsed.recordActualSeedlingCarryoverMode),
-      recordPalletSummaryInput: parsed.recordPalletSummaryInput ?? "",
-      recordPlantingSummaryInput: parsed.recordPlantingSummaryInput ?? "",
+      recordPalletSummaryInput: palletNumberingVersion === CURRENT_PALLET_NUMBERING_VERSION
+        ? (parsed.recordPalletSummaryInput ?? "")
+        : formatPalletSummary(harvestFillKeys),
+      recordPlantingSummaryInput: palletNumberingVersion === CURRENT_PALLET_NUMBERING_VERSION
+        ? (parsed.recordPlantingSummaryInput ?? "")
+        : formatPlantingSummaryForKeys(plantingRecordDraft?.keys || []),
       recordMemoInput: parsed.recordMemoInput ?? "",
       qualityMemo: normalizeQualityMemo(parsed.qualityMemo || parsed.qualityTags || null),
       recordCasesEdited: !!parsed.recordCasesEdited,
@@ -9438,8 +9470,8 @@ function loadHarvestStateFromStorage(){
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
       activePlantingRecordId: Number.isFinite(Number(parsed.activePlantingRecordId)) ? Number(parsed.activePlantingRecordId) : null,
       editingPlantingEventId: getSafePositiveRecordId(parsed.editingPlantingEventId),
-      plantingRecordDraft: normalizePlantingRecordDraft(parsed.plantingRecordDraft),
-      forecastSelectionState: normalizeForecastSelectionState(parsed.forecastSelectionState),
+      plantingRecordDraft,
+      forecastSelectionState,
       workflowMonitorCheckpointSignature: typeof parsed.workflowMonitorCheckpointSignature === "string" ? parsed.workflowMonitorCheckpointSignature : "",
       workflowHarvestRecordingActive: !!parsed.workflowHarvestRecordingActive,
       workflowPlantingSessionActive: !!parsed.workflowPlantingSessionActive
@@ -9814,7 +9846,7 @@ function normalizeRecordSyncTimestamp(value){
 
 function normalizeRecordSyncProvidedFields(record){
   if(!record || !Number.isSafeInteger(record.syncSchemaVersion)
-    || record.syncSchemaVersion < RECORD_SYNC_SCHEMA_VERSION
+    || record.syncSchemaVersion < RECORD_SYNC_MIN_SUPPORTED_SCHEMA_VERSION
     || !Array.isArray(record.syncProvidedFields)){
     return [];
   }
@@ -9833,8 +9865,15 @@ function getCurrentRecordSyncMetadata(){
 
 function getRecordSyncMetadata(record){
   const syncProvidedFields = normalizeRecordSyncProvidedFields(record);
+  const sourceSchemaVersion = Number(record?.syncSchemaVersion);
+  const syncSchemaVersion = syncProvidedFields.length && Number.isSafeInteger(sourceSchemaVersion)
+    ? Math.max(
+        RECORD_SYNC_MIN_SUPPORTED_SCHEMA_VERSION,
+        Math.min(RECORD_SYNC_SCHEMA_VERSION, sourceSchemaVersion)
+      )
+    : 0;
   return {
-    syncSchemaVersion: syncProvidedFields.length ? RECORD_SYNC_SCHEMA_VERSION : 0,
+    syncSchemaVersion,
     syncProvidedFields,
     recordUuid: normalizeRecordUuid(record?.recordUuid),
     createdAt: normalizeRecordSyncTimestamp(record?.createdAt),
@@ -10784,31 +10823,66 @@ function getPalletKeysFromRecord(record){
   if(!record || typeof record !== "object") return [];
   if(record.type === "partialHarvest") return [];
   const directKeys = getDirectPalletKeys(record.palletKeys);
-  if(directKeys && directKeys.length && !record.palletRanges?.length && !String(record.palletSummary || "").trim()){
-    return directKeys;
+  let keys;
+  if(directKeys && directKeys.length && (
+    record._palletKeysUseCurrentNumbering === true
+    || (!record.palletRanges?.length && !String(record.palletSummary || "").trim())
+  )){
+    keys = directKeys;
+  }else{
+    keys = [...new Set([
+      ...(directKeys || expandPalletKeyItemsToKeys(record.palletKeys)),
+      ...expandPalletRangesToKeys(record.palletRanges),
+      ...parsePalletSummaryToKeys(record.palletSummary)
+    ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   }
-  return [...new Set([
-    ...(directKeys || expandPalletKeyItemsToKeys(record.palletKeys)),
-    ...expandPalletRangesToKeys(record.palletRanges),
-    ...parsePalletSummaryToKeys(record.palletSummary)
-  ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  return record._palletKeysUseCurrentNumbering === true
+    ? keys
+    : convertPalletKeysBetweenVersions(
+        keys,
+        getPalletNumberingVersion(record),
+        CURRENT_PALLET_NUMBERING_VERSION
+      );
 }
 
 function getPlantingPalletKeysFromRecord(record, harvestKeys = null){
   if(!record || typeof record !== "object" || record.type === "partialHarvest") return [];
   const directKeys = getDirectPalletKeys(record.plantingPalletKeys);
-  if(directKeys && directKeys.length && !record.plantingRanges?.length){
-    return directKeys;
+  if(directKeys && directKeys.length && (
+    record._palletKeysUseCurrentNumbering === true
+    || !record.plantingRanges?.length
+  )){
+    return record._palletKeysUseCurrentNumbering === true
+      ? directKeys
+      : convertPalletKeysBetweenVersions(
+          directKeys,
+          getPalletNumberingVersion(record),
+          CURRENT_PALLET_NUMBERING_VERSION
+        );
   }
-  const keys = [...new Set([
+  let keys = [...new Set([
     ...(directKeys || expandPalletKeyItemsToKeys(record.plantingPalletKeys)),
     ...expandPalletRangesToKeys(record.plantingRanges)
   ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  if(!record._palletKeysUseCurrentNumbering){
+    keys = convertPalletKeysBetweenVersions(
+      keys,
+      getPalletNumberingVersion(record),
+      CURRENT_PALLET_NUMBERING_VERSION
+    );
+  }
   if(keys.length) return keys;
 
   if(record.plantingPending) return [];
   if(String(record.plantingSummary || "").trim()){
-    return parsePalletSummaryToKeys(record.plantingSummary);
+    const summaryKeys = parsePalletSummaryToKeys(record.plantingSummary);
+    return record._palletKeysUseCurrentNumbering === true
+      ? summaryKeys
+      : convertPalletKeysBetweenVersions(
+          summaryKeys,
+          getPalletNumberingVersion(record),
+          CURRENT_PALLET_NUMBERING_VERSION
+        );
   }
   return Array.isArray(harvestKeys) ? [...harvestKeys] : getPalletKeysFromRecord(record);
 }
@@ -10834,6 +10908,39 @@ function normalizePartialHarvestTargets(targets){
       plantsPerPallet
     };
   }).filter(Boolean);
+}
+
+function convertPartialHarvestTargetsBetweenVersions(targets, fromVersion, toVersion){
+  const normalizedTargets = normalizePartialHarvestTargets(targets);
+  if(getPalletNumberingVersion(fromVersion) === getPalletNumberingVersion(toVersion)){
+    return normalizedTargets;
+  }
+
+  return normalizedTargets.flatMap(target => {
+    const convertedNumbers = [];
+    for(let number = target.start; number <= target.end; number++){
+      convertedNumbers.push(convertPalletNumberBetweenVersions(number, fromVersion, toVersion));
+    }
+    convertedNumbers.sort((a, b) => a - b);
+    const convertedTargets = [];
+    let start = convertedNumbers[0];
+    let previous = convertedNumbers[0];
+    for(let index = 1; index <= convertedNumbers.length; index++){
+      const current = convertedNumbers[index];
+      if(current === previous + 1){
+        previous = current;
+        continue;
+      }
+      convertedTargets.push({
+        ...target,
+        start,
+        end: previous
+      });
+      start = current;
+      previous = current;
+    }
+    return convertedTargets;
+  });
 }
 
 function normalizeQualityTag(value){
@@ -10958,22 +11065,53 @@ function updateRecordInputGuides(){
   }
 }
 
+function getRecordPalletKeysForStorage(record, field = "palletKeys"){
+  const keys = getDirectPalletKeys(record?.[field]) || [];
+  if(record?._palletKeysUseCurrentNumbering !== true) return keys;
+  return convertPalletKeysBetweenVersions(
+    keys,
+    CURRENT_PALLET_NUMBERING_VERSION,
+    getPalletNumberingVersion(record)
+  );
+}
+
+function getRecordTargetsForStorage(record){
+  if(record?._palletKeysUseCurrentNumbering !== true){
+    return normalizePartialHarvestTargets(record?.targets);
+  }
+  return convertPartialHarvestTargetsBetweenVersions(
+    record?.targets,
+    CURRENT_PALLET_NUMBERING_VERSION,
+    getPalletNumberingVersion(record)
+  );
+}
+
+function getPalletNumberingVersionStorageFields(value){
+  return getPalletNumberingVersion(value) === CURRENT_PALLET_NUMBERING_VERSION
+    ? { palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION }
+    : {};
+}
+
 function serializeRecordForStorage(record){
   if(record?.type === "partialHarvest"){
     return {
       ...getRecordSyncMetadata(record),
+      ...getPalletNumberingVersionStorageFields(record),
       id: record.id,
       duplicateKey: getRecordDuplicateKey(record),
       type: "partialHarvest",
       date: record.date,
       cases: record.cases,
       memo: record.memo || "",
-      targets: normalizePartialHarvestTargets(record.targets)
+      targets: getRecordTargetsForStorage(record)
     };
   }
 
+  const palletKeys = getRecordPalletKeysForStorage(record);
+  const plantingPalletKeys = getRecordPalletKeysForStorage(record, "plantingPalletKeys");
   const payload = {
     ...getRecordSyncMetadata(record),
+    ...getPalletNumberingVersionStorageFields(record),
     id: record.id,
     duplicateKey: getRecordDuplicateKey(record),
     type: "fullHarvest",
@@ -10991,8 +11129,8 @@ function serializeRecordForStorage(record){
     actualLoss: record.actualLoss,
     qualityMemo: normalizeQualityMemo(record.qualityMemo),
     plantingAge: record.plantingAge || null,
-    palletRanges: compressPalletKeysToRanges(record.palletKeys),
-    plantingRanges: compressPalletKeysToRanges(record.plantingPalletKeys),
+    palletRanges: compressPalletKeysToRanges(palletKeys),
+    plantingRanges: compressPalletKeysToRanges(plantingPalletKeys),
     plantingPending: !!record.plantingPending
   };
 
@@ -11001,11 +11139,18 @@ function serializeRecordForStorage(record){
 
 function normalizeStoredRecord(record){
   if(!record || typeof record !== "object") return null;
+  const palletNumberingVersion = getPalletNumberingVersion(record);
   if(record.type === "partialHarvest"){
-    const targets = normalizePartialHarvestTargets(record.targets);
+    const targets = convertPartialHarvestTargetsBetweenVersions(
+      record.targets,
+      palletNumberingVersion,
+      CURRENT_PALLET_NUMBERING_VERSION
+    );
     if(!targets.length) return null;
     return {
       ...getRecordSyncMetadata(record),
+      palletNumberingVersion,
+      _palletKeysUseCurrentNumbering: true,
       id: record.id,
       duplicateKey: String(record.duplicateKey || "").trim(),
       type: "partialHarvest",
@@ -11022,6 +11167,8 @@ function normalizeStoredRecord(record){
   return {
     ...record,
     ...getRecordSyncMetadata(record),
+    palletNumberingVersion,
+    _palletKeysUseCurrentNumbering: true,
     duplicateKey: String(record.duplicateKey || "").trim(),
     type: "fullHarvest",
     memo: record.memo || "",
@@ -11135,11 +11282,29 @@ function normalizePlantingEvent(value){
   const plantingDate = String(value.plantingDate || "").trim();
   if(eventId === null || !isStrictDateOnlyString(plantingDate)) return null;
 
-  const sourceAllocations = normalizePlantingEventSourceAllocations(value.sourceAllocations);
+  const palletNumberingVersion = getPalletNumberingVersion(value);
+  const sourceAllocations = normalizePlantingEventSourceAllocations(value.sourceAllocations)
+    .map(allocation => ({
+      ...allocation,
+      palletKeys: value._palletKeysUseCurrentNumbering === true
+        ? allocation.palletKeys
+        : convertPalletKeysBetweenVersions(
+            allocation.palletKeys,
+            palletNumberingVersion,
+            CURRENT_PALLET_NUMBERING_VERSION
+          )
+    }));
   if(!sourceAllocations.length) return null;
   const allocatedPalletKeys = [...new Set(sourceAllocations.flatMap(allocation => allocation.palletKeys))]
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-  const directPlantingKeys = getDirectPalletKeys(value.plantingPalletKeys);
+  const rawDirectPlantingKeys = getDirectPalletKeys(value.plantingPalletKeys);
+  const directPlantingKeys = value._palletKeysUseCurrentNumbering === true
+    ? rawDirectPlantingKeys
+    : convertPalletKeysBetweenVersions(
+        rawDirectPlantingKeys || [],
+        palletNumberingVersion,
+        CURRENT_PALLET_NUMBERING_VERSION
+      );
   const plantingPalletKeys = directPlantingKeys?.length ? directPlantingKeys : allocatedPalletKeys;
   if(plantingPalletKeys.length !== allocatedPalletKeys.length
     || plantingPalletKeys.some((key, index) => key !== allocatedPalletKeys[index])){
@@ -11186,6 +11351,8 @@ function normalizePlantingEvent(value){
   if(hasOpeningCarryover && openingCarryoverBefore === null) return null;
 
   return {
+    palletNumberingVersion,
+    _palletKeysUseCurrentNumbering: true,
     eventId,
     plantingDate,
     sourceAllocations,
@@ -11207,11 +11374,33 @@ function normalizePlantingEvent(value){
 function serializePlantingEventForStorage(event){
   const normalized = normalizePlantingEvent(event);
   if(!normalized) return null;
-  if(normalized.openingCarryoverBefore === null){
-    const { openingCarryoverBefore, ...compactEvent } = normalized;
-    return compactEvent;
-  }
-  return normalized;
+  const palletNumberingVersion = getPalletNumberingVersion(normalized);
+  const sourceAllocations = normalized.sourceAllocations.map(allocation => ({
+    harvestRecordId: allocation.harvestRecordId,
+    palletKeys: convertPalletKeysBetweenVersions(
+      allocation.palletKeys,
+      CURRENT_PALLET_NUMBERING_VERSION,
+      palletNumberingVersion
+    )
+  }));
+  const plantingPalletKeys = convertPalletKeysBetweenVersions(
+    normalized.plantingPalletKeys,
+    CURRENT_PALLET_NUMBERING_VERSION,
+    palletNumberingVersion
+  );
+  const {
+    _palletKeysUseCurrentNumbering,
+    palletNumberingVersion: ignoredPalletNumberingVersion,
+    openingCarryoverBefore,
+    ...rest
+  } = normalized;
+  return {
+    ...rest,
+    ...getPalletNumberingVersionStorageFields(normalized),
+    sourceAllocations,
+    plantingPalletKeys,
+    ...(openingCarryoverBefore === null ? {} : { openingCarryoverBefore })
+  };
 }
 
 function comparePlantingEventsAsc(a, b){
@@ -11320,7 +11509,12 @@ function saveDeletedPlantingEventsToStorage(){
     const expiresTime = new Date(entry?.expiresAt || "").getTime();
     return normalizePlantingEvent(entry?.event) && Number.isFinite(expiresTime) && expiresTime > now;
   });
-  localStorage.setItem(PLANTING_EVENT_TRASH_KEY, JSON.stringify(deletedPlantingEvents));
+  localStorage.setItem(PLANTING_EVENT_TRASH_KEY, JSON.stringify(
+    deletedPlantingEvents.map(entry => ({
+      ...entry,
+      event: serializePlantingEventForStorage(entry.event)
+    }))
+  ));
 }
 
 function addPlantingEventToTrash(event, options = {}){
@@ -11380,9 +11574,19 @@ function getGoogleSheetUnsentPlantingEvents(){
 
 function getNextPlantingEventId(){
   const used = new Set(plantingEvents.map(event => Number(event.eventId)));
-  let eventId = Math.max(1, Date.now());
+  let eventId = Math.max(CURRENT_NUMBERING_EVENT_ID_MIN, Date.now() * 10 + CURRENT_PALLET_NUMBERING_VERSION);
   while(used.has(eventId) && eventId < Number.MAX_SAFE_INTEGER) eventId++;
   return eventId;
+}
+
+function getNextHarvestRecordId(){
+  const used = new Set([
+    ...records.map(record => Number(record?.id)),
+    ...deletedRecords.map(entry => Number(entry?.record?.id))
+  ]);
+  let recordId = Math.max(CURRENT_NUMBERING_RECORD_ID_MIN, Date.now() * 10 + CURRENT_PALLET_NUMBERING_VERSION);
+  while(used.has(recordId) && recordId < Number.MAX_SAFE_INTEGER) recordId++;
+  return recordId;
 }
 
 function loadMigratedPlantingRecordIds(){
@@ -11416,10 +11620,12 @@ function migrateLegacyPlantingEvents(recordsToMigrate = records){
     ));
     if(alreadyHasIndependentEvent) return;
 
-    let eventId = recordId;
+    let eventId = getNextPlantingEventId();
     while(usedEventIds.has(eventId)) eventId++;
     usedEventIds.add(eventId);
     const normalized = normalizePlantingEvent({
+      palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+      _palletKeysUseCurrentNumbering: true,
       eventId,
       plantingDate: String(record.plantingDate || record.date || "").trim(),
       sourceAllocations: [{ harvestRecordId: recordId, palletKeys: plantingKeys }],
@@ -11510,12 +11716,18 @@ function backfillLegacyPlantingEventsFromRecordSummariesOnce(recordsToMigrate = 
       if(harvestDate > LEGACY_PLANTING_EVENT_CUTOFF_DATE) return;
 
       const harvestKeySet = new Set(getPalletKeysFromRecord(record));
-      const plantingKeys = parsePalletSummaryToKeys(record.plantingSummary)
+      const plantingKeys = convertPalletKeysBetweenVersions(
+        parsePalletSummaryToKeys(record.plantingSummary),
+        getPalletNumberingVersion(record),
+        CURRENT_PALLET_NUMBERING_VERSION
+      )
         .filter(key => harvestKeySet.has(key) && !occupiedLots.has(getPlantingLotKey(recordId, key)))
         .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
       if(!plantingKeys.length) return;
 
       const event = normalizePlantingEvent({
+        palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+        _palletKeysUseCurrentNumbering: true,
         eventId: getNextPlantingEventId(),
         plantingDate: String(record.plantingDate || harvestDate).trim(),
         sourceAllocations: [{ harvestRecordId: recordId, palletKeys: plantingKeys }],
@@ -12671,6 +12883,7 @@ function buildGoogleSheetRecordPayload(record, config){
     duplicateKey,
     record: {
       ...syncMetadata,
+      ...getPalletNumberingVersionStorageFields(record),
       id: record.id,
       duplicateKey,
       type: isPartial ? "partialHarvest" : "fullHarvest",
@@ -12689,9 +12902,9 @@ function buildGoogleSheetRecordPayload(record, config){
       qualityMemo: isPartial ? null : normalizeQualityMemo(record.qualityMemo),
       qualityText: isPartial ? "" : formatQualityMemo(record.qualityMemo),
       plantingAge: isPartial ? null : normalizePlantingAgeSnapshot(record.plantingAge),
-      palletKeys: isPartial ? [] : (Array.isArray(record.palletKeys) ? record.palletKeys : []),
-      plantingPalletKeys: isPartial ? [] : (Array.isArray(record.plantingPalletKeys) ? record.plantingPalletKeys : []),
-      targets: isPartial ? normalizePartialHarvestTargets(record.targets) : []
+      palletKeys: isPartial ? [] : getRecordPalletKeysForStorage(record),
+      plantingPalletKeys: isPartial ? [] : getRecordPalletKeysForStorage(record, "plantingPalletKeys"),
+      targets: isPartial ? getRecordTargetsForStorage(record) : []
     }
   };
 }
@@ -12764,14 +12977,24 @@ function buildGoogleSheetRecordRestorePayload(record, config){
 function getPlantingEventForGoogleTransfer(event){
   const normalized = normalizePlantingEvent(event);
   if(!normalized) throw new Error("苗植え記録の形式が正しくありません");
+  const palletNumberingVersion = getPalletNumberingVersion(normalized);
   return {
+    ...getPalletNumberingVersionStorageFields(normalized),
     eventId: normalized.eventId,
     plantingDate: normalized.plantingDate,
     sourceAllocations: normalized.sourceAllocations.map(allocation => ({
       harvestRecordId: allocation.harvestRecordId,
-      palletKeys: [...allocation.palletKeys]
+      palletKeys: convertPalletKeysBetweenVersions(
+        allocation.palletKeys,
+        CURRENT_PALLET_NUMBERING_VERSION,
+        palletNumberingVersion
+      )
     })),
-    plantingPalletKeys: [...normalized.plantingPalletKeys],
+    plantingPalletKeys: convertPalletKeysBetweenVersions(
+      normalized.plantingPalletKeys,
+      CURRENT_PALLET_NUMBERING_VERSION,
+      palletNumberingVersion
+    ),
     actualSeedlingTrayCount: normalized.actualSeedlingTrayCount,
     actualTakenSeedlingCount: normalized.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: normalized.actualPlantedSeedlingCount,
@@ -12872,7 +13095,13 @@ async function postGoogleSheetPlantingEvent(event, operation = "save", options =
         if(current) setPlantingEventSyncStatus(current, "edited");
         throw new Error("送信中に苗植え記録が変更されました。最新版を再送してください");
       }
-      const serverEvent = normalizePlantingEvent(result.event);
+      const serverEvent = normalizePlantingEvent(result.event
+        ? {
+            ...result.event,
+            palletNumberingVersion: result.event.palletNumberingVersion
+              ?? current.palletNumberingVersion
+          }
+        : null);
       if(serverEvent){
         const index = plantingEvents.findIndex(item => Number(item.eventId) === Number(snapshot.eventId));
         if(index >= 0){
@@ -13979,7 +14208,11 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
   let recordForStatus = currentRecord;
   if(state === "confirmed" && serverRecord){
     const normalizedServerRecord = normalizeImportedRecord(
-      normalizeGoogleSheetRowRecord(serverRecord),
+      normalizeGoogleSheetRowRecord({
+        ...serverRecord,
+        palletNumberingVersion: serverRecord.palletNumberingVersion
+          ?? recordSnapshot.palletNumberingVersion
+      }),
       0
     );
     if(!normalizedServerRecord) return false;
@@ -14021,8 +14254,14 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
       });
       mergeGoogleSheetRecordSyncFields(confirmedRecord, normalizedServerRecord);
       if(confirmedRecord.type === "fullHarvest"){
-        confirmedRecord.syncSchemaVersion = RECORD_SYNC_SCHEMA_VERSION;
-        confirmedRecord.syncProvidedFields = [...RECORD_SYNC_FIELD_KEYS];
+        confirmedRecord.syncSchemaVersion = Math.max(
+          Number(currentRecord.syncSchemaVersion) || 0,
+          Number(normalizedServerRecord.syncSchemaVersion) || 0
+        );
+        confirmedRecord.syncProvidedFields = [...new Set([
+          ...normalizeRecordSyncProvidedFields(currentRecord),
+          ...normalizeRecordSyncProvidedFields(normalizedServerRecord)
+        ])];
       }
     }
     const status = loadGoogleSheetSyncStatus();
@@ -14033,7 +14272,10 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
       const canonicalIdOccupant = getRecordById(canonicalId);
       if(canonicalIdOccupant && canonicalIdOccupant !== currentRecord){
         if(!hasPendingGoogleSheetRecordChange(canonicalIdOccupant, status)) return false;
-        const reassignedId = getNextAvailableLocalHarvestRecordId(new Set([canonicalId]));
+        const reassignedId = getNextAvailableLocalHarvestRecordId(
+          new Set([canonicalId]),
+          canonicalIdOccupant
+        );
         eventChanged = reassignLocalHarvestRecordId(
           canonicalIdOccupant,
           reassignedId,
@@ -15628,6 +15870,47 @@ function parsePalletKey(key){
     bed: parts[1],
     number: Number(parts[2])
   };
+}
+
+function getPalletNumberingVersion(value){
+  const explicitVersion = Number(value?.palletNumberingVersion ?? value);
+  const syncSchemaVersion = Number(value?.syncSchemaVersion);
+  const recordId = Number(value?.id);
+  const eventId = Number(value?.eventId);
+  return explicitVersion === CURRENT_PALLET_NUMBERING_VERSION
+    || (Number.isSafeInteger(syncSchemaVersion) && syncSchemaVersion >= RECORD_SYNC_SCHEMA_VERSION)
+    || (Number.isSafeInteger(recordId) && recordId >= CURRENT_NUMBERING_RECORD_ID_MIN)
+    || (Number.isSafeInteger(eventId) && eventId >= CURRENT_NUMBERING_EVENT_ID_MIN)
+    ? CURRENT_PALLET_NUMBERING_VERSION
+    : LEGACY_PALLET_NUMBERING_VERSION;
+}
+
+function convertPalletNumberBetweenVersions(number, fromVersion, toVersion){
+  const normalizedNumber = Number(number);
+  if(!Number.isInteger(normalizedNumber)
+    || normalizedNumber < 1
+    || normalizedNumber > PALLETS_PER_BED
+    || getPalletNumberingVersion(fromVersion) === getPalletNumberingVersion(toVersion)){
+    return normalizedNumber;
+  }
+  return normalizedNumber % 2 === 0 ? normalizedNumber - 1 : normalizedNumber + 1;
+}
+
+function convertPalletKeyBetweenVersions(key, fromVersion, toVersion){
+  if(!isValidPalletKeyString(key)) return "";
+  const pallet = parsePalletKey(key);
+  return getPalletKey(
+    pallet.building,
+    pallet.bed,
+    convertPalletNumberBetweenVersions(pallet.number, fromVersion, toVersion)
+  );
+}
+
+function convertPalletKeysBetweenVersions(keys, fromVersion, toVersion){
+  return [...new Set((Array.isArray(keys) ? keys : [])
+    .map(key => convertPalletKeyBetweenVersions(key, fromVersion, toVersion))
+    .filter(Boolean))]
+    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
 }
 
 function updateBuildingLabel(){
@@ -19076,7 +19359,7 @@ function appendForecastBedDetail(container, b){
   let count = 1;
 
   for(let r = ROWS - 1; r >= 0; r--){
-    for(let c = COLS - 1; c >= 0; c--){
+    for(let c = 0; c < COLS; c++){
       const number = count;
       const key = getPalletKey(currentBuilding, b, number);
       const pallet = document.createElement("div");
@@ -19126,7 +19409,7 @@ function appendRecordBedDetail(container, b){
   let count = 1;
 
   for(let r = ROWS - 1; r >= 0; r--){
-    for(let c = COLS - 1; c >= 0; c--){
+    for(let c = 0; c < COLS; c++){
       const number = count;
       const key = getPalletKey(currentBuilding, b, number);
       const pallet = document.createElement("div");
@@ -21990,7 +22273,7 @@ function drawBeds(){
     let count = 1;
 
     for(let r = ROWS - 1; r >= 0; r--){
-      for(let c = COLS - 1; c >= 0; c--){
+      for(let c = 0; c < COLS; c++){
         const number = count;
         const key = getPalletKey(currentBuilding, b, number);
         const pallet = document.createElement("div");
@@ -22746,7 +23029,13 @@ function saveRecord(){
     }
     editingRecord.date = date;
     editingRecord.cases = cases;
-    editingRecord.palletSummary = palletSummary;
+    editingRecord.palletSummary = formatPalletSummary(
+      convertPalletKeysBetweenVersions(
+        harvestFillKeys,
+        CURRENT_PALLET_NUMBERING_VERSION,
+        getPalletNumberingVersion(editingRecord)
+      )
+    );
     editingRecord.plannedSeedlingTrayCount = getPlannedSeedlingTrayCountForRecord();
     editingRecord.actualSeedlingTrayCount = actualSeedlingTrayCount;
     editingRecord.actualSeedlingCarryoverMode = actualSeedlingCarryoverMode;
@@ -22781,7 +23070,9 @@ function saveRecord(){
 
   const record = {
     ...getCurrentRecordSyncMetadata(),
-    id: Date.now(),
+    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+    _palletKeysUseCurrentNumbering: true,
+    id: getNextHarvestRecordId(),
     type: "fullHarvest",
     date,
     cases,
@@ -22862,7 +23153,13 @@ function applyPlantingSelectionToRecord(targetRecord, keysToApply, options = {})
   const existingPlantingKeys = getPlantingPalletKeysFromRecord(targetRecord, harvestKeys);
   targetRecord.plantingPalletKeys = [...new Set([...existingPlantingKeys, ...keysToApply])]
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-  targetRecord.plantingSummary = formatPlantingSummaryForKeys(targetRecord.plantingPalletKeys);
+  targetRecord.plantingSummary = formatPlantingSummaryForKeys(
+    convertPalletKeysBetweenVersions(
+      targetRecord.plantingPalletKeys,
+      CURRENT_PALLET_NUMBERING_VERSION,
+      getPalletNumberingVersion(targetRecord)
+    )
+  );
   targetRecord.plantingDate = options.plantingDate || targetRecord.plantingDate || targetRecord.date || "";
 
   if(options.isActiveRecord){
@@ -22951,6 +23248,10 @@ async function savePlantingRecord(){
     && existingEvent.plantingPalletKeys.length === normalizedSelectedKeys.length
     && existingEvent.plantingPalletKeys.every((key, index) => key === normalizedSelectedKeys[index]);
   const event = normalizePlantingEvent({
+    palletNumberingVersion: existingEvent
+      ? getPalletNumberingVersion(existingEvent)
+      : CURRENT_PALLET_NUMBERING_VERSION,
+    _palletKeysUseCurrentNumbering: true,
     eventId: existingEvent?.eventId || getNextPlantingEventId(),
     plantingDate,
     sourceAllocations,
@@ -23377,7 +23678,9 @@ async function savePartialHarvestRecord(){
 
   const record = {
     ...getCurrentRecordSyncMetadata(),
-    id: Date.now(),
+    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+    _palletKeysUseCurrentNumbering: true,
+    id: getNextHarvestRecordId(),
     type: "partialHarvest",
     date,
     cases,
@@ -24284,19 +24587,26 @@ function normalizeImportedRecord(record, index){
   const validation = validateRecordForGoogleTransfer(record);
   if(!validation.ok) return null;
 
+  const palletNumberingVersion = getPalletNumberingVersion(record);
   const date = String(record.date || "").trim();
   const memo = String(record.memo || "").trim();
   const cases = clampNumber(record.cases, 0, 999999, NaN);
   const isPartial = record.type === "partialHarvest";
 
   if(isPartial){
-    const targets = normalizePartialHarvestTargets(record.targets);
+    const targets = convertPartialHarvestTargetsBetweenVersions(
+      record.targets,
+      palletNumberingVersion,
+      CURRENT_PALLET_NUMBERING_VERSION
+    );
     if(!date || !Number.isFinite(cases) || cases <= 0 || !targets.length){
       return null;
     }
 
     return {
       ...getRecordSyncMetadata(record),
+      palletNumberingVersion,
+      _palletKeysUseCurrentNumbering: true,
       id: Number(record.id),
       duplicateKey: String(record.duplicateKey || "").trim(),
       type: "partialHarvest",
@@ -24332,8 +24642,12 @@ function normalizeImportedRecord(record, index){
     ...expandPalletRangesToKeys(record.plantingRanges),
     ...(explicitLegacyCompletion ? parsePalletSummaryToKeys(plantingSummary) : [])
   ])]
-    .filter(key => palletKeys.includes(key))
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  plantingPalletKeys = convertPalletKeysBetweenVersions(
+    plantingPalletKeys,
+    palletNumberingVersion,
+    CURRENT_PALLET_NUMBERING_VERSION
+  ).filter(key => palletKeys.includes(key));
   // 読み込んだ日付や苗ロス率だけで、未完了の苗植えを完了扱いにしない。
   // 旧形式は実際の苗植えパレットが明示されている場合だけ移行対象にする。
   const hasExplicitLegacyPlantingSelection = plantingPalletKeys.length > 0;
@@ -24344,6 +24658,8 @@ function normalizeImportedRecord(record, index){
 
   return {
     ...getRecordSyncMetadata(record),
+    palletNumberingVersion,
+    _palletKeysUseCurrentNumbering: true,
     id: Number(record.id),
     duplicateKey: String(record.duplicateKey || "").trim(),
     type: "fullHarvest",
@@ -24418,7 +24734,10 @@ function exportRecordsToFile(){
     plantingEventCount: plantingEvents.length,
     records: records.map(serializeRecordForStorage),
     plantingEvents: plantingEvents.map(serializePlantingEventForStorage).filter(Boolean),
-    deletedPlantingEvents,
+    deletedPlantingEvents: deletedPlantingEvents.map(entry => ({
+      ...entry,
+      event: serializePlantingEventForStorage(entry.event)
+    })),
     migratedPlantingRecordIds: [...loadMigratedPlantingRecordIds()]
   };
 
@@ -24507,9 +24826,13 @@ function mergeGoogleSheetRecordSyncFields(existingRecord, incomingRecord){
   ]);
   const nextKnownFields = RECORD_SYNC_FIELD_KEYS.filter(key => knownFields.has(key));
   const currentKnownFields = normalizeRecordSyncProvidedFields(existingRecord);
-  if(existingRecord.syncSchemaVersion !== RECORD_SYNC_SCHEMA_VERSION
+  const nextSchemaVersion = Math.max(
+    Number(existingRecord.syncSchemaVersion) || 0,
+    Number(incomingRecord.syncSchemaVersion) || 0
+  );
+  if(existingRecord.syncSchemaVersion !== nextSchemaVersion
     || currentKnownFields.join("|") !== nextKnownFields.join("|")){
-    existingRecord.syncSchemaVersion = RECORD_SYNC_SCHEMA_VERSION;
+    existingRecord.syncSchemaVersion = nextSchemaVersion;
     existingRecord.syncProvidedFields = nextKnownFields;
     changed = true;
   }
@@ -24521,6 +24844,7 @@ function getHarvestRecordSyncContent(record){
   if(record?.type === "partialHarvest"){
     return {
       type: "partialHarvest",
+      palletNumberingVersion: getPalletNumberingVersion(record),
       date: String(record.date || ""),
       cases: clampNumber(record.cases, 0, RECORD_MAX_CASES, 0),
       memo: String(record.memo || "").trim(),
@@ -24529,6 +24853,7 @@ function getHarvestRecordSyncContent(record){
   }
   return {
     type: "fullHarvest",
+    palletNumberingVersion: getPalletNumberingVersion(record),
     date: String(record?.date || ""),
     cases: clampNumber(record?.cases, 0, RECORD_MAX_CASES, 0),
     palletSummary: String(record?.palletSummary || "").trim(),
@@ -24659,12 +24984,16 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   return eventChanged;
 }
 
-function getNextAvailableLocalHarvestRecordId(reservedIds = null){
+function getNextAvailableLocalHarvestRecordId(reservedIds = null, numberingSource = null){
   const reserved = reservedIds instanceof Set ? reservedIds : new Set();
   const trashIds = new Set(deletedRecords
     .map(entry => getSafePositiveRecordId(entry.record?.id))
     .filter(value => value !== null));
-  let candidate = Math.max(1, Date.now());
+  const usesCurrentNumbering = getPalletNumberingVersion(numberingSource)
+    === CURRENT_PALLET_NUMBERING_VERSION;
+  let candidate = usesCurrentNumbering
+    ? Math.max(CURRENT_NUMBERING_RECORD_ID_MIN, Date.now() * 10 + CURRENT_PALLET_NUMBERING_VERSION)
+    : Math.max(1, Date.now());
   while(candidate <= RECORD_MAX_ID
     && (records.some(record => Number(record.id) === candidate)
       || trashIds.has(candidate)
@@ -24830,7 +25159,10 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
             throw new Error("同じ数値IDに異なる送信済み収穫記録があります");
           }
           const idMatchOldId = Number(idMatch.id);
-          const reassignedId = getNextAvailableLocalHarvestRecordId(remoteCanonicalIds);
+          const reassignedId = getNextAvailableLocalHarvestRecordId(
+            remoteCanonicalIds,
+            idMatch
+          );
           plantingReferenceChanged = reassignLocalHarvestRecordId(
             idMatch,
             reassignedId,
@@ -24896,7 +25228,10 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
           throw new Error("同期する収穫記録IDが別の送信済み記録と競合しています");
         }
         const occupantOldId = Number(canonicalIdOccupant.id);
-        const reassignedId = getNextAvailableLocalHarvestRecordId(remoteCanonicalIds);
+        const reassignedId = getNextAvailableLocalHarvestRecordId(
+          remoteCanonicalIds,
+          canonicalIdOccupant
+        );
         plantingReferenceChanged = reassignLocalHarvestRecordId(
           canonicalIdOccupant,
           reassignedId,
@@ -25027,8 +25362,10 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, op
     }
     let assignedId = sourceId;
     if(assignedId === null || reservedRecordIds.has(assignedId)){
-      assignedId = Math.max(1, Date.now() + index);
-      while(reservedRecordIds.has(assignedId) && assignedId < Number.MAX_SAFE_INTEGER) assignedId++;
+      assignedId = getNextAvailableLocalHarvestRecordId(
+        reservedRecordIds,
+        normalized
+      );
     }
     normalized.id = assignedId;
     reservedRecordIds.add(assignedId);
