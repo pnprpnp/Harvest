@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-dashboard-tab-instant-1">
+<meta name="harvestnavi-version" content="20260729-dashboard-preload-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8797,6 +8797,7 @@ let harvestCasesAutoEstimated = false;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
 let dashboardRenderScheduleId = 0;
+let dashboardRenderedDayKey = "";
 let dashboardHarvestForecastBuilding = null;
 let dashboardSeedlingStatusBuilding = null;
 let dashboardSeedlingStatusSelectedBed = "F";
@@ -10178,11 +10179,23 @@ function runAfterUiSettles(callback){
 }
 
 function scheduleDashboardRenderAfterTabSelection(){
+  if(dashboardRenderedDayKey === formatDateOnlyString(new Date())) return;
   const scheduleId = ++dashboardRenderScheduleId;
   runAfterUiSettles(() => {
     if(scheduleId !== dashboardRenderScheduleId || activeAppTab !== "dashboard") return;
     renderDashboard();
   });
+}
+
+function preloadDashboardDuringWelcome(){
+  try{
+    renderDashboard();
+    return true;
+  }catch(error){
+    dashboardRenderedDayKey = "";
+    console.warn("ウェルカム画面中に集計を準備できませんでした", error);
+    return false;
+  }
 }
 
 function renderDashboardIfVisible(){
@@ -18690,6 +18703,7 @@ function renderDashboard(){
     period: tablePeriod,
     keyword: dashboardFilter.recordSearch || ""
   });
+  dashboardRenderedDayKey = formatDateOnlyString(new Date());
 }
 
 function getHarvestTargetDateString(){
@@ -26160,6 +26174,7 @@ window.onload = () => {
   }
   updateBuildingLastHarvestInfo();
   renderRecordList();
+  preloadDashboardDuringWelcome();
   updateGoogleSheetResendButtonState();
   updateHeaderLatestRecordDate();
   installAvailabilityChecks();
