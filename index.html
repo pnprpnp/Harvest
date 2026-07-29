@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-secondary-planting-layout-1">
+<meta name="harvestnavi-version" content="20260729-seedling-medium-quality-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3070,6 +3070,9 @@ button.monitorSaveBtn:active{
 .qualityChoice input{
   display:none;
 }
+.qualityChoice[hidden]{
+  display:none !important;
+}
 .qualityChoice:not(:has(input:checked)){
   opacity:0.42;
   background:#f8fafc !important;
@@ -4718,6 +4721,7 @@ button.monitorSaveBtn:active{
   border-radius:3px;
   background:#4ade80;
 }
+.dashboardSeedlingStatusMapGuideSwatch.is-large{background:#ef4444;}
 .dashboardSeedlingStatusMapGuideSwatch.is-small{background:#60a5fa;}
 .dashboardSeedlingStatusMapGuideSwatch.is-problem{background:#f59e0b;}
 .dashboardSeedlingStatusMapGuideSwatch.is-mixed{background:#a78bfa;}
@@ -4782,6 +4786,7 @@ button.monitorSaveBtn:active{
 .dashboardSeedlingBedMapCell.is-section-start{
   border-top:1px solid rgba(15,23,42,.5);
 }
+.dashboardSeedlingBedMapCell.is-large{background:#ef4444;}
 .dashboardSeedlingBedMapCell.is-small{background:#60a5fa;}
 .dashboardSeedlingBedMapCell.is-problem{background:#f59e0b;}
 .dashboardSeedlingBedMapCell.is-mixed{background:#a78bfa;}
@@ -4853,6 +4858,9 @@ button.monitorSaveBtn:active{
   font-weight:900;
   line-height:1.25;
   overflow-wrap:anywhere;
+}
+.dashboardSeedlingStatusQuality.is-large{
+  color:#b91c1c;
 }
 .dashboardSeedlingStatusQuality.is-small{
   color:#1d4ed8;
@@ -8026,9 +8034,10 @@ requestAnimationFrame(function(){
         <label id="recordQualityMemoLabel" class="fieldAccentLabel">品質メモ</label>
         <div class="qualityChoiceRow">
           <label class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
+          <label id="qualityMemoMediumChoice" class="qualityChoice" hidden><input type="checkbox" name="qualityMemoTag" value="medium">中</label>
           <label class="qualityChoice qualitySmall"><input type="checkbox" name="qualityMemoTag" value="small">小さい</label>
           <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="elongated">徒長</label>
-          <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip">チップ</label>
+          <label id="qualityMemoChipChoice" class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip">チップ</label>
           <label class="qualityChoice qualityOther"><input type="checkbox" id="qualityMemoOtherToggle" name="qualityMemoTag" value="other">その他</label>
         </div>
         <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他" hidden>
@@ -8221,7 +8230,8 @@ requestAnimationFrame(function(){
         <div id="dashboardSeedlingStatusBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="二次定植を表示する号棟"></div>
         <div id="dashboardSeedlingStatusBeds" class="dashboardForecastBeds dashboardSeedlingStatusBeds"></div>
         <div class="dashboardSeedlingStatusMapGuide" aria-label="苗の配置図の色分け">
-          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch"></span>普通・大きい</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch"></span>中</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-large"></span>大きい</span>
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-small"></span>小さい</span>
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-problem"></span>徒長・欠け</span>
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-mixed"></span>複数・その他</span>
@@ -8232,7 +8242,7 @@ requestAnimationFrame(function(){
         <div class="dashboardSeedlingStatusCaution">
           <div class="dashboardSeedlingStatusCautionTitle">注意</div>
           <ul>
-            <li>「大きい」「小さい」は、記録時の見た目による評価です。時期に応じた適正な大きさとの差を示すものではありません。</li>
+            <li>「大きい」「中」「小さい」は、記録時の見た目による評価です。時期に応じた適正な大きさとの差を示すものではありません。</li>
             <li>同じ日に苗植えした場所の品質メモは、ベッドごとではなく一括で記録しています。そのため、実際の苗の状態と異なる場合があります。</li>
           </ul>
         </div>
@@ -11067,10 +11077,11 @@ function normalizePartialHarvestTargets(targets){
 function normalizeQualityTag(value){
   const text = String(value || "").trim();
   if(text === "大きい") return "large";
+  if(text === "中") return "medium";
   if(text === "小さい") return "small";
   if(text === "徒長") return "elongated";
   if(text === "チップ") return "chip";
-  return ["large", "small", "elongated", "chip"].includes(text) ? text : "";
+  return ["large", "medium", "small", "elongated", "chip"].includes(text) ? text : "";
 }
 
 function normalizeQualityMemo(value){
@@ -11098,7 +11109,24 @@ function normalizeQualityMemo(value){
     : (Array.isArray(source.qualityTags) ? source.qualityTags : (Array.isArray(value) ? value : []));
   const tags = [...new Set(rawTags.map(normalizeQualityTag).filter(Boolean))];
   const other = String(source.other || source.qualityOther || "").trim();
-  return { tags, other };
+  const otherParts = other
+    .split(/[,\n、|]+/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  const includesMedium = otherParts.some(part => normalizeQualityTag(part) === "medium");
+  if(!includesMedium) return { tags, other };
+  const retainedOtherParts = [];
+  otherParts.forEach(part => {
+    if(normalizeQualityTag(part) === "medium"){
+      tags.push("medium");
+    }else{
+      retainedOtherParts.push(part);
+    }
+  });
+  return {
+    tags: [...new Set(tags)],
+    other: retainedOtherParts.join("、")
+  };
 }
 
 function normalizeOptionalQualityMemo(value){
@@ -11119,6 +11147,7 @@ function qualityMemoFromLegacySizeRating(value){
 function getQualityTagLabel(value){
   const labels = {
     large: "大きい",
+    medium: "中",
     small: "小さい",
     elongated: "徒長",
     chip: "チップ"
@@ -11141,6 +11170,19 @@ function getSelectedQualityMemo(){
   const otherEnabled = !!document.getElementById("qualityMemoOtherToggle")?.checked;
   const other = otherEnabled ? String(document.getElementById("qualityMemoOtherInput")?.value || "").trim() : "";
   return normalizeQualityMemo({ tags, other });
+}
+
+function getPlantingQualityMemoForGoogleTransfer(value){
+  const qualityMemo = normalizeOptionalQualityMemo(value);
+  if(!qualityMemo) return null;
+  const hasMedium = qualityMemo.tags.includes("medium");
+  return {
+    tags: qualityMemo.tags.filter(tag => tag !== "medium"),
+    other: [
+      hasMedium ? "中" : "",
+      qualityMemo.other
+    ].filter(Boolean).join("、")
+  };
 }
 
 function updateQualityMemoOtherVisibility(){
@@ -13036,7 +13078,8 @@ function getPlantingEventForGoogleTransfer(event){
     actualPlantedSeedlingCount: normalized.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: normalized.actualSeedlingCarryoverMode,
     actualSeedlingLossRate: normalized.actualSeedlingLossRate,
-    qualityMemo: normalized.qualityMemo,
+    // Apps Script の既存形式とも同期できるよう、「中」は品質メモ本文として送る。
+    qualityMemo: getPlantingQualityMemoForGoogleTransfer(normalized.qualityMemo),
     detailsUnknown: normalized.detailsUnknown,
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt
@@ -13986,8 +14029,8 @@ function isValidTransferQualityMemo(value){
   const rawOther = value.other === undefined ? value.qualityOther : value.other;
   const other = rawOther === undefined || rawOther === null ? "" : rawOther;
   return Array.isArray(tags)
-    && tags.length <= 4
-    && tags.every(tag => typeof tag === "string" && ["large", "small", "elongated", "chip"].includes(normalizeQualityTag(tag)))
+    && tags.length <= 5
+    && tags.every(tag => typeof tag === "string" && ["large", "medium", "small", "elongated", "chip"].includes(normalizeQualityTag(tag)))
     && typeof other === "string"
     && other.length <= RECORD_MAX_QUALITY_LENGTH
     && !other.includes("\u0000");
@@ -14110,7 +14153,7 @@ function validateRecordForGoogleTransfer(record, options = {}){
       return invalid("品質メモの形式が正しくありません");
     }
     const legacyTags = parseMaybeJsonList(record.qualityTags);
-    if(legacyTags.length > 4 || legacyTags.some(tag => typeof tag !== "string" || !normalizeQualityTag(tag))){
+    if(legacyTags.length > 5 || legacyTags.some(tag => typeof tag !== "string" || !normalizeQualityTag(tag))){
       return invalid("品質メモの形式が正しくありません");
     }
   }
@@ -18442,6 +18485,7 @@ function getDashboardSeedlingQualityClass(value){
   if(!qualityMemo.tags.length && !qualityMemo.other) return "is-unknown";
   if(qualityMemo.tags.includes("elongated") || qualityMemo.tags.includes("chip")) return "is-problem";
   if(qualityMemo.other || qualityMemo.tags.length > 1) return "is-mixed";
+  if(qualityMemo.tags[0] === "large") return "is-large";
   if(qualityMemo.tags[0] === "small") return "is-small";
   return "";
 }
@@ -21561,6 +21605,8 @@ function refreshRecordModeUi(){
   const plantingStageSection = document.getElementById("recordPlantingStageSection");
   const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
   const qualityMemoLabel = document.getElementById("recordQualityMemoLabel");
+  const qualityMemoMediumChoice = document.getElementById("qualityMemoMediumChoice");
+  const qualityMemoChipChoice = document.getElementById("qualityMemoChipChoice");
   const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
   const plantingStep = document.getElementById("recordStepPlanting");
@@ -21572,6 +21618,22 @@ function refreshRecordModeUi(){
     && editingEvent?.openingCarryoverBefore !== null
     && editingEvent?.openingCarryoverBefore !== undefined;
   const recordDateInput = document.getElementById("recordDateInput");
+  if(qualityMemoMediumChoice){
+    qualityMemoMediumChoice.hidden = !isPlantingMode;
+    const input = qualityMemoMediumChoice.querySelector("input");
+    if(input){
+      input.disabled = !isPlantingMode;
+      if(!isPlantingMode) input.checked = false;
+    }
+  }
+  if(qualityMemoChipChoice){
+    qualityMemoChipChoice.hidden = isPlantingMode;
+    const input = qualityMemoChipChoice.querySelector("input");
+    if(input){
+      input.disabled = isPlantingMode;
+      if(isPlantingMode) input.checked = false;
+    }
+  }
   if(recordDateInput){
     recordDateInput.readOnly = !!lockPlantingDate;
     recordDateInput.title = lockPlantingDate
