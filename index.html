@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260730-bed-planting-age-layout-1">
+<meta name="harvestnavi-version" content="20260730-active-building-tab-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -16851,6 +16851,41 @@ function populateDashboardStartDayOptions(){
   syncDashboardStartDayInputs();
 }
 
+function revealDashboardSelectedBuildingButton(tabsId, selectedButtonSelector){
+  const tabs = document.getElementById(tabsId);
+  if(!tabs || tabs.hidden || tabs.clientWidth <= 0) return false;
+  const selectedButton = tabs.querySelector(selectedButtonSelector);
+  if(!selectedButton) return false;
+
+  const maxScrollLeft = Math.max(0, tabs.scrollWidth - tabs.clientWidth);
+  const centeredScrollLeft = selectedButton.offsetLeft
+    - (tabs.clientWidth - selectedButton.offsetWidth) / 2;
+  tabs.scrollLeft = Math.min(maxScrollLeft, Math.max(0, centeredScrollLeft));
+  return true;
+}
+
+function scheduleDashboardSelectedBuildingButtonReveal(subtab = dashboardFilter.dashboardSubtab){
+  const activeSubtab = normalizeDashboardSubtab(subtab);
+  const target = activeSubtab === "seedlings"
+    ? {
+        tabsId: "dashboardSeedlingStatusBuildingTabs",
+        selector: "[data-dashboard-seedling-building].active"
+      }
+    : (activeSubtab === "guide" && getDashboardHarvestForecastView() === "beds"
+        ? {
+            tabsId: "dashboardHarvestForecastBuildingTabs",
+            selector: "[data-dashboard-forecast-building].active"
+          }
+        : null);
+  if(!target) return;
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      revealDashboardSelectedBuildingButton(target.tabsId, target.selector);
+    });
+  });
+}
+
 function syncDashboardSubtabUi(){
   const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
   document.querySelectorAll("[data-dashboard-subtab]").forEach(button => {
@@ -16862,6 +16897,7 @@ function syncDashboardSubtabUi(){
   document.querySelectorAll("[data-dashboard-subtab-panel]").forEach(panel => {
     panel.hidden = panel.dataset.dashboardSubtabPanel !== activeSubtab;
   });
+  scheduleDashboardSelectedBuildingButtonReveal(activeSubtab);
 }
 
 function setDashboardSubtab(value){
@@ -18608,6 +18644,7 @@ function renderDashboardHarvestForecastView(model){
     renderDashboardHarvestForecastDays(model);
   }else{
     renderDashboardHarvestForecastBeds(model);
+    scheduleDashboardSelectedBuildingButtonReveal("guide");
   }
 }
 
