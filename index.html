@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260730-calculation-help-1">
+<meta name="harvestnavi-version" content="20260730-bed-planting-age-layout-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4749,6 +4749,7 @@ button.monitorSaveBtn:active{
   font-size:12px;
   font-weight:800;
   line-height:1.3;
+  white-space:pre-line;
 }
 .dashboardSeedlingStatusHead{
   margin-bottom:12px;
@@ -18397,11 +18398,13 @@ function getDashboardForecastBedPlantingAgeText(model, building, bed){
   }
   if(!palletKeys.length) return "";
   const stats = getDashboardForecastPlantingAgeStats(model, palletKeys);
-  if(stats.knownCount === 0) return "(定植記録なし)";
+  if(stats.knownCount === 0) return "定植〜収穫まで\n記録なし";
   const ageText = stats.minAge === stats.maxAge
-    ? `${stats.minAge}日目`
-    : `${stats.minAge}〜${stats.maxAge}日目`;
-  return `(定植から${ageText}${getDashboardForecastPlantingAgeNote(stats)})`;
+    ? `${stats.minAge}日`
+    : `${stats.minAge}〜${stats.maxAge}日`;
+  const estimateMark = stats.includesEstimate ? "?" : "";
+  const unknownNote = stats.knownCount < stats.totalCount ? " 一部不明" : "";
+  return `定植〜収穫まで\n${ageText}${estimateMark}${unknownNote}`;
 }
 
 function getDashboardHarvestForecastUnavailableText(model){
