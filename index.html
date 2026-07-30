@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260730-active-building-tab-1">
+<meta name="harvestnavi-version" content="20260730-performance-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8988,6 +8988,8 @@ const CALCULATION_LOOKBACK_DAYS = 35;
 const HARVEST_CYCLE_GAP_DAYS = 7;
 const RECORD_LIST_DISPLAY_LIMIT = 30;
 const DASHBOARD_RECORD_INITIAL_DISPLAY_LIMIT = 8;
+const DASHBOARD_RECORD_FILTER_DELAY_MS = 180;
+const HARVEST_STATE_SAVE_DELAY_MS = 250;
 const RECORD_EXPORT_PROMPT_COUNT = 300;
 const RECORD_BACKUP_MAX_ITEMS = 10000;
 const MIN_BUILDING = 2;
@@ -9077,6 +9079,8 @@ let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
 let dashboardRenderScheduleId = 0;
 let dashboardRenderedDayKey = "";
+const dashboardRenderedSubtabs = new Set();
+let dashboardRecordFilterTimer = null;
 let dashboardHarvestForecastBuilding = null;
 let dashboardSeedlingStatusBuilding = null;
 let dashboardSeedlingStatusSelectedBed = "F";
@@ -9087,6 +9091,8 @@ let dashboardHarvestForecastLossValue = null;
 let dashboardHarvestForecastCasesDraftValue = null;
 let dashboardHarvestForecastLossDraftValue = null;
 let dashboardHarvestForecastInputsDirty = false;
+let harvestStateSaveTimer = null;
+let pendingHarvestStateSaveOptions = null;
 const tabScrollPositions = {
   forecast: 0,
   monitor: 0,
@@ -9792,7 +9798,16 @@ function closeMonitorMode(){
 }
 
 
+function cancelPendingHarvestStateSave(){
+  if(harvestStateSaveTimer !== null){
+    clearTimeout(harvestStateSaveTimer);
+    harvestStateSaveTimer = null;
+  }
+  pendingHarvestStateSaveOptions = null;
+}
+
 function saveHarvestStateToStorage(options = {}){
+  cancelPendingHarvestStateSave();
   syncCurrentCasePlacementFromInputs();
   if(!options.skipPlantingDraftCapture && activeAppTab === "record" && recordSelectionMode === "planting"){
     capturePlantingRecordDraft();
@@ -9830,6 +9845,41 @@ function saveHarvestStateToStorage(options = {}){
   };
   localStorage.setItem(HARVEST_STATE_KEY, JSON.stringify(payload));
   scheduleWorkflowGuideUpdate();
+}
+
+function scheduleHarvestStateSave(options = {}){
+  pendingHarvestStateSaveOptions = {
+    ...(pendingHarvestStateSaveOptions || {}),
+    ...options
+  };
+  if(harvestStateSaveTimer !== null) clearTimeout(harvestStateSaveTimer);
+  harvestStateSaveTimer = setTimeout(() => {
+    const pendingOptions = pendingHarvestStateSaveOptions || {};
+    harvestStateSaveTimer = null;
+    pendingHarvestStateSaveOptions = null;
+    saveHarvestStateToStorage(pendingOptions);
+  }, HARVEST_STATE_SAVE_DELAY_MS);
+}
+
+function flushPendingHarvestStateSave(){
+  if(harvestStateSaveTimer === null) return false;
+  const pendingOptions = pendingHarvestStateSaveOptions || {};
+  clearTimeout(harvestStateSaveTimer);
+  harvestStateSaveTimer = null;
+  pendingHarvestStateSaveOptions = null;
+  saveHarvestStateToStorage(pendingOptions);
+  return true;
+}
+
+function installHarvestStateSaveFlushListeners(){
+  if(document.documentElement.dataset.harvestStateSaveFlushInstalled === "1") return;
+  document.addEventListener("change", flushPendingHarvestStateSave);
+  document.addEventListener("focusout", flushPendingHarvestStateSave);
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "hidden") flushPendingHarvestStateSave();
+  });
+  window.addEventListener("pagehide", flushPendingHarvestStateSave);
+  document.documentElement.dataset.harvestStateSaveFlushInstalled = "1";
 }
 
 function loadHarvestStateFromStorage(){
@@ -9875,6 +9925,7 @@ function loadHarvestStateFromStorage(){
 }
 
 function clearHarvestStateFromStorage(){
+  cancelPendingHarvestStateSave();
   localStorage.removeItem(HARVEST_STATE_KEY);
 }
 
@@ -10464,7 +10515,11 @@ function setDashboardLoadingState(isLoading){
 }
 
 function scheduleDashboardRenderAfterTabSelection(){
-  if(dashboardRenderedDayKey === formatDateOnlyString(new Date())){
+  const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
+  if(
+    dashboardRenderedDayKey === formatDateOnlyString(new Date())
+    && dashboardRenderedSubtabs.has(activeSubtab)
+  ){
     setDashboardLoadingState(false);
     return;
   }
@@ -10532,6 +10587,7 @@ function restoreTabScrollPosition(tabName){
 function switchTab(tabName){
   if(tabName === "settings") tabName = "forecast";
   if(!ensureProtectedTabAccess(tabName)) return false;
+  flushPendingHarvestStateSave();
   const previousTab = activeAppTab;
   if(tabName === "record" && previousTab !== "record" && recordSelectionMode === "planting"){
     preserveForecastStateBeforeRecordTab();
@@ -11046,6 +11102,7 @@ function loadSettings(){
 function saveSettingsToStorage(){
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   invalidatePlantingEventStateCache();
+  invalidateDashboardDerivedData();
 }
 
 function compressPalletKeysToRanges(keys){
@@ -11791,6 +11848,7 @@ function savePlantingEventsToStorage(){
     JSON.stringify(plantingEvents.map(serializePlantingEventForStorage).filter(Boolean))
   );
   invalidatePlantingEventStateCache();
+  invalidateDashboardDerivedData();
   workflowPendingRecordCache = null;
   workflowPendingRecordCacheReady = false;
   scheduleWorkflowGuideUpdate();
@@ -12379,6 +12437,7 @@ function loadRecords(){
 
 function saveRecordsToStorage(){
   invalidatePlantingEventStateCache();
+  invalidateDashboardDerivedData();
   workflowPendingRecordCache = null;
   workflowPendingRecordCacheReady = false;
   records.sort(compareRecordsByDateDesc);
@@ -14985,7 +15044,7 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
     savePlantingEventsToStorage();
     syncHarvestPlantingPendingFlags();
     renderRecordList();
-    renderDashboard();
+    renderDashboardIfVisible();
     drawBeds();
     drawRecordBeds();
     renderForecastSummary();
@@ -15963,7 +16022,7 @@ async function importRecordsFromGoogleSheet(options = {}){
     const hadBackfillActivity = backfilledPlantingEvents.length > 0
       || backfilledPlantingSuccessCount > 0;
     renderRecordList();
-    renderDashboard();
+    renderDashboardIfVisible();
     updateGoogleSheetResendButtonState();
     drawBeds();
     drawRecordBeds();
@@ -16770,6 +16829,13 @@ function normalizeDashboardSubtab(value){
   return ["guide", "calendar", "seedlings", "graphs"].includes(value) ? value : "guide";
 }
 
+function invalidateDashboardDerivedData(){
+  dashboardHarvestForecastModelCache = null;
+  dashboardSeedlingStatusModelCache = null;
+  dashboardRenderedSubtabs.clear();
+  dashboardRenderedDayKey = "";
+}
+
 function loadDashboardFilter(){
   try{
     const raw = localStorage.getItem(DASHBOARD_FILTER_KEY);
@@ -16907,6 +16973,8 @@ function setDashboardSubtab(value){
     saveDashboardFilter();
   }
   syncDashboardSubtabUi();
+  renderDashboardSubtab(nextSubtab);
+  dashboardRenderedDayKey = formatDateOnlyString(new Date());
 }
 
 function handleDashboardSubtabKeydown(event){
@@ -17006,7 +17074,44 @@ function getDashboardChartPeriod(startDate, granularity){
   };
 }
 
+function cancelDashboardRecordFilterRefresh(){
+  if(dashboardRecordFilterTimer !== null){
+    clearTimeout(dashboardRecordFilterTimer);
+    dashboardRecordFilterTimer = null;
+  }
+}
+
+function renderDashboardRecordResults(){
+  const tablePeriod = getDashboardTablePeriod();
+  const tableRecords = filterDashboardRecords(getDashboardRecordsForPeriod(tablePeriod));
+  const keyword = String(
+    document.getElementById("dashboardRecordSearchInput")?.value
+      || dashboardFilter.recordSearch
+      || ""
+  ).trim();
+  renderDashboardRecordTable(tableRecords, {
+    period: tablePeriod,
+    keyword
+  });
+}
+
+function runDashboardRecordFilterRefresh(){
+  cancelDashboardRecordFilterRefresh();
+  saveDashboardFilter();
+  renderDashboardRecordResults();
+}
+
+function scheduleDashboardRecordFilterRefresh(){
+  cancelDashboardRecordFilterRefresh();
+  dashboardRecordFilterTimer = setTimeout(() => {
+    dashboardRecordFilterTimer = null;
+    saveDashboardFilter();
+    renderDashboardRecordResults();
+  }, DASHBOARD_RECORD_FILTER_DELAY_MS);
+}
+
 function clearDashboardRecordFilters(){
+  cancelDashboardRecordFilterRefresh();
   dashboardFilter.recordSearch = "";
   dashboardFilter.recordStartDate = "";
   dashboardFilter.recordEndDate = "";
@@ -17017,7 +17122,7 @@ function clearDashboardRecordFilters(){
   if(startInput) startInput.value = "";
   if(endInput) endInput.value = "";
   saveDashboardFilter();
-  renderDashboard();
+  renderDashboardRecordResults();
 }
 
 function isDateInPeriod(dateStr, period){
@@ -18671,7 +18776,7 @@ function renderDashboardHarvestForecast(){
   const tabs = document.getElementById("dashboardHarvestForecastBuildingTabs");
   if(!tabs) return;
 
-  const model = buildDashboardHarvestForecastModel();
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   dashboardHarvestForecastModelCache = model;
   syncDashboardHarvestForecastInputs(model);
   if(!BUILDINGS.includes(dashboardHarvestForecastBuilding)){
@@ -18977,13 +19082,14 @@ function setDashboardSeedlingStatusBuilding(building){
   document.querySelectorAll("[data-dashboard-seedling-building]").forEach(button => {
     button.classList.toggle("active", Number(button.dataset.dashboardSeedlingBuilding) === normalized);
   });
-  renderDashboardSeedlingStatusBeds(buildDashboardSeedlingStatusModel());
+  const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
+  renderDashboardSeedlingStatusBeds(model);
 }
 
 function renderDashboardSeedlingStatus(){
   const tabs = document.getElementById("dashboardSeedlingStatusBuildingTabs");
   if(!tabs) return;
-  const model = buildDashboardSeedlingStatusModel();
+  const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
   if(!BUILDINGS.includes(dashboardSeedlingStatusBuilding)){
     const startupBuilding = Number(getStartupHarvestBuilding());
     dashboardSeedlingStatusBuilding = BUILDINGS.includes(startupBuilding) ? startupBuilding : BUILDINGS[0];
@@ -19000,19 +19106,7 @@ function renderDashboardSeedlingStatus(){
   renderDashboardSeedlingStatusBeds(model);
 }
 
-function renderDashboard(){
-  populateDashboardStartDayOptions();
-  const startDayInputs = getDashboardStartDayInputs();
-  if(!startDayInputs.length) return;
-
-  const selectedDay = getDashboardSelectedStartDay();
-  syncDashboardStartDayInputs(selectedDay);
-  if(dashboardFilter.startDay !== selectedDay){
-    dashboardFilter.startDay = selectedDay;
-    saveDashboardFilter();
-  }
-  syncDashboardSubtabUi();
-
+function renderDashboardGraphs(){
   const period = getDashboardPeriod();
   const metricsPeriod = renderDashboardMetrics();
   const metricsNote = document.getElementById("dashboardMetricsNote");
@@ -19020,9 +19114,6 @@ function renderDashboard(){
     metricsNote.textContent = `※直近1ヶ月（${metricsPeriod.startLabel}〜${metricsPeriod.endLabel}）のデータを参照しています。`;
   }
 
-  renderDashboardHarvestForecast();
-  renderDashboardHarvestStartTimeline();
-  renderDashboardSeedlingStatus();
   renderDashboardHistory(period);
 
   const casesGranularity = ["month", "year"].includes(dashboardFilter.casesGranularity) ? dashboardFilter.casesGranularity : "month";
@@ -19071,13 +19162,49 @@ function renderDashboard(){
   if(dashboardRecordStartDateInput && dashboardRecordStartDateInput.value !== (dashboardFilter.recordStartDate || "")) dashboardRecordStartDateInput.value = dashboardFilter.recordStartDate || "";
   if(dashboardRecordEndDateInput && dashboardRecordEndDateInput.value !== (dashboardFilter.recordEndDate || "")) dashboardRecordEndDateInput.value = dashboardFilter.recordEndDate || "";
 
-  const tablePeriod = getDashboardTablePeriod();
-  const tableRecords = filterDashboardRecords(getDashboardRecordsForPeriod(tablePeriod));
-  renderDashboardRecordTable(tableRecords, {
-    period: tablePeriod,
-    keyword: dashboardFilter.recordSearch || ""
-  });
-  dashboardRenderedDayKey = formatDateOnlyString(new Date());
+  cancelDashboardRecordFilterRefresh();
+  renderDashboardRecordResults();
+}
+
+function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options = {}){
+  const normalizedSubtab = normalizeDashboardSubtab(subtab);
+  if(!options.force && dashboardRenderedSubtabs.has(normalizedSubtab)){
+    scheduleDashboardSelectedBuildingButtonReveal(normalizedSubtab);
+    return;
+  }
+
+  if(normalizedSubtab === "guide"){
+    renderDashboardHarvestForecast();
+  }else if(normalizedSubtab === "calendar"){
+    renderDashboardHarvestStartTimeline();
+  }else if(normalizedSubtab === "seedlings"){
+    renderDashboardSeedlingStatus();
+  }else{
+    renderDashboardGraphs();
+  }
+  dashboardRenderedSubtabs.add(normalizedSubtab);
+  scheduleDashboardSelectedBuildingButtonReveal(normalizedSubtab);
+}
+
+function renderDashboard(){
+  const todayKey = formatDateOnlyString(new Date());
+  if(dashboardRenderedDayKey && dashboardRenderedDayKey !== todayKey){
+    invalidateDashboardDerivedData();
+  }
+
+  populateDashboardStartDayOptions();
+  const startDayInputs = getDashboardStartDayInputs();
+  if(!startDayInputs.length) return;
+
+  const selectedDay = getDashboardSelectedStartDay();
+  syncDashboardStartDayInputs(selectedDay);
+  if(dashboardFilter.startDay !== selectedDay){
+    dashboardFilter.startDay = selectedDay;
+    saveDashboardFilter();
+  }
+  syncDashboardSubtabUi();
+  renderDashboardSubtab(dashboardFilter.dashboardSubtab, { force: true });
+  dashboardRenderedDayKey = todayKey;
 }
 
 function getHarvestTargetDateString(){
@@ -22344,7 +22471,7 @@ function handleCasePlacementInput(){
   updateCasePlacementTotal();
   syncCurrentCasePlacementFromInputs();
   renderForecastSummary();
-  saveHarvestStateToStorage();
+  scheduleHarvestStateSave();
 }
 
 function formatInstructionLineHtml(text){
@@ -22548,7 +22675,7 @@ function removeMonitorMemoInput(item){
 
 function handleMonitorMemoInput(){
   invalidateWorkflowMonitorCheckpoint();
-  saveHarvestStateToStorage();
+  scheduleHarvestStateSave();
   if(isMonitorModeOpen){
     renderMonitorMode();
   }
@@ -24103,7 +24230,7 @@ async function savePlantingRecord(){
   syncHarvestPlantingPendingFlags();
   maybePromptRecordExport();
   renderRecordList();
-  renderDashboard();
+  renderDashboardIfVisible();
   updateGoogleSheetResendButtonState();
   updateBuildingLastHarvestInfo();
   updateHeaderLatestRecordDate();
@@ -24268,7 +24395,7 @@ async function confirmDeletePlantingEvent(eventId){
     syncHarvestPlantingPendingFlags();
     if(Number(editingPlantingEventId) === Number(event.eventId)) clearRecordForm();
     renderRecordList();
-    renderDashboard();
+    renderDashboardIfVisible();
     updateGoogleSheetResendButtonState();
     drawBeds();
     drawRecordBeds();
@@ -24344,7 +24471,7 @@ async function restoreDeletedPlantingEvent(eventId){
     setPlantingEventSyncStatus(eventToRestore, entry.sheetDeleted || entry.wasSynced ? "confirmed" : "edited");
     syncHarvestPlantingPendingFlags();
     renderRecordList();
-    renderDashboard();
+    renderDashboardIfVisible();
     drawBeds();
     drawRecordBeds();
     renderForecastSummary();
@@ -24495,7 +24622,7 @@ async function savePartialHarvestRecord(){
     })
   });
   renderRecordList();
-  renderDashboard();
+  renderDashboardIfVisible();
   updateGoogleSheetResendButtonState();
   drawBeds();
   drawRecordBeds();
@@ -24652,7 +24779,7 @@ function savePartialHarvestRecordEdit(){
     })
   });
   renderRecordList();
-  renderDashboard();
+  renderDashboardIfVisible();
   updateGoogleSheetResendButtonState();
   drawBeds();
   drawRecordBeds();
@@ -24705,7 +24832,7 @@ function deleteRecord(id, options = {}){
     closePartialHarvestEditWindow();
   }
   renderRecordList();
-  renderDashboard();
+  renderDashboardIfVisible();
   updateGoogleSheetResendButtonState();
   drawBeds();
   drawRecordBeds();
@@ -25071,7 +25198,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
       localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
     }
     renderRecordList();
-    renderDashboard();
+    renderDashboardIfVisible();
     updateGoogleSheetResendButtonState();
     drawBeds();
     drawRecordBeds();
@@ -26150,7 +26277,7 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, op
   }
   if(!options.skipExportPrompt) maybePromptRecordExport();
   renderRecordList();
-  renderDashboard();
+  renderDashboardIfVisible();
   updateGoogleSheetResendButtonState();
   drawBeds();
   drawRecordBeds();
@@ -26305,11 +26432,11 @@ function restoreBackupImportSnapshot(snapshot){
   invalidatePlantingEventStateCache();
   workflowPendingRecordCache = null;
   workflowPendingRecordCacheReady = false;
-  dashboardHarvestForecastModelCache = null;
+  invalidateDashboardDerivedData();
 
   try{
     renderRecordList();
-    renderDashboard();
+    renderDashboardIfVisible();
     drawBeds();
     drawRecordBeds();
     renderForecastSummary();
@@ -26462,6 +26589,7 @@ window.onload = () => {
   installNumberInputAutoSelect();
   installUnitInputTapFocus();
   installEmptyInputHighlights();
+  installHarvestStateSaveFlushListeners();
   installMonitorViewportResizeObserver();
   if(records.length) saveRecordsToStorage();
   migrateLegacyPlantingEvents();
@@ -26607,7 +26735,7 @@ window.onload = () => {
       updateRecordActualSeedlingDisplays();
       updateBuildingLastHarvestInfo();
       drawRecordBeds();
-      saveHarvestStateToStorage();
+      scheduleHarvestStateSave();
     });
     recordDateInput.addEventListener("change", () => {
       updateRecordWeekdayDisplay();
@@ -26628,7 +26756,7 @@ window.onload = () => {
       recordCasesEdited = true;
       updateRecordActualLoss();
       updateRecordInputGuides();
-      saveHarvestStateToStorage();
+      scheduleHarvestStateSave();
     });
   }
 
@@ -26638,7 +26766,7 @@ window.onload = () => {
     input.addEventListener("input", () => {
       updateRecordActualSeedlingDisplays();
       updateRecordSeedlingDiffDisplay();
-      saveHarvestStateToStorage();
+      scheduleHarvestStateSave();
     });
   });
 
@@ -26654,14 +26782,14 @@ window.onload = () => {
   if(qualityMemoOtherInput){
     qualityMemoOtherInput.addEventListener("input", () => {
       updateRecordInputGuides();
-      saveHarvestStateToStorage();
+      scheduleHarvestStateSave();
     });
   }
 
   const recordMemoInput = document.getElementById("recordMemoInput");
   if(recordMemoInput){
     recordMemoInput.addEventListener("input", () => {
-      saveHarvestStateToStorage();
+      scheduleHarvestStateSave();
     });
   }
 
@@ -26669,7 +26797,7 @@ window.onload = () => {
   if(recordPlantingSummaryInput){
     recordPlantingSummaryInput.addEventListener("input", () => {
       recordPlantingSummaryEdited = true;
-      saveHarvestStateToStorage();
+      scheduleHarvestStateSave();
     });
   }
 
@@ -26687,7 +26815,7 @@ window.onload = () => {
   const mainCasesInput = document.getElementById("casesInput");
   if(mainCasesInput){
     mainCasesInput.addEventListener("input", () => {
-      saveHarvestStateToStorage();
+      scheduleHarvestStateSave();
     });
   }
 
@@ -26721,13 +26849,22 @@ window.onload = () => {
   });
 
   if(dashboardRecordSearchInput){
-    const handleDashboardRecordSearch = () => {
+    const updateDashboardRecordSearch = () => {
       dashboardFilter.recordSearch = String(dashboardRecordSearchInput.value || "").trim();
-      saveDashboardFilter();
-      renderDashboard();
     };
-    dashboardRecordSearchInput.addEventListener("input", handleDashboardRecordSearch);
-    dashboardRecordSearchInput.addEventListener("change", handleDashboardRecordSearch);
+    dashboardRecordSearchInput.addEventListener("input", event => {
+      if(event.isComposing) return;
+      updateDashboardRecordSearch();
+      scheduleDashboardRecordFilterRefresh();
+    });
+    dashboardRecordSearchInput.addEventListener("compositionend", () => {
+      updateDashboardRecordSearch();
+      scheduleDashboardRecordFilterRefresh();
+    });
+    dashboardRecordSearchInput.addEventListener("change", () => {
+      updateDashboardRecordSearch();
+      runDashboardRecordFilterRefresh();
+    });
   }
 
   [
@@ -26738,13 +26875,11 @@ window.onload = () => {
     if(!input) return;
     input.addEventListener("input", () => {
       dashboardFilter[key] = input.value || "";
-      saveDashboardFilter();
-      renderDashboard();
+      scheduleDashboardRecordFilterRefresh();
     });
     input.addEventListener("change", () => {
       dashboardFilter[key] = input.value || "";
-      saveDashboardFilter();
-      renderDashboard();
+      runDashboardRecordFilterRefresh();
     });
   });
 
