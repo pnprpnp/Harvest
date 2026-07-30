@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260729-secondary-planting-labels-1">
+<meta name="harvestnavi-version" content="20260730-planting-legends-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -1270,8 +1270,8 @@ button.forecastClearBtn{
   border-color:#16a34a;
 }
 .bedMiniMapSegment.plantingSelectable{
-  background:#fef08a;
-  border-color:#eab308;
+  background:#fb923c;
+  border-color:#c2410c;
 }
 .bedMiniMapSegment.plantingSelected{
   background:#2563eb;
@@ -1313,6 +1313,21 @@ button.forecastClearBtn{
 .bedMiniMapSegment.recorded.partial.partialHarvest{
   background:#cbd5e1 !important;
   border-color:#94a3b8 !important;
+}
+.plantingBedMap .bedMiniMapSegment.plantingSelectable{
+  background:#fb923c !important;
+  border-color:#c2410c !important;
+  opacity:1;
+}
+.plantingBedMap .bedMiniMapSegment.plantingSelected{
+  background:#2563eb !important;
+  border-color:#1d4ed8 !important;
+  opacity:1;
+}
+.plantingBedMap .bedMiniMapSegment.plantingUnavailable{
+  background:#e5e7eb !important;
+  border-color:#9ca3af !important;
+  opacity:.72;
 }
 .plantingBedMap.bedCollapsedFull .bedMiniMapBar{
   gap:0;
@@ -2753,6 +2768,15 @@ button.monitorSaveBtn:active{
 .recordLegendSwatch.selectable{background:#fef08a;border-color:#eab308;}
 .recordLegendSwatch.selected{background:#2563eb;border-color:#1d4ed8;}
 .recordLegendSwatch.unavailable{background:#e5e7eb;border-color:#9ca3af;}
+.recordLegendSwatch.unplanted{background:#fb923c;border-color:#c2410c;}
+.recordLegendSwatch.planting-now{background:#2563eb;border-color:#1d4ed8;}
+.recordLegendSwatch.planted{background:#e5e7eb;border-color:#9ca3af;}
+.bedDetailPlantingLegend{
+  margin:0 0 10px;
+  padding-bottom:8px;
+  border-bottom:1px solid #e5e7eb;
+  font-size:11px;
+}
 .recordActualRow{
   display:grid;
   grid-template-columns:minmax(112px, 0.9fr) minmax(132px, 1.1fr);
@@ -8018,9 +8042,9 @@ requestAnimationFrame(function(){
       <div class="recordHarvestAdjustBox">
         <div id="recordEditNotice" class="recordEditNotice">実際の収穫場所に調整してください。</div>
         <div id="recordPlantingLegend" class="recordPlantingLegend" hidden>
-          <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
-          <span class="recordLegendItem"><span class="recordLegendSwatch selected"></span>選択済み</span>
-          <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch unplanted"></span>未定植</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch planting-now"></span>今回定植</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch planted"></span>定植済み</span>
         </div>
 
         <div id="recordBeds" class="recordBuildingMapList"></div>
@@ -19843,6 +19867,17 @@ function renderBedDetailWindow(){
   };
   title.ontouchcancel = handleBedDetailTitlePressEnd;
   body.innerHTML = "";
+  if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
+    const legend = document.createElement("div");
+    legend.className = "recordPlantingLegend bedDetailPlantingLegend";
+    legend.setAttribute("aria-label", "各パレットの色分け");
+    legend.innerHTML = `
+      <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
+      <span class="recordLegendItem"><span class="recordLegendSwatch selected"></span>選択済み</span>
+      <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+    `;
+    body.appendChild(legend);
+  }
   const content = document.createElement("div");
   content.className = "bedDetailContent";
   if(activeBedDetailContext === "record"){
