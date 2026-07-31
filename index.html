@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260731-forecast-harvest-age-label-1">
+<meta name="harvestnavi-version" content="20260731-calendar-history-navigation-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4209,6 +4209,76 @@ button.monitorSaveBtn:active{
 }
 .dashboardHarvestStartCard .dashboardHarvestStartTitleRow .sectionTitle{
   margin-bottom:0;
+}
+.dashboardCalendarPastBtn{
+  min-height:34px;
+  margin-left:auto;
+  padding:7px 12px;
+  border:1px solid #c4b5fd;
+  border-radius:10px;
+  background:#f5f3ff;
+  color:#6d28d9;
+  font-size:12px;
+  font-weight:850;
+  box-shadow:none;
+}
+.dashboardCalendarPastBtn[aria-pressed="true"]{
+  border-color:#8b5cf6;
+  background:#8b5cf6;
+  color:#fff;
+}
+.dashboardCalendarHistoryControls{
+  display:grid;
+  grid-template-columns:38px minmax(0, 1fr) 38px;
+  gap:7px;
+  align-items:center;
+  margin:0 0 12px;
+  padding:8px;
+  border:1px solid #ddd6fe;
+  border-radius:12px;
+  background:#faf8ff;
+}
+.dashboardCalendarHistoryControls[hidden]{
+  display:none;
+}
+.dashboardCalendarMonthNavBtn{
+  width:38px;
+  min-width:38px;
+  min-height:38px;
+  padding:0;
+  border:1px solid #c4b5fd;
+  border-radius:10px;
+  background:#fff;
+  color:#6d28d9;
+  font-size:25px;
+  font-weight:800;
+  line-height:1;
+  box-shadow:none;
+}
+.dashboardCalendarMonthField{
+  min-width:0;
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr);
+  align-items:center;
+  gap:7px;
+  margin:0;
+  color:#64748b;
+  font-size:10px;
+  font-weight:750;
+}
+.dashboardCalendarMonthInput{
+  width:100%;
+  min-width:0;
+  height:38px;
+  box-sizing:border-box;
+  margin:0;
+  padding:6px 8px;
+  border:1px solid #c4b5fd;
+  border-radius:10px;
+  background:#fff;
+  color:#334155;
+  font-size:14px;
+  font-weight:800;
 }
 .dashboardHarvestStartMonthColumns{
   display:grid;
@@ -8468,6 +8538,15 @@ requestAnimationFrame(function(){
         <div class="dashboardHarvestStartTitleRow">
           <div class="sectionTitle">カレンダー</div>
           <button id="dashboardCalendarInfoBtn" type="button" class="dashboardForecastInfoBtn" onclick="openDashboardCalendarInfoWindow()" aria-label="カレンダーの見方" aria-haspopup="dialog" aria-controls="dashboardCalendarInfoModal">i</button>
+          <button id="dashboardCalendarPastBtn" type="button" class="dashboardCalendarPastBtn" onclick="toggleDashboardPastCalendar()" aria-pressed="false" aria-expanded="false" aria-controls="dashboardCalendarHistoryControls">過去</button>
+        </div>
+        <div id="dashboardCalendarHistoryControls" class="dashboardCalendarHistoryControls" hidden>
+          <button type="button" class="dashboardCalendarMonthNavBtn" onclick="shiftDashboardPastCalendarMonth(-1)" aria-label="前の月を表示">‹</button>
+          <label class="dashboardCalendarMonthField">
+            <span>表示開始</span>
+            <input id="dashboardCalendarMonthInput" class="dashboardCalendarMonthInput" type="month" onchange="setDashboardPastCalendarMonth(this.value)" aria-label="表示を始める年月">
+          </label>
+          <button type="button" class="dashboardCalendarMonthNavBtn" onclick="shiftDashboardPastCalendarMonth(1)" aria-label="次の月を表示">›</button>
         </div>
         <div id="dashboardHarvestStartTimeline" class="dashboardHarvestStartMonthColumns"></div>
       </div>
@@ -8613,7 +8692,7 @@ requestAnimationFrame(function(){
           <span class="dashboardCalendarInfoMonthExample">2026年7月（今月）</span>
           <span class="dashboardCalendarInfoDateExample">27(月)</span>
         </div>
-        <p class="dashboardCalendarInfoText">「2026」は年、「7」は月です。「27」は日付、「月」は曜日を表します。カレンダーには先月と今月を表示します。</p>
+        <p class="dashboardCalendarInfoText">「2026」は年、「7」は月です。「27」は日付、「月」は曜日を表します。通常は先月と今月を表示します。「過去」を押すと年月を選べ、選んだ月と翌月を表示します。左右のボタンでは表示開始月を1か月ずつ移動できます。</p>
       </section>
 
       <section class="dashboardCalendarInfoSection">
@@ -9106,6 +9185,9 @@ let dashboardSeedlingStatusBuilding = null;
 let dashboardSeedlingStatusSelectedBed = "F";
 let dashboardSeedlingStatusModelCache = null;
 let dashboardHarvestForecastModelCache = null;
+let dashboardPastCalendarActive = false;
+let dashboardPastCalendarStartMonth = null;
+let dashboardPastCalendarItemsByDateCache = null;
 let dashboardHarvestForecastCasesValue = null;
 let dashboardHarvestForecastLossValue = null;
 let dashboardHarvestForecastCasesDraftValue = null;
@@ -16724,14 +16806,21 @@ function getHarvestCycleStartsByBuilding(sourceRecords = records){
   )));
 }
 
-function getDashboardHarvestStartItemsByDate(sourceRecords = records){
+function getDashboardHarvestStartItemsByDate(sourceRecords = records, options = {}){
   const itemsByDate = new Map();
   const startsByBuilding = getHarvestCycleStartDetailsByBuilding(sourceRecords);
+  const rangeStart = options.startDate instanceof Date
+    ? startOfLocalDay(options.startDate).getTime()
+    : -Infinity;
+  const rangeEnd = options.endDateExclusive instanceof Date
+    ? startOfLocalDay(options.endDateExclusive).getTime()
+    : Infinity;
   BUILDINGS.forEach(building => {
     const starts = startsByBuilding.get(building) || [];
     const normalStarts = starts.filter(start => start.type === "fullHarvest");
     starts.forEach(start => {
-      const dateKey = formatDateOnlyString(start.date);
+      const startTime = startOfLocalDay(start.date).getTime();
+      if(startTime < rangeStart || startTime >= rangeEnd) return;
       const previousNormalStarts = normalStarts
         .filter(normalStart => normalStart.date.getTime() < start.date.getTime());
       const previousNormalStart = previousNormalStarts.length
@@ -16742,6 +16831,7 @@ function getDashboardHarvestStartItemsByDate(sourceRecords = records){
           (startOfLocalDay(start.date).getTime() - startOfLocalDay(previousNormalStart.date).getTime()) / 86400000
         ))
         : null;
+      const dateKey = formatDateOnlyString(start.date);
       if(!itemsByDate.has(dateKey)) itemsByDate.set(dateKey, []);
       itemsByDate.get(dateKey).push({
         building,
@@ -16757,27 +16847,148 @@ function getDashboardHarvestStartItemsByDate(sourceRecords = records){
   return itemsByDate;
 }
 
+function createDashboardHarvestStartMonth(start, suffix){
+  const monthStart = new Date(start.getFullYear(), start.getMonth(), 1);
+  return {
+    start: monthStart,
+    suffix,
+    label: `${monthStart.getFullYear()}年${monthStart.getMonth() + 1}月`,
+    daysInMonth: new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate()
+  };
+}
+
 function getDashboardHarvestStartMonths(referenceDate = new Date()){
   const reference = startOfLocalDay(referenceDate);
   const currentMonth = new Date(reference.getFullYear(), reference.getMonth(), 1);
   const previousMonth = new Date(reference.getFullYear(), reference.getMonth() - 1, 1);
   return [
-    { start: previousMonth, suffix: "先月" },
-    { start: currentMonth, suffix: "今月" }
-  ].map(month => ({
-    ...month,
-    label: `${month.start.getFullYear()}年${month.start.getMonth() + 1}月`,
-    daysInMonth: new Date(month.start.getFullYear(), month.start.getMonth() + 1, 0).getDate()
-  }));
+    createDashboardHarvestStartMonth(previousMonth, "先月"),
+    createDashboardHarvestStartMonth(currentMonth, "今月")
+  ];
+}
+
+function normalizeDashboardCalendarMonth(value){
+  if(value instanceof Date && Number.isFinite(value.getTime())){
+    return new Date(value.getFullYear(), value.getMonth(), 1);
+  }
+  const match = String(value || "").trim().match(/^(\d{4})-(\d{2})$/);
+  if(!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if(!Number.isSafeInteger(year) || year < 1900 || year > 9999
+    || !Number.isSafeInteger(month) || month < 1 || month > 12) return null;
+  return new Date(year, month - 1, 1);
+}
+
+function formatDashboardCalendarMonthValue(value){
+  const month = normalizeDashboardCalendarMonth(value);
+  if(!month) return "";
+  return [
+    String(month.getFullYear()).padStart(4, "0"),
+    String(month.getMonth() + 1).padStart(2, "0")
+  ].join("-");
+}
+
+function getDefaultDashboardPastCalendarStartMonth(referenceDate = new Date()){
+  const reference = startOfLocalDay(referenceDate);
+  return new Date(reference.getFullYear(), reference.getMonth() - 2, 1);
+}
+
+function getDashboardPastCalendarStartMonth(){
+  const normalized = normalizeDashboardCalendarMonth(dashboardPastCalendarStartMonth)
+    || getDefaultDashboardPastCalendarStartMonth();
+  dashboardPastCalendarStartMonth = normalized;
+  return normalized;
+}
+
+function getDashboardPastCalendarMonths(){
+  const startMonth = getDashboardPastCalendarStartMonth();
+  return [
+    createDashboardHarvestStartMonth(startMonth, "選択月"),
+    createDashboardHarvestStartMonth(
+      new Date(startMonth.getFullYear(), startMonth.getMonth() + 1, 1),
+      "翌月"
+    )
+  ];
+}
+
+function getDashboardPastCalendarItemsByDate(){
+  if(!dashboardPastCalendarItemsByDateCache){
+    dashboardPastCalendarItemsByDateCache = getDashboardHarvestStartItemsByDate(records);
+  }
+  return dashboardPastCalendarItemsByDateCache;
+}
+
+function syncDashboardPastCalendarControls(){
+  const button = document.getElementById("dashboardCalendarPastBtn");
+  const controls = document.getElementById("dashboardCalendarHistoryControls");
+  const monthInput = document.getElementById("dashboardCalendarMonthInput");
+  if(button){
+    button.textContent = dashboardPastCalendarActive ? "現在へ" : "過去";
+    button.setAttribute("aria-pressed", dashboardPastCalendarActive ? "true" : "false");
+    button.setAttribute("aria-expanded", dashboardPastCalendarActive ? "true" : "false");
+  }
+  if(controls) controls.hidden = !dashboardPastCalendarActive;
+  if(monthInput && dashboardPastCalendarActive){
+    monthInput.value = formatDashboardCalendarMonthValue(getDashboardPastCalendarStartMonth());
+  }
+}
+
+function toggleDashboardPastCalendar(){
+  dashboardPastCalendarActive = !dashboardPastCalendarActive;
+  if(dashboardPastCalendarActive){
+    getDashboardPastCalendarStartMonth();
+    syncDashboardPastCalendarControls();
+    // 過去全体の索引は、このボタンが押された時に初めて作る。
+    getDashboardPastCalendarItemsByDate();
+  }else{
+    syncDashboardPastCalendarControls();
+  }
+  renderDashboardHarvestStartTimeline();
+}
+
+function setDashboardPastCalendarMonth(value){
+  const month = normalizeDashboardCalendarMonth(value);
+  if(!month){
+    syncDashboardPastCalendarControls();
+    return;
+  }
+  dashboardPastCalendarStartMonth = month;
+  if(!dashboardPastCalendarActive) dashboardPastCalendarActive = true;
+  renderDashboardHarvestStartTimeline();
+}
+
+function shiftDashboardPastCalendarMonth(direction){
+  const offset = Number(direction) < 0 ? -1 : 1;
+  const current = getDashboardPastCalendarStartMonth();
+  dashboardPastCalendarStartMonth = new Date(
+    current.getFullYear(),
+    current.getMonth() + offset,
+    1
+  );
+  if(!dashboardPastCalendarActive) dashboardPastCalendarActive = true;
+  renderDashboardHarvestStartTimeline();
 }
 
 function renderDashboardHarvestStartTimeline(referenceDate = new Date()){
   const container = document.getElementById("dashboardHarvestStartTimeline");
   if(!container) return;
-  const todayKey = formatDateOnlyString(startOfLocalDay(referenceDate));
-  const itemsByDate = getDashboardHarvestStartItemsByDate();
+  syncDashboardPastCalendarControls();
+  const months = dashboardPastCalendarActive
+    ? getDashboardPastCalendarMonths()
+    : getDashboardHarvestStartMonths(referenceDate);
+  const visibleStart = months[0].start;
+  const lastMonth = months[months.length - 1].start;
+  const visibleEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 1);
+  const todayKey = formatDateOnlyString(startOfLocalDay(new Date()));
+  const itemsByDate = dashboardPastCalendarActive
+    ? getDashboardPastCalendarItemsByDate()
+    : getDashboardHarvestStartItemsByDate(records, {
+        startDate: visibleStart,
+        endDateExclusive: visibleEnd
+      });
   const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-  container.innerHTML = getDashboardHarvestStartMonths(referenceDate).map(month => {
+  container.innerHTML = months.map(month => {
     const dayRows = Array.from({ length: month.daysInMonth }, (_, index) => {
       const date = new Date(month.start.getFullYear(), month.start.getMonth(), index + 1);
       const dateKey = formatDateOnlyString(date);
@@ -16914,6 +17125,7 @@ function normalizeDashboardSubtab(value){
 function invalidateDashboardDerivedData(){
   dashboardHarvestForecastModelCache = null;
   dashboardSeedlingStatusModelCache = null;
+  dashboardPastCalendarItemsByDateCache = null;
   dashboardRenderedSubtabs.clear();
   dashboardRenderedDayKey = "";
 }
