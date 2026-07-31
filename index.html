@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260731-firebase-monitor-signal-1">
+<meta name="harvestnavi-version" content="20260731-monitor-memo-replace-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7761,7 +7761,7 @@ requestAnimationFrame(function(){
 残すケース:
 なし</div>
       <div class="monitorMemoInputHeader">
-        <div class="monitorMemoInputTitle">追加したいメモ</div>
+        <div class="monitorMemoInputTitle">表示したいメモ</div>
         <button type="button" class="monitorMemoAddBtn" onclick="addMonitorMemoInput()">＋</button>
       </div>
       <div id="monitorMemoInputList" class="monitorMemoInputList"></div>
@@ -9366,6 +9366,8 @@ let monitorFirebaseLastSignalUpdatedAt = 0;
 let monitorFirebaseConnected = false;
 let monitorFirebaseListenerReady = false;
 let monitorFirebaseFallbackNoticeShown = false;
+let monitorMemoInputsDirty = false;
+let monitorMemoRemoteLoadGeneration = 0;
 let monitorRemoteEditorHarvestFillKeys = [];
 let monitorModeOpenInProgress = false;
 let monitorModeLoading = false;
@@ -10048,6 +10050,7 @@ function saveHarvestStateToStorage(options = {}){
     harvestCasesAutoEstimated,
     monitorMemoInput: getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
     monitorMemoItems: getMonitorMemoInputValues(),
+    monitorMemoInputsDirty,
     casePlacementByBuilding,
     recordCasesInput: document.getElementById("recordCasesInput")?.value || "",
     recordActualSeedlingTrayCountInput: document.getElementById("recordActualSeedlingTrayCountInput")?.value || "",
@@ -10122,6 +10125,7 @@ function loadHarvestStateFromStorage(){
       harvestCasesAutoEstimated: !!parsed.harvestCasesAutoEstimated,
       monitorMemoInput: parsed.monitorMemoInput ?? "",
       monitorMemoItems: Array.isArray(parsed.monitorMemoItems) ? parsed.monitorMemoItems.map(item => String(item ?? "")) : null,
+      monitorMemoInputsDirty: parsed.monitorMemoInputsDirty === true,
       casePlacementByBuilding: parsed.casePlacementByBuilding && typeof parsed.casePlacementByBuilding === "object" ? parsed.casePlacementByBuilding : null,
       frontCaseInput: parsed.frontCaseInput ?? "",
       middleCaseInput: parsed.middleCaseInput ?? "",
@@ -10865,7 +10869,7 @@ function switchTab(tabName){
   if(tabName === "monitor"){
     renderForecastSummary();
     resizeAllMonitorMemoInputs();
-    prefetchMonitorRemoteContent();
+    refreshMonitorMemoInputsOnTabOpen();
   }
   activeAppTab = tabName;
   if(tabName === "dashboard"){
@@ -14167,6 +14171,28 @@ function prefetchMonitorRemoteContent(){
   return request;
 }
 
+async function refreshMonitorMemoInputsOnTabOpen(){
+  const generation = ++monitorMemoRemoteLoadGeneration;
+  if(monitorMemoInputsDirty) return;
+  let content = null;
+  try{
+    content = await prefetchMonitorRemoteContent();
+  }catch(error){
+    console.warn("Monitor memo prefetch failed", error);
+  }
+  if(generation !== monitorMemoRemoteLoadGeneration
+    || activeAppTab !== "monitor"
+    || monitorMemoInputsDirty
+    || !content) return;
+
+  const remoteItems = normalizeMonitorMemoItems(content.memoItems, content.memoText);
+  const currentItems = getMonitorMemoInputValues();
+  if(JSON.stringify(remoteItems) === JSON.stringify(currentItems)) return;
+  renderMonitorMemoInputs(remoteItems);
+  monitorMemoInputsDirty = false;
+  saveHarvestStateToStorage();
+}
+
 async function getFreshMonitorRemoteContent(){
   if(isMonitorRemoteContentFresh()) return monitorRemoteFetchedContent;
 
@@ -14436,14 +14462,8 @@ function readMonitorRemoteEditorContent(){
   };
 }
 
-function buildCurrentMonitorRemoteContent(options = {}){
-  const currentMemoItems = getMonitorMemoInputValues()
-    .map(item => String(item || "").trim())
-    .filter(Boolean);
-  const existingMemoItems = normalizeMonitorMemoItems(options.existingMemoItems)
-    .map(item => String(item || "").trim())
-    .filter(Boolean);
-  const memoItems = options.appendMemo ? [...existingMemoItems, ...currentMemoItems] : getMonitorMemoInputValues();
+function buildCurrentMonitorRemoteContent(){
+  const memoItems = getMonitorMemoInputValues();
 
   return {
     enabled: true,
@@ -14454,8 +14474,8 @@ function buildCurrentMonitorRemoteContent(options = {}){
   };
 }
 
-function fillMonitorRemoteEditorFromCurrentState(options = {}){
-  const content = buildCurrentMonitorRemoteContent(options);
+function fillMonitorRemoteEditorFromCurrentState(){
+  const content = buildCurrentMonitorRemoteContent();
   populateMonitorRemoteEditor({
     ...content,
     harvestFillKeys
@@ -14482,10 +14502,7 @@ async function saveCurrentMonitorRemoteContent(){
   setCurrentMonitorSaveLoading(true, "プレビューを準備中…");
 
   try{
-    const latestContent = await getFreshMonitorRemoteContent();
-    const existingContent = latestContent || monitorRemoteContent || {};
-    const existingMemoItems = normalizeMonitorMemoItems(existingContent.memoItems, existingContent.memoText);
-    const content = buildCurrentMonitorRemoteContent({ appendMemo: true, existingMemoItems });
+    const content = buildCurrentMonitorRemoteContent();
     const workflowSignature = getWorkflowPlanFingerprint();
     const workflowPlanWasReady = getWorkflowPlanStatus().ready;
     const shouldSave = await showMonitorPreviewConfirm(content);
@@ -14498,6 +14515,7 @@ async function saveCurrentMonitorRemoteContent(){
     });
     const saved = await saveMonitorRemoteEditor({ currentWorkflowPlan: true });
     if(saved){
+      monitorMemoInputsDirty = false;
       workflowMonitorCheckpointSignature = workflowPlanWasReady ? workflowSignature : "";
       workflowHarvestRecordingActive = workflowPlanWasReady;
       saveHarvestStateToStorage();
@@ -14606,9 +14624,13 @@ async function saveMonitorRemoteContent(content, options = {}){
 
 async function saveMonitorRemoteEditor(options = {}){
   const saved = await saveMonitorRemoteContent(readMonitorRemoteEditorContent());
-  if(saved && !options.currentWorkflowPlan && (workflowMonitorCheckpointSignature || workflowHarvestRecordingActive)){
-    workflowMonitorCheckpointSignature = "";
-    workflowHarvestRecordingActive = false;
+  if(saved && !options.currentWorkflowPlan){
+    renderMonitorMemoInputs(getMonitorRemoteMemoInputValues());
+    monitorMemoInputsDirty = false;
+    if(workflowMonitorCheckpointSignature || workflowHarvestRecordingActive){
+      workflowMonitorCheckpointSignature = "";
+      workflowHarvestRecordingActive = false;
+    }
     saveHarvestStateToStorage();
   }
   return saved;
@@ -23315,6 +23337,7 @@ function addMonitorMemoInput(value = ""){
     kind: "main",
     onInput: handleMonitorMemoInput
   });
+  handleMonitorMemoInput();
 }
 
 function addMonitorRemoteMemoInput(value = ""){
@@ -23382,6 +23405,7 @@ function removeMonitorMemoInput(item){
 }
 
 function handleMonitorMemoInput(){
+  monitorMemoInputsDirty = true;
   invalidateWorkflowMonitorCheckpoint();
   scheduleHarvestStateSave();
   if(isMonitorModeOpen){
@@ -27311,6 +27335,7 @@ window.onload = () => {
     harvestSummary = savedHarvestState.harvestSummary;
     manualSeedlingCount = savedHarvestState.manualSeedlingCount;
     harvestCasesAutoEstimated = !!savedHarvestState.harvestCasesAutoEstimated;
+    monitorMemoInputsDirty = !!savedHarvestState.monitorMemoInputsDirty;
     recordCasesEdited = !!savedHarvestState.recordCasesEdited;
     recordPlantingSummaryEdited = !!savedHarvestState.recordPlantingSummaryEdited;
     recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
