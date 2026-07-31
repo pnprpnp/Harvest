@@ -9,6 +9,9 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
+- Version 71 avoids reapplying existing sheet formats during normal saves, writes
+  monitor settings in one range without rewriting explanation labels, and applies
+  monitor-history layout only when that sheet is initialized or repaired.
 - Version 70 makes normal record sync read-only: it no longer reformats columns, repairs
   headers, backfills sync metadata, creates sheets, or purges trash during a read.
 - Version 69 combines harvest-record and planting-event reads into one sync request.
