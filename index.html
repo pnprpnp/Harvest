@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260731-seedling-lot-highlight-1">
+<meta name="harvestnavi-version" content="20260731-firebase-monitor-signal-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9179,7 +9179,18 @@ const MONITOR_MAX_MEMO_ITEMS = 100;
 const MONITOR_MAX_MEMO_ITEM_LENGTH = 5000;
 const RECORD_TRASH_RETENTION_DAYS = 30;
 const RECORD_TRASH_RETENTION_MS = RECORD_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-const MONITOR_REMOTE_POLL_INTERVAL_MS = 30000;
+const FIREBASE_SDK_VERSION = "12.16.0";
+const FIREBASE_MONITOR_CONFIG = Object.freeze({
+  apiKey: "AIzaSyBjqY3snw3gAK77MU9T6o_xj7U2KotxI1I",
+  authDomain: "harvestnavi.firebaseapp.com",
+  databaseURL: "https://harvestnavi-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "harvestnavi",
+  storageBucket: "harvestnavi.firebasestorage.app",
+  messagingSenderId: "396610265537",
+  appId: "1:396610265537:web:7cb4b8a0f34881d43e8f40"
+});
+const FIREBASE_MONITOR_SIGNAL_PATH = "monitorSignals/main";
+const MONITOR_FALLBACK_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const MONITOR_PREVIEW_PREFETCH_MAX_AGE_MS = 30000;
 const RECORDED_LOOKBACK_COUNT = 7;
 const GOOGLE_SHEET_STARTUP_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
@@ -9345,6 +9356,16 @@ let monitorRemoteFetchedAt = 0;
 let monitorRemotePrefetchPromise = null;
 let monitorRemotePollTimer = null;
 let monitorRemotePollInFlight = false;
+let monitorRemoteRefreshPending = false;
+let monitorFirebaseClientPromise = null;
+let monitorFirebaseSignalUnsubscribe = null;
+let monitorFirebaseConnectionUnsubscribe = null;
+let monitorFirebaseListenerGeneration = 0;
+let monitorFirebaseLastRevision = "";
+let monitorFirebaseLastSignalUpdatedAt = 0;
+let monitorFirebaseConnected = false;
+let monitorFirebaseListenerReady = false;
+let monitorFirebaseFallbackNoticeShown = false;
 let monitorRemoteEditorHarvestFillKeys = [];
 let monitorModeOpenInProgress = false;
 let monitorModeLoading = false;
@@ -9979,7 +10000,7 @@ async function openMonitorMode(){
       updateMonitorFitScale();
     }
 
-    startMonitorRemotePolling();
+    startMonitorRemoteUpdates();
   }finally{
     monitorModeLoading = false;
     monitorModeOpenInProgress = false;
@@ -9994,7 +10015,7 @@ function closeMonitorMode(){
   if(overlay) overlay.classList.remove("show");
   if(tabBar) tabBar.classList.remove("monitorHidden");
   document.body.style.overflow = "";
-  stopMonitorRemotePolling();
+  stopMonitorRemoteUpdates();
   stopMonitorTodayRefreshTimer();
   if(document.fullscreenElement && document.exitFullscreen){
     document.exitFullscreen().catch(() => {});
@@ -13029,7 +13050,7 @@ function saveGoogleSheetConfig(){
   populateGoogleSheetConfigForm();
   updateGoogleSheetResendButtonState();
   if(isMonitorModeOpen){
-    startMonitorRemotePolling();
+    startMonitorRemoteUpdates();
   }
   showToast("Google連携設定を保存しました");
 }
@@ -13960,6 +13981,169 @@ function getMonitorRemoteSignature(content){
   });
 }
 
+function getMonitorNotificationRevision(content){
+  const normalized = normalizeRemoteMonitorContent(content);
+  const source = normalized ? JSON.stringify({
+    enabled: normalized.enabled,
+    instructionText: normalized.instructionText,
+    memoText: normalized.memoText,
+    memoItems: normalized.memoItems,
+    harvestFillKeys: normalized.harvestFillKeys
+  }) : "invalid";
+  let first = 2166136261;
+  let second = 5381;
+  for(let index = 0; index < source.length; index++){
+    const code = source.charCodeAt(index);
+    first = Math.imul(first ^ code, 16777619);
+    second = Math.imul(second, 33) ^ code;
+  }
+  return `v1-${(first >>> 0).toString(36)}-${(second >>> 0).toString(36)}-${source.length.toString(36)}`;
+}
+
+async function getMonitorFirebaseClient(){
+  if(monitorFirebaseClientPromise) return monitorFirebaseClientPromise;
+
+  const sdkBaseUrl = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}`;
+  const request = (async () => {
+    const [appModule, authModule, databaseModule] = await Promise.all([
+      import(`${sdkBaseUrl}/firebase-app.js`),
+      import(`${sdkBaseUrl}/firebase-auth.js`),
+      import(`${sdkBaseUrl}/firebase-database.js`)
+    ]);
+    const appName = "harvestnavi-monitor-signal";
+    const existingApp = appModule.getApps().find(item => item.name === appName);
+    const app = existingApp || appModule.initializeApp(FIREBASE_MONITOR_CONFIG, appName);
+    const auth = authModule.getAuth(app);
+    if(typeof auth.authStateReady === "function"){
+      await auth.authStateReady();
+    }
+    if(!auth.currentUser){
+      await authModule.signInAnonymously(auth);
+    }
+    return {
+      database: databaseModule.getDatabase(app, FIREBASE_MONITOR_CONFIG.databaseURL),
+      databaseModule
+    };
+  })();
+  monitorFirebaseClientPromise = request;
+  try{
+    return await request;
+  }catch(error){
+    if(monitorFirebaseClientPromise === request) monitorFirebaseClientPromise = null;
+    throw error;
+  }
+}
+
+async function notifyMonitorUpdateWithFirebase(content){
+  try{
+    const client = await getMonitorFirebaseClient();
+    const signalRef = client.databaseModule.ref(client.database, FIREBASE_MONITOR_SIGNAL_PATH);
+    await client.databaseModule.set(signalRef, {
+      revision: getMonitorNotificationRevision(content),
+      updatedAt: client.databaseModule.serverTimestamp()
+    });
+    return true;
+  }catch(error){
+    console.warn("Firebase monitor notification failed", error);
+    return false;
+  }
+}
+
+function startMonitorFallbackPolling(){
+  if(monitorRemotePollTimer || !isMonitorModeOpen) return;
+  monitorRemotePollTimer = setInterval(() => {
+    queueMonitorRefreshFromNotification();
+  }, MONITOR_FALLBACK_POLL_INTERVAL_MS);
+}
+
+function stopMonitorFallbackPolling(){
+  if(!monitorRemotePollTimer) return;
+  clearInterval(monitorRemotePollTimer);
+  monitorRemotePollTimer = null;
+}
+
+function isCurrentMonitorContentAtLeastFirebaseSignal(){
+  if(!monitorFirebaseLastRevision) return true;
+  if(getMonitorNotificationRevision(monitorRemoteFetchedContent) === monitorFirebaseLastRevision) return true;
+  const contentUpdatedAt = Date.parse(String(monitorRemoteFetchedContent?.updatedAt || ""));
+  return Number.isFinite(contentUpdatedAt)
+    && monitorFirebaseLastSignalUpdatedAt > 0
+    && contentUpdatedAt >= monitorFirebaseLastSignalUpdatedAt;
+}
+
+function queueMonitorRefreshFromNotification(){
+  if(!isMonitorModeOpen) return;
+  if(monitorRemotePollInFlight){
+    monitorRemoteRefreshPending = true;
+    return;
+  }
+  fetchMonitorRemoteContent({ silentErrors: true }).then(content => {
+    if(!isMonitorModeOpen) return;
+    if(!content){
+      startMonitorFallbackPolling();
+      return;
+    }
+    if(monitorFirebaseConnected && monitorFirebaseListenerReady && isCurrentMonitorContentAtLeastFirebaseSignal()){
+      stopMonitorFallbackPolling();
+    }
+  }).catch(error => {
+    console.warn("Monitor refresh after Firebase notification failed", error);
+    startMonitorFallbackPolling();
+  });
+}
+
+async function startMonitorFirebaseUpdates(generation){
+  try{
+    const client = await getMonitorFirebaseClient();
+    if(!isMonitorModeOpen || generation !== monitorFirebaseListenerGeneration) return;
+
+    const signalRef = client.databaseModule.ref(client.database, FIREBASE_MONITOR_SIGNAL_PATH);
+    monitorFirebaseSignalUnsubscribe = client.databaseModule.onValue(signalRef, snapshot => {
+      if(generation !== monitorFirebaseListenerGeneration) return;
+      monitorFirebaseListenerReady = true;
+      const signal = snapshot.val();
+      const revision = typeof signal?.revision === "string" ? signal.revision : "";
+      monitorFirebaseLastRevision = revision;
+      monitorFirebaseLastSignalUpdatedAt = Number.isFinite(Number(signal?.updatedAt))
+        ? Number(signal.updatedAt)
+        : 0;
+      if(isCurrentMonitorContentAtLeastFirebaseSignal()){
+        if(monitorFirebaseConnected) stopMonitorFallbackPolling();
+      }else{
+        queueMonitorRefreshFromNotification();
+      }
+    }, error => {
+      console.warn("Firebase monitor listener failed", error);
+      if(generation !== monitorFirebaseListenerGeneration) return;
+      monitorFirebaseListenerReady = false;
+      startMonitorFallbackPolling();
+      if(!monitorFirebaseFallbackNoticeShown){
+        monitorFirebaseFallbackNoticeShown = true;
+        showToast("更新通知に接続できないため定期確認に切り替えました");
+      }
+    });
+
+    const connectionRef = client.databaseModule.ref(client.database, ".info/connected");
+    monitorFirebaseConnectionUnsubscribe = client.databaseModule.onValue(connectionRef, snapshot => {
+      if(generation !== monitorFirebaseListenerGeneration) return;
+      monitorFirebaseConnected = snapshot.val() === true;
+      if(monitorFirebaseConnected && monitorFirebaseListenerReady && isCurrentMonitorContentAtLeastFirebaseSignal()){
+        stopMonitorFallbackPolling();
+      }else{
+        startMonitorFallbackPolling();
+      }
+    });
+  }catch(error){
+    console.warn("Firebase monitor setup failed", error);
+    if(generation !== monitorFirebaseListenerGeneration) return;
+    startMonitorFallbackPolling();
+    if(!monitorFirebaseFallbackNoticeShown){
+      monitorFirebaseFallbackNoticeShown = true;
+      showToast("更新通知に接続できないため定期確認に切り替えました");
+    }
+  }
+}
+
 function isMonitorRemoteContentFresh(maxAgeMs = MONITOR_PREVIEW_PREFETCH_MAX_AGE_MS){
   if(!monitorRemoteFetchedAt) return false;
   const elapsed = Date.now() - monitorRemoteFetchedAt;
@@ -14052,11 +14236,15 @@ async function fetchMonitorRemoteContent(options = {}){
   }finally{
     clearTimeout(timer);
     monitorRemotePollInFlight = false;
+    if(monitorRemoteRefreshPending && isMonitorModeOpen){
+      monitorRemoteRefreshPending = false;
+      queueMonitorRefreshFromNotification();
+    }
   }
 }
 
-function startMonitorRemotePolling(){
-  stopMonitorRemotePolling({ keepContent: true });
+function startMonitorRemoteUpdates(){
+  stopMonitorRemoteUpdates({ keepContent: true });
   const config = getValidatedGoogleSheetConfig({ silent: true });
   if(!config){
     monitorRemoteContent = null;
@@ -14066,17 +14254,24 @@ function startMonitorRemotePolling(){
     return;
   }
 
-  fetchMonitorRemoteContent({ silentErrors: true });
-  monitorRemotePollTimer = setInterval(() => {
-    fetchMonitorRemoteContent({ silentErrors: true });
-  }, MONITOR_REMOTE_POLL_INTERVAL_MS);
+  prefetchMonitorRemoteContent();
+  const generation = monitorFirebaseListenerGeneration;
+  startMonitorFallbackPolling();
+  startMonitorFirebaseUpdates(generation);
 }
 
-function stopMonitorRemotePolling(options = {}){
-  if(monitorRemotePollTimer){
-    clearInterval(monitorRemotePollTimer);
-    monitorRemotePollTimer = null;
-  }
+function stopMonitorRemoteUpdates(options = {}){
+  monitorFirebaseListenerGeneration++;
+  if(monitorFirebaseSignalUnsubscribe) monitorFirebaseSignalUnsubscribe();
+  if(monitorFirebaseConnectionUnsubscribe) monitorFirebaseConnectionUnsubscribe();
+  monitorFirebaseSignalUnsubscribe = null;
+  monitorFirebaseConnectionUnsubscribe = null;
+  monitorRemoteRefreshPending = false;
+  monitorFirebaseLastRevision = "";
+  monitorFirebaseLastSignalUpdatedAt = 0;
+  monitorFirebaseConnected = false;
+  monitorFirebaseListenerReady = false;
+  stopMonitorFallbackPolling();
   if(!options.keepContent){
     monitorRemoteContent = null;
     monitorRemoteSignature = "";
@@ -14395,7 +14590,8 @@ async function saveMonitorRemoteContent(content, options = {}){
       setStatus("前回と同じ内容のため、履歴は追加していません。");
     }else{
       showToast("モニター内容を保存しました");
-      setStatus("保存しました。履歴に追加しました。モニター画面は最大30秒ほどで更新されます。");
+      setStatus("保存しました。履歴に追加し、モニター画面へ更新を通知します。");
+      notifyMonitorUpdateWithFirebase(savedContent || validatedContent);
       loadMonitorEditHistory({ silentErrors: true });
     }
     return true;
