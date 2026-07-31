@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260730-performance-1">
+<meta name="harvestnavi-version" content="20260731-streamlined-actions-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3843,13 +3843,6 @@ button.monitorSaveBtn:active{
 }
 .appUpdateConfirmYes{
   background:#16a34a;
-}
-.plantingUnselectedWarningActions[hidden]{
-  display:none;
-}
-.plantingUnselectedWarningAcknowledge{
-  grid-column:1 / -1;
-  background:#2563eb;
 }
 .recordImportErrorPanel{
   display:none;
@@ -8887,12 +8880,9 @@ requestAnimationFrame(function(){
   <div class="googleSheetConfirmPanel appUpdateConfirmWindow" role="dialog" aria-modal="true" aria-labelledby="plantingUnselectedWarningTitle" aria-describedby="plantingUnselectedWarningMessage">
     <div id="plantingUnselectedWarningTitle" class="googleSheetConfirmTitle">未定植場所の確認</div>
     <div id="plantingUnselectedWarningMessage" class="googleSheetConfirmMessage">以前の未定植の場所が選択されていません。</div>
-    <div id="plantingUnselectedAcknowledgeActions" class="googleSheetConfirmActions plantingUnselectedWarningActions">
-      <button id="plantingUnselectedAcknowledge" type="button" class="plantingUnselectedWarningAcknowledge" onclick="advancePlantingUnselectedWarning()">了解</button>
-    </div>
-    <div id="plantingUnselectedConfirmActions" class="googleSheetConfirmActions plantingUnselectedWarningActions" hidden>
-      <button id="plantingUnselectedConfirmNo" type="button" class="googleSheetConfirmCancel" onclick="resolvePlantingUnselectedWarning(false)">いいえ</button>
-      <button id="plantingUnselectedConfirmYes" type="button" class="googleSheetConfirmSend appUpdateConfirmYes" onclick="resolvePlantingUnselectedWarning(true)">はい</button>
+    <div class="googleSheetConfirmActions plantingUnselectedWarningActions">
+      <button id="plantingUnselectedConfirmNo" type="button" class="googleSheetConfirmCancel" onclick="resolvePlantingUnselectedWarning(false)">選択へ戻る</button>
+      <button id="plantingUnselectedConfirmYes" type="button" class="googleSheetConfirmSend appUpdateConfirmYes" onclick="resolvePlantingUnselectedWarning(true)">このまま保存</button>
     </div>
   </div>
 </div>
@@ -9118,7 +9108,6 @@ let settingsDirty = false;
 let casePlacementByBuilding = {};
 let appUpdateConfirmResolver = null;
 let plantingUnselectedWarningResolver = null;
-let plantingUnselectedWarningNoticeText = "";
 let recordAvailabilityCheckLastStartedAt = 0;
 let availabilityCheckPromise = null;
 let googleSheetConfirmResolver = null;
@@ -11020,7 +11009,12 @@ function focusWorkflowTarget(targetId){
 function openWorkflowNextAction(){
   const state = getWorkflowGuideState();
   if(state.key === "plan"){
+    const planStatus = getWorkflowPlanStatus();
+    const canCalculate = planStatus.casePlan.totalCases > 0
+      && planStatus.casePlacementTotal > 0
+      && planStatus.casePlan.regularCases > 0;
     if(switchTab("forecast") === false) return;
+    if(canCalculate) runHarvestPrediction();
     requestAnimationFrame(() => requestAnimationFrame(() => {
       scrollToWorkflowTarget("forecastSimulationCard");
       focusWorkflowTarget("forecastSectionTitle");
@@ -11028,7 +11022,12 @@ function openWorkflowNextAction(){
     return;
   }
   if(state.key === "monitor"){
+    const shouldOpenPreview = activeAppTab === "monitor";
     if(switchTab("monitor") === false) return;
+    if(shouldOpenPreview){
+      requestAnimationFrame(() => saveCurrentMonitorRemoteContent());
+      return;
+    }
     requestAnimationFrame(() => requestAnimationFrame(() => {
       scrollToWorkflowTarget("monitorCard");
       focusWorkflowTarget("monitorSectionTitle");
@@ -15590,23 +15589,9 @@ function resolveAppUpdateConfirm(shouldUpdate){
   }
 }
 
-function setPlantingUnselectedWarningStage(stage){
-  const message = document.getElementById("plantingUnselectedWarningMessage");
-  const acknowledgeActions = document.getElementById("plantingUnselectedAcknowledgeActions");
-  const confirmActions = document.getElementById("plantingUnselectedConfirmActions");
-  const isConfirmation = stage === "confirm";
-  if(message){
-    message.textContent = isConfirmation
-      ? "このまま保存しますか？"
-      : plantingUnselectedWarningNoticeText || "以前の未定植の場所が選択されていません。";
-  }
-  if(acknowledgeActions) acknowledgeActions.hidden = isConfirmation;
-  if(confirmActions) confirmActions.hidden = !isConfirmation;
-}
-
 function askPlantingUnselectedWarningConfirm(unselectedLots = []){
   const panel = document.getElementById("plantingUnselectedWarningPanel");
-  const acknowledgeButton = document.getElementById("plantingUnselectedAcknowledge");
+  const message = document.getElementById("plantingUnselectedWarningMessage");
   const yesButton = document.getElementById("plantingUnselectedConfirmYes");
   const noButton = document.getElementById("plantingUnselectedConfirmNo");
 
@@ -15617,45 +15602,32 @@ function askPlantingUnselectedWarningConfirm(unselectedLots = []){
   ].join("");
 
   if(!panel){
-    window.alert(noticeText);
-    return Promise.resolve(window.confirm("このまま保存しますか？"));
+    return Promise.resolve(window.confirm(`${noticeText}\n\nこのまま保存しますか？`));
   }
   if(plantingUnselectedWarningResolver){
     resolvePlantingUnselectedWarning(false);
   }
 
-  plantingUnselectedWarningNoticeText = noticeText;
-  setPlantingUnselectedWarningStage("notice");
-  if(acknowledgeButton) acknowledgeButton.disabled = false;
+  if(message) message.textContent = noticeText;
   if(yesButton) yesButton.disabled = false;
   if(noButton) noButton.disabled = false;
   panel.classList.add("show");
-  requestAnimationFrame(() => acknowledgeButton?.focus());
+  requestAnimationFrame(() => noButton?.focus());
 
   return new Promise(resolve => {
     plantingUnselectedWarningResolver = resolve;
   });
 }
 
-function advancePlantingUnselectedWarning(){
-  const panel = document.getElementById("plantingUnselectedWarningPanel");
-  const noButton = document.getElementById("plantingUnselectedConfirmNo");
-  if(!panel?.classList.contains("show") || !plantingUnselectedWarningResolver) return;
-  setPlantingUnselectedWarningStage("confirm");
-  requestAnimationFrame(() => noButton?.focus());
-}
-
 function resolvePlantingUnselectedWarning(shouldSave){
   const panel = document.getElementById("plantingUnselectedWarningPanel");
-  const acknowledgeButton = document.getElementById("plantingUnselectedAcknowledge");
+  const message = document.getElementById("plantingUnselectedWarningMessage");
   const yesButton = document.getElementById("plantingUnselectedConfirmYes");
   const noButton = document.getElementById("plantingUnselectedConfirmNo");
   if(panel) panel.classList.remove("show");
-  if(acknowledgeButton) acknowledgeButton.disabled = true;
   if(yesButton) yesButton.disabled = true;
   if(noButton) noButton.disabled = true;
-  plantingUnselectedWarningNoticeText = "";
-  setPlantingUnselectedWarningStage("notice");
+  if(message) message.textContent = "以前の未定植の場所が選択されていません。";
 
   if(plantingUnselectedWarningResolver){
     plantingUnselectedWarningResolver(!!shouldSave);
