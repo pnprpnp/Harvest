@@ -9,6 +9,8 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
+- Version 72 reuses one record-sheet snapshot for batch-save validation and reuses
+  the opened Spreadsheet object throughout each API request.
 - Version 71 avoids reapplying existing sheet formats during normal saves, writes
   monitor settings in one range without rewriting explanation labels, and applies
   monitor-history layout only when that sheet is initialized or repaired.
