@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260731-sheet-import-label-1">
+<meta name="harvestnavi-version" content="20260731-sync-render-lookup-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -15042,13 +15042,15 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
   if(changedCount){
     savePlantingEventsToStorage();
     syncHarvestPlantingPendingFlags();
-    renderRecordList();
-    renderDashboardIfVisible();
-    drawBeds();
-    drawRecordBeds();
-    renderForecastSummary();
+    if(!options.deferUiRefresh){
+      renderRecordList();
+      renderDashboardIfVisible();
+      drawBeds();
+      drawRecordBeds();
+      renderForecastSummary();
+    }
   }
-  updateGoogleSheetResendButtonState();
+  if(!options.deferUiRefresh) updateGoogleSheetResendButtonState();
   return changedCount;
 }
 
@@ -15297,18 +15299,72 @@ function setAppUpdateAvailabilityNotice(available){
   }
 }
 
-function getLocalRecordForRemoteVersion(version){
+function addGoogleSheetUpdateLookupEntry(map, key, value){
+  if(key === null || key === undefined || key === "") return;
+  if(!map.has(key)) map.set(key, []);
+  map.get(key).push(value);
+}
+
+function buildGoogleSheetUpdateAvailabilityLookup(){
+  const recordsByUuid = new Map();
+  const recordsById = new Map();
+  records.forEach(record => {
+    const recordUuid = normalizeRecordUuid(record?.recordUuid);
+    const recordId = getSafePositiveRecordId(record?.id);
+    if(recordUuid && !recordsByUuid.has(recordUuid)) recordsByUuid.set(recordUuid, record);
+    if(recordId !== null && !recordsById.has(recordId)) recordsById.set(recordId, record);
+  });
+
+  const deletedRecordsByUuid = new Map();
+  const deletedRecordsById = new Map();
+  deletedRecords.forEach(entry => {
+    if(entry?.sheetDeleted || entry?.syncConflict) return;
+    const deletedRecord = entry?.record;
+    const recordUuid = normalizeRecordUuid(deletedRecord?.recordUuid);
+    const recordId = getSafePositiveRecordId(deletedRecord?.id);
+    if(recordUuid) addGoogleSheetUpdateLookupEntry(deletedRecordsByUuid, recordUuid, entry);
+    if(recordId !== null) addGoogleSheetUpdateLookupEntry(deletedRecordsById, recordId, entry);
+  });
+
+  const plantingEventsById = new Map();
+  plantingEvents.forEach(event => {
+    const eventId = getSafePositiveRecordId(event?.eventId);
+    if(eventId !== null && !plantingEventsById.has(eventId)) plantingEventsById.set(eventId, event);
+  });
+  const deletedPlantingEventsById = new Map();
+  deletedPlantingEvents.forEach(entry => {
+    if(entry?.sheetDeleted) return;
+    const eventId = getSafePositiveRecordId(entry?.event?.eventId);
+    if(eventId !== null) addGoogleSheetUpdateLookupEntry(deletedPlantingEventsById, eventId, entry);
+  });
+
+  return {
+    recordsByUuid,
+    recordsById,
+    deletedRecordsByUuid,
+    deletedRecordsById,
+    plantingEventsById,
+    deletedPlantingEventsById
+  };
+}
+
+function getLocalRecordForRemoteVersion(version, lookup = null){
   const recordUuid = normalizeRecordUuid(version?.recordUuid);
   if(recordUuid){
-    const byUuid = records.find(record => normalizeRecordUuid(record?.recordUuid) === recordUuid);
+    const byUuid = lookup
+      ? lookup.recordsByUuid.get(recordUuid)
+      : records.find(record => normalizeRecordUuid(record?.recordUuid) === recordUuid);
     if(byUuid) return byUuid;
   }
   const recordId = getSafePositiveRecordId(version?.id);
-  return recordId === null ? null : (records.find(record => getSafePositiveRecordId(record?.id) === recordId) || null);
+  if(recordId === null) return null;
+  return lookup
+    ? (lookup.recordsById.get(recordId) || null)
+    : (records.find(record => getSafePositiveRecordId(record?.id) === recordId) || null);
 }
 
-function isRemoteRecordVersionAlreadyLocal(version){
-  const localRecord = getLocalRecordForRemoteVersion(version);
+function isRemoteRecordVersionAlreadyLocal(version, lookup = null){
+  const localRecord = getLocalRecordForRemoteVersion(version, lookup);
   const remoteUpdatedAt = String(version?.updatedAt || "").trim();
   if(localRecord){
     return !!remoteUpdatedAt && String(localRecord.updatedAt || "").trim() === remoteUpdatedAt;
@@ -15316,7 +15372,7 @@ function isRemoteRecordVersionAlreadyLocal(version){
 
   const recordUuid = normalizeRecordUuid(version?.recordUuid);
   const recordId = getSafePositiveRecordId(version?.id);
-  return deletedRecords.some(entry => {
+  const matchesDeletedRecord = entry => {
     if(entry?.sheetDeleted || entry?.syncConflict) return false;
     const deletedRecord = entry?.record;
     const deletedUuid = normalizeRecordUuid(deletedRecord?.recordUuid);
@@ -15325,12 +15381,20 @@ function isRemoteRecordVersionAlreadyLocal(version){
       ? recordUuid === deletedUuid
       : recordId !== null && deletedId === recordId;
     return sameIdentity && !!remoteUpdatedAt && String(deletedRecord?.updatedAt || "").trim() === remoteUpdatedAt;
-  });
+  };
+  if(!lookup) return deletedRecords.some(matchesDeletedRecord);
+  if(recordUuid && (lookup.deletedRecordsByUuid.get(recordUuid) || []).some(matchesDeletedRecord)) return true;
+  return recordId !== null
+    && (lookup.deletedRecordsById.get(recordId) || []).some(matchesDeletedRecord);
 }
 
-function hasActiveLocalRecordForRemoteDeletion(recordUuidValue, recordIdValue){
+function hasActiveLocalRecordForRemoteDeletion(recordUuidValue, recordIdValue, lookup = null){
   const recordUuid = normalizeRecordUuid(recordUuidValue);
   const recordId = getSafePositiveRecordId(recordIdValue);
+  if(lookup){
+    if(recordUuid) return lookup.recordsByUuid.has(recordUuid);
+    return recordId !== null && lookup.recordsById.has(recordId);
+  }
   return records.some(record => {
     const localUuid = normalizeRecordUuid(record?.recordUuid);
     if(recordUuid && localUuid) return recordUuid === localUuid;
@@ -15338,17 +15402,22 @@ function hasActiveLocalRecordForRemoteDeletion(recordUuidValue, recordIdValue){
   });
 }
 
-function isRemotePlantingVersionAlreadyLocal(version){
+function isRemotePlantingVersionAlreadyLocal(version, lookup = null){
   const eventId = getSafePositiveRecordId(version?.eventId);
   const remoteUpdatedAt = String(version?.updatedAt || "").trim();
   if(eventId === null || !remoteUpdatedAt) return false;
-  const localEvent = plantingEvents.find(event => getSafePositiveRecordId(event?.eventId) === eventId);
+  const localEvent = lookup
+    ? lookup.plantingEventsById.get(eventId)
+    : plantingEvents.find(event => getSafePositiveRecordId(event?.eventId) === eventId);
   if(localEvent) return String(localEvent.updatedAt || "").trim() === remoteUpdatedAt;
-  return deletedPlantingEvents.some(entry => (
+  const matchesDeletedEvent = entry => (
     !entry?.sheetDeleted
     && getSafePositiveRecordId(entry?.event?.eventId) === eventId
     && String(entry?.event?.updatedAt || "").trim() === remoteUpdatedAt
-  ));
+  );
+  return lookup
+    ? (lookup.deletedPlantingEventsById.get(eventId) || []).some(matchesDeletedEvent)
+    : deletedPlantingEvents.some(matchesDeletedEvent);
 }
 
 async function checkGoogleSheetUpdateAvailabilitySilently(){
@@ -15385,10 +15454,13 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
       if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("更新確認の応答が大きすぎます");
       const result = text ? JSON.parse(text) : {};
       if(result.ok !== true) throw new Error(result.message || "更新情報を確認できませんでした");
+      const updateLookup = buildGoogleSheetUpdateAvailabilityLookup();
 
       const recordVersions = Array.isArray(result.recordVersions) ? result.recordVersions : [];
       if(recordVersions.length > GOOGLE_SHEET_MAX_LIST_RECORDS) throw new Error("更新情報の件数が正しくありません");
-      if(recordVersions.some(version => !isRemoteRecordVersionAlreadyLocal(version))) recordUpdateAvailable = true;
+      if(recordVersions.some(version => !isRemoteRecordVersionAlreadyLocal(version, updateLookup))){
+        recordUpdateAvailable = true;
+      }
 
       const deletedRecordUuids = Array.isArray(result.deletedRecordUuids) ? result.deletedRecordUuids : [];
       const deletedRecordIds = Array.isArray(result.deletedRecordIds) ? result.deletedRecordIds : [];
@@ -15396,8 +15468,12 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
         || deletedRecordIds.length > GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES){
         throw new Error("削除済み記録の更新情報が多すぎます");
       }
-      if(deletedRecordUuids.some(recordUuid => hasActiveLocalRecordForRemoteDeletion(recordUuid, null))
-        || deletedRecordIds.some(recordId => hasActiveLocalRecordForRemoteDeletion("", recordId))){
+      if(deletedRecordUuids.some(recordUuid => (
+          hasActiveLocalRecordForRemoteDeletion(recordUuid, null, updateLookup)
+        ))
+        || deletedRecordIds.some(recordId => (
+          hasActiveLocalRecordForRemoteDeletion("", recordId, updateLookup)
+        ))){
         recordUpdateAvailable = true;
       }
 
@@ -15408,10 +15484,13 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
           || deletedEventIds.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES){
           throw new Error("苗植え記録の更新情報が多すぎます");
         }
-        if(plantingVersions.some(version => !isRemotePlantingVersionAlreadyLocal(version))) plantingUpdateAvailable = true;
-        if(deletedEventIds.some(eventId => plantingEvents.some(event => (
-          getSafePositiveRecordId(event?.eventId) === getSafePositiveRecordId(eventId)
-        )))) plantingUpdateAvailable = true;
+        if(plantingVersions.some(version => !isRemotePlantingVersionAlreadyLocal(version, updateLookup))){
+          plantingUpdateAvailable = true;
+        }
+        if(deletedEventIds.some(eventId => {
+          const safeEventId = getSafePositiveRecordId(eventId);
+          return safeEventId !== null && updateLookup.plantingEventsById.has(safeEventId);
+        })) plantingUpdateAvailable = true;
         const nextPlantingCursor = normalizeGoogleSheetPlantingSyncCursor(result.plantingNextCursor);
         if(nextPlantingCursor) finalPlantingCursor = nextPlantingCursor;
         if(result.plantingHasMore === true) plantingUpdateAvailable = true;
@@ -15947,6 +16026,7 @@ async function importRecordsFromGoogleSheet(options = {}){
     const importedEventCount = deletedEventCount + importPlantingEventsFromSource(combinedSync.events, {
       fromGoogleSheetPaged: true,
       openingCarryoverAuthoritative: false,
+      deferUiRefresh: true,
       resultTracker: plantingResult
     });
     migrateLegacyPlantingEvents();
