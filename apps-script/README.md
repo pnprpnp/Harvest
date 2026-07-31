@@ -9,6 +9,8 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
+- Version 73 reuses one trash/tombstone snapshot while preparing deleted-record
+  protection and skips planting-allocation scans for partial-harvest-only saves.
 - Version 72 reuses one record-sheet snapshot for batch-save validation and reuses
   the opened Spreadsheet object throughout each API request.
 - Version 71 avoids reapplying existing sheet formats during normal saves, writes
