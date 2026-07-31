@@ -9,6 +9,9 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
+- Version 75 detects directly added, uncommitted record rows during sync and saves
+  and tells the operator to run `repairHarvestRecordSyncMetadata`, including the
+  affected sheet row numbers.
 - Version 74 runs legacy record metadata repair once after deployment, creates a
   hidden record-sheet backup before changes, and removes the full repair scan from
   normal saves. Run `repairHarvestRecordSyncMetadata` manually after rare direct
