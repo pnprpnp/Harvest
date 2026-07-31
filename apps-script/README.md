@@ -9,6 +9,10 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
+- Version 74 runs legacy record metadata repair once after deployment, creates a
+  hidden record-sheet backup before changes, and removes the full repair scan from
+  normal saves. Run `repairHarvestRecordSyncMetadata` manually after rare direct
+  sheet additions.
 - Version 73 reuses one trash/tombstone snapshot while preparing deleted-record
   protection and skips planting-allocation scans for partial-harvest-only saves.
 - Version 72 reuses one record-sheet snapshot for batch-save validation and reuses
