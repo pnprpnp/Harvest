@@ -9116,6 +9116,7 @@ window.addEventListener("error", event => {
 });
 const SETTINGS_KEY = "harvestForecastSettings_v16";
 const RECORDS_KEY = "harvestForecastRecords_v9";
+const RECORD_STORAGE_NORMALIZATION_KEY = "harvestForecastRecordsNormalized_v1";
 const PLANTING_EVENTS_KEY = "harvestForecastPlantingEvents_v1";
 const PLANTING_EVENTS_MIGRATION_KEY = "harvestForecastPlantingEventsMigrated_v1";
 const LEGACY_PLANTING_EVENT_BACKFILL_KEY = "harvestForecastPlantingEventBackfill_20260722_v2";
@@ -10841,6 +10842,22 @@ function preloadDashboardDuringWelcome(){
     console.warn("ウェルカム画面中に集計を準備できませんでした", error);
     return false;
   }
+}
+
+function scheduleDashboardPreloadDuringIdle(){
+  if(typeof window.requestIdleCallback !== "function") return false;
+  window.requestIdleCallback(() => {
+    const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
+    if(
+      activeAppTab === "dashboard"
+      || (
+        dashboardRenderedDayKey === formatDateOnlyString(new Date())
+        && dashboardRenderedSubtabs.has(activeSubtab)
+      )
+    ) return;
+    preloadDashboardDuringWelcome();
+  });
+  return true;
 }
 
 function renderDashboardIfVisible(){
@@ -12779,6 +12796,18 @@ function saveRecordsToStorage(){
   records.sort(compareRecordsByDateDesc);
   localStorage.setItem(RECORDS_KEY, JSON.stringify(records.map(serializeRecordForStorage)));
   scheduleWorkflowGuideUpdate();
+}
+
+function normalizeRecordsStorageOnce(){
+  try{
+    if(localStorage.getItem(RECORD_STORAGE_NORMALIZATION_KEY) === "1") return false;
+    if(records.length) saveRecordsToStorage();
+    localStorage.setItem(RECORD_STORAGE_NORMALIZATION_KEY, "1");
+    return true;
+  }catch(error){
+    console.warn("記録保存形式の初回整理を完了できませんでした", error);
+    return false;
+  }
 }
 
 function loadDeletedRecords(){
@@ -27583,7 +27612,7 @@ window.onload = () => {
   installEmptyInputHighlights();
   installHarvestStateSaveFlushListeners();
   installMonitorViewportResizeObserver();
-  if(records.length) saveRecordsToStorage();
+  normalizeRecordsStorageOnce();
   migrateLegacyPlantingEvents();
   syncHarvestPlantingPendingFlags();
 
@@ -27698,7 +27727,6 @@ window.onload = () => {
   }
   updateBuildingLastHarvestInfo();
   renderRecordList();
-  preloadDashboardDuringWelcome();
   updateGoogleSheetResendButtonState();
   updateHeaderLatestRecordDate();
   installAvailabilityChecks();
@@ -28055,6 +28083,7 @@ window.onload = () => {
       : "アプリを最新版に更新しました");
   }
   hideWelcomeScreen();
+  scheduleDashboardPreloadDuringIdle();
   }catch(error){
     console.error(error);
     if(!sessionStorage.getItem("harvestForecastStartupRecovered")){
