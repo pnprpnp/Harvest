@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260801-partial-case-addition-1">
+<meta name="harvestnavi-version" content="20260801-tab-switch-response-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9289,6 +9289,7 @@ let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
+let tabSwitchScheduleId = 0;
 let dashboardRenderScheduleId = 0;
 let dashboardRenderedDayKey = "";
 const dashboardRenderedSubtabs = new Set();
@@ -9309,6 +9310,7 @@ let dashboardHarvestForecastLossDraftValue = null;
 let dashboardHarvestForecastInputsDirty = false;
 let harvestStateSaveTimer = null;
 let pendingHarvestStateSaveOptions = null;
+let harvestStateSaveDeferId = 0;
 const tabScrollPositions = {
   forecast: 0,
   monitor: 0,
@@ -10085,24 +10087,62 @@ function scheduleHarvestStateSave(options = {}){
     const pendingOptions = pendingHarvestStateSaveOptions || {};
     harvestStateSaveTimer = null;
     pendingHarvestStateSaveOptions = null;
-    saveHarvestStateToStorage(pendingOptions);
+    saveHarvestStateToStorageSafely(pendingOptions);
   }, HARVEST_STATE_SAVE_DELAY_MS);
 }
 
+function saveHarvestStateToStorageSafely(options = {}){
+  try{
+    saveHarvestStateToStorage(options);
+    return true;
+  }catch(error){
+    console.error("Failed to save current harvest state", error);
+    if(document.visibilityState !== "hidden"){
+      showToast("入力内容の一時保存に失敗しました");
+    }
+    return false;
+  }
+}
+
 function flushPendingHarvestStateSave(){
-  if(harvestStateSaveTimer === null) return false;
+  if(harvestStateSaveTimer === null && pendingHarvestStateSaveOptions === null) return false;
+  harvestStateSaveDeferId++;
   const pendingOptions = pendingHarvestStateSaveOptions || {};
-  clearTimeout(harvestStateSaveTimer);
+  if(harvestStateSaveTimer !== null) clearTimeout(harvestStateSaveTimer);
   harvestStateSaveTimer = null;
   pendingHarvestStateSaveOptions = null;
-  saveHarvestStateToStorage(pendingOptions);
+  saveHarvestStateToStorageSafely(pendingOptions);
+  return true;
+}
+
+function deferPendingHarvestStateSaveUntilUiSettles(){
+  if(harvestStateSaveTimer === null && pendingHarvestStateSaveOptions === null) return false;
+  if(harvestStateSaveTimer !== null) clearTimeout(harvestStateSaveTimer);
+  harvestStateSaveTimer = null;
+  const deferId = ++harvestStateSaveDeferId;
+  runAfterUiSettles(() => {
+    if(
+      deferId !== harvestStateSaveDeferId
+      || harvestStateSaveTimer !== null
+      || pendingHarvestStateSaveOptions === null
+    ) return;
+    const pendingOptions = pendingHarvestStateSaveOptions || {};
+    pendingHarvestStateSaveOptions = null;
+    saveHarvestStateToStorageSafely(pendingOptions);
+  });
+  return true;
+}
+
+function reschedulePendingHarvestStateSave(){
+  if(harvestStateSaveTimer === null && pendingHarvestStateSaveOptions === null) return false;
+  scheduleHarvestStateSave();
   return true;
 }
 
 function installHarvestStateSaveFlushListeners(){
   if(document.documentElement.dataset.harvestStateSaveFlushInstalled === "1") return;
-  document.addEventListener("change", flushPendingHarvestStateSave);
-  document.addEventListener("focusout", flushPendingHarvestStateSave);
+  document.addEventListener("change", reschedulePendingHarvestStateSave);
+  document.addEventListener("focusout", reschedulePendingHarvestStateSave);
   document.addEventListener("visibilitychange", () => {
     if(document.visibilityState === "hidden") flushPendingHarvestStateSave();
   });
@@ -10664,14 +10704,16 @@ function captureForecastSelectionState(){
   };
 }
 
-function restoreForecastSelectionState(){
+function restoreForecastSelectionState(options = {}){
   const state = normalizeForecastSelectionState(forecastSelectionState);
   if(!state) return false;
   harvestFillKeys = [...state.keys];
   harvestSummary = state.summary;
   manualSeedlingCount = state.manualSeedlingCount;
-  drawBeds();
-  renderForecastSummary();
+  if(options.render !== false){
+    drawBeds();
+    renderForecastSummary();
+  }
   return true;
 }
 
@@ -10710,27 +10752,27 @@ function unlockPageAfterRecordUiClose(){
   }
 }
 
-function preservePlantingStateBeforeTabSwitch(){
+function preservePlantingStateBeforeTabSwitch(options = {}){
   try{
     capturePlantingRecordDraft();
-    restoreForecastSelectionState();
-    saveHarvestStateToStorage({ skipPlantingDraftCapture: true });
+    const restored = restoreForecastSelectionState({ render: options.render !== false });
+    scheduleHarvestStateSave({ skipPlantingDraftCapture: true });
+    return restored;
   }catch(e){
     console.error("Failed to preserve planting state before tab switch", e);
-    try{
-      saveHarvestStateToStorage({ skipPlantingDraftCapture: true });
-    }catch(storageError){
-      console.error("Failed to save fallback harvest state", storageError);
-    }
+    scheduleHarvestStateSave({ skipPlantingDraftCapture: true });
+    return false;
   }
 }
 
 function preserveForecastStateBeforeRecordTab(){
   try{
     captureForecastSelectionState();
-    saveHarvestStateToStorage();
+    scheduleHarvestStateSave({ skipPlantingDraftCapture: false });
+    return true;
   }catch(e){
     console.error("Failed to preserve forecast state before record tab", e);
+    return false;
   }
 }
 
@@ -10816,25 +10858,7 @@ function restoreTabScrollPosition(tabName){
   });
 }
 
-function switchTab(tabName){
-  if(tabName === "settings") tabName = "forecast";
-  if(!ensureProtectedTabAccess(tabName)) return false;
-  flushPendingHarvestStateSave();
-  const previousTab = activeAppTab;
-  if(tabName === "record" && previousTab !== "record" && recordSelectionMode === "planting"){
-    preserveForecastStateBeforeRecordTab();
-  }
-  if(previousTab === "record" && tabName !== "record" && recordSelectionMode === "planting"){
-    preservePlantingStateBeforeTabSwitch();
-  }else if(previousTab === "record" && tabName !== "record" && editingHarvestRecordId){
-    editingHarvestSelectionKeys = [...harvestFillKeys];
-    restoreForecastSelectionState();
-  }
-  saveCurrentTabScrollPosition();
-  closeRecordFloatingUi();
-  resolveGoogleSheetConfirm(false);
-  resolvePlantingUnselectedWarning(false);
-
+function setMainTabSelection(tabName){
   document.getElementById("forecastTab").style.display = tabName === "forecast" ? "block" : "none";
   document.getElementById("monitorTab").style.display = tabName === "monitor" ? "block" : "none";
   document.getElementById("settingsTab").style.display = "none";
@@ -10844,6 +10868,61 @@ function switchTab(tabName){
   document.getElementById("monitorTabBtn")?.classList.toggle("active", tabName === "monitor");
   document.getElementById("recordTabBtn").classList.toggle("active", tabName === "record");
   document.getElementById("dashboardTabBtn")?.classList.toggle("active", tabName === "dashboard");
+}
+
+function scheduleMainTabPostSelectionWork(tabName){
+  const scheduleId = ++tabSwitchScheduleId;
+  const recordBeds = document.getElementById("recordBeds");
+  if(tabName === "record"){
+    recordBeds?.setAttribute("aria-busy", "true");
+  }else{
+    recordBeds?.removeAttribute("aria-busy");
+  }
+
+  runAfterUiSettles(() => {
+    if(scheduleId !== tabSwitchScheduleId || activeAppTab !== tabName) return;
+    try{
+      if(tabName === "record"){
+        drawRecordBeds();
+      }else if(tabName === "forecast"){
+        drawBeds();
+        renderForecastSummary();
+      }else if(tabName === "monitor"){
+        renderForecastSummary();
+        resizeAllMonitorMemoInputs();
+        refreshMonitorMemoInputsOnTabOpen();
+      }
+    }catch(error){
+      console.error("Failed to finish tab selection", error);
+      showToast("表示の更新に失敗しました。もう一度タブを押してください");
+    }finally{
+      if(scheduleId === tabSwitchScheduleId && tabName === "record"){
+        recordBeds?.removeAttribute("aria-busy");
+      }
+    }
+  });
+}
+
+function switchTab(tabName){
+  if(tabName === "settings") tabName = "forecast";
+  if(!ensureProtectedTabAccess(tabName)) return false;
+  const previousTab = activeAppTab;
+  if(tabName === "record" && previousTab !== "record" && recordSelectionMode === "planting"){
+    preserveForecastStateBeforeRecordTab();
+  }
+  if(previousTab === "record" && tabName !== "record" && recordSelectionMode === "planting"){
+    preservePlantingStateBeforeTabSwitch({ render: false });
+  }else if(previousTab === "record" && tabName !== "record" && editingHarvestRecordId){
+    editingHarvestSelectionKeys = [...harvestFillKeys];
+    restoreForecastSelectionState({ render: false });
+  }
+  saveCurrentTabScrollPosition();
+  closeRecordFloatingUi();
+  resolveGoogleSheetConfirm(false);
+  resolvePlantingUnselectedWarning(false);
+
+  setMainTabSelection(tabName);
+  activeAppTab = tabName;
   if(tabName === "record"){
     updateTodayHarvestRecordedStatus();
     if(recordSelectionMode === "planting"){
@@ -10864,17 +10943,10 @@ function switchTab(tabName){
     refreshRecordModeUi();
     syncRecordPlantingSummaryFromSelection();
     updateRecordActualLoss();
-    drawRecordBeds();
   }
   if(tabName === "forecast"){
-    syncCurrentBuildingToCasePlacement();
+    syncCurrentBuildingToCasePlacement({ skipRendering: true, skipSummary: true });
   }
-  if(tabName === "monitor"){
-    renderForecastSummary();
-    resizeAllMonitorMemoInputs();
-    refreshMonitorMemoInputsOnTabOpen();
-  }
-  activeAppTab = tabName;
   if(tabName === "dashboard"){
     syncDashboardSubtabUi();
     scheduleDashboardRenderAfterTabSelection();
@@ -10882,6 +10954,8 @@ function switchTab(tabName){
     dashboardRenderScheduleId++;
     setDashboardLoadingState(false);
   }
+  deferPendingHarvestStateSaveUntilUiSettles();
+  scheduleMainTabPostSelectionWork(tabName);
   scheduleWorkflowGuideUpdate();
   restoreTabScrollPosition(tabName);
   return true;
@@ -17047,8 +17121,10 @@ function syncCurrentBuildingToCasePlacement(options = {}){
   }
 
   updateBuildingLabel();
-  drawBeds();
-  drawRecordBeds();
+  if(!options.skipRendering){
+    drawBeds();
+    drawRecordBeds();
+  }
   if(!options.skipSummary){
     renderForecastSummary();
   }
