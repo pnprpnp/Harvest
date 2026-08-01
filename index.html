@@ -10211,14 +10211,17 @@ function markHarvestCasesAsManuallyEdited(){
   updateHarvestCasesAutoEstimatedAppearance();
 }
 
-function updateEstimatedHarvestCasesFromSelection(){
+function updateEstimatedHarvestCasesFromSelection(currentHarvestTotal = null){
   if(activeAppTab !== "forecast") return;
   const casesInput = document.getElementById("casesInput");
   if(!casesInput) return;
   if(casesInput.value !== "" && !harvestCasesAutoEstimated) return;
 
+  const resolvedHarvestTotal = Number.isFinite(Number(currentHarvestTotal))
+    ? Number(currentHarvestTotal)
+    : getCurrentHarvestTotal();
   const estimatedRegularCases = harvestFillKeys.length
-    ? Math.max(0, Math.floor(getCurrentHarvestTotal() / CASE_SIZE))
+    ? Math.max(0, Math.floor(resolvedHarvestTotal / CASE_SIZE))
     : 0;
   const partialHarvestCases = harvestFillKeys.length
     ? getPartialHarvestCaseDeductionForDate(getHarvestTargetDateString())
@@ -10241,19 +10244,29 @@ function getManualHarvestNeedHeads(){
   return getHarvestCasePlan().regularCases * CASE_SIZE;
 }
 
+function renderHarvestSelectionMapsForActiveTab(){
+  if(activeAppTab === "forecast"){
+    drawBeds();
+  }else if(activeAppTab === "record"){
+    drawRecordBeds();
+  }
+}
+
 function refreshAfterHarvestSelectionChanged(options = {}){
   const keepRecordSummary = !!options.keepRecordSummary;
   if(activeAppTab === "forecast") invalidateWorkflowMonitorCheckpoint();
 
+  const currentHarvestTotal = Number.isFinite(Number(options.currentHarvestTotal))
+    ? Math.round(Number(options.currentHarvestTotal) * 10) / 10
+    : (harvestFillKeys.length ? getCurrentHarvestTotal() : 0);
   if(harvestFillKeys.length){
-    recalcHarvestSummary();
+    recalcHarvestSummary(currentHarvestTotal);
   }else{
     harvestSummary = null;
   }
 
-  updateEstimatedHarvestCasesFromSelection();
-  drawBeds();
-  drawRecordBeds();
+  updateEstimatedHarvestCasesFromSelection(currentHarvestTotal);
+  renderHarvestSelectionMapsForActiveTab();
   renderForecastSummary();
 
   const summaryInput = document.getElementById("recordPalletSummaryInput");
@@ -10267,7 +10280,7 @@ function refreshAfterHarvestSelectionChanged(options = {}){
   updateRecordActualLoss();
   updateRecordSeedlingDiffDisplay();
   updateRecordActualSeedlingDisplays();
-  saveHarvestStateToStorage();
+  scheduleHarvestStateSave();
 }
 
 
@@ -20359,13 +20372,17 @@ function isBedFullyFilledInCurrentBuilding(bed, recordedSet = getRecordedPalletS
   return hasTarget;
 }
 
-function getCurrentHarvestTotal(){
+function getCurrentHarvestTotalRaw(keys = harvestFillKeys){
   let total = 0;
-  harvestFillKeys.forEach(key => {
+  (Array.isArray(keys) ? keys : []).forEach(key => {
     const p = parsePalletKey(key);
     total += getPredictedHarvestForPallet(p.building, p.bed, p.number);
   });
-  return Math.round(total * 10) / 10;
+  return total;
+}
+
+function getCurrentHarvestTotal(){
+  return Math.round(getCurrentHarvestTotalRaw() * 10) / 10;
 }
 
 function togglePallet(building, bed, number){
@@ -20383,22 +20400,25 @@ function togglePallet(building, bed, number){
     return;
   }else{
     const needHeads = getManualHarvestNeedHeads();
-    const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForPallet(building, bed, number);
+    const nextRawTotal = getCurrentHarvestTotalRaw()
+      + getPredictedHarvestForPallet(building, bed, number);
+    const nextTotal = Math.round(nextRawTotal * 10) / 10;
     if(needHeads !== null && nextTotal > needHeads){
       showToast("必要個数を超えるため追加できません");
       return;
     }
     harvestFillKeys.push(key);
     sortHarvestFillKeys();
-    refreshAfterHarvestSelectionChanged();
+    refreshAfterHarvestSelectionChanged({ currentHarvestTotal: nextTotal });
     return;
   }
 }
 
 function addOrRemoveWholeBed(bed){
   const needHeads = getManualHarvestNeedHeads();
-
-  const fullyFilled = isBedFullyFilledInCurrentBuilding(bed);
+  const recordedSet = getRecordedPalletSet();
+  const selectedSet = new Set(harvestFillKeys || []);
+  const fullyFilled = isBedFullyFilledInCurrentBuilding(bed, recordedSet, selectedSet);
 
   if(fullyFilled){
     harvestFillKeys = harvestFillKeys.filter(key => {
@@ -20411,15 +20431,19 @@ function addOrRemoveWholeBed(bed){
   }
 
   let added = 0;
+  let runningHarvestTotal = getCurrentHarvestTotalRaw();
   for(let number=1; number<=PALLETS_PER_BED; number++){
-    if(isRecorded(currentBuilding, bed, number)) continue;
     const key = getPalletKey(currentBuilding, bed, number);
-    if(harvestFillKeys.includes(key)) continue;
+    if(recordedSet.has(key)) continue;
+    if(selectedSet.has(key)) continue;
 
-    const nextTotal = getCurrentHarvestTotal() + getPredictedHarvestForPallet(currentBuilding, bed, number);
+    const predictedHarvest = getPredictedHarvestForPallet(currentBuilding, bed, number);
+    const nextTotal = Math.round(runningHarvestTotal * 10) / 10 + predictedHarvest;
     if(needHeads !== null && nextTotal > needHeads) break;
 
     harvestFillKeys.push(key);
+    selectedSet.add(key);
+    runningHarvestTotal += predictedHarvest;
     added++;
   }
 
@@ -20429,7 +20453,7 @@ function addOrRemoveWholeBed(bed){
   }
 
   sortHarvestFillKeys();
-  refreshAfterHarvestSelectionChanged();
+  refreshAfterHarvestSelectionChanged({ currentHarvestTotal: runningHarvestTotal });
   showToast(currentBuilding + "号棟 " + bed + "ベッドを一括追加しました");
 }
 
@@ -21842,14 +21866,16 @@ function getPartialHarvestSaveToastMessage(options = {}){
   return `${actionText}。残り予想は約${options.remainingEstimate}ケースです（${sendText}）`;
 }
 
-function recalcHarvestSummary(){
+function recalcHarvestSummary(currentHarvestTotal = null){
   sortHarvestFillKeys();
 
   harvestSummary = {
     start: harvestFillKeys.length ? harvestFillKeys[0] : null,
     end: harvestFillKeys.length ? harvestFillKeys[harvestFillKeys.length - 1] : "-",
     filledCount: harvestFillKeys.length,
-    totalHarvest: getCurrentHarvestTotal(),
+    totalHarvest: Number.isFinite(Number(currentHarvestTotal))
+      ? Math.round(Number(currentHarvestTotal) * 10) / 10
+      : getCurrentHarvestTotal(),
     needHeads: getHarvestCasePlan().regularCases * CASE_SIZE
   };
 }
@@ -24073,13 +24099,12 @@ function toggleRecordPallet(building, bed, number){
   if(fillIndex >= 0){
     harvestFillKeys.splice(fillIndex, 1);
     recalcHarvestSummary();
-    drawBeds();
-    drawRecordBeds();
+    renderHarvestSelectionMapsForActiveTab();
     renderForecastSummary();
     if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
     syncRecordPlantingSummaryFromSelection();
     updateRecordActualLoss();
-    saveHarvestStateToStorage();
+    scheduleHarvestStateSave();
     return;
   }else{
     if(recordSelectionMode === "planting" && !canAddPlantingPallet(key)){
@@ -24089,13 +24114,12 @@ function toggleRecordPallet(building, bed, number){
     harvestFillKeys.push(key);
     sortHarvestFillKeys();
     recalcHarvestSummary();
-    drawBeds();
-    drawRecordBeds();
+    renderHarvestSelectionMapsForActiveTab();
     renderForecastSummary();
     if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
     syncRecordPlantingSummaryFromSelection();
     updateRecordActualLoss();
-    saveHarvestStateToStorage();
+    scheduleHarvestStateSave();
     return;
   }
 }
