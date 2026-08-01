@@ -9333,6 +9333,7 @@ let harvestRecordLookupCache = new Map();
 let plantingDateByPalletCache = new Map();
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
+let recordHistoryCache = null;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
 let editingPartialHarvestRecordId = null;
@@ -12198,6 +12199,7 @@ function savePlantingEventsToStorage(){
     PLANTING_EVENTS_KEY,
     JSON.stringify(plantingEvents.map(serializePlantingEventForStorage).filter(Boolean))
   );
+  invalidateRecordHistoryCache();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
   workflowPendingRecordCache = null;
@@ -12240,6 +12242,14 @@ function saveDeletedPlantingEventsToStorage(){
       event: serializePlantingEventForStorage(entry.event)
     }))
   ));
+}
+
+function pruneExpiredDeletedPlantingEvents(now = Date.now()){
+  const beforeCount = deletedPlantingEvents.length;
+  deletedPlantingEvents = deletedPlantingEvents.filter(entry => (
+    new Date(entry?.expiresAt || "").getTime() > now
+  ));
+  return deletedPlantingEvents.length !== beforeCount;
 }
 
 function addPlantingEventToTrash(event, options = {}){
@@ -12795,6 +12805,7 @@ function saveRecordsToStorage(){
   workflowPendingRecordCacheReady = false;
   records.sort(compareRecordsByDateDesc);
   localStorage.setItem(RECORDS_KEY, JSON.stringify(records.map(serializeRecordForStorage)));
+  invalidateRecordHistoryCache();
   scheduleWorkflowGuideUpdate();
 }
 
@@ -12855,6 +12866,14 @@ function saveDeletedRecordsToStorage(){
   const now = Date.now();
   deletedRecords = deletedRecords.filter(entry => new Date(entry.expiresAt).getTime() > now);
   localStorage.setItem(RECORD_TRASH_KEY, JSON.stringify(deletedRecords.map(serializeDeletedRecordEntry)));
+}
+
+function pruneExpiredDeletedRecords(now = Date.now()){
+  const beforeCount = deletedRecords.length;
+  deletedRecords = deletedRecords.filter(entry => (
+    new Date(entry?.expiresAt || "").getTime() > now
+  ));
+  return deletedRecords.length !== beforeCount;
 }
 
 function addRecordToTrash(record, options = {}){
@@ -25995,10 +26014,12 @@ function editHarvestRecord(id, options = {}){
     : "収穫記録を編集できます");
 }
 
-function renderRecordList(){
-  const box = document.getElementById("recordList");
-  updateTodayHarvestRecordedStatus();
-  renderDeletedRecordList();
+function invalidateRecordHistoryCache(){
+  recordHistoryCache = null;
+}
+
+function getRecordHistoryCache(){
+  if(recordHistoryCache) return recordHistoryCache;
   const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(records);
   const historyItems = [
     ...records.map(record => ({ kind: "harvest", id: Number(record.id), date: record.date, value: record })),
@@ -26010,6 +26031,21 @@ function renderRecordList(){
     if(a.kind !== b.kind) return a.kind === "harvest" ? -1 : 1;
     return b.id - a.id;
   });
+  const itemsByDate = new Map();
+  historyItems.forEach(item => {
+    const dateKey = String(item.date || "");
+    if(!itemsByDate.has(dateKey)) itemsByDate.set(dateKey, []);
+    itemsByDate.get(dateKey).push(item);
+  });
+  recordHistoryCache = { historyItems, itemsByDate, harvestCaseTotalsByDate };
+  return recordHistoryCache;
+}
+
+function renderRecordList(){
+  const box = document.getElementById("recordList");
+  updateTodayHarvestRecordedStatus();
+  renderDeletedRecordList();
+  const { historyItems, itemsByDate, harvestCaseTotalsByDate } = getRecordHistoryCache();
   if(!historyItems.length){
     box.textContent = "まだ記録がありません。";
     return;
@@ -26019,23 +26055,24 @@ function renderRecordList(){
   let visibleItems = [];
 
   if(selectedDate){
-    visibleItems = historyItems.filter(item => item.date === selectedDate).slice(0, RECORD_LIST_DISPLAY_LIMIT);
+    visibleItems = (itemsByDate.get(selectedDate) || []).slice(0, RECORD_LIST_DISPLAY_LIMIT);
   }
 
   if(!visibleItems.length){
     const latestDate = historyItems[0].date;
-    visibleItems = historyItems
-      .filter(item => item.date === latestDate)
-      .slice(0, RECORD_LIST_DISPLAY_LIMIT);
+    visibleItems = (itemsByDate.get(String(latestDate || "")) || []).slice(0, RECORD_LIST_DISPLAY_LIMIT);
   }
 
   const getItemKey = item => item.kind + ":" + item.id;
   const visibleIds = new Set(visibleItems.map(getItemKey));
   const hiddenLimit = Math.max(0, RECORD_LIST_DISPLAY_LIMIT - visibleItems.length);
-  const hiddenItems = historyItems
-    .filter(item => !visibleIds.has(getItemKey(item)))
-    .slice(0, hiddenLimit);
-  const hiddenTotal = historyItems.filter(item => !visibleIds.has(getItemKey(item))).length;
+  const hiddenItems = [];
+  let hiddenTotal = 0;
+  historyItems.forEach(item => {
+    if(visibleIds.has(getItemKey(item))) return;
+    hiddenTotal++;
+    if(hiddenItems.length < hiddenLimit) hiddenItems.push(item);
+  });
 
   const renderHistoryItem = item => item.kind === "planting"
     ? renderPlantingEventItemHtml(item.value)
@@ -26070,8 +26107,9 @@ function renderRecordList(){
 }
 
 function renderDeletedRecordList(){
-  saveDeletedRecordsToStorage();
-  saveDeletedPlantingEventsToStorage();
+  const now = Date.now();
+  if(pruneExpiredDeletedRecords(now)) saveDeletedRecordsToStorage();
+  if(pruneExpiredDeletedPlantingEvents(now)) saveDeletedPlantingEventsToStorage();
   const summary = document.getElementById("recordTrashSummary");
   const count = document.getElementById("recordTrashCount");
   const box = document.getElementById("recordTrashList");
@@ -26084,7 +26122,6 @@ function renderDeletedRecordList(){
     return;
   }
 
-  const now = Date.now();
   const recordTrashHtml = deletedRecords.map(entry => {
     const record = entry.record;
     const safeRecordId = getSafePositiveRecordId(record.id) ?? 0;
@@ -27450,6 +27487,7 @@ function restoreBackupImportSnapshot(snapshot){
   restoreBackupImportStorageSnapshot(snapshot.storageValues || {});
 
   invalidateHarvestRecordLookupCache();
+  invalidateRecordHistoryCache();
   invalidatePlantingEventStateCache();
   workflowPendingRecordCache = null;
   workflowPendingRecordCacheReady = false;
