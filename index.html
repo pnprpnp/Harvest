@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260801-tab-switch-response-1">
+<meta name="harvestnavi-version" content="20260801-performance-optimizations-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -12762,6 +12762,7 @@ function syncHarvestPlantingPendingFlags(options = {}){
     record.plantingPending = nextPending;
     changed = true;
   });
+  if(changed) invalidateRecordHistoryCache();
   if(changed && options.persist !== false) saveRecordsToStorage();
   return changed;
 }
@@ -21862,7 +21863,6 @@ function calculateHarvestSelectionFromRecords(options = {}){
   let startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
   let autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
   let releasedRecordCount = 0;
-  const harvestRecordLookup = getHarvestRecordLookup(partialTargetDate, sourceRecords);
 
   while(!autoStartKey && options.releaseOldestIfBlocked && recentRecords.length){
     // 直近の参照件数だけで全パレットが埋まる特殊な状態でも予想を止めない。
@@ -21889,6 +21889,7 @@ function calculateHarvestSelectionFromRecords(options = {}){
     };
   }
 
+  const harvestRecordLookup = getHarvestRecordLookup(partialTargetDate, sourceRecords);
   const palletKeys = [];
   let current = parsePalletKey(autoStartKey);
   let totalHarvest = 0;
