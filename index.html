@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260801-performance-optimizations-1">
+<meta name="harvestnavi-version" content="20260801-record-input-safeguards-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -2801,6 +2801,21 @@ button.monitorSaveBtn:active{
   width:168px;
   min-width:168px;
   flex:0 0 168px;
+}
+.recordSeedlingInputColumn{
+  width:100%;
+  max-width:180px;
+  justify-self:end;
+}
+.recordAutoValueNote{
+  margin-top:5px;
+  color:#0369a1;
+  font-size:11px;
+  font-weight:700;
+  line-height:1.35;
+}
+.recordAutoValueNote[hidden]{
+  display:none;
 }
 .recordPartialHarvestIncludedNote{
   margin-top:5px;
@@ -8223,6 +8238,7 @@ requestAnimationFrame(function(){
                 <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
                 <span class="inputUnitSuffix">ケース</span>
               </span>
+              <div id="recordCasesAutoValueNote" class="recordAutoValueNote" hidden>予測値から引き継ぎ</div>
               <div id="recordPartialHarvestIncludedNote" class="recordPartialHarvestIncludedNote" hidden></div>
             </div>
           </div>
@@ -8260,10 +8276,13 @@ requestAnimationFrame(function(){
         <div class="recordSeedlingRow">
           <div>
             <label class="fieldAccentLabel">実際に取った苗</label>
-            <span class="inputUnitWrap recordSeedlingUnitWrap">
-              <input id="recordActualSeedlingTrayCountInput" type="number" min="0" inputmode="numeric" placeholder="0">
-              <span class="inputUnitSuffix">枚</span>
-            </span>
+            <div class="recordSeedlingInputColumn">
+              <span class="inputUnitWrap recordSeedlingUnitWrap">
+                <input id="recordActualSeedlingTrayCountInput" type="number" min="0" inputmode="numeric" placeholder="0">
+                <span class="inputUnitSuffix">枚</span>
+              </span>
+              <div id="recordSeedlingAutoValueNote" class="recordAutoValueNote" hidden>予測値から引き継ぎ</div>
+            </div>
           </div>
         </div>
         <div>
@@ -11846,6 +11865,26 @@ function setSelectedQualityMemo(value){
   updateRecordInputGuides();
 }
 
+function updateRecordAutoValueNotes(){
+  const casesInput = document.getElementById("recordCasesInput");
+  const casesNote = document.getElementById("recordCasesAutoValueNote");
+  if(casesNote){
+    const showCasesNote = recordSelectionMode !== "planting"
+      && !recordCasesEdited
+      && String(casesInput?.value || "").trim() !== "";
+    casesNote.hidden = !showCasesNote;
+  }
+
+  const seedlingInput = document.getElementById("recordActualSeedlingTrayCountInput");
+  const seedlingNote = document.getElementById("recordSeedlingAutoValueNote");
+  if(seedlingNote){
+    const showSeedlingNote = recordSelectionMode === "planting"
+      && seedlingInput?.dataset.userEdited !== "1"
+      && String(seedlingInput?.value || "").trim() !== "";
+    seedlingNote.hidden = !showSeedlingNote;
+  }
+}
+
 function updateRecordInputGuides(){
   const dateInput = document.getElementById("recordDateInput");
   if(dateInput){
@@ -11865,6 +11904,7 @@ function updateRecordInputGuides(){
     const hasQualityMemo = qualityMemo.tags.length > 0 || !!qualityMemo.other;
     qualityRow.classList.toggle("needsAttention", recordSelectionMode !== "planting" && !hasQualityMemo);
   }
+  updateRecordAutoValueNotes();
 }
 
 function serializeRecordForStorage(record){
@@ -22784,11 +22824,16 @@ function syncRecordActualSeedlingTrayCountInput(record = getActivePlantingRecord
   if(!input) return;
   if(!record || record.type !== "fullHarvest"){
     if(options.force) input.value = "";
+    updateRecordAutoValueNotes();
     return;
   }
-  if(input.dataset.userEdited === "1" && !options.force) return;
+  if(input.dataset.userEdited === "1" && !options.force){
+    updateRecordAutoValueNotes();
+    return;
+  }
   const value = clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0) || clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0);
   input.value = value > 0 ? String(value) : "";
+  updateRecordAutoValueNotes();
 }
 
 function getRecordById(id){
@@ -23121,6 +23166,7 @@ function refreshRecordModeUi(){
     if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
     if(actualLossField) actualLossField.hidden = false;
   }
+  updateRecordAutoValueNotes();
   scheduleWorkflowGuideUpdate();
 }
 
@@ -24421,6 +24467,7 @@ function syncRecordCasesFromMain(force = false){
   if(force || !recordCasesEdited || recordCases.value === ""){
     recordCases.value = mainCases.value || "";
   }
+  updateRecordAutoValueNotes();
 }
 
 function getYieldCountForPallet(bed, number){
@@ -24700,6 +24747,7 @@ function updateRecordSeedlingDiffDisplay(){
 }
 
 function updateRecordActualSeedlingDisplays(){
+  updateRecordAutoValueNotes();
   const totalDisplay = document.getElementById("recordActualSeedlingTotalDisplay");
   const lossDisplay = document.getElementById("recordActualSeedlingLossInput");
   const activeRecord = getActivePlantingRecord();
@@ -24737,6 +24785,7 @@ function bindRecordActualSeedlingTrayCountInput(){
     input.dataset.clearedOnFocus = "1";
     input.dataset.enteredSinceFocus = "0";
     input.value = "";
+    updateRecordAutoValueNotes();
   });
 
   input.addEventListener("input", () => {
@@ -24744,6 +24793,7 @@ function bindRecordActualSeedlingTrayCountInput(){
     if(input.dataset.clearedOnFocus === "1"){
       input.dataset.enteredSinceFocus = "1";
     }
+    updateRecordAutoValueNotes();
   });
 
   input.addEventListener("keydown", event => {
@@ -24948,6 +24998,34 @@ function resetPlantingRecordChanges(){
   });
 }
 
+function confirmHarvestRecordWarnings(date, actualLoss, editingRecord = null){
+  const warnings = [];
+  const editingRecordId = Number(editingRecord?.id);
+  const sameDayFullRecordCount = records.filter(record => (
+    record?.type === "fullHarvest"
+    && String(record.date || "") === String(date || "")
+    && (!Number.isFinite(editingRecordId) || Number(record.id) !== editingRecordId)
+  )).length;
+
+  if(sameDayFullRecordCount > 0){
+    warnings.push(`同じ日付の通常収穫記録がすでに${sameDayFullRecordCount}件あります。`);
+  }
+
+  const lossValue = Number(actualLoss);
+  if(Number.isFinite(lossValue) && lossValue < 0){
+    warnings.push(`実際のロス率が${actualLoss}%です。ケース数または収穫場所が間違っていないか確認してください。`);
+  }
+
+  if(!warnings.length) return true;
+  return window.confirm([
+    "入力内容を確認してください。",
+    "",
+    ...warnings.map(warning => "・" + warning),
+    "",
+    "このまま記録しますか？"
+  ].join("\n"));
+}
+
 function saveRecord(){
   if(!ensureProtectedOperationAccess("記録の保存")) return;
   if(!ensureGoogleSheetLocalMutationAllowed("記録を保存", { allowBackgroundSend: true })) return;
@@ -24985,6 +25063,10 @@ function saveRecord(){
   }
   if(!harvestFillKeys.length){
     showToast("保存する選択結果がありません");
+    return;
+  }
+  if(!confirmHarvestRecordWarnings(date, actualLoss, editingRecord)){
+    showToast("収穫記録の保存をキャンセルしました");
     return;
   }
 
