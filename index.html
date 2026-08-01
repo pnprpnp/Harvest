@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260801-safe-code-organization-1">
+<meta name="harvestnavi-version" content="20260801-safe-code-organization-2">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17524,52 +17524,50 @@ function updateBuildingLastHarvestInfo(){
   renderPlantingAgeInfo();
 }
 
-function nextBuilding(){
+// ===== 号棟選択：シミュ・ケース配置の前後移動 =====
+function getAdjacentBuilding(building, direction){
+  const nextBuildingValue = Number(building) + direction;
+  if(nextBuildingValue > MAX_BUILDING) return MIN_BUILDING;
+  if(nextBuildingValue < MIN_BUILDING) return MAX_BUILDING;
+  return nextBuildingValue;
+}
+
+function shiftCurrentBuilding(direction){
   closeBedDetailWindow();
   hideBedActionMenu();
   hideRecordBedActionMenu();
   syncCurrentCasePlacementFromInputs();
   expandedForecastBed = null;
   expandedRecordBed = null;
-  currentBuilding++;
-  if(currentBuilding > MAX_BUILDING) currentBuilding = MIN_BUILDING;
+  currentBuilding = getAdjacentBuilding(currentBuilding, direction);
   updateBuildingLabel();
   refreshHarvestMapViews();
+}
+
+function nextBuilding(){
+  shiftCurrentBuilding(1);
 }
 
 function prevBuilding(){
-  closeBedDetailWindow();
-  hideBedActionMenu();
-  hideRecordBedActionMenu();
+  shiftCurrentBuilding(-1);
+}
+
+function shiftCasePlacementBuilding(direction){
   syncCurrentCasePlacementFromInputs();
-  expandedForecastBed = null;
-  expandedRecordBed = null;
-  currentBuilding--;
-  if(currentBuilding < MIN_BUILDING) currentBuilding = MAX_BUILDING;
-  updateBuildingLabel();
-  refreshHarvestMapViews();
+  casePlacementBuilding = getAdjacentBuilding(casePlacementBuilding, direction);
+  updateCasePlacementBuildingLabel();
+  populateCasePlacementInputs();
+  syncCurrentBuildingToCasePlacement({ skipSummary: true });
+  renderForecastSummary();
+  saveHarvestStateToStorage();
 }
 
 function nextCasePlacementBuilding(){
-  syncCurrentCasePlacementFromInputs();
-  casePlacementBuilding++;
-  if(casePlacementBuilding > MAX_BUILDING) casePlacementBuilding = MIN_BUILDING;
-  updateCasePlacementBuildingLabel();
-  populateCasePlacementInputs();
-  syncCurrentBuildingToCasePlacement({ skipSummary: true });
-  renderForecastSummary();
-  saveHarvestStateToStorage();
+  shiftCasePlacementBuilding(1);
 }
 
 function prevCasePlacementBuilding(){
-  syncCurrentCasePlacementFromInputs();
-  casePlacementBuilding--;
-  if(casePlacementBuilding < MIN_BUILDING) casePlacementBuilding = MAX_BUILDING;
-  updateCasePlacementBuildingLabel();
-  populateCasePlacementInputs();
-  syncCurrentBuildingToCasePlacement({ skipSummary: true });
-  renderForecastSummary();
-  saveHarvestStateToStorage();
+  shiftCasePlacementBuilding(-1);
 }
 
 function parseDateOnlyString(value){
@@ -21189,6 +21187,18 @@ function renderBedDetailWindow(){
   body.appendChild(content);
 }
 
+function getPalletLayoutClassName(number, splitInfo){
+  let className = "pallet";
+  if(number % 2 === 0) className += " palletEven";
+  if(splitInfo){
+    if(splitInfo.hasFront && number <= splitInfo.frontCount) className += " frontZone";
+    if(splitInfo.hasBack && number > splitInfo.frontCount) className += " backZone";
+  }
+  if(number % 8 === 0 || number % 8 === 7) className += " multiple8Pair";
+  if(number === 39 || number === 40) className += " centerStrong";
+  return className;
+}
+
 function appendForecastBedDetail(container, b){
   const bed = document.createElement("div");
   bed.className = "bed bedExpanded";
@@ -21206,15 +21216,7 @@ function appendForecastBedDetail(container, b){
       const number = count;
       const key = getPalletKey(currentBuilding, b, number);
       const pallet = document.createElement("div");
-      let cls = "pallet";
-
-      if(number % 2 === 0) cls += " palletEven";
-      if(splitInfo){
-        if(splitInfo.hasFront && number <= splitInfo.frontCount) cls += " frontZone";
-        if(splitInfo.hasBack && number > splitInfo.frontCount) cls += " backZone";
-      }
-      if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
-      if(number === 39 || number === 40) cls += " centerStrong";
+      let cls = getPalletLayoutClassName(number, splitInfo);
       const partialHarvestCount = hasPartialHarvestRecords ? getPartialHarvestCountForPallet(currentBuilding, b, number) : 0;
       if(partialHarvestCount > 0) cls += " partialHarvestPallet";
       if(selectedSet.has(key)) cls += " harvestFill";
@@ -21256,15 +21258,7 @@ function appendRecordBedDetail(container, b){
       const number = count;
       const key = getPalletKey(currentBuilding, b, number);
       const pallet = document.createElement("div");
-      let cls = "pallet";
-
-      if(number % 2 === 0) cls += " palletEven";
-      if(splitInfo){
-        if(splitInfo.hasFront && number <= splitInfo.frontCount) cls += " frontZone";
-        if(splitInfo.hasBack && number > splitInfo.frontCount) cls += " backZone";
-      }
-      if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
-      if(number === 39 || number === 40) cls += " centerStrong";
+      let cls = getPalletLayoutClassName(number, splitInfo);
       const partialHarvestCount = getPartialHarvestCountForPallet(currentBuilding, b, number);
       if(partialHarvestCount > 0) cls += " partialHarvestPallet";
       const isSelected = isFilled(currentBuilding, b, number);
@@ -24274,15 +24268,7 @@ function drawBeds(){
         const number = count;
         const key = getPalletKey(currentBuilding, b, number);
         const pallet = document.createElement("div");
-        let cls = "pallet";
-
-        if(number % 2 === 0) cls += " palletEven";
-        if(splitInfo){
-          if(splitInfo.hasFront && number <= splitInfo.frontCount) cls += " frontZone";
-          if(splitInfo.hasBack && number > splitInfo.frontCount) cls += " backZone";
-        }
-        if(number % 8 === 0 || number % 8 === 7) cls += " multiple8Pair";
-        if(number === 39 || number === 40) cls += " centerStrong";
+        let cls = getPalletLayoutClassName(number, splitInfo);
         const partialHarvestCount = hasPartialHarvestRecords ? getPartialHarvestCountForPallet(currentBuilding, b, number) : 0;
         if(partialHarvestCount > 0) cls += " partialHarvestPallet";
         if(selectedSet.has(key)) cls += " harvestFill";
@@ -24910,6 +24896,26 @@ function updateRecordWeekdayDisplay(){
 
   const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
   display.textContent = `（${weekdays[date.getDay()]}）`;
+}
+
+function refreshRecordDateDependentUi(){
+  updateRecordWeekdayDisplay();
+  renderRecordList();
+  renderForecastSummary();
+  updateRecordActualLoss();
+  updateRecordSeedlingCarryoverHint();
+  updateRecordActualSeedlingDisplays();
+  updateBuildingLastHarvestInfo();
+  drawRecordBeds();
+}
+
+function handleRecordDateUpdate(saveImmediately = false){
+  refreshRecordDateDependentUi();
+  if(saveImmediately){
+    saveHarvestStateToStorage();
+  }else{
+    scheduleHarvestStateSave();
+  }
 }
 
 function setTodayToRecordDate(){
@@ -27821,28 +27827,8 @@ window.onload = () => {
 
   const recordDateInput = document.getElementById("recordDateInput");
   if(recordDateInput){
-    recordDateInput.addEventListener("input", () => {
-      updateRecordWeekdayDisplay();
-      renderRecordList();
-      renderForecastSummary();
-      updateRecordActualLoss();
-      updateRecordSeedlingCarryoverHint();
-      updateRecordActualSeedlingDisplays();
-      updateBuildingLastHarvestInfo();
-      drawRecordBeds();
-      scheduleHarvestStateSave();
-    });
-    recordDateInput.addEventListener("change", () => {
-      updateRecordWeekdayDisplay();
-      renderRecordList();
-      renderForecastSummary();
-      updateRecordActualLoss();
-      updateRecordSeedlingCarryoverHint();
-      updateRecordActualSeedlingDisplays();
-      updateBuildingLastHarvestInfo();
-      drawRecordBeds();
-      saveHarvestStateToStorage();
-    });
+    recordDateInput.addEventListener("input", () => handleRecordDateUpdate(false));
+    recordDateInput.addEventListener("change", () => handleRecordDateUpdate(true));
   }
 
   const recordCasesInput = document.getElementById("recordCasesInput");
