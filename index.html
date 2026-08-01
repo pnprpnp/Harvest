@@ -9202,6 +9202,7 @@ const RECORD_LIST_DISPLAY_LIMIT = 30;
 const DASHBOARD_RECORD_INITIAL_DISPLAY_LIMIT = 8;
 const DASHBOARD_RECORD_FILTER_DELAY_MS = 180;
 const HARVEST_STATE_SAVE_DELAY_MS = 250;
+const HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT = 24;
 const RECORD_EXPORT_PROMPT_COUNT = 300;
 const RECORD_BACKUP_MAX_ITEMS = 10000;
 const MIN_BUILDING = 2;
@@ -9327,6 +9328,10 @@ let plantingAllowedPalletSetCacheRecordCount = 0;
 let plantingAllowedPalletSetCacheEventId = null;
 let plantingEventStateCache = null;
 let plantingEventStateCacheKey = "";
+let harvestRecordLookupCache = new Map();
+let plantingDateByPalletCache = new Map();
+let harvestRecordLookupEnabled = true;
+let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
 let editingPartialHarvestRecordId = null;
@@ -12447,6 +12452,7 @@ function backfillLegacyPlantingEventsFromRecordSummariesOnce(recordsToMigrate = 
 function invalidatePlantingEventStateCache(){
   plantingEventStateCache = null;
   plantingEventStateCacheKey = "";
+  plantingDateByPalletCache.clear();
   invalidatePlantingAllowedPalletSetCache();
 }
 
@@ -12765,6 +12771,7 @@ function loadRecords(){
 }
 
 function saveRecordsToStorage(){
+  invalidateHarvestRecordLookupCache();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
   workflowPendingRecordCache = null;
@@ -19065,14 +19072,13 @@ function buildDashboardHarvestForecastModel(){
     });
     iterationsWithoutNewForecast = newForecastCount > 0 ? 0 : iterationsWithoutNewForecast + 1;
 
-    virtualRecords.unshift({
+    insertRecordSortedByDateDesc(virtualRecords, {
       id: `dashboard-forecast-${iteration}`,
       type: "fullHarvest",
       date: forecastDateText,
       cases: Math.max(0, model.forecastCases - partialCases),
       palletKeys: [...selection.palletKeys]
     });
-    virtualRecords.sort(compareRecordsByDateDesc);
 
     if(iterationsWithoutNewForecast > RECORDED_LOOKBACK_COUNT * 2) break;
     forecastDate = getNextDashboardHarvestDate(forecastDate);
@@ -19102,6 +19108,20 @@ function buildDashboardHarvestForecastModel(){
   });
 
   return model;
+}
+
+function insertRecordSortedByDateDesc(targetRecords, record){
+  let low = 0;
+  let high = targetRecords.length;
+  while(low < high){
+    const middle = Math.floor((low + high) / 2);
+    if(compareRecordsByDateDesc(record, targetRecords[middle]) < 0){
+      high = middle;
+    }else{
+      low = middle + 1;
+    }
+  }
+  targetRecords.splice(low, 0, record);
 }
 
 function applyDashboardForecastPlantingDateRanges(model){
@@ -20046,9 +20066,13 @@ function getEffectivePlantingDateForRecord(record){
 }
 
 function getLatestPlantingDateByPallet(targetDate, options = {}){
-  const map = new Map();
   const targetDay = startOfLocalDay(targetDate);
   const includeTargetDate = !!options.includeTargetDate;
+  const cacheKey = `${formatDateOnlyString(targetDay)}:${includeTargetDate ? 1 : 0}`;
+  if(plantingDateByPalletCache.has(cacheKey)){
+    return plantingDateByPalletCache.get(cacheKey);
+  }
+  const map = new Map();
 
   for(const event of plantingEvents){
     const plantingDate = parseDateOnlyString(String(event?.plantingDate || "").trim());
@@ -20071,6 +20095,10 @@ function getLatestPlantingDateByPallet(targetDate, options = {}){
     });
   }
 
+  plantingDateByPalletCache.set(cacheKey, map);
+  if(plantingDateByPalletCache.size > 16){
+    plantingDateByPalletCache.delete(plantingDateByPalletCache.keys().next().value);
+  }
   return map;
 }
 
@@ -21310,7 +21338,7 @@ function getPredictedHarvestForBed(bed, number){
   return plantCount * (100 - lossRate) / 100;
 }
 
-function getLatestFullHarvestDateForPallet(key, targetDate, sourceRecords = records){
+function getLatestFullHarvestDateForPalletLegacy(key, targetDate, sourceRecords = records){
   const targetDay = startOfLocalDay(targetDate || new Date());
 
   for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
@@ -21330,10 +21358,10 @@ function getLatestFullHarvestDateForPallet(key, targetDate, sourceRecords = reco
   return null;
 }
 
-function getPartialHarvestCountForPallet(building, bed, number, targetDate = null, sourceRecords = records){
+function getPartialHarvestCountForPalletLegacy(building, bed, number, targetDate = null, sourceRecords = records){
   const key = getPalletKey(building, bed, number);
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
-  const latestFullHarvestDate = getLatestFullHarvestDateForPallet(key, targetDay, sourceRecords);
+  const latestFullHarvestDate = getLatestFullHarvestDateForPalletLegacy(key, targetDay, sourceRecords);
   let total = 0;
 
   for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
@@ -21355,6 +21383,132 @@ function getPartialHarvestCountForPallet(building, bed, number, targetDate = nul
   }
 
   return total;
+}
+
+function invalidateHarvestRecordLookupCache(){
+  harvestRecordLookupCache.clear();
+}
+
+function buildHarvestRecordLookup(targetDate, sourceRecords = records){
+  const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
+  const targetTime = targetDay.getTime();
+  const earliestTime = addDays(targetDay, -CALCULATION_LOOKBACK_DAYS).getTime();
+  const dayGroups = new Map();
+
+  for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
+    const recordDate = parseDateOnlyString(record?.date);
+    if(!recordDate) continue;
+    const recordTime = startOfLocalDay(recordDate).getTime();
+    if(recordTime < earliestTime || recordTime > targetTime) continue;
+    if(!dayGroups.has(recordTime)){
+      dayGroups.set(recordTime, {
+        fullHarvestKeys: new Set(),
+        partialTargets: []
+      });
+    }
+    const group = dayGroups.get(recordTime);
+    if(record?.type === "partialHarvest"){
+      group.partialTargets.push(...normalizePartialHarvestTargets(record.targets));
+    }else if(recordTime < targetTime && Array.isArray(record?.palletKeys)){
+      record.palletKeys.forEach(key => group.fullHarvestKeys.add(key));
+    }
+  }
+
+  const latestFullHarvestDateByPallet = new Map();
+  const partialHarvestCountByPallet = new Map();
+  [...dayGroups.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .forEach(([recordTime, group]) => {
+      if(recordTime < targetTime){
+        group.fullHarvestKeys.forEach(key => {
+          latestFullHarvestDateByPallet.set(key, new Date(recordTime));
+          partialHarvestCountByPallet.delete(key);
+        });
+      }
+
+      group.partialTargets.forEach(target => {
+        for(let number = target.start; number <= target.end; number++){
+          const key = getPalletKey(target.building, target.bed, number);
+          if(recordTime < targetTime && group.fullHarvestKeys.has(key)) continue;
+          partialHarvestCountByPallet.set(
+            key,
+            (partialHarvestCountByPallet.get(key) || 0) + target.plantsPerPallet
+          );
+        }
+      });
+    });
+
+  return {
+    targetDay,
+    latestFullHarvestDateByPallet,
+    partialHarvestCountByPallet
+  };
+}
+
+function getHarvestRecordLookup(targetDate, sourceRecords = records){
+  if(!harvestRecordLookupEnabled) return null;
+  const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
+  const cacheKey = formatDateOnlyString(targetDay);
+  try{
+    if(sourceRecords === records && harvestRecordLookupCache.has(cacheKey)){
+      return harvestRecordLookupCache.get(cacheKey);
+    }
+    const lookup = buildHarvestRecordLookup(targetDay, sourceRecords);
+    if(sourceRecords === records){
+      harvestRecordLookupCache.set(cacheKey, lookup);
+      if(harvestRecordLookupCache.size > 16){
+        harvestRecordLookupCache.delete(harvestRecordLookupCache.keys().next().value);
+      }
+    }
+    return lookup;
+  }catch(error){
+    harvestRecordLookupEnabled = false;
+    invalidateHarvestRecordLookupCache();
+    console.error("収穫記録の高速検索を無効化しました", error);
+    return null;
+  }
+}
+
+function getLatestFullHarvestDateForPallet(key, targetDate, sourceRecords = records, options = {}){
+  const lookup = options.lookup || getHarvestRecordLookup(targetDate, sourceRecords);
+  if(!lookup){
+    return getLatestFullHarvestDateForPalletLegacy(key, targetDate, sourceRecords);
+  }
+  return lookup.latestFullHarvestDateByPallet.get(key) || null;
+}
+
+function getPartialHarvestCountForPallet(building, bed, number, targetDate = null, sourceRecords = records, options = {}){
+  if(!harvestRecordLookupEnabled){
+    return getPartialHarvestCountForPalletLegacy(building, bed, number, targetDate, sourceRecords);
+  }
+  const key = getPalletKey(building, bed, number);
+  const lookup = options.lookup || getHarvestRecordLookup(targetDate, sourceRecords);
+  if(!lookup){
+    return getPartialHarvestCountForPalletLegacy(building, bed, number, targetDate, sourceRecords);
+  }
+  const fastTotal = lookup.partialHarvestCountByPallet.get(key) || 0;
+  if(harvestRecordLookupValidationRemaining > 0){
+    const legacyTotal = getPartialHarvestCountForPalletLegacy(
+      building,
+      bed,
+      number,
+      targetDate,
+      sourceRecords
+    );
+    harvestRecordLookupValidationRemaining--;
+    if(Math.abs(fastTotal - legacyTotal) > 0.000001){
+      harvestRecordLookupEnabled = false;
+      invalidateHarvestRecordLookupCache();
+      console.error("収穫記録の高速検索結果が一致しないため従来計算へ戻しました", {
+        key,
+        targetDate: formatDateOnlyString(startOfLocalDay(targetDate || getHarvestTargetDate())),
+        fastTotal,
+        legacyTotal
+      });
+      return legacyTotal;
+    }
+  }
+  return fastTotal;
 }
 
 function getPredictedHarvestForPallet(building, bed, number, targetDate = null, sourceRecords = records){
@@ -21660,6 +21814,7 @@ function calculateHarvestSelectionFromRecords(options = {}){
   let startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
   let autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
   let releasedRecordCount = 0;
+  const harvestRecordLookup = getHarvestRecordLookup(partialTargetDate, sourceRecords);
 
   while(!autoStartKey && options.releaseOldestIfBlocked && recentRecords.length){
     // 直近の参照件数だけで全パレットが埋まる特殊な状態でも予想を止めない。
@@ -21700,7 +21855,8 @@ function calculateHarvestSelectionFromRecords(options = {}){
         current.bed,
         current.number,
         partialTargetDate,
-        sourceRecords
+        sourceRecords,
+        { lookup: harvestRecordLookup }
       );
       const baseHarvest = harvestRate === null
         ? getPredictedHarvestForBed(current.bed, current.number)
@@ -27264,6 +27420,7 @@ function restoreBackupImportSnapshot(snapshot){
   deletedRecords = deepClone(snapshot.deletedRecords || []);
   restoreBackupImportStorageSnapshot(snapshot.storageValues || {});
 
+  invalidateHarvestRecordLookupCache();
   invalidatePlantingEventStateCache();
   workflowPendingRecordCache = null;
   workflowPendingRecordCacheReady = false;
