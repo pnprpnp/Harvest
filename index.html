@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260801-record-input-safeguards-1">
+<meta name="harvestnavi-version" content="20260801-safe-code-organization-1">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10278,6 +10278,12 @@ function renderHarvestSelectionMapsForActiveTab(){
   }
 }
 
+function refreshHarvestMapViews(){
+  drawBeds();
+  drawRecordBeds();
+  renderForecastSummary();
+}
+
 function refreshAfterHarvestSelectionChanged(options = {}){
   const keepRecordSummary = !!options.keepRecordSummary;
   if(activeAppTab === "forecast") invalidateWorkflowMonitorCheckpoint();
@@ -10885,20 +10891,6 @@ function renderDashboardIfVisible(){
   if(dashboardTab && dashboardTab.style.display === "block"){
     renderDashboard();
   }
-}
-
-function scheduleRecordDataUiRefresh(){
-  runAfterUiSettles(() => {
-    try{
-      renderRecordList();
-      renderDashboardIfVisible();
-      updateGoogleSheetResendButtonState();
-      updateBuildingLastHarvestInfo();
-      updateHeaderLatestRecordDate();
-    }catch(e){
-      console.error("Failed to refresh record data UI", e);
-    }
-  });
 }
 
 function saveCurrentTabScrollPosition(){
@@ -14050,6 +14042,7 @@ function restoreRecordToGoogleSheet(record, options = {}){
   );
 }
 
+// ===== モニター：内容の同期・通知・編集 =====
 function buildGoogleSheetMonitorContentPayload(config){
   return {
     app: "Harvestnavi",
@@ -15662,11 +15655,8 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
     savePlantingEventsToStorage();
     syncHarvestPlantingPendingFlags();
     if(!options.deferUiRefresh){
-      renderRecordList();
-      renderDashboardIfVisible();
-      drawBeds();
-      drawRecordBeds();
-      renderForecastSummary();
+      refreshRecordHistoryViews();
+      refreshHarvestMapViews();
     }
   }
   if(!options.deferUiRefresh) updateGoogleSheetResendButtonState();
@@ -16692,14 +16682,7 @@ async function importRecordsFromGoogleSheet(options = {}){
       + backfilledPlantingEvents.length;
     const hadBackfillActivity = backfilledPlantingEvents.length > 0
       || backfilledPlantingSuccessCount > 0;
-    renderRecordList();
-    renderDashboardIfVisible();
-    updateGoogleSheetResendButtonState();
-    drawBeds();
-    drawRecordBeds();
-    renderForecastSummary();
-    updateBuildingLastHarvestInfo();
-    updateHeaderLatestRecordDate();
+    refreshRecordDataUi();
     if(!silentErrors){
       if(totalConflictCount){
         showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件は保護しました）`);
@@ -17239,6 +17222,7 @@ function syncCurrentBuildingToCasePlacement(options = {}){
   }
 }
 
+// ===== 集計：収穫開始カレンダー =====
 function getHarvestCycleStartDetailsByBuilding(sourceRecords = records){
   const dateMapsByBuilding = new Map(BUILDINGS.map(building => [building, new Map()]));
   sourceRecords.forEach(record => {
@@ -17550,9 +17534,7 @@ function nextBuilding(){
   currentBuilding++;
   if(currentBuilding > MAX_BUILDING) currentBuilding = MIN_BUILDING;
   updateBuildingLabel();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
+  refreshHarvestMapViews();
 }
 
 function prevBuilding(){
@@ -17565,9 +17547,7 @@ function prevBuilding(){
   currentBuilding--;
   if(currentBuilding < MIN_BUILDING) currentBuilding = MAX_BUILDING;
   updateBuildingLabel();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
+  refreshHarvestMapViews();
 }
 
 function nextCasePlacementBuilding(){
@@ -21352,9 +21332,7 @@ function clearHarvestPrediction(){
     updateHarvestCasesAutoEstimatedAppearance();
     syncRecordCasesFromMain(false);
   }
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
+  refreshHarvestMapViews();
   document.getElementById("recordPalletSummaryInput").value = "";
   updateRecordActualLoss();
   clearHarvestStateFromStorage();
@@ -24998,6 +24976,31 @@ function resetPlantingRecordChanges(){
   });
 }
 
+// ===== 記録：保存後の関連画面更新 =====
+function refreshRecordHistoryViews(){
+  renderRecordList();
+  renderDashboardIfVisible();
+}
+
+function refreshRecordDataUi(options = {}){
+  refreshRecordHistoryViews();
+  updateGoogleSheetResendButtonState();
+  if(options.maps !== false) refreshHarvestMapViews();
+  if(options.actualLoss === true) updateRecordActualLoss();
+  updateBuildingLastHarvestInfo();
+  updateHeaderLatestRecordDate();
+}
+
+function scheduleRecordDataUiRefresh(){
+  runAfterUiSettles(() => {
+    try{
+      refreshRecordDataUi({ maps: false });
+    }catch(e){
+      console.error("Failed to refresh record data UI", e);
+    }
+  });
+}
+
 function confirmHarvestRecordWarnings(date, actualLoss, editingRecord = null){
   const warnings = [];
   const editingRecordId = Number(editingRecord?.id);
@@ -25351,11 +25354,7 @@ async function savePlantingRecord(){
   setPlantingEventSyncStatus(event, "edited");
   syncHarvestPlantingPendingFlags();
   maybePromptRecordExport();
-  renderRecordList();
-  renderDashboardIfVisible();
-  updateGoogleSheetResendButtonState();
-  updateBuildingLastHarvestInfo();
-  updateHeaderLatestRecordDate();
+  refreshRecordDataUi({ maps: false });
   clearHarvestPrediction();
   resetAllCasePlacements();
   resetForecastCasesInput();
@@ -25516,12 +25515,9 @@ async function confirmDeletePlantingEvent(eventId){
     savePlantingEventsToStorage();
     syncHarvestPlantingPendingFlags();
     if(Number(editingPlantingEventId) === Number(event.eventId)) clearRecordForm();
-    renderRecordList();
-    renderDashboardIfVisible();
+    refreshRecordHistoryViews();
     updateGoogleSheetResendButtonState();
-    drawBeds();
-    drawRecordBeds();
-    renderForecastSummary();
+    refreshHarvestMapViews();
     showToast(sheetDeleted ? "苗植え記録をアプリとスプレッドシートから削除しました" : "苗植え記録をアプリから削除しました");
   }finally{
     endGoogleSheetOperation(operationOwner);
@@ -25592,17 +25588,15 @@ async function restoreDeletedPlantingEvent(eventId){
     savePlantingEventsToStorage();
     setPlantingEventSyncStatus(eventToRestore, entry.sheetDeleted || entry.wasSynced ? "confirmed" : "edited");
     syncHarvestPlantingPendingFlags();
-    renderRecordList();
-    renderDashboardIfVisible();
-    drawBeds();
-    drawRecordBeds();
-    renderForecastSummary();
+    refreshRecordHistoryViews();
+    refreshHarvestMapViews();
     showToast(entry.sheetDeleted ? "苗植え記録をアプリとスプレッドシートに復元しました" : "苗植え記録を復元しました");
   }finally{
     endGoogleSheetOperation(operationOwner);
   }
 }
 
+// ===== 部分収穫：保存・編集 =====
 function formatPartialHarvestSummary(targets){
   const normalized = normalizePartialHarvestTargets(targets);
   if(!normalized.length) return "";
@@ -25743,15 +25737,7 @@ async function savePartialHarvestRecord(){
       predictionUpdate
     })
   });
-  renderRecordList();
-  renderDashboardIfVisible();
-  updateGoogleSheetResendButtonState();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
-  updateRecordActualLoss();
-  updateBuildingLastHarvestInfo();
-  updateHeaderLatestRecordDate();
+  refreshRecordDataUi({ actualLoss: true });
   document.getElementById("partialHarvestCasesInput").value = "";
   showToast(getPartialHarvestSaveToastMessage({
     sendQueued,
@@ -25900,15 +25886,7 @@ function savePartialHarvestRecordEdit(){
       predictionUpdate
     })
   });
-  renderRecordList();
-  renderDashboardIfVisible();
-  updateGoogleSheetResendButtonState();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
-  updateRecordActualLoss();
-  updateBuildingLastHarvestInfo();
-  updateHeaderLatestRecordDate();
+  refreshRecordDataUi({ actualLoss: true });
   showToast(getPartialHarvestSaveToastMessage({
     edited: true,
     sendQueued,
@@ -25916,6 +25894,7 @@ function savePartialHarvestRecordEdit(){
   }));
 }
 
+// ===== 記録一覧：編集・履歴・削除 =====
 function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
@@ -25953,14 +25932,7 @@ function deleteRecord(id, options = {}){
   }else if(deletingEditedPartialRecord){
     closePartialHarvestEditWindow();
   }
-  renderRecordList();
-  renderDashboardIfVisible();
-  updateGoogleSheetResendButtonState();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
-  updateBuildingLastHarvestInfo();
-  updateHeaderLatestRecordDate();
+  refreshRecordDataUi();
   showToast(options.sheetDeleted ? "アプリとスプレッドシートから削除しました" : "アプリから削除しました");
 }
 
@@ -26085,9 +26057,7 @@ function editHarvestRecord(id, options = {}){
 
   setSelectedQualityMemo(record.qualityMemo);
   refreshRecordModeUi();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
+  refreshHarvestMapViews();
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();
   saveHarvestStateToStorage();
@@ -26337,14 +26307,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
       // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
       localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
     }
-    renderRecordList();
-    renderDashboardIfVisible();
-    updateGoogleSheetResendButtonState();
-    drawBeds();
-    drawRecordBeds();
-    renderForecastSummary();
-    updateBuildingLastHarvestInfo();
-    updateHeaderLatestRecordDate();
+    refreshRecordDataUi();
     showToast(entry.syncConflict
       ? "退避していた内容を戻しました。確認後に再送信してください"
       : (entry.sheetDeleted ? "アプリとスプレッドシートに復元しました" : "記録を復元しました"));
@@ -27416,14 +27379,7 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, op
     markGoogleSheetRecordsSynced(imported, "confirmed");
   }
   if(!options.skipExportPrompt) maybePromptRecordExport();
-  renderRecordList();
-  renderDashboardIfVisible();
-  updateGoogleSheetResendButtonState();
-  drawBeds();
-  drawRecordBeds();
-  renderForecastSummary();
-  updateBuildingLastHarvestInfo();
-  updateHeaderLatestRecordDate();
+  refreshRecordDataUi();
   if(!options.silentSuccess){
     showToast((successMessage || "{count}件の記録を読み込みました").replace("{count}", changedCount));
   }
@@ -27577,11 +27533,8 @@ function restoreBackupImportSnapshot(snapshot){
   invalidateDashboardDerivedData();
 
   try{
-    renderRecordList();
-    renderDashboardIfVisible();
-    drawBeds();
-    drawRecordBeds();
-    renderForecastSummary();
+    refreshRecordHistoryViews();
+    refreshHarvestMapViews();
     updateBuildingLastHarvestInfo();
     updateHeaderLatestRecordDate();
     updateGoogleSheetResendButtonState();
