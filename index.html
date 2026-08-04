@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-harvest-progress">
+<meta name="harvestnavi-version" content="20260805-harvest-progress-2">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -6698,6 +6698,7 @@ button.forecastClearBtn{border-radius:13px;}
   background:#fff;
   overflow:hidden;
 }
+.harvestProgressPanel[hidden]{display:none;}
 .harvestProgressSummary{
   min-height:54px;
   box-sizing:border-box;
@@ -8077,7 +8078,7 @@ requestAnimationFrame(function(){
           <button class="actionBtn secondaryBtn forecastClearBtn" onclick="clearHarvestPrediction()">クリア</button>
           <button class="actionBtn casePlacementCalculateBtn" onclick="runHarvestPrediction()">計算する</button>
         </div>
-        <details id="harvestProgressPanel" class="harvestProgressPanel" ontoggle="handleHarvestProgressPanelToggle()">
+        <details id="harvestProgressPanel" class="harvestProgressPanel" ontoggle="handleHarvestProgressPanelToggle()" hidden>
           <summary class="harvestProgressSummary">
             <span class="harvestProgressTitle">途中経過</span>
             <span class="harvestProgressOptionalBadge">任意</span>
@@ -9551,6 +9552,7 @@ let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
 let harvestSelectionMode = "none";
 let harvestProgressState = null;
+let harvestProgressAvailable = false;
 let harvestProgressBuilding = 2;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
@@ -10322,6 +10324,7 @@ function saveHarvestStateToStorage(options = {}){
     harvestCasesAutoEstimated,
     harvestSelectionMode,
     harvestProgressState,
+    harvestProgressAvailable,
     harvestProgressBuilding,
     monitorMemoInput: getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
     monitorMemoItems: getMonitorMemoInputValues(),
@@ -10438,6 +10441,10 @@ function loadHarvestStateFromStorage(){
       harvestCasesAutoEstimated: !!parsed.harvestCasesAutoEstimated,
       harvestSelectionMode: normalizeHarvestSelectionMode(parsed.harvestSelectionMode),
       harvestProgressState: normalizeHarvestProgressState(parsed.harvestProgressState),
+      harvestProgressAvailable: typeof parsed.harvestProgressAvailable === "boolean"
+        ? parsed.harvestProgressAvailable
+        : (normalizeHarvestSelectionMode(parsed.harvestSelectionMode) === "auto"
+          || !!normalizeHarvestProgressState(parsed.harvestProgressState)),
       harvestProgressBuilding: BUILDINGS.includes(Number(parsed.harvestProgressBuilding))
         ? Number(parsed.harvestProgressBuilding)
         : 2,
@@ -11278,9 +11285,22 @@ function getHarvestProgressResultModel(){
   };
 }
 
+function updateHarvestProgressVisibility(){
+  const panel = document.getElementById("harvestProgressPanel");
+  if(!panel) return false;
+  const shouldShow = harvestProgressAvailable
+    && harvestFillKeys.length > 0
+    && getHarvestCasePlan().totalCases > 0;
+  panel.hidden = !shouldShow;
+  if(!shouldShow) panel.open = false;
+  return shouldShow;
+}
+
 function updateHarvestProgressUi(){
+  const shouldShow = updateHarvestProgressVisibility();
   const state = normalizeHarvestProgressState(harvestProgressState);
   if(state) harvestProgressState = state;
+  if(!shouldShow) return;
   const input = document.getElementById("harvestProgressCasesInput");
   if(input && document.activeElement !== input){
     input.value = state?.actualCasesInput || "";
@@ -11469,6 +11489,7 @@ function resetHarvestProgress(options = {}){
 
 function handleHarvestCasesInputChange(){
   markHarvestCasesAsManuallyEdited();
+  harvestProgressAvailable = false;
   if(harvestProgressState){
     resetHarvestProgress({ restorePlan: true, silent: true, save: false });
   }
@@ -22106,6 +22127,7 @@ function clearHarvestPrediction(){
   workflowHarvestRecordingActive = false;
   harvestSelectionMode = "none";
   harvestProgressState = null;
+  harvestProgressAvailable = false;
   harvestFillKeys = [];
   harvestSummary = null;
   manualSeedlingCount = null;
@@ -22747,6 +22769,8 @@ function alertIfPreviousBuildingHasLeftovers(building = currentBuilding){
 }
 
 function runHarvestPrediction(options = {}){
+  harvestProgressAvailable = false;
+  updateHarvestProgressVisibility();
   if(harvestProgressState){
     resetHarvestProgress({ restorePlan: true, silent: true, render: true, save: false });
   }
@@ -22796,6 +22820,7 @@ function runHarvestPrediction(options = {}){
     needHeads
   };
   harvestSelectionMode = "auto";
+  harvestProgressAvailable = true;
 
   if(!selection.hasEnough && !silent){
     showToast("記録済みを除外して1周分見ても必要個数に届きませんでした");
@@ -24299,6 +24324,7 @@ function resetForecastCasesInput(){
   invalidateWorkflowMonitorCheckpoint();
   const casesInput = document.getElementById("casesInput");
   if(casesInput) casesInput.value = "";
+  harvestProgressAvailable = false;
   harvestCasesAutoEstimated = false;
   updateHarvestCasesAutoEstimatedAppearance();
   refreshEmptyInputHighlights();
@@ -25919,6 +25945,7 @@ function saveRecord(){
     });
     harvestProgressState = null;
     harvestSelectionMode = "none";
+    harvestProgressAvailable = false;
     if(editingRecord.plantingPending){
       editingHarvestRecordId = null;
       editingHarvestSelectionKeys = null;
@@ -25967,6 +25994,7 @@ function saveRecord(){
   });
   harvestProgressState = null;
   harvestSelectionMode = "none";
+  harvestProgressAvailable = false;
   enterPlantingRecordMode(record);
   saveHarvestStateToStorage();
   scheduleRecordDataUiRefresh();
@@ -28520,6 +28548,7 @@ window.onload = () => {
       ? "manual"
       : savedHarvestState.harvestSelectionMode;
     harvestProgressState = savedHarvestState.harvestProgressState;
+    harvestProgressAvailable = !!savedHarvestState.harvestProgressAvailable;
     harvestProgressBuilding = savedHarvestState.harvestProgressBuilding;
     monitorMemoInputsDirty = !!savedHarvestState.monitorMemoInputsDirty;
     recordCasesEdited = !!savedHarvestState.recordCasesEdited;
