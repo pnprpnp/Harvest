@@ -9,6 +9,9 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
+- Version 78 returns the latest `syncRevision` after planting-event mutations,
+  allowing the client to acknowledge its own legacy backfill writes without
+  immediately showing the record update notification again.
 - Version 77 authenticates and compares `syncRevision` from
   one Script Properties snapshot before running migrations or reading sheets.
   Legacy clients without `syncRevision` continue through the existing path.
