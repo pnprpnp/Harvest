@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-notice-fix">
+<meta name="harvestnavi-version" content="20260805-sync-conflict-notice">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9366,6 +9366,7 @@ const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const GOOGLE_SHEET_SYNC_CURSOR_KEY = "harvestForecastGoogleSheetSyncCursor_v1";
 const GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY = "harvestForecastGoogleSheetPlantingSyncCursor_v1";
 const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v1";
+const GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY = "harvestForecastGoogleSheetSyncNoticeRevision_v1";
 const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
@@ -13874,6 +13875,7 @@ function saveGoogleSheetConfigToStorage(config){
     localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
     localStorage.removeItem(GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY);
     localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+    localStorage.removeItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY);
   }
   localStorage.setItem(GOOGLE_SHEET_CONFIG_KEY, JSON.stringify({
     url: nextUrl,
@@ -13966,6 +13968,28 @@ function saveGoogleSheetSyncRevision(config, revision){
     return;
   }
   localStorage.setItem(GOOGLE_SHEET_SYNC_REVISION_KEY, JSON.stringify({
+    url: String(config?.url || "").trim(),
+    revision: normalized
+  }));
+}
+
+function loadGoogleSheetSyncNoticeRevision(config){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY) || "null");
+    if(!parsed || String(parsed.url || "").trim() !== String(config?.url || "").trim()) return null;
+    return normalizeGoogleSheetSyncRevision(parsed.revision);
+  }catch(e){
+    return null;
+  }
+}
+
+function saveGoogleSheetSyncNoticeRevision(config, revision){
+  const normalized = normalizeGoogleSheetSyncRevision(revision);
+  if(normalized === null){
+    localStorage.removeItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY);
+    return;
+  }
+  localStorage.setItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY, JSON.stringify({
     url: String(config?.url || "").trim(),
     revision: normalized
   }));
@@ -16822,7 +16846,9 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
-  const initialSyncRevision = loadGoogleSheetSyncRevision(config);
+  // 競合でデータ同期位置を進められない場合でも、確認済みの更新では赤ポチを再表示しない。
+  const initialSyncRevision = loadGoogleSheetSyncNoticeRevision(config)
+    ?? loadGoogleSheetSyncRevision(config);
   const initialCursor = loadGoogleSheetSyncCursor(config);
   const initialPlantingCursor = loadGoogleSheetPlantingSyncCursor(config);
   let cursor = initialCursor;
@@ -17602,22 +17628,25 @@ async function importRecordsFromGoogleSheet(options = {}){
     syncHarvestPlantingPendingFlags();
     // 編集中などで反映を保留した記録がある間はcursorを進めず、次回も同じ変更を取得する。
     const totalConflictCount = Number(recordResult.conflictCount || 0) + Number(plantingResult.conflictCount || 0);
+    const combinedFinalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
+    const finalSyncRevision = backfilledFinalSyncRevision === null
+      ? combinedFinalSyncRevision
+      : (combinedFinalSyncRevision === null
+          ? backfilledFinalSyncRevision
+          : Math.max(combinedFinalSyncRevision, backfilledFinalSyncRevision));
+    // データ保護用の同期位置とは別に、今回確認した更新番号を通知用として記録する。
+    // 競合は次回も取得できる一方、同じ競合だけで赤ポチが残り続けることはなくなる。
+    if(finalSyncRevision !== null){
+      saveGoogleSheetSyncNoticeRevision(config, finalSyncRevision);
+    }
     if(!totalConflictCount){
       saveGoogleSheetSyncCursor(config, recordSync.finalCursor);
       saveGoogleSheetPlantingSyncCursor(config, plantingResult.finalCursor);
-      const combinedFinalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
-      const finalSyncRevision = backfilledFinalSyncRevision === null
-        ? combinedFinalSyncRevision
-        : (combinedFinalSyncRevision === null
-            ? backfilledFinalSyncRevision
-            : Math.max(combinedFinalSyncRevision, backfilledFinalSyncRevision));
       if(finalSyncRevision !== null){
         saveGoogleSheetSyncRevision(config, finalSyncRevision);
       }
-      setRecordSyncAvailabilityNotice(false);
-    }else{
-      setRecordSyncAvailabilityNotice(true);
     }
+    setRecordSyncAvailabilityNotice(false);
 
     const totalChanged = Number(recordResult.changedCount || 0)
       + Number(importedEventCount || 0)
@@ -17627,7 +17656,7 @@ async function importRecordsFromGoogleSheet(options = {}){
     refreshRecordDataUi();
     if(!silentErrors){
       if(totalConflictCount){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件は保護しました）`);
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}は保護しました）`);
       }else if(totalChanged || hadBackfillActivity){
         showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}`);
       }else if(!options.silentNoChange){
@@ -27322,6 +27351,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
       // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
       localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
       localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+      localStorage.removeItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY);
     }
     refreshRecordDataUi();
     showToast(entry.syncConflict
@@ -28507,6 +28537,7 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
   GOOGLE_SHEET_SYNC_CURSOR_KEY,
   GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY,
   GOOGLE_SHEET_SYNC_REVISION_KEY,
+  GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY,
   PLANTING_EVENT_SYNC_STATUS_KEY,
   RECORD_EXPORT_STATUS_KEY,
   RECORD_TRASH_KEY
