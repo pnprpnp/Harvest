@@ -9,11 +9,11 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
-- The pending `syncRevision` source keeps a monotonically increasing sync number
+- Version 76 keeps a monotonically increasing `syncRevision` number
   in Script Properties and stores changed record identities in the hidden
   `同期変更履歴` sheet. A matching revision returns immediately; an older
   supported revision reads only the changed harvest and planting rows.
-- After deploying that source, run `installHarvestSyncRevisionTrigger` once
+- Run `installHarvestSyncRevisionTrigger` once
   from the Apps Script editor. Direct spreadsheet edits then invalidate the
   incremental history and make the next client perform one safe full sync.
 - Clients without a saved revision, clients outside the retained history, and
