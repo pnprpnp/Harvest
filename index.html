@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-conflict-local-all">
+<meta name="harvestnavi-version" content="20260805-sync-revision-cleanup">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9689,12 +9689,10 @@ const LEGACY_PLANTING_EVENT_CUTOFF_DATE = "2026-07-08";
 const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
 const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
-const GOOGLE_SHEET_SYNC_CURSOR_KEY = "harvestForecastGoogleSheetSyncCursor_v1";
-const GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY = "harvestForecastGoogleSheetPlantingSyncCursor_v1";
 const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v1";
-const GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY = "harvestForecastGoogleSheetSyncNoticeRevision_v1";
 const GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestForecastGoogleSheetSyncConflicts_v1";
 const GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS = 2000;
+const LEGACY_SYNC_CONFLICT_MIGRATION_KEY = "harvestForecastLegacySyncConflictMigrated_v1";
 const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
@@ -9927,7 +9925,8 @@ const googleSheetBackgroundPlantingQueue = new Map();
 let googleSheetBackgroundSendRunning = false;
 let googleSheetBackgroundSendTimer = null;
 let googleSheetStartupImportStarted = false;
-migrateLegacyRecordSyncConflicts();
+migrateLegacyRecordSyncConflictsOnce();
+cleanupObsoleteGoogleSheetSyncStorage();
 let dashboardFilter = loadDashboardFilter();
 let protectedAccessUnlocked = false;
 let isMonitorModeOpen = false;
@@ -14219,9 +14218,17 @@ function ensureSyncConflictResolvedBeforeChange(entityType, entity, action){
   return false;
 }
 
-function migrateLegacyRecordSyncConflicts(){
+function migrateLegacyRecordSyncConflictsOnce(){
+  try{
+    if(localStorage.getItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY) === "1") return 0;
+  }catch(e){}
   const legacyEntries = deletedRecords.filter(entry => entry?.syncConflict && entry?.record);
-  if(!legacyEntries.length) return 0;
+  if(!legacyEntries.length){
+    try{
+      localStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
+    }catch(e){}
+    return 0;
+  }
   const migratedEntries = [];
   const status = loadGoogleSheetSyncStatus();
   for(const entry of legacyEntries){
@@ -14254,7 +14261,24 @@ function migrateLegacyRecordSyncConflicts(){
     saveDeletedRecordsToStorage();
     saveGoogleSheetSyncStatus(status);
   }
+  if(!deletedRecords.some(entry => entry?.syncConflict && entry?.record)){
+    try{
+      localStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
+    }catch(e){}
+  }
   return migratedEntries.length;
+}
+
+function cleanupObsoleteGoogleSheetSyncStorage(){
+  [
+    "harvestForecastGoogleSheetSyncCursor_v1",
+    "harvestForecastGoogleSheetPlantingSyncCursor_v1",
+    "harvestForecastGoogleSheetSyncNoticeRevision_v1"
+  ].forEach(key => {
+    try{
+      localStorage.removeItem(key);
+    }catch(e){}
+  });
 }
 
 function isRecordTemporarilyDeleted(record){
@@ -14454,10 +14478,7 @@ function saveGoogleSheetConfigToStorage(config){
   const previousUrl = String(loadGoogleSheetConfig().url || "").trim();
   const nextUrl = String(config?.url || "").trim();
   if(previousUrl && previousUrl !== nextUrl){
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
-    localStorage.removeItem(GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY);
     localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY);
   }
   localStorage.setItem(GOOGLE_SHEET_CONFIG_KEY, JSON.stringify({
     url: nextUrl,
@@ -14476,38 +14497,6 @@ function normalizeGoogleSheetSyncCursor(value){
   return JSON.parse(JSON.stringify(value));
 }
 
-function loadGoogleSheetSyncCursor(config){
-  try{
-    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_CURSOR_KEY) || "null");
-    if(!parsed || String(parsed.url || "").trim() !== String(config?.url || "").trim()) return null;
-    return normalizeGoogleSheetSyncCursor(parsed.cursor);
-  }catch(e){
-    return null;
-  }
-}
-
-function saveGoogleSheetSyncCursor(config, cursor){
-  const normalized = normalizeGoogleSheetSyncCursor(cursor);
-  if(!normalized){
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
-    return;
-  }
-  localStorage.setItem(GOOGLE_SHEET_SYNC_CURSOR_KEY, JSON.stringify({
-    url: String(config?.url || "").trim(),
-    cursor: normalized
-  }));
-}
-
-function loadGoogleSheetPlantingSyncCursor(config){
-  try{
-    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY) || "null");
-    if(!parsed || String(parsed.url || "").trim() !== String(config?.url || "").trim()) return null;
-    return normalizeGoogleSheetPlantingSyncCursor(parsed.cursor);
-  }catch(e){
-    return null;
-  }
-}
-
 function normalizeGoogleSheetPlantingSyncCursor(value){
   const normalized = normalizeGoogleSheetSyncCursor(value);
   if(!normalized || typeof normalized !== "object") return null;
@@ -14515,18 +14504,6 @@ function normalizeGoogleSheetPlantingSyncCursor(value){
   const eventId = getSafePositiveRecordId(normalized.eventId);
   if(!updatedAt || !Number.isFinite(new Date(updatedAt).getTime()) || eventId === null) return null;
   return { updatedAt, eventId };
-}
-
-function saveGoogleSheetPlantingSyncCursor(config, cursor){
-  const normalized = normalizeGoogleSheetPlantingSyncCursor(cursor);
-  if(!normalized){
-    localStorage.removeItem(GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY);
-    return;
-  }
-  localStorage.setItem(GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY, JSON.stringify({
-    url: String(config?.url || "").trim(),
-    cursor: normalized
-  }));
 }
 
 function normalizeGoogleSheetSyncRevision(value){
@@ -14550,28 +14527,6 @@ function saveGoogleSheetSyncRevision(config, revision){
     return;
   }
   localStorage.setItem(GOOGLE_SHEET_SYNC_REVISION_KEY, JSON.stringify({
-    url: String(config?.url || "").trim(),
-    revision: normalized
-  }));
-}
-
-function loadGoogleSheetSyncNoticeRevision(config){
-  try{
-    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY) || "null");
-    if(!parsed || String(parsed.url || "").trim() !== String(config?.url || "").trim()) return null;
-    return normalizeGoogleSheetSyncRevision(parsed.revision);
-  }catch(e){
-    return null;
-  }
-}
-
-function saveGoogleSheetSyncNoticeRevision(config, revision){
-  const normalized = normalizeGoogleSheetSyncRevision(revision);
-  if(normalized === null){
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY);
-    return;
-  }
-  localStorage.setItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY, JSON.stringify({
     url: String(config?.url || "").trim(),
     revision: normalized
   }));
@@ -15426,6 +15381,16 @@ async function applyLocalPlantingSyncConflictVersion(entry, options = {}){
   }
 }
 
+async function acknowledgeSyncRevisionAfterLocalConflictResolution(){
+  if(syncConflicts.length) return;
+  // 端末版の反映もサーバー側では新しい更新になるため、最後にその差分を
+  // 受信して同期番号を追いつかせ、通知ドットが再点灯したままになるのを防ぐ。
+  await importRecordsFromGoogleSheet({
+    silentErrors: true,
+    silentNoChange: true
+  });
+}
+
 async function resolveAllSyncConflictsWithLocalVersions(){
   if(syncConflictBulkRunning) return;
   if(!ensureProtectedOperationAccess("競合する記録の一括解決")) return;
@@ -15524,8 +15489,15 @@ async function resolveAllSyncConflictsWithLocalVersions(){
     );
     return;
   }
-  closeSyncConflictPanel();
-  showToast(`端末版${completedCount}件をスプレッドシートへ反映し、すべての競合を解決しました`);
+  await acknowledgeSyncRevisionAfterLocalConflictResolution();
+  if(!syncConflicts.length){
+    closeSyncConflictPanel();
+    showToast(`端末版${completedCount}件をスプレッドシートへ反映し、すべての競合を解決しました`);
+  }else{
+    activeSyncConflictId = syncConflicts[0]?.conflictId || "";
+    renderSyncConflictList();
+    showToast(`端末版${completedCount}件を反映しました。新たに見つかった競合を確認してください`);
+  }
 }
 
 async function resolveSyncConflict(conflictId, choice){
@@ -15570,6 +15542,13 @@ async function resolveSyncConflict(conflictId, choice){
     syncHarvestPlantingPendingFlags();
     refreshRecordDataUi();
     renderSyncConflictList();
+    if(useLocal && !syncConflicts.length){
+      await acknowledgeSyncRevisionAfterLocalConflictResolution();
+      if(syncConflicts.length){
+        activeSyncConflictId = syncConflicts[0]?.conflictId || "";
+        renderSyncConflictList();
+      }
+    }
     if(!syncConflicts.length) closeSyncConflictPanel();
     showToast(useLocal
       ? "端末版をスプレッドシートへ反映し、競合を解決しました"
@@ -15670,22 +15649,6 @@ function buildGoogleSheetRecordPayload(record, config){
   };
 }
 
-function buildGoogleSheetImportPayload(config, options = {}){
-  return {
-    app: "Harvestnavi",
-    type: "harvest-record-list",
-    version: 1,
-    action: "listRecords",
-    token: config.token || "",
-    syncMode: options.syncMode === false ? undefined : true,
-    cursor: normalizeGoogleSheetSyncCursor(options.cursor) || undefined,
-    recentDays: options.recentDays === undefined
-      ? undefined
-      : clampNumber(options.recentDays, 1, GOOGLE_SHEET_MAX_RECENT_DAYS, undefined),
-    limit: clampNumber(options.limit, 1, GOOGLE_SHEET_MAX_LIST_RECORDS, GOOGLE_SHEET_MAX_LIST_RECORDS)
-  };
-}
-
 function buildGoogleSheetCombinedSyncPayload(config, options = {}){
   return {
     app: "Harvestnavi",
@@ -15712,14 +15675,7 @@ function buildGoogleSheetUpdateCheckPayload(config, options = {}){
     action: "checkUpdates",
     version: 1,
     token: config.token || "",
-    syncRevision: normalizeGoogleSheetSyncRevision(options.syncRevision),
-    cursor: normalizeGoogleSheetSyncCursor(options.cursor) || undefined,
-    plantingCursor: normalizeGoogleSheetPlantingSyncCursor(options.plantingCursor) || undefined,
-    includePlanting: options.includePlanting !== false,
-    fallbackSeedlingLossRate: clampNumber(settings.seedlingLossRate, 0, 100, 0),
-    fallbackSeedlingPattern: getSpecialPalletPattern(settings.specialPallet60CountPer3),
-    fallbackPlantingCountsByBed: getPlantingEventFallbackPlantingCountsByBed(),
-    limit: GOOGLE_SHEET_MAX_LIST_RECORDS
+    syncRevision: normalizeGoogleSheetSyncRevision(options.syncRevision)
   };
 }
 
@@ -17741,8 +17697,7 @@ function applyRemoteDeletedPlantingEventIds(values, options = {}){
 }
 
 async function fetchGoogleSheetPlantingEventSyncPages(config, options, signal){
-  let cursor = options.resetCursor ? null : loadGoogleSheetPlantingSyncCursor(config);
-  let finalCursor = cursor;
+  let cursor = null;
   const events = [];
   let deletedEventIds = [];
   const seenCursors = new Set();
@@ -17785,9 +17740,8 @@ async function fetchGoogleSheetPlantingEventSyncPages(config, options, signal){
     deletedEventIds = result.deletedEventIds || [];
 
     const nextCursor = normalizeGoogleSheetPlantingSyncCursor(result.nextCursor ?? result.cursor);
-    if(nextCursor) finalCursor = nextCursor;
     if(result.hasMore !== true){
-      return { events, deletedEventIds, finalCursor };
+      return { events, deletedEventIds };
     }
     if(!nextCursor) throw new Error("苗植え履歴の同期位置を確認できません");
     const cursorKey = JSON.stringify(nextCursor);
@@ -17815,10 +17769,6 @@ async function importPlantingEventsFromGoogleSheet(options = {}){
       openingCarryoverAuthoritative: false,
       resultTracker
     });
-    resultTracker.finalCursor = syncResult.finalCursor;
-    if(!options.deferCursorSave){
-      saveGoogleSheetPlantingSyncCursor(config, syncResult.finalCursor);
-    }
     return deletedCount + importedCount;
   }catch(e){
     if(options.throwOnError) throw e;
@@ -17935,127 +17885,6 @@ function setAppUpdateAvailabilityNotice(available){
   }
 }
 
-function addGoogleSheetUpdateLookupEntry(map, key, value){
-  if(key === null || key === undefined || key === "") return;
-  if(!map.has(key)) map.set(key, []);
-  map.get(key).push(value);
-}
-
-function buildGoogleSheetUpdateAvailabilityLookup(){
-  const recordsByUuid = new Map();
-  const recordsById = new Map();
-  records.forEach(record => {
-    const recordUuid = normalizeRecordUuid(record?.recordUuid);
-    const recordId = getSafePositiveRecordId(record?.id);
-    if(recordUuid && !recordsByUuid.has(recordUuid)) recordsByUuid.set(recordUuid, record);
-    if(recordId !== null && !recordsById.has(recordId)) recordsById.set(recordId, record);
-  });
-
-  const deletedRecordsByUuid = new Map();
-  const deletedRecordsById = new Map();
-  deletedRecords.forEach(entry => {
-    if(entry?.sheetDeleted || entry?.syncConflict) return;
-    const deletedRecord = entry?.record;
-    const recordUuid = normalizeRecordUuid(deletedRecord?.recordUuid);
-    const recordId = getSafePositiveRecordId(deletedRecord?.id);
-    if(recordUuid) addGoogleSheetUpdateLookupEntry(deletedRecordsByUuid, recordUuid, entry);
-    if(recordId !== null) addGoogleSheetUpdateLookupEntry(deletedRecordsById, recordId, entry);
-  });
-
-  const plantingEventsById = new Map();
-  plantingEvents.forEach(event => {
-    const eventId = getSafePositiveRecordId(event?.eventId);
-    if(eventId !== null && !plantingEventsById.has(eventId)) plantingEventsById.set(eventId, event);
-  });
-  const deletedPlantingEventsById = new Map();
-  deletedPlantingEvents.forEach(entry => {
-    if(entry?.sheetDeleted) return;
-    const eventId = getSafePositiveRecordId(entry?.event?.eventId);
-    if(eventId !== null) addGoogleSheetUpdateLookupEntry(deletedPlantingEventsById, eventId, entry);
-  });
-
-  return {
-    recordsByUuid,
-    recordsById,
-    deletedRecordsByUuid,
-    deletedRecordsById,
-    plantingEventsById,
-    deletedPlantingEventsById
-  };
-}
-
-function getLocalRecordForRemoteVersion(version, lookup = null){
-  const recordUuid = normalizeRecordUuid(version?.recordUuid);
-  if(recordUuid){
-    const byUuid = lookup
-      ? lookup.recordsByUuid.get(recordUuid)
-      : records.find(record => normalizeRecordUuid(record?.recordUuid) === recordUuid);
-    if(byUuid) return byUuid;
-  }
-  const recordId = getSafePositiveRecordId(version?.id);
-  if(recordId === null) return null;
-  return lookup
-    ? (lookup.recordsById.get(recordId) || null)
-    : (records.find(record => getSafePositiveRecordId(record?.id) === recordId) || null);
-}
-
-function isRemoteRecordVersionAlreadyLocal(version, lookup = null){
-  const localRecord = getLocalRecordForRemoteVersion(version, lookup);
-  const remoteUpdatedAt = String(version?.updatedAt || "").trim();
-  if(localRecord){
-    return !!remoteUpdatedAt && String(localRecord.updatedAt || "").trim() === remoteUpdatedAt;
-  }
-
-  const recordUuid = normalizeRecordUuid(version?.recordUuid);
-  const recordId = getSafePositiveRecordId(version?.id);
-  const matchesDeletedRecord = entry => {
-    if(entry?.sheetDeleted || entry?.syncConflict) return false;
-    const deletedRecord = entry?.record;
-    const deletedUuid = normalizeRecordUuid(deletedRecord?.recordUuid);
-    const deletedId = getSafePositiveRecordId(deletedRecord?.id);
-    const sameIdentity = recordUuid && deletedUuid
-      ? recordUuid === deletedUuid
-      : recordId !== null && deletedId === recordId;
-    return sameIdentity && !!remoteUpdatedAt && String(deletedRecord?.updatedAt || "").trim() === remoteUpdatedAt;
-  };
-  if(!lookup) return deletedRecords.some(matchesDeletedRecord);
-  if(recordUuid && (lookup.deletedRecordsByUuid.get(recordUuid) || []).some(matchesDeletedRecord)) return true;
-  return recordId !== null
-    && (lookup.deletedRecordsById.get(recordId) || []).some(matchesDeletedRecord);
-}
-
-function hasActiveLocalRecordForRemoteDeletion(recordUuidValue, recordIdValue, lookup = null){
-  const recordUuid = normalizeRecordUuid(recordUuidValue);
-  const recordId = getSafePositiveRecordId(recordIdValue);
-  if(lookup){
-    if(recordUuid) return lookup.recordsByUuid.has(recordUuid);
-    return recordId !== null && lookup.recordsById.has(recordId);
-  }
-  return records.some(record => {
-    const localUuid = normalizeRecordUuid(record?.recordUuid);
-    if(recordUuid && localUuid) return recordUuid === localUuid;
-    return !recordUuid && recordId !== null && getSafePositiveRecordId(record?.id) === recordId;
-  });
-}
-
-function isRemotePlantingVersionAlreadyLocal(version, lookup = null){
-  const eventId = getSafePositiveRecordId(version?.eventId);
-  const remoteUpdatedAt = String(version?.updatedAt || "").trim();
-  if(eventId === null || !remoteUpdatedAt) return false;
-  const localEvent = lookup
-    ? lookup.plantingEventsById.get(eventId)
-    : plantingEvents.find(event => getSafePositiveRecordId(event?.eventId) === eventId);
-  if(localEvent) return String(localEvent.updatedAt || "").trim() === remoteUpdatedAt;
-  const matchesDeletedEvent = entry => (
-    !entry?.sheetDeleted
-    && getSafePositiveRecordId(entry?.event?.eventId) === eventId
-    && String(entry?.event?.updatedAt || "").trim() === remoteUpdatedAt
-  );
-  return lookup
-    ? (lookup.deletedPlantingEventsById.get(eventId) || []).some(matchesDeletedEvent)
-    : deletedPlantingEvents.some(matchesDeletedEvent);
-}
-
 async function checkGoogleSheetUpdateAvailabilitySilently(){
   if(googleSheetSendState !== "idle" || googleSheetOperationOwner) return;
   const operationSequenceAtStart = googleSheetOperationSequence;
@@ -18064,116 +17893,41 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
-  // 通知判定には最後に確認済みの同期番号を優先し、同じ更新で通知ドットを再表示しない。
-  const initialSyncRevision = loadGoogleSheetSyncNoticeRevision(config)
-    ?? loadGoogleSheetSyncRevision(config);
-  const initialCursor = loadGoogleSheetSyncCursor(config);
-  const initialPlantingCursor = loadGoogleSheetPlantingSyncCursor(config);
-  let cursor = initialCursor;
-  let finalCursor = initialCursor;
-  let finalPlantingCursor = initialPlantingCursor;
-  let includePlanting = true;
-  let recordUpdateAvailable = false;
-  let plantingUpdateAvailable = false;
+  const initialSyncRevision = loadGoogleSheetSyncRevision(config);
 
   try{
-    for(let page = 0; page < GOOGLE_SHEET_MAX_RECORD_SYNC_PAGES; page++){
-      const response = await fetchGoogleSheetReadRequest(config.url, {
-        method: "POST",
-        mode: "cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: buildValidatedGoogleSheetRequestBody(buildGoogleSheetUpdateCheckPayload(config, {
-          syncRevision: initialSyncRevision,
-          cursor,
-          plantingCursor: initialPlantingCursor,
-          includePlanting
-        })),
-        signal: controller.signal
-      });
-      const text = await response.text();
-      if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("更新確認の応答が大きすぎます");
-      const result = text ? JSON.parse(text) : {};
-      if(result.ok !== true) throw new Error(result.message || "更新情報を確認できませんでした");
-
-      if(result.revisionSync === true){
-        const remoteSyncRevision = normalizeGoogleSheetSyncRevision(
-          result.currentSyncRevision ?? result.syncRevision
-        );
-        if(remoteSyncRevision === null){
-          throw new Error("更新確認の同期番号を読み込めません");
-        }
-        // 確認中に送信・同期が始まった場合、古い応答で丸印を更新しない。
-        if(googleSheetSendState !== "idle"
-          || googleSheetOperationOwner
-          || googleSheetOperationSequence !== operationSequenceAtStart) return;
-        setRecordSyncAvailabilityNotice(
-          result.updateAvailable === true
-            || initialSyncRevision === null
-            || remoteSyncRevision !== initialSyncRevision
-        );
-        return;
-      }
-      const updateLookup = buildGoogleSheetUpdateAvailabilityLookup();
-
-      const recordVersions = Array.isArray(result.recordVersions) ? result.recordVersions : [];
-      if(recordVersions.length > GOOGLE_SHEET_MAX_LIST_RECORDS) throw new Error("更新情報の件数が正しくありません");
-      if(recordVersions.some(version => !isRemoteRecordVersionAlreadyLocal(version, updateLookup))){
-        recordUpdateAvailable = true;
-      }
-
-      const deletedRecordUuids = Array.isArray(result.deletedRecordUuids) ? result.deletedRecordUuids : [];
-      const deletedRecordIds = Array.isArray(result.deletedRecordIds) ? result.deletedRecordIds : [];
-      if(deletedRecordUuids.length > GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES
-        || deletedRecordIds.length > GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES){
-        throw new Error("削除済み記録の更新情報が多すぎます");
-      }
-      if(deletedRecordUuids.some(recordUuid => (
-          hasActiveLocalRecordForRemoteDeletion(recordUuid, null, updateLookup)
-        ))
-        || deletedRecordIds.some(recordId => (
-          hasActiveLocalRecordForRemoteDeletion("", recordId, updateLookup)
-        ))){
-        recordUpdateAvailable = true;
-      }
-
-      if(includePlanting){
-        const plantingVersions = Array.isArray(result.plantingVersions) ? result.plantingVersions : [];
-        const deletedEventIds = Array.isArray(result.deletedEventIds) ? result.deletedEventIds : [];
-        if(plantingVersions.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS
-          || deletedEventIds.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES){
-          throw new Error("苗植え記録の更新情報が多すぎます");
-        }
-        if(plantingVersions.some(version => !isRemotePlantingVersionAlreadyLocal(version, updateLookup))){
-          plantingUpdateAvailable = true;
-        }
-        if(deletedEventIds.some(eventId => {
-          const safeEventId = getSafePositiveRecordId(eventId);
-          return safeEventId !== null && updateLookup.plantingEventsById.has(safeEventId);
-        })) plantingUpdateAvailable = true;
-        const nextPlantingCursor = normalizeGoogleSheetPlantingSyncCursor(result.plantingNextCursor);
-        if(nextPlantingCursor) finalPlantingCursor = nextPlantingCursor;
-        if(result.plantingHasMore === true) plantingUpdateAvailable = true;
-        includePlanting = false;
-      }
-
-      const nextCursor = normalizeGoogleSheetSyncCursor(result.nextCursor);
-      if(nextCursor) finalCursor = nextCursor;
-      if(result.hasMore !== true) break;
-      if(!nextCursor || JSON.stringify(nextCursor) === JSON.stringify(cursor)){
-        throw new Error("更新確認の続き位置を取得できません");
-      }
-      cursor = nextCursor;
+    const response = await fetchGoogleSheetReadRequest(config.url, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: buildValidatedGoogleSheetRequestBody(buildGoogleSheetUpdateCheckPayload(config, {
+        syncRevision: initialSyncRevision
+      })),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("更新確認の応答が大きすぎます");
+    const result = text ? JSON.parse(text) : {};
+    if(result.ok !== true) throw new Error(result.message || "更新情報を確認できませんでした");
+    if(result.revisionSync !== true){
+      throw new Error("Apps Scriptが同期番号の高速確認に対応していません");
+    }
+    const remoteSyncRevision = normalizeGoogleSheetSyncRevision(
+      result.currentSyncRevision ?? result.syncRevision
+    );
+    if(remoteSyncRevision === null){
+      throw new Error("更新確認の同期番号を読み込めません");
     }
 
-    // 確認中に送信・同期が始まった場合、古い応答でcursorや丸印を更新しない。
+    // 確認中に送信・同期が始まった場合、古い応答で通知ドットを更新しない。
     if(googleSheetSendState !== "idle"
       || googleSheetOperationOwner
       || googleSheetOperationSequence !== operationSequenceAtStart) return;
-    if(!recordUpdateAvailable && finalCursor) saveGoogleSheetSyncCursor(config, finalCursor);
-    if(!plantingUpdateAvailable && finalPlantingCursor){
-      saveGoogleSheetPlantingSyncCursor(config, finalPlantingCursor);
-    }
-    setRecordSyncAvailabilityNotice(recordUpdateAvailable || plantingUpdateAvailable);
+    setRecordSyncAvailabilityNotice(
+      result.updateAvailable === true
+        || initialSyncRevision === null
+        || remoteSyncRevision !== initialSyncRevision
+    );
   }catch(e){
     console.warn("Background record update check failed", e);
   }finally{
@@ -18440,11 +18194,9 @@ function hideRecordImportError(){
 }
 
 async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
-  let recordCursor = options.resetCursor ? null : loadGoogleSheetSyncCursor(config);
-  let plantingCursor = options.resetCursor ? null : loadGoogleSheetPlantingSyncCursor(config);
-  let syncRevision = options.resetCursor ? null : loadGoogleSheetSyncRevision(config);
-  let finalRecordCursor = recordCursor;
-  let finalPlantingCursor = plantingCursor;
+  let recordCursor = null;
+  let plantingCursor = null;
+  let syncRevision = options.resetSyncRevision ? null : loadGoogleSheetSyncRevision(config);
   let finalSyncRevision = syncRevision;
   let fullSyncSnapshotRevision = null;
   let revisionResetInProgress = false;
@@ -18491,10 +18243,8 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     return {
       records: recordsToSync,
       tombstones: uniqueTombstones,
-      finalCursor: finalRecordCursor,
       events: uniqueEvents,
       deletedEventIds: [...new Set(deletedEventIds.map(Number).filter(Number.isSafeInteger))],
-      finalPlantingCursor,
       finalSyncRevision
     };
   };
@@ -18521,12 +18271,13 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     try{
       result = text ? JSON.parse(text) : {};
     }catch(e){
-      const parseError = new Error("スプレッドシートの一括同期応答を読み込めません");
-      parseError.code = "GOOGLE_SHEET_COMBINED_RESPONSE_PARSE_ERROR";
-      throw parseError;
+      throw new Error("スプレッドシートの一括同期応答を読み込めません");
     }
     if(result.ok !== true){
       throw new Error(result.message || "収穫・苗植え記録を同期できませんでした");
+    }
+    if(result.revisionSync !== true){
+      throw new Error("Apps Scriptが同期番号による差分同期に対応していません");
     }
 
     const pageRecords = extractRecordsFromGoogleSheetResponse(result);
@@ -18543,7 +18294,7 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
       throw new Error("削除済み苗植え記録の件数が正しくありません");
     }
 
-    const isRevisionDelta = result.revisionSync === true && result.revisionReset !== true;
+    const isRevisionDelta = result.revisionReset !== true;
     const pageTombstones = normalizeRemoteHarvestTombstones(result);
     const pageDeletedEventIds = result.deletedEventIds || [];
     if(isRevisionDelta){
@@ -18579,7 +18330,7 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     }else{
       recordsToSync.push(...pageRecords);
       eventsToSync.push(...pageEvents);
-      // 旧方式は各ページで現在の永久削除一覧を返すため、最後のページを正とする。
+      // 全件同期は各ページで現在の永久削除一覧を返すため、最後のページを正とする。
       tombstones = pageTombstones;
       deletedEventIds = pageDeletedEventIds;
     }
@@ -18588,39 +18339,35 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
       throw new Error("同期する記録が" + RECORD_BACKUP_MAX_ITEMS + "件を超えています");
     }
 
-    if(result.revisionSync === true){
-      const responseRevision = normalizeGoogleSheetSyncRevision(
-        result.nextSyncRevision ?? result.syncRevision
-      );
-      if(responseRevision === null){
-        throw new Error("差分同期の同期番号を確認できません");
+    const responseRevision = normalizeGoogleSheetSyncRevision(
+      result.nextSyncRevision ?? result.syncRevision
+    );
+    if(responseRevision === null){
+      throw new Error("差分同期の同期番号を確認できません");
+    }
+    // 全件初期化の複数ページ中に更新が入った場合は、
+    // 最初の番号を保持し、次回の差分同期で確実に回収する。
+    if(result.revisionReset === true){
+      if(!revisionResetInProgress){
+        recordCursor = null;
+        plantingCursor = null;
       }
-      // 全件初期化の複数ページ中に更新が入った場合は、
-      // 最初の番号を保持し、次回の差分同期で確実に回収する。
-      if(result.revisionReset === true){
-        if(!revisionResetInProgress){
-          recordCursor = null;
-          plantingCursor = null;
-          finalRecordCursor = null;
-          finalPlantingCursor = null;
-        }
-        revisionResetInProgress = true;
-        fullSyncSnapshotRevision = fullSyncSnapshotRevision === null
-          ? responseRevision
-          : Math.min(fullSyncSnapshotRevision, responseRevision);
-        finalSyncRevision = fullSyncSnapshotRevision;
-      }else{
-        finalSyncRevision = responseRevision;
+      revisionResetInProgress = true;
+      fullSyncSnapshotRevision = fullSyncSnapshotRevision === null
+        ? responseRevision
+        : Math.min(fullSyncSnapshotRevision, responseRevision);
+      finalSyncRevision = fullSyncSnapshotRevision;
+    }else{
+      finalSyncRevision = responseRevision;
+    }
+    if(isRevisionDelta){
+      if(result.hasMore !== true) return buildResult();
+      if(responseRevision === syncRevision || seenSyncRevisions.has(responseRevision)){
+        throw new Error("差分同期の続き位置が繰り返されています");
       }
-      if(isRevisionDelta){
-        if(result.hasMore !== true) return buildResult();
-        if(responseRevision === syncRevision || seenSyncRevisions.has(responseRevision)){
-          throw new Error("差分同期の続き位置が繰り返されています");
-        }
-        seenSyncRevisions.add(responseRevision);
-        syncRevision = responseRevision;
-        continue;
-      }
+      seenSyncRevisions.add(responseRevision);
+      syncRevision = responseRevision;
+      continue;
     }
 
     const recordHasMore = result.hasMore === true;
@@ -18629,8 +18376,6 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     const nextPlantingCursor = normalizeGoogleSheetPlantingSyncCursor(
       result.plantingNextCursor ?? result.plantingCursor
     );
-    if(nextRecordCursor) finalRecordCursor = nextRecordCursor;
-    if(nextPlantingCursor) finalPlantingCursor = nextPlantingCursor;
     if(!recordHasMore && !plantingHasMore){
       return buildResult();
     }
@@ -18655,107 +18400,6 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
   throw new Error("一括同期ページ数が上限を超えています。記録をバックアップして管理者へ連絡してください");
 }
 
-async function fetchGoogleSheetSyncPagesWithFallback(config, options, signal){
-  try{
-    return await fetchGoogleSheetCombinedSyncPages(config, options, signal);
-  }catch(error){
-    if(error?.name === "AbortError" || signal?.aborted) throw error;
-    if(error?.code !== "GOOGLE_SHEET_COMBINED_RESPONSE_PARSE_ERROR") throw error;
-    console.warn("Combined Google Sheet sync response was not JSON; retrying separately", error);
-  }
-
-  const recordSync = await fetchGoogleSheetRecordSyncPages(config, options, signal);
-  const plantingSync = await fetchGoogleSheetPlantingEventSyncPages(config, options, signal);
-  return {
-    records: recordSync.records,
-    tombstones: recordSync.tombstones,
-    finalCursor: recordSync.finalCursor,
-    events: plantingSync.events,
-    deletedEventIds: plantingSync.deletedEventIds,
-    finalPlantingCursor: plantingSync.finalCursor
-  };
-}
-
-async function fetchGoogleSheetRecordSyncPages(config, options, signal){
-  let cursor = options.resetCursor ? null : loadGoogleSheetSyncCursor(config);
-  let recordsToSync = [];
-  let tombstones = [];
-  let finalCursor = cursor;
-  let restarted = false;
-  const seenCursors = new Set();
-
-  for(let page = 0; page < GOOGLE_SHEET_MAX_RECORD_SYNC_PAGES; page++){
-    const payload = buildValidatedGoogleSheetRequestBody(buildGoogleSheetImportPayload(config, {
-      cursor,
-      limit: GOOGLE_SHEET_MAX_LIST_RECORDS
-    }));
-    const response = await fetchGoogleSheetReadRequest(config.url, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: payload,
-      signal
-    });
-    const text = await response.text();
-    if(!isWithinGoogleSheetResponseLimits(text)){
-      throw new Error("スプレッドシートの応答が大きすぎます");
-    }
-    let result;
-    try{
-      result = text ? JSON.parse(text) : {};
-    }catch(e){
-      throw new Error("スプレッドシートの応答を読み込めません");
-    }
-    if(result.ok !== true) throw new Error(result.message || "収穫記録を同期できませんでした");
-
-    if(result.resetRequired === true && cursor && !restarted){
-      cursor = null;
-      finalCursor = null;
-      recordsToSync = [];
-      tombstones = [];
-      seenCursors.clear();
-      restarted = true;
-      page = -1;
-      continue;
-    }
-
-    const pageRecords = extractRecordsFromGoogleSheetResponse(result);
-    if(!Array.isArray(pageRecords) || pageRecords.length > GOOGLE_SHEET_MAX_LIST_RECORDS){
-      throw new Error("同期する収穫記録の件数が正しくありません");
-    }
-    recordsToSync.push(...pageRecords);
-    if(recordsToSync.length > RECORD_BACKUP_MAX_ITEMS){
-      throw new Error("同期する収穫記録が" + RECORD_BACKUP_MAX_ITEMS + "件を超えています");
-    }
-    // Apps Scriptは各ページで現在の永久削除一覧を返す。最後のページを同期時点の正として使う。
-    tombstones = normalizeRemoteHarvestTombstones(result);
-
-    const hasMore = result.hasMore === true;
-    const nextCursor = normalizeGoogleSheetSyncCursor(result.nextCursor ?? result.cursor);
-    if(nextCursor) finalCursor = nextCursor;
-    if(!hasMore){
-      const uniqueTombstones = [];
-      const seenTombstones = new Set();
-      tombstones.forEach(item => {
-        const key = item.recordUuid ? "uuid:" + item.recordUuid : "id:" + item.id;
-        if(seenTombstones.has(key)) return;
-        seenTombstones.add(key);
-        uniqueTombstones.push(item);
-      });
-      if(uniqueTombstones.length > GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES){
-        throw new Error("削除済み収穫記録の件数が上限を超えています");
-      }
-      return { records: recordsToSync, tombstones: uniqueTombstones, finalCursor };
-    }
-    if(!nextCursor) throw new Error("同期の続き位置を確認できません");
-    const cursorKey = JSON.stringify(nextCursor);
-    if(seenCursors.has(cursorKey)) throw new Error("同期の続き位置が繰り返されています");
-    seenCursors.add(cursorKey);
-    cursor = nextCursor;
-  }
-  throw new Error("同期ページ数が上限を超えています。記録をバックアップして管理者へ連絡してください");
-}
-
 async function importRecordsFromGoogleSheet(options = {}){
   const silentErrors = !!options.silentErrors;
   if(editingHarvestRecordId || editingPartialHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
@@ -18777,13 +18421,12 @@ async function importRecordsFromGoogleSheet(options = {}){
   try{
     const shouldBackfillLegacyPlantingEvents = shouldRunLegacyPlantingEventBackfill();
     const syncOptions = shouldBackfillLegacyPlantingEvents
-      ? { ...options, resetCursor: true }
+      ? { ...options, resetSyncRevision: true }
       : options;
-    const combinedSync = await fetchGoogleSheetSyncPagesWithFallback(config, syncOptions, controller.signal);
+    const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, syncOptions, controller.signal);
     const recordSync = {
       records: combinedSync.records,
-      tombstones: combinedSync.tombstones,
-      finalCursor: combinedSync.finalCursor
+      tombstones: combinedSync.tombstones
     };
     snapshot = createBackupImportSnapshot();
     const legacyBackfillSourceRecords = shouldBackfillLegacyPlantingEvents
@@ -18795,8 +18438,7 @@ async function importRecordsFromGoogleSheet(options = {}){
     // その後remote苗植えイベントを入れることで、server IDの参照を誤って付け替えない。
     const recordResult = reconcileGoogleSheetRecords(recordSync.records, recordSync.tombstones, options);
     const plantingResult = {
-      conflictCount: 0,
-      finalCursor: combinedSync.finalPlantingCursor
+      conflictCount: 0
     };
     const deletedEventCount = applyRemoteDeletedPlantingEventIds(combinedSync.deletedEventIds, {
       resultTracker: plantingResult
@@ -18854,11 +18496,8 @@ async function importRecordsFromGoogleSheet(options = {}){
       : (combinedFinalSyncRevision === null
           ? backfilledFinalSyncRevision
           : Math.max(combinedFinalSyncRevision, backfilledFinalSyncRevision));
-    saveGoogleSheetSyncCursor(config, recordSync.finalCursor);
-    saveGoogleSheetPlantingSyncCursor(config, plantingResult.finalCursor);
     if(finalSyncRevision !== null){
       saveGoogleSheetSyncRevision(config, finalSyncRevision);
-      saveGoogleSheetSyncNoticeRevision(config, finalSyncRevision);
     }
     setRecordSyncAvailabilityNotice(false);
 
@@ -28568,9 +28207,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     setGoogleSheetSyncStatus(restoredRecord, restoredState);
     if(!entry.sheetDeleted && !entry.syncConflict){
       // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
-      localStorage.removeItem(GOOGLE_SHEET_SYNC_CURSOR_KEY);
       localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
-      localStorage.removeItem(GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY);
     }
     refreshRecordDataUi();
     showToast(entry.syncConflict
@@ -29852,10 +29489,7 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
   PLANTING_EVENTS_MIGRATION_KEY,
   LEGACY_PLANTING_EVENT_BACKFILL_KEY,
   GOOGLE_SHEET_SYNC_STATUS_KEY,
-  GOOGLE_SHEET_SYNC_CURSOR_KEY,
-  GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY,
   GOOGLE_SHEET_SYNC_REVISION_KEY,
-  GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY,
   GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
   PLANTING_EVENT_SYNC_STATUS_KEY,
   RECORD_EXPORT_STATUS_KEY,
