@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-dashboard-layout-2">
+<meta name="harvestnavi-version" content="20260805-sheet-sync-fallback">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17168,7 +17168,9 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     try{
       result = text ? JSON.parse(text) : {};
     }catch(e){
-      throw new Error("スプレッドシートの一括同期応答を読み込めません");
+      const parseError = new Error("スプレッドシートの一括同期応答を読み込めません");
+      parseError.code = "GOOGLE_SHEET_COMBINED_RESPONSE_PARSE_ERROR";
+      throw parseError;
     }
     if(result.ok !== true){
       throw new Error(result.message || "収穫・苗植え記録を同期できませんでした");
@@ -17255,6 +17257,27 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     seenCursorPairs.add(cursorPairKey);
   }
   throw new Error("一括同期ページ数が上限を超えています。記録をバックアップして管理者へ連絡してください");
+}
+
+async function fetchGoogleSheetSyncPagesWithFallback(config, options, signal){
+  try{
+    return await fetchGoogleSheetCombinedSyncPages(config, options, signal);
+  }catch(error){
+    if(error?.name === "AbortError" || signal?.aborted) throw error;
+    if(error?.code !== "GOOGLE_SHEET_COMBINED_RESPONSE_PARSE_ERROR") throw error;
+    console.warn("Combined Google Sheet sync response was not JSON; retrying separately", error);
+  }
+
+  const recordSync = await fetchGoogleSheetRecordSyncPages(config, options, signal);
+  const plantingSync = await fetchGoogleSheetPlantingEventSyncPages(config, options, signal);
+  return {
+    records: recordSync.records,
+    tombstones: recordSync.tombstones,
+    finalCursor: recordSync.finalCursor,
+    events: plantingSync.events,
+    deletedEventIds: plantingSync.deletedEventIds,
+    finalPlantingCursor: plantingSync.finalCursor
+  };
 }
 
 async function fetchGoogleSheetRecordSyncPages(config, options, signal){
@@ -17360,7 +17383,7 @@ async function importRecordsFromGoogleSheet(options = {}){
     const syncOptions = shouldBackfillLegacyPlantingEvents
       ? { ...options, resetCursor: true }
       : options;
-    const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, syncOptions, controller.signal);
+    const combinedSync = await fetchGoogleSheetSyncPagesWithFallback(config, syncOptions, controller.signal);
     const recordSync = {
       records: combinedSync.records,
       tombstones: combinedSync.tombstones,
