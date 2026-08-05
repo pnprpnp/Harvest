@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-conflict-single">
+<meta name="harvestnavi-version" content="20260805-sync-conflict-local-all">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3815,6 +3815,25 @@ button.monitorSaveBtn:active{
   line-height:1.6;
   border-bottom:1px solid #e5e7eb;
 }
+.syncConflictBulkActions{
+  flex:0 0 auto;
+  display:grid;
+  gap:6px;
+  padding:10px 12px;
+  border-bottom:1px solid #bbf7d0;
+  background:#f0fdf4;
+}
+.syncConflictBulkActions[hidden]{display:none;}
+.syncConflictBulkActions button{margin:0;min-height:44px;}
+.syncConflictBulkStatus{
+  color:#166534;
+  -webkit-text-fill-color:#166534;
+  font-size:11px;
+  font-weight:800;
+  line-height:1.5;
+  text-align:center;
+}
+.syncConflictBulkStatus[hidden]{display:none;}
 .syncConflictNavigator{
   flex:0 0 auto;
   display:grid;
@@ -9630,12 +9649,16 @@ requestAnimationFrame(function(){
   <div class="syncConflictWindow" role="dialog" aria-modal="true" aria-labelledby="syncConflictTitle">
     <div class="syncConflictHeader">
       <div id="syncConflictTitle" class="syncConflictTitle">競合する記録</div>
-      <button type="button" class="syncConflictClose" onclick="closeSyncConflictPanel()">閉じる</button>
+      <button id="syncConflictCloseBtn" type="button" class="syncConflictClose" onclick="closeSyncConflictPanel()">閉じる</button>
     </div>
     <div class="syncConflictIntro">端末版とスプレッドシート版を両方保護しています。内容を比較して、残す方を選んでください。</div>
+    <div id="syncConflictBulkActions" class="syncConflictBulkActions" hidden>
+      <button id="syncConflictKeepAllLocalBtn" type="button" class="actionBtn thirdBtn" onclick="resolveAllSyncConflictsWithLocalVersions()">すべてこの端末の内容を残す</button>
+      <div id="syncConflictBulkStatus" class="syncConflictBulkStatus" role="status" aria-live="polite" hidden></div>
+    </div>
     <div id="syncConflictNavigator" class="syncConflictNavigator" hidden>
       <button id="syncConflictPreviousBtn" type="button" onclick="moveSyncConflictSelection(-1)">前の競合</button>
-      <div id="syncConflictPosition" class="syncConflictPosition">1 / 1<span class="syncConflictVersionNote">表示版: single-v1</span></div>
+      <div id="syncConflictPosition" class="syncConflictPosition">1 / 1<span class="syncConflictVersionNote">表示版: local-all-v1</span></div>
       <button id="syncConflictNextBtn" type="button" onclick="moveSyncConflictSelection(1)">次の競合</button>
     </div>
     <div id="syncConflictList" class="syncConflictList"></div>
@@ -9813,6 +9836,7 @@ let deletedPlantingEvents = loadDeletedPlantingEvents();
 let deletedRecords = loadDeletedRecords();
 let syncConflicts = loadSyncConflicts();
 let activeSyncConflictId = "";
+let syncConflictBulkRunning = false;
 let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
@@ -14968,6 +14992,8 @@ function updateSyncConflictButtonState(){
   const alert = document.getElementById("syncConflictAlert");
   const alertTitle = document.getElementById("syncConflictAlertTitle");
   const tabBadge = document.getElementById("recordTabConflictBadge");
+  const bulkActions = document.getElementById("syncConflictBulkActions");
+  const keepAllLocalButton = document.getElementById("syncConflictKeepAllLocalBtn");
   const count = syncConflicts.length;
   if(alert) alert.hidden = count === 0;
   if(alertTitle) alertTitle.textContent = `競合する記録が${count}件あります`;
@@ -14980,6 +15006,30 @@ function updateSyncConflictButtonState(){
     tabBadge.hidden = count === 0;
     tabBadge.textContent = count > 99 ? "99+" : String(count);
     tabBadge.setAttribute("aria-label", `未解決の競合が${count}件あります`);
+  }
+  if(bulkActions) bulkActions.hidden = count === 0;
+  if(keepAllLocalButton){
+    keepAllLocalButton.disabled = syncConflictBulkRunning || count === 0;
+    if(!syncConflictBulkRunning){
+      keepAllLocalButton.textContent = `すべてこの端末の内容を残す（${count}件）`;
+    }
+  }
+}
+
+function updateSyncConflictBulkProgress(completedCount, totalCount, message = ""){
+  const keepAllLocalButton = document.getElementById("syncConflictKeepAllLocalBtn");
+  const status = document.getElementById("syncConflictBulkStatus");
+  const completed = Math.max(0, Number(completedCount) || 0);
+  const total = Math.max(completed, Number(totalCount) || 0);
+  if(keepAllLocalButton){
+    keepAllLocalButton.disabled = syncConflictBulkRunning || total === 0;
+    keepAllLocalButton.textContent = syncConflictBulkRunning
+      ? `端末版を反映中（${completed}/${total}件）`
+      : `すべてこの端末の内容を残す（${syncConflicts.length}件）`;
+  }
+  if(status){
+    status.hidden = !message;
+    status.textContent = message;
   }
 }
 
@@ -15074,7 +15124,10 @@ function renderSyncConflictList(){
   const position = document.getElementById("syncConflictPosition");
   const previousButton = document.getElementById("syncConflictPreviousBtn");
   const nextButton = document.getElementById("syncConflictNextBtn");
+  const closeButton = document.getElementById("syncConflictCloseBtn");
   if(title) title.textContent = `競合する記録（${syncConflicts.length}）`;
+  if(closeButton) closeButton.disabled = syncConflictBulkRunning;
+  updateSyncConflictButtonState();
   if(!list) return;
   if(!syncConflicts.length){
     activeSyncConflictId = "";
@@ -15088,10 +15141,10 @@ function renderSyncConflictList(){
   activeSyncConflictId = entry.conflictId;
   if(navigator) navigator.hidden = false;
   if(position){
-    position.innerHTML = `${activeIndex + 1} / ${syncConflicts.length}<span class="syncConflictVersionNote">表示版: single-v1</span>`;
+    position.innerHTML = `${activeIndex + 1} / ${syncConflicts.length}<span class="syncConflictVersionNote">表示版: local-all-v1</span>`;
   }
-  if(previousButton) previousButton.disabled = activeIndex <= 0;
-  if(nextButton) nextButton.disabled = activeIndex >= syncConflicts.length - 1;
+  if(previousButton) previousButton.disabled = syncConflictBulkRunning || activeIndex <= 0;
+  if(nextButton) nextButton.disabled = syncConflictBulkRunning || activeIndex >= syncConflicts.length - 1;
   list.innerHTML = (() => {
     const source = entry.localVersion || entry.remoteVersion;
     const entityTitle = entry.entityType === "planting"
@@ -15134,8 +15187,8 @@ function renderSyncConflictList(){
         <div class="syncConflictReason">${escapeHtml(getSyncConflictReasonText(entry))}</div>
         <div class="syncConflictChangedFields"><strong>異なる項目:</strong>${changedFieldBadges}</div>
         <div class="syncConflictActions">
-          <button type="button" class="actionBtn thirdBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "local")'>この端末の内容を残す</button>
-          <button type="button" class="actionBtn secondaryBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "remote")' ${remoteBlocked ? "disabled" : ""}>${escapeHtml(remoteLabel)}</button>
+          <button type="button" class="actionBtn thirdBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "local")' ${syncConflictBulkRunning ? "disabled" : ""}>この端末の内容を残す</button>
+          <button type="button" class="actionBtn secondaryBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "remote")' ${(remoteBlocked || syncConflictBulkRunning) ? "disabled" : ""}>${escapeHtml(remoteLabel)}</button>
         </div>
         ${remoteBlocked ? '<div class="syncConflictReason">苗植えとの対応を保つため、スプレッドシートの内容は選べません。関連する苗植え記録との対応を解消するまでは、この端末の内容だけを選択できます。</div>' : ""}
         <div class="syncConflictFieldList">${differenceCards || '<div class="syncConflictField">内容は同じですが、同期状態の確認が必要です。</div>'}</div>
@@ -15183,6 +15236,7 @@ function openSyncConflictPanel(conflictId = ""){
 }
 
 function closeSyncConflictPanel(){
+  if(syncConflictBulkRunning) return;
   const panel = document.getElementById("syncConflictPanel");
   if(panel) panel.classList.remove("show");
   unlockPageAfterRecordUiClose();
@@ -15286,11 +15340,15 @@ function applyRemoteSyncConflictVersion(entry){
   syncHarvestPlantingPendingFlags();
 }
 
-async function applyLocalRecordSyncConflictVersion(entry){
+async function applyLocalRecordSyncConflictVersion(entry, options = {}){
   const config = getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "競合解決前に設定してください" });
   if(!config) return false;
-  const operationOwner = beginGoogleSheetOperation("sending");
+  const ownsOperation = !options.operationOwner;
+  const operationOwner = options.operationOwner || beginGoogleSheetOperation("sending");
   if(!operationOwner) throw new Error(getGoogleSheetOperationBusyMessage("競合を解決"));
+  if(operationOwner !== googleSheetOperationOwner){
+    throw new Error("競合解決の処理状態を確認できません");
+  }
   try{
     const localVersion = normalizeStoredRecord(serializeRecordForStorage(entry.localVersion));
     if(!localVersion) throw new Error("端末版の収穫記録を読み込めません");
@@ -15329,15 +15387,19 @@ async function applyLocalRecordSyncConflictVersion(entry){
     }
     return true;
   }finally{
-    endGoogleSheetOperation(operationOwner);
+    if(ownsOperation) endGoogleSheetOperation(operationOwner);
   }
 }
 
-async function applyLocalPlantingSyncConflictVersion(entry){
+async function applyLocalPlantingSyncConflictVersion(entry, options = {}){
   const config = getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "競合解決前に設定してください" });
   if(!config) return false;
-  const operationOwner = beginGoogleSheetOperation("sending");
+  const ownsOperation = !options.operationOwner;
+  const operationOwner = options.operationOwner || beginGoogleSheetOperation("sending");
   if(!operationOwner) throw new Error(getGoogleSheetOperationBusyMessage("競合を解決"));
+  if(operationOwner !== googleSheetOperationOwner){
+    throw new Error("競合解決の処理状態を確認できません");
+  }
   try{
     const localVersion = normalizePlantingEvent(entry.localVersion);
     if(!localVersion) throw new Error("端末版の苗植え記録を読み込めません");
@@ -15360,8 +15422,110 @@ async function applyLocalPlantingSyncConflictVersion(entry){
     setPlantingEventSyncStatus(confirmed, "confirmed");
     return true;
   }finally{
+    if(ownsOperation) endGoogleSheetOperation(operationOwner);
+  }
+}
+
+async function resolveAllSyncConflictsWithLocalVersions(){
+  if(syncConflictBulkRunning) return;
+  if(!ensureProtectedOperationAccess("競合する記録の一括解決")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("競合する記録を一括解決")) return;
+  if(!syncConflicts.length){
+    showToast("競合する記録はありません");
+    return;
+  }
+
+  const config = getValidatedGoogleSheetConfig({
+    showImportError: true,
+    errorTitle: "競合解決前に設定してください"
+  });
+  if(!config) return;
+  const entries = [...syncConflicts].sort((left, right) => {
+    if(left.entityType === right.entityType) return 0;
+    return left.entityType === "record" ? -1 : 1;
+  });
+  const missingLocalCount = entries.filter(entry => !entry.localVersion).length;
+  if(missingLocalCount){
+    showRecordImportError(
+      `端末版が保存されていない競合が${missingLocalCount}件あるため、一括処理を開始できません。該当する競合を個別に確認してください。`,
+      "端末版を一括選択できません"
+    );
+    return;
+  }
+  const currentUrl = String(config.url || "").trim();
+  const differentSourceCount = entries.filter(entry => (
+    entry.sourceUrl && entry.sourceUrl !== currentUrl
+  )).length;
+  if(differentSourceCount){
+    showRecordImportError(
+      `現在とは別のApps Script URLで発生した競合が${differentSourceCount}件あります。元のGoogle連携設定へ戻してから実行してください。`,
+      "端末版を一括選択できません"
+    );
+    return;
+  }
+  if(!window.confirm(
+    `現在の競合${entries.length}件すべてについて、この端末の内容をスプレッドシートへ反映します。\n\nこの操作を実行しますか？`
+  )) return;
+
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("競合を一括解決"));
+    return;
+  }
+  syncConflictBulkRunning = true;
+  let completedCount = 0;
+  let failedEntry = null;
+  let failure = null;
+  renderSyncConflictList();
+  updateSyncConflictBulkProgress(0, entries.length, "処理中はこの画面を閉じずにお待ちください。");
+
+  try{
+    for(const queuedEntry of entries){
+      const entry = syncConflicts.find(item => item.conflictId === queuedEntry.conflictId);
+      if(!entry) continue;
+      try{
+        const resolved = entry.entityType === "record"
+          ? await applyLocalRecordSyncConflictVersion(entry, { operationOwner })
+          : await applyLocalPlantingSyncConflictVersion(entry, { operationOwner });
+        if(!resolved) throw new Error("端末版をスプレッドシートへ反映できませんでした");
+        removeSyncConflictById(entry.conflictId);
+        completedCount++;
+        updateSyncConflictBulkProgress(
+          completedCount,
+          entries.length,
+          completedCount < entries.length
+            ? `端末版を反映しています（残り${entries.length - completedCount}件）`
+            : "すべての端末版を反映しました。"
+        );
+      }catch(error){
+        failedEntry = entry;
+        failure = error;
+        break;
+      }
+    }
+  }finally{
+    syncConflictBulkRunning = false;
     endGoogleSheetOperation(operationOwner);
   }
+
+  activeSyncConflictId = failedEntry?.conflictId || syncConflicts[0]?.conflictId || "";
+  syncHarvestPlantingPendingFlags();
+  refreshRecordDataUi();
+  renderSyncConflictList();
+  if(failure){
+    updateSyncConflictBulkProgress(
+      completedCount,
+      entries.length,
+      `${completedCount}件を完了しました。未処理の${syncConflicts.length}件は競合一覧に保護しています。`
+    );
+    showRecordImportError(
+      `端末版${completedCount}件の反映後に処理を停止しました。未処理の${syncConflicts.length}件は競合一覧に残しています。\n\n詳細: ${String(failure?.message || failure)}`,
+      "競合の一括解決を停止しました"
+    );
+    return;
+  }
+  closeSyncConflictPanel();
+  showToast(`端末版${completedCount}件をスプレッドシートへ反映し、すべての競合を解決しました`);
 }
 
 async function resolveSyncConflict(conflictId, choice){
