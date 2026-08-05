@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-conflict-inbox">
+<meta name="harvestnavi-version" content="20260805-sync-conflict-visible">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3698,6 +3698,79 @@ button.monitorSaveBtn:active{
   color:#342300;
 }
 .syncConflictBtn[hidden]{display:none;}
+.syncConflictAlert{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  align-items:center;
+  gap:12px;
+  margin:0 0 12px;
+  padding:13px;
+  border:2px solid #f59e0b;
+  border-radius:14px;
+  background:#fffbeb;
+  color:#78350f;
+}
+.syncConflictAlert[hidden]{display:none;}
+.syncConflictAlertCopy{min-width:0;}
+.syncConflictAlertTitle{font-size:14px;font-weight:900;}
+.syncConflictAlertText{margin-top:3px;font-size:12px;line-height:1.5;color:#92400e;}
+.recordItem.hasSyncConflict{
+  border:2px solid #f59e0b;
+  background:#fffbeb;
+}
+.recordConflictInline{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:9px 0 4px;
+  padding:9px 10px;
+  border-radius:11px;
+  background:#fef3c7;
+  color:#78350f;
+  font-size:12px;
+  font-weight:800;
+}
+.recordConflictBadge{
+  display:inline-flex;
+  align-items:center;
+  min-height:23px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:#b45309;
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+}
+.recordConflictOpenBtn{
+  margin-left:auto;
+  border:1px solid #b45309;
+  border-radius:9px;
+  padding:7px 10px;
+  background:#fff;
+  color:#92400e;
+  font-size:12px;
+  font-weight:900;
+}
+.recordTabConflictBadge{
+  position:absolute;
+  z-index:2;
+  top:0;
+  left:calc(50% + 7px);
+  min-width:18px;
+  height:18px;
+  box-sizing:border-box;
+  padding:0 5px;
+  border:2px solid #fafafc;
+  border-radius:999px;
+  background:#f59e0b;
+  color:#342300;
+  font-size:9px;
+  font-weight:900;
+  line-height:14px;
+  text-align:center;
+}
+.recordTabConflictBadge[hidden]{display:none;}
 .syncConflictWindow{
   width:min(760px, calc(100vw - 24px));
   max-height:min(88vh, 820px);
@@ -3748,6 +3821,23 @@ button.monitorSaveBtn:active{
 }
 .syncConflictCardHeader{padding:10px 12px;font-weight:800;color:#78350f;}
 .syncConflictReason{padding:0 12px 10px;color:#92400e;font-size:12px;line-height:1.5;}
+.syncConflictChangedFields{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+  padding:0 12px 10px;
+  color:#78350f;
+  font-size:12px;
+}
+.syncConflictChangedField{
+  display:inline-flex;
+  padding:3px 8px;
+  border-radius:999px;
+  background:#fed7aa;
+  color:#9a3412;
+  font-weight:900;
+}
 .syncConflictCompare{
   width:100%;
   border-collapse:collapse;
@@ -3767,10 +3857,21 @@ button.monitorSaveBtn:active{
 .syncConflictCompare th:last-child,.syncConflictCompare td:last-child{border-right:none;}
 .syncConflictCompare th:first-child,.syncConflictCompare td:first-child{width:22%;color:#475569;}
 .syncConflictCompare .isDifferent{background:#fff7ed;color:#9a3412;font-weight:700;}
+.syncConflictCompare tr.isDifferentRow td:first-child{background:#ffedd5;color:#9a3412;font-weight:900;}
+.syncConflictDifferenceMark{
+  display:block;
+  margin-top:3px;
+  color:#c2410c;
+  font-size:9px;
+  font-weight:900;
+}
 .syncConflictActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;}
 .syncConflictActions button{margin:0;min-height:44px;}
 .syncConflictActions button:disabled{opacity:.45;cursor:not-allowed;}
 @media(max-width:560px){
+  .syncConflictAlert{grid-template-columns:1fr;}
+  .syncConflictAlert .syncConflictBtn{width:100%;}
+  .recordConflictOpenBtn{width:100%;margin-left:0;}
   .syncConflictActions{grid-template-columns:1fr;}
   .syncConflictCompare{font-size:11px;}
 }
@@ -8010,6 +8111,7 @@ requestAnimationFrame(function(){
     <button id="recordTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('record')">
       <span class="tabIcon recordTabIcon" aria-hidden="true"></span>
       <span class="tabBtnText">記録</span>
+      <span id="recordTabConflictBadge" class="recordTabConflictBadge" aria-label="未解決の競合" hidden>0</span>
     </button>
     <button id="dashboardTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('dashboard')">
       <span class="tabIcon dashboardTabIcon" aria-hidden="true">
@@ -8649,6 +8751,13 @@ requestAnimationFrame(function(){
 
     <div class="card">
       <div class="sectionTitle">記録一覧</div>
+      <div id="syncConflictAlert" class="syncConflictAlert" role="status" aria-live="polite" hidden>
+        <div class="syncConflictAlertCopy">
+          <div id="syncConflictAlertTitle" class="syncConflictAlertTitle">競合する記録があります</div>
+          <div class="syncConflictAlertText">端末とスプレッドシートで内容が異なります。比較して、残す内容を選んでください。</div>
+        </div>
+        <button id="syncConflictBtn" class="actionBtn syncConflictBtn" type="button" onclick="openSyncConflictPanel()" hidden>競合を比較・選択（0）</button>
+      </div>
       <div id="recordList" class="smallText">まだ記録がありません。</div>
       <div class="externalSaveTools">
         <div class="googleSheetResendHelpWrap">
@@ -8662,7 +8771,6 @@ requestAnimationFrame(function(){
             <div id="recordTrashList" class="recordToggleBody smallText">削除済みの記録はありません。</div>
           </details>
         </div>
-        <button id="syncConflictBtn" class="actionBtn syncConflictBtn" type="button" onclick="openSyncConflictPanel()" hidden>競合を確認（0）</button>
         <div class="recordImportChoice">
           <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" onclick="toggleRecordImportMenu()">記録を読み込む</button>
           <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
@@ -11620,7 +11728,8 @@ function unlockPageAfterRecordUiClose(){
     "dashboardForecastDaysAllModal",
     "plantingAgeModal",
     "recordDetailModal",
-    "partialHarvestEditModal"
+    "partialHarvestEditModal",
+    "syncConflictPanel"
   ].some(id => document.getElementById(id)?.classList.contains("show"));
 
   if(!isMonitorModeOpen && !blockingModalOpen){
@@ -14753,11 +14862,22 @@ function updateGoogleSheetResendButtonState(){
 
 function updateSyncConflictButtonState(){
   const button = document.getElementById("syncConflictBtn");
-  if(!button) return;
+  const alert = document.getElementById("syncConflictAlert");
+  const alertTitle = document.getElementById("syncConflictAlertTitle");
+  const tabBadge = document.getElementById("recordTabConflictBadge");
   const count = syncConflicts.length;
-  button.hidden = count === 0;
-  button.textContent = `競合を確認（${count}）`;
-  button.title = count ? `${count}件の競合する記録があります` : "競合する記録はありません";
+  if(alert) alert.hidden = count === 0;
+  if(alertTitle) alertTitle.textContent = `競合する記録が${count}件あります`;
+  if(button){
+    button.hidden = count === 0;
+    button.textContent = `競合を比較・選択（${count}）`;
+    button.title = count ? `${count}件の競合内容を比較して残す方を選びます` : "競合する記録はありません";
+  }
+  if(tabBadge){
+    tabBadge.hidden = count === 0;
+    tabBadge.textContent = count > 99 ? "99+" : String(count);
+    tabBadge.setAttribute("aria-label", `未解決の競合が${count}件あります`);
+  }
 }
 
 function getSyncConflictReasonText(entry){
@@ -14858,41 +14978,63 @@ function renderSyncConflictList(){
     const entityTitle = entry.entityType === "planting"
       ? `${source?.plantingDate || "日付なし"} 苗植え記録（ID: ${entry.entityId}）`
       : `${source?.date || "日付なし"} ${source?.type === "partialHarvest" ? "部分収穫" : "収穫記録"}（ID: ${entry.entityId || "-"}）`;
-    const comparisonRows = getSyncConflictComparisonRows(entry).map(([label, localValue, remoteValue]) => {
+    const comparisonData = getSyncConflictComparisonRows(entry);
+    const differentLabels = comparisonData
+      .filter(([, localValue, remoteValue]) => String(localValue) !== String(remoteValue))
+      .map(([label]) => label);
+    const comparisonRows = comparisonData.map(([label, localValue, remoteValue]) => {
       const different = String(localValue) !== String(remoteValue);
-      return `<tr><td>${escapeHtml(label)}</td><td class="${different ? "isDifferent" : ""}">${escapeHtml(String(localValue))}</td><td class="${different ? "isDifferent" : ""}">${escapeHtml(String(remoteValue))}</td></tr>`;
+      return `<tr class="${different ? "isDifferentRow" : ""}"><td>${escapeHtml(label)}${different ? '<span class="syncConflictDifferenceMark">相違あり</span>' : ""}</td><td class="${different ? "isDifferent" : ""}">${escapeHtml(String(localValue))}</td><td class="${different ? "isDifferent" : ""}">${escapeHtml(String(remoteValue))}</td></tr>`;
     }).join("");
     const conflictIdArgument = JSON.stringify(entry.conflictId);
     const remoteBlocked = isSyncConflictRemoteChoiceBlocked(entry);
-    const remoteLabel = entry.remoteVersion ? "シート版を採用" : "シート側の削除を採用";
+    const remoteLabel = entry.remoteVersion
+      ? "スプレッドシートの内容を残す"
+      : "スプレッドシートに合わせて削除";
+    const changedFieldBadges = differentLabels.length
+      ? differentLabels.map(label => `<span class="syncConflictChangedField">${escapeHtml(label)}</span>`).join("")
+      : '<span class="syncConflictChangedField">同期状態</span>';
     return `
-      <section class="syncConflictCard">
+      <section id="syncConflictCard-${escapeHtml(entry.conflictId)}" class="syncConflictCard">
         <div class="syncConflictCardHeader">${escapeHtml(entityTitle)}</div>
         <div class="syncConflictReason">${escapeHtml(getSyncConflictReasonText(entry))}</div>
+        <div class="syncConflictChangedFields"><strong>異なる項目:</strong>${changedFieldBadges}</div>
+        <div class="syncConflictActions">
+          <button type="button" class="actionBtn thirdBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "local")'>この端末の内容を残す</button>
+          <button type="button" class="actionBtn secondaryBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "remote")' ${remoteBlocked ? "disabled" : ""}>${escapeHtml(remoteLabel)}</button>
+        </div>
+        ${remoteBlocked ? '<div class="syncConflictReason">苗植えとの対応を保つため、スプレッドシートの内容は選べません。関連する苗植え記録との対応を解消するまでは、この端末の内容だけを選択できます。</div>' : ""}
         <table class="syncConflictCompare">
           <thead><tr><th>項目</th><th>この端末</th><th>スプレッドシート</th></tr></thead>
           <tbody>${comparisonRows}</tbody>
         </table>
-        <div class="syncConflictActions">
-          <button type="button" class="actionBtn thirdBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "local")'>端末版を採用</button>
-          <button type="button" class="actionBtn secondaryBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "remote")' ${remoteBlocked ? "disabled" : ""}>${escapeHtml(remoteLabel)}</button>
-        </div>
-        ${remoteBlocked ? '<div class="syncConflictReason">苗植えとの対応を保つため、シート版は採用できません。端末版を採用するか、関連する苗植え記録を先に修正してください。</div>' : ""}
       </section>
     `;
   }).join("");
 }
 
-function openSyncConflictPanel(){
+function openSyncConflictPanel(conflictId = ""){
   const panel = document.getElementById("syncConflictPanel");
   if(!panel) return;
   renderSyncConflictList();
   panel.classList.add("show");
+  document.body.style.overflow = "hidden";
+  const safeConflictId = /^[A-Za-z0-9:_-]{1,200}$/.test(String(conflictId || ""))
+    ? String(conflictId)
+    : "";
+  requestAnimationFrame(() => {
+    const target = safeConflictId
+      ? document.getElementById("syncConflictCard-" + safeConflictId)
+      : document.querySelector(".syncConflictCard");
+    target?.scrollIntoView({ block: "start" });
+    target?.querySelector(".syncConflictDecisionBtn")?.focus({ preventScroll: true });
+  });
 }
 
 function closeSyncConflictPanel(){
   const panel = document.getElementById("syncConflictPanel");
   if(panel) panel.classList.remove("show");
+  unlockPageAfterRecordUiClose();
 }
 
 function getActiveRecordForSyncConflict(entry){
@@ -28295,22 +28437,42 @@ function getPlantingEventGroupListMetrics(events){
   };
 }
 
+function renderRecordItemSyncConflictHtml(entityType, entity){
+  const conflict = getSyncConflictForEntity(entityType, entity);
+  if(!conflict) return "";
+  const conflictIdArgument = JSON.stringify(conflict.conflictId);
+  return `
+    <div class="recordConflictInline">
+      <span class="recordConflictBadge">競合あり</span>
+      <span>${escapeHtml(getSyncConflictReasonText(conflict))}</span>
+      <button type="button" class="recordConflictOpenBtn" onclick='openSyncConflictPanel(${conflictIdArgument})'>比較して選択</button>
+    </div>
+  `;
+}
+
 function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
   const safeRecordId = getSafePositiveRecordId(r?.id) ?? 0;
   const safeDate = escapeHtml(String(r?.date || "日付なし"));
   const safeCases = escapeHtml(getHarvestRecordCaseDisplayText(r, harvestCaseTotalsByDate));
+  const syncConflict = getSyncConflictForEntity("record", r);
+  const conflictHtml = renderRecordItemSyncConflictHtml("record", r);
   const syncState = getGoogleSheetRecordSyncState(r);
-  const syncWarningText = syncState === "remoteDeleted"
-    ? "\n同期注意: 別端末で削除されています。使用中の苗植え履歴を確認してください"
-    : (syncState === "dependencyConflict"
-      ? "\n同期注意: 苗植え履歴を保護するため別端末の更新を保留しています"
-      : (syncState === "conflict" ? "\n同期注意: 編集中のため別端末の更新を保留しています" : ""));
+  const syncWarningText = syncConflict
+    ? ""
+    : (syncState === "remoteDeleted"
+      ? "\n同期注意: 別端末で削除されています。使用中の苗植え履歴を確認してください"
+      : (syncState === "dependencyConflict"
+        ? "\n同期注意: 苗植え履歴を保護するため別端末の更新を保留しています"
+        : (syncState === "conflict"
+          ? "\n同期注意: 別端末の更新を保留しています"
+          : "")));
   if(r.type === "partialHarvest"){
     return `
-    <div class="recordItem">
+    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}">
       <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">部分収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}${escapeHtml(syncWarningText)}</div>
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
+      ${conflictHtml}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <div class="recordActions">
         <button class="thirdBtn" onclick="editPartialHarvestRecord(${safeRecordId})">編集</button>
@@ -28331,13 +28493,14 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
     .join("・") || "-";
 
   return `
-    <div class="recordItem">
+    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}">
       <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}
 ロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
 収穫場所: ${escapeHtml(harvestBuildingText)}
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}
+      ${conflictHtml}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('harvest', ${safeRecordId})">詳細</button>
       <div class="recordActions">
@@ -28350,6 +28513,8 @@ ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309
 
 function renderPlantingEventItemHtml(event){
   const safeEventId = getSafePositiveRecordId(event?.eventId) ?? 0;
+  const syncConflict = getSyncConflictForEntity("planting", event);
+  const conflictHtml = renderRecordItemSyncConflictHtml("planting", event);
   const metrics = getPlantingEventListMetrics(event);
   const pendingPalletCount = new Set(
     event.sourceAllocations.flatMap(allocation => (
@@ -28358,11 +28523,12 @@ function renderPlantingEventItemHtml(event){
     ))
   ).size;
   return `
-    <div class="recordItem">
+    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}">
       <div class="recordTitle">${escapeHtml(event.plantingDate || "日付なし")} <span class="recordTitlePlanting">苗植え</span></div>
       <div class="recordMeta">苗枚数: ${escapeHtml(metrics.seedlingTrayText)}
 苗ロス率: ${escapeHtml(metrics.lossRateText)}
 未定植枚数: ${escapeHtml(String(pendingPalletCount))}枚</div>
+      ${conflictHtml}
       <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('planting', ${safeEventId})">詳細</button>
       <div class="recordActions">
         <button class="thirdBtn" onclick="editPlantingEvent(${safeEventId})">編集</button>
