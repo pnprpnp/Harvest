@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-conflict-notice">
+<meta name="harvestnavi-version" content="20260805-sync-conflict-inbox">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3691,6 +3691,88 @@ button.monitorSaveBtn:active{
 }
 .googleSheetResendHelpWrap .actionBtn{
   margin-top:0;
+}
+.syncConflictBtn{
+  margin-top:0;
+  background:#f59e0b;
+  color:#342300;
+}
+.syncConflictBtn[hidden]{display:none;}
+.syncConflictWindow{
+  width:min(760px, calc(100vw - 24px));
+  max-height:min(88vh, 820px);
+  overflow:hidden;
+  border-radius:16px;
+  background:#fff;
+  box-shadow:0 22px 48px rgba(15,23,42,.34);
+  display:flex;
+  flex-direction:column;
+}
+.syncConflictHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 16px;
+  background:#92400e;
+  color:#fff;
+}
+.syncConflictTitle{font-size:16px;font-weight:800;}
+.syncConflictClose{
+  border:1px solid rgba(255,255,255,.55);
+  border-radius:8px;
+  background:transparent;
+  color:#fff;
+  padding:7px 12px;
+  font-weight:700;
+}
+.syncConflictIntro{
+  padding:12px 16px;
+  color:#475569;
+  font-size:13px;
+  line-height:1.6;
+  border-bottom:1px solid #e5e7eb;
+}
+.syncConflictList{
+  min-height:0;
+  overflow:auto;
+  padding:12px;
+  display:grid;
+  gap:12px;
+}
+.syncConflictCard{
+  border:1px solid #f59e0b;
+  border-radius:12px;
+  overflow:hidden;
+  background:#fffbeb;
+}
+.syncConflictCardHeader{padding:10px 12px;font-weight:800;color:#78350f;}
+.syncConflictReason{padding:0 12px 10px;color:#92400e;font-size:12px;line-height:1.5;}
+.syncConflictCompare{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
+  background:#fff;
+  font-size:12px;
+}
+.syncConflictCompare th,.syncConflictCompare td{
+  border-top:1px solid #e5e7eb;
+  border-right:1px solid #e5e7eb;
+  padding:8px;
+  text-align:left;
+  vertical-align:top;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.syncConflictCompare th:last-child,.syncConflictCompare td:last-child{border-right:none;}
+.syncConflictCompare th:first-child,.syncConflictCompare td:first-child{width:22%;color:#475569;}
+.syncConflictCompare .isDifferent{background:#fff7ed;color:#9a3412;font-weight:700;}
+.syncConflictActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;}
+.syncConflictActions button{margin:0;min-height:44px;}
+.syncConflictActions button:disabled{opacity:.45;cursor:not-allowed;}
+@media(max-width:560px){
+  .syncConflictActions{grid-template-columns:1fr;}
+  .syncConflictCompare{font-size:11px;}
 }
 .recordTrashDetailsInline{margin:0;}
 .recordTrashIconBtn{
@@ -8580,6 +8662,7 @@ requestAnimationFrame(function(){
             <div id="recordTrashList" class="recordToggleBody smallText">削除済みの記録はありません。</div>
           </details>
         </div>
+        <button id="syncConflictBtn" class="actionBtn syncConflictBtn" type="button" onclick="openSyncConflictPanel()" hidden>競合を確認（0）</button>
         <div class="recordImportChoice">
           <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" onclick="toggleRecordImportMenu()">記録を読み込む</button>
           <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
@@ -9338,6 +9421,16 @@ requestAnimationFrame(function(){
   <div id="recordImportErrorMessage" class="recordImportErrorMessage"></div>
   <button type="button" class="recordImportErrorClose" onclick="hideRecordImportError()">閉じる</button>
 </div>
+<div id="syncConflictPanel" class="appUpdateConfirmOverlay">
+  <div class="syncConflictWindow" role="dialog" aria-modal="true" aria-labelledby="syncConflictTitle">
+    <div class="syncConflictHeader">
+      <div id="syncConflictTitle" class="syncConflictTitle">競合する記録</div>
+      <button type="button" class="syncConflictClose" onclick="closeSyncConflictPanel()">閉じる</button>
+    </div>
+    <div class="syncConflictIntro">端末版とスプレッドシート版を両方保護しています。内容を比較して、残す方を選んでください。</div>
+    <div id="syncConflictList" class="syncConflictList"></div>
+  </div>
+</div>
 
 <script>
 window.addEventListener("error", event => {
@@ -9367,6 +9460,8 @@ const GOOGLE_SHEET_SYNC_CURSOR_KEY = "harvestForecastGoogleSheetSyncCursor_v1";
 const GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY = "harvestForecastGoogleSheetPlantingSyncCursor_v1";
 const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v1";
 const GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY = "harvestForecastGoogleSheetSyncNoticeRevision_v1";
+const GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestForecastGoogleSheetSyncConflicts_v1";
+const GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS = 2000;
 const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
@@ -9506,6 +9601,7 @@ let records = loadRecords();
 let plantingEvents = loadPlantingEvents();
 let deletedPlantingEvents = loadDeletedPlantingEvents();
 let deletedRecords = loadDeletedRecords();
+let syncConflicts = loadSyncConflicts();
 let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
@@ -9596,6 +9692,7 @@ const googleSheetBackgroundPlantingQueue = new Map();
 let googleSheetBackgroundSendRunning = false;
 let googleSheetBackgroundSendTimer = null;
 let googleSheetStartupImportStarted = false;
+migrateLegacyRecordSyncConflicts();
 let dashboardFilter = loadDashboardFilter();
 let protectedAccessUnlocked = false;
 let isMonitorModeOpen = false;
@@ -13080,7 +13177,10 @@ function getGoogleSheetUnsentPlantingEvents(){
   const config = getValidatedGoogleSheetConfig({ silent: true });
   if(!config) return [];
   const status = loadPlantingEventSyncStatus();
-  return plantingEvents.filter(event => isPlantingEventUnsent(event, status));
+  return plantingEvents.filter(event => (
+    isPlantingEventUnsent(event, status)
+    && !hasSyncConflictForEntity("planting", event)
+  ));
 }
 
 function getNextPlantingEventId(){
@@ -13675,6 +13775,252 @@ function addRecordToTrash(record, options = {}){
   if(!options.deferSave) saveDeletedRecordsToStorage();
 }
 
+function normalizeSyncConflictEntityVersion(entityType, value){
+  if(value === null || value === undefined) return null;
+  if(entityType === "record"){
+    return normalizeStoredRecord(serializeRecordForStorage(value));
+  }
+  if(entityType === "planting"){
+    return normalizePlantingEvent(value);
+  }
+  return null;
+}
+
+function getSyncConflictEntityIdentity(entityType, localVersion, remoteVersion){
+  const source = remoteVersion || localVersion;
+  if(entityType === "record"){
+    const recordUuid = normalizeRecordUuid(source?.recordUuid);
+    const recordId = getSafePositiveRecordId(source?.id);
+    if(recordUuid) return { recordUuid, entityId: recordId };
+    return recordId === null ? null : { recordUuid: "", entityId: recordId };
+  }
+  if(entityType === "planting"){
+    const eventId = getSafePositiveRecordId(source?.eventId);
+    return eventId === null ? null : { recordUuid: "", entityId: eventId };
+  }
+  return null;
+}
+
+function getSyncConflictLookupKey(value){
+  const entityType = value?.entityType === "planting" ? "planting" : "record";
+  const localVersion = normalizeSyncConflictEntityVersion(entityType, value?.localVersion);
+  const remoteVersion = normalizeSyncConflictEntityVersion(entityType, value?.remoteVersion);
+  const identity = getSyncConflictEntityIdentity(entityType, localVersion, remoteVersion);
+  if(!identity) return "";
+  if(entityType === "record" && identity.recordUuid){
+    return "record:uuid:" + identity.recordUuid;
+  }
+  return entityType + ":id:" + String(identity.entityId);
+}
+
+function normalizeSyncConflictEntry(value){
+  if(!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entityType = value.entityType === "planting" ? "planting" : "record";
+  const localVersion = normalizeSyncConflictEntityVersion(entityType, value.localVersion);
+  const remoteVersion = normalizeSyncConflictEntityVersion(entityType, value.remoteVersion);
+  if(!localVersion && !remoteVersion) return null;
+  const identity = getSyncConflictEntityIdentity(entityType, localVersion, remoteVersion);
+  if(!identity) return null;
+  const reason = [
+    "both_updated",
+    "remote_deleted",
+    "planting_dependency",
+    "remote_deleted_dependency",
+    "editing"
+  ].includes(value.reason) ? value.reason : "both_updated";
+  const detectedTime = new Date(String(value.detectedAt || "")).getTime();
+  const lastSeenTime = new Date(String(value.lastSeenAt || "")).getTime();
+  const now = Date.now();
+  const conflictId = String(value.conflictId || "").trim();
+  const sourceUrl = String(value.sourceUrl || loadGoogleSheetConfig().url || "").trim().slice(0, 2048);
+  return {
+    conflictId: /^[A-Za-z0-9:_-]{1,200}$/.test(conflictId)
+      ? conflictId
+      : `sync-${now}-${Math.random().toString(36).slice(2, 10)}`,
+    entityType,
+    entityId: identity.entityId,
+    recordUuid: identity.recordUuid,
+    sourceUrl,
+    reason,
+    localVersion,
+    remoteVersion,
+    detectedAt: new Date(Number.isFinite(detectedTime) ? detectedTime : now).toISOString(),
+    lastSeenAt: new Date(Number.isFinite(lastSeenTime) ? lastSeenTime : now).toISOString()
+  };
+}
+
+function serializeSyncConflictEntry(entry){
+  const normalized = normalizeSyncConflictEntry(entry);
+  if(!normalized) return null;
+  return {
+    ...normalized,
+    localVersion: normalized.entityType === "record"
+      ? (normalized.localVersion ? serializeRecordForStorage(normalized.localVersion) : null)
+      : (normalized.localVersion ? serializePlantingEventForStorage(normalized.localVersion) : null),
+    remoteVersion: normalized.entityType === "record"
+      ? (normalized.remoteVersion ? serializeRecordForStorage(normalized.remoteVersion) : null)
+      : (normalized.remoteVersion ? serializePlantingEventForStorage(normalized.remoteVersion) : null)
+  };
+}
+
+function loadSyncConflicts(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_CONFLICTS_KEY) || "[]");
+    if(!Array.isArray(parsed) || parsed.length > GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS) return [];
+    const byKey = new Map();
+    parsed.forEach(value => {
+      const entry = normalizeSyncConflictEntry(value);
+      const key = entry ? getSyncConflictLookupKey(entry) : "";
+      if(key) byKey.set(key, entry);
+    });
+    return [...byKey.values()].sort((left, right) => (
+      String(right.lastSeenAt).localeCompare(String(left.lastSeenAt))
+    ));
+  }catch(e){
+    return [];
+  }
+}
+
+function saveSyncConflictsToStorage(){
+  if(syncConflicts.length > GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS){
+    throw new Error("競合一覧が" + GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS + "件を超えています");
+  }
+  localStorage.setItem(
+    GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
+    JSON.stringify(syncConflicts.map(serializeSyncConflictEntry).filter(Boolean))
+  );
+}
+
+function upsertSyncConflict(value){
+  const next = normalizeSyncConflictEntry(value);
+  if(!next) throw new Error("競合として退避する記録の形式が正しくありません");
+  const key = getSyncConflictLookupKey(next);
+  const previousConflicts = syncConflicts;
+  const nextConflicts = [...syncConflicts];
+  const existingIndex = nextConflicts.findIndex(entry => getSyncConflictLookupKey(entry) === key);
+  if(existingIndex >= 0){
+    const existing = nextConflicts[existingIndex];
+    next.conflictId = existing.conflictId;
+    next.detectedAt = existing.detectedAt;
+    nextConflicts[existingIndex] = next;
+  }else{
+    if(nextConflicts.length >= GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS){
+      throw new Error("競合一覧が上限に達したため同期を続行できません");
+    }
+    nextConflicts.push(next);
+  }
+  nextConflicts.sort((left, right) => String(right.lastSeenAt).localeCompare(String(left.lastSeenAt)));
+  syncConflicts = nextConflicts;
+  try{
+    saveSyncConflictsToStorage();
+  }catch(error){
+    syncConflicts = previousConflicts;
+    throw error;
+  }
+  if(next.entityType === "record"){
+    const queueKey = getGoogleSheetBackgroundRecordKey(next.localVersion || next.remoteVersion);
+    if(queueKey) googleSheetBackgroundRecordQueue.delete(queueKey);
+  }else{
+    googleSheetBackgroundPlantingQueue.delete(String(next.entityId));
+  }
+  return next;
+}
+
+function removeSyncConflictById(conflictId){
+  const previousConflicts = syncConflicts;
+  const nextConflicts = syncConflicts.filter(entry => entry.conflictId !== conflictId);
+  if(nextConflicts.length === previousConflicts.length) return false;
+  syncConflicts = nextConflicts;
+  try{
+    saveSyncConflictsToStorage();
+  }catch(error){
+    syncConflicts = previousConflicts;
+    throw error;
+  }
+  updateSyncConflictButtonState();
+  return true;
+}
+
+function removeSyncConflictForEntity(entityType, entity){
+  const key = getSyncConflictLookupKey({
+    entityType,
+    localVersion: entity,
+    remoteVersion: entity
+  });
+  if(!key) return false;
+  const previousConflicts = syncConflicts;
+  const nextConflicts = syncConflicts.filter(entry => getSyncConflictLookupKey(entry) !== key);
+  if(nextConflicts.length === previousConflicts.length) return false;
+  syncConflicts = nextConflicts;
+  try{
+    saveSyncConflictsToStorage();
+  }catch(error){
+    syncConflicts = previousConflicts;
+    throw error;
+  }
+  updateSyncConflictButtonState();
+  return true;
+}
+
+function hasSyncConflictForEntity(entityType, entity){
+  return !!getSyncConflictForEntity(entityType, entity);
+}
+
+function getSyncConflictForEntity(entityType, entity){
+  const key = getSyncConflictLookupKey({
+    entityType,
+    localVersion: entity,
+    remoteVersion: entity
+  });
+  return key
+    ? (syncConflicts.find(entry => getSyncConflictLookupKey(entry) === key) || null)
+    : null;
+}
+
+function ensureSyncConflictResolvedBeforeChange(entityType, entity, action){
+  if(!hasSyncConflictForEntity(entityType, entity)) return true;
+  showToast(`${action}する前に「競合を確認」から残す内容を選んでください`);
+  return false;
+}
+
+function migrateLegacyRecordSyncConflicts(){
+  const legacyEntries = deletedRecords.filter(entry => entry?.syncConflict && entry?.record);
+  if(!legacyEntries.length) return 0;
+  const migratedEntries = [];
+  const status = loadGoogleSheetSyncStatus();
+  for(const entry of legacyEntries){
+    try{
+      const localVersion = entry.record;
+      const recordUuid = normalizeRecordUuid(localVersion.recordUuid);
+      const remoteVersion = entry.remoteDeleted
+        ? null
+        : ((recordUuid ? records.find(record => normalizeRecordUuid(record.recordUuid) === recordUuid) : null)
+            || records.find(record => Number(record.id) === Number(localVersion.id))
+            || null);
+      upsertSyncConflict({
+        entityType: "record",
+        reason: entry.remoteDeleted ? "remote_deleted" : "both_updated",
+        localVersion,
+        remoteVersion,
+        detectedAt: entry.deletedAt,
+        lastSeenAt: entry.deletedAt
+      });
+      if(remoteVersion) setGoogleSheetSyncStatusInObject(status, remoteVersion, "conflict");
+      migratedEntries.push(entry);
+    }catch(error){
+      // 競合一覧へ保存できなかった項目は旧ごみ箱に残し、起動とデータ保護を継続する。
+      console.warn("Legacy sync conflict migration failed", error);
+      break;
+    }
+  }
+  if(migratedEntries.length){
+    deletedRecords = deletedRecords.filter(entry => !migratedEntries.includes(entry));
+    saveDeletedRecordsToStorage();
+    saveGoogleSheetSyncStatus(status);
+  }
+  return migratedEntries.length;
+}
+
 function isRecordTemporarilyDeleted(record){
   const recordUuid = normalizeRecordUuid(record?.recordUuid);
   const id = String(record?.id ?? "").trim();
@@ -14141,7 +14487,10 @@ function getGoogleSheetUnsentRecords(){
   if(!config) return [];
 
   const status = loadGoogleSheetSyncStatus();
-  return records.filter(record => isGoogleSheetRecordUnsent(record, status));
+  return records.filter(record => (
+    isGoogleSheetRecordUnsent(record, status)
+    && !hasSyncConflictForEntity("record", record)
+  ));
 }
 
 function getGoogleSheetOperationBusyMessage(action = "操作"){
@@ -14232,6 +14581,10 @@ function findGoogleSheetBackgroundRecord(job){
 function queueGoogleSheetRecordSend(record, options = {}){
   const key = getGoogleSheetBackgroundRecordKey(record);
   if(!key) return false;
+  if(hasSyncConflictForEntity("record", record)){
+    setGoogleSheetSyncStatus(record, "conflict");
+    return false;
+  }
   const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
   if(!validation.ok){
     setGoogleSheetSyncStatus(record, "failed");
@@ -14252,6 +14605,10 @@ function queueGoogleSheetRecordSend(record, options = {}){
 function queueGoogleSheetPlantingEventSend(event, options = {}){
   const eventId = getSafePositiveRecordId(event?.eventId);
   if(eventId === null) return false;
+  if(hasSyncConflictForEntity("planting", event)){
+    setPlantingEventSyncStatus(event, "conflict");
+    return false;
+  }
   const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
   if(!validation.ok){
     setPlantingEventSyncStatus(event, "failed");
@@ -14350,6 +14707,7 @@ async function runGoogleSheetBackgroundSendQueue(){
 }
 
 function updateGoogleSheetResendButtonState(){
+  updateSyncConflictButtonState();
   const btn = document.getElementById("googleSheetResendBtn");
   if(!btn) return;
 
@@ -14391,6 +14749,376 @@ function updateGoogleSheetResendButtonState(){
   btn.title = needsAttention
     ? `収穫${unsentRecordCount}件・苗植え${unsentPlantingEventCount}件がスプレッドシート未送信です`
     : "未送信の記録はありません";
+}
+
+function updateSyncConflictButtonState(){
+  const button = document.getElementById("syncConflictBtn");
+  if(!button) return;
+  const count = syncConflicts.length;
+  button.hidden = count === 0;
+  button.textContent = `競合を確認（${count}）`;
+  button.title = count ? `${count}件の競合する記録があります` : "競合する記録はありません";
+}
+
+function getSyncConflictReasonText(entry){
+  return {
+    both_updated: "端末とスプレッドシートの両方で内容が変更されています。",
+    remote_deleted: "スプレッドシートでは削除されていますが、端末には残す内容があります。",
+    planting_dependency: "スプレッドシート版の収穫場所では、端末の苗植え記録との対応を保てません。",
+    remote_deleted_dependency: "スプレッドシートでは削除されていますが、端末の苗植え記録から参照されています。",
+    editing: "同期中に端末側の編集状態が変わったため、自動反映を止めました。"
+  }[entry?.reason] || "内容を自動的に決定できないため、両方を保護しています。";
+}
+
+function formatSyncConflictPlantingAllocations(event){
+  if(!event) return "削除済み";
+  return (event.sourceAllocations || []).map(allocation => {
+    const ranges = compressPalletKeysToRanges(allocation.palletKeys || []);
+    return `収穫ID ${allocation.harvestRecordId}: ${ranges.join("、") || "場所なし"}`;
+  }).join("\n") || "場所なし";
+}
+
+function formatSyncConflictQualityMemo(value){
+  const normalized = normalizeQualityMemo(value);
+  const tagLabels = {
+    large: "大きい",
+    medium: "中",
+    small: "小さい",
+    elongated: "徒長",
+    chip: "チップ"
+  };
+  const tags = Array.isArray(normalized?.tags)
+    ? normalized.tags.map(tag => tagLabels[tag] || tag)
+    : [];
+  const other = String(normalized?.other || "").trim();
+  return [...tags, other].filter(Boolean).join("、") || "なし";
+}
+
+function getSyncConflictComparisonRows(entry){
+  const local = entry.localVersion;
+  const remote = entry.remoteVersion;
+  if(entry.entityType === "planting"){
+    return [
+      ["苗植え日", local?.plantingDate || "削除済み", remote?.plantingDate || "削除済み"],
+      ["苗植え元・場所", formatSyncConflictPlantingAllocations(local), formatSyncConflictPlantingAllocations(remote)],
+      ["苗トレー数", local ? String(local.actualSeedlingTrayCount ?? 0) : "削除済み", remote ? String(remote.actualSeedlingTrayCount ?? 0) : "削除済み"],
+      ["取った苗株数", local ? String(local.actualTakenSeedlingCount ?? 0) : "削除済み", remote ? String(remote.actualTakenSeedlingCount ?? 0) : "削除済み"],
+      ["植えた苗株数", local ? String(local.actualPlantedSeedlingCount ?? 0) : "削除済み", remote ? String(remote.actualPlantedSeedlingCount ?? 0) : "削除済み"],
+      ["苗ロス率", local ? String(local.actualSeedlingLossRate || "未入力") : "削除済み", remote ? String(remote.actualSeedlingLossRate || "未入力") : "削除済み"],
+      ["品質メモ", local ? formatSyncConflictQualityMemo(local.qualityMemo) : "削除済み", remote ? formatSyncConflictQualityMemo(remote.qualityMemo) : "削除済み"],
+      ["更新日時", local?.updatedAt || "なし", remote?.updatedAt || "なし"]
+    ];
+  }
+  const getRecordLocation = record => {
+    if(!record) return "削除済み";
+    if(record.type === "partialHarvest") return formatPartialHarvestSummary(record.targets) || "場所なし";
+    return formatStoredPalletSummaryForDisplay(record.palletSummary, getPalletKeysFromRecord(record)) || "場所なし";
+  };
+  return [
+    ["種類", local?.type === "partialHarvest" ? "部分収穫" : (local ? "通常収穫" : "削除済み"), remote?.type === "partialHarvest" ? "部分収穫" : (remote ? "通常収穫" : "削除済み")],
+    ["収穫日", local?.date || "削除済み", remote?.date || "削除済み"],
+    ["ケース数", local ? String(local.cases ?? 0) : "削除済み", remote ? String(remote.cases ?? 0) : "削除済み"],
+    ["収穫場所", getRecordLocation(local), getRecordLocation(remote)],
+    ["収穫ロス率", local ? String(local.actualLoss || "未入力") : "削除済み", remote ? String(remote.actualLoss || "未入力") : "削除済み"],
+    ["苗植え場所", local ? String(local.plantingSummary || "なし") : "削除済み", remote ? String(remote.plantingSummary || "なし") : "削除済み"],
+    ["品質メモ", local ? formatSyncConflictQualityMemo(local.qualityMemo) : "削除済み", remote ? formatSyncConflictQualityMemo(remote.qualityMemo) : "削除済み"],
+    ["メモ", local ? String(local.memo || "なし") : "削除済み", remote ? String(remote.memo || "なし") : "削除済み"],
+    ["更新日時", local?.updatedAt || "なし", remote?.updatedAt || "なし"]
+  ];
+}
+
+function isSyncConflictRemoteChoiceBlocked(entry){
+  if(entry?.reason === "planting_dependency"
+    || entry?.reason === "remote_deleted_dependency") return true;
+  if(entry?.entityType !== "record") return false;
+  const activeRecord = getActiveRecordForSyncConflict(entry);
+  const dependencies = activeRecord?.type === "fullHarvest"
+    ? getPlantingEventsForHarvest(activeRecord.id)
+    : [];
+  if(!dependencies.length) return false;
+  if(!entry.remoteVersion || entry.remoteVersion.type !== "fullHarvest") return true;
+  const remoteHarvestKeys = new Set(getPalletKeysFromRecord(entry.remoteVersion));
+  return dependencies.some(event => event.sourceAllocations.some(allocation => (
+    Number(allocation.harvestRecordId) === Number(activeRecord.id)
+    && allocation.palletKeys.some(key => !remoteHarvestKeys.has(key))
+  )));
+}
+
+function renderSyncConflictList(){
+  const list = document.getElementById("syncConflictList");
+  const title = document.getElementById("syncConflictTitle");
+  if(title) title.textContent = `競合する記録（${syncConflicts.length}）`;
+  if(!list) return;
+  if(!syncConflicts.length){
+    list.innerHTML = '<div class="smallText">競合する記録はありません。</div>';
+    return;
+  }
+  list.innerHTML = syncConflicts.map(entry => {
+    const source = entry.localVersion || entry.remoteVersion;
+    const entityTitle = entry.entityType === "planting"
+      ? `${source?.plantingDate || "日付なし"} 苗植え記録（ID: ${entry.entityId}）`
+      : `${source?.date || "日付なし"} ${source?.type === "partialHarvest" ? "部分収穫" : "収穫記録"}（ID: ${entry.entityId || "-"}）`;
+    const comparisonRows = getSyncConflictComparisonRows(entry).map(([label, localValue, remoteValue]) => {
+      const different = String(localValue) !== String(remoteValue);
+      return `<tr><td>${escapeHtml(label)}</td><td class="${different ? "isDifferent" : ""}">${escapeHtml(String(localValue))}</td><td class="${different ? "isDifferent" : ""}">${escapeHtml(String(remoteValue))}</td></tr>`;
+    }).join("");
+    const conflictIdArgument = JSON.stringify(entry.conflictId);
+    const remoteBlocked = isSyncConflictRemoteChoiceBlocked(entry);
+    const remoteLabel = entry.remoteVersion ? "シート版を採用" : "シート側の削除を採用";
+    return `
+      <section class="syncConflictCard">
+        <div class="syncConflictCardHeader">${escapeHtml(entityTitle)}</div>
+        <div class="syncConflictReason">${escapeHtml(getSyncConflictReasonText(entry))}</div>
+        <table class="syncConflictCompare">
+          <thead><tr><th>項目</th><th>この端末</th><th>スプレッドシート</th></tr></thead>
+          <tbody>${comparisonRows}</tbody>
+        </table>
+        <div class="syncConflictActions">
+          <button type="button" class="actionBtn thirdBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "local")'>端末版を採用</button>
+          <button type="button" class="actionBtn secondaryBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "remote")' ${remoteBlocked ? "disabled" : ""}>${escapeHtml(remoteLabel)}</button>
+        </div>
+        ${remoteBlocked ? '<div class="syncConflictReason">苗植えとの対応を保つため、シート版は採用できません。端末版を採用するか、関連する苗植え記録を先に修正してください。</div>' : ""}
+      </section>
+    `;
+  }).join("");
+}
+
+function openSyncConflictPanel(){
+  const panel = document.getElementById("syncConflictPanel");
+  if(!panel) return;
+  renderSyncConflictList();
+  panel.classList.add("show");
+}
+
+function closeSyncConflictPanel(){
+  const panel = document.getElementById("syncConflictPanel");
+  if(panel) panel.classList.remove("show");
+}
+
+function getActiveRecordForSyncConflict(entry){
+  const recordUuid = normalizeRecordUuid(entry?.recordUuid);
+  return (recordUuid ? getRecordByUuid(recordUuid) : null)
+    || getRecordById(entry?.entityId)
+    || null;
+}
+
+function replaceActiveRecordForSyncConflict(entry, value){
+  const nextRecord = normalizeStoredRecord(serializeRecordForStorage(value));
+  if(!nextRecord) throw new Error("反映する収穫記録の形式が正しくありません");
+  const current = getActiveRecordForSyncConflict(entry);
+  const status = loadGoogleSheetSyncStatus();
+  if(current && Number(current.id) !== Number(nextRecord.id)){
+    const occupied = getRecordById(nextRecord.id);
+    if(occupied && occupied !== current){
+      throw new Error("反映先の収穫記録IDが別の記録で使用されています");
+    }
+    remapHarvestRecordIdReferences(current.id, nextRecord.id, status);
+  }
+  if(current){
+    const index = records.indexOf(current);
+    if(index >= 0) records[index] = nextRecord;
+    clearGoogleSheetRecordSyncStatus(status, current);
+  }else{
+    const occupied = getRecordById(nextRecord.id);
+    if(occupied) throw new Error("同じ収穫記録IDが既にあります");
+    records.push(nextRecord);
+  }
+  records.sort(compareRecordsByDateDesc);
+  saveRecordsToStorage();
+  savePlantingEventsToStorage();
+  saveDeletedPlantingEventsToStorage();
+  saveGoogleSheetSyncStatus(status);
+  return nextRecord;
+}
+
+function replaceActivePlantingEventForSyncConflict(entry, value){
+  const nextEvent = normalizePlantingEvent(value);
+  if(!nextEvent) throw new Error("反映する苗植え記録の形式が正しくありません");
+  const index = plantingEvents.findIndex(event => Number(event.eventId) === Number(entry.entityId));
+  if(index >= 0) plantingEvents[index] = nextEvent;
+  else plantingEvents.push(nextEvent);
+  savePlantingEventsToStorage();
+  return nextEvent;
+}
+
+function removeActiveRecordForSyncConflict(entry){
+  const current = getActiveRecordForSyncConflict(entry);
+  if(!current) return;
+  const dependencies = current.type === "fullHarvest" ? getPlantingEventsForHarvest(current.id) : [];
+  if(dependencies.length){
+    throw new Error("関連する苗植え記録があるため、スプレッドシート側の削除を採用できません");
+  }
+  addRecordToTrash(current, {
+    sheetDeleted: true,
+    remoteDeleted: true
+  });
+  records = records.filter(record => record !== current);
+  const status = loadGoogleSheetSyncStatus();
+  clearGoogleSheetRecordSyncStatus(status, current);
+  saveGoogleSheetSyncStatus(status);
+  saveRecordsToStorage();
+}
+
+function removeActivePlantingEventForSyncConflict(entry){
+  const current = getPlantingEventById(entry.entityId);
+  if(!current) return;
+  addPlantingEventToTrash(current, {
+    sheetDeleted: true,
+    wasSynced: true
+  });
+  plantingEvents = plantingEvents.filter(event => Number(event.eventId) !== Number(entry.entityId));
+  const status = loadPlantingEventSyncStatus();
+  delete status[String(entry.entityId)];
+  savePlantingEventSyncStatus(status);
+  savePlantingEventsToStorage();
+}
+
+function applyRemoteSyncConflictVersion(entry){
+  if(isSyncConflictRemoteChoiceBlocked(entry)){
+    throw new Error("苗植え記録との対応を保てないため、スプレッドシート版をそのまま採用できません");
+  }
+  if(entry.entityType === "record"){
+    if(entry.remoteVersion){
+      const applied = replaceActiveRecordForSyncConflict(entry, entry.remoteVersion);
+      setGoogleSheetSyncStatus(applied, "confirmed");
+    }else{
+      removeActiveRecordForSyncConflict(entry);
+    }
+  }else if(entry.remoteVersion){
+    const applied = replaceActivePlantingEventForSyncConflict(entry, entry.remoteVersion);
+    setPlantingEventSyncStatus(applied, "confirmed");
+  }else{
+    removeActivePlantingEventForSyncConflict(entry);
+  }
+  syncHarvestPlantingPendingFlags();
+}
+
+async function applyLocalRecordSyncConflictVersion(entry){
+  const config = getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "競合解決前に設定してください" });
+  if(!config) return false;
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner) throw new Error(getGoogleSheetOperationBusyMessage("競合を解決"));
+  try{
+    const localVersion = normalizeStoredRecord(serializeRecordForStorage(entry.localVersion));
+    if(!localVersion) throw new Error("端末版の収穫記録を読み込めません");
+    let baseVersion = entry.remoteVersion
+      ? normalizeStoredRecord(serializeRecordForStorage(entry.remoteVersion))
+      : null;
+    if(!baseVersion){
+      const restoreResult = await restoreRecordToGoogleSheet(localVersion, { operationOwner });
+      baseVersion = normalizeImportedRecord(normalizeGoogleSheetRowRecord(restoreResult?.record), 0);
+      if(!baseVersion) throw new Error("復元後の収穫記録を確認できません");
+    }
+    const candidate = {
+      ...localVersion,
+      id: baseVersion.id,
+      recordUuid: normalizeRecordUuid(baseVersion.recordUuid)
+        || normalizeRecordUuid(localVersion.recordUuid),
+      createdAt: baseVersion.createdAt || localVersion.createdAt || "",
+      updatedAt: baseVersion.updatedAt || localVersion.updatedAt || ""
+    };
+    const activeCandidate = replaceActiveRecordForSyncConflict(entry, candidate);
+    setGoogleSheetSyncStatus(activeCandidate, "pending");
+    const sentSignature = getGoogleSheetRecordSendSignature(activeCandidate, config);
+    const result = await sendGoogleSheetRecordMutation(
+      buildGoogleSheetRecordPayload(activeCandidate, config),
+      "端末版の収穫記録をスプレッドシートへ反映できませんでした",
+      { operationOwner }
+    );
+    if(!setGoogleSheetSyncStatusAfterSend(
+      activeCandidate,
+      sentSignature,
+      config,
+      "confirmed",
+      result.record
+    )){
+      throw new Error("送信中に端末版の収穫記録が変更されました");
+    }
+    return true;
+  }finally{
+    endGoogleSheetOperation(operationOwner);
+  }
+}
+
+async function applyLocalPlantingSyncConflictVersion(entry){
+  const config = getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "競合解決前に設定してください" });
+  if(!config) return false;
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner) throw new Error(getGoogleSheetOperationBusyMessage("競合を解決"));
+  try{
+    const localVersion = normalizePlantingEvent(entry.localVersion);
+    if(!localVersion) throw new Error("端末版の苗植え記録を読み込めません");
+    let baseVersion = entry.remoteVersion ? normalizePlantingEvent(entry.remoteVersion) : null;
+    if(!baseVersion){
+      const restoreResult = await postGoogleSheetPlantingEvent(localVersion, "restore", { config, silent: true });
+      baseVersion = normalizePlantingEvent(restoreResult?.event);
+      if(!baseVersion) throw new Error("復元後の苗植え記録を確認できません");
+    }
+    const candidate = {
+      ...localVersion,
+      eventId: baseVersion.eventId,
+      createdAt: baseVersion.createdAt || localVersion.createdAt || "",
+      updatedAt: baseVersion.updatedAt || localVersion.updatedAt || ""
+    };
+    const activeCandidate = replaceActivePlantingEventForSyncConflict(entry, candidate);
+    setPlantingEventSyncStatus(activeCandidate, "pending");
+    await postGoogleSheetPlantingEvent(activeCandidate, "save", { config, silent: true });
+    const confirmed = getPlantingEventById(activeCandidate.eventId) || activeCandidate;
+    setPlantingEventSyncStatus(confirmed, "confirmed");
+    return true;
+  }finally{
+    endGoogleSheetOperation(operationOwner);
+  }
+}
+
+async function resolveSyncConflict(conflictId, choice){
+  if(!ensureProtectedOperationAccess("競合する記録の解決")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("競合する記録を解決")) return;
+  const entry = syncConflicts.find(item => item.conflictId === conflictId);
+  if(!entry){
+    showToast("解決する競合が見つかりません");
+    renderSyncConflictList();
+    return;
+  }
+  const currentUrl = String(loadGoogleSheetConfig().url || "").trim();
+  if(entry.sourceUrl && entry.sourceUrl !== currentUrl){
+    showRecordImportError(
+      "この競合は現在とは別のApps Script URLで発生しています。元のGoogle連携設定へ戻してから解決してください。",
+      "競合を解決できません"
+    );
+    return;
+  }
+  const useLocal = choice === "local";
+  const choiceText = useLocal
+    ? "この端末の内容をスプレッドシートへ反映します。"
+    : (entry.remoteVersion
+        ? "スプレッドシートの内容でこの端末を更新します。"
+        : "スプレッドシート側の削除に合わせて、この端末からも削除します。");
+  if(!window.confirm(choiceText + "\n\nこの操作を実行しますか？")) return;
+  try{
+    if(useLocal){
+      const resolved = entry.entityType === "record"
+        ? await applyLocalRecordSyncConflictVersion(entry)
+        : await applyLocalPlantingSyncConflictVersion(entry);
+      if(!resolved) return;
+    }else{
+      applyRemoteSyncConflictVersion(entry);
+    }
+    removeSyncConflictById(entry.conflictId);
+    syncHarvestPlantingPendingFlags();
+    refreshRecordDataUi();
+    renderSyncConflictList();
+    if(!syncConflicts.length) closeSyncConflictPanel();
+    showToast(useLocal
+      ? "端末版をスプレッドシートへ反映し、競合を解決しました"
+      : "スプレッドシート版を採用し、競合を解決しました");
+  }catch(e){
+    showRecordImportError(
+      "競合を解決できませんでした。両方の内容は競合一覧に保持しています。\n\n詳細: " + String(e?.message || e),
+      "競合解決の失敗"
+    );
+    renderSyncConflictList();
+  }
 }
 
 function askGoogleSheetSendConfirm(message){
@@ -16429,11 +17157,19 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
     if(existing){
       const sameContent = getPlantingEventSendSignature(existing) === getPlantingEventSendSignature(incoming);
       if(!sameContent && isPlantingEventUnsent(existing, status)){
+        upsertSyncConflict({
+          entityType: "planting",
+          reason: "both_updated",
+          localVersion: existing,
+          remoteVersion: incoming
+        });
+        status[String(eventId)] = { state: "conflict", updatedAt: new Date().toISOString() };
         if(options.resultTracker){
           options.resultTracker.conflictCount = Number(options.resultTracker.conflictCount || 0) + 1;
         }
         return;
       }
+      if(sameContent) removeSyncConflictForEntity("planting", existing);
       const nextEvent = {
         ...incoming,
         openingCarryoverBefore: incoming.openingCarryoverBefore
@@ -16472,7 +17208,7 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
   return changedCount;
 }
 
-function applyRemoteDeletedPlantingEventIds(values){
+function applyRemoteDeletedPlantingEventIds(values, options = {}){
   if(!Array.isArray(values) || values.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES) return 0;
   const deletedIds = new Set(values
     .map(getSafePositiveRecordId)
@@ -16484,11 +17220,26 @@ function applyRemoteDeletedPlantingEventIds(values){
   const trashById = new Map(deletedPlantingEvents.map(entry => [Number(entry.event?.eventId), entry]));
   const status = loadPlantingEventSyncStatus();
   const now = new Date();
+  const protectedIds = new Set();
   let changedCount = 0;
 
   plantingEvents.forEach(event => {
     const eventId = Number(event.eventId);
     if(!deletedIds.has(eventId)) return;
+    if(isPlantingEventUnsent(event, status)){
+      upsertSyncConflict({
+        entityType: "planting",
+        reason: "remote_deleted",
+        localVersion: event,
+        remoteVersion: null
+      });
+      protectedIds.add(eventId);
+      status[String(eventId)] = { state: "conflict", updatedAt: now.toISOString() };
+      if(options.resultTracker){
+        options.resultTracker.conflictCount = Number(options.resultTracker.conflictCount || 0) + 1;
+      }
+      return;
+    }
     const existingTrash = trashById.get(eventId);
     if(existingTrash){
       existingTrash.event = event;
@@ -16509,13 +17260,16 @@ function applyRemoteDeletedPlantingEventIds(values){
     changedCount++;
   });
   deletedPlantingEvents.forEach(entry => {
-    if(deletedIds.has(Number(entry.event?.eventId))){
+    if(deletedIds.has(Number(entry.event?.eventId))
+      && !protectedIds.has(Number(entry.event?.eventId))){
       entry.sheetDeleted = true;
       entry.wasSynced = true;
     }
   });
   if(changedCount){
-    plantingEvents = plantingEvents.filter(event => !deletedIds.has(Number(event.eventId)));
+    plantingEvents = plantingEvents.filter(event => (
+      !deletedIds.has(Number(event.eventId)) || protectedIds.has(Number(event.eventId))
+    ));
     savePlantingEventsToStorage();
     syncHarvestPlantingPendingFlags();
   }
@@ -16590,7 +17344,9 @@ async function importPlantingEventsFromGoogleSheet(options = {}){
   const resultTracker = options.resultTracker || {};
   try{
     const syncResult = await fetchGoogleSheetPlantingEventSyncPages(config, options, controller.signal);
-    const deletedCount = applyRemoteDeletedPlantingEventIds(syncResult.deletedEventIds);
+    const deletedCount = applyRemoteDeletedPlantingEventIds(syncResult.deletedEventIds, {
+      resultTracker
+    });
     const importedCount = importPlantingEventsFromSource(syncResult.events, {
       ...options,
       fromGoogleSheetPaged: true,
@@ -16598,7 +17354,7 @@ async function importPlantingEventsFromGoogleSheet(options = {}){
       resultTracker
     });
     resultTracker.finalCursor = syncResult.finalCursor;
-    if(!Number(resultTracker.conflictCount || 0) && !options.deferCursorSave){
+    if(!options.deferCursorSave){
       saveGoogleSheetPlantingSyncCursor(config, syncResult.finalCursor);
     }
     return deletedCount + importedCount;
@@ -16846,7 +17602,7 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
-  // 競合でデータ同期位置を進められない場合でも、確認済みの更新では赤ポチを再表示しない。
+  // 通知判定には最後に確認済みの同期番号を優先し、同じ更新で通知ドットを再表示しない。
   const initialSyncRevision = loadGoogleSheetSyncNoticeRevision(config)
     ?? loadGoogleSheetSyncRevision(config);
   const initialCursor = loadGoogleSheetSyncCursor(config);
@@ -17580,7 +18336,9 @@ async function importRecordsFromGoogleSheet(options = {}){
       conflictCount: 0,
       finalCursor: combinedSync.finalPlantingCursor
     };
-    const deletedEventCount = applyRemoteDeletedPlantingEventIds(combinedSync.deletedEventIds);
+    const deletedEventCount = applyRemoteDeletedPlantingEventIds(combinedSync.deletedEventIds, {
+      resultTracker: plantingResult
+    });
     const importedEventCount = deletedEventCount + importPlantingEventsFromSource(combinedSync.events, {
       fromGoogleSheetPaged: true,
       openingCarryoverAuthoritative: false,
@@ -17626,7 +18384,7 @@ async function importRecordsFromGoogleSheet(options = {}){
       });
     }
     syncHarvestPlantingPendingFlags();
-    // 編集中などで反映を保留した記録がある間はcursorを進めず、次回も同じ変更を取得する。
+    // 競合は両方の内容を競合一覧へ退避済みなので、同期位置を進めても失われない。
     const totalConflictCount = Number(recordResult.conflictCount || 0) + Number(plantingResult.conflictCount || 0);
     const combinedFinalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
     const finalSyncRevision = backfilledFinalSyncRevision === null
@@ -17634,17 +18392,11 @@ async function importRecordsFromGoogleSheet(options = {}){
       : (combinedFinalSyncRevision === null
           ? backfilledFinalSyncRevision
           : Math.max(combinedFinalSyncRevision, backfilledFinalSyncRevision));
-    // データ保護用の同期位置とは別に、今回確認した更新番号を通知用として記録する。
-    // 競合は次回も取得できる一方、同じ競合だけで赤ポチが残り続けることはなくなる。
+    saveGoogleSheetSyncCursor(config, recordSync.finalCursor);
+    saveGoogleSheetPlantingSyncCursor(config, plantingResult.finalCursor);
     if(finalSyncRevision !== null){
+      saveGoogleSheetSyncRevision(config, finalSyncRevision);
       saveGoogleSheetSyncNoticeRevision(config, finalSyncRevision);
-    }
-    if(!totalConflictCount){
-      saveGoogleSheetSyncCursor(config, recordSync.finalCursor);
-      saveGoogleSheetPlantingSyncCursor(config, plantingResult.finalCursor);
-      if(finalSyncRevision !== null){
-        saveGoogleSheetSyncRevision(config, finalSyncRevision);
-      }
     }
     setRecordSyncAvailabilityNotice(false);
 
@@ -17656,7 +18408,7 @@ async function importRecordsFromGoogleSheet(options = {}){
     refreshRecordDataUi();
     if(!silentErrors){
       if(totalConflictCount){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}は保護しました）`);
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}を競合一覧へ保護しました）`);
       }else if(totalChanged || hadBackfillActivity){
         showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}`);
       }else if(!options.silentNoChange){
@@ -26459,6 +27211,7 @@ function editPlantingEvent(eventId){
     showToast("編集する苗植え記録の収穫元が見つかりません");
     return;
   }
+  if(!ensureSyncConflictResolvedBeforeChange("planting", event, "苗植え記録を編集")) return;
   if(isPlantingEventBeforeLatestOpeningBoundary(event)){
     showToast("この履歴は新しい繰越基準より前にあるため編集できません");
     return;
@@ -26492,6 +27245,7 @@ async function confirmDeletePlantingEvent(eventId){
     showToast("削除する苗植え記録が見つかりません");
     return;
   }
+  if(!ensureSyncConflictResolvedBeforeChange("planting", event, "苗植え記録を削除")) return;
   if(isPlantingEventBeforeLatestOpeningBoundary(event)){
     showToast("この履歴は新しい繰越基準より前にあるため削除できません");
     return;
@@ -26804,6 +27558,7 @@ function editPartialHarvestRecord(id){
     showToast("この部分収穫記録は現在の編集画面では編集できません");
     return;
   }
+  if(!ensureSyncConflictResolvedBeforeChange("record", record, "部分収穫記録を編集")) return;
 
   const returnFocus = document.activeElement instanceof HTMLElement
     ? document.activeElement
@@ -26988,6 +27743,7 @@ async function confirmDeleteRecord(id){
     showToast("削除する記録が見つかりません");
     return;
   }
+  if(!ensureSyncConflictResolvedBeforeChange("record", record, "記録を削除")) return;
   if(record.type === "fullHarvest" && getRemotePlantingEventDependenciesForHarvest(record.id).length){
     showToast("この収穫記録を使った苗植え履歴があります。先に苗植え履歴を削除してください");
     return;
@@ -27048,6 +27804,7 @@ function editHarvestRecord(id, options = {}){
     showToast("編集する収穫記録が見つかりません");
     return;
   }
+  if(!ensureSyncConflictResolvedBeforeChange("record", record, "収穫記録を編集")) return;
 
   const wasAlreadyEditingHarvestRecord = !!editingHarvestRecordId;
   if(switchTab("record") === false) return;
@@ -27780,7 +28537,7 @@ function exportRecordsToFile(){
   const payload = {
     app: "Harvestnavi",
     type: "record-backup",
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     recordCount: records.length,
     plantingEventCount: plantingEvents.length,
@@ -27790,6 +28547,7 @@ function exportRecordsToFile(){
       ...entry,
       event: serializePlantingEventForStorage(entry.event)
     })),
+    syncConflicts: syncConflicts.map(serializeSyncConflictEntry).filter(Boolean),
     migratedPlantingRecordIds: [...loadMigratedPlantingRecordIds()]
   };
 
@@ -28150,15 +28908,23 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
       || Number(editingPartialHarvestRecordId) === Number(local.id)
       || Number(activePlantingRecordId) === Number(local.id);
     const dependencies = local.type === "fullHarvest" ? getPlantingEventsForHarvest(local.id) : [];
-    if(isBeingEdited || dependencies.length){
-      setGoogleSheetSyncStatusInObject(status, local, "remoteDeleted");
+    const hasLocalChange = hasPendingGoogleSheetRecordChange(local, status);
+    if(isBeingEdited || dependencies.length || hasLocalChange){
+      upsertSyncConflict({
+        entityType: "record",
+        reason: dependencies.length
+          ? "remote_deleted_dependency"
+          : (isBeingEdited ? "editing" : "remote_deleted"),
+        localVersion: local,
+        remoteVersion: null
+      });
+      setGoogleSheetSyncStatusInObject(status, local, "conflict");
       conflictCount++;
       return;
     }
-    const hasLocalChange = hasPendingGoogleSheetRecordChange(local, status);
     addRecordToTrash(local, {
       sheetDeleted: true,
-      syncConflict: hasLocalChange,
+      syncConflict: false,
       remoteDeleted: true,
       deferSave: true
     });
@@ -28256,6 +29022,12 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
       local.createdAt = canonicalIncoming.createdAt || local.createdAt || "";
       if(canonicalIncoming.recordUuid) recordsByUuid.set(canonicalIncoming.recordUuid, local);
       recordsById.set(oldId, local);
+      upsertSyncConflict({
+        entityType: "record",
+        reason: "planting_dependency",
+        localVersion: local,
+        remoteVersion: canonicalIncoming
+      });
       setGoogleSheetSyncStatusInObject(status, local, "dependencyConflict");
       conflictCount++;
       return;
@@ -28297,6 +29069,12 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
       if(oldId !== newId) local.id = newId;
       if(canonicalIncoming.recordUuid) recordsByUuid.set(canonicalIncoming.recordUuid, local);
       recordsById.set(newId, local);
+      upsertSyncConflict({
+        entityType: "record",
+        reason: "editing",
+        localVersion: local,
+        remoteVersion: canonicalIncoming
+      });
       setGoogleSheetSyncStatusInObject(status, local, "conflict");
       conflictCount++;
       return;
@@ -28313,9 +29091,22 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
     }
 
     if(hasLocalChange && !sameContent){
-      addRecordToTrash(local, { syncConflict: true, sheetDeleted: false, deferSave: true });
+      if(oldId !== newId) local.id = newId;
+      local.recordUuid = canonicalIncoming.recordUuid || local.recordUuid || "";
+      local.createdAt = canonicalIncoming.createdAt || local.createdAt || "";
+      if(canonicalIncoming.recordUuid) recordsByUuid.set(canonicalIncoming.recordUuid, local);
+      recordsById.set(newId, local);
+      upsertSyncConflict({
+        entityType: "record",
+        reason: "both_updated",
+        localVersion: local,
+        remoteVersion: canonicalIncoming
+      });
+      setGoogleSheetSyncStatusInObject(status, local, "conflict");
       conflictCount++;
+      return;
     }
+    if(sameContent) removeSyncConflictForEntity("record", local);
     const index = recordIndexByObject.get(local);
     if(index >= 0) records[index] = canonicalIncoming;
     recordIndexByObject.delete(local);
@@ -28527,6 +29318,47 @@ function mergeBackupPlantingMetadata(parsed, recordIdMap){
   saveDeletedPlantingEventsToStorage();
 }
 
+function mergeBackupSyncConflicts(parsed, recordIdMap){
+  const sourceConflicts = Array.isArray(parsed?.syncConflicts) ? parsed.syncConflicts : [];
+  if(sourceConflicts.length > GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS){
+    throw new Error("バックアップの競合件数が上限を超えています");
+  }
+  const remapVersion = (entityType, value) => {
+    if(!value) return null;
+    if(entityType === "record"){
+      const record = normalizeStoredRecord(serializeRecordForStorage(value));
+      if(!record) return null;
+      const mappedId = recordIdMap.get(getSafePositiveRecordId(record.id));
+      return normalizeStoredRecord(serializeRecordForStorage({
+        ...record,
+        id: mappedId ?? record.id
+      }));
+    }
+    const remappedAllocations = Array.isArray(value.sourceAllocations)
+      ? value.sourceAllocations.map(allocation => {
+          const sourceId = getSafePositiveRecordId(allocation?.harvestRecordId);
+          const mappedId = sourceId === null ? null : recordIdMap.get(sourceId);
+          if(mappedId === undefined || mappedId === null) return null;
+          return { ...allocation, harvestRecordId: mappedId };
+        })
+      : [];
+    if(remappedAllocations.some(allocation => !allocation)) return null;
+    return normalizePlantingEvent({ ...value, sourceAllocations: remappedAllocations });
+  };
+  sourceConflicts.forEach(value => {
+    const entityType = value?.entityType === "planting" ? "planting" : "record";
+    const localVersion = remapVersion(entityType, value?.localVersion);
+    const remoteVersion = remapVersion(entityType, value?.remoteVersion);
+    if(!localVersion && !remoteVersion) return;
+    upsertSyncConflict({
+      ...value,
+      entityType,
+      localVersion,
+      remoteVersion
+    });
+  });
+}
+
 const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
   RECORDS_KEY,
   PLANTING_EVENTS_KEY,
@@ -28538,6 +29370,7 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
   GOOGLE_SHEET_PLANTING_SYNC_CURSOR_KEY,
   GOOGLE_SHEET_SYNC_REVISION_KEY,
   GOOGLE_SHEET_SYNC_NOTICE_REVISION_KEY,
+  GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
   PLANTING_EVENT_SYNC_STATUS_KEY,
   RECORD_EXPORT_STATUS_KEY,
   RECORD_TRASH_KEY
@@ -28553,6 +29386,7 @@ function createBackupImportSnapshot(){
     plantingEvents: deepClone(plantingEvents),
     deletedPlantingEvents: deepClone(deletedPlantingEvents),
     deletedRecords: deepClone(deletedRecords),
+    syncConflicts: deepClone(syncConflicts),
     storageValues
   };
 }
@@ -28571,6 +29405,7 @@ function restoreBackupImportSnapshot(snapshot){
   plantingEvents = deepClone(snapshot.plantingEvents || []);
   deletedPlantingEvents = deepClone(snapshot.deletedPlantingEvents || []);
   deletedRecords = deepClone(snapshot.deletedRecords || []);
+  syncConflicts = deepClone(snapshot.syncConflicts || []);
   restoreBackupImportStorageSnapshot(snapshot.storageValues || {});
 
   invalidateHarvestRecordLookupCache();
@@ -28659,6 +29494,7 @@ function importRecordsFromFile(file){
             : parsed.deletedPlantingEvents
         };
         mergeBackupPlantingMetadata(migratedBackup, recordIdMap);
+        mergeBackupSyncConflicts(migratedBackup, recordIdMap);
       }
       migrateLegacyPlantingEvents();
       syncHarvestPlantingPendingFlags();
@@ -29022,6 +29858,11 @@ window.onload = () => {
 
   document.addEventListener("keydown", (event) => {
     if(event.key !== "Escape") return;
+    const syncConflictPanel = document.getElementById("syncConflictPanel");
+    if(syncConflictPanel?.classList.contains("show")){
+      closeSyncConflictPanel();
+      return;
+    }
     const plantingUnselectedWarningPanel = document.getElementById("plantingUnselectedWarningPanel");
     if(plantingUnselectedWarningPanel?.classList.contains("show")){
       resolvePlantingUnselectedWarning(false);
@@ -29125,6 +29966,13 @@ window.onload = () => {
       if(event.target === dashboardModal){
         closeDashboardWindow();
       }
+    });
+  }
+
+  const syncConflictPanel = document.getElementById("syncConflictPanel");
+  if(syncConflictPanel){
+    syncConflictPanel.addEventListener("click", (event) => {
+      if(event.target === syncConflictPanel) closeSyncConflictPanel();
     });
   }
 
