@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-revision">
+<meta name="harvestnavi-version" content="20260805-sync-notice-fix">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -13170,7 +13170,8 @@ function markLegacyPlantingEventBackfillCompleted(result = {}){
     completed: true,
     completedAt: new Date().toISOString(),
     createdCount: Math.max(0, Number(result.createdCount || 0)),
-    sentCount: Math.max(0, Number(result.sentCount || 0))
+    sentCount: Math.max(0, Number(result.sentCount || 0)),
+    failedCount: Math.max(0, Number(result.failedCount || 0))
   }));
 }
 
@@ -14745,7 +14746,12 @@ async function syncPlantingEventWithSources(event, options = {}){
         String(e?.message || e)
       );
     }
-    return { ok: true, updated: !!result.updated, message: result.message || "" };
+    return {
+      ok: true,
+      updated: !!result.updated,
+      message: result.message || "",
+      syncRevision: normalizeGoogleSheetSyncRevision(result.syncRevision)
+    };
   }catch(e){
     setPlantingEventSyncStatus(event, "failed");
     return { ok: false, message: String(e?.message || e) };
@@ -17563,6 +17569,7 @@ async function importRecordsFromGoogleSheet(options = {}){
       ? getUnsentLegacyPlantingEventsForBackfill()
       : [];
     let backfilledPlantingSuccessCount = 0;
+    let backfilledFinalSyncRevision = null;
     const backfilledPlantingFailures = [];
     for(const event of legacyPlantingEventsToSend){
       const result = await syncPlantingEventWithSources(event, {
@@ -17571,16 +17578,25 @@ async function importRecordsFromGoogleSheet(options = {}){
       });
       if(result.ok){
         backfilledPlantingSuccessCount++;
+        const resultSyncRevision = normalizeGoogleSheetSyncRevision(result.syncRevision);
+        if(resultSyncRevision !== null){
+          backfilledFinalSyncRevision = backfilledFinalSyncRevision === null
+            ? resultSyncRevision
+            : Math.max(backfilledFinalSyncRevision, resultSyncRevision);
+        }
       }else{
         backfilledPlantingFailures.push(
           `${event.plantingDate}（ID: ${event.eventId}）: ${result.message || "送信できませんでした"}`
         );
       }
     }
-    if(shouldBackfillLegacyPlantingEvents && !backfilledPlantingFailures.length){
+    // 送信失敗分は「修正・未送信」に残るため、補完処理自体は一度で完了にする。
+    // 未完了のままにすると、更新のたびに全件同期され同じ記録が再更新扱いになる。
+    if(shouldBackfillLegacyPlantingEvents){
       markLegacyPlantingEventBackfillCompleted({
         createdCount: backfilledPlantingEvents.length,
-        sentCount: backfilledPlantingSuccessCount
+        sentCount: backfilledPlantingSuccessCount,
+        failedCount: backfilledPlantingFailures.length
       });
     }
     syncHarvestPlantingPendingFlags();
@@ -17589,8 +17605,14 @@ async function importRecordsFromGoogleSheet(options = {}){
     if(!totalConflictCount){
       saveGoogleSheetSyncCursor(config, recordSync.finalCursor);
       saveGoogleSheetPlantingSyncCursor(config, plantingResult.finalCursor);
-      if(normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision) !== null){
-        saveGoogleSheetSyncRevision(config, combinedSync.finalSyncRevision);
+      const combinedFinalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
+      const finalSyncRevision = backfilledFinalSyncRevision === null
+        ? combinedFinalSyncRevision
+        : (combinedFinalSyncRevision === null
+            ? backfilledFinalSyncRevision
+            : Math.max(combinedFinalSyncRevision, backfilledFinalSyncRevision));
+      if(finalSyncRevision !== null){
+        saveGoogleSheetSyncRevision(config, finalSyncRevision);
       }
       setRecordSyncAvailabilityNotice(false);
     }else{
