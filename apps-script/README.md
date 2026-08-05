@@ -9,7 +9,7 @@ This directory is reserved for the Harvestnavi Apps Script project.
 
 ## Current deployment note
 
-- The pending fast-check source authenticates and compares `syncRevision` from
+- Version 77 authenticates and compares `syncRevision` from
   one Script Properties snapshot before running migrations or reading sheets.
   Legacy clients without `syncRevision` continue through the existing path.
 - Version 76 keeps a monotonically increasing `syncRevision` number
