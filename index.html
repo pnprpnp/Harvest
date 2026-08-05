@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-conflict-readable">
+<meta name="harvestnavi-version" content="20260805-sync-conflict-single">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3773,7 +3773,9 @@ button.monitorSaveBtn:active{
 .recordTabConflictBadge[hidden]{display:none;}
 .syncConflictWindow{
   width:min(760px, calc(100vw - 24px));
+  height:min(88vh, 820px);
   max-height:min(88vh, 820px);
+  box-sizing:border-box;
   overflow:hidden;
   border-radius:16px;
   background:#fff;
@@ -3784,6 +3786,7 @@ button.monitorSaveBtn:active{
   flex-direction:column;
 }
 .syncConflictHeader{
+  flex:0 0 auto;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -3804,6 +3807,7 @@ button.monitorSaveBtn:active{
   font-weight:700;
 }
 .syncConflictIntro{
+  flex:0 0 auto;
   padding:12px 16px;
   color:#475569;
   -webkit-text-fill-color:#475569;
@@ -3811,7 +3815,45 @@ button.monitorSaveBtn:active{
   line-height:1.6;
   border-bottom:1px solid #e5e7eb;
 }
+.syncConflictNavigator{
+  flex:0 0 auto;
+  display:grid;
+  grid-template-columns:minmax(88px,auto) 1fr minmax(88px,auto);
+  align-items:center;
+  gap:8px;
+  padding:9px 12px;
+  border-bottom:1px solid #e5e7eb;
+  background:#fff;
+}
+.syncConflictNavigator[hidden]{display:none;}
+.syncConflictNavigator button{
+  min-height:38px;
+  border:0;
+  border-radius:10px;
+  background:#f3f4f6;
+  color:#334155;
+  -webkit-text-fill-color:#334155;
+  font-size:12px;
+  font-weight:900;
+}
+.syncConflictNavigator button:disabled{opacity:.35;}
+.syncConflictPosition{
+  color:#111827;
+  -webkit-text-fill-color:#111827;
+  font-size:13px;
+  font-weight:900;
+  text-align:center;
+}
+.syncConflictVersionNote{
+  display:block;
+  margin-top:2px;
+  color:#64748b;
+  -webkit-text-fill-color:#64748b;
+  font-size:9px;
+  font-weight:700;
+}
 .syncConflictList{
+  flex:1 1 auto;
   min-height:0;
   overflow:auto;
   padding:12px;
@@ -3926,6 +3968,7 @@ button.monitorSaveBtn:active{
   .syncConflictAlert{grid-template-columns:1fr;}
   .syncConflictAlert .syncConflictBtn{width:100%;}
   .recordConflictOpenBtn{width:100%;margin-left:0;}
+  .syncConflictNavigator{grid-template-columns:74px 1fr 74px;padding:8px;}
   .syncConflictActions{grid-template-columns:1fr;}
   .syncConflictFieldValues{grid-template-columns:1fr;}
 }
@@ -9590,6 +9633,11 @@ requestAnimationFrame(function(){
       <button type="button" class="syncConflictClose" onclick="closeSyncConflictPanel()">閉じる</button>
     </div>
     <div class="syncConflictIntro">端末版とスプレッドシート版を両方保護しています。内容を比較して、残す方を選んでください。</div>
+    <div id="syncConflictNavigator" class="syncConflictNavigator" hidden>
+      <button id="syncConflictPreviousBtn" type="button" onclick="moveSyncConflictSelection(-1)">前の競合</button>
+      <div id="syncConflictPosition" class="syncConflictPosition">1 / 1<span class="syncConflictVersionNote">表示版: single-v1</span></div>
+      <button id="syncConflictNextBtn" type="button" onclick="moveSyncConflictSelection(1)">次の競合</button>
+    </div>
     <div id="syncConflictList" class="syncConflictList"></div>
   </div>
 </div>
@@ -9764,6 +9812,7 @@ let plantingEvents = loadPlantingEvents();
 let deletedPlantingEvents = loadDeletedPlantingEvents();
 let deletedRecords = loadDeletedRecords();
 let syncConflicts = loadSyncConflicts();
+let activeSyncConflictId = "";
 let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
@@ -15021,13 +15070,29 @@ function isSyncConflictRemoteChoiceBlocked(entry){
 function renderSyncConflictList(){
   const list = document.getElementById("syncConflictList");
   const title = document.getElementById("syncConflictTitle");
+  const navigator = document.getElementById("syncConflictNavigator");
+  const position = document.getElementById("syncConflictPosition");
+  const previousButton = document.getElementById("syncConflictPreviousBtn");
+  const nextButton = document.getElementById("syncConflictNextBtn");
   if(title) title.textContent = `競合する記録（${syncConflicts.length}）`;
   if(!list) return;
   if(!syncConflicts.length){
+    activeSyncConflictId = "";
+    if(navigator) navigator.hidden = true;
     list.innerHTML = '<div class="smallText">競合する記録はありません。</div>';
     return;
   }
-  list.innerHTML = syncConflicts.map(entry => {
+  let activeIndex = syncConflicts.findIndex(entry => entry.conflictId === activeSyncConflictId);
+  if(activeIndex < 0) activeIndex = 0;
+  const entry = syncConflicts[activeIndex];
+  activeSyncConflictId = entry.conflictId;
+  if(navigator) navigator.hidden = false;
+  if(position){
+    position.innerHTML = `${activeIndex + 1} / ${syncConflicts.length}<span class="syncConflictVersionNote">表示版: single-v1</span>`;
+  }
+  if(previousButton) previousButton.disabled = activeIndex <= 0;
+  if(nextButton) nextButton.disabled = activeIndex >= syncConflicts.length - 1;
+  list.innerHTML = (() => {
     const source = entry.localVersion || entry.remoteVersion;
     const entityTitle = entry.entityType === "planting"
       ? `${source?.plantingDate || "日付なし"} 苗植え記録（ID: ${entry.entityId}）`
@@ -15077,24 +15142,43 @@ function renderSyncConflictList(){
         <div class="syncConflictSameFieldNote">同じ内容の項目は省略しています。</div>
       </section>
     `;
-  }).join("");
+  })();
+  list.scrollTop = 0;
+}
+
+function moveSyncConflictSelection(direction){
+  if(!syncConflicts.length) return;
+  const currentIndex = Math.max(0, syncConflicts.findIndex(entry => (
+    entry.conflictId === activeSyncConflictId
+  )));
+  const nextIndex = Math.max(0, Math.min(
+    syncConflicts.length - 1,
+    currentIndex + (Number(direction) < 0 ? -1 : 1)
+  ));
+  if(nextIndex === currentIndex) return;
+  activeSyncConflictId = syncConflicts[nextIndex].conflictId;
+  renderSyncConflictList();
+  requestAnimationFrame(() => {
+    document.querySelector(".syncConflictDecisionBtn")?.focus({ preventScroll: true });
+  });
 }
 
 function openSyncConflictPanel(conflictId = ""){
   const panel = document.getElementById("syncConflictPanel");
   if(!panel) return;
-  renderSyncConflictList();
-  panel.classList.add("show");
-  document.body.style.overflow = "hidden";
   const safeConflictId = /^[A-Za-z0-9:_-]{1,200}$/.test(String(conflictId || ""))
     ? String(conflictId)
     : "";
+  if(safeConflictId && syncConflicts.some(entry => entry.conflictId === safeConflictId)){
+    activeSyncConflictId = safeConflictId;
+  }else if(!syncConflicts.some(entry => entry.conflictId === activeSyncConflictId)){
+    activeSyncConflictId = syncConflicts[0]?.conflictId || "";
+  }
+  renderSyncConflictList();
+  panel.classList.add("show");
+  document.body.style.overflow = "hidden";
   requestAnimationFrame(() => {
-    const target = safeConflictId
-      ? document.getElementById("syncConflictCard-" + safeConflictId)
-      : document.querySelector(".syncConflictCard");
-    target?.scrollIntoView({ block: "start" });
-    target?.querySelector(".syncConflictDecisionBtn")?.focus({ preventScroll: true });
+    document.querySelector(".syncConflictDecisionBtn")?.focus({ preventScroll: true });
   });
 }
 
@@ -15305,6 +15389,7 @@ async function resolveSyncConflict(conflictId, choice){
         : "スプレッドシート側の削除に合わせて、この端末からも削除します。");
   if(!window.confirm(choiceText + "\n\nこの操作を実行しますか？")) return;
   try{
+    const resolvedIndex = syncConflicts.findIndex(item => item.conflictId === entry.conflictId);
     if(useLocal){
       const resolved = entry.entityType === "record"
         ? await applyLocalRecordSyncConflictVersion(entry)
@@ -15314,6 +15399,10 @@ async function resolveSyncConflict(conflictId, choice){
       applyRemoteSyncConflictVersion(entry);
     }
     removeSyncConflictById(entry.conflictId);
+    activeSyncConflictId = syncConflicts[Math.min(
+      Math.max(0, resolvedIndex),
+      Math.max(0, syncConflicts.length - 1)
+    )]?.conflictId || "";
     syncHarvestPlantingPendingFlags();
     refreshRecordDataUi();
     renderSyncConflictList();
