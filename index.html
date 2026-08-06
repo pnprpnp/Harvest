@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260805-sync-revision-cleanup">
+<meta name="harvestnavi-version" content="20260806-edit-record-release-pallets">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -22272,7 +22272,17 @@ function getRecordEditingReferenceDate(){
 }
 
 function getRecordTabRecordedPalletSet(){
-  return getRecordedPalletSet(getRecordEditingReferenceDate());
+  const editingRecordId = getSafePositiveRecordId(editingHarvestRecordId);
+  const sourceRecords = editingRecordId === null
+    ? records
+    : records.filter(record => getSafePositiveRecordId(record?.id) !== editingRecordId);
+  return getRecordedPalletSetFromRecords(
+    getRecentHarvestRecordsByCount(
+      getRecordEditingReferenceDate(),
+      RECORDED_LOOKBACK_COUNT,
+      sourceRecords
+    )
+  );
 }
 
 function isRecorded(building, bed, number, options = {}){
@@ -25001,7 +25011,9 @@ function refreshRecordModeUi(){
     if(actualLossField) actualLossField.hidden = true;
     updateRecordSeedlingDiffDisplay();
   }else{
-    if(notice) notice.textContent = editingHarvestRecordId ? "保存済みの収穫記録を編集中です。" : "実際の収穫場所に調整してください。";
+    if(notice) notice.textContent = editingHarvestRecordId
+      ? "保存済みの収穫記録を編集中です。この記録のパレットは収穫済み判定から一時的に外しています。"
+      : "実際の収穫場所に調整してください。";
     if(button) button.textContent = editingHarvestRecordId ? "収穫記録を更新する" : "収穫場所を記録する";
     if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
     if(harvestStageSection) harvestStageSection.hidden = false;
