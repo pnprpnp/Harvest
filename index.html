@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260807-tab-loading-feedback">
+<meta name="harvestnavi-version" content="20260807-delayed-tab-loading">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4338,8 +4338,18 @@ button.monitorSaveBtn:active{
   font-weight:800;
   letter-spacing:.01em;
   pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  will-change:opacity;
 }
 .mainTabLoadingState[hidden]{display:none;}
+.mainTabLoadingState.is-delayed-visible{
+  animation:mainTabLoadingReveal .01s linear .3s forwards;
+}
+@keyframes mainTabLoadingReveal{
+  from{opacity:0;visibility:hidden;}
+  to{opacity:1;visibility:visible;}
+}
 .mainTabLoadingIcon{
   width:25px;
   height:25px;
@@ -12058,6 +12068,7 @@ function setMainTabLoadingState(tabName, isLoading){
   });
 
   if(!isLoading){
+    loadingState.classList.remove("is-delayed-visible");
     loadingState.hidden = true;
     loadingState.removeAttribute("data-loading-tab");
     return;
@@ -12074,7 +12085,11 @@ function setMainTabLoadingState(tabName, isLoading){
   if(text) text.textContent = label + "をロード中...";
   loadingState.setAttribute("data-loading-tab", tabName);
   loadingState.setAttribute("aria-label", label + "をロード中");
+  loadingState.classList.remove("is-delayed-visible");
   loadingState.hidden = false;
+  // タブを連続して切り替えた場合も、表示待ちの0.3秒を新しいタブから数え直す。
+  void loadingState.offsetWidth;
+  loadingState.classList.add("is-delayed-visible");
   document.getElementById(tabName + "Tab")?.setAttribute("aria-busy", "true");
   document.getElementById(tabName + "TabBtn")?.setAttribute("aria-busy", "true");
 }
