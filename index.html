@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260807-tab-long-press-guard">
+<meta name="harvestnavi-version" content="20260807-tab-loading-feedback">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4320,6 +4320,33 @@ button.monitorSaveBtn:active{
   width:100%;
   height:100%;
 }
+.mainTabLoadingState{
+  position:fixed;
+  top:var(--app-top-chrome-height);
+  right:0;
+  bottom:87px;
+  left:0;
+  z-index:8500;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  box-sizing:border-box;
+  background:rgba(245,245,247,.96);
+  color:var(--ui-accent-dark);
+  font-size:16px;
+  font-weight:800;
+  letter-spacing:.01em;
+  pointer-events:none;
+}
+.mainTabLoadingState[hidden]{display:none;}
+.mainTabLoadingIcon{
+  width:25px;
+  height:25px;
+  color:var(--ui-accent-dark);
+  animation:headerRefreshSpin .8s linear infinite;
+}
+.mainTabLoadingIcon svg{display:block;width:100%;height:100%;}
 .dashboardSubtabBar{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
@@ -8268,6 +8295,16 @@ requestAnimationFrame(function(){
     </button>
 </nav>
 
+<div id="mainTabLoadingState" class="mainTabLoadingState" role="status" aria-live="polite" aria-atomic="true" hidden>
+  <span class="mainTabLoadingIcon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+      <path d="M20 6v5h-5"></path>
+      <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
+    </svg>
+  </span>
+  <span id="mainTabLoadingText">ロード中...</span>
+</div>
+
 <div class="container">
   <div id="monitorTab" style="display:none;">
     <div id="monitorCard" class="card tabLinkedCard">
@@ -12011,9 +12048,41 @@ function setMainTabSelection(tabName){
   document.getElementById("dashboardTabBtn")?.classList.toggle("active", tabName === "dashboard");
 }
 
+function setMainTabLoadingState(tabName, isLoading){
+  const loadingState = document.getElementById("mainTabLoadingState");
+  if(!loadingState) return;
+  const tabNames = ["forecast", "monitor", "record", "dashboard"];
+  tabNames.forEach(name => {
+    document.getElementById(name + "Tab")?.removeAttribute("aria-busy");
+    document.getElementById(name + "TabBtn")?.removeAttribute("aria-busy");
+  });
+
+  if(!isLoading){
+    loadingState.hidden = true;
+    loadingState.removeAttribute("data-loading-tab");
+    return;
+  }
+
+  const labels = {
+    forecast: "シミュ",
+    monitor: "モニター",
+    record: "記録",
+    dashboard: "集計"
+  };
+  const label = labels[tabName] || "画面";
+  const text = document.getElementById("mainTabLoadingText");
+  if(text) text.textContent = label + "をロード中...";
+  loadingState.setAttribute("data-loading-tab", tabName);
+  loadingState.setAttribute("aria-label", label + "をロード中");
+  loadingState.hidden = false;
+  document.getElementById(tabName + "Tab")?.setAttribute("aria-busy", "true");
+  document.getElementById(tabName + "TabBtn")?.setAttribute("aria-busy", "true");
+}
+
 function scheduleMainTabPostSelectionWork(tabName){
   const scheduleId = ++tabSwitchScheduleId;
   const recordBeds = document.getElementById("recordBeds");
+  setMainTabLoadingState(tabName, true);
   if(tabName === "record"){
     recordBeds?.setAttribute("aria-busy", "true");
   }else{
@@ -12037,8 +12106,9 @@ function scheduleMainTabPostSelectionWork(tabName){
       console.error("Failed to finish tab selection", error);
       showToast("表示の更新に失敗しました。もう一度タブを押してください");
     }finally{
-      if(scheduleId === tabSwitchScheduleId && tabName === "record"){
-        recordBeds?.removeAttribute("aria-busy");
+      if(scheduleId === tabSwitchScheduleId){
+        if(tabName === "record") recordBeds?.removeAttribute("aria-busy");
+        setMainTabLoadingState(tabName, false);
       }
     }
   });
@@ -12064,6 +12134,7 @@ function switchTab(tabName){
 
   setMainTabSelection(tabName);
   activeAppTab = tabName;
+  scheduleMainTabPostSelectionWork(tabName);
   if(tabName === "record"){
     updateTodayHarvestRecordedStatus();
     if(recordSelectionMode === "planting"){
@@ -12096,7 +12167,6 @@ function switchTab(tabName){
     setDashboardLoadingState(false);
   }
   deferPendingHarvestStateSaveUntilUiSettles();
-  scheduleMainTabPostSelectionWork(tabName);
   scheduleWorkflowGuideUpdate();
   restoreTabScrollPosition(tabName);
   return true;
