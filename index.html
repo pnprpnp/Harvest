@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260807-delayed-tab-loading">
+<meta name="harvestnavi-version" content="20260808-record-timeline-consistency">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3774,6 +3774,65 @@ button.monitorSaveBtn:active{
   font-size:12px;
   font-weight:900;
 }
+.recordConsistencyAlert{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  align-items:center;
+  gap:12px;
+  margin:0 0 12px;
+  padding:13px;
+  border:2px solid #ef4444;
+  border-radius:14px;
+  background:#fef2f2;
+  color:#7f1d1d;
+}
+.recordConsistencyAlert[hidden]{display:none;}
+.recordConsistencyAlertCopy{min-width:0;}
+.recordConsistencyAlertTitle{font-size:14px;font-weight:900;}
+.recordConsistencyAlertText{margin-top:3px;font-size:12px;line-height:1.5;color:#991b1b;}
+.recordConsistencyAlertBtn{
+  margin-top:0;
+  background:#dc2626;
+  color:#fff;
+}
+.recordItem.hasConsistencyIssue{
+  border:2px solid #ef4444;
+  background:#fef2f2;
+}
+.recordConsistencyInline{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:9px 0 4px;
+  padding:9px 10px;
+  border-radius:11px;
+  background:#fee2e2;
+  color:#7f1d1d;
+  font-size:12px;
+  font-weight:800;
+}
+.recordConsistencyBadge{
+  display:inline-flex;
+  align-items:center;
+  min-height:23px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:#dc2626;
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+}
+.recordConsistencyEditBtn{
+  margin-left:auto;
+  border:1px solid #dc2626;
+  border-radius:9px;
+  padding:7px 10px;
+  background:#fff;
+  color:#991b1b;
+  font-size:12px;
+  font-weight:900;
+}
 .recordTabConflictBadge{
   position:absolute;
   z-index:2;
@@ -4008,7 +4067,10 @@ button.monitorSaveBtn:active{
 @media(max-width:560px){
   .syncConflictAlert{grid-template-columns:1fr;}
   .syncConflictAlert .syncConflictBtn{width:100%;}
+  .recordConsistencyAlert{grid-template-columns:1fr;}
+  .recordConsistencyAlert .recordConsistencyAlertBtn{width:100%;}
   .recordConflictOpenBtn{width:100%;margin-left:0;}
+  .recordConsistencyEditBtn{width:100%;margin-left:0;}
   .syncConflictNavigator{grid-template-columns:74px 1fr 74px;padding:8px;}
   .syncConflictActions{grid-template-columns:1fr;}
   .syncConflictFieldValues{grid-template-columns:1fr;}
@@ -8947,6 +9009,13 @@ requestAnimationFrame(function(){
         </div>
         <button id="syncConflictBtn" class="actionBtn syncConflictBtn" type="button" onclick="openSyncConflictPanel()" hidden>競合を比較・選択（0）</button>
       </div>
+      <div id="recordConsistencyAlert" class="recordConsistencyAlert" role="alert" hidden>
+        <div class="recordConsistencyAlertCopy">
+          <div id="recordConsistencyAlertTitle" class="recordConsistencyAlertTitle">確認が必要な記録があります</div>
+          <div id="recordConsistencyAlertText" class="recordConsistencyAlertText"></div>
+        </div>
+        <button class="actionBtn recordConsistencyAlertBtn" type="button" onclick="editFirstRecordConsistencyIssue()">古い記録から編集</button>
+      </div>
       <div id="recordList" class="smallText">まだ記録がありません。</div>
       <div class="externalSaveTools">
         <div class="googleSheetResendHelpWrap">
@@ -9974,6 +10043,10 @@ let plantingAllowedPalletSetCacheEventId = null;
 let plantingEventStateCache = null;
 let plantingEventStateCacheKey = "";
 let harvestRecordLookupCache = new Map();
+let harvestRecordEditTimelineCache = null;
+let harvestRecordEditTimelineCacheId = null;
+let harvestRecordEditTimelineCacheRecordCount = 0;
+let harvestRecordEditTimelineCacheDate = "";
 let plantingDateByPalletCache = new Map();
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
@@ -14002,6 +14075,54 @@ function compareRecordsByDateDesc(a, b){
   return safeIdB - safeIdA;
 }
 
+function getHarvestRecordEditTimelineRecords(recordId = editingHarvestRecordId, boundaryDate = null){
+  const safeRecordId = getSafePositiveRecordId(recordId);
+  if(safeRecordId === null) return records;
+  const editingRecord = records.find(record => (
+    getSafePositiveRecordId(record?.id) === safeRecordId
+  ));
+  if(!editingRecord) return records;
+  const requestedBoundaryDate = String(boundaryDate || "").trim();
+  const effectiveBoundaryDate = parseDateOnlyString(requestedBoundaryDate)
+    ? requestedBoundaryDate
+    : String(editingRecord.date || "");
+  if(harvestRecordEditTimelineCache
+    && harvestRecordEditTimelineCacheId === safeRecordId
+    && harvestRecordEditTimelineCacheRecordCount === records.length
+    && harvestRecordEditTimelineCacheDate === effectiveBoundaryDate){
+    return harvestRecordEditTimelineCache;
+  }
+  const editingPosition = { ...editingRecord, date: effectiveBoundaryDate };
+
+  // 編集対象と、それより後に作られた履歴を一時的に外し、当時の状態で再計算する。
+  harvestRecordEditTimelineCache = records.filter(record => (
+    getSafePositiveRecordId(record?.id) !== safeRecordId
+    && compareRecordsByDateDesc(record, editingPosition) > 0
+  ));
+  harvestRecordEditTimelineCacheId = safeRecordId;
+  harvestRecordEditTimelineCacheRecordCount = records.length;
+  harvestRecordEditTimelineCacheDate = effectiveBoundaryDate;
+  return harvestRecordEditTimelineCache;
+}
+
+function invalidateHarvestRecordEditTimelineCache(){
+  harvestRecordEditTimelineCache = null;
+  harvestRecordEditTimelineCacheId = null;
+  harvestRecordEditTimelineCacheRecordCount = 0;
+  harvestRecordEditTimelineCacheDate = "";
+}
+
+function getActiveHarvestTimelineRecords(sourceRecords = records){
+  if(sourceRecords !== records) return sourceRecords;
+  if(activeAppTab !== "record" || recordSelectionMode !== "harvest" || !editingHarvestRecordId){
+    return records;
+  }
+  return getHarvestRecordEditTimelineRecords(
+    editingHarvestRecordId,
+    document.getElementById("recordDateInput")?.value || null
+  );
+}
+
 function loadRecords(){
   try{
     const raw = localStorage.getItem(RECORDS_KEY);
@@ -14022,6 +14143,7 @@ function loadRecords(){
 }
 
 function saveRecordsToStorage(){
+  invalidateHarvestRecordEditTimelineCache();
   invalidateHarvestRecordLookupCache();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
@@ -22352,6 +22474,8 @@ function getRecentHarvestRecordsByCount(referenceDate = new Date(), limit = RECO
   const safeLimit = clampNumber(limit, 1, 1000, RECORDED_LOOKBACK_COUNT);
   const recentRecords = [];
 
+  sourceRecords = getActiveHarvestTimelineRecords(sourceRecords);
+
   for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
     if(record?.type === "partialHarvest") continue;
     if(!Array.isArray(record?.palletKeys) || !record.palletKeys.length) continue;
@@ -22383,15 +22507,11 @@ function getRecordEditingReferenceDate(){
 }
 
 function getRecordTabRecordedPalletSet(){
-  const editingRecordId = getSafePositiveRecordId(editingHarvestRecordId);
-  const sourceRecords = editingRecordId === null
-    ? records
-    : records.filter(record => getSafePositiveRecordId(record?.id) !== editingRecordId);
   return getRecordedPalletSetFromRecords(
     getRecentHarvestRecordsByCount(
       getRecordEditingReferenceDate(),
       RECORDED_LOOKBACK_COUNT,
-      sourceRecords
+      getActiveHarvestTimelineRecords(records)
     )
   );
 }
@@ -23495,13 +23615,17 @@ function buildHarvestRecordLookup(targetDate, sourceRecords = records){
 function getHarvestRecordLookup(targetDate, sourceRecords = records){
   if(!harvestRecordLookupEnabled) return null;
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
-  const cacheKey = formatDateOnlyString(targetDay);
+  const isEditTimeline = sourceRecords === harvestRecordEditTimelineCache;
+  const useCache = sourceRecords === records || isEditTimeline;
+  const cacheKey = isEditTimeline
+    ? `edit:${harvestRecordEditTimelineCacheId}:${harvestRecordEditTimelineCacheDate}:${formatDateOnlyString(targetDay)}`
+    : formatDateOnlyString(targetDay);
   try{
-    if(sourceRecords === records && harvestRecordLookupCache.has(cacheKey)){
+    if(useCache && harvestRecordLookupCache.has(cacheKey)){
       return harvestRecordLookupCache.get(cacheKey);
     }
     const lookup = buildHarvestRecordLookup(targetDay, sourceRecords);
-    if(sourceRecords === records){
+    if(useCache){
       harvestRecordLookupCache.set(cacheKey, lookup);
       if(harvestRecordLookupCache.size > 16){
         harvestRecordLookupCache.delete(harvestRecordLookupCache.keys().next().value);
@@ -23525,6 +23649,7 @@ function getLatestFullHarvestDateForPallet(key, targetDate, sourceRecords = reco
 }
 
 function getPartialHarvestCountForPallet(building, bed, number, targetDate = null, sourceRecords = records, options = {}){
+  sourceRecords = getActiveHarvestTimelineRecords(sourceRecords);
   if(!harvestRecordLookupEnabled){
     return getPartialHarvestCountForPalletLegacy(building, bed, number, targetDate, sourceRecords);
   }
@@ -23566,6 +23691,7 @@ function getPredictedHarvestForPallet(building, bed, number, targetDate = null, 
 
 function getPartialHarvestCasesForDate(dateStr, sourceRecords = records){
   if(!dateStr) return 0;
+  sourceRecords = getActiveHarvestTimelineRecords(sourceRecords);
   return (Array.isArray(sourceRecords) ? sourceRecords : []).reduce((total, record) => {
     if(record.type !== "partialHarvest") return total;
     if(record.date !== dateStr) return total;
@@ -23637,6 +23763,7 @@ function hasFullHarvestRecordForDate(dateStr, sourceRecords = records, options =
 }
 
 function getPartialHarvestCaseDeductionForDate(dateStr, sourceRecords = records, options = {}){
+  sourceRecords = getActiveHarvestTimelineRecords(sourceRecords);
   const excludeRecordId = Object.prototype.hasOwnProperty.call(options, "excludeRecordId")
     ? options.excludeRecordId
     : editingHarvestRecordId;
@@ -25123,7 +25250,7 @@ function refreshRecordModeUi(){
     updateRecordSeedlingDiffDisplay();
   }else{
     if(notice) notice.textContent = editingHarvestRecordId
-      ? "保存済みの収穫記録を編集中です。この記録のパレットは収穫済み判定から一時的に外しています。"
+      ? "保存済みの収穫記録を編集中です。この記録と、それ以降の記録を一時的に計算対象から外しています。"
       : "実際の収穫場所に調整してください。";
     if(button) button.textContent = editingHarvestRecordId ? "収穫記録を更新する" : "収穫場所を記録する";
     if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
@@ -27874,7 +28001,7 @@ function savePartialHarvestRecordEdit(){
   }
 
   const targets = buildPartialHarvestTargets(building, beds, cases);
-  const sourceRecords = records.filter(item => item !== record);
+  const sourceRecords = getHarvestRecordEditTimelineRecords(record.id, date);
   const previousDate = String(record.date || "");
   const remainingEstimate = getPartialHarvestRemainingCaseEstimate(
     building,
@@ -28092,6 +28219,185 @@ function editHarvestRecord(id, options = {}){
     : "収穫記録を編集できます");
 }
 
+function getRecordConsistencyIssueKey(kind, id){
+  return `${kind}:${String(id || "")}`;
+}
+
+function getHarvestRecordConsistencySignature(record){
+  if(!record) return "";
+  const common = [
+    record.type === "partialHarvest" ? "partialHarvest" : "fullHarvest",
+    String(record.date || ""),
+    clampNumber(record.cases, 0, 999999, 0)
+  ];
+  if(record.type === "partialHarvest"){
+    const targets = normalizePartialHarvestTargets(record.targets)
+      .map(target => [
+        target.building,
+        target.bed,
+        target.start,
+        target.end,
+        target.plantsPerPallet
+      ].join(":"))
+      .sort();
+    return JSON.stringify([...common, targets]);
+  }
+  const palletKeys = [...new Set(getPalletKeysFromRecord(record))].sort();
+  return JSON.stringify([...common, palletKeys]);
+}
+
+function formatConsistencyPalletKeys(keys, limit = 4){
+  const safeKeys = [...new Set(Array.isArray(keys) ? keys : [])];
+  const labels = safeKeys.slice(0, limit).map(key => {
+    const pallet = parsePalletKey(String(key || ""));
+    if(!BUILDINGS.includes(pallet.building) || !bedOrder.includes(pallet.bed)) return String(key || "");
+    return `${pallet.building}号棟${pallet.bed}ベッド${pallet.number}番`;
+  }).filter(Boolean);
+  const remaining = Math.max(0, safeKeys.length - labels.length);
+  return labels.join("、") + (remaining ? `、ほか${remaining}枚` : "");
+}
+
+function buildRecordConsistencyAudit(){
+  const issueByKey = new Map();
+  const addIssue = (kind, entity, reason) => {
+    const id = kind === "planting" ? Number(entity?.eventId) : Number(entity?.id);
+    if(!Number.isFinite(id) || !reason) return;
+    const key = getRecordConsistencyIssueKey(kind, id);
+    if(!issueByKey.has(key)){
+      issueByKey.set(key, {
+        key,
+        kind,
+        id,
+        date: String(kind === "planting" ? entity?.plantingDate : entity?.date || ""),
+        recordType: entity?.type || "",
+        reasons: []
+      });
+    }
+    const issue = issueByKey.get(key);
+    if(!issue.reasons.includes(reason)) issue.reasons.push(reason);
+  };
+
+  const chronologicalRecords = [...records].sort((a, b) => compareRecordsByDateDesc(b, a));
+  const firstRecordBySignature = new Map();
+  chronologicalRecords.forEach(record => {
+    const signature = getHarvestRecordConsistencySignature(record);
+    if(signature && firstRecordBySignature.has(signature)){
+      addIssue("harvest", record, "同じ内容の収穫記録がすでにあります。重複していないか確認してください。");
+    }else if(signature){
+      firstRecordBySignature.set(signature, record);
+    }
+  });
+
+  const recentFullRecords = [];
+  const harvestedPalletCounts = new Map();
+  chronologicalRecords.forEach(record => {
+    if(record?.type !== "fullHarvest") return;
+    const palletKeys = [...new Set(getPalletKeysFromRecord(record))];
+    const duplicatedPalletKeys = palletKeys.filter(key => (harvestedPalletCounts.get(key) || 0) > 0);
+    if(duplicatedPalletKeys.length){
+      addIssue(
+        "harvest",
+        record,
+        `収穫済みの場所と重複しています: ${formatConsistencyPalletKeys(duplicatedPalletKeys)}`
+      );
+    }
+
+    recentFullRecords.push(palletKeys);
+    palletKeys.forEach(key => harvestedPalletCounts.set(key, (harvestedPalletCounts.get(key) || 0) + 1));
+    if(recentFullRecords.length > RECORDED_LOOKBACK_COUNT){
+      const expiredKeys = recentFullRecords.shift() || [];
+      expiredKeys.forEach(key => {
+        const nextCount = (harvestedPalletCounts.get(key) || 0) - 1;
+        if(nextCount > 0) harvestedPalletCounts.set(key, nextCount);
+        else harvestedPalletCounts.delete(key);
+      });
+    }
+  });
+
+  const occupiedPlantingLots = new Map();
+  const latestOpeningBoundary = getLatestPlantingOpeningBoundary();
+  const harvestRecordById = new Map(records.map(record => [Number(record.id), record]));
+  const harvestPalletKeysById = new Map();
+  [...plantingEvents].sort(comparePlantingEventsAsc).forEach(event => {
+    const canEditEvent = !latestOpeningBoundary
+      || comparePlantingEventsAsc(event, latestOpeningBoundary) >= 0;
+    event.sourceAllocations.forEach(allocation => {
+      const sourceRecord = harvestRecordById.get(Number(allocation.harvestRecordId));
+      if(!sourceRecord || sourceRecord.type !== "fullHarvest") return;
+      const sourceDate = parseDateOnlyString(sourceRecord.date);
+      const plantingDate = parseDateOnlyString(event.plantingDate);
+      if(canEditEvent && sourceDate && plantingDate && sourceDate.getTime() > plantingDate.getTime()){
+        addIssue("planting", event, "苗植え日が収穫元の収穫日より前になっています。");
+      }
+
+      if(!harvestPalletKeysById.has(Number(sourceRecord.id))){
+        harvestPalletKeysById.set(Number(sourceRecord.id), new Set(getPalletKeysFromRecord(sourceRecord)));
+      }
+      const sourcePalletKeys = harvestPalletKeysById.get(Number(sourceRecord.id));
+      const invalidPalletKeys = allocation.palletKeys.filter(key => !sourcePalletKeys.has(key));
+      if(canEditEvent && invalidPalletKeys.length){
+        addIssue(
+          "planting",
+          event,
+          `収穫元にない場所が含まれています: ${formatConsistencyPalletKeys(invalidPalletKeys)}`
+        );
+      }
+
+      allocation.palletKeys.forEach(key => {
+        const lotKey = getPlantingLotKey(allocation.harvestRecordId, key);
+        if(canEditEvent && occupiedPlantingLots.has(lotKey)){
+          addIssue(
+            "planting",
+            event,
+            `同じ収穫パレットを別の苗植え記録でも使用しています: ${formatConsistencyPalletKeys([key])}`
+          );
+        }
+        occupiedPlantingLots.set(lotKey, Number(event.eventId));
+      });
+    });
+  });
+
+  const orderedIssues = [...issueByKey.values()].sort((a, b) => {
+    const timeA = parseDateOnlyString(a.date)?.getTime() ?? Infinity;
+    const timeB = parseDateOnlyString(b.date)?.getTime() ?? Infinity;
+    if(timeA !== timeB) return timeA - timeB;
+    if(a.kind !== b.kind) return a.kind === "harvest" ? -1 : 1;
+    return a.id - b.id;
+  });
+  return { issueByKey, orderedIssues };
+}
+
+function renderRecordConsistencyAlert(audit){
+  const alert = document.getElementById("recordConsistencyAlert");
+  const title = document.getElementById("recordConsistencyAlertTitle");
+  const text = document.getElementById("recordConsistencyAlertText");
+  const issues = Array.isArray(audit?.orderedIssues) ? audit.orderedIssues : [];
+  if(!alert) return;
+  alert.hidden = issues.length === 0;
+  if(!issues.length) return;
+  if(title) title.textContent = `確認が必要な記録があります（${issues.length}件）`;
+  if(text){
+    const firstIssue = issues[0];
+    text.textContent = `${firstIssue.date || "日付不明"}の記録から、古い順に編集してください。${firstIssue.reasons[0] || ""}`;
+  }
+}
+
+function editFirstRecordConsistencyIssue(){
+  const issue = getRecordHistoryCache().consistencyAudit?.orderedIssues?.[0];
+  if(!issue){
+    showToast("確認が必要な記録はありません");
+    renderRecordList();
+    return;
+  }
+  if(issue.kind === "planting"){
+    editPlantingEvent(issue.id);
+    return;
+  }
+  const record = getRecordById(issue.id);
+  if(record?.type === "partialHarvest") editPartialHarvestRecord(issue.id);
+  else editHarvestRecord(issue.id);
+}
+
 function invalidateRecordHistoryCache(){
   recordHistoryCache = null;
 }
@@ -28115,7 +28421,8 @@ function getRecordHistoryCache(){
     if(!itemsByDate.has(dateKey)) itemsByDate.set(dateKey, []);
     itemsByDate.get(dateKey).push(item);
   });
-  recordHistoryCache = { historyItems, itemsByDate, harvestCaseTotalsByDate };
+  const consistencyAudit = buildRecordConsistencyAudit();
+  recordHistoryCache = { historyItems, itemsByDate, harvestCaseTotalsByDate, consistencyAudit };
   return recordHistoryCache;
 }
 
@@ -28123,7 +28430,8 @@ function renderRecordList(){
   const box = document.getElementById("recordList");
   updateTodayHarvestRecordedStatus();
   renderDeletedRecordList();
-  const { historyItems, itemsByDate, harvestCaseTotalsByDate } = getRecordHistoryCache();
+  const { historyItems, itemsByDate, harvestCaseTotalsByDate, consistencyAudit } = getRecordHistoryCache();
+  renderRecordConsistencyAlert(consistencyAudit);
   if(!historyItems.length){
     box.textContent = "まだ記録がありません。";
     return;
@@ -28152,9 +28460,12 @@ function renderRecordList(){
     if(hiddenItems.length < hiddenLimit) hiddenItems.push(item);
   });
 
-  const renderHistoryItem = item => item.kind === "planting"
-    ? renderPlantingEventItemHtml(item.value)
-    : renderRecordItemHtml(item.value, harvestCaseTotalsByDate);
+  const renderHistoryItem = item => {
+    const issue = consistencyAudit.issueByKey.get(getRecordConsistencyIssueKey(item.kind, item.id)) || null;
+    return item.kind === "planting"
+      ? renderPlantingEventItemHtml(item.value, issue)
+      : renderRecordItemHtml(item.value, harvestCaseTotalsByDate, issue);
+  };
   const renderHistoryGroups = items => {
     const groups = new Map();
     items.forEach(item => {
@@ -28530,12 +28841,30 @@ function renderRecordItemSyncConflictHtml(entityType, entity){
   `;
 }
 
-function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
+function renderRecordItemConsistencyHtml(kind, entity, issue){
+  if(!issue) return "";
+  const safeId = getSafePositiveRecordId(kind === "planting" ? entity?.eventId : entity?.id) ?? 0;
+  const editHandler = kind === "planting"
+    ? `editPlantingEvent(${safeId})`
+    : (entity?.type === "partialHarvest"
+      ? `editPartialHarvestRecord(${safeId})`
+      : `editHarvestRecord(${safeId})`);
+  return `
+    <div class="recordConsistencyInline">
+      <span class="recordConsistencyBadge">要確認</span>
+      <span>${escapeHtml(issue.reasons.join(" "))}</span>
+      <button type="button" class="recordConsistencyEditBtn" onclick="${editHandler}">この記録を編集</button>
+    </div>
+  `;
+}
+
+function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssue = null){
   const safeRecordId = getSafePositiveRecordId(r?.id) ?? 0;
   const safeDate = escapeHtml(String(r?.date || "日付なし"));
   const safeCases = escapeHtml(getHarvestRecordCaseDisplayText(r, harvestCaseTotalsByDate));
   const syncConflict = getSyncConflictForEntity("record", r);
   const conflictHtml = renderRecordItemSyncConflictHtml("record", r);
+  const consistencyHtml = renderRecordItemConsistencyHtml("harvest", r, consistencyIssue);
   const syncState = getGoogleSheetRecordSyncState(r);
   const syncWarningText = syncConflict
     ? ""
@@ -28548,11 +28877,12 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
           : "")));
   if(r.type === "partialHarvest"){
     return `
-    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}">
+    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
       <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">部分収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}${escapeHtml(syncWarningText)}</div>
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${conflictHtml}
+      ${consistencyHtml}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <div class="recordActions">
         <button class="thirdBtn" onclick="editPartialHarvestRecord(${safeRecordId})">編集</button>
@@ -28573,7 +28903,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
     .join("・") || "-";
 
   return `
-    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}">
+    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
       <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}
 ロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
@@ -28581,6 +28911,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null){
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}
       ${conflictHtml}
+      ${consistencyHtml}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('harvest', ${safeRecordId})">詳細</button>
       <div class="recordActions">
@@ -28591,10 +28922,11 @@ ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309
   `;
 }
 
-function renderPlantingEventItemHtml(event){
+function renderPlantingEventItemHtml(event, consistencyIssue = null){
   const safeEventId = getSafePositiveRecordId(event?.eventId) ?? 0;
   const syncConflict = getSyncConflictForEntity("planting", event);
   const conflictHtml = renderRecordItemSyncConflictHtml("planting", event);
+  const consistencyHtml = renderRecordItemConsistencyHtml("planting", event, consistencyIssue);
   const metrics = getPlantingEventListMetrics(event);
   const pendingPalletCount = new Set(
     event.sourceAllocations.flatMap(allocation => (
@@ -28603,12 +28935,13 @@ function renderPlantingEventItemHtml(event){
     ))
   ).size;
   return `
-    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}">
+    <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
       <div class="recordTitle">${escapeHtml(event.plantingDate || "日付なし")} <span class="recordTitlePlanting">苗植え</span></div>
       <div class="recordMeta">苗枚数: ${escapeHtml(metrics.seedlingTrayText)}
 苗ロス率: ${escapeHtml(metrics.lossRateText)}
 未定植枚数: ${escapeHtml(String(pendingPalletCount))}枚</div>
       ${conflictHtml}
+      ${consistencyHtml}
       <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('planting', ${safeEventId})">詳細</button>
       <div class="recordActions">
         <button class="thirdBtn" onclick="editPlantingEvent(${safeEventId})">編集</button>
