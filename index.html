@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260808-record-timeline-consistency">
+<meta name="harvestnavi-version" content="20260808-restore-diagnostics">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -27673,34 +27673,187 @@ async function confirmDeletePlantingEvent(eventId){
   }
 }
 
+function formatRestoreHarvestRecordDetails(record){
+  if(!record) return "記録情報なし";
+  const recordType = record.type === "partialHarvest" ? "部分収穫記録" : "通常収穫記録";
+  const recordId = getSafePositiveRecordId(record.id);
+  const locationText = record.type === "partialHarvest"
+    ? (formatPartialHarvestSummary(record.targets) || "場所情報なし")
+    : (formatConsistencyPalletKeys(getPalletKeysFromRecord(record), 12)
+      || String(record.palletSummary || "").trim()
+      || "場所情報なし");
+  return [
+    `日付: ${record.date || "日付不明"}`,
+    `種類: ${recordType}`,
+    `記録ID: ${recordId === null ? "不明" : recordId}`,
+    `ケース数: ${String(record.cases ?? "不明")}`,
+    `場所: ${locationText}`
+  ].join("\n");
+}
+
+function formatRestorePlantingEventDetails(event){
+  if(!event) return "記録情報なし";
+  const eventId = getSafePositiveRecordId(event.eventId);
+  const sourceIds = [...new Set((event.sourceAllocations || [])
+    .map(allocation => getSafePositiveRecordId(allocation.harvestRecordId))
+    .filter(id => id !== null))];
+  return [
+    `日付: ${event.plantingDate || "日付不明"}`,
+    `記録ID: ${eventId === null ? "不明" : eventId}`,
+    `収穫元ID: ${sourceIds.length ? sourceIds.join("、") : "不明"}`,
+    `苗植え場所: ${formatConsistencyPalletKeys(event.plantingPalletKeys, 12) || "場所情報なし"}`
+  ].join("\n");
+}
+
+function getPlantingEventRestoreBlockers(event){
+  const blockers = [];
+  if(!event) return ["復元する苗植え記録の内容を読み込めませんでした。"];
+
+  const existingEvent = getPlantingEventById(event.eventId);
+  if(existingEvent){
+    blockers.push([
+      `同じ記録ID（${event.eventId}）の苗植え記録が現在の記録一覧にあります。`,
+      "競合している現在の記録:",
+      formatRestorePlantingEventDetails(existingEvent),
+      "内容が同じなら復元は不要です。別の記録なら、現在の記録を削除してから復元してください。"
+    ].join("\n"));
+    return blockers;
+  }
+
+  const ownerByLot = new Map();
+  plantingEvents.forEach(ownerEvent => {
+    ownerEvent.sourceAllocations.forEach(allocation => {
+      allocation.palletKeys.forEach(key => {
+        const lotKey = getPlantingLotKey(allocation.harvestRecordId, key);
+        if(!ownerByLot.has(lotKey)) ownerByLot.set(lotKey, []);
+        ownerByLot.get(lotKey).push(ownerEvent);
+      });
+    });
+  });
+
+  (event.sourceAllocations || []).forEach(allocation => {
+    const sourceId = getSafePositiveRecordId(allocation.harvestRecordId);
+    const sourceRecord = sourceId === null ? null : getRecordById(sourceId);
+    const allocationLocations = formatConsistencyPalletKeys(allocation.palletKeys, 12) || "場所情報なし";
+    if(!sourceRecord){
+      const deletedSource = deletedRecords.find(item => (
+        Number(item.record?.id) === Number(sourceId)
+      ));
+      blockers.push(deletedSource
+        ? [
+            `収穫元ID ${sourceId} の収穫記録が削除済みです。`,
+            `対象の収穫パレット: ${allocationLocations}`,
+            "削除済みにある収穫元:",
+            formatRestoreHarvestRecordDetails(deletedSource.record),
+            "先にこの収穫記録を復元してください。"
+          ].join("\n")
+        : [
+            `収穫元ID ${sourceId === null ? "不明" : sourceId} の収穫記録が見つかりません。`,
+            `対象の収穫パレット: ${allocationLocations}`,
+            "スプレッドシートとの同期または収穫記録の削除履歴を確認してください。"
+          ].join("\n"));
+      return;
+    }
+    if(sourceRecord.type !== "fullHarvest"){
+      blockers.push([
+        `収穫元ID ${sourceId} が通常収穫記録ではありません。`,
+        `対象の収穫パレット: ${allocationLocations}`,
+        "現在の収穫元:",
+        formatRestoreHarvestRecordDetails(sourceRecord)
+      ].join("\n"));
+      return;
+    }
+
+    const sourceKeys = new Set(getPalletKeysFromRecord(sourceRecord));
+    const removedKeys = allocation.palletKeys.filter(key => !sourceKeys.has(key));
+    if(removedKeys.length){
+      blockers.push([
+        `収穫元ID ${sourceId} の収穫場所から、必要なパレットが外れています。`,
+        `外れている場所: ${formatConsistencyPalletKeys(removedKeys, 12)}`,
+        "現在の収穫元:",
+        formatRestoreHarvestRecordDetails(sourceRecord),
+        "収穫元の記録を編集して場所を戻すか、この苗植え記録の内容を見直してください。"
+      ].join("\n"));
+    }
+
+    const occupiedByEvent = new Map();
+    allocation.palletKeys.forEach(key => {
+      const ownerEvents = ownerByLot.get(getPlantingLotKey(sourceId, key)) || [];
+      ownerEvents.forEach(ownerEvent => {
+        if(!occupiedByEvent.has(ownerEvent)) occupiedByEvent.set(ownerEvent, []);
+        occupiedByEvent.get(ownerEvent).push(key);
+      });
+    });
+    occupiedByEvent.forEach((keys, ownerEvent) => {
+      blockers.push([
+        `同じ収穫パレットが別の苗植え記録で使用されています。`,
+        `重複している収穫元の場所: ${formatConsistencyPalletKeys(keys, 12)}`,
+        "競合している苗植え記録:",
+        formatRestorePlantingEventDetails(ownerEvent),
+        "競合している苗植え記録を先に編集または削除してください。"
+      ].join("\n"));
+    });
+  });
+
+  return blockers;
+}
+
+function showPlantingEventRestoreBlockers(event, blockers){
+  showRecordImportError([
+    "復元対象:",
+    formatRestorePlantingEventDetails(event),
+    "",
+    "復元できない原因:",
+    ...blockers.map((blocker, index) => `${index + 1}. ${blocker}`)
+  ].join("\n"), "苗植え記録を復元できません");
+}
+
 async function restoreDeletedPlantingEvent(eventId){
   if(!ensureProtectedOperationAccess("削除した苗植え記録の復元")) return;
   if(!ensureGoogleSheetLocalMutationAllowed("削除した苗植え記録を復元")) return;
   const entry = deletedPlantingEvents.find(item => Number(item.event?.eventId) === Number(eventId));
   if(!entry){
-    showToast("復元する苗植え記録が見つかりません");
+    showRecordImportError([
+      `検索した苗植え記録ID: ${String(eventId || "不明")}`,
+      `現在の削除済み苗植え記録: ${deletedPlantingEvents.length}件`,
+      "",
+      "考えられる原因:",
+      "・すでに復元または完全削除されている",
+      "・削除から30日を過ぎて自動的に消去された",
+      "・別端末との同期で削除済み一覧が更新された"
+    ].join("\n"), "復元対象が見つかりません");
     renderDeletedRecordList();
     return;
   }
-  const allocatedLots = getPlantingEventStateIndex().allocatedLotKeys;
-  const invalidSource = entry.event.sourceAllocations.some(allocation => {
-    const source = getRecordById(allocation.harvestRecordId);
-    const sourceKeys = new Set(getPalletKeysFromRecord(source));
-    return !source || source.type !== "fullHarvest"
-      || allocation.palletKeys.some(key => !sourceKeys.has(key)
-        || allocatedLots.has(getPlantingLotKey(allocation.harvestRecordId, key)));
-  });
-  if(invalidSource){
-    showToast("収穫元が変わったか、同じパレットが別の苗植え記録で使用中のため復元できません");
+  const restoreBlockers = getPlantingEventRestoreBlockers(entry.event);
+  if(restoreBlockers.length){
+    showPlantingEventRestoreBlockers(entry.event, restoreBlockers);
     return;
   }
-  const config = entry.sheetDeleted
-    ? getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "復元前に設定してください" })
+  const configValidation = entry.sheetDeleted
+    ? validateGoogleSheetConfig(loadGoogleSheetConfig())
     : null;
-  if(entry.sheetDeleted && !config) return;
+  if(entry.sheetDeleted && !configValidation?.ok){
+    showRecordImportError([
+      "復元対象:",
+      formatRestorePlantingEventDetails(entry.event),
+      "",
+      "処理箇所: アプリメニュー内のGoogle連携設定",
+      `原因: ${configValidation?.message || "Google連携設定を確認できません"}`,
+      "設定を修正してから、もう一度復元してください。"
+    ].join("\n"), "復元前にGoogle連携設定を確認してください");
+    return;
+  }
+  const config = configValidation?.config || null;
   const operationOwner = beginGoogleSheetOperation("sending");
   if(!operationOwner){
-    showToast(getGoogleSheetOperationBusyMessage("復元"));
+    showRecordImportError([
+      "復元対象:",
+      formatRestorePlantingEventDetails(entry.event),
+      "",
+      "処理箇所: スプレッドシート同期処理",
+      `原因: ${getGoogleSheetOperationBusyMessage("復元")}`
+    ].join("\n"), "現在は復元できません");
     return;
   }
   let eventToRestore = entry.event;
@@ -27709,18 +27862,40 @@ async function restoreDeletedPlantingEvent(eventId){
       try{
         const result = await postGoogleSheetPlantingEvent(entry.event, "restore", { config, silent: true });
         const restoredRemoteEvent = normalizePlantingEvent(result?.event);
-        if(restoredRemoteEvent){
-          eventToRestore = {
-            ...restoredRemoteEvent,
-            openingCarryoverBefore: restoredRemoteEvent.openingCarryoverBefore
-              ?? entry.event.openingCarryoverBefore
-              ?? null
-          };
+        if(!restoredRemoteEvent){
+          showRecordImportError([
+            "復元対象:",
+            formatRestorePlantingEventDetails(entry.event),
+            "",
+            "処理箇所: Apps Scriptから返された苗植え記録",
+            "原因: 復元応答に、アプリで読み込める日付・収穫元・パレット情報がありません。",
+            "Apps Scriptのデプロイ版とスプレッドシートの該当行を確認してください。"
+          ].join("\n"), "復元応答を読み込めません");
+          return;
         }
+        eventToRestore = {
+          ...restoredRemoteEvent,
+          openingCarryoverBefore: restoredRemoteEvent.openingCarryoverBefore
+            ?? entry.event.openingCarryoverBefore
+            ?? null
+        };
       }catch(e){
-        showRecordImportError("スプレッドシート側の復元に失敗したため、削除済みのまま保持しています。\n\n詳細: " + String(e?.message || e), "復元失敗");
+        showRecordImportError([
+          "復元対象:",
+          formatRestorePlantingEventDetails(entry.event),
+          "",
+          "処理箇所: スプレッドシート / Apps Script",
+          `原因: ${String(e?.message || e)}`,
+          "アプリ側では削除済みのまま保持しています。"
+        ].join("\n"), "苗植え記録の復元に失敗しました");
         return;
       }
+    }
+
+    const postRestoreBlockers = getPlantingEventRestoreBlockers(eventToRestore);
+    if(postRestoreBlockers.length){
+      showPlantingEventRestoreBlockers(eventToRestore, postRestoreBlockers);
+      return;
     }
 
     if(eventToRestore.openingCarryoverBefore !== null
@@ -27731,7 +27906,7 @@ async function restoreDeletedPlantingEvent(eventId){
         }
       });
     }
-    if(!getPlantingEventById(eventToRestore.eventId)) plantingEvents.push(eventToRestore);
+    plantingEvents.push(eventToRestore);
     deletedPlantingEvents = deletedPlantingEvents.filter(item => Number(item.event?.eventId) !== Number(eventId));
     saveDeletedPlantingEventsToStorage();
     savePlantingEventsToStorage();
@@ -28559,18 +28734,64 @@ async function restoreDeletedRecord(id, recordUuid = ""){
       : (!itemUuid && Number(item.record?.id) === Number(id));
   });
   if(!entry){
-    showToast("復元する記録が見つかりません");
+    showRecordImportError([
+      `検索した収穫記録ID: ${String(id || "不明")}`,
+      requestedUuid ? `検索した記録UUID: ${requestedUuid}` : "記録UUID: 指定なし",
+      `現在の削除済み収穫記録: ${deletedRecords.length}件`,
+      "",
+      "考えられる原因:",
+      "・すでに復元または完全削除されている",
+      "・削除から30日を過ぎて自動的に消去された",
+      "・別端末との同期で削除済み一覧が更新された"
+    ].join("\n"), "復元対象が見つかりません");
     renderDeletedRecordList();
     return;
   }
 
-  const restoreConfig = entry.sheetDeleted
-    ? getValidatedGoogleSheetConfig({ showImportError: true, errorTitle: "復元前に設定してください" })
+  const entryUuid = normalizeRecordUuid(entry.record?.recordUuid);
+  const currentIdOwner = getRecordById(entry.record?.id);
+  const currentIdOwnerUuid = normalizeRecordUuid(currentIdOwner?.recordUuid);
+  const idOwnerIsSameRecord = !!currentIdOwner && (entryUuid
+    ? (!currentIdOwnerUuid || currentIdOwnerUuid === entryUuid)
+    : !currentIdOwnerUuid);
+  if(currentIdOwner && !idOwnerIsSameRecord){
+    showRecordImportError([
+      "復元対象:",
+      formatRestoreHarvestRecordDetails(entry.record),
+      "",
+      `原因: 記録ID ${entry.record.id} が別の記録で使用されています。`,
+      "競合している現在の記録:",
+      formatRestoreHarvestRecordDetails(currentIdOwner),
+      "",
+      "内容が同じなら復元は不要です。別の記録なら、現在の記録を削除してから復元してください。"
+    ].join("\n"), "収穫記録を復元できません");
+    return;
+  }
+
+  const restoreConfigValidation = entry.sheetDeleted
+    ? validateGoogleSheetConfig(loadGoogleSheetConfig())
     : null;
-  if(entry.sheetDeleted && !restoreConfig) return;
+  if(entry.sheetDeleted && !restoreConfigValidation?.ok){
+    showRecordImportError([
+      "復元対象:",
+      formatRestoreHarvestRecordDetails(entry.record),
+      "",
+      "処理箇所: アプリメニュー内のGoogle連携設定",
+      `原因: ${restoreConfigValidation?.message || "Google連携設定を確認できません"}`,
+      "設定を修正してから、もう一度復元してください。"
+    ].join("\n"), "復元前にGoogle連携設定を確認してください");
+    return;
+  }
+  const restoreConfig = restoreConfigValidation?.config || null;
   const operationOwner = beginGoogleSheetOperation("sending");
   if(!operationOwner){
-    showToast(getGoogleSheetOperationBusyMessage("復元"));
+    showRecordImportError([
+      "復元対象:",
+      formatRestoreHarvestRecordDetails(entry.record),
+      "",
+      "処理箇所: スプレッドシート同期処理",
+      `原因: ${getGoogleSheetOperationBusyMessage("復元")}`
+    ].join("\n"), "現在は復元できません");
     return;
   }
 
@@ -28584,10 +28805,32 @@ async function restoreDeletedRecord(id, recordUuid = ""){
           normalizeGoogleSheetRowRecord(result.record),
           0
         );
+        if(!serverCanonical){
+          const responseRecord = normalizeGoogleSheetRowRecord(result?.record);
+          const validation = responseRecord && typeof responseRecord === "object"
+            ? validateRecordForGoogleTransfer(responseRecord, { enforceDuplicateKey: false })
+            : { ok: false, message: "復元応答に記録データがありません" };
+          showRecordImportError([
+            "復元対象:",
+            formatRestoreHarvestRecordDetails(entry.record),
+            "",
+            "処理箇所: Apps Scriptから返された収穫記録",
+            `原因: ${validation.message || "日付・ケース数・収穫場所などの形式を確認できません"}`,
+            "Apps Scriptのデプロイ版とスプレッドシートの該当行を確認してください。"
+          ].join("\n"), "復元応答を読み込めません");
+          return;
+        }
       }catch(e){
         showRecordImportError(
-          "スプレッドシート側の復元に失敗したため、アプリ側も削除済みのまま保持しています。\n\n詳細: " + String(e?.message || e),
-          "復元失敗"
+          [
+            "復元対象:",
+            formatRestoreHarvestRecordDetails(entry.record),
+            "",
+            "処理箇所: スプレッドシート / Apps Script",
+            `原因: ${String(e?.message || e)}`,
+            "アプリ側では削除済みのまま保持しています。"
+          ].join("\n"),
+          "収穫記録の復元に失敗しました"
         );
         return;
       }
@@ -28621,7 +28864,15 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     }
     const restoredRecord = normalizeStoredRecord(serializeRecordForStorage(restoredSource));
     if(!restoredRecord){
-      showRecordImportError("復元する記録の形式が正しくありません", "復元失敗");
+      const validation = validateRecordForGoogleTransfer(restoredSource, { enforceDuplicateKey: false });
+      showRecordImportError([
+        "復元対象:",
+        formatRestoreHarvestRecordDetails(restoredSource),
+        "",
+        "処理箇所: 端末内の削除済み記録",
+        `原因: ${validation.message || "記録の形式を読み込めません"}`,
+        "日付・ケース数・収穫場所の内容を確認してください。"
+      ].join("\n"), "収穫記録を復元できません");
       return;
     }
     if(activeRecord){
@@ -28630,7 +28881,17 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     }else{
       const idConflict = records.some(record => Number(record.id) === Number(restoredRecord.id));
       if(idConflict){
-        showRecordImportError("同じ記録IDの別記録があるため復元できません", "復元失敗");
+        const conflictingRecord = records.find(record => Number(record.id) === Number(restoredRecord.id));
+        showRecordImportError([
+          "復元対象:",
+          formatRestoreHarvestRecordDetails(restoredRecord),
+          "",
+          `原因: 記録ID ${restoredRecord.id} が別の記録で使用されています。`,
+          "競合している現在の記録:",
+          formatRestoreHarvestRecordDetails(conflictingRecord),
+          "",
+          "内容が同じなら復元は不要です。別の記録なら、現在の記録を削除してから復元してください。"
+        ].join("\n"), "収穫記録を復元できません");
         return;
       }
       records.push(restoredRecord);
