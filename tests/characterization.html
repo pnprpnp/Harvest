@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harvestnavi 特性テスト</title>
+  <style>
+    body {
+      margin: 32px auto;
+      max-width: 760px;
+      padding: 0 20px;
+      color: #24212d;
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+    }
+    h1 { font-size: 1.5rem; }
+    #summary { font-weight: 700; }
+    li[data-test-status="passed"]::marker { color: #16834b; }
+    li[data-test-status="failed"] { color: #b42318; }
+    iframe {
+      position: fixed;
+      left: -10000px;
+      width: 390px;
+      height: 844px;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Harvestnavi 特性テスト</h1>
+  <p id="summary">アプリを読み込んでいます…</p>
+  <ol id="testResults"></ol>
+
+  <script>
+  (() => {
+    "use strict";
+
+    const root = document.documentElement;
+    const summary = document.getElementById("summary");
+    const results = document.getElementById("testResults");
+    const storageSnapshots = {
+      local: snapshotStorage(localStorage),
+      session: snapshotStorage(sessionStorage)
+    };
+    let finished = false;
+    let passedCount = 0;
+    let failedCount = 0;
+
+    function snapshotStorage(storage){
+      const snapshot = {};
+      for(let index = 0; index < storage.length; index++){
+        const key = storage.key(index);
+        snapshot[key] = storage.getItem(key);
+      }
+      return snapshot;
+    }
+
+    function restoreStorage(storage, snapshot){
+      storage.clear();
+      Object.entries(snapshot).forEach(([key, value]) => storage.setItem(key, value));
+    }
+
+    function comparable(value){
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function assert(condition, message){
+      if(!condition) throw new Error(message);
+    }
+
+    function assertEqual(actual, expected, message){
+      if(actual !== expected){
+        throw new Error(`${message}（期待: ${JSON.stringify(expected)}、実際: ${JSON.stringify(actual)}）`);
+      }
+    }
+
+    function assertDeepEqual(actual, expected, message){
+      const actualText = JSON.stringify(comparable(actual));
+      const expectedText = JSON.stringify(comparable(expected));
+      if(actualText !== expectedText){
+        throw new Error(`${message}（期待: ${expectedText}、実際: ${actualText}）`);
+      }
+    }
+
+    async function runTest(name, body){
+      const item = document.createElement("li");
+      try{
+        await body();
+        item.dataset.testStatus = "passed";
+        item.textContent = `成功: ${name}`;
+        passedCount++;
+      }catch(error){
+        item.dataset.testStatus = "failed";
+        item.textContent = `失敗: ${name} — ${error?.message || String(error)}`;
+        failedCount++;
+      }
+      results.appendChild(item);
+    }
+
+    function replaceAppHistory(app, nextRecords, nextPlantingEvents = []){
+      const recordsJson = JSON.stringify(nextRecords);
+      const plantingEventsJson = JSON.stringify(nextPlantingEvents);
+      app.eval(`
+        records = ${recordsJson}.map(normalizeStoredRecord).filter(Boolean);
+        plantingEvents = ${plantingEventsJson}.map(normalizePlantingEvent).filter(Boolean);
+        invalidateHarvestRecordEditTimelineCache();
+        invalidateRecordHistoryCache();
+      `);
+    }
+
+    function finish(iframe){
+      if(finished) return;
+      finished = true;
+      iframe?.remove();
+      restoreStorage(localStorage, storageSnapshots.local);
+      restoreStorage(sessionStorage, storageSnapshots.session);
+      root.dataset.testStatus = failedCount ? "failed" : "passed";
+      root.dataset.testCount = String(passedCount + failedCount);
+      root.dataset.testPassed = String(passedCount);
+      root.dataset.testFailed = String(failedCount);
+      summary.textContent = failedCount
+        ? `${failedCount}件失敗、${passedCount}件成功`
+        : `全${passedCount}件成功`;
+      const testResults = [...results.querySelectorAll("li[data-test-status]")].map(item => ({
+        status: item.dataset.testStatus,
+        message: item.textContent
+      }));
+      fetch("/__harvestnavi_characterization_result__", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: root.dataset.testStatus,
+          passed: passedCount,
+          failed: failedCount,
+          results: testResults
+        }),
+        keepalive: true
+      }).catch(() => {});
+    }
+
+    async function runCharacterizationTests(iframe){
+      const app = iframe.contentWindow;
+      const requiredFunctions = [
+        "compressPalletKeysToRanges",
+        "expandPalletRangesToKeys",
+        "formatPalletSummary",
+        "parsePalletSummaryToKeys",
+        "normalizePartialHarvestTargets",
+        "normalizeStoredRecord",
+        "serializeRecordForStorage",
+        "getHarvestRecordCaseDisplayText",
+        "getHarvestRecordEditTimelineRecords",
+        "buildRecordConsistencyAudit",
+        "getHarvestRecordSyncContentSignature",
+        "getSyncConflictLookupKey",
+        "openDashboardForecastInfoWindow",
+        "closeDashboardForecastInfoWindow"
+      ];
+
+      await runTest("主要な計算関数を読み込める", () => {
+        const missing = requiredFunctions.filter(name => typeof app[name] !== "function");
+        assertDeepEqual(missing, [], `読み込めない関数があります: ${missing.join(", ")}`);
+      });
+
+      await runTest("パレット番号を範囲へ圧縮し、元へ戻せる", () => {
+        const keys = ["2-A-1", "2-A-2", "2-A-4", "3-F-78"];
+        const ranges = app.compressPalletKeysToRanges(keys);
+        assertDeepEqual(ranges, ["2-A-1-2", "2-A-4-4", "3-F-78-78"], "範囲の圧縮結果が違います");
+        assertDeepEqual(app.expandPalletRangesToKeys(ranges), keys, "範囲から元のパレットへ戻りません");
+      });
+
+      await runTest("画面用の収穫場所表示からパレットを復元できる", () => {
+        const keys = ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "4-C-7", "4-C-9"];
+        const display = app.formatPalletSummary(keys);
+        assert(display.includes("2号棟A"), "号棟・ベッドの見出しがありません");
+        assertDeepEqual(app.parsePalletSummaryToKeys(display), keys, "表示から元のパレットへ戻りません");
+      });
+
+      await runTest("途中収穫の開始・終了を並べ替え、不正な場所を除外する", () => {
+        const normalized = app.normalizePartialHarvestTargets([
+          { building: 4, bed: "C", start: 8, end: 5, plantsPerPallet: 10 },
+          { building: 99, bed: "A", start: 1, end: 2, plantsPerPallet: 10 }
+        ]);
+        assertDeepEqual(normalized, [
+          { building: 4, bed: "C", start: 5, end: 8, plantsPerPallet: 10 }
+        ], "途中収穫場所の正規化結果が違います");
+      });
+
+      await runTest("保存済みの収穫場所を読み込み、同じ範囲形式で保存できる", () => {
+        const record = app.normalizeStoredRecord({
+          id: 10,
+          type: "fullHarvest",
+          date: "2026-08-01",
+          cases: 12,
+          palletRanges: ["2-A-1-3"],
+          plantingPending: true
+        });
+        assertDeepEqual(record.palletKeys, ["2-A-1", "2-A-2", "2-A-3"], "保存範囲を読み込めません");
+        const serialized = app.serializeRecordForStorage(record);
+        assertDeepEqual(serialized.palletRanges, ["2-A-1-3"], "保存時の範囲形式が変わりました");
+      });
+
+      await runTest("同じ日の通常収穫と途中収穫を現在の表示規則で集計する", () => {
+        const full = { id: 1, type: "fullHarvest", date: "2026-08-02", cases: 100 };
+        const partial = { id: 2, type: "partialHarvest", date: "2026-08-02", cases: 20 };
+        const totals = app.getHarvestCaseTotalsByDate([full, partial]);
+        assertEqual(app.getHarvestRecordCaseDisplayText(full, totals), "120", "通常収穫側の合計表示が違います");
+        assertEqual(app.getHarvestRecordCaseDisplayText(partial, totals), "(20)", "途中収穫側の内数表示が違います");
+      });
+
+      await runTest("過去の記録を編集するとき、対象以降の記録を計算から外す", () => {
+        replaceAppHistory(app, [
+          { id: 1, type: "fullHarvest", date: "2026-08-01", cases: 10, palletRanges: ["2-A-1-1"], plantingPending: true },
+          { id: 2, type: "fullHarvest", date: "2026-08-02", cases: 10, palletRanges: ["2-A-2-2"], plantingPending: true },
+          { id: 3, type: "fullHarvest", date: "2026-08-03", cases: 10, palletRanges: ["2-A-3-3"], plantingPending: true }
+        ]);
+        const visibleIds = app.getHarvestRecordEditTimelineRecords(2).map(record => record.id);
+        assertDeepEqual(visibleIds, [1], "編集時に残る履歴が違います");
+      });
+
+      await runTest("重複した記録と収穫済みパレットの再使用を検出する", () => {
+        const common = {
+          type: "fullHarvest",
+          date: "2026-08-04",
+          cases: 10,
+          palletRanges: ["2-A-1-2"],
+          plantingPending: true
+        };
+        replaceAppHistory(app, [
+          { ...common, id: 1 },
+          { ...common, id: 2 }
+        ]);
+        const issues = comparable(app.buildRecordConsistencyAudit().orderedIssues);
+        const reasons = issues.flatMap(issue => issue.reasons);
+        assert(reasons.some(reason => reason.includes("同じ内容")), "同じ内容の記録を検出できません");
+        assert(reasons.some(reason => reason.includes("収穫済みの場所と重複")), "収穫済みパレットの再使用を検出できません");
+      });
+
+      await runTest("同期比較では更新日時だけの違いを競合扱いしない", () => {
+        const base = {
+          id: 20,
+          recordUuid: "11111111-1111-4111-8111-111111111111",
+          type: "fullHarvest",
+          date: "2026-08-05",
+          cases: 18,
+          palletRanges: ["3-B-1-2"],
+          plantingPending: true
+        };
+        const first = app.getHarvestRecordSyncContentSignature({ ...base, updatedAt: "2026-08-05T01:00:00.000Z" });
+        const second = app.getHarvestRecordSyncContentSignature({ ...base, updatedAt: "2026-08-05T02:00:00.000Z" });
+        const changed = app.getHarvestRecordSyncContentSignature({ ...base, cases: 19 });
+        assertEqual(first, second, "更新日時だけで同期内容が変化しました");
+        assert(first !== changed, "ケース数の変更を検出できません");
+      });
+
+      await runTest("競合記録をUUIDで同じ記録として照合する", () => {
+        const uuid = "22222222-2222-4222-8222-222222222222";
+        const lookupKey = app.getSyncConflictLookupKey({
+          entityType: "record",
+          localVersion: {
+            id: 30,
+            recordUuid: uuid,
+            type: "partialHarvest",
+            date: "2026-08-06",
+            cases: 4,
+            targets: [{ building: 5, bed: "D", start: 1, end: 2, plantsPerPallet: 9 }]
+          }
+        });
+        assertEqual(lookupKey, `record:uuid:${uuid}`, "競合記録の照合キーが違います");
+      });
+
+      await runTest("情報ウィンドウを開閉すると背景スクロールも元に戻る", () => {
+        const modal = app.document.getElementById("dashboardForecastInfoModal");
+        assert(modal, "情報ウィンドウがありません");
+        app.openDashboardForecastInfoWindow();
+        assert(modal.classList.contains("show"), "情報ウィンドウが開きません");
+        assertEqual(app.document.body.style.overflow, "hidden", "背景スクロールが止まりません");
+        app.closeDashboardForecastInfoWindow();
+        assert(!modal.classList.contains("show"), "情報ウィンドウが閉じません");
+        assertEqual(app.document.body.style.overflow, "", "背景スクロールが元に戻りません");
+      });
+    }
+
+    localStorage.clear();
+    sessionStorage.clear();
+
+    const iframe = document.createElement("iframe");
+    iframe.title = "テスト対象のHarvestnavi";
+    const timeout = setTimeout(() => {
+      if(finished) return;
+      const item = document.createElement("li");
+      item.dataset.testStatus = "failed";
+      item.textContent = "失敗: アプリの読み込みが20秒以内に完了しませんでした";
+      results.appendChild(item);
+      failedCount++;
+      finish(iframe);
+    }, 20000);
+
+    iframe.addEventListener("load", async () => {
+      if(finished) return;
+      clearTimeout(timeout);
+      try{
+        await runCharacterizationTests(iframe);
+      }catch(error){
+        const item = document.createElement("li");
+        item.dataset.testStatus = "failed";
+        item.textContent = `失敗: テスト基盤 — ${error?.message || String(error)}`;
+        results.appendChild(item);
+        failedCount++;
+      }finally{
+        finish(iframe);
+      }
+    }, { once: true });
+
+    iframe.src = `../index.html?characterization-test=${Date.now()}`;
+    document.body.appendChild(iframe);
+  })();
+  </script>
+</body>
+</html>
