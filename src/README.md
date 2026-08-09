@@ -15,9 +15,9 @@ python3 tools/build_index.py
 - `styles/unified/`: 機能別の共通デザイン上書き
 - `scripts/app-update.js`: アプリ本体の更新と前バージョンへの復元
 - `scripts/welcome-paint.js`: 起動画面の初回描画
-- `scripts/app/01-*.js` から `16-*.js`: 本体処理。番号は現在の実行順でもあるため、並びを変更しない
+- `scripts/app/01-*.js` から `19-*.js`: 本体処理。番号は現在の実行順でもあるため、並びを変更しない
 
-本体処理は、共通画面と作業ナビ、端末データ、スプレッドシート同期、モニター、集計、収穫計算、記録、バックアップ、起動処理の順に分かれています。
+本体処理は、共通画面と作業ナビ、端末データ、スプレッドシート同期、モニター、集計、収穫計算、記録、バックアップ、共通操作イベント、起動時の状態復元、機能別イベント、最終起動処理の順に分かれています。
 
 ## 確認
 
@@ -27,4 +27,4 @@ python3 tools/build_index.py
 python3 tools/build_index.py --check
 ```
 
-`python3 tests/run_characterization.py` も、26件のブラウザ動作テストより前に同じ確認を行います。
+`python3 tests/run_characterization.py` も、ブラウザ動作テストより前に同じ確認を行います。

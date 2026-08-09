@@ -210,6 +210,12 @@
         "setMainTabSelection",
         "setMainTabLoadingState",
         "switchTab",
+        "installStaticUiEventHandlers",
+        "restoreHarvestStateAtStartup",
+        "initializeStartupViews",
+        "installStartupRecordFormEvents",
+        "installStartupDashboardEvents",
+        "initializeHarvestnaviApp",
         "openDashboardForecastInfoWindow",
         "closeDashboardForecastInfoWindow",
         "openDashboardCalendarInfoWindow",
@@ -568,6 +574,47 @@
           app.switchTab("forecast");
           await new Promise(resolve => app.requestAnimationFrame(() => app.setTimeout(resolve, 40)));
         }
+      });
+
+      await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
+        const inlineEventAttributes = [
+          "onclick", "onchange", "oninput", "ontoggle", "onkeydown"
+        ];
+        const inlineSelector = inlineEventAttributes.map(name => `[${name}]`).join(",");
+        assertEqual(
+          app.document.querySelectorAll(inlineSelector).length,
+          0,
+          "HTML内に直接指定イベントが残っています"
+        );
+
+        const actionAttributes = [
+          "data-ui-click",
+          "data-ui-before",
+          "data-ui-input",
+          "data-ui-change",
+          "data-ui-toggle",
+          "data-ui-keydown",
+          "data-ui-backdrop-click"
+        ];
+        const missingActions = [];
+        app.document.querySelectorAll(actionAttributes.map(name => `[${name}]`).join(",")).forEach(element => {
+          actionAttributes.forEach(attributeName => {
+            const actionName = element.getAttribute(attributeName);
+            if(actionName && typeof app[actionName] !== "function"){
+              missingActions.push(`${attributeName}:${actionName}`);
+            }
+          });
+        });
+        assertDeepEqual(missingActions, [], "登録先がない画面操作があります");
+        assertEqual(app.eval("staticUiEventsInstalled"), true, "共通の画面操作が登録されていません");
+
+        const menuButton = app.document.getElementById("headerMenuBtn");
+        const menuModal = app.document.getElementById("appMenuModal");
+        assert(menuButton && menuModal, "メニューボタンまたはメニュー画面がありません");
+        menuButton.click();
+        assert(menuModal.classList.contains("show"), "共通登録からメニューを開けません");
+        menuModal.click();
+        assert(!menuModal.classList.contains("show"), "背景タップの共通登録からメニューを閉じられません");
       });
 
       await runTest("パレット番号を範囲へ圧縮し、元へ戻せる", () => {

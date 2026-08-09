@@ -1734,7 +1734,7 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
         <td>${escapeHtml(model.casesText)}</td>
         <td>${lossHtml}</td>
         <td>${model.attention.hasAttention ? `<span class="dashboardRecordAttentionBadge">${escapeHtml(model.attention.label)}</span>` : "-"}</td>
-        <td><button type="button" class="dashboardRecordTableDetailBtn" onclick="openRecordDetailWindow('${detailKind}', ${safeRecordId})">見る</button></td>
+        <td><button type="button" class="dashboardRecordTableDetailBtn" data-ui-click="openRecordDetailWindow" data-ui-arg="${detailKind}" data-ui-number="${safeRecordId}">見る</button></td>
       </tr>
     `;
   }).join("");
@@ -1757,7 +1757,7 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
             const accessibleLabel = `${record?.date || "日付なし"} ${getDashboardRecordTypeLabel(record)} ${model.casesText}ケースの詳細`;
             return `
               <button type="button" class="dashboardRecordCard ${model.isPartial ? "partial" : "full"}${model.attention.hasAttention ? " hasAttention" : ""}"
-                aria-label="${escapeHtml(accessibleLabel)}" onclick="openRecordDetailWindow('${detailKind}', ${safeRecordId})">
+                aria-label="${escapeHtml(accessibleLabel)}" data-ui-click="openRecordDetailWindow" data-ui-arg="${detailKind}" data-ui-number="${safeRecordId}">
                 <span class="dashboardRecordCardTop">
                   <span class="dashboardRecordCardDate">${escapeHtml(formatDashboardRecordCardDate(record?.date))}</span>
                   <span class="dashboardTypeBadge ${model.isPartial ? "partial" : "full"}">${escapeHtml(getDashboardRecordTypeLabel(record))}</span>
@@ -2515,7 +2515,7 @@ function renderDashboardHarvestForecast(){
     const buildingDelayText = model.canForecast ? rangeText.shortDelayText : "--";
     return `
       <button type="button" class="dashboardForecastBuildingBtn ${building === dashboardHarvestForecastBuilding ? "active" : ""}"
-        data-dashboard-forecast-building="${building}" onclick="setDashboardHarvestForecastBuilding(${building})">
+        data-dashboard-forecast-building="${building}" data-ui-click="setDashboardHarvestForecastBuilding" data-ui-number="${building}">
         ${building}号棟
         <span class="dashboardForecastBuildingDay">${escapeHtml(buildingDelayText)}</span>
       </button>
@@ -2735,7 +2735,7 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
     <button type="button"
       class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}${isSelected ? " is-selected" : ""}"
       data-dashboard-seedling-lot-index="${index}"
-      onclick="setDashboardSeedlingStatusLot(${index})"
+      data-ui-click="setDashboardSeedlingStatusLot" data-ui-number="${index}"
       aria-pressed="${isSelected ? "true" : "false"}"
       aria-label="${escapeHtml(ariaLabel)}">
       <span class="dashboardSeedlingStatusLotHeader">
@@ -2853,7 +2853,7 @@ function renderDashboardSeedlingStatusBeds(model){
     return `
       <button type="button"
         class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed${hasPlantedLot ? "" : " is-unplanted"}${isSelected ? " is-selected" : ""}"
-        onclick="setDashboardSeedlingStatusBed('${bed}')"
+        data-ui-click="setDashboardSeedlingStatusBed" data-ui-arg="${bed}"
         data-dashboard-seedling-bed="${bed}"
         aria-pressed="${isSelected ? "true" : "false"}"
         aria-label="${bed}ベッド ${escapeHtml(ageAriaLabel)}。詳細を表示">
@@ -2934,7 +2934,7 @@ function renderDashboardSeedlingStatus(){
   tabs.innerHTML = BUILDINGS.map(building => {
     return `
       <button type="button" class="dashboardForecastBuildingBtn ${building === dashboardSeedlingStatusBuilding ? "active" : ""}"
-        data-dashboard-seedling-building="${building}" onclick="setDashboardSeedlingStatusBuilding(${building})">
+        data-dashboard-seedling-building="${building}" data-ui-click="setDashboardSeedlingStatusBuilding" data-ui-number="${building}">
         ${building}号棟
       </button>
     `;

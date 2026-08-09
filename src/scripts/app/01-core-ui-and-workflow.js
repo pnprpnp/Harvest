@@ -4,9 +4,11 @@ window.addEventListener("error", event => {
     <h1 style="font-size:20px;">アプリの起動に失敗しました</h1>
     <p>記録データは削除していません。下の内容を確認してください。</p>
     <pre style="white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px;">${String(message).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</pre>
-    <button type="button" onclick="recoverHarvestnaviPreviousVersion(this)" style="width:100%;min-height:48px;border:0;border-radius:12px;background:#334155;color:#fff;font-size:15px;font-weight:800;">前の安定版に戻す</button>
+    <button id="runtimeErrorRecoveryBtn" type="button" style="width:100%;min-height:48px;border:0;border-radius:12px;background:#334155;color:#fff;font-size:15px;font-weight:800;">前の安定版に戻す</button>
     <div style="margin-top:8px;color:#64748b;font-size:13px;"></div>
   </div>`;
+  const recoveryButton = document.getElementById("runtimeErrorRecoveryBtn");
+  recoveryButton?.addEventListener("click", () => recoverHarvestnaviPreviousVersion(recoveryButton));
 });
 const SETTINGS_KEY = "harvestForecastSettings_v16";
 const RECORDS_KEY = "harvestForecastRecords_v9";
@@ -1360,8 +1362,19 @@ function installSettingsDirtyWatchers(){
   ].forEach(id => {
     const el = document.getElementById(id);
     if(el && !el.dataset.dirtyWatchInstalled){
-      el.addEventListener("input", () => { settingsDirty = true; refreshOverrideControls(); refreshBedTabSummaries(); });
-      el.addEventListener("change", () => { settingsDirty = true; refreshOverrideControls(); refreshBedTabSummaries(); });
+      const markDirtyAndRefresh = () => {
+        settingsDirty = true;
+        refreshOverrideControls();
+        refreshBedTabSummaries();
+      };
+      el.addEventListener("input", markDirtyAndRefresh);
+      el.addEventListener("change", () => {
+        settingsDirty = true;
+        if(id.startsWith("yieldUseFrontBack_")) refreshYieldFrontBackVisibility();
+        if(id.startsWith("plantUseFrontBack_")) refreshPlantFrontBackVisibility();
+        refreshOverrideControls();
+        refreshBedTabSummaries();
+      });
       el.dataset.dirtyWatchInstalled = "1";
     }
   });

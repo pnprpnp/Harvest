@@ -856,7 +856,7 @@ function renderSyncConflictList(){
         </div>
       </div>
     `).join("");
-    const conflictIdArgument = JSON.stringify(entry.conflictId);
+    const safeConflictId = escapeHtml(entry.conflictId);
     const remoteBlocked = isSyncConflictRemoteChoiceBlocked(entry);
     const remoteLabel = entry.remoteVersion
       ? "スプレッドシートの内容を残す"
@@ -870,8 +870,8 @@ function renderSyncConflictList(){
         <div class="syncConflictReason">${escapeHtml(getSyncConflictReasonText(entry))}</div>
         <div class="syncConflictChangedFields"><strong>異なる項目:</strong>${changedFieldBadges}</div>
         <div class="syncConflictActions">
-          <button type="button" class="actionBtn thirdBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "local")' ${syncConflictBulkRunning ? "disabled" : ""}>この端末の内容を残す</button>
-          <button type="button" class="actionBtn secondaryBtn syncConflictDecisionBtn" onclick='resolveSyncConflict(${conflictIdArgument}, "remote")' ${(remoteBlocked || syncConflictBulkRunning) ? "disabled" : ""}>${escapeHtml(remoteLabel)}</button>
+          <button type="button" class="actionBtn thirdBtn syncConflictDecisionBtn" data-ui-click="resolveSyncConflict" data-ui-arg="${safeConflictId}" data-ui-arg2="local" ${syncConflictBulkRunning ? "disabled" : ""}>この端末の内容を残す</button>
+          <button type="button" class="actionBtn secondaryBtn syncConflictDecisionBtn" data-ui-click="resolveSyncConflict" data-ui-arg="${safeConflictId}" data-ui-arg2="remote" ${(remoteBlocked || syncConflictBulkRunning) ? "disabled" : ""}>${escapeHtml(remoteLabel)}</button>
         </div>
         ${remoteBlocked ? '<div class="syncConflictReason">苗植えとの対応を保つため、スプレッドシートの内容は選べません。関連する苗植え記録との対応を解消するまでは、この端末の内容だけを選択できます。</div>' : ""}
         <div class="syncConflictFieldList">${differenceCards || '<div class="syncConflictField">内容は同じですが、同期状態の確認が必要です。</div>'}</div>

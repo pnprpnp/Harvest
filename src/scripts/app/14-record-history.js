@@ -468,7 +468,7 @@ function renderDeletedRecordList(){
   const recordTrashHtml = deletedRecords.map(entry => {
     const record = entry.record;
     const safeRecordId = getSafePositiveRecordId(record.id) ?? 0;
-    const safeRecordUuidArgument = JSON.stringify(normalizeRecordUuid(record.recordUuid));
+    const safeRecordUuid = escapeHtml(normalizeRecordUuid(record.recordUuid));
     const remainingDays = Math.max(1, Math.ceil((new Date(entry.expiresAt).getTime() - now) / (24 * 60 * 60 * 1000)));
     const typeText = record.type === "partialHarvest" ? "各パレット部分収穫" : "収穫記録";
     const sheetText = entry.syncConflict
@@ -479,7 +479,7 @@ function renderDeletedRecordList(){
         <div class="recordTitle">${escapeHtml(record.date || "日付なし")} ${typeText}</div>
         <div class="recordMeta">収穫ケース数: ${escapeHtml(String(record.cases || 0))}\n${sheetText}\n復元可能: あと${remainingDays}日</div>
         <div class="recordActions">
-          <button class="thirdBtn" onclick='restoreDeletedRecord(${safeRecordId}, ${safeRecordUuidArgument})'>${entry.syncConflict ? "この内容を戻す" : "復元する"}</button>
+          <button class="thirdBtn" data-ui-click="restoreDeletedRecord" data-ui-number="${safeRecordId}" data-ui-number-first="true" data-ui-arg="${safeRecordUuid}">${entry.syncConflict ? "この内容を戻す" : "復元する"}</button>
         </div>
       </div>
     `;
@@ -494,7 +494,7 @@ function renderDeletedRecordList(){
         <div class="recordTitle">${escapeHtml(event.plantingDate || "日付なし")} 苗植え記録</div>
         <div class="recordMeta">${escapeHtml(String(event.plantingPalletKeys.length))}パレット\n${sheetText}\n復元可能: あと${remainingDays}日</div>
         <div class="recordActions">
-          <button class="thirdBtn" onclick="restoreDeletedPlantingEvent(${safeEventId})">復元する</button>
+          <button class="thirdBtn" data-ui-click="restoreDeletedPlantingEvent" data-ui-number="${safeEventId}">復元する</button>
         </div>
       </div>
     `;
@@ -794,7 +794,7 @@ function renderRecordDetailLocationDisplay(){
     <div class="dashboardForecastBuildingTabs recordDetailLocationBuildingTabs" aria-label="場所を表示する号棟">
       ${model.buildings.map(item => `
         <button type="button" class="dashboardForecastBuildingBtn${item === building ? " active" : ""}"
-          data-record-detail-building="${item}" onclick="setRecordDetailLocationBuilding(${item})">
+          data-record-detail-building="${item}" data-ui-click="setRecordDetailLocationBuilding" data-ui-number="${item}">
           ${item}号棟
         </button>
       `).join("")}
@@ -807,7 +807,7 @@ function renderRecordDetailLocationDisplay(){
         return `
           <button type="button"
             class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed recordDetailLocationBed${hasLocation ? "" : " is-unplanted"}${isSelected ? " is-selected" : ""}"
-            data-record-detail-bed="${bed}" onclick="setRecordDetailLocationBed('${bed}')"
+            data-record-detail-bed="${bed}" data-ui-click="setRecordDetailLocationBed" data-ui-arg="${bed}"
             aria-pressed="${isSelected ? "true" : "false"}"
             aria-label="${bed}ベッド 今回の${model.actionLabel} ${numbers.length}パレット。詳細を表示">
             <div class="bedTitle"><span class="dashboardForecastBedName">${bed}</span></div>
@@ -1103,12 +1103,12 @@ function getPlantingEventGroupListMetrics(events){
 function renderRecordItemSyncConflictHtml(entityType, entity){
   const conflict = getSyncConflictForEntity(entityType, entity);
   if(!conflict) return "";
-  const conflictIdArgument = JSON.stringify(conflict.conflictId);
+  const safeConflictId = escapeHtml(conflict.conflictId);
   return `
     <div class="recordConflictInline">
       <span class="recordConflictBadge">競合あり</span>
       <span>${escapeHtml(getSyncConflictReasonText(conflict))}</span>
-      <button type="button" class="recordConflictOpenBtn" onclick='openSyncConflictPanel(${conflictIdArgument})'>比較して選択</button>
+      <button type="button" class="recordConflictOpenBtn" data-ui-click="openSyncConflictPanel" data-ui-arg="${safeConflictId}">比較して選択</button>
     </div>
   `;
 }
@@ -1116,16 +1116,16 @@ function renderRecordItemSyncConflictHtml(entityType, entity){
 function renderRecordItemConsistencyHtml(kind, entity, issue){
   if(!issue) return "";
   const safeId = getSafePositiveRecordId(kind === "planting" ? entity?.eventId : entity?.id) ?? 0;
-  const editHandler = kind === "planting"
-    ? `editPlantingEvent(${safeId})`
+  const editAction = kind === "planting"
+    ? "editPlantingEvent"
     : (entity?.type === "partialHarvest"
-      ? `editPartialHarvestRecord(${safeId})`
-      : `editHarvestRecord(${safeId})`);
+      ? "editPartialHarvestRecord"
+      : "editHarvestRecord");
   return `
     <div class="recordConsistencyInline">
       <span class="recordConsistencyBadge">要確認</span>
       <span>${escapeHtml(issue.reasons.join(" "))}</span>
-      <button type="button" class="recordConsistencyEditBtn" onclick="${editHandler}">この記録を編集</button>
+      <button type="button" class="recordConsistencyEditBtn" data-ui-click="${editAction}" data-ui-number="${safeId}">この記録を編集</button>
     </div>
   `;
 }
@@ -1157,8 +1157,8 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
       ${consistencyHtml}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <div class="recordActions">
-        <button class="thirdBtn" onclick="editPartialHarvestRecord(${safeRecordId})">編集</button>
-        <button class="secondaryBtn recordListDeleteBtn" onclick="confirmDeleteRecord(${safeRecordId})">削除</button>
+        <button class="thirdBtn" data-ui-click="editPartialHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
+        <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
       </div>
     </div>
     `;
@@ -1185,10 +1185,10 @@ ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309
       ${conflictHtml}
       ${consistencyHtml}
       ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
-      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('harvest', ${safeRecordId})">詳細</button>
+      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="harvest" data-ui-number="${safeRecordId}">詳細</button>
       <div class="recordActions">
-        <button class="thirdBtn" onclick="editHarvestRecord(${safeRecordId})">編集</button>
-        <button class="secondaryBtn recordListDeleteBtn" onclick="confirmDeleteRecord(${safeRecordId})">削除</button>
+        <button class="thirdBtn" data-ui-click="editHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
+        <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
       </div>
     </div>
   `;
@@ -1214,10 +1214,10 @@ function renderPlantingEventItemHtml(event, consistencyIssue = null){
 未定植枚数: ${escapeHtml(String(pendingPalletCount))}枚</div>
       ${conflictHtml}
       ${consistencyHtml}
-      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" onclick="openRecordDetailWindow('planting', ${safeEventId})">詳細</button>
+      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="planting" data-ui-number="${safeEventId}">詳細</button>
       <div class="recordActions">
-        <button class="thirdBtn" onclick="editPlantingEvent(${safeEventId})">編集</button>
-        <button class="secondaryBtn recordListDeleteBtn" onclick="confirmDeletePlantingEvent(${safeEventId})">削除</button>
+        <button class="thirdBtn" data-ui-click="editPlantingEvent" data-ui-number="${safeEventId}">編集</button>
+        <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeletePlantingEvent" data-ui-number="${safeEventId}">削除</button>
       </div>
     </div>
   `;
