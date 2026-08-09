@@ -153,13 +153,40 @@
         "buildRecordConsistencyAudit",
         "getHarvestRecordSyncContentSignature",
         "getSyncConflictLookupKey",
+        "showPageBlockingUi",
+        "hidePageBlockingUi",
         "openDashboardForecastInfoWindow",
-        "closeDashboardForecastInfoWindow"
+        "closeDashboardForecastInfoWindow",
+        "openDashboardCalendarInfoWindow",
+        "closeDashboardCalendarInfoWindow"
       ];
 
       await runTest("主要な計算関数を読み込める", () => {
         const missing = requiredFunctions.filter(name => typeof app[name] !== "function");
         assertDeepEqual(missing, [], `読み込めない関数があります: ${missing.join(", ")}`);
+      });
+
+      await runTest("背景スクロールを止める画面を一つの一覧で管理する", () => {
+        const expectedIds = [
+          "monitorEditorModal",
+          "monitorPreviewModal",
+          "appMenuModal",
+          "forecastSettingsModal",
+          "dashboardModal",
+          "dashboardCasesAllModal",
+          "dashboardCalendarInfoModal",
+          "dashboardForecastInfoModal",
+          "dashboardForecastDaysAllModal",
+          "plantingAgeModal",
+          "bedDetailModal",
+          "recordDetailModal",
+          "partialHarvestEditModal",
+          "syncConflictPanel"
+        ];
+        const registeredIds = comparable(app.eval("[...PAGE_BLOCKING_UI_IDS]"));
+        assertDeepEqual(registeredIds, expectedIds, "背景スクロールを管理する画面一覧が違います");
+        const missingElements = registeredIds.filter(id => !app.document.getElementById(id));
+        assertDeepEqual(missingElements, [], "一覧に対応する画面要素がありません");
       });
 
       await runTest("パレット番号を範囲へ圧縮し、元へ戻せる", () => {
@@ -269,15 +296,26 @@
         assertEqual(lookupKey, `record:uuid:${uuid}`, "競合記録の照合キーが違います");
       });
 
-      await runTest("情報ウィンドウを開閉すると背景スクロールも元に戻る", () => {
-        const modal = app.document.getElementById("dashboardForecastInfoModal");
-        assert(modal, "情報ウィンドウがありません");
-        app.openDashboardForecastInfoWindow();
-        assert(modal.classList.contains("show"), "情報ウィンドウが開きません");
-        assertEqual(app.document.body.style.overflow, "hidden", "背景スクロールが止まりません");
-        app.closeDashboardForecastInfoWindow();
-        assert(!modal.classList.contains("show"), "情報ウィンドウが閉じません");
-        assertEqual(app.document.body.style.overflow, "", "背景スクロールが元に戻りません");
+      await runTest("重なった情報ウィンドウを閉じても背景スクロールを正しく管理する", () => {
+        const forecastModal = app.document.getElementById("dashboardForecastInfoModal");
+        const calendarModal = app.document.getElementById("dashboardCalendarInfoModal");
+        assert(forecastModal && calendarModal, "情報ウィンドウがありません");
+        try{
+          app.openDashboardForecastInfoWindow();
+          app.openDashboardCalendarInfoWindow();
+          assert(forecastModal.classList.contains("show"), "収穫予測の情報ウィンドウが開きません");
+          assert(calendarModal.classList.contains("show"), "カレンダーの情報ウィンドウが開きません");
+          assertEqual(app.document.body.style.overflow, "hidden", "背景スクロールが止まりません");
+          app.closeDashboardForecastInfoWindow();
+          assert(!forecastModal.classList.contains("show"), "収穫予測の情報ウィンドウが閉じません");
+          assertEqual(app.document.body.style.overflow, "hidden", "別のウィンドウが開いている間に背景スクロールが戻りました");
+          app.closeDashboardCalendarInfoWindow();
+          assert(!calendarModal.classList.contains("show"), "カレンダーの情報ウィンドウが閉じません");
+          assertEqual(app.document.body.style.overflow, "", "すべて閉じた後に背景スクロールが元へ戻りません");
+        }finally{
+          app.closeDashboardForecastInfoWindow();
+          app.closeDashboardCalendarInfoWindow();
+        }
       });
     }
 

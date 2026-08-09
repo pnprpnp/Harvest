@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-dashboard-record-details">
+<meta name="harvestnavi-version" content="20260809-modal-lifecycle-cleanup">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10683,6 +10683,48 @@ function showToast(message){
   showToast._timer = setTimeout(() => toast.classList.remove("show"), 2800);
 }
 
+const PAGE_BLOCKING_UI_IDS = Object.freeze([
+  "monitorEditorModal",
+  "monitorPreviewModal",
+  "appMenuModal",
+  "forecastSettingsModal",
+  "dashboardModal",
+  "dashboardCasesAllModal",
+  "dashboardCalendarInfoModal",
+  "dashboardForecastInfoModal",
+  "dashboardForecastDaysAllModal",
+  "plantingAgeModal",
+  "bedDetailModal",
+  "recordDetailModal",
+  "partialHarvestEditModal",
+  "syncConflictPanel"
+]);
+
+function isPageBlockingUiOpen(){
+  return isMonitorModeOpen || PAGE_BLOCKING_UI_IDS.some(id => (
+    document.getElementById(id)?.classList.contains("show")
+  ));
+}
+
+function showPageBlockingUi(element){
+  if(!element) return false;
+  element.classList.add("show");
+  document.body.style.overflow = "hidden";
+  return true;
+}
+
+function restorePageAfterBlockingUiClose(){
+  if(isPageBlockingUiOpen()) return;
+  const tabBar = document.querySelector(".tabBar");
+  if(tabBar) tabBar.classList.remove("monitorHidden");
+  document.body.style.overflow = "";
+}
+
+function hidePageBlockingUi(element){
+  if(element) element.classList.remove("show");
+  restorePageAfterBlockingUiClose();
+}
+
 async function openMonitorEditorWindow(){
   const modal = document.getElementById("monitorEditorModal");
   const body = document.getElementById("monitorEditorModalBody");
@@ -10690,9 +10732,8 @@ async function openMonitorEditorWindow(){
   const tabBar = document.querySelector(".tabBar");
   if(!modal || !body || !content) return;
   body.innerHTML = `<div class="monitorEmpty monitorLoading">最新のモニター内容を読み込み中です</div>`;
-  modal.classList.add("show");
+  showPageBlockingUi(modal);
   if(tabBar) tabBar.classList.add("monitorHidden");
-  document.body.style.overflow = "hidden";
 
   const config = getValidatedGoogleSheetConfig({ statusSetter: setMonitorRemoteEditorStatus });
   if(!config){
@@ -10719,17 +10760,10 @@ function closeMonitorEditorWindow(){
   const modal = document.getElementById("monitorEditorModal");
   const content = document.getElementById("monitorRemoteEditorContent");
   const storage = document.getElementById("monitorEditorStorage");
-  const tabBar = document.querySelector(".tabBar");
   if(content && storage){
     storage.appendChild(content);
   }
-  if(modal) modal.classList.remove("show");
-  if(tabBar && !isMonitorModeOpen){
-    tabBar.classList.remove("monitorHidden");
-  }
-  if(!isMonitorModeOpen){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
 }
 
 function openDashboardWindow(){
@@ -10741,27 +10775,13 @@ function openDashboardForecastInfoWindow(){
   const closeButton = document.getElementById("dashboardForecastInfoWindowClose");
   if(!modal) return;
   dashboardForecastInfoReturnFocus = document.activeElement;
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
   requestAnimationFrame(() => closeButton?.focus());
 }
 
 function closeDashboardForecastInfoWindow(){
   const modal = document.getElementById("dashboardForecastInfoModal");
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
-    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
-    !document.getElementById("recordDetailModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardCalendarInfoModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardForecastDaysAllModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
   const returnFocus = dashboardForecastInfoReturnFocus;
   dashboardForecastInfoReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
@@ -10772,27 +10792,13 @@ function openDashboardCalendarInfoWindow(){
   const closeButton = document.getElementById("dashboardCalendarInfoWindowClose");
   if(!modal) return;
   dashboardCalendarInfoReturnFocus = document.activeElement;
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
   requestAnimationFrame(() => closeButton?.focus());
 }
 
 function closeDashboardCalendarInfoWindow(){
   const modal = document.getElementById("dashboardCalendarInfoModal");
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
-    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
-    !document.getElementById("recordDetailModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardForecastInfoModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardForecastDaysAllModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
   const returnFocus = dashboardCalendarInfoReturnFocus;
   dashboardCalendarInfoReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
@@ -10806,27 +10812,13 @@ function openDashboardForecastDaysAllWindow(){
   dashboardForecastDaysAllReturnFocus = document.activeElement;
   const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   renderDashboardHarvestForecastDayList(container, model);
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
   requestAnimationFrame(() => closeButton?.focus());
 }
 
 function closeDashboardForecastDaysAllWindow(){
   const modal = document.getElementById("dashboardForecastDaysAllModal");
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
-    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
-    !document.getElementById("recordDetailModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardCasesAllModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardCalendarInfoModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardForecastInfoModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
   const returnFocus = dashboardForecastDaysAllReturnFocus;
   dashboardForecastDaysAllReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
@@ -10838,25 +10830,13 @@ function openDashboardCasesAllWindow(){
   if(!modal) return;
   dashboardCasesAllReturnFocus = document.activeElement;
   renderDashboardCasesAllWindow();
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
   requestAnimationFrame(() => closeButton?.focus());
 }
 
 function closeDashboardCasesAllWindow(){
   const modal = document.getElementById("dashboardCasesAllModal");
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
-    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
-    !document.getElementById("recordDetailModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardForecastDaysAllModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
   const returnFocus = dashboardCasesAllReturnFocus;
   dashboardCasesAllReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
@@ -10870,14 +10850,7 @@ function closeDashboardWindow(){
     dashboard.style.display = "none";
     body.appendChild(dashboard);
   }
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("forecastSettingsModal")?.classList.contains("show")
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
 }
 
 function moveMenuSettingsToWindow(){
@@ -10960,8 +10933,7 @@ function openAppMenuWindow(){
   const modal = document.getElementById("appMenuModal");
   if(!modal) return;
   moveMenuSettingsToWindow();
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
   refreshAppRollbackAvailability();
 }
 
@@ -10977,17 +10949,7 @@ function closeAppMenuWindow(){
     }
   }
   restoreMenuSettingsToSettingsTab();
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardModal")?.classList.contains("show") &&
-    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
 }
 
 function saveAppMenuSettingsAndClose(){
@@ -10999,28 +10961,18 @@ function openPlantingAgeWindow(){
   const modal = document.getElementById("plantingAgeModal");
   if(!modal) return;
   renderPlantingAgeInfo();
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
 }
 
 function closePlantingAgeWindow(){
   const modal = document.getElementById("plantingAgeModal");
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
 }
 
 function openForecastSettingsWindow(){
   const modal = document.getElementById("forecastSettingsModal");
   if(!modal) return;
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
 }
 
 function closeForecastSettingsWindow(){
@@ -11037,16 +10989,7 @@ function closeForecastSettingsWindow(){
   document.querySelectorAll("#forecastSettingsWindowBody details[open]").forEach(details => {
     details.open = false;
   });
-  if(modal) modal.classList.remove("show");
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardModal")?.classList.contains("show") &&
-    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
 }
 
 function saveForecastSettingsAndClose(){
@@ -11119,8 +11062,7 @@ function showMonitorPreviewConfirm(content){
     }
     monitorPreviewResolver = resolve;
     renderMonitorPreviewContent(content);
-    modal.classList.add("show");
-    document.body.style.overflow = "hidden";
+    showPageBlockingUi(modal);
   });
 }
 
@@ -11130,10 +11072,7 @@ function isMonitorPreviewOpen(){
 
 function resolveMonitorPreview(confirmed){
   const modal = document.getElementById("monitorPreviewModal");
-  if(modal) modal.classList.remove("show");
-  if(!isMonitorModeOpen && !document.getElementById("monitorEditorModal")?.classList.contains("show")){
-    document.body.style.overflow = "";
-  }
+  hidePageBlockingUi(modal);
   const resolver = monitorPreviewResolver;
   monitorPreviewResolver = null;
   if(resolver) resolver(!!confirmed);
@@ -11153,9 +11092,8 @@ async function openMonitorMode(){
     const config = getValidatedGoogleSheetConfig({ silent: true });
     isMonitorModeOpen = true;
     monitorModeLoading = !!config;
-    overlay.classList.add("show");
+    showPageBlockingUi(overlay);
     if(tabBar) tabBar.classList.add("monitorHidden");
-    document.body.style.overflow = "hidden";
     installMonitorViewportResizeObserver();
     updateMonitorFitScale();
     renderMonitorMode();
@@ -11184,10 +11122,7 @@ function closeMonitorMode(){
   isMonitorModeOpen = false;
   monitorModeLoading = false;
   const overlay = document.getElementById("monitorModeOverlay");
-  const tabBar = document.querySelector(".tabBar");
-  if(overlay) overlay.classList.remove("show");
-  if(tabBar) tabBar.classList.remove("monitorHidden");
-  document.body.style.overflow = "";
+  hidePageBlockingUi(overlay);
   stopMonitorRemoteUpdates();
   stopMonitorTodayRefreshTimer();
   if(document.fullscreenElement && document.exitFullscreen){
@@ -12427,31 +12362,6 @@ function closeRecordFloatingUi(){
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();
   hideRecordImportError();
-  unlockPageAfterRecordUiClose();
-}
-
-function unlockPageAfterRecordUiClose(){
-  const blockingModalOpen = [
-    "monitorEditorModal",
-    "monitorPreviewModal",
-    "appMenuModal",
-    "forecastSettingsModal",
-    "dashboardModal",
-    "dashboardCasesAllModal",
-    "dashboardCalendarInfoModal",
-    "dashboardForecastInfoModal",
-    "dashboardForecastDaysAllModal",
-    "plantingAgeModal",
-    "recordDetailModal",
-    "partialHarvestEditModal",
-    "syncConflictPanel"
-  ].some(id => document.getElementById(id)?.classList.contains("show"));
-
-  if(!isMonitorModeOpen && !blockingModalOpen){
-    const tabBar = document.querySelector(".tabBar");
-    if(tabBar) tabBar.classList.remove("monitorHidden");
-    document.body.style.overflow = "";
-  }
 }
 
 function preservePlantingStateBeforeTabSwitch(options = {}){
@@ -15883,8 +15793,7 @@ function openSyncConflictPanel(conflictId = ""){
     activeSyncConflictId = syncConflicts[0]?.conflictId || "";
   }
   renderSyncConflictList();
-  panel.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(panel);
   requestAnimationFrame(() => {
     document.querySelector(".syncConflictDecisionBtn")?.focus({ preventScroll: true });
   });
@@ -15893,8 +15802,7 @@ function openSyncConflictPanel(conflictId = ""){
 function closeSyncConflictPanel(){
   if(syncConflictBulkRunning) return;
   const panel = document.getElementById("syncConflictPanel");
-  if(panel) panel.classList.remove("show");
-  unlockPageAfterRecordUiClose();
+  hidePageBlockingUi(panel);
 }
 
 function getActiveRecordForSyncConflict(entry){
@@ -23719,30 +23627,18 @@ function openBedDetailWindow(context, bed){
   expandedRecordBed = null;
   renderBedDetailWindow();
   const modal = document.getElementById("bedDetailModal");
-  if(modal) modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
 }
 
 function closeBedDetailWindow(){
   const modal = document.getElementById("bedDetailModal");
-  if(modal) modal.classList.remove("show");
+  hidePageBlockingUi(modal);
   clearBedDetailOpenReleaseGuard();
   palletDragState = null;
   hideBedActionMenu();
   hideRecordBedActionMenu();
   activeBedDetailContext = null;
   activeBedDetailBed = null;
-  if(
-    !isMonitorModeOpen &&
-    !document.getElementById("monitorEditorModal")?.classList.contains("show") &&
-    !document.getElementById("appMenuModal")?.classList.contains("show") &&
-    !document.getElementById("forecastSettingsModal")?.classList.contains("show") &&
-    !document.getElementById("dashboardModal")?.classList.contains("show") &&
-    !document.getElementById("plantingAgeModal")?.classList.contains("show") &&
-    !isMonitorPreviewOpen()
-  ){
-    document.body.style.overflow = "";
-  }
 }
 
 function refreshBedDetailWindow(){
@@ -28775,8 +28671,7 @@ function editPartialHarvestRecord(id){
   document.querySelectorAll('input[name="partialHarvestEditBed"]').forEach(input => {
     input.checked = formModel.beds.includes(input.value);
   });
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
   requestAnimationFrame(() => dateInput.focus({ preventScroll: true }));
 }
 
@@ -28784,7 +28679,7 @@ function closePartialHarvestEditWindow(options = {}){
   const modal = document.getElementById("partialHarvestEditModal");
   const shouldRestoreFocus = options.restoreFocus !== false;
   const returnFocus = partialHarvestEditReturnFocus;
-  if(modal) modal.classList.remove("show");
+  hidePageBlockingUi(modal);
   editingPartialHarvestRecordId = null;
   partialHarvestEditReturnFocus = null;
   document.querySelectorAll('input[name="partialHarvestEditBed"]').forEach(input => {
@@ -28794,7 +28689,6 @@ function closePartialHarvestEditWindow(options = {}){
   const memoInput = document.getElementById("partialHarvestEditMemoInput");
   if(casesInput) casesInput.value = "";
   if(memoInput) memoInput.value = "";
-  unlockPageAfterRecordUiClose();
   if(shouldRestoreFocus && returnFocus?.isConnected){
     requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
   }
@@ -29872,8 +29766,7 @@ function openRecordDetailWindow(kind, id){
     </section>
   `;
   body.scrollTop = 0;
-  modal.classList.add("show");
-  document.body.style.overflow = "hidden";
+  showPageBlockingUi(modal);
   requestAnimationFrame(() => {
     closeButton?.focus({ preventScroll: true });
     requestAnimationFrame(() => loadRecordDetailLocation(kind, safeId, loadToken));
@@ -29889,13 +29782,12 @@ function closeRecordDetailWindow(options = {}){
   recordDetailLocationModel = null;
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
-  if(modal) modal.classList.remove("show");
+  hidePageBlockingUi(modal);
   if(body){
     body.classList.remove("hasLocationDisplay");
     body.textContent = "";
   }
   recordDetailReturnFocus = null;
-  unlockPageAfterRecordUiClose();
   if(shouldRestoreFocus && returnFocus?.isConnected){
     requestAnimationFrame(() => returnFocus.focus({ preventScroll: true }));
   }
