@@ -82,6 +82,21 @@
       }
     }
 
+    function assertThrows(body, expectedMessage, message){
+      let caught = null;
+      try{
+        body();
+      }catch(error){
+        caught = error;
+      }
+      if(!caught) throw new Error(message + "（エラーが発生しませんでした）");
+      if(expectedMessage && !String(caught?.message || caught).includes(expectedMessage)){
+        throw new Error(
+          `${message}（期待する内容: ${JSON.stringify(expectedMessage)}、実際: ${JSON.stringify(caught?.message || String(caught))}）`
+        );
+      }
+    }
+
     async function runTest(name, body){
       const item = document.createElement("li");
       try{
@@ -108,10 +123,10 @@
       `);
     }
 
-    function finish(iframe){
+    function finish(iframes){
       if(finished) return;
       finished = true;
-      iframe?.remove();
+      (Array.isArray(iframes) ? iframes : [iframes]).forEach(iframe => iframe?.remove());
       restoreStorage(localStorage, storageSnapshots.local);
       restoreStorage(sessionStorage, storageSnapshots.session);
       root.dataset.testStatus = failedCount ? "failed" : "passed";
@@ -138,8 +153,26 @@
       }).catch(() => {});
     }
 
-    async function runCharacterizationTests(iframe){
+    function loadAppsScriptHarness(){
+      return new Promise((resolve, reject) => {
+        const iframe = document.createElement("iframe");
+        iframe.title = "テスト対象のHarvestnavi Apps Script";
+        const timeout = setTimeout(() => {
+          iframe.remove();
+          reject(new Error("Apps Scriptテスト環境を10秒以内に読み込めませんでした"));
+        }, 10000);
+        iframe.addEventListener("load", () => {
+          clearTimeout(timeout);
+          resolve(iframe);
+        }, { once: true });
+        iframe.src = `apps-script-harness.html?__hncheck=1&characterization-test=${Date.now()}`;
+        document.body.appendChild(iframe);
+      });
+    }
+
+    async function runCharacterizationTests(iframe, appsScriptIframe){
       const app = iframe.contentWindow;
+      const appsScript = appsScriptIframe.contentWindow;
       const requiredFunctions = [
         "compressPalletKeysToRanges",
         "expandPalletRangesToKeys",
@@ -150,6 +183,17 @@
         "normalizeRecordSnapshot",
         "normalizeImportedRecord",
         "serializeRecordForStorage",
+        "buildGoogleSheetRecordPayload",
+        "buildGoogleSheetCombinedSyncPayload",
+        "buildGoogleSheetUpdateCheckPayload",
+        "buildGoogleSheetBatchPayload",
+        "buildGoogleSheetRecordDeletePayload",
+        "buildGoogleSheetRecordRestorePayload",
+        "buildGoogleSheetPlantingEventPayload",
+        "buildGoogleSheetPlantingEventListPayload",
+        "buildGoogleSheetMonitorContentPayload",
+        "buildGoogleSheetMonitorSavePayload",
+        "buildGoogleSheetMonitorHistoryPayload",
         "getHarvestRecordIdentity",
         "getHarvestRecordIdentityKey",
         "findHarvestRecordByIdentity",
@@ -175,6 +219,289 @@
       await runTest("主要な計算関数を読み込める", () => {
         const missing = requiredFunctions.filter(name => typeof app[name] !== "function");
         assertDeepEqual(missing, [], `読み込めない関数があります: ${missing.join(", ")}`);
+      });
+
+      await runTest("Apps Scriptの同期・正規化関数を読み込める", () => {
+        const requiredAppsScriptFunctions = [
+          "resolveApiOperation",
+          "normalizeHarvestRecord",
+          "normalizePlantingEvent",
+          "normalizeHarvestSyncRevision",
+          "normalizeSyncChangeEntry",
+          "getHarvestSyncRevisionState",
+          "normalizeHarvestRecordSyncCursor",
+          "normalizePlantingEventSyncCursor",
+          "assertRecordIsNotDeleted",
+          "extractSpreadsheetId",
+          "getSpreadsheet",
+          "setupHarvestSpreadsheetId",
+          "getAppsScriptContractSnapshot",
+          "resetAppsScriptTestState"
+        ];
+        assertEqual(appsScript.__appsScriptSourceLoaded, true, "Apps Script本体の読み込みが完了していません");
+        assertEqual(appsScript.__appsScriptLoadError, "", "Apps Script本体の読み込み中にエラーが発生しました");
+        const missing = requiredAppsScriptFunctions.filter(name => typeof appsScript[name] !== "function");
+        assertDeepEqual(missing, [], `読み込めないApps Script関数があります: ${missing.join(", ")}`);
+      });
+
+      await runTest("ブラウザー側とApps Script側の同期上限・項目を一致させる", () => {
+        const clientContract = comparable(app.eval(`({
+          requestCharacters: GOOGLE_SHEET_MAX_REQUEST_CHARS,
+          requestBytes: GOOGLE_SHEET_MAX_REQUEST_BYTES,
+          batchRecords: GOOGLE_SHEET_MAX_BATCH_RECORDS,
+          recordList: GOOGLE_SHEET_MAX_LIST_RECORDS,
+          recordTombstones: GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES,
+          plantingList: GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS,
+          plantingTombstones: GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES,
+          monitorHistory: GOOGLE_SHEET_MAX_HISTORY_ITEMS,
+          recordCases: RECORD_MAX_CASES,
+          seedlingTrays: RECORD_MAX_SEEDLING_TRAYS,
+          palletKeys: RECORD_MAX_PALLET_KEYS,
+          targets: RECORD_MAX_TARGETS,
+          memoLength: RECORD_MAX_MEMO_LENGTH,
+          summaryLength: RECORD_MAX_SUMMARY_LENGTH,
+          qualityLength: RECORD_MAX_QUALITY_LENGTH,
+          duplicateKeyLength: RECORD_MAX_DUPLICATE_KEY_LENGTH,
+          uuidLength: RECORD_UUID_MAX_LENGTH,
+          buildings: [...BUILDINGS],
+          beds: [...bedOrder],
+          palletsPerBed: PALLETS_PER_BED,
+          palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+          recordSyncSchemaVersion: RECORD_SYNC_SCHEMA_VERSION,
+          recordSyncFields: [...RECORD_SYNC_FIELD_KEYS]
+        })`));
+        const serverContract = comparable(appsScript.getAppsScriptContractSnapshot());
+        const sharedClientContract = { ...clientContract };
+        const sharedServerContract = { ...serverContract };
+        delete sharedClientContract.recordSyncSchemaVersion;
+        delete sharedServerContract.recordSyncSchemaVersion;
+        delete sharedServerContract.recordSyncMinimumProvidedFieldsVersion;
+        assertDeepEqual(sharedServerContract, sharedClientContract, "同期仕様の上限または項目が食い違っています");
+        assert(
+          clientContract.recordSyncSchemaVersion >= serverContract.recordSyncMinimumProvidedFieldsVersion,
+          "ブラウザー側の同期形式をApps Script側が受け付けられません"
+        );
+        assert(
+          serverContract.recordSyncSchemaVersion >= clientContract.recordSyncSchemaVersion,
+          "Apps Script側の同期形式をブラウザー側が受け付けられません"
+        );
+      });
+
+      await runTest("ブラウザーが作るAPI操作をApps Script側で同じ操作として解釈する", () => {
+        const config = { token: "characterization-test-token" };
+        const record = app.normalizeRecordSnapshot({
+          id: 20000000000001,
+          recordUuid: "33333333-3333-4333-8333-333333333333",
+          syncSchemaVersion: 3,
+          syncProvidedFields: ["plantingCaseInstruction", "actualSeedlingCarryoverMode"],
+          type: "fullHarvest",
+          date: "2026-08-09",
+          cases: 12,
+          palletKeys: ["2-A-1", "2-A-2"],
+          plantingPalletKeys: ["2-A-1"],
+          plannedSeedlingTrayCount: 1,
+          plantingCaseInstruction: "手前",
+          actualSeedlingTrayCount: 1,
+          actualSeedlingCarryoverMode: "loss",
+          actualSeedlingLossRate: "0",
+          actualLoss: "2.5",
+          qualityMemo: { tags: ["large"], other: "" },
+          plantingPending: true,
+          memo: "契約テスト"
+        });
+        const event = app.normalizePlantingEvent({
+          palletNumberingVersion: 2,
+          eventId: 20000000000002,
+          plantingDate: "2026-08-09",
+          sourceAllocations: [{ harvestRecordId: record.id, palletKeys: ["2-A-1"] }],
+          plantingPalletKeys: ["2-A-1"],
+          actualSeedlingTrayCount: 1,
+          actualTakenSeedlingCount: 120,
+          actualPlantedSeedlingCount: 20,
+          actualSeedlingCarryoverMode: "loss",
+          actualSeedlingLossRate: "0",
+          qualityMemo: null,
+          detailsUnknown: false
+        });
+        assert(record && event, "契約テスト用の記録を作成できません");
+
+        const operationCases = [
+          [app.buildGoogleSheetUpdateCheckPayload(config, { syncRevision: 1 }), "checkUpdates"],
+          [app.buildGoogleSheetCombinedSyncPayload(config, { syncRevision: 1 }), "syncAll"],
+          [app.buildGoogleSheetRecordPayload(record, config), "saveRecord"],
+          [app.buildGoogleSheetBatchPayload([record], config), "saveRecordBatch"],
+          [app.buildGoogleSheetRecordDeletePayload(record, config), "deleteRecord"],
+          [app.buildGoogleSheetRecordRestorePayload(record, config), "restoreRecord"],
+          [app.buildGoogleSheetPlantingEventListPayload(config), "listPlantingEvents"],
+          [app.buildGoogleSheetPlantingEventPayload(event, config, "save"), "savePlantingEvent"],
+          [app.buildGoogleSheetPlantingEventPayload(event, config, "delete"), "deletePlantingEvent"],
+          [app.buildGoogleSheetPlantingEventPayload(event, config, "restore"), "restorePlantingEvent"],
+          [app.buildGoogleSheetMonitorContentPayload(config), "getMonitorContent"],
+          [app.buildGoogleSheetMonitorSavePayload(config, { enabled: true }), "saveMonitorContent"],
+          [app.buildGoogleSheetMonitorHistoryPayload(config, { limit: 20 }), "listMonitorHistory"]
+        ];
+        operationCases.forEach(([payload, expectedOperation]) => {
+          assertEqual(
+            appsScript.resolveApiOperation(comparable(payload)),
+            expectedOperation,
+            `${expectedOperation}のAPI操作が一致しません`
+          );
+        });
+      });
+
+      await runTest("ブラウザーが送る収穫記録をApps Script側で正規化できる", () => {
+        const record = app.normalizeRecordSnapshot({
+          id: 20000000000003,
+          recordUuid: "44444444-4444-4444-8444-444444444444",
+          syncSchemaVersion: 3,
+          syncProvidedFields: ["plantingCaseInstruction", "actualSeedlingCarryoverMode"],
+          type: "fullHarvest",
+          date: "2026-08-09",
+          cases: 16,
+          palletKeys: ["3-B-4", "3-B-5"],
+          plantingPalletKeys: ["3-B-4"],
+          plannedSeedlingTrayCount: 2,
+          plantingCaseInstruction: "中央",
+          plantingDate: "2026-08-10",
+          actualSeedlingTrayCount: 2,
+          actualSeedlingCarryoverMode: "carryover",
+          actualSeedlingLossRate: "1.5",
+          actualLoss: "3.25",
+          qualityMemo: { tags: ["small"], other: "確認" },
+          plantingPending: true,
+          memo: "同期契約"
+        });
+        const payloadRecord = comparable(
+          app.buildGoogleSheetRecordPayload(record, { token: "test" }).record
+        );
+        const serverRecord = comparable(appsScript.normalizeHarvestRecord(payloadRecord));
+        assertDeepEqual(serverRecord.palletKeys, ["3-B-4", "3-B-5"], "収穫場所をApps Script側で読み取れません");
+        assertDeepEqual(serverRecord.plantingPalletKeys, ["3-B-4"], "苗植え場所をApps Script側で読み取れません");
+        assertEqual(serverRecord.recordUuid, record.recordUuid, "記録UUIDが変わりました");
+        assertEqual(serverRecord.cases, 16, "ケース数が変わりました");
+        assertEqual(serverRecord.actualLoss, 3.25, "実ロス率が変わりました");
+        assertEqual(serverRecord.actualSeedlingCarryoverMode, "carryover", "余り苗区分が変わりました");
+      });
+
+      await runTest("ブラウザーが送る苗植え記録をApps Script側で正規化できる", () => {
+        const event = app.normalizePlantingEvent({
+          palletNumberingVersion: 2,
+          eventId: 20000000000004,
+          plantingDate: "2026-08-09",
+          sourceAllocations: [{
+            harvestRecordId: 20000000000003,
+            palletKeys: ["3-B-4", "3-B-5"]
+          }],
+          plantingPalletKeys: ["3-B-4", "3-B-5"],
+          actualSeedlingTrayCount: 2,
+          actualTakenSeedlingCount: 240,
+          actualPlantedSeedlingCount: 40,
+          actualSeedlingCarryoverMode: "loss",
+          actualSeedlingLossRate: "2",
+          qualityMemo: { tags: ["small"], other: "" },
+          detailsUnknown: false
+        });
+        const payload = app.buildGoogleSheetPlantingEventPayload(event, { token: "test" }, "save");
+        const serverEvent = comparable(appsScript.normalizePlantingEvent(comparable(payload.event)));
+        assertDeepEqual(serverEvent.sourceAllocations, [{
+          harvestRecordId: 20000000000003,
+          palletKeys: ["3-B-4", "3-B-5"]
+        }], "収穫元割当が変わりました");
+        assertDeepEqual(serverEvent.plantingPalletKeys, ["3-B-4", "3-B-5"], "苗植えパレットが変わりました");
+        assertEqual(serverEvent.actualTakenSeedlingCount, 240, "取得苗株数が変わりました");
+        assertEqual(serverEvent.actualPlantedSeedlingCount, 40, "苗植え株数が変わりました");
+      });
+
+      await runTest("同期番号とカーソルをブラウザー・Apps Script間で同じ値として扱う", () => {
+        const recordCursor = {
+          updatedAt: "2026-08-09T01:02:03.000Z",
+          recordUuid: "55555555-5555-4555-8555-555555555555"
+        };
+        const plantingCursor = {
+          updatedAt: "2026-08-09T02:03:04.000Z",
+          eventId: 20000000000005
+        };
+        assertEqual(app.normalizeGoogleSheetSyncRevision("42"), 42, "ブラウザー側で同期番号を読めません");
+        assertEqual(appsScript.normalizeHarvestSyncRevision("42"), 42, "Apps Script側で同期番号を読めません");
+        assertDeepEqual(
+          appsScript.getHarvestSyncRevisionState({
+            HARVEST_SYNC_REVISION_V1: "42",
+            HARVEST_SYNC_REVISION_FLOOR_V1: "30"
+          }),
+          { revision: 42, floorRevision: 30 },
+          "Apps Script側で同期番号の保存値を読めません"
+        );
+        const change = comparable(appsScript.normalizeSyncChangeEntry({
+          entityType: "record",
+          recordUuid: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+          entityId: 20000000000005,
+          action: "delete"
+        }));
+        assertEqual(change.recordUuid, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "差分記録のUUIDを正規化できません");
+        assertEqual(change.entityId, 20000000000005, "差分記録のIDが変わりました");
+        assertEqual(change.action, "delete", "差分記録の削除操作が変わりました");
+        assertDeepEqual(
+          appsScript.normalizeHarvestRecordSyncCursor(recordCursor),
+          app.normalizeGoogleSheetSyncCursor(recordCursor),
+          "収穫記録カーソルの解釈が違います"
+        );
+        assertDeepEqual(
+          appsScript.normalizePlantingEventSyncCursor(plantingCursor),
+          app.normalizeGoogleSheetPlantingSyncCursor(plantingCursor),
+          "苗植え記録カーソルの解釈が違います"
+        );
+      });
+
+      await runTest("Apps Script側で不正な操作と記録を拒否する", () => {
+        assertThrows(
+          () => appsScript.resolveApiOperation({ action: "syncAll", type: "harvest-record-list" }),
+          "組み合わせが一致しません",
+          "食い違うAPI操作を受け入れています"
+        );
+        assertThrows(
+          () => appsScript.normalizeHarvestRecord({
+            palletNumberingVersion: 2,
+            id: 20000000000006,
+            type: "partialHarvest",
+            date: "2026-08-09",
+            cases: 2,
+            duplicateKey: "不一致",
+            targets: [{ building: 2, bed: "A", start: 1, end: 2, plantsPerPallet: 10 }]
+          }),
+          "重複判定キーが記録内容と一致しません",
+          "不正な重複判定キーを受け入れています"
+        );
+        assertThrows(
+          () => appsScript.assertRecordIsNotDeleted(
+            { recordUuid: "66666666-6666-4666-8666-666666666666", id: 20000000000006 },
+            new Set(["u:66666666-6666-4666-8666-666666666666"])
+          ),
+          "削除済みです",
+          "削除済み収穫記録の再保存を受け入れています"
+        );
+      });
+
+      await runTest("Apps Scriptが接続先IDをスクリプト プロパティから取得する", () => {
+        appsScript.resetAppsScriptTestState();
+        const state = appsScript.__appsScriptTestState;
+        const spreadsheetId = "testSpreadsheetId_12345678901234567890";
+        state.propertyValues.HARVEST_SPREADSHEET_ID =
+          `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+        const spreadsheet = appsScript.getSpreadsheet();
+        assertEqual(spreadsheet.getId(), spreadsheetId, "設定した接続先を開けません");
+        assertDeepEqual(state.openedSpreadsheetIds, [spreadsheetId], "固定ID以外の場所を開いています");
+
+        appsScript.resetAppsScriptTestState();
+        const setupId = "setupSpreadsheetId_123456789012345678";
+        const result = appsScript.setupHarvestSpreadsheetId(
+          `https://docs.google.com/spreadsheets/d/${setupId}/edit`
+        );
+        assertEqual(result.configured, true, "接続先設定が完了しません");
+        assertEqual(
+          appsScript.__appsScriptTestState.propertyValues.HARVEST_SPREADSHEET_ID,
+          setupId,
+          "接続先IDをスクリプト プロパティへ保存できません"
+        );
       });
 
       await runTest("背景スクロールを止める画面を一つの一覧で管理する", () => {
@@ -518,6 +845,7 @@
     sessionStorage.clear();
 
     const iframe = document.createElement("iframe");
+    let appsScriptIframe = null;
     iframe.title = "テスト対象のHarvestnavi";
     const timeout = setTimeout(() => {
       if(finished) return;
@@ -526,14 +854,15 @@
       item.textContent = "失敗: アプリの読み込みが20秒以内に完了しませんでした";
       results.appendChild(item);
       failedCount++;
-      finish(iframe);
+      finish([iframe, appsScriptIframe]);
     }, 20000);
 
     iframe.addEventListener("load", async () => {
       if(finished) return;
       clearTimeout(timeout);
       try{
-        await runCharacterizationTests(iframe);
+        appsScriptIframe = await loadAppsScriptHarness();
+        await runCharacterizationTests(iframe, appsScriptIframe);
       }catch(error){
         const item = document.createElement("li");
         item.dataset.testStatus = "failed";
@@ -541,7 +870,7 @@
         results.appendChild(item);
         failedCount++;
       }finally{
-        finish(iframe);
+        finish([iframe, appsScriptIframe]);
       }
     }, { once: true });
 

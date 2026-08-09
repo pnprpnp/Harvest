@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Harvestnavi Apps Script テスト環境</title>
+</head>
+<body>
+  <script>
+  (() => {
+    "use strict";
+
+    const state = {
+      propertyValues: {},
+      openedSpreadsheetIds: [],
+      activeSpreadsheet: null
+    };
+    const scriptProperties = {
+      getProperty(key){
+        return Object.prototype.hasOwnProperty.call(state.propertyValues, key)
+          ? state.propertyValues[key]
+          : null;
+      },
+      getProperties(){
+        return { ...state.propertyValues };
+      },
+      setProperty(key, value){
+        state.propertyValues[key] = String(value);
+        return this;
+      },
+      setProperties(values){
+        Object.entries(values || {}).forEach(([key, value]) => {
+          state.propertyValues[key] = String(value);
+        });
+        return this;
+      }
+    };
+
+    window.__appsScriptTestState = state;
+    window.PropertiesService = {
+      getScriptProperties(){ return scriptProperties; }
+    };
+    window.SpreadsheetApp = {
+      openById(id){
+        const safeId = String(id || "");
+        state.openedSpreadsheetIds.push(safeId);
+        return {
+          getId(){ return safeId; },
+          getName(){ return "テスト用スプレッドシート"; }
+        };
+      },
+      getActiveSpreadsheet(){
+        return state.activeSpreadsheet;
+      }
+    };
+    window.__appsScriptLoadError = "";
+    window.addEventListener("error", event => {
+      window.__appsScriptLoadError = String(event.error?.stack || event.message || "読み込みエラー");
+    });
+  })();
+  </script>
+  <script src="../apps-script/コード.js"></script>
+  <script>
+  window.getAppsScriptContractSnapshot = function(){
+    return {
+      requestCharacters: API_MAX_BODY_CHARACTERS,
+      requestBytes: API_MAX_BODY_BYTES,
+      batchRecords: API_BATCH_RECORD_LIMIT,
+      recordList: RECORD_LIST_LIMIT,
+      recordTombstones: RECORD_TOMBSTONE_LIST_LIMIT,
+      plantingList: PLANTING_EVENT_LIST_LIMIT,
+      plantingTombstones: PLANTING_EVENT_TOMBSTONE_LIST_LIMIT,
+      monitorHistory: MONITOR_HISTORY_LIMIT,
+      recordCases: RECORD_CASES_LIMIT,
+      seedlingTrays: RECORD_SEEDLING_TRAY_LIMIT,
+      palletKeys: RECORD_PALLET_KEY_LIMIT,
+      targets: RECORD_TARGET_LIMIT,
+      memoLength: RECORD_MEMO_LENGTH_LIMIT,
+      summaryLength: RECORD_SUMMARY_LENGTH_LIMIT,
+      qualityLength: RECORD_QUALITY_LENGTH_LIMIT,
+      duplicateKeyLength: RECORD_DUPLICATE_KEY_LENGTH_LIMIT,
+      uuidLength: RECORD_UUID_LENGTH_LIMIT,
+      buildings: [...HARVEST_BUILDINGS],
+      beds: [...HARVEST_BEDS],
+      palletsPerBed: PALLETS_PER_BED,
+      palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+      recordSyncSchemaVersion: RECORD_SYNC_SCHEMA_VERSION,
+      recordSyncMinimumProvidedFieldsVersion: RECORD_SYNC_PROVIDED_FIELDS_MIN_VERSION,
+      recordSyncFields: [...RECORD_SYNC_PRESERVED_FIELD_KEYS]
+    };
+  };
+
+  window.resetAppsScriptTestState = function(){
+    const state = window.__appsScriptTestState;
+    state.propertyValues = {};
+    state.openedSpreadsheetIds.length = 0;
+    state.activeSpreadsheet = null;
+    requestScopedSpreadsheet = null;
+    requestScopedChangedHarvestRecordIds = new Set();
+  };
+
+  window.__appsScriptSourceLoaded = true;
+  </script>
+</body>
+</html>
