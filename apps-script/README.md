@@ -5,7 +5,23 @@ This directory is reserved for the Harvestnavi Apps Script project.
 - `clasp pull` and status checks are manual.
 - `clasp push`, version creation, and deployment are run only after an explicit request.
 - `.clasp.json` and Google authentication credentials must never be committed.
-- The source is temporarily excluded from Git until fixed resource IDs are moved to Script Properties.
+- `コード.js` and `appsscript.json` are tracked in Git. `.clasp.json` remains local-only.
+
+## Spreadsheet connection
+
+The spreadsheet ID is stored in the Apps Script Script Property
+`HARVEST_SPREADSHEET_ID`; it is not written in the source code.
+
+Before deploying this source to a standalone Apps Script project:
+
+1. Open **Project Settings** in the Apps Script editor.
+2. Under **Script Properties**, add `HARVEST_SPREADSHEET_ID`.
+3. Set its value to the target spreadsheet URL or spreadsheet ID.
+
+A container-bound Apps Script can use its bound spreadsheet when this property
+is absent. The helper `setupHarvestSpreadsheetId(urlOrId)` can also set and
+validate the property when invoked with `clasp run`; when the project is
+container-bound, it can be run without an argument from the Apps Script editor.
 
 ## Current deployment note
 
