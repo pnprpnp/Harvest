@@ -293,6 +293,11 @@
         <button class="harvestProgressBed is-selected"><span class="bedMiniMapSegment"></span></button>
         <div class="bed harvestProgressCompletedBed"><span class="bedMiniMapSegment"></span></div>
         <div class="bed bedCollapsed simulationBedOverview harvestProgressCompletedBed"></div>
+        <div class="recordBedOverview">
+          <span class="simulationBedMapCell is-planting-selectable"></span>
+          <span class="simulationBedMapCell is-planting-selected"></span>
+          <span class="simulationBedMapCell is-planting-unavailable"></span>
+        </div>
         <div class="recordDateInputRow"><input id="visualRecordDateInput" class="recordInputNeedsAttention" type="date"></div>
         <div class="dashboardForecastValueInput"><input></div>
         <div class="dashboardForecastValueInput autoValue"><input></div>
@@ -413,6 +418,8 @@
         "setMainTabSelection",
         "setMainTabLoadingState",
         "switchTab",
+        "appendBedOverviewMap",
+        "drawRecordBeds",
         "installStaticUiEventHandlers",
         "restoreHarvestStateAtStartup",
         "initializeStartupViews",
@@ -832,6 +839,61 @@
         }
       });
 
+      await runTest("記録タブもシミュと同じ縦型パレット配置図を使う", () => {
+        const mapState = comparable(app.eval(`(() => {
+          const recordTab = document.getElementById("recordTab");
+          const previous = {
+            display: recordTab.style.display,
+            mode: recordSelectionMode,
+            building: currentBuilding,
+            keys: [...harvestFillKeys]
+          };
+          try{
+            recordTab.style.display = "block";
+            recordSelectionMode = "harvest";
+            currentBuilding = 2;
+            harvestFillKeys = ["2-A-1", "2-A-2"];
+            drawRecordBeds();
+            const firstBed = document.querySelector("#recordBeds .recordBedOverview");
+            const plantingMapHost = document.createElement("div");
+            appendBedOverviewMap(plantingMapHost, 2, "A", {
+              context: "record",
+              selectedSet: new Set(["2-A-1"]),
+              plantingAllowedSet: new Set(["2-A-1", "2-A-2"])
+            });
+            return {
+              sections: document.querySelectorAll("#recordBeds .recordBuildingMapSection").length,
+              beds: document.querySelectorAll("#recordBeds .recordBedOverview").length,
+              cells: document.querySelectorAll("#recordBeds .recordBedOverview .simulationBedMapCell").length,
+              firstBedCells: firstBed?.querySelectorAll(".simulationBedMapCell").length || 0,
+              selected: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length,
+              plantingSelected: plantingMapHost.querySelectorAll(".is-planting-selected").length,
+              plantingSelectable: plantingMapHost.querySelectorAll(".is-planting-selectable").length,
+              plantingUnavailable: plantingMapHost.querySelectorAll(".is-planting-unavailable").length,
+              role: firstBed?.getAttribute("role") || "",
+              label: firstBed?.getAttribute("aria-label") || ""
+            };
+          }finally{
+            recordSelectionMode = previous.mode;
+            currentBuilding = previous.building;
+            harvestFillKeys = previous.keys;
+            recordTab.style.display = previous.display;
+          }
+        })()`));
+        assertDeepEqual(mapState, {
+          sections: 1,
+          beds: 6,
+          cells: 468,
+          firstBedCells: 78,
+          selected: 2,
+          plantingSelected: 1,
+          plantingSelectable: 1,
+          plantingUnavailable: 76,
+          role: "button",
+          label: "2号棟 Fベッド。選択 0パレット、記録済み 0パレット。長押しで拡大してパレットを選択"
+        }, "記録タブの縦型パレット配置図がシミュと一致しません");
+      });
+
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
         const inlineEventAttributes = [
           "onclick", "onchange", "oninput", "ontoggle", "onkeydown"
@@ -1242,16 +1304,16 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "7c2b26a5", elements: 2020, visible: 647, viewport: "390x844" },
-          cssStates: { hash: "1f4a9346", elements: 2084, visible: 706, viewport: "390x844" },
-          cssFocus: { hash: "b54f6b29", elements: 2084, visible: 706, viewport: "390x844" },
-          mobileRecord: { hash: "0c92f324", elements: 2021, visible: 128, viewport: "390x844" },
-          mobileDashboard: { hash: "79289118", elements: 2021, visible: 130, viewport: "390x844" },
-          mobileMenu: { hash: "6286b238", elements: 2021, visible: 307, viewport: "390x844" },
-          mobileSettings: { hash: "40d9ac22", elements: 2021, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "590dcc03", elements: 2021, visible: 91, viewport: "390x844" },
-          wideForecast: { hash: "a00e8354", elements: 2021, visible: 653, viewport: "1024x900" },
-          wideDashboard: { hash: "5d67b76b", elements: 2021, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "978bd9d4", elements: 2028, visible: 647, viewport: "390x844" },
+          cssStates: { hash: "f063e91f", elements: 2096, visible: 706, viewport: "390x844" },
+          cssFocus: { hash: "15597ff2", elements: 2096, visible: 706, viewport: "390x844" },
+          mobileRecord: { hash: "9cf6b307", elements: 2029, visible: 136, viewport: "390x844" },
+          mobileDashboard: { hash: "789ff49d", elements: 2029, visible: 130, viewport: "390x844" },
+          mobileMenu: { hash: "d9193deb", elements: 2029, visible: 307, viewport: "390x844" },
+          mobileSettings: { hash: "10b042c7", elements: 2029, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "462fc9f0", elements: 2029, visible: 91, viewport: "390x844" },
+          wideForecast: { hash: "c8ace399", elements: 2029, visible: 653, viewport: "1024x900" },
+          wideDashboard: { hash: "53bd4008", elements: 2029, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

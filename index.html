@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-current-schema-only">
+<meta name="harvestnavi-version" content="20260809-record-vertical-pallet-map">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7646,6 +7646,19 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .simulationBedMapCell.is-recorded{
   background:#9ca3af;
 }
+.recordBedOverview .simulationBedMapCell.is-planting-selectable{
+  background:#fef08a;
+  border-color:#eab308;
+}
+.recordBedOverview .simulationBedMapCell.is-planting-selected{
+  background:#2563eb;
+  border-color:#1d4ed8;
+}
+.recordBedOverview .simulationBedMapCell.is-planting-unavailable{
+  background:#e5e7eb;
+  border-color:#9ca3af;
+  opacity:.72;
+}
 .simulationBedOverviewCounts{
   display:flex;
   align-items:center;
@@ -7660,6 +7673,17 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .simulationBedOverviewCountSelected{color:#15803d;}
 .simulationBedOverviewCountRecorded{color:#64748b;}
+.recordBedOverviewCountSelected{color:#1d4ed8;}
+.recordBedOverviewCountSelectable{color:#a16207;}
+.recordHarvestAdjustBox > .recordPlantingLegend{
+  margin:10px 4px 0;
+  color:var(--ui-text-secondary);
+  font-size:10px;
+  font-weight:650;
+}
+.recordHarvestAdjustBox > .bedDetailOpenHint{
+  margin-top:8px;
+}
 .simulationBedMapLegend{
   display:flex;
   align-items:center;
@@ -9389,13 +9413,18 @@ requestAnimationFrame(function(){
 
       <div class="recordHarvestAdjustBox">
         <div id="recordEditNotice" class="recordEditNotice">実際の収穫場所に調整してください。</div>
-        <div id="recordPlantingLegend" class="recordPlantingLegend" hidden>
-          <span class="recordLegendItem"><span class="recordLegendSwatch unplanted"></span>未定植</span>
-          <span class="recordLegendItem"><span class="recordLegendSwatch planting-now"></span>今回定植</span>
-          <span class="recordLegendItem"><span class="recordLegendSwatch planted"></span>定植済み</span>
-        </div>
-
         <div id="recordBeds" class="recordBuildingMapList"></div>
+        <div id="recordHarvestMapLegend" class="simulationBedMapLegend" aria-label="収穫場所配置図の色分け">
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>記録済み</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-partial-harvest"></span>部分収穫</span>
+        </div>
+        <div id="recordPlantingLegend" class="recordPlantingLegend" hidden>
+          <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch selected"></span>選択済み</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+        </div>
+        <div class="bedDetailOpenHint">ベッドを長押しすると拡大し、パレットを選択できます</div>
       </div>
 
       <div class="recordActualLossField">
@@ -22777,11 +22806,14 @@ function appendBedMiniMap(bedElement, building, bed, options = {}){
   bedElement.appendChild(bar);
 }
 
-function getForecastBedOverviewMapCellHtml(building, bed, number, sectionStart, options = {}){
+function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options = {}){
   const key = getPalletKey(building, bed, number);
   const selectedSet = options.selectedSet || new Set();
   const recordedSet = options.recordedSet || new Set();
   const progressCompletedSet = options.progressCompletedSet || new Set();
+  const plantingAllowedSet = options.plantingAllowedSet instanceof Set
+    ? options.plantingAllowedSet
+    : null;
   const partialHarvestCount = options.hasPartialHarvestRecords
     ? getPartialHarvestCountForPallet(
         building,
@@ -22795,40 +22827,54 @@ function getForecastBedOverviewMapCellHtml(building, bed, number, sectionStart, 
   const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell"];
   let stateText = "未選択";
 
-  if(selectedSet.has(key)){
-    classes.push("is-selected");
-    stateText = "選択中";
-  }
-  if(partialHarvestCount > 0){
-    classes.push("is-partial-harvest");
-    stateText += `、部分収穫 ${partialHarvestCount}株`;
-  }
-  if(progressCompletedSet.has(key)){
-    classes.push("is-progress-completed");
-    stateText = "途中経過で完了";
-  }
-  if(recordedSet.has(key)){
-    classes.push("is-recorded");
-    stateText = "記録済み";
+  if(plantingAllowedSet){
+    if(!plantingAllowedSet.has(key)){
+      classes.push("is-planting-unavailable");
+      stateText = "選択不可";
+    }else if(selectedSet.has(key)){
+      classes.push("is-planting-selected");
+      stateText = "選択済み";
+    }else{
+      classes.push("is-planting-selectable");
+      stateText = "選択可能";
+    }
+  }else{
+    if(selectedSet.has(key)){
+      classes.push("is-selected");
+      stateText = "選択中";
+    }
+    if(partialHarvestCount > 0){
+      classes.push("is-partial-harvest");
+      stateText += `、部分収穫 ${partialHarvestCount}株`;
+    }
+    if(progressCompletedSet.has(key)){
+      classes.push("is-progress-completed");
+      stateText = "途中経過で完了";
+    }
+    if(recordedSet.has(key)){
+      classes.push("is-recorded");
+      stateText = "記録済み";
+    }
   }
   if(sectionStart) classes.push("is-section-start");
 
   return `<span class="${classes.join(" ")}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
 }
 
-function appendForecastBedOverviewMap(bedElement, building, bed, options = {}){
+function appendBedOverviewMap(bedElement, building, bed, options = {}){
   if(!bedElement) return;
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
     const sectionStart = displayRowIndex > 0
       && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
-    cells.push(getForecastBedOverviewMapCellHtml(building, bed, row * 2 - 1, sectionStart, options));
-    cells.push(getForecastBedOverviewMapCellHtml(building, bed, row * 2, sectionStart, options));
+    cells.push(getBedOverviewMapCellHtml(building, bed, row * 2 - 1, sectionStart, options));
+    cells.push(getBedOverviewMapCellHtml(building, bed, row * 2, sectionStart, options));
   }
 
   const map = document.createElement("div");
-  map.className = "dashboardSeedlingBedMap simulationBedMap";
+  map.className = "dashboardSeedlingBedMap simulationBedMap"
+    + (options.context === "record" ? " recordBedMap" : "");
   map.setAttribute("aria-hidden", "true");
   map.innerHTML = `<div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>`;
   bedElement.appendChild(map);
@@ -25258,6 +25304,7 @@ function refreshRecordModeUi(){
   const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
   const plantingStep = document.getElementById("recordStepPlanting");
+  const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
@@ -25291,6 +25338,7 @@ function refreshRecordModeUi(){
 
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
+  if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   if(sectionTitleText) sectionTitleText.textContent = isEditing ? "記録を編集" : "記録を保存";
   if(discardEditButton) discardEditButton.hidden = !isEditing;
@@ -26451,7 +26499,7 @@ function drawBeds(){
     title.innerHTML = `<span class="bedTitleMain">${b}</span>${isProgressCompleted ? '<span class="harvestProgressCompletedBadge">完了</span>' : ''}`;
     bed.appendChild(title);
 
-    appendForecastBedOverviewMap(bed, currentBuilding, b, {
+    appendBedOverviewMap(bed, currentBuilding, b, {
       selectedSet,
       recordedSet,
       progressCompletedSet,
@@ -26555,13 +26603,20 @@ function drawRecordBeds(){
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const buildings = getRecordMapBuildings(plantingAllowedSet);
+  const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
+  const hasPartialHarvestRecords = recordSelectionMode !== "planting"
+    && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
+  const targetDate = getHarvestTargetDate();
+  const partialHarvestLookup = hasPartialHarvestRecords
+    ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
+    : null;
 
   if(!buildings.length){
     const empty = document.createElement("div");
     empty.className = "recordBuildingMapEmpty";
     empty.textContent = recordSelectionMode === "planting"
       ? "苗植えできる未定植の場所はありません。"
-      : "シミュで収穫場所を選択すると、ここに号棟ごとの簡易パレット表記が表示されます。";
+      : "シミュで収穫場所を選択すると、ここに号棟ごとの縦型パレット配置図が表示されます。";
     container.appendChild(empty);
     return;
   }
@@ -26581,10 +26636,20 @@ function drawRecordBeds(){
     bedMap.forEach(b => {
       const bed = document.createElement("div");
       const summaryCounts = getBedSummaryCounts(building, b, { selectedSet, recordedSet });
+      let selectableCount = 0;
+      if(plantingAllowedSet){
+        for(let number = 1; number <= PALLETS_PER_BED; number++){
+          if(plantingAllowedSet.has(getPalletKey(building, b, number))) selectableCount++;
+        }
+      }
       const collapsedStateClass = summaryCounts.selected >= PALLETS_PER_BED
         ? " bedCollapsedFull"
-        : (!summaryCounts.selected && !summaryCounts.recorded ? " bedCollapsedInactive" : "");
-      bed.className = "bed bedCollapsed" + collapsedStateClass + (recordSelectionMode === "planting" ? " plantingBedMap" : "");
+        : (!summaryCounts.selected && !(plantingAllowedSet ? selectableCount : summaryCounts.recorded)
+            ? " bedCollapsedInactive"
+            : "");
+      bed.className = "bed bedCollapsed simulationBedOverview recordBedOverview"
+        + collapsedStateClass
+        + (recordSelectionMode === "planting" ? " plantingBedMap" : "");
 
       const title = document.createElement("div");
       let titleCls = "bedTitle";
@@ -26593,8 +26658,35 @@ function drawRecordBeds(){
       title.innerHTML = `<span class="bedTitleMain">${b}</span>`;
       bed.appendChild(title);
 
-      appendBedMiniMap(bed, building, b, { selectedSet, recordedSet, allowedSet: plantingAllowedSet });
+      appendBedOverviewMap(bed, building, b, {
+        context: "record",
+        selectedSet,
+        recordedSet,
+        plantingAllowedSet,
+        hasPartialHarvestRecords,
+        targetDate,
+        partialHarvestSourceRecords,
+        partialHarvestLookup
+      });
+      const counts = document.createElement("div");
+      counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
+      counts.innerHTML = plantingAllowedSet
+        ? `
+          <span class="recordBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+          <span class="recordBedOverviewCountSelectable">選択可 ${selectableCount}</span>
+        `
+        : `
+          <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+          <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
+        `;
+      bed.appendChild(counts);
       attachBedDetailOpenLongPressHandlers(bed, "record", building, b);
+      bed.setAttribute(
+        "aria-label",
+        plantingAllowedSet
+          ? `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${selectableCount}パレット。長押しで拡大してパレットを選択`
+          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。長押しで拡大してパレットを選択`
+      );
       beds.appendChild(bed);
     });
 

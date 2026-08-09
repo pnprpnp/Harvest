@@ -115,7 +115,7 @@ function drawBeds(){
     title.innerHTML = `<span class="bedTitleMain">${b}</span>${isProgressCompleted ? '<span class="harvestProgressCompletedBadge">完了</span>' : ''}`;
     bed.appendChild(title);
 
-    appendForecastBedOverviewMap(bed, currentBuilding, b, {
+    appendBedOverviewMap(bed, currentBuilding, b, {
       selectedSet,
       recordedSet,
       progressCompletedSet,
@@ -219,13 +219,20 @@ function drawRecordBeds(){
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const buildings = getRecordMapBuildings(plantingAllowedSet);
+  const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
+  const hasPartialHarvestRecords = recordSelectionMode !== "planting"
+    && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
+  const targetDate = getHarvestTargetDate();
+  const partialHarvestLookup = hasPartialHarvestRecords
+    ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
+    : null;
 
   if(!buildings.length){
     const empty = document.createElement("div");
     empty.className = "recordBuildingMapEmpty";
     empty.textContent = recordSelectionMode === "planting"
       ? "苗植えできる未定植の場所はありません。"
-      : "シミュで収穫場所を選択すると、ここに号棟ごとの簡易パレット表記が表示されます。";
+      : "シミュで収穫場所を選択すると、ここに号棟ごとの縦型パレット配置図が表示されます。";
     container.appendChild(empty);
     return;
   }
@@ -245,10 +252,20 @@ function drawRecordBeds(){
     bedMap.forEach(b => {
       const bed = document.createElement("div");
       const summaryCounts = getBedSummaryCounts(building, b, { selectedSet, recordedSet });
+      let selectableCount = 0;
+      if(plantingAllowedSet){
+        for(let number = 1; number <= PALLETS_PER_BED; number++){
+          if(plantingAllowedSet.has(getPalletKey(building, b, number))) selectableCount++;
+        }
+      }
       const collapsedStateClass = summaryCounts.selected >= PALLETS_PER_BED
         ? " bedCollapsedFull"
-        : (!summaryCounts.selected && !summaryCounts.recorded ? " bedCollapsedInactive" : "");
-      bed.className = "bed bedCollapsed" + collapsedStateClass + (recordSelectionMode === "planting" ? " plantingBedMap" : "");
+        : (!summaryCounts.selected && !(plantingAllowedSet ? selectableCount : summaryCounts.recorded)
+            ? " bedCollapsedInactive"
+            : "");
+      bed.className = "bed bedCollapsed simulationBedOverview recordBedOverview"
+        + collapsedStateClass
+        + (recordSelectionMode === "planting" ? " plantingBedMap" : "");
 
       const title = document.createElement("div");
       let titleCls = "bedTitle";
@@ -257,8 +274,35 @@ function drawRecordBeds(){
       title.innerHTML = `<span class="bedTitleMain">${b}</span>`;
       bed.appendChild(title);
 
-      appendBedMiniMap(bed, building, b, { selectedSet, recordedSet, allowedSet: plantingAllowedSet });
+      appendBedOverviewMap(bed, building, b, {
+        context: "record",
+        selectedSet,
+        recordedSet,
+        plantingAllowedSet,
+        hasPartialHarvestRecords,
+        targetDate,
+        partialHarvestSourceRecords,
+        partialHarvestLookup
+      });
+      const counts = document.createElement("div");
+      counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
+      counts.innerHTML = plantingAllowedSet
+        ? `
+          <span class="recordBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+          <span class="recordBedOverviewCountSelectable">選択可 ${selectableCount}</span>
+        `
+        : `
+          <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+          <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
+        `;
+      bed.appendChild(counts);
       attachBedDetailOpenLongPressHandlers(bed, "record", building, b);
+      bed.setAttribute(
+        "aria-label",
+        plantingAllowedSet
+          ? `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${selectableCount}パレット。長押しで拡大してパレットを選択`
+          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。長押しで拡大してパレットを選択`
+      );
       beds.appendChild(bed);
     });
 

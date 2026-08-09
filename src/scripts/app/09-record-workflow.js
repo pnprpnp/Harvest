@@ -957,6 +957,7 @@ function refreshRecordModeUi(){
   const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
   const plantingStep = document.getElementById("recordStepPlanting");
+  const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
@@ -990,6 +991,7 @@ function refreshRecordModeUi(){
 
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
+  if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   if(sectionTitleText) sectionTitleText.textContent = isEditing ? "記録を編集" : "記録を保存";
   if(discardEditButton) discardEditButton.hidden = !isEditing;

@@ -574,11 +574,14 @@ function appendBedMiniMap(bedElement, building, bed, options = {}){
   bedElement.appendChild(bar);
 }
 
-function getForecastBedOverviewMapCellHtml(building, bed, number, sectionStart, options = {}){
+function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options = {}){
   const key = getPalletKey(building, bed, number);
   const selectedSet = options.selectedSet || new Set();
   const recordedSet = options.recordedSet || new Set();
   const progressCompletedSet = options.progressCompletedSet || new Set();
+  const plantingAllowedSet = options.plantingAllowedSet instanceof Set
+    ? options.plantingAllowedSet
+    : null;
   const partialHarvestCount = options.hasPartialHarvestRecords
     ? getPartialHarvestCountForPallet(
         building,
@@ -592,40 +595,54 @@ function getForecastBedOverviewMapCellHtml(building, bed, number, sectionStart, 
   const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell"];
   let stateText = "未選択";
 
-  if(selectedSet.has(key)){
-    classes.push("is-selected");
-    stateText = "選択中";
-  }
-  if(partialHarvestCount > 0){
-    classes.push("is-partial-harvest");
-    stateText += `、部分収穫 ${partialHarvestCount}株`;
-  }
-  if(progressCompletedSet.has(key)){
-    classes.push("is-progress-completed");
-    stateText = "途中経過で完了";
-  }
-  if(recordedSet.has(key)){
-    classes.push("is-recorded");
-    stateText = "記録済み";
+  if(plantingAllowedSet){
+    if(!plantingAllowedSet.has(key)){
+      classes.push("is-planting-unavailable");
+      stateText = "選択不可";
+    }else if(selectedSet.has(key)){
+      classes.push("is-planting-selected");
+      stateText = "選択済み";
+    }else{
+      classes.push("is-planting-selectable");
+      stateText = "選択可能";
+    }
+  }else{
+    if(selectedSet.has(key)){
+      classes.push("is-selected");
+      stateText = "選択中";
+    }
+    if(partialHarvestCount > 0){
+      classes.push("is-partial-harvest");
+      stateText += `、部分収穫 ${partialHarvestCount}株`;
+    }
+    if(progressCompletedSet.has(key)){
+      classes.push("is-progress-completed");
+      stateText = "途中経過で完了";
+    }
+    if(recordedSet.has(key)){
+      classes.push("is-recorded");
+      stateText = "記録済み";
+    }
   }
   if(sectionStart) classes.push("is-section-start");
 
   return `<span class="${classes.join(" ")}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
 }
 
-function appendForecastBedOverviewMap(bedElement, building, bed, options = {}){
+function appendBedOverviewMap(bedElement, building, bed, options = {}){
   if(!bedElement) return;
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
     const sectionStart = displayRowIndex > 0
       && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
-    cells.push(getForecastBedOverviewMapCellHtml(building, bed, row * 2 - 1, sectionStart, options));
-    cells.push(getForecastBedOverviewMapCellHtml(building, bed, row * 2, sectionStart, options));
+    cells.push(getBedOverviewMapCellHtml(building, bed, row * 2 - 1, sectionStart, options));
+    cells.push(getBedOverviewMapCellHtml(building, bed, row * 2, sectionStart, options));
   }
 
   const map = document.createElement("div");
-  map.className = "dashboardSeedlingBedMap simulationBedMap";
+  map.className = "dashboardSeedlingBedMap simulationBedMap"
+    + (options.context === "record" ? " recordBedMap" : "");
   map.setAttribute("aria-hidden", "true");
   map.innerHTML = `<div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>`;
   bedElement.appendChild(map);
