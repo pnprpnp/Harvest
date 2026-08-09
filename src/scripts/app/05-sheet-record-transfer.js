@@ -60,8 +60,8 @@ function isValidTransferQualityMemo(value){
   if(value === undefined || value === null || value === "") return true;
   if(typeof value === "string") return value.length <= RECORD_MAX_QUALITY_LENGTH && !value.includes("\u0000");
   if(typeof value !== "object" || Array.isArray(value)) return false;
-  const tags = value.tags === undefined ? (value.qualityTags === undefined ? [] : value.qualityTags) : value.tags;
-  const rawOther = value.other === undefined ? value.qualityOther : value.other;
+  const tags = value.tags === undefined ? [] : value.tags;
+  const rawOther = value.other;
   const other = rawOther === undefined || rawOther === null ? "" : rawOther;
   return Array.isArray(tags)
     && tags.length <= 5
@@ -86,9 +86,11 @@ function isValidTransferPlantingAge(value){
 function validateRecordForGoogleTransfer(record, options = {}){
   const invalid = message => ({ ok: false, message });
   if(!record || typeof record !== "object" || Array.isArray(record)) return invalid("記録の形式が正しくありません");
+  if(Number(record.palletNumberingVersion) !== CURRENT_PALLET_NUMBERING_VERSION){
+    return invalid("パレット番号方式が現在の形式ではありません");
+  }
   if(getSafePositiveRecordId(record.id) === null) return invalid("記録IDが正しくありません");
-  if(record.recordUuid !== undefined && record.recordUuid !== null && record.recordUuid !== ""
-    && !normalizeRecordUuid(record.recordUuid)) return invalid("記録UUIDが正しくありません");
+  if(!normalizeRecordUuid(record.recordUuid)) return invalid("記録UUIDが正しくありません");
   for(const key of ["createdAt", "updatedAt"]){
     if(record[key] !== undefined && record[key] !== null && record[key] !== ""
       && !normalizeRecordSyncTimestamp(record[key])) return invalid("記録の更新日時が正しくありません");
@@ -141,9 +143,7 @@ function validateRecordForGoogleTransfer(record, options = {}){
 
   const seedlingTrayFields = {
     plannedSeedlingTrayCount: "予定苗枚数",
-    actualSeedlingTrayCount: "実苗枚数",
-    actualSeedling60TrayCount: "旧60穴苗枚数",
-    actualSeedling120TrayCount: "旧120穴苗枚数"
+    actualSeedlingTrayCount: "実苗枚数"
   };
   for(const field of Object.keys(seedlingTrayFields)){
     if(record[field] !== undefined && record[field] !== null && record[field] !== ""
@@ -173,24 +173,8 @@ function validateRecordForGoogleTransfer(record, options = {}){
   }
 
   if(!isValidTransferQualityMemo(record.qualityMemo)) return invalid("品質メモの形式が正しくありません");
-  if(!isOptionalBoundedRecordString(record, "qualityText", RECORD_MAX_QUALITY_LENGTH)
-    || !isOptionalBoundedRecordString(record, "qualityOther", RECORD_MAX_QUALITY_LENGTH)
-    || !isOptionalBoundedRecordString(record, "sizeRating", 32)){
+  if(!isOptionalBoundedRecordString(record, "qualityText", RECORD_MAX_QUALITY_LENGTH)){
     return invalid("品質メモの形式が正しくありません");
-  }
-  if(record.sizeRating !== undefined && record.sizeRating !== null && record.sizeRating !== ""
-    && (typeof record.sizeRating !== "string" || !["unknown", "normal", "large", "small", "不明", "並", "大きい", "小さい"].includes(record.sizeRating.trim()))){
-    return invalid("品質メモの形式が正しくありません");
-  }
-  if(record.qualityTags !== undefined){
-    if((!Array.isArray(record.qualityTags) && typeof record.qualityTags !== "string")
-      || !hasBoundedJsonLength(record.qualityTags, RECORD_MAX_QUALITY_LENGTH)){
-      return invalid("品質メモの形式が正しくありません");
-    }
-    const legacyTags = parseMaybeJsonList(record.qualityTags);
-    if(legacyTags.length > 5 || legacyTags.some(tag => typeof tag !== "string" || !normalizeQualityTag(tag))){
-      return invalid("品質メモの形式が正しくありません");
-    }
   }
 
   if(!isValidTransferPlantingAge(record.plantingAge)) return invalid("定植日数の詳細が正しくありません");
@@ -235,9 +219,10 @@ function normalizeGoogleSheetRowRecord(row){
     return null;
   }
 
-  const actualSeedlingTrayCount = record.actualSeedlingTrayCount !== undefined && record.actualSeedlingTrayCount !== ""
-    ? record.actualSeedlingTrayCount
-    : Number(record.actualSeedling60TrayCount || 0) + Number(record.actualSeedling120TrayCount || 0);
+  const actualSeedlingTrayCount = record.actualSeedlingTrayCount === ""
+    || record.actualSeedlingTrayCount === undefined
+    ? 0
+    : record.actualSeedlingTrayCount;
 
   return {
     ...record,
@@ -252,13 +237,7 @@ function normalizeGoogleSheetRowRecord(row){
       ? "loss"
       : record.actualSeedlingCarryoverMode,
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
-    qualityMemo: parseMaybeJson(
-      record.qualityMemo || record.qualityText || "",
-      record.qualityMemo || record.qualityText || {
-        qualityTags: parseMaybeJsonList(record.qualityTags),
-        qualityOther: record.qualityOther || ""
-      }
-    ),
+    qualityMemo: parseMaybeJson(record.qualityMemo || record.qualityText || "", null),
     plantingAge: parseMaybeJson(record.plantingAge, record.plantingAge),
     targets: parseMaybeJson(record.targets, record.targets)
   };
@@ -628,23 +607,6 @@ async function sendPendingRecordsToGoogleSheet(){
     const config = getValidatedGoogleSheetConfig();
     if(!config) return;
 
-    const plantingStatusBeforeSend = loadPlantingEventSyncStatus();
-    const hasFailedLegacyPlantingEvents = plantingEvents.some(event => (
-      event.legacyMigrated
-      && String(plantingStatusBeforeSend[String(event.eventId)]?.state || "") === "failed"
-    ));
-    if(hasFailedLegacyPlantingEvents){
-      try{
-        await importPlantingEventsFromGoogleSheet({
-          config,
-          silentErrors: true,
-          throwOnError: true
-        });
-      }catch(e){
-        console.warn("Failed legacy planting event reconciliation failed:", e);
-      }
-    }
-
     const unsentRecords = getGoogleSheetUnsentRecords();
     const unsentPlantingEvents = getGoogleSheetUnsentPlantingEvents().sort(comparePlantingEventsAsc);
 
@@ -724,28 +686,9 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
   const status = loadPlantingEventSyncStatus();
   saveDeletedPlantingEventsToStorage();
   const deletedEventIds = new Set(deletedPlantingEvents.map(entry => Number(entry.event?.eventId)));
-  let normalizedIncomingEvents = sourceEvents.map(normalizePlantingEvent).filter(Boolean);
-  let reconciledLegacyCount = 0;
-  const removableLegacyIds = new Set();
-  plantingEvents.forEach(event => {
-    const syncState = String(status[String(event.eventId)]?.state || "");
-    if(!event.legacyMigrated || ["edited", "pending"].includes(syncState)) return;
-    const legacyLotKeys = event.sourceAllocations.flatMap(allocation => (
-      allocation.palletKeys.map(key => getPlantingLotKey(allocation.harvestRecordId, key))
-    ));
-    const overlappingIncoming = normalizedIncomingEvents.filter(incoming => incoming.sourceAllocations.some(allocation => (
-      allocation.palletKeys.some(key => legacyLotKeys.includes(getPlantingLotKey(allocation.harvestRecordId, key)))
-    )));
-    if(!overlappingIncoming.length) return;
-    removableLegacyIds.add(Number(event.eventId));
-    delete status[String(event.eventId)];
-    reconciledLegacyCount++;
-  });
-  if(removableLegacyIds.size){
-    plantingEvents = plantingEvents.filter(event => !removableLegacyIds.has(Number(event.eventId)));
-  }
+  const normalizedIncomingEvents = sourceEvents.map(normalizePlantingEvent).filter(Boolean);
   const byId = new Map(plantingEvents.map(event => [Number(event.eventId), event]));
-  let changedCount = reconciledLegacyCount;
+  let changedCount = 0;
 
   normalizedIncomingEvents.forEach(incoming => {
     if(deletedEventIds.has(Number(incoming.eventId))) return;
@@ -771,8 +714,7 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
       const nextEvent = {
         ...incoming,
         openingCarryoverBefore: incoming.openingCarryoverBefore
-          ?? (options.openingCarryoverAuthoritative ? null : existing.openingCarryoverBefore ?? null),
-        legacyMigrated: !!existing.legacyMigrated
+          ?? (options.openingCarryoverAuthoritative ? null : existing.openingCarryoverBefore ?? null)
       };
       if(JSON.stringify(serializePlantingEventForStorage(existing)) !== JSON.stringify(serializePlantingEventForStorage(nextEvent))){
         const index = plantingEvents.findIndex(event => Number(event.eventId) === eventId);
@@ -1593,21 +1535,12 @@ async function importRecordsFromGoogleSheet(options = {}){
   let snapshot = null;
 
   try{
-    const shouldBackfillLegacyPlantingEvents = shouldRunLegacyPlantingEventBackfill();
-    const syncOptions = shouldBackfillLegacyPlantingEvents
-      ? { ...options, resetSyncRevision: true }
-      : options;
-    const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, syncOptions, controller.signal);
+    const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, options, controller.signal);
     const recordSync = {
       records: combinedSync.records,
       tombstones: combinedSync.tombstones
     };
     snapshot = createBackupImportSnapshot();
-    const legacyBackfillSourceRecords = shouldBackfillLegacyPlantingEvents
-      ? recordSync.records.map((source, index) => (
-          normalizeImportedRecord(normalizeGoogleSheetRowRecord(source), index)
-        )).filter(Boolean)
-      : [];
     // 先に収穫IDの競合を解決し、既存のlocal苗植え参照だけを新IDへ移す。
     // その後remote苗植えイベントを入れることで、server IDの参照を誤って付け替えない。
     const recordResult = reconcileGoogleSheetRecords(recordSync.records, recordSync.tombstones, options);
@@ -1623,82 +1556,28 @@ async function importRecordsFromGoogleSheet(options = {}){
       deferUiRefresh: true,
       resultTracker: plantingResult
     });
-    migrateLegacyPlantingEvents();
-    const backfilledPlantingEvents = shouldBackfillLegacyPlantingEvents
-      ? backfillLegacyPlantingEventsFromRecordSummariesOnce(legacyBackfillSourceRecords)
-      : [];
-    const legacyPlantingEventsToSend = shouldBackfillLegacyPlantingEvents
-      ? getUnsentLegacyPlantingEventsForBackfill()
-      : [];
-    let backfilledPlantingSuccessCount = 0;
-    let backfilledFinalSyncRevision = null;
-    const backfilledPlantingFailures = [];
-    for(const event of legacyPlantingEventsToSend){
-      const result = await syncPlantingEventWithSources(event, {
-        manageSendState: false,
-        sourcesAlreadySent: true
-      });
-      if(result.ok){
-        backfilledPlantingSuccessCount++;
-        const resultSyncRevision = normalizeGoogleSheetSyncRevision(result.syncRevision);
-        if(resultSyncRevision !== null){
-          backfilledFinalSyncRevision = backfilledFinalSyncRevision === null
-            ? resultSyncRevision
-            : Math.max(backfilledFinalSyncRevision, resultSyncRevision);
-        }
-      }else{
-        backfilledPlantingFailures.push(
-          `${event.plantingDate}（ID: ${event.eventId}）: ${result.message || "送信できませんでした"}`
-        );
-      }
-    }
-    // 送信失敗分は「修正・未送信」に残るため、補完処理自体は一度で完了にする。
-    // 未完了のままにすると、更新のたびに全件同期され同じ記録が再更新扱いになる。
-    if(shouldBackfillLegacyPlantingEvents){
-      markLegacyPlantingEventBackfillCompleted({
-        createdCount: backfilledPlantingEvents.length,
-        sentCount: backfilledPlantingSuccessCount,
-        failedCount: backfilledPlantingFailures.length
-      });
-    }
     syncHarvestPlantingPendingFlags();
     // 競合は両方の内容を競合一覧へ退避済みなので、同期位置を進めても失われない。
     const totalConflictCount = Number(recordResult.conflictCount || 0) + Number(plantingResult.conflictCount || 0);
-    const combinedFinalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
-    const finalSyncRevision = backfilledFinalSyncRevision === null
-      ? combinedFinalSyncRevision
-      : (combinedFinalSyncRevision === null
-          ? backfilledFinalSyncRevision
-          : Math.max(combinedFinalSyncRevision, backfilledFinalSyncRevision));
+    const finalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
     if(finalSyncRevision !== null){
       saveGoogleSheetSyncRevision(config, finalSyncRevision);
     }
     setRecordSyncAvailabilityNotice(false);
 
     const totalChanged = Number(recordResult.changedCount || 0)
-      + Number(importedEventCount || 0)
-      + backfilledPlantingEvents.length;
-    const hadBackfillActivity = backfilledPlantingEvents.length > 0
-      || backfilledPlantingSuccessCount > 0;
+      + Number(importedEventCount || 0);
     refreshRecordDataUi();
     if(!silentErrors){
       if(totalConflictCount){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}を競合一覧へ保護しました）`);
-      }else if(totalChanged || hadBackfillActivity){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}`);
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}を競合一覧へ保護しました）`);
+      }else if(totalChanged){
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}`);
       }else if(!options.silentNoChange){
         showToast(options.emptyMessage || "スプレッドシートと同期済みです");
       }
-      if(backfilledPlantingFailures.length){
-        showRecordImportError(
-          "旧記録から苗植えイベントを作成しましたが、スプレッドシートへ送信できない記録があります。\n\n" +
-          backfilledPlantingFailures.slice(0, 10).join("\n") +
-          "\n\n「修正・未送信」から再送信してください。",
-          "苗植えイベントの送信失敗"
-        );
-      }
     }
-    return totalChanged > 0 || hadBackfillActivity;
+    return totalChanged > 0;
   }catch(e){
     if(snapshot){
       try{
@@ -1711,7 +1590,7 @@ async function importRecordsFromGoogleSheet(options = {}){
       if(!silentErrors) showRecordImportError(
         "スプレッドシートとの同期が途中で中断されました。記録は同期前の状態へ戻しています。\n\n" +
         "3分以内に応答が返らなかったため、タイムアウトになった可能性があります。\n" +
-        "初回の保存データ移行、記録件数の多さ、または Apps Script 側の混雑時に起きます。"
+        "記録件数の多さ、または Apps Script 側の混雑時に起きます。"
       );
       return false;
     }

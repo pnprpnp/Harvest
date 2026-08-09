@@ -340,8 +340,7 @@ async function savePlantingRecord(){
     createdAt: existingEvent?.createdAt || "",
     updatedAt: existingEvent?.updatedAt || "",
     openingCarryoverBefore: existingEvent?.openingCarryoverBefore ?? null,
-    detailsUnknown: false,
-    legacyMigrated: false
+    detailsUnknown: false
   });
   if(!event){
     showToast("苗植え記録を作成できませんでした。入力内容を確認してください");

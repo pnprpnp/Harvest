@@ -20,11 +20,6 @@ function doPost(e) {
       }
     }
 
-    apiStage = "パレット番号の保存データ確認中";
-    migrateAllPalletNumberingToLeftOriginV2();
-    apiStage = "旧記録の同期情報確認中";
-    migrateHarvestRecordSyncMetadataV1();
-
     if (operation === "checkUpdates") {
       apiStage = "更新情報の確認中";
       const includePlanting = body.includePlanting !== false;

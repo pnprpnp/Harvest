@@ -188,14 +188,13 @@ function getHarvestRecordIdentityKey(value){
   return identity.id === null ? "" : "id:" + identity.id;
 }
 
-function findHarvestRecordByIdentity(identity, sourceRecords = records, options = {}){
+function findHarvestRecordByIdentity(identity, sourceRecords = records){
   const normalizedIdentity = getHarvestRecordIdentity(identity);
   const candidates = Array.isArray(sourceRecords) ? sourceRecords : [];
   if(normalizedIdentity.recordUuid){
-    const uuidMatch = candidates.find(record => (
+    return candidates.find(record => (
       normalizeRecordUuid(record?.recordUuid) === normalizedIdentity.recordUuid
     )) || null;
-    if(uuidMatch || options.fallbackToId === false) return uuidMatch;
   }
   if(normalizedIdentity.id === null) return null;
   return candidates.find(record => (
@@ -332,8 +331,7 @@ function getGoogleSheetRecordSyncState(record, status = loadGoogleSheetSyncStatu
     const state = String(status[key]?.state || "");
     if(state) return state;
   }
-  const legacyId = String(record?.id || "").trim();
-  return legacyId ? String(status[legacyId]?.state || "") : "";
+  return "";
 }
 
 function hasPendingGoogleSheetRecordChange(record, status = loadGoogleSheetSyncStatus()){
@@ -344,8 +342,6 @@ function hasPendingGoogleSheetRecordChange(record, status = loadGoogleSheetSyncS
 
 function clearGoogleSheetRecordSyncStatus(status, record){
   getGoogleSheetRecordSyncKeys(record).forEach(key => delete status[key]);
-  const legacyId = String(record?.id || "").trim();
-  if(legacyId) delete status[legacyId];
 }
 
 function setGoogleSheetSyncStatus(record, state){
@@ -359,8 +355,6 @@ function setGoogleSheetSyncStatus(record, state){
       updatedAt
     };
   });
-  const legacyId = String(record?.id || "").trim();
-  if(legacyId) delete status[legacyId];
   saveGoogleSheetSyncStatus(status);
   updateGoogleSheetResendButtonState();
 }
@@ -377,8 +371,6 @@ function markGoogleSheetRecordsSynced(recordsToMark, state = "confirmed"){
         updatedAt
       };
     });
-    const legacyId = String(record?.id || "").trim();
-    if(legacyId) delete status[legacyId];
   });
 
   saveGoogleSheetSyncStatus(status);
@@ -389,16 +381,15 @@ function isGoogleSheetRecordUnsent(record, status){
   const recordUuid = normalizeRecordUuid(record?.recordUuid);
   const uuidState = recordUuid ? String(status["uuid:" + recordUuid]?.state || "") : "";
   if(uuidState) return isUnsentState(uuidState);
-  const legacyId = String(record?.id || "").trim();
-  const idState = legacyId ? String(status["id:" + legacyId]?.state || "") : "";
+  const id = String(record?.id || "").trim();
+  const idState = id ? String(status["id:" + id]?.state || "") : "";
   if(idState) return isUnsentState(idState);
 
   const duplicateKey = String(getRecordDuplicateKey(record) || record?.duplicateKey || "").trim();
   const contentState = duplicateKey ? String(status["key:" + duplicateKey]?.state || "") : "";
   if(contentState) return isUnsentState(contentState);
 
-  const legacyState = legacyId ? String(status[legacyId]?.state || "") : "";
-  return isUnsentState(legacyState);
+  return true;
 }
 
 function getGoogleSheetUnsentRecords(){
@@ -490,8 +481,7 @@ function findGoogleSheetBackgroundRecord(job){
   if(!job) return null;
   return findHarvestRecordByIdentity(
     { recordUuid: job.recordUuid, id: job.recordId },
-    records,
-    { fallbackToId: !job.recordUuid }
+    records
   );
 }
 
@@ -1554,8 +1544,7 @@ async function postGoogleSheetPlantingEvent(event, operation = "save", options =
         if(index >= 0){
           plantingEvents[index] = {
             ...serverEvent,
-            openingCarryoverBefore: serverEvent.openingCarryoverBefore ?? current.openingCarryoverBefore ?? null,
-            legacyMigrated: !!current.legacyMigrated
+            openingCarryoverBefore: serverEvent.openingCarryoverBefore ?? current.openingCarryoverBefore ?? null
           };
           savePlantingEventsToStorage();
         }

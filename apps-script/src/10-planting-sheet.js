@@ -261,48 +261,7 @@ function ensurePlantingEventHeaders(sheet) {
     .getRange(1, currentHeaders.length + 1, 1, addedHeaders.length)
     .setValues([addedHeaders]);
   applyAddedPlantingEventColumnLayout(sheet, currentHeaders.length + 1, missingKeys);
-  const updatedHeaders = currentHeaders.concat(addedHeaders);
-  if (missingKeys.includes("updatedAt")) {
-    initializeLegacyPlantingEventCommitMarkers(sheet, updatedHeaders);
-  }
-  return updatedHeaders;
-}
-
-function initializeLegacyPlantingEventCommitMarkers(sheet, headers) {
-  const updatedAtColumn = getPlantingEventHeaderColumn(headers, "updatedAt");
-  const rowCount = Math.max(0, sheet.getLastRow() - 1);
-  if (updatedAtColumn <= 0 || !rowCount) return 0;
-  const rows = sheet.getRange(2, 1, rowCount, headers.length).getValues();
-  const seenIds = new Set();
-  let changed = 0;
-  const values = rows.map(row => {
-    if (!row.some(value => String(value == null ? "" : value).trim() !== "")) return [""];
-    try {
-      const event = rowToPlantingEvent(headers, row);
-      const eventId = String(event.eventId);
-      if (seenIds.has(eventId)) {
-        throw new Error("苗植えイベントIDが重複しています: " + eventId);
-      }
-      seenIds.add(eventId);
-      const committedAt = normalizeWriteTimestampToken(event.createdAt) ||
-        normalizeWriteTimestampToken(event.plantingDate) || new Date().toISOString();
-      changed++;
-      return [new Date(committedAt)];
-    } catch (err) {
-      console.warn("旧苗植えイベント行を完了扱いにできません: " +
-        String(err && err.message || err));
-      return [""];
-    }
-  });
-  if (!changed) return 0;
-  const range = sheet.getRange(2, updatedAtColumn, rowCount, 1);
-  try {
-    range.setValues(values);
-  } catch (err) {
-    range.clearDataValidations();
-    range.setValues(values);
-  }
-  return changed;
+  return currentHeaders.concat(addedHeaders);
 }
 
 function getPlantingEventHeadersForRead(sheet) {
@@ -752,68 +711,13 @@ function remapPlantingEventRow(sourceHeaders, sourceRow, targetHeaders) {
 
 function validatePlantingEventTrashSheetHeaders(sheet) {
   if (!sheet || sheet.getLastRow() === 0) return;
-  const initialHeaders = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
-    .getValues()[0]
-    .map(value => String(value || "").trim());
-  if (!initialHeaders.includes(PLANTING_EVENT_HEADER_LABELS.qualityMemo)) {
-    const qualityColumn = PLANTING_EVENT_HEADERS.indexOf(
-      PLANTING_EVENT_HEADER_LABELS.qualityMemo
-    ) + 1;
-    const eventIdMatches = initialHeaders[0] === PLANTING_EVENT_HEADER_LABELS.eventId;
-    if (!eventIdMatches || qualityColumn <= 0) {
-      throw new Error(
-        "削除済み苗植えイベントシートの見出しを確認できません。データ保護のため処理を中止しました。"
-      );
-    }
-    sheet.insertColumnBefore(qualityColumn);
-    sheet.getRange(1, qualityColumn).setValue(PLANTING_EVENT_HEADER_LABELS.qualityMemo);
-    if (sheet.getLastRow() > 1) {
-      const rowCount = sheet.getLastRow() - 1;
-      const eventIds = sheet.getRange(2, 1, rowCount, 1).getValues();
-      sheet.getRange(2, qualityColumn, rowCount, 1).setValues(
-        eventIds.map(row => [String(row[0] == null ? "" : row[0]).trim() ? "不明" : ""])
-      );
-    }
-  }
-  const existingHeaders = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), LEGACY_PLANTING_EVENT_TRASH_HEADERS_WITHOUT_DETAILS.length))
-    .getValues()[0];
-  const hasLegacyHeaders = LEGACY_PLANTING_EVENT_TRASH_HEADERS_WITHOUT_DETAILS.every(
-    (header, index) => String(existingHeaders[index] || "").trim() === header
-  );
-  if (hasLegacyHeaders) {
-    const detailsColumn = LEGACY_PLANTING_EVENT_HEADERS_WITHOUT_DETAILS.length + 1;
-    sheet.insertColumnBefore(detailsColumn);
-    sheet.getRange(1, detailsColumn).setValue(PLANTING_EVENT_HEADER_LABELS.detailsUnknown);
-    applyPlantingEventTrashSheetLayout(sheet);
-  }
-  const headersAfterLegacyMigration = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
-    .getValues()[0]
-    .map(value => String(value || "").trim());
-  if (!headersAfterLegacyMigration.includes(
-    PLANTING_EVENT_HEADER_LABELS.palletNumberingVersion
-  )) {
-    const versionColumn = PLANTING_EVENT_HEADERS.indexOf(
-      PLANTING_EVENT_HEADER_LABELS.palletNumberingVersion
-    ) + 1;
-    if (versionColumn <= 0) {
-      throw new Error("パレット番号方式の列位置を確認できません");
-    }
-    sheet.insertColumnBefore(versionColumn);
-    sheet
-      .getRange(1, versionColumn)
-      .setValue(PLANTING_EVENT_HEADER_LABELS.palletNumberingVersion);
-  }
-  if (sheet.getMaxColumns() < PLANTING_EVENT_TRASH_HEADERS.length) {
-    sheet.insertColumnsAfter(
-      sheet.getMaxColumns(),
-      PLANTING_EVENT_TRASH_HEADERS.length - sheet.getMaxColumns()
+  if (sheet.getLastColumn() < PLANTING_EVENT_TRASH_HEADERS.length) {
+    throw new Error(
+      "削除済み苗植えイベントシートの見出しが現在の形式と異なります。データ保護のため処理を中止しました。"
     );
   }
   const headers = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), PLANTING_EVENT_TRASH_HEADERS.length))
+    .getRange(1, 1, 1, PLANTING_EVENT_TRASH_HEADERS.length)
     .getValues()[0];
   const matches = PLANTING_EVENT_TRASH_HEADERS.every(
     (header, index) => String(headers[index] || "").trim() === header

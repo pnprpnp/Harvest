@@ -3,30 +3,12 @@ function isPlainObject(value) {
 }
 
 function normalizePalletNumberingVersion(value) {
-  if (value === null || typeof value === "undefined" || value === "") {
-    return LEGACY_PALLET_NUMBERING_VERSION;
-  }
   return normalizeRequiredInteger(
     value,
     "パレット番号方式",
-    LEGACY_PALLET_NUMBERING_VERSION,
+    CURRENT_PALLET_NUMBERING_VERSION,
     CURRENT_PALLET_NUMBERING_VERSION
   );
-}
-
-function convertLegacyPalletNumberToLeftOrigin(number) {
-  const normalized = Number(number);
-  if (!Number.isInteger(normalized) || normalized < 1 || normalized > PALLETS_PER_BED) {
-    return normalized;
-  }
-  return normalized % 2 === 0 ? normalized - 1 : normalized + 1;
-}
-
-function convertLegacyPalletKeyToLeftOrigin(key) {
-  const match = String(key || "").trim().match(/^(\d+)-([A-F])-(\d+)$/);
-  if (!match) return "";
-  return match[1] + "-" + match[2] + "-" +
-    convertLegacyPalletNumberToLeftOrigin(Number(match[3]));
 }
 
 function comparePalletKeys(left, right) {
@@ -37,56 +19,14 @@ function comparePalletKeys(left, right) {
     || Number(leftParts[2]) - Number(rightParts[2]);
 }
 
-function convertLegacyPalletKeysToLeftOrigin(keys) {
-  return Array.from(new Set((Array.isArray(keys) ? keys : [])
-    .map(convertLegacyPalletKeyToLeftOrigin)
-    .filter(Boolean)))
-    .sort(comparePalletKeys);
-}
-
-function convertLegacyRecordTargetsToLeftOrigin(targets) {
-  return (Array.isArray(targets) ? targets : []).reduce((converted, target) => {
-    const numbers = [];
-    for (let number = target.start; number <= target.end; number++) {
-      numbers.push(convertLegacyPalletNumberToLeftOrigin(number));
-    }
-    numbers.sort((left, right) => left - right);
-    let start = numbers[0];
-    let previous = numbers[0];
-    for (let index = 1; index <= numbers.length; index++) {
-      const current = numbers[index];
-      if (current === previous + 1) {
-        previous = current;
-        continue;
-      }
-      converted.push({ ...target, start, end: previous });
-      start = current;
-      previous = current;
-    }
-    return converted;
-  }, []);
-}
-
-function convertLegacyPlantingAllocationsToLeftOrigin(sourceAllocations) {
-  return (Array.isArray(sourceAllocations) ? sourceAllocations : []).map(allocation => ({
-    ...allocation,
-    palletKeys: convertLegacyPalletKeysToLeftOrigin(allocation.palletKeys)
-  }));
-}
 
 function normalizeHarvestRecord(record) {
   if (!isPlainObject(record)) throw new Error("記録データはオブジェクトで指定してください");
 
   const type = normalizeRequiredEnum(record.type, "記録種別", RECORD_TYPES);
   const id = normalizeRequiredInteger(record.id, "記録ID", 1, Number.MAX_SAFE_INTEGER);
-  const explicitPalletNumberingVersion = normalizePalletNumberingVersion(
-    record.palletNumberingVersion
-  );
-  const palletNumberingVersion = String(record.palletNumberingVersion ?? "").trim() === ""
-    && id >= CURRENT_PALLET_NUMBERING_ID_MIN
-    ? CURRENT_PALLET_NUMBERING_VERSION
-    : explicitPalletNumberingVersion;
-  const recordUuid = normalizeOptionalRecordUuid(record.recordUuid);
+  normalizePalletNumberingVersion(record.palletNumberingVersion);
+  const recordUuid = normalizeRequiredRecordUuid(record.recordUuid);
   const createdAt = normalizeOptionalTimestamp(record.createdAt, "作成日時");
   const updatedAt = normalizeOptionalTimestamp(record.updatedAt, "更新日時");
   const date = normalizeRequiredDate(record.date, "収穫日");
@@ -108,15 +48,9 @@ function normalizeHarvestRecord(record) {
     record.plantingPalletKeys,
     "苗植えパレット"
   );
-  const targets = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyRecordTargetsToLeftOrigin(rawTargets)
-    : rawTargets;
-  const palletKeys = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPalletKeysToLeftOrigin(rawPalletKeys)
-    : rawPalletKeys;
-  const plantingPalletKeys = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPalletKeysToLeftOrigin(rawPlantingPalletKeys)
-    : rawPlantingPalletKeys;
+  const targets = rawTargets;
+  const palletKeys = rawPalletKeys;
+  const plantingPalletKeys = rawPlantingPalletKeys;
 
   if (type === "partialHarvest") {
     if (!targets.length) throw new Error("先取り収穫の対象がありません");
@@ -156,17 +90,13 @@ function normalizeHarvestRecord(record) {
   if (!palletKeys.length) throw new Error("収穫パレットがありません");
   if (targets.length) throw new Error("通常収穫には先取り対象を指定できません");
 
-  const suppliedPalletSummary = normalizeRequiredText(
+  normalizeRequiredText(
     record.palletSummary,
     "収穫場所",
     RECORD_SUMMARY_LENGTH_LIMIT,
     true
   );
-  const palletSummary = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? formatRecordedPalletSummary(palletKeys)
-    : date < PALLET_SUMMARY_CANONICAL_START_DATE
-    ? suppliedPalletSummary
-    : formatRecordedPalletSummary(palletKeys);
+  const palletSummary = formatRecordedPalletSummary(palletKeys);
   const plannedSeedlingTrayCount = normalizeOptionalInteger(
     record.plannedSeedlingTrayCount,
     "予定苗枚数",
@@ -180,10 +110,7 @@ function normalizeHarvestRecord(record) {
     RECORD_SUMMARY_LENGTH_LIMIT,
     false
   );
-  const plantingSummary = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    && plantingPalletKeys.length
-    ? formatRecordedPalletSummary(plantingPalletKeys)
-    : suppliedPlantingSummary;
+  const plantingSummary = suppliedPlantingSummary;
   const plantingDate = normalizeOptionalDate(record.plantingDate, "苗植え日");
   const actualSeedlingTrayCount = normalizeOptionalInteger(
     record.actualSeedlingTrayCount,
@@ -259,6 +186,12 @@ function normalizeOptionalRecordUuid(value) {
   return text;
 }
 
+function normalizeRequiredRecordUuid(value) {
+  const recordUuid = normalizeOptionalRecordUuid(value);
+  if (!recordUuid) throw new Error("記録UUIDがありません");
+  return recordUuid;
+}
+
 function normalizePlantingEvent(event) {
   if (!isPlainObject(event)) throw new Error("苗植えイベントはオブジェクトで指定してください");
 
@@ -268,25 +201,15 @@ function normalizePlantingEvent(event) {
     1,
     Number.MAX_SAFE_INTEGER
   );
-  const explicitPalletNumberingVersion = normalizePalletNumberingVersion(
-    event.palletNumberingVersion
-  );
-  const palletNumberingVersion = String(event.palletNumberingVersion ?? "").trim() === ""
-    && eventId >= CURRENT_PALLET_NUMBERING_ID_MIN
-    ? CURRENT_PALLET_NUMBERING_VERSION
-    : explicitPalletNumberingVersion;
+  normalizePalletNumberingVersion(event.palletNumberingVersion);
   const plantingDate = normalizeRequiredDate(event.plantingDate, "苗植え日");
   const rawSourceAllocations = normalizePlantingSourceAllocations(event.sourceAllocations);
   const rawPlantingPalletKeys = normalizeDirectPalletKeys(
     event.plantingPalletKeys,
     "苗植えイベントのパレット"
   );
-  const sourceAllocations = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPlantingAllocationsToLeftOrigin(rawSourceAllocations)
-    : rawSourceAllocations;
-  const plantingPalletKeys = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPalletKeysToLeftOrigin(rawPlantingPalletKeys)
-    : rawPlantingPalletKeys;
+  const sourceAllocations = rawSourceAllocations;
+  const plantingPalletKeys = rawPlantingPalletKeys;
   if (!plantingPalletKeys.length) throw new Error("苗植えイベントのパレットがありません");
 
   const allocatedKeys = [];
@@ -480,15 +403,13 @@ function normalizeQualityMemoInput(value) {
   }
   if (!isPlainObject(value)) throw new Error("品質メモの形式が正しくありません");
 
-  const rawTags = typeof value.tags === "undefined"
-    ? (typeof value.qualityTags === "undefined" ? [] : value.qualityTags)
-    : value.tags;
+  const rawTags = typeof value.tags === "undefined" ? [] : value.tags;
   if (!Array.isArray(rawTags) || rawTags.length > QUALITY_TAGS.length) {
     throw new Error("品質タグの形式が正しくありません");
   }
   const tags = rawTags.map(tag => normalizeQualityTagInput(tag));
   const other = normalizeOptionalText(
-    typeof value.other === "undefined" ? value.qualityOther : value.other,
+    value.other,
     "品質メモ",
     RECORD_QUALITY_LENGTH_LIMIT,
     false
@@ -792,6 +713,9 @@ function normalizeMonitorHistoryOptions(options) {
 
 function normalizeMonitorContentInput(content) {
   if (!isPlainObject(content)) throw new Error("モニター内容の形式が正しくありません");
+  if (Object.prototype.hasOwnProperty.call(content, "palletRanges")) {
+    throw new Error("モニターの収穫場所はharvestFillKeysで指定してください");
+  }
   const normalized = {};
 
   const hasVersion = content.version !== null && typeof content.version !== "undefined" && !(
@@ -832,12 +756,11 @@ function normalizeMonitorContentInput(content) {
     if (hasMemoItems) normalized.memoItems = memoItems;
   }
 
-  const hasHarvestKeys = Object.prototype.hasOwnProperty.call(content, "harvestFillKeys");
-  const hasLegacyRanges = Object.prototype.hasOwnProperty.call(content, "palletRanges");
-  if (hasHarvestKeys || hasLegacyRanges) {
-    const directKeys = normalizeMonitorPalletKeys(content.harvestFillKeys, "モニターの収穫場所");
-    const legacyRanges = normalizeMonitorPalletKeys(content.palletRanges, "モニターの収穫場所");
-    normalized.harvestFillKeys = Array.from(new Set(directKeys.concat(legacyRanges)));
+  if (Object.prototype.hasOwnProperty.call(content, "harvestFillKeys")) {
+    normalized.harvestFillKeys = normalizeMonitorPalletKeys(
+      content.harvestFillKeys,
+      "モニターの収穫場所"
+    );
     if (normalized.harvestFillKeys.length > RECORD_PALLET_KEY_LIMIT) {
       throw new Error("モニターの収穫場所は" + RECORD_PALLET_KEY_LIMIT + "件までです");
     }

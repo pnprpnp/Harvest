@@ -706,11 +706,7 @@ function getRecordById(id){
 }
 
 function getRecordByUuid(recordUuid){
-  return findHarvestRecordByIdentity(
-    { recordUuid },
-    records,
-    { fallbackToId: false }
-  );
+  return findHarvestRecordByIdentity({ recordUuid }, records);
 }
 
 function getActivePlantingRecord(){
@@ -769,12 +765,6 @@ function getStartupPlantingRecordToResume(savedHarvestState = null){
     }
   }
   return null;
-}
-
-function repairLegacyPendingPlantingRecords(savedHarvestState = null){
-  const migrated = migrateLegacyPlantingEvents();
-  syncHarvestPlantingPendingFlags();
-  return migrated;
 }
 
 function getPreviousFullHarvestRecord(options = {}){

@@ -88,52 +88,7 @@ function savePlantingEventUnlocked(event) {
       previousUpdatedAt = String(writeMarker.baseUpdatedAt || "");
       existingEvent = null;
     } else if (!isCommittedPlantingEventRow(headers, existingRow)) {
-      const updatedAtColumn = getPlantingEventHeaderColumn(headers, "updatedAt");
-      const rawUpdatedAt = updatedAtColumn > 0
-        ? String(existingRow[updatedAtColumn - 1] == null ? "" : existingRow[updatedAtColumn - 1]).trim()
-        : "";
-      if (rawUpdatedAt) {
-        throw new Error("苗植えイベント行の未完了マーカーが壊れています");
-      }
-      try {
-        const legacyEvent = rowToPlantingEvent(headers, existingRow);
-        if (getPlantingEventContentSignature(legacyEvent) !==
-          getPlantingEventContentSignature(event)) {
-          throw new Error(
-            "更新日時のない既存の苗植えイベントは別内容です。データ保護のため上書きしません"
-          );
-        }
-        const committedEvent = {
-          ...legacyEvent,
-          createdAt: legacyEvent.createdAt || event.createdAt || now,
-          updatedAt: getNextPlantingEventUpdatedAt(event.updatedAt)
-        };
-        writePlantingEventRow(
-          sheet,
-          existingRowNumber,
-          headers,
-          committedEvent,
-          event
-        );
-        syncRecordSheetPlantingLocationSummaries(affectedHarvestRecordIds);
-        return {
-          updated: true,
-          unchanged: true,
-          recovered: true,
-          event: committedEvent
-        };
-      } catch (err) {
-        if (!isRecoverableIncompletePlantingEventRow(headers, existingRow, event.eventId)) {
-          throw err;
-        }
-        const createdAtColumn = getPlantingEventHeaderColumn(headers, "createdAt");
-        const storedCreatedAt = createdAtColumn > 0
-          ? formatPlantingEventTimestamp(existingRow[createdAtColumn - 1])
-          : "";
-        createdAt = storedCreatedAt || createdAt;
-        previousUpdatedAt = event.updatedAt || "";
-        existingEvent = null;
-      }
+      throw new Error("苗植えイベント行の未完了マーカーがありません");
     } else {
       try {
         existingEvent = rowToPlantingEvent(headers, existingRow);
@@ -670,65 +625,9 @@ function formatRecordedPalletNumberRanges(numbers) {
     .join(",");
 }
 
-function parseRecordedPalletSummaryKeys(value) {
-  const keys = [];
-  const seen = new Set();
-  const appendKey = (building, bed, number) => {
-    if (!HARVEST_BUILDINGS.includes(building) || !HARVEST_BEDS.includes(bed) ||
-      !Number.isInteger(number) || number < 1 || number > PALLETS_PER_BED) return;
-    const key = building + "-" + bed + "-" + number;
-    if (seen.has(key)) return;
-    seen.add(key);
-    keys.push(key);
-  };
-
-  String(value == null ? "" : value).trim().split(/\r?\n+/).forEach(line => {
-    const match = line.trim().match(/^(\d+)号棟\s*([A-F])\s*[:：]\s*(.+)$/);
-    if (!match) return;
-    const building = Number(match[1]);
-    const bed = match[2];
-    if (!HARVEST_BUILDINGS.includes(building) || !HARVEST_BEDS.includes(bed)) return;
-
-    match[3].split(/[,、\s]+/).forEach(part => {
-      const text = part.trim();
-      if (!text) return;
-      const sideMatch = text.match(/^(右|左)\s*[（(]\s*(\d+)(?:\s*[-〜~]\s*(\d+))?\s*[）)]$/);
-      if (sideMatch) {
-        const parity = sideMatch[1] === "右" ? 0 : 1;
-        const first = Number(sideMatch[2]);
-        const last = Number(sideMatch[3] || sideMatch[2]);
-        const start = Math.min(first, last);
-        const end = Math.max(first, last);
-        if (start % 2 !== parity || end % 2 !== parity) return;
-        for (let number = start; number <= end; number += 2) {
-          appendKey(building, bed, number);
-        }
-        return;
-      }
-
-      const rangeMatch = text.match(/^(\d+)(?:[-〜~](\d+))?$/);
-      if (!rangeMatch) return;
-      const first = Number(rangeMatch[1]);
-      const last = Number(rangeMatch[2] || rangeMatch[1]);
-      const start = Math.min(first, last);
-      const end = Math.max(first, last);
-      for (let number = start; number <= end; number++) {
-        appendKey(building, bed, number);
-      }
-    });
-  });
-  return keys;
-}
-
 function getHarvestRecordPalletKeysForPlantingSource(record) {
-  const directKeys = normalizeDirectPalletKeys(
-    parseStoredJsonArray(record && record.palletKeys, "収穫記録のパレット"),
-    "収穫記録のパレット"
-  );
-  const harvestDate = formatDateValue(record && record.date);
-  if (!harvestDate || harvestDate >= PALLET_SUMMARY_CANONICAL_START_DATE) return directKeys;
   return normalizeDirectPalletKeys(
-    directKeys.concat(parseRecordedPalletSummaryKeys(record && record.palletSummary)),
+    parseStoredJsonArray(record && record.palletKeys, "収穫記録のパレット"),
     "収穫記録のパレット"
   );
 }

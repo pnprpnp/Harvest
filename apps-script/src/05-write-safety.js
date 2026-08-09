@@ -139,86 +139,14 @@ function findHarvestIncompleteWriteForRequest(
     : readHarvestRecordRows(sheet, headers);
   if (!rows.length) return null;
   const requestUuid = String(record && record.recordUuid || "").trim().toLowerCase();
-  const requestId = String(!record || record.id == null ? "" : record.id).trim();
   const matches = [];
   rows.forEach((row, index) => {
     const marker = getHarvestWriteMarker(headers, row);
     if (!marker) return;
     const markerRequestUuid = String(marker.requestUuid || "").trim().toLowerCase();
-    const sameIdentity = requestUuid
-      ? markerRequestUuid === requestUuid
-      : (!markerRequestUuid && String(marker.requestId || "").trim() === requestId);
+    const sameIdentity = markerRequestUuid === requestUuid;
     if (sameIdentity) matches.push({ row, marker, rowNumber: index + 2 });
   });
-  if (!matches.length) {
-    const receivedAtColumn = getHeaderColumn(headers, "receivedAt");
-    const uuidColumn = getHeaderColumn(headers, "recordUuid");
-    const idColumn = getHeaderColumn(headers, "id");
-    const dateColumn = getHeaderColumn(headers, "date");
-    const casesColumn = getHeaderColumn(headers, "cases");
-    const updatedAtColumn = getHeaderColumn(headers, "updatedAt");
-    const legacyMatches = [];
-    rows.forEach((row, index) => {
-      if (receivedAtColumn > 0 && String(row[receivedAtColumn - 1] || "").trim()) return;
-      const rowUuid = uuidColumn > 0
-        ? String(row[uuidColumn - 1] || "").trim().toLowerCase()
-        : "";
-      const rowId = idColumn > 0
-        ? String(row[idColumn - 1] == null ? "" : row[idColumn - 1]).trim()
-        : "";
-      const identityMatches = requestUuid
-        ? (rowUuid === requestUuid || (!rowUuid && !!requestId && rowId === requestId))
-        : (!!requestId && rowId === requestId);
-      if (!identityMatches) return;
-      const rowDate = dateColumn > 0 ? formatDateValue(row[dateColumn - 1]) : "";
-      const rowCases = casesColumn > 0
-        ? String(row[casesColumn - 1] == null ? "" : row[casesColumn - 1]).trim()
-        : "";
-      if ((rowDate && rowDate !== record.date) ||
-        (rowCases && Number(rowCases) !== Number(record.cases))) return;
-      const storedUpdatedAt = updatedAtColumn > 0
-        ? normalizeWriteTimestampToken(row[updatedAtColumn - 1])
-        : "";
-      const baseUpdatedAt = normalizeWriteTimestampToken(record.updatedAt);
-      let storedRecordIsComplete = false;
-      try {
-        const storedRecord = normalizeHarvestRecord(rowToRecord(headers, row));
-        const expectedRecord = mergeOmittedSyncFieldsFromExistingRow(
-          sheet,
-          index + 2,
-          headers,
-          record,
-          suppliedSyncFields,
-          row
-        );
-        storedRecordIsComplete = true;
-        if (getHarvestRecordContentSignature(storedRecord) !==
-          getHarvestRecordContentSignature(expectedRecord)) return;
-      } catch (err) {
-        storedRecordIsComplete = false;
-      }
-      if (!storedRecordIsComplete && storedUpdatedAt && storedUpdatedAt !== baseUpdatedAt) return;
-      const canonicalRecord = {
-        ...record,
-        id: rowId || record.id,
-        recordUuid: rowUuid || record.recordUuid || Utilities.getUuid().toLowerCase()
-      };
-      const marker = parseWriteMarker(
-        buildHarvestWriteMarker(
-          record,
-          canonicalRecord,
-          suppliedSyncFields,
-          operation === "any" ? "save" : operation
-        ),
-        HARVEST_WRITE_MARKER_PREFIX
-      );
-      legacyMatches.push({ row, marker, rowNumber: index + 2, legacy: true });
-    });
-    if (legacyMatches.length > 1) {
-      throw new Error("同じ収穫記録の旧未完了行が複数あります。データ保護のため再送を中止しました");
-    }
-    if (legacyMatches.length) matches.push(legacyMatches[0]);
-  }
   if (!matches.length) return null;
   if (matches.length > 1) {
     throw new Error("同じ収穫記録の未完了行が複数あります。データ保護のため再送を中止しました");

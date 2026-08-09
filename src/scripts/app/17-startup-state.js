@@ -26,8 +26,6 @@ function initializeStartupSettingsAndStorage(){
   installEmptyInputHighlights();
   installHarvestStateSaveFlushListeners();
   installMonitorViewportResizeObserver();
-  normalizeRecordsStorageOnce();
-  migrateLegacyPlantingEvents();
   syncHarvestPlantingPendingFlags();
 }
 

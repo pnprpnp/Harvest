@@ -862,7 +862,7 @@ function restoreSeedlingTrayCountFromAccidentalDate(value) {
   return serial >= 0 ? serial : value;
 }
 
-function backfillHarvestRecordSyncMetadata(sheet, headers, options) {
+function repairHarvestRecordSyncMetadataRows(sheet, headers, options) {
   if (!sheet) return 0;
   const normalizedOptions = options && typeof options === "object" ? options : {};
   const suppliedRows = Array.isArray(normalizedOptions.rows)
@@ -919,7 +919,7 @@ function backfillHarvestRecordSyncMetadata(sheet, headers, options) {
       if (!hasRecordCore || !RECORD_TYPES.includes(type)) {
         throw new Error(
           "記録シートの" + (index + 2) +
-          "行目を旧記録として判別できません。記録種別・収穫日・ケース数を確認してください"
+          "行目を収穫記録として補完できません。記録種別・収穫日・ケース数を確認してください"
         );
       }
     }
@@ -1060,8 +1060,7 @@ function writeHarvestRecordSyncMetadataRows(sheet, headers, rows) {
 function getRecordDuplicateKeysForCheck(record, duplicateKey) {
   return [
     String(duplicateKey || "").trim(),
-    makeAnyDuplicateKey(record),
-    makeLegacyDuplicateKey(record)
+    makeDuplicateKey(record)
   ].filter(Boolean);
 }
 

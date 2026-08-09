@@ -12,21 +12,15 @@ window.addEventListener("error", event => {
 });
 const SETTINGS_KEY = "harvestForecastSettings_v16";
 const RECORDS_KEY = "harvestForecastRecords_v9";
-const RECORD_STORAGE_NORMALIZATION_KEY = "harvestForecastRecordsNormalized_v1";
 const PLANTING_EVENTS_KEY = "harvestForecastPlantingEvents_v1";
-const PLANTING_EVENTS_MIGRATION_KEY = "harvestForecastPlantingEventsMigrated_v1";
-const LEGACY_PLANTING_EVENT_BACKFILL_KEY = "harvestForecastPlantingEventBackfill_20260722_v2";
 const PLANTING_EVENT_SYNC_STATUS_KEY = "harvestForecastPlantingEventSyncStatus_v1";
 const PLANTING_EVENT_TRASH_KEY = "harvestForecastPlantingEventTrash_v1";
-const PALLET_SUMMARY_CANONICAL_START_DATE = "2026-06-18";
-const LEGACY_PLANTING_EVENT_CUTOFF_DATE = "2026-07-08";
 const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
 const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v1";
 const GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestForecastGoogleSheetSyncConflicts_v1";
 const GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS = 2000;
-const LEGACY_SYNC_CONFLICT_MIGRATION_KEY = "harvestForecastLegacySyncConflictMigrated_v1";
 const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
@@ -114,7 +108,6 @@ const ROWS = 39;
 const COLS = 2;
 const PALLETS_PER_BED = 78;
 const CURRENT_PALLET_NUMBERING_VERSION = 2;
-const PALLET_NUMBERING_MIGRATION_KEY = "harvestForecastPalletNumberingMigrated_leftOrigin_v2";
 const PALLETS_PER_PIN = 4;
 const HARVEST_FORECAST_WEEKDAYS = [0, 2, 3, 4, 6];
 const DASHBOARD_FORECAST_DAY_COLORS = Object.freeze([
@@ -155,8 +148,6 @@ const defaultSettings = {
     F: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 }
   }
 };
-
-migrateLocalPalletNumberingToLeftOriginOnce();
 
 let settings = loadSettings();
 let currentBuilding = 2;
@@ -275,8 +266,6 @@ const googleSheetBackgroundPlantingQueue = new Map();
 let googleSheetBackgroundSendRunning = false;
 let googleSheetBackgroundSendTimer = null;
 let googleSheetStartupImportStarted = false;
-migrateLegacyRecordSyncConflictsOnce();
-cleanupObsoleteGoogleSheetSyncStorage();
 let dashboardFilter = loadDashboardFilter();
 let protectedAccessUnlocked = false;
 let isMonitorModeOpen = false;
@@ -1023,6 +1012,7 @@ function loadHarvestStateFromStorage(){
   try{
     const parsed = harvestnaviLocalStorage.readJson(HARVEST_STATE_KEY, null);
     if(!parsed) return null;
+    if(Number(parsed.palletNumberingVersion) !== CURRENT_PALLET_NUMBERING_VERSION) return null;
     return {
       currentBuilding: BUILDINGS.includes(Number(parsed.currentBuilding)) ? Number(parsed.currentBuilding) : 2,
       casePlacementBuilding: BUILDINGS.includes(Number(parsed.casePlacementBuilding)) ? Number(parsed.casePlacementBuilding) : null,
@@ -1053,7 +1043,7 @@ function loadHarvestStateFromStorage(){
       recordPalletSummaryInput: parsed.recordPalletSummaryInput ?? "",
       recordPlantingSummaryInput: parsed.recordPlantingSummaryInput ?? "",
       recordMemoInput: parsed.recordMemoInput ?? "",
-      qualityMemo: normalizeQualityMemo(parsed.qualityMemo || parsed.qualityTags || null),
+      qualityMemo: normalizeQualityMemo(parsed.qualityMemo || null),
       recordCasesEdited: !!parsed.recordCasesEdited,
       recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
@@ -1458,7 +1448,7 @@ function createRecordUuid(){
       return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     }
   }catch(e){
-    // 古いブラウザでは下の互換生成へ進む。
+    // randomUUIDを使えない環境では下の生成へ進む。
   }
   const seed = `${Date.now()}-${Math.random()}-${Math.random()}`;
   let hash = 2166136261;

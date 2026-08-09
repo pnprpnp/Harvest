@@ -8,17 +8,12 @@ const RECORD_TRASH_RETENTION_DAYS = 30;
 const PLANTING_EVENT_SHEET_NAME = "苗植えイベント";
 const PLANTING_EVENT_TRASH_SHEET_NAME = "削除済み苗植えイベント";
 const PLANTING_EVENT_TOMBSTONE_SHEET_NAME = "苗植えイベント削除ID";
-const PALLET_SUMMARY_CANONICAL_START_DATE = "2026-06-18";
 const MONITOR_SHEET_NAME = "モニター設定";
 const MONITOR_HISTORY_SHEET_NAME = "モニター編集履歴";
 const MONITOR_HISTORY_LIMIT = 1000;
 const API_TOKEN_PROPERTY_NAME = "HARVEST_API_TOKEN";
-const PALLET_NUMBERING_MIGRATION_PROPERTY =
-  "PALLET_NUMBERING_MIGRATED_LEFT_ORIGIN_V2_20260729";
-const HARVEST_RECORD_SYNC_METADATA_MIGRATION_PROPERTY =
-  "HARVEST_RECORD_SYNC_METADATA_MIGRATED_V1_20260731";
-const HARVEST_RECORD_SYNC_METADATA_BACKUP_PROPERTY =
-  "HARVEST_RECORD_SYNC_METADATA_BACKUP_V1_20260731";
+const HARVEST_RECORD_REPAIR_BACKUP_PROPERTY =
+  "HARVEST_RECORD_REPAIR_BACKUP_V1_20260809";
 const SYNC_REVISION_PROPERTY_NAME = "HARVEST_SYNC_REVISION_V1";
 const SYNC_REVISION_FLOOR_PROPERTY_NAME = "HARVEST_SYNC_REVISION_FLOOR_V1";
 const SYNC_CHANGE_LOG_SHEET_NAME = "同期変更履歴";
@@ -34,7 +29,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-09-script-properties-spreadsheet-id-1";
+const API_BUILD_VERSION = "2026-08-09-current-schema-only-1";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -70,9 +65,7 @@ const RECORD_SYNC_PROVIDED_FIELDS_MIN_VERSION = 2;
 const HARVEST_BUILDINGS = [2, 3, 4, 5, 6, 7, 8, 9];
 const HARVEST_BEDS = ["A", "B", "C", "D", "E", "F"];
 const PALLETS_PER_BED = 78;
-const LEGACY_PALLET_NUMBERING_VERSION = 1;
 const CURRENT_PALLET_NUMBERING_VERSION = 2;
-const CURRENT_PALLET_NUMBERING_ID_MIN = 10000000000000;
 const RECORD_TYPES = ["fullHarvest", "partialHarvest"];
 const QUALITY_TAGS = ["large", "small", "elongated", "chip"];
 const RECORD_FORMULA_SAFE_TEXT_KEYS = new Set([
@@ -183,17 +176,6 @@ const HEADER_LABELS = {
 const HEADERS = FIELD_KEYS.map(key => HEADER_LABELS[key]);
 const RECORD_TRASH_HEADERS = HEADERS.concat(["削除日時", "復元期限"]);
 const RECORD_TOMBSTONE_HEADERS = ["記録UUID", "記録ID", "削除日時"];
-const RECORD_TRASH_MIGRATION_FIELD_KEYS = [
-  "plantingCaseInstruction",
-  "actualSeedlingCarryoverMode",
-  "recordUuid",
-  "createdAt",
-  "updatedAt",
-  "palletNumberingVersion"
-];
-const LEGACY_RECORD_TRASH_HEADERS = RECORD_TRASH_HEADERS.filter(
-  header => !RECORD_TRASH_MIGRATION_FIELD_KEYS.some(key => HEADER_LABELS[key] === header)
-);
 const RECORD_SYNC_PRESERVED_FIELD_KEYS = [
   "plantingCaseInstruction",
   "actualSeedlingCarryoverMode"
@@ -236,11 +218,6 @@ const PLANTING_EVENT_HEADER_LABELS = {
 const PLANTING_EVENT_HEADERS = PLANTING_EVENT_FIELD_KEYS.map(
   key => PLANTING_EVENT_HEADER_LABELS[key]
 );
-const LEGACY_PLANTING_EVENT_HEADERS_WITHOUT_DETAILS = PLANTING_EVENT_FIELD_KEYS
-  .filter(key => key !== "detailsUnknown" && key !== "palletNumberingVersion")
-  .map(key => PLANTING_EVENT_HEADER_LABELS[key]);
-const LEGACY_PLANTING_EVENT_TRASH_HEADERS_WITHOUT_DETAILS =
-  LEGACY_PLANTING_EVENT_HEADERS_WITHOUT_DETAILS.concat(["削除日時", "復元期限"]);
 const PLANTING_EVENT_TRASH_HEADERS = PLANTING_EVENT_HEADERS.concat(["削除日時", "復元期限"]);
 const PLANTING_EVENT_TOMBSTONE_HEADERS = ["苗植えイベントID", "削除日時"];
 const PLANTING_EVENT_FORMULA_SAFE_KEYS = new Set([
@@ -778,11 +755,6 @@ function doPost(e) {
       }
     }
 
-    apiStage = "パレット番号の保存データ確認中";
-    migrateAllPalletNumberingToLeftOriginV2();
-    apiStage = "旧記録の同期情報確認中";
-    migrateHarvestRecordSyncMetadataV1();
-
     if (operation === "checkUpdates") {
       apiStage = "更新情報の確認中";
       const includePlanting = body.includePlanting !== false;
@@ -1228,30 +1200,12 @@ function isPlainObject(value) {
 }
 
 function normalizePalletNumberingVersion(value) {
-  if (value === null || typeof value === "undefined" || value === "") {
-    return LEGACY_PALLET_NUMBERING_VERSION;
-  }
   return normalizeRequiredInteger(
     value,
     "パレット番号方式",
-    LEGACY_PALLET_NUMBERING_VERSION,
+    CURRENT_PALLET_NUMBERING_VERSION,
     CURRENT_PALLET_NUMBERING_VERSION
   );
-}
-
-function convertLegacyPalletNumberToLeftOrigin(number) {
-  const normalized = Number(number);
-  if (!Number.isInteger(normalized) || normalized < 1 || normalized > PALLETS_PER_BED) {
-    return normalized;
-  }
-  return normalized % 2 === 0 ? normalized - 1 : normalized + 1;
-}
-
-function convertLegacyPalletKeyToLeftOrigin(key) {
-  const match = String(key || "").trim().match(/^(\d+)-([A-F])-(\d+)$/);
-  if (!match) return "";
-  return match[1] + "-" + match[2] + "-" +
-    convertLegacyPalletNumberToLeftOrigin(Number(match[3]));
 }
 
 function comparePalletKeys(left, right) {
@@ -1262,56 +1216,14 @@ function comparePalletKeys(left, right) {
     || Number(leftParts[2]) - Number(rightParts[2]);
 }
 
-function convertLegacyPalletKeysToLeftOrigin(keys) {
-  return Array.from(new Set((Array.isArray(keys) ? keys : [])
-    .map(convertLegacyPalletKeyToLeftOrigin)
-    .filter(Boolean)))
-    .sort(comparePalletKeys);
-}
-
-function convertLegacyRecordTargetsToLeftOrigin(targets) {
-  return (Array.isArray(targets) ? targets : []).reduce((converted, target) => {
-    const numbers = [];
-    for (let number = target.start; number <= target.end; number++) {
-      numbers.push(convertLegacyPalletNumberToLeftOrigin(number));
-    }
-    numbers.sort((left, right) => left - right);
-    let start = numbers[0];
-    let previous = numbers[0];
-    for (let index = 1; index <= numbers.length; index++) {
-      const current = numbers[index];
-      if (current === previous + 1) {
-        previous = current;
-        continue;
-      }
-      converted.push({ ...target, start, end: previous });
-      start = current;
-      previous = current;
-    }
-    return converted;
-  }, []);
-}
-
-function convertLegacyPlantingAllocationsToLeftOrigin(sourceAllocations) {
-  return (Array.isArray(sourceAllocations) ? sourceAllocations : []).map(allocation => ({
-    ...allocation,
-    palletKeys: convertLegacyPalletKeysToLeftOrigin(allocation.palletKeys)
-  }));
-}
 
 function normalizeHarvestRecord(record) {
   if (!isPlainObject(record)) throw new Error("記録データはオブジェクトで指定してください");
 
   const type = normalizeRequiredEnum(record.type, "記録種別", RECORD_TYPES);
   const id = normalizeRequiredInteger(record.id, "記録ID", 1, Number.MAX_SAFE_INTEGER);
-  const explicitPalletNumberingVersion = normalizePalletNumberingVersion(
-    record.palletNumberingVersion
-  );
-  const palletNumberingVersion = String(record.palletNumberingVersion ?? "").trim() === ""
-    && id >= CURRENT_PALLET_NUMBERING_ID_MIN
-    ? CURRENT_PALLET_NUMBERING_VERSION
-    : explicitPalletNumberingVersion;
-  const recordUuid = normalizeOptionalRecordUuid(record.recordUuid);
+  normalizePalletNumberingVersion(record.palletNumberingVersion);
+  const recordUuid = normalizeRequiredRecordUuid(record.recordUuid);
   const createdAt = normalizeOptionalTimestamp(record.createdAt, "作成日時");
   const updatedAt = normalizeOptionalTimestamp(record.updatedAt, "更新日時");
   const date = normalizeRequiredDate(record.date, "収穫日");
@@ -1333,15 +1245,9 @@ function normalizeHarvestRecord(record) {
     record.plantingPalletKeys,
     "苗植えパレット"
   );
-  const targets = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyRecordTargetsToLeftOrigin(rawTargets)
-    : rawTargets;
-  const palletKeys = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPalletKeysToLeftOrigin(rawPalletKeys)
-    : rawPalletKeys;
-  const plantingPalletKeys = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPalletKeysToLeftOrigin(rawPlantingPalletKeys)
-    : rawPlantingPalletKeys;
+  const targets = rawTargets;
+  const palletKeys = rawPalletKeys;
+  const plantingPalletKeys = rawPlantingPalletKeys;
 
   if (type === "partialHarvest") {
     if (!targets.length) throw new Error("先取り収穫の対象がありません");
@@ -1381,17 +1287,13 @@ function normalizeHarvestRecord(record) {
   if (!palletKeys.length) throw new Error("収穫パレットがありません");
   if (targets.length) throw new Error("通常収穫には先取り対象を指定できません");
 
-  const suppliedPalletSummary = normalizeRequiredText(
+  normalizeRequiredText(
     record.palletSummary,
     "収穫場所",
     RECORD_SUMMARY_LENGTH_LIMIT,
     true
   );
-  const palletSummary = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? formatRecordedPalletSummary(palletKeys)
-    : date < PALLET_SUMMARY_CANONICAL_START_DATE
-    ? suppliedPalletSummary
-    : formatRecordedPalletSummary(palletKeys);
+  const palletSummary = formatRecordedPalletSummary(palletKeys);
   const plannedSeedlingTrayCount = normalizeOptionalInteger(
     record.plannedSeedlingTrayCount,
     "予定苗枚数",
@@ -1405,10 +1307,7 @@ function normalizeHarvestRecord(record) {
     RECORD_SUMMARY_LENGTH_LIMIT,
     false
   );
-  const plantingSummary = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    && plantingPalletKeys.length
-    ? formatRecordedPalletSummary(plantingPalletKeys)
-    : suppliedPlantingSummary;
+  const plantingSummary = suppliedPlantingSummary;
   const plantingDate = normalizeOptionalDate(record.plantingDate, "苗植え日");
   const actualSeedlingTrayCount = normalizeOptionalInteger(
     record.actualSeedlingTrayCount,
@@ -1484,6 +1383,12 @@ function normalizeOptionalRecordUuid(value) {
   return text;
 }
 
+function normalizeRequiredRecordUuid(value) {
+  const recordUuid = normalizeOptionalRecordUuid(value);
+  if (!recordUuid) throw new Error("記録UUIDがありません");
+  return recordUuid;
+}
+
 function normalizePlantingEvent(event) {
   if (!isPlainObject(event)) throw new Error("苗植えイベントはオブジェクトで指定してください");
 
@@ -1493,25 +1398,15 @@ function normalizePlantingEvent(event) {
     1,
     Number.MAX_SAFE_INTEGER
   );
-  const explicitPalletNumberingVersion = normalizePalletNumberingVersion(
-    event.palletNumberingVersion
-  );
-  const palletNumberingVersion = String(event.palletNumberingVersion ?? "").trim() === ""
-    && eventId >= CURRENT_PALLET_NUMBERING_ID_MIN
-    ? CURRENT_PALLET_NUMBERING_VERSION
-    : explicitPalletNumberingVersion;
+  normalizePalletNumberingVersion(event.palletNumberingVersion);
   const plantingDate = normalizeRequiredDate(event.plantingDate, "苗植え日");
   const rawSourceAllocations = normalizePlantingSourceAllocations(event.sourceAllocations);
   const rawPlantingPalletKeys = normalizeDirectPalletKeys(
     event.plantingPalletKeys,
     "苗植えイベントのパレット"
   );
-  const sourceAllocations = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPlantingAllocationsToLeftOrigin(rawSourceAllocations)
-    : rawSourceAllocations;
-  const plantingPalletKeys = palletNumberingVersion === LEGACY_PALLET_NUMBERING_VERSION
-    ? convertLegacyPalletKeysToLeftOrigin(rawPlantingPalletKeys)
-    : rawPlantingPalletKeys;
+  const sourceAllocations = rawSourceAllocations;
+  const plantingPalletKeys = rawPlantingPalletKeys;
   if (!plantingPalletKeys.length) throw new Error("苗植えイベントのパレットがありません");
 
   const allocatedKeys = [];
@@ -1705,15 +1600,13 @@ function normalizeQualityMemoInput(value) {
   }
   if (!isPlainObject(value)) throw new Error("品質メモの形式が正しくありません");
 
-  const rawTags = typeof value.tags === "undefined"
-    ? (typeof value.qualityTags === "undefined" ? [] : value.qualityTags)
-    : value.tags;
+  const rawTags = typeof value.tags === "undefined" ? [] : value.tags;
   if (!Array.isArray(rawTags) || rawTags.length > QUALITY_TAGS.length) {
     throw new Error("品質タグの形式が正しくありません");
   }
   const tags = rawTags.map(tag => normalizeQualityTagInput(tag));
   const other = normalizeOptionalText(
-    typeof value.other === "undefined" ? value.qualityOther : value.other,
+    value.other,
     "品質メモ",
     RECORD_QUALITY_LENGTH_LIMIT,
     false
@@ -2017,6 +1910,9 @@ function normalizeMonitorHistoryOptions(options) {
 
 function normalizeMonitorContentInput(content) {
   if (!isPlainObject(content)) throw new Error("モニター内容の形式が正しくありません");
+  if (Object.prototype.hasOwnProperty.call(content, "palletRanges")) {
+    throw new Error("モニターの収穫場所はharvestFillKeysで指定してください");
+  }
   const normalized = {};
 
   const hasVersion = content.version !== null && typeof content.version !== "undefined" && !(
@@ -2057,12 +1953,11 @@ function normalizeMonitorContentInput(content) {
     if (hasMemoItems) normalized.memoItems = memoItems;
   }
 
-  const hasHarvestKeys = Object.prototype.hasOwnProperty.call(content, "harvestFillKeys");
-  const hasLegacyRanges = Object.prototype.hasOwnProperty.call(content, "palletRanges");
-  if (hasHarvestKeys || hasLegacyRanges) {
-    const directKeys = normalizeMonitorPalletKeys(content.harvestFillKeys, "モニターの収穫場所");
-    const legacyRanges = normalizeMonitorPalletKeys(content.palletRanges, "モニターの収穫場所");
-    normalized.harvestFillKeys = Array.from(new Set(directKeys.concat(legacyRanges)));
+  if (Object.prototype.hasOwnProperty.call(content, "harvestFillKeys")) {
+    normalized.harvestFillKeys = normalizeMonitorPalletKeys(
+      content.harvestFillKeys,
+      "モニターの収穫場所"
+    );
     if (normalized.harvestFillKeys.length > RECORD_PALLET_KEY_LIMIT) {
       throw new Error("モニターの収穫場所は" + RECORD_PALLET_KEY_LIMIT + "件までです");
     }
@@ -2242,86 +2137,14 @@ function findHarvestIncompleteWriteForRequest(
     : readHarvestRecordRows(sheet, headers);
   if (!rows.length) return null;
   const requestUuid = String(record && record.recordUuid || "").trim().toLowerCase();
-  const requestId = String(!record || record.id == null ? "" : record.id).trim();
   const matches = [];
   rows.forEach((row, index) => {
     const marker = getHarvestWriteMarker(headers, row);
     if (!marker) return;
     const markerRequestUuid = String(marker.requestUuid || "").trim().toLowerCase();
-    const sameIdentity = requestUuid
-      ? markerRequestUuid === requestUuid
-      : (!markerRequestUuid && String(marker.requestId || "").trim() === requestId);
+    const sameIdentity = markerRequestUuid === requestUuid;
     if (sameIdentity) matches.push({ row, marker, rowNumber: index + 2 });
   });
-  if (!matches.length) {
-    const receivedAtColumn = getHeaderColumn(headers, "receivedAt");
-    const uuidColumn = getHeaderColumn(headers, "recordUuid");
-    const idColumn = getHeaderColumn(headers, "id");
-    const dateColumn = getHeaderColumn(headers, "date");
-    const casesColumn = getHeaderColumn(headers, "cases");
-    const updatedAtColumn = getHeaderColumn(headers, "updatedAt");
-    const legacyMatches = [];
-    rows.forEach((row, index) => {
-      if (receivedAtColumn > 0 && String(row[receivedAtColumn - 1] || "").trim()) return;
-      const rowUuid = uuidColumn > 0
-        ? String(row[uuidColumn - 1] || "").trim().toLowerCase()
-        : "";
-      const rowId = idColumn > 0
-        ? String(row[idColumn - 1] == null ? "" : row[idColumn - 1]).trim()
-        : "";
-      const identityMatches = requestUuid
-        ? (rowUuid === requestUuid || (!rowUuid && !!requestId && rowId === requestId))
-        : (!!requestId && rowId === requestId);
-      if (!identityMatches) return;
-      const rowDate = dateColumn > 0 ? formatDateValue(row[dateColumn - 1]) : "";
-      const rowCases = casesColumn > 0
-        ? String(row[casesColumn - 1] == null ? "" : row[casesColumn - 1]).trim()
-        : "";
-      if ((rowDate && rowDate !== record.date) ||
-        (rowCases && Number(rowCases) !== Number(record.cases))) return;
-      const storedUpdatedAt = updatedAtColumn > 0
-        ? normalizeWriteTimestampToken(row[updatedAtColumn - 1])
-        : "";
-      const baseUpdatedAt = normalizeWriteTimestampToken(record.updatedAt);
-      let storedRecordIsComplete = false;
-      try {
-        const storedRecord = normalizeHarvestRecord(rowToRecord(headers, row));
-        const expectedRecord = mergeOmittedSyncFieldsFromExistingRow(
-          sheet,
-          index + 2,
-          headers,
-          record,
-          suppliedSyncFields,
-          row
-        );
-        storedRecordIsComplete = true;
-        if (getHarvestRecordContentSignature(storedRecord) !==
-          getHarvestRecordContentSignature(expectedRecord)) return;
-      } catch (err) {
-        storedRecordIsComplete = false;
-      }
-      if (!storedRecordIsComplete && storedUpdatedAt && storedUpdatedAt !== baseUpdatedAt) return;
-      const canonicalRecord = {
-        ...record,
-        id: rowId || record.id,
-        recordUuid: rowUuid || record.recordUuid || Utilities.getUuid().toLowerCase()
-      };
-      const marker = parseWriteMarker(
-        buildHarvestWriteMarker(
-          record,
-          canonicalRecord,
-          suppliedSyncFields,
-          operation === "any" ? "save" : operation
-        ),
-        HARVEST_WRITE_MARKER_PREFIX
-      );
-      legacyMatches.push({ row, marker, rowNumber: index + 2, legacy: true });
-    });
-    if (legacyMatches.length > 1) {
-      throw new Error("同じ収穫記録の旧未完了行が複数あります。データ保護のため再送を中止しました");
-    }
-    if (legacyMatches.length) matches.push(legacyMatches[0]);
-  }
   if (!matches.length) return null;
   if (matches.length > 1) {
     throw new Error("同じ収穫記録の未完了行が複数あります。データ保護のため再送を中止しました");
@@ -3336,52 +3159,7 @@ function savePlantingEventUnlocked(event) {
       previousUpdatedAt = String(writeMarker.baseUpdatedAt || "");
       existingEvent = null;
     } else if (!isCommittedPlantingEventRow(headers, existingRow)) {
-      const updatedAtColumn = getPlantingEventHeaderColumn(headers, "updatedAt");
-      const rawUpdatedAt = updatedAtColumn > 0
-        ? String(existingRow[updatedAtColumn - 1] == null ? "" : existingRow[updatedAtColumn - 1]).trim()
-        : "";
-      if (rawUpdatedAt) {
-        throw new Error("苗植えイベント行の未完了マーカーが壊れています");
-      }
-      try {
-        const legacyEvent = rowToPlantingEvent(headers, existingRow);
-        if (getPlantingEventContentSignature(legacyEvent) !==
-          getPlantingEventContentSignature(event)) {
-          throw new Error(
-            "更新日時のない既存の苗植えイベントは別内容です。データ保護のため上書きしません"
-          );
-        }
-        const committedEvent = {
-          ...legacyEvent,
-          createdAt: legacyEvent.createdAt || event.createdAt || now,
-          updatedAt: getNextPlantingEventUpdatedAt(event.updatedAt)
-        };
-        writePlantingEventRow(
-          sheet,
-          existingRowNumber,
-          headers,
-          committedEvent,
-          event
-        );
-        syncRecordSheetPlantingLocationSummaries(affectedHarvestRecordIds);
-        return {
-          updated: true,
-          unchanged: true,
-          recovered: true,
-          event: committedEvent
-        };
-      } catch (err) {
-        if (!isRecoverableIncompletePlantingEventRow(headers, existingRow, event.eventId)) {
-          throw err;
-        }
-        const createdAtColumn = getPlantingEventHeaderColumn(headers, "createdAt");
-        const storedCreatedAt = createdAtColumn > 0
-          ? formatPlantingEventTimestamp(existingRow[createdAtColumn - 1])
-          : "";
-        createdAt = storedCreatedAt || createdAt;
-        previousUpdatedAt = event.updatedAt || "";
-        existingEvent = null;
-      }
+      throw new Error("苗植えイベント行の未完了マーカーがありません");
     } else {
       try {
         existingEvent = rowToPlantingEvent(headers, existingRow);
@@ -3918,65 +3696,9 @@ function formatRecordedPalletNumberRanges(numbers) {
     .join(",");
 }
 
-function parseRecordedPalletSummaryKeys(value) {
-  const keys = [];
-  const seen = new Set();
-  const appendKey = (building, bed, number) => {
-    if (!HARVEST_BUILDINGS.includes(building) || !HARVEST_BEDS.includes(bed) ||
-      !Number.isInteger(number) || number < 1 || number > PALLETS_PER_BED) return;
-    const key = building + "-" + bed + "-" + number;
-    if (seen.has(key)) return;
-    seen.add(key);
-    keys.push(key);
-  };
-
-  String(value == null ? "" : value).trim().split(/\r?\n+/).forEach(line => {
-    const match = line.trim().match(/^(\d+)号棟\s*([A-F])\s*[:：]\s*(.+)$/);
-    if (!match) return;
-    const building = Number(match[1]);
-    const bed = match[2];
-    if (!HARVEST_BUILDINGS.includes(building) || !HARVEST_BEDS.includes(bed)) return;
-
-    match[3].split(/[,、\s]+/).forEach(part => {
-      const text = part.trim();
-      if (!text) return;
-      const sideMatch = text.match(/^(右|左)\s*[（(]\s*(\d+)(?:\s*[-〜~]\s*(\d+))?\s*[）)]$/);
-      if (sideMatch) {
-        const parity = sideMatch[1] === "右" ? 0 : 1;
-        const first = Number(sideMatch[2]);
-        const last = Number(sideMatch[3] || sideMatch[2]);
-        const start = Math.min(first, last);
-        const end = Math.max(first, last);
-        if (start % 2 !== parity || end % 2 !== parity) return;
-        for (let number = start; number <= end; number += 2) {
-          appendKey(building, bed, number);
-        }
-        return;
-      }
-
-      const rangeMatch = text.match(/^(\d+)(?:[-〜~](\d+))?$/);
-      if (!rangeMatch) return;
-      const first = Number(rangeMatch[1]);
-      const last = Number(rangeMatch[2] || rangeMatch[1]);
-      const start = Math.min(first, last);
-      const end = Math.max(first, last);
-      for (let number = start; number <= end; number++) {
-        appendKey(building, bed, number);
-      }
-    });
-  });
-  return keys;
-}
-
 function getHarvestRecordPalletKeysForPlantingSource(record) {
-  const directKeys = normalizeDirectPalletKeys(
-    parseStoredJsonArray(record && record.palletKeys, "収穫記録のパレット"),
-    "収穫記録のパレット"
-  );
-  const harvestDate = formatDateValue(record && record.date);
-  if (!harvestDate || harvestDate >= PALLET_SUMMARY_CANONICAL_START_DATE) return directKeys;
   return normalizeDirectPalletKeys(
-    directKeys.concat(parseRecordedPalletSummaryKeys(record && record.palletSummary)),
+    parseStoredJsonArray(record && record.palletKeys, "収穫記録のパレット"),
     "収穫記録のパレット"
   );
 }
@@ -5458,7 +5180,7 @@ function restoreSeedlingTrayCountFromAccidentalDate(value) {
   return serial >= 0 ? serial : value;
 }
 
-function backfillHarvestRecordSyncMetadata(sheet, headers, options) {
+function repairHarvestRecordSyncMetadataRows(sheet, headers, options) {
   if (!sheet) return 0;
   const normalizedOptions = options && typeof options === "object" ? options : {};
   const suppliedRows = Array.isArray(normalizedOptions.rows)
@@ -5515,7 +5237,7 @@ function backfillHarvestRecordSyncMetadata(sheet, headers, options) {
       if (!hasRecordCore || !RECORD_TYPES.includes(type)) {
         throw new Error(
           "記録シートの" + (index + 2) +
-          "行目を旧記録として判別できません。記録種別・収穫日・ケース数を確認してください"
+          "行目を収穫記録として補完できません。記録種別・収穫日・ケース数を確認してください"
         );
       }
     }
@@ -5656,8 +5378,7 @@ function writeHarvestRecordSyncMetadataRows(sheet, headers, rows) {
 function getRecordDuplicateKeysForCheck(record, duplicateKey) {
   return [
     String(duplicateKey || "").trim(),
-    makeAnyDuplicateKey(record),
-    makeLegacyDuplicateKey(record)
+    makeDuplicateKey(record)
   ].filter(Boolean);
 }
 
@@ -6280,48 +6001,7 @@ function ensurePlantingEventHeaders(sheet) {
     .getRange(1, currentHeaders.length + 1, 1, addedHeaders.length)
     .setValues([addedHeaders]);
   applyAddedPlantingEventColumnLayout(sheet, currentHeaders.length + 1, missingKeys);
-  const updatedHeaders = currentHeaders.concat(addedHeaders);
-  if (missingKeys.includes("updatedAt")) {
-    initializeLegacyPlantingEventCommitMarkers(sheet, updatedHeaders);
-  }
-  return updatedHeaders;
-}
-
-function initializeLegacyPlantingEventCommitMarkers(sheet, headers) {
-  const updatedAtColumn = getPlantingEventHeaderColumn(headers, "updatedAt");
-  const rowCount = Math.max(0, sheet.getLastRow() - 1);
-  if (updatedAtColumn <= 0 || !rowCount) return 0;
-  const rows = sheet.getRange(2, 1, rowCount, headers.length).getValues();
-  const seenIds = new Set();
-  let changed = 0;
-  const values = rows.map(row => {
-    if (!row.some(value => String(value == null ? "" : value).trim() !== "")) return [""];
-    try {
-      const event = rowToPlantingEvent(headers, row);
-      const eventId = String(event.eventId);
-      if (seenIds.has(eventId)) {
-        throw new Error("苗植えイベントIDが重複しています: " + eventId);
-      }
-      seenIds.add(eventId);
-      const committedAt = normalizeWriteTimestampToken(event.createdAt) ||
-        normalizeWriteTimestampToken(event.plantingDate) || new Date().toISOString();
-      changed++;
-      return [new Date(committedAt)];
-    } catch (err) {
-      console.warn("旧苗植えイベント行を完了扱いにできません: " +
-        String(err && err.message || err));
-      return [""];
-    }
-  });
-  if (!changed) return 0;
-  const range = sheet.getRange(2, updatedAtColumn, rowCount, 1);
-  try {
-    range.setValues(values);
-  } catch (err) {
-    range.clearDataValidations();
-    range.setValues(values);
-  }
-  return changed;
+  return currentHeaders.concat(addedHeaders);
 }
 
 function getPlantingEventHeadersForRead(sheet) {
@@ -6771,68 +6451,13 @@ function remapPlantingEventRow(sourceHeaders, sourceRow, targetHeaders) {
 
 function validatePlantingEventTrashSheetHeaders(sheet) {
   if (!sheet || sheet.getLastRow() === 0) return;
-  const initialHeaders = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
-    .getValues()[0]
-    .map(value => String(value || "").trim());
-  if (!initialHeaders.includes(PLANTING_EVENT_HEADER_LABELS.qualityMemo)) {
-    const qualityColumn = PLANTING_EVENT_HEADERS.indexOf(
-      PLANTING_EVENT_HEADER_LABELS.qualityMemo
-    ) + 1;
-    const eventIdMatches = initialHeaders[0] === PLANTING_EVENT_HEADER_LABELS.eventId;
-    if (!eventIdMatches || qualityColumn <= 0) {
-      throw new Error(
-        "削除済み苗植えイベントシートの見出しを確認できません。データ保護のため処理を中止しました。"
-      );
-    }
-    sheet.insertColumnBefore(qualityColumn);
-    sheet.getRange(1, qualityColumn).setValue(PLANTING_EVENT_HEADER_LABELS.qualityMemo);
-    if (sheet.getLastRow() > 1) {
-      const rowCount = sheet.getLastRow() - 1;
-      const eventIds = sheet.getRange(2, 1, rowCount, 1).getValues();
-      sheet.getRange(2, qualityColumn, rowCount, 1).setValues(
-        eventIds.map(row => [String(row[0] == null ? "" : row[0]).trim() ? "不明" : ""])
-      );
-    }
-  }
-  const existingHeaders = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), LEGACY_PLANTING_EVENT_TRASH_HEADERS_WITHOUT_DETAILS.length))
-    .getValues()[0];
-  const hasLegacyHeaders = LEGACY_PLANTING_EVENT_TRASH_HEADERS_WITHOUT_DETAILS.every(
-    (header, index) => String(existingHeaders[index] || "").trim() === header
-  );
-  if (hasLegacyHeaders) {
-    const detailsColumn = LEGACY_PLANTING_EVENT_HEADERS_WITHOUT_DETAILS.length + 1;
-    sheet.insertColumnBefore(detailsColumn);
-    sheet.getRange(1, detailsColumn).setValue(PLANTING_EVENT_HEADER_LABELS.detailsUnknown);
-    applyPlantingEventTrashSheetLayout(sheet);
-  }
-  const headersAfterLegacyMigration = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
-    .getValues()[0]
-    .map(value => String(value || "").trim());
-  if (!headersAfterLegacyMigration.includes(
-    PLANTING_EVENT_HEADER_LABELS.palletNumberingVersion
-  )) {
-    const versionColumn = PLANTING_EVENT_HEADERS.indexOf(
-      PLANTING_EVENT_HEADER_LABELS.palletNumberingVersion
-    ) + 1;
-    if (versionColumn <= 0) {
-      throw new Error("パレット番号方式の列位置を確認できません");
-    }
-    sheet.insertColumnBefore(versionColumn);
-    sheet
-      .getRange(1, versionColumn)
-      .setValue(PLANTING_EVENT_HEADER_LABELS.palletNumberingVersion);
-  }
-  if (sheet.getMaxColumns() < PLANTING_EVENT_TRASH_HEADERS.length) {
-    sheet.insertColumnsAfter(
-      sheet.getMaxColumns(),
-      PLANTING_EVENT_TRASH_HEADERS.length - sheet.getMaxColumns()
+  if (sheet.getLastColumn() < PLANTING_EVENT_TRASH_HEADERS.length) {
+    throw new Error(
+      "削除済み苗植えイベントシートの見出しが現在の形式と異なります。データ保護のため処理を中止しました。"
     );
   }
   const headers = sheet
-    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), PLANTING_EVENT_TRASH_HEADERS.length))
+    .getRange(1, 1, 1, PLANTING_EVENT_TRASH_HEADERS.length)
     .getValues()[0];
   const matches = PLANTING_EVENT_TRASH_HEADERS.every(
     (header, index) => String(headers[index] || "").trim() === header
@@ -7197,10 +6822,6 @@ function rememberHarvestRecordTombstonesFromTrash(trashSheet) {
   const rows = rowCount
     ? trashSheet.getRange(2, 1, rowCount, RECORD_TRASH_HEADERS.length).getValues()
     : [];
-  backfillHarvestRecordTrashSyncMetadata(trashSheet, {
-    rows,
-    tombstoneItems
-  });
   const byUuid = new Map();
   const byId = new Map();
   tombstoneItems.forEach(item => {
@@ -7310,36 +6931,6 @@ function validateRecordTrashSheetHeaders(sheet) {
   }
 }
 
-function migrateLegacyRecordTrashSheetHeaders(sheet) {
-  if (!sheet || sheet.getLastRow() === 0) return false;
-  let changed = false;
-  for (let index = 0; index < HEADERS.length; index++) {
-    const currentHeader = String(sheet.getRange(1, index + 1).getValue() || "").trim();
-    const expectedHeader = HEADERS[index];
-    if (currentHeader === expectedHeader) continue;
-
-    const remainingHeaders = sheet
-      .getRange(1, index + 1, 1, Math.max(sheet.getLastColumn() - index, 1))
-      .getValues()[0]
-      .map(value => String(value || "").trim());
-    if (remainingHeaders.includes(expectedHeader)) {
-      throw new Error(
-        "削除済み記録シートの見出し順が正しくありません。データ保護のため自動変換を中止しました。"
-      );
-    }
-    const currentKey = getHeaderKey(currentHeader);
-    if (!currentKey && currentHeader !== "削除日時" && currentHeader !== "復元期限") {
-      throw new Error(
-        "削除済み記録シートの見出しが現在の形式と異なります。データ保護のため自動変換を中止しました。"
-      );
-    }
-    sheet.insertColumnsBefore(index + 1, 1);
-    sheet.getRange(1, index + 1).setValue(expectedHeader);
-    changed = true;
-  }
-  return changed;
-}
-
 function getDeletedHarvestRecordIdentitySet() {
   const identities = new Set();
   getHarvestRecordTombstoneItems().forEach(item => {
@@ -7349,7 +6940,6 @@ function getDeletedHarvestRecordIdentitySet() {
   const sheet = getExistingRecordTrashSheet();
   if (!sheet || sheet.getLastRow() < 2) return identities;
   ensureRecordTrashSheet(sheet);
-  backfillHarvestRecordTrashSyncMetadata(sheet);
   const rows = sheet
     .getRange(2, 1, sheet.getLastRow() - 1, RECORD_TRASH_HEADERS.length)
     .getValues();
@@ -7421,139 +7011,7 @@ function ensureRecordTrashSheet(sheet) {
     (header, index) => String(currentHeaders[index] || "").trim() === header
   );
   if (headersMatch) return;
-
-  const migrated = migrateLegacyRecordTrashSheetHeaders(sheet);
   validateRecordTrashSheetHeaders(sheet);
-  if (migrated) applyRecordTrashSheetLayout(sheet);
-}
-
-function backfillHarvestRecordTrashSyncMetadata(sheet, options) {
-  if (!sheet) return 0;
-  const normalizedOptions = options && typeof options === "object" ? options : {};
-  const suppliedRows = Array.isArray(normalizedOptions.rows)
-    ? normalizedOptions.rows
-    : null;
-  if (!suppliedRows && sheet.getLastRow() < 2) return 0;
-  if (suppliedRows && !suppliedRows.length) return 0;
-  validateRecordTrashSheetHeaders(sheet);
-  const uuidColumn = HEADERS.indexOf(HEADER_LABELS.recordUuid) + 1;
-  const createdAtColumn = HEADERS.indexOf(HEADER_LABELS.createdAt) + 1;
-  const updatedAtColumn = HEADERS.indexOf(HEADER_LABELS.updatedAt) + 1;
-  const receivedAtColumn = HEADERS.indexOf(HEADER_LABELS.receivedAt) + 1;
-  const deletedAtColumn = HEADERS.length + 1;
-  const rows = suppliedRows || sheet
-    .getRange(2, 1, sheet.getLastRow() - 1, RECORD_TRASH_HEADERS.length)
-    .getValues();
-  const rowCount = rows.length;
-  const suppliedTombstoneItems = Array.isArray(normalizedOptions.tombstoneItems)
-    ? normalizedOptions.tombstoneItems
-    : null;
-  rememberLegacyDeletedHarvestRecordIds(rows
-    .filter(row => !String(row[uuidColumn - 1] || "").trim())
-    .map(row => ({
-      id: row[HEADERS.indexOf(HEADER_LABELS.id)],
-      deletedAt: row[deletedAtColumn - 1]
-    })), suppliedTombstoneItems);
-  const seenUuids = new Set(
-    (suppliedTombstoneItems || getHarvestRecordTombstoneItems())
-      .map(item => item.recordUuid)
-      .filter(Boolean)
-  );
-  let changed = 0;
-  rows.forEach(row => {
-    let uuid = String(row[uuidColumn - 1] || "").trim().toLowerCase();
-    if (uuid) {
-      uuid = normalizeOptionalRecordUuid(uuid);
-    } else {
-      do {
-        uuid = Utilities.getUuid().toLowerCase();
-      } while (seenUuids.has(uuid));
-      row[uuidColumn - 1] = uuid;
-      changed++;
-    }
-    seenUuids.add(uuid);
-    const candidates = [row[receivedAtColumn - 1], row[deletedAtColumn - 1]];
-    const fallbackTime = candidates
-      .map(value => new Date(value || "").getTime())
-      .find(Number.isFinite);
-    const fallbackDate = Number.isFinite(fallbackTime) ? new Date(fallbackTime) : new Date();
-    if (!Number.isFinite(new Date(row[createdAtColumn - 1] || "").getTime())) {
-      row[createdAtColumn - 1] = fallbackDate;
-      changed++;
-    }
-    if (!Number.isFinite(new Date(row[updatedAtColumn - 1] || "").getTime())) {
-      row[updatedAtColumn - 1] = fallbackDate;
-      changed++;
-    }
-  });
-  if (!changed) return 0;
-  sheet.getRange(2, uuidColumn, rowCount, 1).setValues(rows.map(row => [row[uuidColumn - 1]]));
-  sheet.getRange(2, createdAtColumn, rowCount, 1).setValues(rows.map(row => [row[createdAtColumn - 1]]));
-  sheet.getRange(2, updatedAtColumn, rowCount, 1).setValues(rows.map(row => [row[updatedAtColumn - 1]]));
-  return changed;
-}
-
-function rememberLegacyDeletedHarvestRecordIds(items, tombstoneItems) {
-  const sourceItems = Array.isArray(items) ? items : [];
-  if (!sourceItems.length) return 0;
-  const existingById = new Map();
-  const existingItems = Array.isArray(tombstoneItems)
-    ? tombstoneItems
-    : getHarvestRecordTombstoneItems();
-  existingItems.forEach(item => {
-    if (!item.recordUuid && item.id !== null) existingById.set(String(item.id), item);
-  });
-  const updates = new Map();
-  const newRows = [];
-  sourceItems.forEach(item => {
-    const id = normalizeOptionalInteger(
-      item && item.id,
-      "削除済み記録ID",
-      1,
-      Number.MAX_SAFE_INTEGER,
-      null
-    );
-    if (id === null) return;
-    const parsedTime = new Date(item && item.deletedAt || "").getTime();
-    const deletedDate = Number.isFinite(parsedTime) ? new Date(parsedTime) : new Date();
-    const existing = existingById.get(String(id));
-    if (existing) {
-      if (deletedDate.getTime() > existing.deletedTime) {
-        if (existing.rowNumber > 0) {
-          updates.set(existing.rowNumber, { id, deletedDate });
-        } else if (Number.isSafeInteger(existing.newRowIndex)) {
-          newRows[existing.newRowIndex] = ["", id, deletedDate];
-        }
-        existing.deletedTime = deletedDate.getTime();
-      }
-      return;
-    }
-    const pending = {
-      id,
-      deletedDate,
-      deletedTime: deletedDate.getTime(),
-      rowNumber: 0,
-      newRowIndex: newRows.length
-    };
-    existingById.set(String(id), pending);
-    newRows.push(["", id, deletedDate]);
-  });
-  const tombstoneSheet = getRecordTombstoneSheet();
-  updates.forEach((item, rowNumber) => {
-    tombstoneSheet.getRange(rowNumber, 3).setValue(item.deletedDate);
-  });
-  if (newRows.length) {
-    const startRow = tombstoneSheet.getLastRow() + 1;
-    const requiredLastRow = startRow + newRows.length - 1;
-    if (requiredLastRow > tombstoneSheet.getMaxRows()) {
-      tombstoneSheet.insertRowsAfter(
-        tombstoneSheet.getMaxRows(),
-        requiredLastRow - tombstoneSheet.getMaxRows()
-      );
-    }
-    tombstoneSheet.getRange(startRow, 1, newRows.length, 3).setValues(newRows);
-  }
-  return updates.size + newRows.length;
 }
 
 function applyRecordTrashSheetLayout(sheet) {
@@ -7606,152 +7064,10 @@ function getUniqueSheetName(spreadsheet, preferredName) {
   return name;
 }
 
-function createPalletNumberingMigrationBackupSheets(spreadsheet) {
-  const timestamp = Utilities.formatDate(
-    new Date(),
-    Session.getScriptTimeZone(),
-    "yyyyMMdd_HHmmss"
-  );
-  const backupNames = [];
-  [
-    SHEET_NAME,
-    RECORD_TRASH_SHEET_NAME,
-    PLANTING_EVENT_SHEET_NAME,
-    PLANTING_EVENT_TRASH_SHEET_NAME
-  ].forEach(sourceName => {
-    const sourceSheet = spreadsheet.getSheetByName(sourceName);
-    if (!sourceSheet) return;
-    const backupName = getUniqueSheetName(
-      spreadsheet,
-      "番号移行前_" + timestamp + "_" + sourceName
-    );
-    const backupSheet = sourceSheet.copyTo(spreadsheet).setName(backupName);
-    backupSheet.hideSheet();
-    backupNames.push(backupName);
-  });
-  return backupNames;
-}
-
-function replaceKnownRecordCells(headers, sourceRow, replacementRow) {
-  return headers.map((header, index) => (
-    getHeaderKey(header) ? replacementRow[index] : sourceRow[index]
-  ));
-}
-
-function migrateHarvestRecordSheetRowsToLeftOrigin(sheet, headers) {
-  if (!sheet || sheet.getLastRow() < 2) return 0;
-  const rowCount = sheet.getLastRow() - 1;
-  const rows = sheet.getRange(2, 1, rowCount, headers.length).getValues();
-  const receivedAtColumn = getHeaderColumn(headers, "receivedAt");
-  let changed = 0;
-  const normalizedByIndex = new Array(rows.length).fill(null);
-  const outputRows = rows.map((row, index) => {
-    if (!row.some(value => String(value == null ? "" : value).trim() !== "")) {
-      return row;
-    }
-    const rawRecord = rowToRecord(headers, row);
-    const alreadyCurrent = Number(rawRecord.palletNumberingVersion) ===
-      CURRENT_PALLET_NUMBERING_VERSION;
-    const normalized = normalizeHarvestRecord(rawRecord);
-    if (!alreadyCurrent) changed++;
-    normalizedByIndex[index] = normalized;
-    if (alreadyCurrent) return row;
-    const receivedAt = receivedAtColumn > 0 ? row[receivedAtColumn - 1] : "";
-    const replacement = buildRecordRow(
-      headers,
-      normalized,
-      normalized.duplicateKey,
-      receivedAt
-    );
-    return replaceKnownRecordCells(headers, row, replacement);
-  });
-  if (!changed) return 0;
-
-  const writeMarkers = normalizedByIndex.map(record => (
-    record
-      ? buildHarvestWriteMarker(
-          record,
-          record,
-          getSuppliedRecordSyncFields(record),
-          "pallet-numbering-migration"
-        )
-      : ""
-  ));
-  writeKnownRecordRows(sheet, 2, headers, outputRows, writeMarkers);
-  return changed;
-}
-
-function replaceKnownPlantingEventCells(headers, sourceRow, replacementRow) {
-  return headers.map((header, index) => (
-    getPlantingEventHeaderKey(header) ? replacementRow[index] : sourceRow[index]
-  ));
-}
-
-function migratePlantingEventSheetRowsToLeftOrigin(sheet, headers) {
-  if (!sheet || sheet.getLastRow() < 2) return 0;
-  const rowCount = sheet.getLastRow() - 1;
-  const rows = sheet.getRange(2, 1, rowCount, headers.length).getValues();
-  const versionColumn = getPlantingEventHeaderColumn(headers, "palletNumberingVersion");
-  let changed = 0;
-  const normalizedByIndex = new Array(rows.length).fill(null);
-  const outputRows = rows.map((row, index) => {
-    if (!row.some(value => String(value == null ? "" : value).trim() !== "")) {
-      return row;
-    }
-    const alreadyCurrent = versionColumn > 0
-      && Number(row[versionColumn - 1]) === CURRENT_PALLET_NUMBERING_VERSION;
-    const normalized = rowToPlantingEvent(headers, row);
-    if (!alreadyCurrent) changed++;
-    normalizedByIndex[index] = normalized;
-    if (alreadyCurrent) return row;
-    const replacement = buildPlantingEventRow(headers, normalized);
-    return replaceKnownPlantingEventCells(headers, row, replacement);
-  });
-  if (!changed) return 0;
-
-  const writeMarkers = normalizedByIndex.map(event => (
-    event ? buildPlantingWriteMarker(event, "pallet-numbering-migration") : ""
-  ));
-  writeKnownPlantingEventRows(sheet, 2, headers, outputRows, writeMarkers);
-  return changed;
-}
-
-function previewPalletNumberingMigrationV2() {
-  const spreadsheet = getSpreadsheet();
-  const countHarvestRows = sheet => {
-    if (!sheet || sheet.getLastRow() < 2) return 0;
-    const headers = getHeaderValues(sheet);
-    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
-    return rows.reduce((count, row) => {
-      if (!row.some(value => String(value == null ? "" : value).trim() !== "")) return count;
-      normalizeHarvestRecord(rowToRecord(headers, row));
-      return count + 1;
-    }, 0);
-  };
-  const countPlantingRows = sheet => {
-    if (!sheet || sheet.getLastRow() < 2) return 0;
-    const headers = getPlantingEventHeaderValues(sheet);
-    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
-    return rows.reduce((count, row) => {
-      if (!row.some(value => String(value == null ? "" : value).trim() !== "")) return count;
-      rowToPlantingEvent(headers, row);
-      return count + 1;
-    }, 0);
-  };
-  return {
-    records: countHarvestRows(spreadsheet.getSheetByName(SHEET_NAME)),
-    deletedRecords: countHarvestRows(spreadsheet.getSheetByName(RECORD_TRASH_SHEET_NAME)),
-    plantingEvents: countPlantingRows(spreadsheet.getSheetByName(PLANTING_EVENT_SHEET_NAME)),
-    deletedPlantingEvents: countPlantingRows(
-      spreadsheet.getSheetByName(PLANTING_EVENT_TRASH_SHEET_NAME)
-    )
-  };
-}
-
 function ensureHarvestRecordSyncMetadataBackup(spreadsheet, sourceSheet) {
   const properties = PropertiesService.getScriptProperties();
   const pendingName = String(
-    properties.getProperty(HARVEST_RECORD_SYNC_METADATA_BACKUP_PROPERTY) || ""
+    properties.getProperty(HARVEST_RECORD_REPAIR_BACKUP_PROPERTY) || ""
   ).trim();
   if (pendingName && spreadsheet.getSheetByName(pendingName)) return pendingName;
 
@@ -7765,7 +7081,7 @@ function ensureHarvestRecordSyncMetadataBackup(spreadsheet, sourceSheet) {
     "同期情報補完前_" + timestamp + "_" + SHEET_NAME
   );
   sourceSheet.copyTo(spreadsheet).setName(backupName).hideSheet();
-  properties.setProperty(HARVEST_RECORD_SYNC_METADATA_BACKUP_PROPERTY, backupName);
+  properties.setProperty(HARVEST_RECORD_REPAIR_BACKUP_PROPERTY, backupName);
   return backupName;
 }
 
@@ -7794,7 +7110,7 @@ function repairHarvestRecordSyncMetadataUnlocked() {
 
   const deletedRecordState = prepareDeletedHarvestRecordState(getRecordTrashSheet());
   const rows = readHarvestRecordRows(sheet, headers);
-  const repairedValues = backfillHarvestRecordSyncMetadata(sheet, headers, {
+  const repairedValues = repairHarvestRecordSyncMetadataRows(sheet, headers, {
     rows,
     deletedRecordIdentities: deletedRecordState.identities,
     includeRecognizableUncommittedRows: true,
@@ -7817,108 +7133,16 @@ function repairHarvestRecordSyncMetadataUnlocked() {
   return result;
 }
 
-function runHarvestRecordSyncMetadataRepair(force) {
+function repairHarvestRecordSyncMetadata() {
   const properties = PropertiesService.getScriptProperties();
-  const completed = properties.getProperty(
-    HARVEST_RECORD_SYNC_METADATA_MIGRATION_PROPERTY
-  );
-  if (!force && completed) return JSON.parse(completed);
-
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
     throw new Error("別の保存処理が実行中です。少し待ってから再実行してください");
   }
   try {
-    const completedAfterLock = properties.getProperty(
-      HARVEST_RECORD_SYNC_METADATA_MIGRATION_PROPERTY
-    );
-    if (!force && completedAfterLock) return JSON.parse(completedAfterLock);
-
     const result = repairHarvestRecordSyncMetadataUnlocked();
     SpreadsheetApp.flush();
-    properties.setProperty(
-      HARVEST_RECORD_SYNC_METADATA_MIGRATION_PROPERTY,
-      JSON.stringify(result)
-    );
-    properties.deleteProperty(HARVEST_RECORD_SYNC_METADATA_BACKUP_PROPERTY);
-    return result;
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-function migrateHarvestRecordSyncMetadataV1() {
-  return runHarvestRecordSyncMetadataRepair(false);
-}
-
-function repairHarvestRecordSyncMetadata() {
-  return runHarvestRecordSyncMetadataRepair(true);
-}
-
-function migrateAllPalletNumberingToLeftOriginV2() {
-  const properties = PropertiesService.getScriptProperties();
-  const completed = properties.getProperty(PALLET_NUMBERING_MIGRATION_PROPERTY);
-  if (completed) return JSON.parse(completed);
-
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) {
-    throw new Error("別の保存処理が実行中です。少し待ってから再実行してください");
-  }
-  try {
-    const completedAfterLock = properties.getProperty(PALLET_NUMBERING_MIGRATION_PROPERTY);
-    if (completedAfterLock) return JSON.parse(completedAfterLock);
-
-    const spreadsheet = getSpreadsheet();
-    const backupSheets = createPalletNumberingMigrationBackupSheets(spreadsheet);
-
-    const recordSheet = getRecordSheet();
-    const recordHeaders = ensureHeaders(recordSheet);
-    backfillHarvestRecordSyncMetadata(recordSheet, recordHeaders);
-    const migratedRecords = migrateHarvestRecordSheetRowsToLeftOrigin(
-      recordSheet,
-      recordHeaders
-    );
-
-    const recordTrashSheet = getExistingRecordTrashSheet();
-    let migratedDeletedRecords = 0;
-    if (recordTrashSheet) {
-      ensureRecordTrashSheet(recordTrashSheet);
-      backfillHarvestRecordTrashSyncMetadata(recordTrashSheet);
-      migratedDeletedRecords = migrateHarvestRecordSheetRowsToLeftOrigin(
-        recordTrashSheet,
-        RECORD_TRASH_HEADERS
-      );
-    }
-
-    const plantingSheet = getPlantingEventSheet();
-    const plantingHeaders = ensurePlantingEventHeaders(plantingSheet);
-    const migratedPlantingEvents = migratePlantingEventSheetRowsToLeftOrigin(
-      plantingSheet,
-      plantingHeaders
-    );
-
-    const plantingTrashSheet = getExistingPlantingEventTrashSheet();
-    let migratedDeletedPlantingEvents = 0;
-    if (plantingTrashSheet) {
-      ensurePlantingEventTrashSheet(plantingTrashSheet);
-      migratedDeletedPlantingEvents = migratePlantingEventSheetRowsToLeftOrigin(
-        plantingTrashSheet,
-        PLANTING_EVENT_TRASH_HEADERS
-      );
-    }
-
-    const result = {
-      completedAt: new Date().toISOString(),
-      migratedRecords,
-      migratedDeletedRecords,
-      migratedPlantingEvents,
-      migratedDeletedPlantingEvents,
-      backupSheets
-    };
-    properties.setProperty(
-      PALLET_NUMBERING_MIGRATION_PROPERTY,
-      JSON.stringify(result)
-    );
+    properties.deleteProperty(HARVEST_RECORD_REPAIR_BACKUP_PROPERTY);
     return result;
   } finally {
     lock.releaseLock();
@@ -8207,52 +7431,7 @@ function ensureHeaders(sheet) {
     .getRange(1, currentHeaders.length + 1, 1, addedHeaders.length)
     .setValues([addedHeaders]);
   applyAddedRecordColumnLayout(sheet, currentHeaders.length + 1, missingKeys);
-  const updatedHeaders = currentHeaders.concat(addedHeaders);
-  if (missingKeys.includes("receivedAt")) {
-    initializeLegacyHarvestRecordCommitMarkers(sheet, updatedHeaders);
-  }
-  return updatedHeaders;
-}
-
-function initializeLegacyHarvestRecordCommitMarkers(sheet, headers) {
-  const receivedAtColumn = getHeaderColumn(headers, "receivedAt");
-  const rowCount = Math.max(0, sheet.getLastRow() - 1);
-  if (receivedAtColumn <= 0 || !rowCount) return 0;
-  const rows = sheet.getRange(2, 1, rowCount, headers.length).getValues();
-  const seenIds = new Set();
-  const seenUuids = new Set();
-  let changed = 0;
-  const values = rows.map(row => {
-    if (!row.some(value => String(value == null ? "" : value).trim() !== "")) return [""];
-    try {
-      const record = normalizeHarvestRecord(rowToRecord(headers, row));
-      const id = String(record.id);
-      const uuid = String(record.recordUuid || "").trim().toLowerCase();
-      if (seenIds.has(id)) throw new Error("記録IDが重複しています: " + id);
-      if (uuid && seenUuids.has(uuid)) throw new Error("記録UUIDが重複しています: " + uuid);
-      seenIds.add(id);
-      if (uuid) seenUuids.add(uuid);
-      const committedAt = normalizeWriteTimestampToken(record.updatedAt) ||
-        normalizeWriteTimestampToken(record.createdAt) ||
-        normalizeWriteTimestampToken(record.date) || new Date().toISOString();
-      changed++;
-      return [new Date(committedAt)];
-    } catch (err) {
-      console.warn("旧収穫記録行を完了扱いにできません: " +
-        String(err && err.message || err));
-      return [""];
-    }
-  });
-  if (!changed) return 0;
-  setHarvestRecordColumnValuesWithValidationRecovery(
-    sheet,
-    2,
-    receivedAtColumn,
-    values,
-    HEADER_LABELS.receivedAt,
-    "旧記録の完了状態への更新"
-  );
-  return changed;
+  return currentHeaders.concat(addedHeaders);
 }
 
 function getRecordHeadersForRead(sheet) {
@@ -8410,8 +7589,7 @@ function hasDuplicateRecord(sheet, headers, duplicateKey, record) {
 
   const acceptableKeys = new Set([
     String(duplicateKey || "").trim(),
-    makeAnyDuplicateKey(record),
-    makeLegacyDuplicateKey(record)
+    makeDuplicateKey(record)
   ].filter(Boolean));
 
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
@@ -8422,8 +7600,7 @@ function hasDuplicateRecord(sheet, headers, duplicateKey, record) {
     const existingKey = duplicateKeyCol > 0 ? String(row[duplicateKeyCol - 1] || "").trim() : "";
     return [
       existingKey,
-      makeAnyDuplicateKey(existingRecord),
-      makeLegacyDuplicateKey(existingRecord)
+      makeDuplicateKey(existingRecord)
     ].filter(Boolean).some(key => acceptableKeys.has(key));
   });
 }
@@ -8492,14 +7669,6 @@ function makeDuplicateKey(record) {
   ].join("__");
 }
 
-function makeAnyDuplicateKey(record) {
-  return makeDuplicateKey(record);
-}
-
-function makeLegacyDuplicateKey(record) {
-  return makeDuplicateKey(record);
-}
-
 function formatSizeRatingValue(value) {
   const text = String(value || "").trim();
   if (text === "unknown" || text === "不明") return "不明";
@@ -8519,10 +7688,8 @@ function formatQualityTextValue(record) {
   if (typeof memo === "string") return memo.trim();
 
   if (memo && typeof memo === "object") {
-    const tags = Array.isArray(memo.tags)
-      ? memo.tags
-      : (Array.isArray(memo.qualityTags) ? memo.qualityTags : []);
-    const other = String(memo.other || memo.qualityOther || "").trim();
+    const tags = Array.isArray(memo.tags) ? memo.tags : [];
+    const other = String(memo.other || "").trim();
     return tags
       .map(formatQualityTagLabel)
       .filter(Boolean)
@@ -8530,8 +7697,7 @@ function formatQualityTextValue(record) {
       .join("、");
   }
 
-  const legacySize = formatSizeRatingValue(record.sizeRating);
-  return legacySize === "不明" ? "" : legacySize;
+  return "";
 }
 
 function formatQualityTagLabel(value) {

@@ -35,12 +35,15 @@ container-bound, it can be run without an argument from the Apps Script editor.
 
 ## Current deployment note
 
+- The current source accepts only pallet-numbering version 2 and no longer runs
+  the retired pallet-numbering, planting-event, conflict, or record-metadata
+  migrations during normal requests. Deploy it only after every device has
+  completed its final update and sync.
 - Version 78 returns the latest `syncRevision` after planting-event mutations,
-  allowing the client to acknowledge its own legacy backfill writes without
+  allowing the client to acknowledge its own planting-event writes without
   immediately showing the record update notification again.
 - Version 77 authenticates and compares `syncRevision` from
-  one Script Properties snapshot before running migrations or reading sheets.
-  Legacy clients without `syncRevision` continue through the existing path.
+  one Script Properties snapshot before reading sheets.
 - Version 76 keeps a monotonically increasing `syncRevision` number
   in Script Properties and stores changed record identities in the hidden
   `同期変更履歴` sheet. A matching revision returns immediately; an older
@@ -48,15 +51,11 @@ container-bound, it can be run without an argument from the Apps Script editor.
 - Run `installHarvestSyncRevisionTrigger` once
   from the Apps Script editor. Direct spreadsheet edits then invalidate the
   incremental history and make the next client perform one safe full sync.
-- Clients without a saved revision, clients outside the retained history, and
-  older app versions continue to use the existing full/cursor sync path.
+- Clients without a saved revision or outside the retained history use the
+  full/cursor sync path.
 - Version 75 detects directly added, uncommitted record rows during sync and saves
   and tells the operator to run `repairHarvestRecordSyncMetadata`, including the
   affected sheet row numbers.
-- Version 74 runs legacy record metadata repair once after deployment, creates a
-  hidden record-sheet backup before changes, and removes the full repair scan from
-  normal saves. Run `repairHarvestRecordSyncMetadata` manually after rare direct
-  sheet additions.
 - Version 73 reuses one trash/tombstone snapshot while preparing deleted-record
   protection and skips planting-allocation scans for partial-harvest-only saves.
 - Version 72 reuses one record-sheet snapshot for batch-save validation and reuses
@@ -67,7 +66,3 @@ container-bound, it can be run without an argument from the Apps Script editor.
 - Version 70 makes normal record sync read-only: it no longer reformats columns, repairs
   headers, backfills sync metadata, creates sheets, or purges trash during a read.
 - Version 69 combines harvest-record and planting-event reads into one sync request.
-- Version 68 fixes stored JSON-array parsing so the pallet-numbering migration can read existing harvest records.
-- Version 67 introduced the one-time migration of stored pallet numbers to the left-origin layout after normal API authentication.
-- Before migration, it creates hidden backup sheets prefixed with `番号移行前_`.
-- Completion is stored in the Script Property `PALLET_NUMBERING_MIGRATED_LEFT_ORIGIN_V2_20260729`; later requests only check this marker.

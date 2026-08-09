@@ -174,10 +174,6 @@ function rememberHarvestRecordTombstonesFromTrash(trashSheet) {
   const rows = rowCount
     ? trashSheet.getRange(2, 1, rowCount, RECORD_TRASH_HEADERS.length).getValues()
     : [];
-  backfillHarvestRecordTrashSyncMetadata(trashSheet, {
-    rows,
-    tombstoneItems
-  });
   const byUuid = new Map();
   const byId = new Map();
   tombstoneItems.forEach(item => {
@@ -287,36 +283,6 @@ function validateRecordTrashSheetHeaders(sheet) {
   }
 }
 
-function migrateLegacyRecordTrashSheetHeaders(sheet) {
-  if (!sheet || sheet.getLastRow() === 0) return false;
-  let changed = false;
-  for (let index = 0; index < HEADERS.length; index++) {
-    const currentHeader = String(sheet.getRange(1, index + 1).getValue() || "").trim();
-    const expectedHeader = HEADERS[index];
-    if (currentHeader === expectedHeader) continue;
-
-    const remainingHeaders = sheet
-      .getRange(1, index + 1, 1, Math.max(sheet.getLastColumn() - index, 1))
-      .getValues()[0]
-      .map(value => String(value || "").trim());
-    if (remainingHeaders.includes(expectedHeader)) {
-      throw new Error(
-        "削除済み記録シートの見出し順が正しくありません。データ保護のため自動変換を中止しました。"
-      );
-    }
-    const currentKey = getHeaderKey(currentHeader);
-    if (!currentKey && currentHeader !== "削除日時" && currentHeader !== "復元期限") {
-      throw new Error(
-        "削除済み記録シートの見出しが現在の形式と異なります。データ保護のため自動変換を中止しました。"
-      );
-    }
-    sheet.insertColumnsBefore(index + 1, 1);
-    sheet.getRange(1, index + 1).setValue(expectedHeader);
-    changed = true;
-  }
-  return changed;
-}
-
 function getDeletedHarvestRecordIdentitySet() {
   const identities = new Set();
   getHarvestRecordTombstoneItems().forEach(item => {
@@ -326,7 +292,6 @@ function getDeletedHarvestRecordIdentitySet() {
   const sheet = getExistingRecordTrashSheet();
   if (!sheet || sheet.getLastRow() < 2) return identities;
   ensureRecordTrashSheet(sheet);
-  backfillHarvestRecordTrashSyncMetadata(sheet);
   const rows = sheet
     .getRange(2, 1, sheet.getLastRow() - 1, RECORD_TRASH_HEADERS.length)
     .getValues();
@@ -398,139 +363,7 @@ function ensureRecordTrashSheet(sheet) {
     (header, index) => String(currentHeaders[index] || "").trim() === header
   );
   if (headersMatch) return;
-
-  const migrated = migrateLegacyRecordTrashSheetHeaders(sheet);
   validateRecordTrashSheetHeaders(sheet);
-  if (migrated) applyRecordTrashSheetLayout(sheet);
-}
-
-function backfillHarvestRecordTrashSyncMetadata(sheet, options) {
-  if (!sheet) return 0;
-  const normalizedOptions = options && typeof options === "object" ? options : {};
-  const suppliedRows = Array.isArray(normalizedOptions.rows)
-    ? normalizedOptions.rows
-    : null;
-  if (!suppliedRows && sheet.getLastRow() < 2) return 0;
-  if (suppliedRows && !suppliedRows.length) return 0;
-  validateRecordTrashSheetHeaders(sheet);
-  const uuidColumn = HEADERS.indexOf(HEADER_LABELS.recordUuid) + 1;
-  const createdAtColumn = HEADERS.indexOf(HEADER_LABELS.createdAt) + 1;
-  const updatedAtColumn = HEADERS.indexOf(HEADER_LABELS.updatedAt) + 1;
-  const receivedAtColumn = HEADERS.indexOf(HEADER_LABELS.receivedAt) + 1;
-  const deletedAtColumn = HEADERS.length + 1;
-  const rows = suppliedRows || sheet
-    .getRange(2, 1, sheet.getLastRow() - 1, RECORD_TRASH_HEADERS.length)
-    .getValues();
-  const rowCount = rows.length;
-  const suppliedTombstoneItems = Array.isArray(normalizedOptions.tombstoneItems)
-    ? normalizedOptions.tombstoneItems
-    : null;
-  rememberLegacyDeletedHarvestRecordIds(rows
-    .filter(row => !String(row[uuidColumn - 1] || "").trim())
-    .map(row => ({
-      id: row[HEADERS.indexOf(HEADER_LABELS.id)],
-      deletedAt: row[deletedAtColumn - 1]
-    })), suppliedTombstoneItems);
-  const seenUuids = new Set(
-    (suppliedTombstoneItems || getHarvestRecordTombstoneItems())
-      .map(item => item.recordUuid)
-      .filter(Boolean)
-  );
-  let changed = 0;
-  rows.forEach(row => {
-    let uuid = String(row[uuidColumn - 1] || "").trim().toLowerCase();
-    if (uuid) {
-      uuid = normalizeOptionalRecordUuid(uuid);
-    } else {
-      do {
-        uuid = Utilities.getUuid().toLowerCase();
-      } while (seenUuids.has(uuid));
-      row[uuidColumn - 1] = uuid;
-      changed++;
-    }
-    seenUuids.add(uuid);
-    const candidates = [row[receivedAtColumn - 1], row[deletedAtColumn - 1]];
-    const fallbackTime = candidates
-      .map(value => new Date(value || "").getTime())
-      .find(Number.isFinite);
-    const fallbackDate = Number.isFinite(fallbackTime) ? new Date(fallbackTime) : new Date();
-    if (!Number.isFinite(new Date(row[createdAtColumn - 1] || "").getTime())) {
-      row[createdAtColumn - 1] = fallbackDate;
-      changed++;
-    }
-    if (!Number.isFinite(new Date(row[updatedAtColumn - 1] || "").getTime())) {
-      row[updatedAtColumn - 1] = fallbackDate;
-      changed++;
-    }
-  });
-  if (!changed) return 0;
-  sheet.getRange(2, uuidColumn, rowCount, 1).setValues(rows.map(row => [row[uuidColumn - 1]]));
-  sheet.getRange(2, createdAtColumn, rowCount, 1).setValues(rows.map(row => [row[createdAtColumn - 1]]));
-  sheet.getRange(2, updatedAtColumn, rowCount, 1).setValues(rows.map(row => [row[updatedAtColumn - 1]]));
-  return changed;
-}
-
-function rememberLegacyDeletedHarvestRecordIds(items, tombstoneItems) {
-  const sourceItems = Array.isArray(items) ? items : [];
-  if (!sourceItems.length) return 0;
-  const existingById = new Map();
-  const existingItems = Array.isArray(tombstoneItems)
-    ? tombstoneItems
-    : getHarvestRecordTombstoneItems();
-  existingItems.forEach(item => {
-    if (!item.recordUuid && item.id !== null) existingById.set(String(item.id), item);
-  });
-  const updates = new Map();
-  const newRows = [];
-  sourceItems.forEach(item => {
-    const id = normalizeOptionalInteger(
-      item && item.id,
-      "削除済み記録ID",
-      1,
-      Number.MAX_SAFE_INTEGER,
-      null
-    );
-    if (id === null) return;
-    const parsedTime = new Date(item && item.deletedAt || "").getTime();
-    const deletedDate = Number.isFinite(parsedTime) ? new Date(parsedTime) : new Date();
-    const existing = existingById.get(String(id));
-    if (existing) {
-      if (deletedDate.getTime() > existing.deletedTime) {
-        if (existing.rowNumber > 0) {
-          updates.set(existing.rowNumber, { id, deletedDate });
-        } else if (Number.isSafeInteger(existing.newRowIndex)) {
-          newRows[existing.newRowIndex] = ["", id, deletedDate];
-        }
-        existing.deletedTime = deletedDate.getTime();
-      }
-      return;
-    }
-    const pending = {
-      id,
-      deletedDate,
-      deletedTime: deletedDate.getTime(),
-      rowNumber: 0,
-      newRowIndex: newRows.length
-    };
-    existingById.set(String(id), pending);
-    newRows.push(["", id, deletedDate]);
-  });
-  const tombstoneSheet = getRecordTombstoneSheet();
-  updates.forEach((item, rowNumber) => {
-    tombstoneSheet.getRange(rowNumber, 3).setValue(item.deletedDate);
-  });
-  if (newRows.length) {
-    const startRow = tombstoneSheet.getLastRow() + 1;
-    const requiredLastRow = startRow + newRows.length - 1;
-    if (requiredLastRow > tombstoneSheet.getMaxRows()) {
-      tombstoneSheet.insertRowsAfter(
-        tombstoneSheet.getMaxRows(),
-        requiredLastRow - tombstoneSheet.getMaxRows()
-      );
-    }
-    tombstoneSheet.getRange(startRow, 1, newRows.length, 3).setValues(newRows);
-  }
-  return updates.size + newRows.length;
 }
 
 function applyRecordTrashSheetLayout(sheet) {

@@ -114,7 +114,7 @@ function harvestRecordMatchesIdentity(record, identity){
 }
 
 function isHarvestRecordHiddenByAppOnlyDelete(record){
-  return deletedRecords.some(entry => !entry.sheetDeleted && !entry.syncConflict
+  return deletedRecords.some(entry => !entry.sheetDeleted
     && harvestRecordMatchesIdentity(entry.record, record));
 }
 
@@ -123,8 +123,6 @@ function setGoogleSheetSyncStatusInObject(status, record, state){
   getGoogleSheetRecordSyncKeys(record).forEach(key => {
     status[key] = { state, updatedAt };
   });
-  const legacyId = String(record?.id || "").trim();
-  if(legacyId) delete status[legacyId];
 }
 
 function remapHarvestRecordIdReferences(oldId, newId, status){
@@ -161,14 +159,6 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   if(Number(editingPartialHarvestRecordId) === safeOldId) editingPartialHarvestRecordId = safeNewId;
   if(Number(plantingRecordDraft?.recordId) === safeOldId) plantingRecordDraft.recordId = safeNewId;
 
-  const migratedIds = loadMigratedPlantingRecordIds();
-  if(migratedIds.delete(safeOldId)){
-    migratedIds.add(safeNewId);
-    harvestnaviLocalStorage.writeJson(
-      PLANTING_EVENTS_MIGRATION_KEY,
-      [...migratedIds].sort((a, b) => a - b)
-    );
-  }
   if(status?.["id:" + safeOldId] && !status["id:" + safeNewId]){
     status["id:" + safeNewId] = status["id:" + safeOldId];
   }
@@ -312,7 +302,6 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
     }
     addRecordToTrash(local, {
       sheetDeleted: true,
-      syncConflict: false,
       remoteDeleted: true,
       deferSave: true
     });
@@ -331,7 +320,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
   const hiddenAppOnlyUuids = new Set();
   const hiddenAppOnlyIds = new Set();
   deletedRecords.forEach(entry => {
-    if(entry.sheetDeleted || entry.syncConflict) return;
+    if(entry.sheetDeleted) return;
     const uuid = normalizeRecordUuid(entry.record?.recordUuid);
     if(uuid) hiddenAppOnlyUuids.add(uuid);
     const id = getSafePositiveRecordId(entry.record?.id);
@@ -374,7 +363,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
       ? (trashByUuid.get(incomingUuid) || [])
       : (trashById.get(Number(incoming.id)) || []);
     restorableTrash.forEach(entry => {
-      if(entry.sheetDeleted && !entry.syncConflict) trashEntriesToRemove.add(entry);
+      if(entry.sheetDeleted) trashEntriesToRemove.add(entry);
     });
 
     if(!local){
@@ -598,7 +587,6 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, op
   }
 
   records = [...imported, ...records].sort(compareRecordsByDateDesc);
-  if(!options.deferPlantingMigration) repairLegacyPendingPlantingRecords();
   saveRecordsToStorage();
   if(options.markGoogleSheetSynced){
     markGoogleSheetRecordsSynced(imported, "confirmed");
@@ -667,17 +655,7 @@ function prepareBackupPlantingEvents(sourceEvents, recordIdMap){
   return prepared;
 }
 
-function mergeBackupPlantingMetadata(parsed, recordIdMap){
-  const migratedIds = loadMigratedPlantingRecordIds();
-  const sourceMigratedIds = Array.isArray(parsed?.migratedPlantingRecordIds)
-    ? parsed.migratedPlantingRecordIds
-    : [];
-  sourceMigratedIds.forEach(value => {
-    const sourceId = getSafePositiveRecordId(value);
-    const mappedId = sourceId === null ? null : recordIdMap.get(sourceId);
-    if(mappedId !== undefined && mappedId !== null) migratedIds.add(Number(mappedId));
-  });
-
+function mergeBackupPlantingTrash(parsed, recordIdMap){
   const sourceTrash = Array.isArray(parsed?.deletedPlantingEvents) ? parsed.deletedPlantingEvents : [];
   if(sourceTrash.length > RECORD_BACKUP_MAX_ITEMS) throw new Error("削除済み苗植え記録が多すぎます");
   sourceTrash.forEach(entry => {
@@ -702,7 +680,6 @@ function mergeBackupPlantingMetadata(parsed, recordIdMap){
       wasSynced: !!entry.wasSynced
     });
   });
-  harvestnaviLocalStorage.writeJson(PLANTING_EVENTS_MIGRATION_KEY, [...migratedIds].sort((a, b) => a - b));
   saveDeletedPlantingEventsToStorage();
 }
 
@@ -748,8 +725,6 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
   RECORDS_KEY,
   PLANTING_EVENTS_KEY,
   PLANTING_EVENT_TRASH_KEY,
-  PLANTING_EVENTS_MIGRATION_KEY,
-  LEGACY_PLANTING_EVENT_BACKFILL_KEY,
   GOOGLE_SHEET_SYNC_STATUS_KEY,
   GOOGLE_SHEET_SYNC_REVISION_KEY,
   GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
@@ -807,19 +782,18 @@ function importRecordsFromFile(file){
     try{
       snapshot = createBackupImportSnapshot();
       const parsed = JSON.parse(String(reader.result || ""));
-      const rawSourceRecords = Array.isArray(parsed)
-        ? parsed
-        : (Array.isArray(parsed.records) ? parsed.records : null);
-      const sourceRecords = rawSourceRecords
-        ? rawSourceRecords.map(migrateStoredHarvestRecordToCurrentNumbering)
-        : null;
-      const sourcePlantingEvents = !Array.isArray(parsed) && Array.isArray(parsed.plantingEvents)
-        ? parsed.plantingEvents.map(migrateStoredPlantingEventToCurrentNumbering)
-        : null;
-      if(!sourceRecords){
-        showRecordImportError("読み込める記録ファイルではありません。");
+      const isCurrentBackup = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        && parsed.app === "Harvestnavi"
+        && parsed.type === "record-backup"
+        && Number(parsed.version) === 4
+        && Array.isArray(parsed.records)
+        && Array.isArray(parsed.plantingEvents);
+      if(!isCurrentBackup){
+        showRecordImportError("現在の形式（バックアップ版4）の記録ファイルではありません。");
         return;
       }
+      const sourceRecords = parsed.records;
+      const sourcePlantingEvents = parsed.plantingEvents;
       if(sourceRecords.length > RECORD_BACKUP_MAX_ITEMS
         || (sourcePlantingEvents && sourcePlantingEvents.length > RECORD_BACKUP_MAX_ITEMS)){
         throw new Error("バックアップの記録件数が上限を超えています");
@@ -835,44 +809,25 @@ function importRecordsFromFile(file){
         "{count}件の記録を読み込みました",
         "追加できる新しい記録はありませんでした",
         {
-          deferPlantingMigration: !!sourcePlantingEvents,
-          silentNoChange: !!sourcePlantingEvents,
-          silentSuccess: !!sourcePlantingEvents,
+          silentNoChange: true,
+          silentSuccess: true,
           skipExportPrompt: true,
           fromBackup: true,
           recordIdMap
         }
       );
-      const preparedPlantingEvents = sourcePlantingEvents
-        ? prepareBackupPlantingEvents(sourcePlantingEvents, recordIdMap)
-        : null;
-      const importedEventCount = preparedPlantingEvents
-        ? importPlantingEventsFromSource(preparedPlantingEvents, {
-            markGoogleSheetSynced: false,
-            fromBackup: true
-          })
-        : 0;
-      if(sourcePlantingEvents){
-        const migratedBackup = {
-          ...parsed,
-          deletedPlantingEvents: Array.isArray(parsed.deletedPlantingEvents)
-            ? parsed.deletedPlantingEvents.map(entry => ({
-                ...entry,
-                event: migrateStoredPlantingEventToCurrentNumbering(entry?.event)
-              }))
-            : parsed.deletedPlantingEvents
-        };
-        mergeBackupPlantingMetadata(migratedBackup, recordIdMap);
-        mergeBackupSyncConflicts(migratedBackup, recordIdMap);
-      }
-      migrateLegacyPlantingEvents();
+      const preparedPlantingEvents = prepareBackupPlantingEvents(sourcePlantingEvents, recordIdMap);
+      const importedEventCount = importPlantingEventsFromSource(preparedPlantingEvents, {
+        markGoogleSheetSynced: false,
+        fromBackup: true
+      });
+      mergeBackupPlantingTrash(parsed, recordIdMap);
+      mergeBackupSyncConflicts(parsed, recordIdMap);
       syncHarvestPlantingPendingFlags();
-      if(sourcePlantingEvents){
-        const changedCount = Number(importedRecordCount || 0) + Number(importedEventCount || 0);
-        showToast(changedCount
-          ? `収穫${Number(importedRecordCount || 0)}件・苗植え${Number(importedEventCount || 0)}件を読み込みました`
-          : "追加できる新しい記録はありませんでした");
-      }
+      const changedCount = Number(importedRecordCount || 0) + Number(importedEventCount || 0);
+      showToast(changedCount
+        ? `収穫${Number(importedRecordCount || 0)}件・苗植え${Number(importedEventCount || 0)}件を読み込みました`
+        : "追加できる新しい記録はありませんでした");
     }catch(e){
       let rollbackError = null;
       if(snapshot){

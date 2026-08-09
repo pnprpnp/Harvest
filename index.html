@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-css-cascade-cleanup">
+<meta name="harvestnavi-version" content="20260809-current-schema-only">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10260,21 +10260,15 @@ window.addEventListener("error", event => {
 });
 const SETTINGS_KEY = "harvestForecastSettings_v16";
 const RECORDS_KEY = "harvestForecastRecords_v9";
-const RECORD_STORAGE_NORMALIZATION_KEY = "harvestForecastRecordsNormalized_v1";
 const PLANTING_EVENTS_KEY = "harvestForecastPlantingEvents_v1";
-const PLANTING_EVENTS_MIGRATION_KEY = "harvestForecastPlantingEventsMigrated_v1";
-const LEGACY_PLANTING_EVENT_BACKFILL_KEY = "harvestForecastPlantingEventBackfill_20260722_v2";
 const PLANTING_EVENT_SYNC_STATUS_KEY = "harvestForecastPlantingEventSyncStatus_v1";
 const PLANTING_EVENT_TRASH_KEY = "harvestForecastPlantingEventTrash_v1";
-const PALLET_SUMMARY_CANONICAL_START_DATE = "2026-06-18";
-const LEGACY_PLANTING_EVENT_CUTOFF_DATE = "2026-07-08";
 const HARVEST_STATE_KEY = "harvestForecastCurrentState_v1";
 const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v1";
 const GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestForecastGoogleSheetSyncConflicts_v1";
 const GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS = 2000;
-const LEGACY_SYNC_CONFLICT_MIGRATION_KEY = "harvestForecastLegacySyncConflictMigrated_v1";
 const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
@@ -10362,7 +10356,6 @@ const ROWS = 39;
 const COLS = 2;
 const PALLETS_PER_BED = 78;
 const CURRENT_PALLET_NUMBERING_VERSION = 2;
-const PALLET_NUMBERING_MIGRATION_KEY = "harvestForecastPalletNumberingMigrated_leftOrigin_v2";
 const PALLETS_PER_PIN = 4;
 const HARVEST_FORECAST_WEEKDAYS = [0, 2, 3, 4, 6];
 const DASHBOARD_FORECAST_DAY_COLORS = Object.freeze([
@@ -10403,8 +10396,6 @@ const defaultSettings = {
     F: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 }
   }
 };
-
-migrateLocalPalletNumberingToLeftOriginOnce();
 
 let settings = loadSettings();
 let currentBuilding = 2;
@@ -10523,8 +10514,6 @@ const googleSheetBackgroundPlantingQueue = new Map();
 let googleSheetBackgroundSendRunning = false;
 let googleSheetBackgroundSendTimer = null;
 let googleSheetStartupImportStarted = false;
-migrateLegacyRecordSyncConflictsOnce();
-cleanupObsoleteGoogleSheetSyncStorage();
 let dashboardFilter = loadDashboardFilter();
 let protectedAccessUnlocked = false;
 let isMonitorModeOpen = false;
@@ -11271,6 +11260,7 @@ function loadHarvestStateFromStorage(){
   try{
     const parsed = harvestnaviLocalStorage.readJson(HARVEST_STATE_KEY, null);
     if(!parsed) return null;
+    if(Number(parsed.palletNumberingVersion) !== CURRENT_PALLET_NUMBERING_VERSION) return null;
     return {
       currentBuilding: BUILDINGS.includes(Number(parsed.currentBuilding)) ? Number(parsed.currentBuilding) : 2,
       casePlacementBuilding: BUILDINGS.includes(Number(parsed.casePlacementBuilding)) ? Number(parsed.casePlacementBuilding) : null,
@@ -11301,7 +11291,7 @@ function loadHarvestStateFromStorage(){
       recordPalletSummaryInput: parsed.recordPalletSummaryInput ?? "",
       recordPlantingSummaryInput: parsed.recordPlantingSummaryInput ?? "",
       recordMemoInput: parsed.recordMemoInput ?? "",
-      qualityMemo: normalizeQualityMemo(parsed.qualityMemo || parsed.qualityTags || null),
+      qualityMemo: normalizeQualityMemo(parsed.qualityMemo || null),
       recordCasesEdited: !!parsed.recordCasesEdited,
       recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
@@ -11706,7 +11696,7 @@ function createRecordUuid(){
       return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     }
   }catch(e){
-    // 古いブラウザでは下の互換生成へ進む。
+    // randomUUIDを使えない環境では下の生成へ進む。
   }
   const seed = `${Date.now()}-${Math.random()}-${Math.random()}`;
   let hash = 2166136261;
@@ -13351,13 +13341,12 @@ function getPalletKeysFromRecord(record){
   if(!record || typeof record !== "object") return [];
   if(record.type === "partialHarvest") return [];
   const directKeys = getDirectPalletKeys(record.palletKeys);
-  if(directKeys && directKeys.length && !record.palletRanges?.length && !String(record.palletSummary || "").trim()){
+  if(directKeys && directKeys.length && !record.palletRanges?.length){
     return directKeys;
   }
   return [...new Set([
     ...(directKeys || expandPalletKeyItemsToKeys(record.palletKeys)),
-    ...expandPalletRangesToKeys(record.palletRanges),
-    ...parsePalletSummaryToKeys(record.palletSummary)
+    ...expandPalletRangesToKeys(record.palletRanges)
   ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
 }
 
@@ -13371,13 +13360,7 @@ function getPlantingPalletKeysFromRecord(record, harvestKeys = null){
     ...(directKeys || expandPalletKeyItemsToKeys(record.plantingPalletKeys)),
     ...expandPalletRangesToKeys(record.plantingRanges)
   ])].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-  if(keys.length) return keys;
-
-  if(record.plantingPending) return [];
-  if(String(record.plantingSummary || "").trim()){
-    return parsePalletSummaryToKeys(record.plantingSummary);
-  }
-  return Array.isArray(harvestKeys) ? [...harvestKeys] : getPalletKeysFromRecord(record);
+  return keys;
 }
 
 function normalizePartialHarvestTargets(targets){
@@ -13433,11 +13416,9 @@ function normalizeQualityMemo(value){
   }
 
   const source = value && typeof value === "object" ? value : {};
-  const rawTags = Array.isArray(source.tags)
-    ? source.tags
-    : (Array.isArray(source.qualityTags) ? source.qualityTags : (Array.isArray(value) ? value : []));
+  const rawTags = Array.isArray(source.tags) ? source.tags : [];
   const tags = [...new Set(rawTags.map(normalizeQualityTag).filter(Boolean))];
-  const other = String(source.other || source.qualityOther || "").trim();
+  const other = String(source.other || "").trim();
   const otherParts = other
     .split(/[,\n、|]+/)
     .map(item => item.trim())
@@ -13466,11 +13447,6 @@ function normalizeOptionalQualityMemo(value){
 
 function formatPlantingQualityMemo(value){
   return formatQualityMemo(normalizeOptionalQualityMemo(value)) || "不明";
-}
-
-function qualityMemoFromLegacySizeRating(value){
-  const tag = normalizeQualityTag(value);
-  return normalizeQualityMemo(tag ? { tags: [tag], other: "" } : null);
 }
 
 function getQualityTagLabel(value){
@@ -13618,7 +13594,7 @@ function serializeRecordForStorage(record){
     plantingCaseInstruction: String(record.plantingCaseInstruction || "").trim(),
     plantingSummary: record.plantingSummary || "",
     plantingDate: record.plantingDate || "",
-    actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0)),
+    actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0),
     actualSeedlingCarryoverMode: normalizeSeedlingCarryoverMode(record.actualSeedlingCarryoverMode),
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
     actualLoss: record.actualLoss,
@@ -13635,6 +13611,8 @@ function serializeRecordForStorage(record){
 
 function normalizeStoredRecord(record){
   if(!record || typeof record !== "object") return null;
+  if(Number(record.palletNumberingVersion) !== CURRENT_PALLET_NUMBERING_VERSION) return null;
+  if(!normalizeRecordUuid(record.recordUuid)) return null;
   if(record.type === "partialHarvest"){
     const targets = normalizePartialHarvestTargets(record.targets);
     if(!targets.length) return null;
@@ -13649,6 +13627,7 @@ function normalizeStoredRecord(record){
   }
 
   const palletKeys = getPalletKeysFromRecord(record);
+  if(!palletKeys.length) return null;
   const plantingPalletKeys = getPlantingPalletKeysFromRecord(record, palletKeys);
   return {
     ...record,
@@ -13657,14 +13636,12 @@ function normalizeStoredRecord(record){
     plantingCaseInstruction: String(record.plantingCaseInstruction || "").trim(),
     plantingSummary: String(record.plantingSummary || "").trim(),
     plantingDate: String(record.plantingDate || "").trim(),
-    actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0)),
+    actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0),
     actualSeedlingCarryoverMode: normalizeSeedlingCarryoverMode(record.actualSeedlingCarryoverMode),
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
     plantingPending: !!record.plantingPending,
     plantingPalletKeys,
-    qualityMemo: record.qualityMemo
-      ? normalizeQualityMemo(record.qualityMemo)
-      : qualityMemoFromLegacySizeRating(record.sizeRating),
+    qualityMemo: normalizeQualityMemo(record.qualityMemo),
     plantingAge: normalizePlantingAgeSnapshot(record.plantingAge),
     palletKeys
   };
@@ -13779,6 +13756,7 @@ function normalizePlantingEventSourceAllocations(value){
 
 function normalizePlantingEvent(value){
   if(!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if(Number(value.palletNumberingVersion) !== CURRENT_PALLET_NUMBERING_VERSION) return null;
   const eventId = getSafePositiveRecordId(value.eventId ?? value.id);
   const plantingDate = String(value.plantingDate || "").trim();
   if(eventId === null || !isStrictDateOnlyString(plantingDate)) return null;
@@ -13848,8 +13826,7 @@ function normalizePlantingEvent(value){
     detailsUnknown,
     openingCarryoverBefore,
     createdAt: String(value.createdAt || "").slice(0, 64),
-    updatedAt: String(value.updatedAt || "").slice(0, 64),
-    legacyMigrated: !!value.legacyMigrated
+    updatedAt: String(value.updatedAt || "").slice(0, 64)
   };
 }
 
@@ -14043,169 +14020,6 @@ function getNextPlantingEventId(){
   let eventId = Math.max(1, Date.now());
   while(used.has(eventId) && eventId < Number.MAX_SAFE_INTEGER) eventId++;
   return eventId;
-}
-
-function loadMigratedPlantingRecordIds(){
-  try{
-    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENTS_MIGRATION_KEY, []);
-    return new Set(Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : []);
-  }catch(e){
-    return new Set();
-  }
-}
-
-function migrateLegacyPlantingEvents(recordsToMigrate = records){
-  const migratedRecordIds = loadMigratedPlantingRecordIds();
-  const usedEventIds = new Set(plantingEvents.map(event => Number(event.eventId)));
-  let changed = false;
-
-  (Array.isArray(recordsToMigrate) ? recordsToMigrate : []).forEach(record => {
-    if(record?.type !== "fullHarvest") return;
-    const recordId = getSafePositiveRecordId(record.id);
-    if(recordId === null || migratedRecordIds.has(recordId)) return;
-    migratedRecordIds.add(recordId);
-
-    const harvestKeys = getPalletKeysFromRecord(record);
-    const plantingKeys = getPlantingPalletKeysFromRecord(record, harvestKeys)
-      .filter(key => harvestKeys.includes(key))
-      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-    if(record.plantingPending || !plantingKeys.length) return;
-
-    const alreadyHasIndependentEvent = plantingEvents.some(event => (
-      event.sourceAllocations.some(allocation => Number(allocation.harvestRecordId) === recordId)
-    ));
-    if(alreadyHasIndependentEvent) return;
-
-    let eventId = recordId;
-    while(usedEventIds.has(eventId)) eventId++;
-    usedEventIds.add(eventId);
-    const normalized = normalizePlantingEvent({
-      palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-      eventId,
-      plantingDate: String(record.plantingDate || record.date || "").trim(),
-      sourceAllocations: [{ harvestRecordId: recordId, palletKeys: plantingKeys }],
-      plantingPalletKeys: plantingKeys,
-      actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, RECORD_MAX_SEEDLING_TRAYS, 0),
-      actualTakenSeedlingCount: getSeedlingCountFromTrayCount(
-        clampNumber(record.actualSeedlingTrayCount, 0, RECORD_MAX_SEEDLING_TRAYS, 0)
-      ),
-      actualPlantedSeedlingCount: getActualPlantedSeedlingTotal(plantingKeys),
-      actualSeedlingCarryoverMode: record.actualSeedlingCarryoverMode || "loss",
-      actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
-      detailsUnknown: true,
-      createdAt: "",
-      updatedAt: "",
-      legacyMigrated: true
-    });
-    if(!normalized) return;
-    plantingEvents.push(normalized);
-    changed = true;
-  });
-
-  harvestnaviLocalStorage.writeJson(
-    PLANTING_EVENTS_MIGRATION_KEY,
-    [...migratedRecordIds].sort((a, b) => a - b)
-  );
-  if(changed) savePlantingEventsToStorage();
-  else invalidatePlantingEventStateCache();
-  syncHarvestPlantingPendingFlags({ persist: changed });
-  return changed;
-}
-
-function shouldRunLegacyPlantingEventBackfill(){
-  try{
-    const state = harvestnaviLocalStorage.readJson(LEGACY_PLANTING_EVENT_BACKFILL_KEY, null);
-    return state?.completed !== true;
-  }catch(e){
-    return true;
-  }
-}
-
-function markLegacyPlantingEventBackfillCompleted(result = {}){
-  harvestnaviLocalStorage.writeJson(LEGACY_PLANTING_EVENT_BACKFILL_KEY, {
-    completed: true,
-    completedAt: new Date().toISOString(),
-    createdCount: Math.max(0, Number(result.createdCount || 0)),
-    sentCount: Math.max(0, Number(result.sentCount || 0)),
-    failedCount: Math.max(0, Number(result.failedCount || 0))
-  });
-}
-
-function getUnsentLegacyPlantingEventsForBackfill(){
-  const recordsById = new Map(records.map(record => [Number(record?.id), record]));
-  const status = loadPlantingEventSyncStatus();
-  return plantingEvents.filter(event => {
-    if(!event?.legacyMigrated || !event.detailsUnknown || !isPlantingEventUnsent(event, status)) return false;
-    return event.sourceAllocations.some(allocation => {
-      const sourceRecord = recordsById.get(Number(allocation?.harvestRecordId));
-      const harvestDate = String(sourceRecord?.date || "").trim();
-      return isStrictDateOnlyString(harvestDate) && harvestDate <= LEGACY_PLANTING_EVENT_CUTOFF_DATE;
-    });
-  }).sort(comparePlantingEventsAsc);
-}
-
-function backfillLegacyPlantingEventsFromRecordSummariesOnce(recordsToMigrate = records){
-  if(!shouldRunLegacyPlantingEventBackfill()) return [];
-
-  const occupiedLots = new Set();
-  plantingEvents.forEach(event => {
-    (event?.sourceAllocations || []).forEach(allocation => {
-      const recordId = getSafePositiveRecordId(allocation?.harvestRecordId);
-      if(recordId === null) return;
-      (allocation?.palletKeys || []).forEach(key => {
-        occupiedLots.add(getPlantingLotKey(recordId, key));
-      });
-    });
-  });
-
-  const createdEvents = [];
-  (Array.isArray(recordsToMigrate) ? recordsToMigrate : [])
-    .filter(record => record?.type === "fullHarvest")
-    .sort((left, right) => (
-      String(left?.date || "").localeCompare(String(right?.date || ""))
-      || Number(left?.id || 0) - Number(right?.id || 0)
-    ))
-    .forEach(record => {
-      const recordId = getSafePositiveRecordId(record.id);
-      const harvestDate = String(record.date || "").trim();
-      if(recordId === null || !isStrictDateOnlyString(harvestDate)) return;
-      if(harvestDate > LEGACY_PLANTING_EVENT_CUTOFF_DATE) return;
-
-      const harvestKeySet = new Set(getPalletKeysFromRecord(record));
-      const plantingKeys = parsePalletSummaryToKeys(record.plantingSummary)
-        .filter(key => harvestKeySet.has(key) && !occupiedLots.has(getPlantingLotKey(recordId, key)))
-        .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-      if(!plantingKeys.length) return;
-
-      const event = normalizePlantingEvent({
-        palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-        eventId: getNextPlantingEventId(),
-        plantingDate: String(record.plantingDate || harvestDate).trim(),
-        sourceAllocations: [{ harvestRecordId: recordId, palletKeys: plantingKeys }],
-        plantingPalletKeys: plantingKeys,
-        actualSeedlingTrayCount: 0,
-        actualTakenSeedlingCount: 0,
-        actualPlantedSeedlingCount: 0,
-        actualSeedlingCarryoverMode: "loss",
-        actualSeedlingLossRate: "",
-        detailsUnknown: true,
-        createdAt: "",
-        updatedAt: "",
-        legacyMigrated: true
-      });
-      if(!event) return;
-
-      plantingEvents.push(event);
-      plantingKeys.forEach(key => occupiedLots.add(getPlantingLotKey(recordId, key)));
-      setPlantingEventSyncStatus(event, "edited");
-      createdEvents.push(event);
-    });
-
-  if(createdEvents.length){
-    savePlantingEventsToStorage();
-    syncHarvestPlantingPendingFlags({ persist: true });
-  }
-  return createdEvents;
 }
 
 function invalidatePlantingEventStateCache(){
@@ -14603,18 +14417,6 @@ function saveRecordsToStorage(){
   completeRecordDataMutation({ harvestRecords: true });
 }
 
-function normalizeRecordsStorageOnce(){
-  try{
-    if(harvestnaviLocalStorage.getItem(RECORD_STORAGE_NORMALIZATION_KEY) === "1") return false;
-    if(records.length) saveRecordsToStorage();
-    harvestnaviLocalStorage.setItem(RECORD_STORAGE_NORMALIZATION_KEY, "1");
-    return true;
-  }catch(error){
-    console.warn("記録保存形式の初回整理を完了できませんでした", error);
-    return false;
-  }
-}
-
 function loadDeletedRecords(){
   try{
     const parsed = harvestnaviLocalStorage.readJson(RECORD_TRASH_KEY, []);
@@ -14632,7 +14434,6 @@ function loadDeletedRecords(){
         deletedAt: Number.isFinite(deletedTime) ? new Date(deletedTime).toISOString() : new Date(now).toISOString(),
         expiresAt: new Date(expiresTime).toISOString(),
         sheetDeleted: !!entry?.sheetDeleted,
-        syncConflict: !!entry?.syncConflict,
         remoteDeleted: !!entry?.remoteDeleted
       };
     }).filter(Boolean);
@@ -14649,7 +14450,6 @@ function serializeDeletedRecordEntry(entry){
     deletedAt: entry.deletedAt,
     expiresAt: entry.expiresAt,
     sheetDeleted: !!entry.sheetDeleted,
-    syncConflict: !!entry.syncConflict,
     remoteDeleted: !!entry.remoteDeleted
   };
 }
@@ -14683,7 +14483,6 @@ function addRecordToTrash(record, options = {}){
     deletedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + RECORD_TRASH_RETENTION_MS).toISOString(),
     sheetDeleted: !!options.sheetDeleted,
-    syncConflict: !!options.syncConflict,
     remoteDeleted: !!options.remoteDeleted
   });
   if(!options.deferSave) saveDeletedRecordsToStorage();
@@ -14704,10 +14503,9 @@ function getSyncConflictEntityIdentity(entityType, localVersion, remoteVersion){
   const source = remoteVersion || localVersion;
   if(entityType === "record"){
     const identity = getHarvestRecordIdentity(source);
-    if(identity.recordUuid){
-      return { recordUuid: identity.recordUuid, entityId: identity.id };
-    }
-    return identity.id === null ? null : { recordUuid: "", entityId: identity.id };
+    return identity.recordUuid
+      ? { recordUuid: identity.recordUuid, entityId: identity.id }
+      : null;
   }
   if(entityType === "planting"){
     const eventId = getSafePositiveRecordId(source?.eventId);
@@ -14722,7 +14520,7 @@ function getSyncConflictLookupKey(value){
   const remoteVersion = normalizeSyncConflictEntityVersion(entityType, value?.remoteVersion);
   const identity = getSyncConflictEntityIdentity(entityType, localVersion, remoteVersion);
   if(!identity) return "";
-  if(entityType === "record" && identity.recordUuid){
+  if(entityType === "record"){
     return "record:uuid:" + identity.recordUuid;
   }
   return entityType + ":id:" + String(identity.entityId);
@@ -14896,69 +14694,6 @@ function ensureSyncConflictResolvedBeforeChange(entityType, entity, action){
   if(!hasSyncConflictForEntity(entityType, entity)) return true;
   showToast(`${action}する前に「競合を確認」から残す内容を選んでください`);
   return false;
-}
-
-function migrateLegacyRecordSyncConflictsOnce(){
-  try{
-    if(harvestnaviLocalStorage.getItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY) === "1") return 0;
-  }catch(e){}
-  const legacyEntries = deletedRecords.filter(entry => entry?.syncConflict && entry?.record);
-  if(!legacyEntries.length){
-    try{
-      harvestnaviLocalStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
-    }catch(e){}
-    return 0;
-  }
-  const migratedEntries = [];
-  const status = loadGoogleSheetSyncStatus();
-  for(const entry of legacyEntries){
-    try{
-      const localVersion = entry.record;
-      const recordUuid = normalizeRecordUuid(localVersion.recordUuid);
-      const remoteVersion = entry.remoteDeleted
-        ? null
-        : ((recordUuid ? records.find(record => normalizeRecordUuid(record.recordUuid) === recordUuid) : null)
-            || records.find(record => Number(record.id) === Number(localVersion.id))
-            || null);
-      upsertSyncConflict({
-        entityType: "record",
-        reason: entry.remoteDeleted ? "remote_deleted" : "both_updated",
-        localVersion,
-        remoteVersion,
-        detectedAt: entry.deletedAt,
-        lastSeenAt: entry.deletedAt
-      });
-      if(remoteVersion) setGoogleSheetSyncStatusInObject(status, remoteVersion, "conflict");
-      migratedEntries.push(entry);
-    }catch(error){
-      // 競合一覧へ保存できなかった項目は旧ごみ箱に残し、起動とデータ保護を継続する。
-      console.warn("Legacy sync conflict migration failed", error);
-      break;
-    }
-  }
-  if(migratedEntries.length){
-    deletedRecords = deletedRecords.filter(entry => !migratedEntries.includes(entry));
-    saveDeletedRecordsToStorage();
-    saveGoogleSheetSyncStatus(status);
-  }
-  if(!deletedRecords.some(entry => entry?.syncConflict && entry?.record)){
-    try{
-      harvestnaviLocalStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
-    }catch(e){}
-  }
-  return migratedEntries.length;
-}
-
-function cleanupObsoleteGoogleSheetSyncStorage(){
-  [
-    "harvestForecastGoogleSheetSyncCursor_v1",
-    "harvestForecastGoogleSheetPlantingSyncCursor_v1",
-    "harvestForecastGoogleSheetSyncNoticeRevision_v1"
-  ].forEach(key => {
-    try{
-      harvestnaviLocalStorage.removeItem(key);
-    }catch(e){}
-  });
 }
 
 function isRecordTemporarilyDeleted(record){
@@ -15166,14 +14901,13 @@ function getHarvestRecordIdentityKey(value){
   return identity.id === null ? "" : "id:" + identity.id;
 }
 
-function findHarvestRecordByIdentity(identity, sourceRecords = records, options = {}){
+function findHarvestRecordByIdentity(identity, sourceRecords = records){
   const normalizedIdentity = getHarvestRecordIdentity(identity);
   const candidates = Array.isArray(sourceRecords) ? sourceRecords : [];
   if(normalizedIdentity.recordUuid){
-    const uuidMatch = candidates.find(record => (
+    return candidates.find(record => (
       normalizeRecordUuid(record?.recordUuid) === normalizedIdentity.recordUuid
     )) || null;
-    if(uuidMatch || options.fallbackToId === false) return uuidMatch;
   }
   if(normalizedIdentity.id === null) return null;
   return candidates.find(record => (
@@ -15310,8 +15044,7 @@ function getGoogleSheetRecordSyncState(record, status = loadGoogleSheetSyncStatu
     const state = String(status[key]?.state || "");
     if(state) return state;
   }
-  const legacyId = String(record?.id || "").trim();
-  return legacyId ? String(status[legacyId]?.state || "") : "";
+  return "";
 }
 
 function hasPendingGoogleSheetRecordChange(record, status = loadGoogleSheetSyncStatus()){
@@ -15322,8 +15055,6 @@ function hasPendingGoogleSheetRecordChange(record, status = loadGoogleSheetSyncS
 
 function clearGoogleSheetRecordSyncStatus(status, record){
   getGoogleSheetRecordSyncKeys(record).forEach(key => delete status[key]);
-  const legacyId = String(record?.id || "").trim();
-  if(legacyId) delete status[legacyId];
 }
 
 function setGoogleSheetSyncStatus(record, state){
@@ -15337,8 +15068,6 @@ function setGoogleSheetSyncStatus(record, state){
       updatedAt
     };
   });
-  const legacyId = String(record?.id || "").trim();
-  if(legacyId) delete status[legacyId];
   saveGoogleSheetSyncStatus(status);
   updateGoogleSheetResendButtonState();
 }
@@ -15355,8 +15084,6 @@ function markGoogleSheetRecordsSynced(recordsToMark, state = "confirmed"){
         updatedAt
       };
     });
-    const legacyId = String(record?.id || "").trim();
-    if(legacyId) delete status[legacyId];
   });
 
   saveGoogleSheetSyncStatus(status);
@@ -15367,16 +15094,15 @@ function isGoogleSheetRecordUnsent(record, status){
   const recordUuid = normalizeRecordUuid(record?.recordUuid);
   const uuidState = recordUuid ? String(status["uuid:" + recordUuid]?.state || "") : "";
   if(uuidState) return isUnsentState(uuidState);
-  const legacyId = String(record?.id || "").trim();
-  const idState = legacyId ? String(status["id:" + legacyId]?.state || "") : "";
+  const id = String(record?.id || "").trim();
+  const idState = id ? String(status["id:" + id]?.state || "") : "";
   if(idState) return isUnsentState(idState);
 
   const duplicateKey = String(getRecordDuplicateKey(record) || record?.duplicateKey || "").trim();
   const contentState = duplicateKey ? String(status["key:" + duplicateKey]?.state || "") : "";
   if(contentState) return isUnsentState(contentState);
 
-  const legacyState = legacyId ? String(status[legacyId]?.state || "") : "";
-  return isUnsentState(legacyState);
+  return true;
 }
 
 function getGoogleSheetUnsentRecords(){
@@ -15468,8 +15194,7 @@ function findGoogleSheetBackgroundRecord(job){
   if(!job) return null;
   return findHarvestRecordByIdentity(
     { recordUuid: job.recordUuid, id: job.recordId },
-    records,
-    { fallbackToId: !job.recordUuid }
+    records
   );
 }
 
@@ -16532,8 +16257,7 @@ async function postGoogleSheetPlantingEvent(event, operation = "save", options =
         if(index >= 0){
           plantingEvents[index] = {
             ...serverEvent,
-            openingCarryoverBefore: serverEvent.openingCarryoverBefore ?? current.openingCarryoverBefore ?? null,
-            legacyMigrated: !!current.legacyMigrated
+            openingCarryoverBefore: serverEvent.openingCarryoverBefore ?? current.openingCarryoverBefore ?? null
           };
           savePlantingEventsToStorage();
         }
@@ -16740,8 +16464,8 @@ function normalizeMonitorMemoItems(items, fallbackText = ""){
   if(Array.isArray(items)){
     return items.map(item => String(item ?? ""));
   }
-  const legacyText = String(fallbackText || "");
-  return legacyText ? [legacyText] : [];
+  const fallbackMemoText = String(fallbackText || "");
+  return fallbackMemoText ? [fallbackMemoText] : [];
 }
 
 function getMonitorMemoTextFromItems(items){
@@ -16760,6 +16484,7 @@ function getMonitorMemoItemsFromText(text){
 
 function normalizeRemoteMonitorContent(content){
   if(!content || typeof content !== "object" || Array.isArray(content)) return null;
+  if(Object.prototype.hasOwnProperty.call(content, "palletRanges")) return null;
   if(content.version !== undefined && content.version !== null && content.version !== ""
     && getStrictIntegerInRange(content.version, 0, Number.MAX_SAFE_INTEGER) === null) return null;
   if(content.updatedAt !== undefined && content.updatedAt !== null
@@ -16772,11 +16497,8 @@ function normalizeRemoteMonitorContent(content){
   if(Array.isArray(content.memoItems) && content.memoItems.length > MONITOR_MAX_MEMO_ITEMS) return null;
   if(Array.isArray(content.memoItems) && content.memoItems.some(item => typeof item !== "string" || !isBoundedTextValue(item, MONITOR_MAX_MEMO_ITEM_LENGTH))) return null;
   if(Array.isArray(content.harvestFillKeys) && content.harvestFillKeys.length > RECORD_MAX_PALLET_KEYS) return null;
-  if(Array.isArray(content.palletRanges) && content.palletRanges.length > RECORD_MAX_PALLET_KEYS) return null;
   if(content.harvestFillKeys !== undefined && content.harvestFillKeys !== null && !Array.isArray(content.harvestFillKeys)) return null;
-  if(content.palletRanges !== undefined && content.palletRanges !== null && !Array.isArray(content.palletRanges)) return null;
   if(Array.isArray(content.harvestFillKeys) && content.harvestFillKeys.some(item => typeof item !== "string" || !isValidTransferPalletItem(item))) return null;
-  if(Array.isArray(content.palletRanges) && content.palletRanges.some(item => typeof item !== "string" || !isValidTransferPalletItem(item))) return null;
 
   if(content.enabled !== undefined && content.enabled !== null && content.enabled !== ""){
     const enabledText = String(content.enabled).trim().toLowerCase();
@@ -16784,10 +16506,7 @@ function normalizeRemoteMonitorContent(content){
   }
 
   const enabled = content.enabled === true || ["true", "1", "yes", "on", "有効", "使う"].includes(String(content.enabled || "").trim().toLowerCase());
-  const harvestKeys = [
-    ...expandPalletKeyItemsToKeys(content.harvestFillKeys),
-    ...expandPalletRangesToKeys(content.palletRanges)
-  ];
+  const harvestKeys = expandPalletKeyItemsToKeys(content.harvestFillKeys);
   const memoItems = normalizeMonitorMemoItems(content.memoItems, content.memoText);
   if(getMonitorMemoTextFromItems(memoItems).length > MONITOR_MAX_MEMO_LENGTH) return null;
   const uniqueHarvestKeys = [...new Set(harvestKeys)].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
@@ -17582,8 +17301,8 @@ function isValidTransferQualityMemo(value){
   if(value === undefined || value === null || value === "") return true;
   if(typeof value === "string") return value.length <= RECORD_MAX_QUALITY_LENGTH && !value.includes("\u0000");
   if(typeof value !== "object" || Array.isArray(value)) return false;
-  const tags = value.tags === undefined ? (value.qualityTags === undefined ? [] : value.qualityTags) : value.tags;
-  const rawOther = value.other === undefined ? value.qualityOther : value.other;
+  const tags = value.tags === undefined ? [] : value.tags;
+  const rawOther = value.other;
   const other = rawOther === undefined || rawOther === null ? "" : rawOther;
   return Array.isArray(tags)
     && tags.length <= 5
@@ -17608,9 +17327,11 @@ function isValidTransferPlantingAge(value){
 function validateRecordForGoogleTransfer(record, options = {}){
   const invalid = message => ({ ok: false, message });
   if(!record || typeof record !== "object" || Array.isArray(record)) return invalid("記録の形式が正しくありません");
+  if(Number(record.palletNumberingVersion) !== CURRENT_PALLET_NUMBERING_VERSION){
+    return invalid("パレット番号方式が現在の形式ではありません");
+  }
   if(getSafePositiveRecordId(record.id) === null) return invalid("記録IDが正しくありません");
-  if(record.recordUuid !== undefined && record.recordUuid !== null && record.recordUuid !== ""
-    && !normalizeRecordUuid(record.recordUuid)) return invalid("記録UUIDが正しくありません");
+  if(!normalizeRecordUuid(record.recordUuid)) return invalid("記録UUIDが正しくありません");
   for(const key of ["createdAt", "updatedAt"]){
     if(record[key] !== undefined && record[key] !== null && record[key] !== ""
       && !normalizeRecordSyncTimestamp(record[key])) return invalid("記録の更新日時が正しくありません");
@@ -17663,9 +17384,7 @@ function validateRecordForGoogleTransfer(record, options = {}){
 
   const seedlingTrayFields = {
     plannedSeedlingTrayCount: "予定苗枚数",
-    actualSeedlingTrayCount: "実苗枚数",
-    actualSeedling60TrayCount: "旧60穴苗枚数",
-    actualSeedling120TrayCount: "旧120穴苗枚数"
+    actualSeedlingTrayCount: "実苗枚数"
   };
   for(const field of Object.keys(seedlingTrayFields)){
     if(record[field] !== undefined && record[field] !== null && record[field] !== ""
@@ -17695,24 +17414,8 @@ function validateRecordForGoogleTransfer(record, options = {}){
   }
 
   if(!isValidTransferQualityMemo(record.qualityMemo)) return invalid("品質メモの形式が正しくありません");
-  if(!isOptionalBoundedRecordString(record, "qualityText", RECORD_MAX_QUALITY_LENGTH)
-    || !isOptionalBoundedRecordString(record, "qualityOther", RECORD_MAX_QUALITY_LENGTH)
-    || !isOptionalBoundedRecordString(record, "sizeRating", 32)){
+  if(!isOptionalBoundedRecordString(record, "qualityText", RECORD_MAX_QUALITY_LENGTH)){
     return invalid("品質メモの形式が正しくありません");
-  }
-  if(record.sizeRating !== undefined && record.sizeRating !== null && record.sizeRating !== ""
-    && (typeof record.sizeRating !== "string" || !["unknown", "normal", "large", "small", "不明", "並", "大きい", "小さい"].includes(record.sizeRating.trim()))){
-    return invalid("品質メモの形式が正しくありません");
-  }
-  if(record.qualityTags !== undefined){
-    if((!Array.isArray(record.qualityTags) && typeof record.qualityTags !== "string")
-      || !hasBoundedJsonLength(record.qualityTags, RECORD_MAX_QUALITY_LENGTH)){
-      return invalid("品質メモの形式が正しくありません");
-    }
-    const legacyTags = parseMaybeJsonList(record.qualityTags);
-    if(legacyTags.length > 5 || legacyTags.some(tag => typeof tag !== "string" || !normalizeQualityTag(tag))){
-      return invalid("品質メモの形式が正しくありません");
-    }
   }
 
   if(!isValidTransferPlantingAge(record.plantingAge)) return invalid("定植日数の詳細が正しくありません");
@@ -17757,9 +17460,10 @@ function normalizeGoogleSheetRowRecord(row){
     return null;
   }
 
-  const actualSeedlingTrayCount = record.actualSeedlingTrayCount !== undefined && record.actualSeedlingTrayCount !== ""
-    ? record.actualSeedlingTrayCount
-    : Number(record.actualSeedling60TrayCount || 0) + Number(record.actualSeedling120TrayCount || 0);
+  const actualSeedlingTrayCount = record.actualSeedlingTrayCount === ""
+    || record.actualSeedlingTrayCount === undefined
+    ? 0
+    : record.actualSeedlingTrayCount;
 
   return {
     ...record,
@@ -17774,13 +17478,7 @@ function normalizeGoogleSheetRowRecord(row){
       ? "loss"
       : record.actualSeedlingCarryoverMode,
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
-    qualityMemo: parseMaybeJson(
-      record.qualityMemo || record.qualityText || "",
-      record.qualityMemo || record.qualityText || {
-        qualityTags: parseMaybeJsonList(record.qualityTags),
-        qualityOther: record.qualityOther || ""
-      }
-    ),
+    qualityMemo: parseMaybeJson(record.qualityMemo || record.qualityText || "", null),
     plantingAge: parseMaybeJson(record.plantingAge, record.plantingAge),
     targets: parseMaybeJson(record.targets, record.targets)
   };
@@ -18150,23 +17848,6 @@ async function sendPendingRecordsToGoogleSheet(){
     const config = getValidatedGoogleSheetConfig();
     if(!config) return;
 
-    const plantingStatusBeforeSend = loadPlantingEventSyncStatus();
-    const hasFailedLegacyPlantingEvents = plantingEvents.some(event => (
-      event.legacyMigrated
-      && String(plantingStatusBeforeSend[String(event.eventId)]?.state || "") === "failed"
-    ));
-    if(hasFailedLegacyPlantingEvents){
-      try{
-        await importPlantingEventsFromGoogleSheet({
-          config,
-          silentErrors: true,
-          throwOnError: true
-        });
-      }catch(e){
-        console.warn("Failed legacy planting event reconciliation failed:", e);
-      }
-    }
-
     const unsentRecords = getGoogleSheetUnsentRecords();
     const unsentPlantingEvents = getGoogleSheetUnsentPlantingEvents().sort(comparePlantingEventsAsc);
 
@@ -18246,28 +17927,9 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
   const status = loadPlantingEventSyncStatus();
   saveDeletedPlantingEventsToStorage();
   const deletedEventIds = new Set(deletedPlantingEvents.map(entry => Number(entry.event?.eventId)));
-  let normalizedIncomingEvents = sourceEvents.map(normalizePlantingEvent).filter(Boolean);
-  let reconciledLegacyCount = 0;
-  const removableLegacyIds = new Set();
-  plantingEvents.forEach(event => {
-    const syncState = String(status[String(event.eventId)]?.state || "");
-    if(!event.legacyMigrated || ["edited", "pending"].includes(syncState)) return;
-    const legacyLotKeys = event.sourceAllocations.flatMap(allocation => (
-      allocation.palletKeys.map(key => getPlantingLotKey(allocation.harvestRecordId, key))
-    ));
-    const overlappingIncoming = normalizedIncomingEvents.filter(incoming => incoming.sourceAllocations.some(allocation => (
-      allocation.palletKeys.some(key => legacyLotKeys.includes(getPlantingLotKey(allocation.harvestRecordId, key)))
-    )));
-    if(!overlappingIncoming.length) return;
-    removableLegacyIds.add(Number(event.eventId));
-    delete status[String(event.eventId)];
-    reconciledLegacyCount++;
-  });
-  if(removableLegacyIds.size){
-    plantingEvents = plantingEvents.filter(event => !removableLegacyIds.has(Number(event.eventId)));
-  }
+  const normalizedIncomingEvents = sourceEvents.map(normalizePlantingEvent).filter(Boolean);
   const byId = new Map(plantingEvents.map(event => [Number(event.eventId), event]));
-  let changedCount = reconciledLegacyCount;
+  let changedCount = 0;
 
   normalizedIncomingEvents.forEach(incoming => {
     if(deletedEventIds.has(Number(incoming.eventId))) return;
@@ -18293,8 +17955,7 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
       const nextEvent = {
         ...incoming,
         openingCarryoverBefore: incoming.openingCarryoverBefore
-          ?? (options.openingCarryoverAuthoritative ? null : existing.openingCarryoverBefore ?? null),
-        legacyMigrated: !!existing.legacyMigrated
+          ?? (options.openingCarryoverAuthoritative ? null : existing.openingCarryoverBefore ?? null)
       };
       if(JSON.stringify(serializePlantingEventForStorage(existing)) !== JSON.stringify(serializePlantingEventForStorage(nextEvent))){
         const index = plantingEvents.findIndex(event => Number(event.eventId) === eventId);
@@ -19115,21 +18776,12 @@ async function importRecordsFromGoogleSheet(options = {}){
   let snapshot = null;
 
   try{
-    const shouldBackfillLegacyPlantingEvents = shouldRunLegacyPlantingEventBackfill();
-    const syncOptions = shouldBackfillLegacyPlantingEvents
-      ? { ...options, resetSyncRevision: true }
-      : options;
-    const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, syncOptions, controller.signal);
+    const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, options, controller.signal);
     const recordSync = {
       records: combinedSync.records,
       tombstones: combinedSync.tombstones
     };
     snapshot = createBackupImportSnapshot();
-    const legacyBackfillSourceRecords = shouldBackfillLegacyPlantingEvents
-      ? recordSync.records.map((source, index) => (
-          normalizeImportedRecord(normalizeGoogleSheetRowRecord(source), index)
-        )).filter(Boolean)
-      : [];
     // 先に収穫IDの競合を解決し、既存のlocal苗植え参照だけを新IDへ移す。
     // その後remote苗植えイベントを入れることで、server IDの参照を誤って付け替えない。
     const recordResult = reconcileGoogleSheetRecords(recordSync.records, recordSync.tombstones, options);
@@ -19145,82 +18797,28 @@ async function importRecordsFromGoogleSheet(options = {}){
       deferUiRefresh: true,
       resultTracker: plantingResult
     });
-    migrateLegacyPlantingEvents();
-    const backfilledPlantingEvents = shouldBackfillLegacyPlantingEvents
-      ? backfillLegacyPlantingEventsFromRecordSummariesOnce(legacyBackfillSourceRecords)
-      : [];
-    const legacyPlantingEventsToSend = shouldBackfillLegacyPlantingEvents
-      ? getUnsentLegacyPlantingEventsForBackfill()
-      : [];
-    let backfilledPlantingSuccessCount = 0;
-    let backfilledFinalSyncRevision = null;
-    const backfilledPlantingFailures = [];
-    for(const event of legacyPlantingEventsToSend){
-      const result = await syncPlantingEventWithSources(event, {
-        manageSendState: false,
-        sourcesAlreadySent: true
-      });
-      if(result.ok){
-        backfilledPlantingSuccessCount++;
-        const resultSyncRevision = normalizeGoogleSheetSyncRevision(result.syncRevision);
-        if(resultSyncRevision !== null){
-          backfilledFinalSyncRevision = backfilledFinalSyncRevision === null
-            ? resultSyncRevision
-            : Math.max(backfilledFinalSyncRevision, resultSyncRevision);
-        }
-      }else{
-        backfilledPlantingFailures.push(
-          `${event.plantingDate}（ID: ${event.eventId}）: ${result.message || "送信できませんでした"}`
-        );
-      }
-    }
-    // 送信失敗分は「修正・未送信」に残るため、補完処理自体は一度で完了にする。
-    // 未完了のままにすると、更新のたびに全件同期され同じ記録が再更新扱いになる。
-    if(shouldBackfillLegacyPlantingEvents){
-      markLegacyPlantingEventBackfillCompleted({
-        createdCount: backfilledPlantingEvents.length,
-        sentCount: backfilledPlantingSuccessCount,
-        failedCount: backfilledPlantingFailures.length
-      });
-    }
     syncHarvestPlantingPendingFlags();
     // 競合は両方の内容を競合一覧へ退避済みなので、同期位置を進めても失われない。
     const totalConflictCount = Number(recordResult.conflictCount || 0) + Number(plantingResult.conflictCount || 0);
-    const combinedFinalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
-    const finalSyncRevision = backfilledFinalSyncRevision === null
-      ? combinedFinalSyncRevision
-      : (combinedFinalSyncRevision === null
-          ? backfilledFinalSyncRevision
-          : Math.max(combinedFinalSyncRevision, backfilledFinalSyncRevision));
+    const finalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);
     if(finalSyncRevision !== null){
       saveGoogleSheetSyncRevision(config, finalSyncRevision);
     }
     setRecordSyncAvailabilityNotice(false);
 
     const totalChanged = Number(recordResult.changedCount || 0)
-      + Number(importedEventCount || 0)
-      + backfilledPlantingEvents.length;
-    const hadBackfillActivity = backfilledPlantingEvents.length > 0
-      || backfilledPlantingSuccessCount > 0;
+      + Number(importedEventCount || 0);
     refreshRecordDataUi();
     if(!silentErrors){
       if(totalConflictCount){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}を競合一覧へ保護しました）`);
-      }else if(totalChanged || hadBackfillActivity){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}・旧記録から作成${backfilledPlantingEvents.length}・送信${backfilledPlantingSuccessCount}`);
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}を競合一覧へ保護しました）`);
+      }else if(totalChanged){
+        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}`);
       }else if(!options.silentNoChange){
         showToast(options.emptyMessage || "スプレッドシートと同期済みです");
       }
-      if(backfilledPlantingFailures.length){
-        showRecordImportError(
-          "旧記録から苗植えイベントを作成しましたが、スプレッドシートへ送信できない記録があります。\n\n" +
-          backfilledPlantingFailures.slice(0, 10).join("\n") +
-          "\n\n「修正・未送信」から再送信してください。",
-          "苗植えイベントの送信失敗"
-        );
-      }
     }
-    return totalChanged > 0 || hadBackfillActivity;
+    return totalChanged > 0;
   }catch(e){
     if(snapshot){
       try{
@@ -19233,7 +18831,7 @@ async function importRecordsFromGoogleSheet(options = {}){
       if(!silentErrors) showRecordImportError(
         "スプレッドシートとの同期が途中で中断されました。記録は同期前の状態へ戻しています。\n\n" +
         "3分以内に応答が返らなかったため、タイムアウトになった可能性があります。\n" +
-        "初回の保存データ移行、記録件数の多さ、または Apps Script 側の混雑時に起きます。"
+        "記録件数の多さ、または Apps Script 側の混雑時に起きます。"
       );
       return false;
     }
@@ -19519,196 +19117,6 @@ function parsePalletKey(key){
     bed: parts[1],
     number: Number(parts[2])
   };
-}
-
-function isStoredPalletNumberingCurrent(value){
-  const syncSchemaVersion = Number(value?.syncSchemaVersion);
-  const recordId = Number(value?.id);
-  const eventId = Number(value?.eventId);
-  return Number(value?.palletNumberingVersion) === CURRENT_PALLET_NUMBERING_VERSION
-    || (Number.isSafeInteger(syncSchemaVersion) && syncSchemaVersion >= 4)
-    || (Number.isSafeInteger(recordId) && recordId >= 10000000000000)
-    || (Number.isSafeInteger(eventId) && eventId >= 10000000000000);
-}
-
-function migrateLegacyPalletNumber(number){
-  const normalizedNumber = Number(number);
-  if(!Number.isInteger(normalizedNumber)
-    || normalizedNumber < 1
-    || normalizedNumber > PALLETS_PER_BED){
-    return normalizedNumber;
-  }
-  return normalizedNumber % 2 === 0 ? normalizedNumber - 1 : normalizedNumber + 1;
-}
-
-function migrateLegacyPalletKey(key){
-  if(!isValidPalletKeyString(key)) return "";
-  const pallet = parsePalletKey(key);
-  return getPalletKey(
-    pallet.building,
-    pallet.bed,
-    migrateLegacyPalletNumber(pallet.number)
-  );
-}
-
-function migrateLegacyPalletKeys(keys){
-  return [...new Set((Array.isArray(keys) ? keys : [])
-    .map(migrateLegacyPalletKey)
-    .filter(Boolean))]
-    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-}
-
-function migrateLegacyPartialHarvestTargets(targets){
-  return normalizePartialHarvestTargets(targets).flatMap(target => {
-    const convertedNumbers = [];
-    for(let number = target.start; number <= target.end; number++){
-      convertedNumbers.push(migrateLegacyPalletNumber(number));
-    }
-    convertedNumbers.sort((a, b) => a - b);
-    const convertedTargets = [];
-    let start = convertedNumbers[0];
-    let previous = convertedNumbers[0];
-    for(let index = 1; index <= convertedNumbers.length; index++){
-      const current = convertedNumbers[index];
-      if(current === previous + 1){
-        previous = current;
-        continue;
-      }
-      convertedTargets.push({ ...target, start, end: previous });
-      start = current;
-      previous = current;
-    }
-    return convertedTargets;
-  });
-}
-
-function migrateStoredHarvestRecordToCurrentNumbering(record){
-  if(!record || typeof record !== "object" || Array.isArray(record)) return record;
-  if(isStoredPalletNumberingCurrent(record)){
-    return { ...record, palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION };
-  }
-  if(record.type === "partialHarvest"){
-    const targets = migrateLegacyPartialHarvestTargets(record.targets);
-    return {
-      ...record,
-      palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-      targets,
-      palletSummary: targets.length ? formatPartialHarvestSummary(targets) : record.palletSummary
-    };
-  }
-
-  const palletKeys = migrateLegacyPalletKeys([
-    ...expandPalletKeyItemsToKeys(record.palletKeys),
-    ...expandPalletRangesToKeys(record.palletRanges),
-    ...parsePalletSummaryToKeys(record.palletSummary)
-  ]);
-  const plantingPalletKeys = migrateLegacyPalletKeys([
-    ...expandPalletKeyItemsToKeys(record.plantingPalletKeys),
-    ...expandPalletRangesToKeys(record.plantingRanges),
-    ...parsePalletSummaryToKeys(record.plantingSummary)
-  ]).filter(key => palletKeys.includes(key));
-
-  return {
-    ...record,
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-    palletKeys,
-    palletRanges: compressPalletKeysToRanges(palletKeys),
-    palletSummary: palletKeys.length ? formatPalletSummary(palletKeys) : record.palletSummary,
-    plantingPalletKeys,
-    plantingRanges: compressPalletKeysToRanges(plantingPalletKeys),
-    plantingSummary: plantingPalletKeys.length
-      ? formatPlantingSummaryForKeys(plantingPalletKeys)
-      : record.plantingSummary
-  };
-}
-
-function migrateStoredPlantingEventToCurrentNumbering(event){
-  if(!event || typeof event !== "object" || Array.isArray(event)) return event;
-  if(isStoredPalletNumberingCurrent(event)){
-    return { ...event, palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION };
-  }
-  return {
-    ...event,
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-    sourceAllocations: Array.isArray(event.sourceAllocations)
-      ? event.sourceAllocations.map(allocation => ({
-          ...allocation,
-          palletKeys: migrateLegacyPalletKeys(allocation?.palletKeys)
-        }))
-      : event.sourceAllocations,
-    plantingPalletKeys: migrateLegacyPalletKeys(event.plantingPalletKeys)
-  };
-}
-
-function migrateStoredHarvestStateToCurrentNumbering(state){
-  if(!state || typeof state !== "object" || Array.isArray(state)) return state;
-  if(isStoredPalletNumberingCurrent(state)){
-    return { ...state, palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION };
-  }
-  const harvestFillKeys = migrateLegacyPalletKeys(state.harvestFillKeys);
-  const plantingRecordDraft = state.plantingRecordDraft && typeof state.plantingRecordDraft === "object"
-    ? {
-        ...state.plantingRecordDraft,
-        keys: migrateLegacyPalletKeys(state.plantingRecordDraft.keys)
-      }
-    : state.plantingRecordDraft;
-  const forecastSelectionState = state.forecastSelectionState && typeof state.forecastSelectionState === "object"
-    ? {
-        ...state.forecastSelectionState,
-        keys: migrateLegacyPalletKeys(state.forecastSelectionState.keys)
-      }
-    : state.forecastSelectionState;
-  const harvestProgressState = state.harvestProgressState && typeof state.harvestProgressState === "object"
-    ? {
-        ...state.harvestProgressState,
-        planKeys: migrateLegacyPalletKeys(state.harvestProgressState.planKeys)
-      }
-    : state.harvestProgressState;
-  return {
-    ...state,
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-    harvestFillKeys,
-    plantingRecordDraft,
-    forecastSelectionState,
-    harvestProgressState,
-    recordPalletSummaryInput: formatPalletSummary(harvestFillKeys),
-    recordPlantingSummaryInput: formatPlantingSummaryForKeys(plantingRecordDraft?.keys || [])
-  };
-}
-
-function migrateLocalPalletNumberingToLeftOriginOnce(){
-  try{
-    if(harvestnaviLocalStorage.getItem(PALLET_NUMBERING_MIGRATION_KEY) === "done") return;
-
-    const migrateArrayStorage = (key, migrateItem) => {
-      const raw = harvestnaviLocalStorage.getItem(key);
-      if(!raw) return;
-      const parsed = JSON.parse(raw);
-      if(!Array.isArray(parsed)) return;
-      harvestnaviLocalStorage.writeJson(key, parsed.map(migrateItem));
-    };
-
-    migrateArrayStorage(RECORDS_KEY, migrateStoredHarvestRecordToCurrentNumbering);
-    migrateArrayStorage(PLANTING_EVENTS_KEY, migrateStoredPlantingEventToCurrentNumbering);
-    migrateArrayStorage(RECORD_TRASH_KEY, entry => ({
-      ...entry,
-      record: migrateStoredHarvestRecordToCurrentNumbering(entry?.record)
-    }));
-    migrateArrayStorage(PLANTING_EVENT_TRASH_KEY, entry => ({
-      ...entry,
-      event: migrateStoredPlantingEventToCurrentNumbering(entry?.event)
-    }));
-
-    const stateRaw = harvestnaviLocalStorage.getItem(HARVEST_STATE_KEY);
-    if(stateRaw){
-      const state = migrateStoredHarvestStateToCurrentNumbering(JSON.parse(stateRaw));
-      harvestnaviLocalStorage.writeJson(HARVEST_STATE_KEY, state);
-    }
-    harvestnaviLocalStorage.setItem(PALLET_NUMBERING_MIGRATION_KEY, "done");
-  }catch(error){
-    console.error("パレット番号の保存データ移行に失敗しました", error);
-    throw error;
-  }
 }
 
 function updateBuildingLabel(){
@@ -24171,7 +23579,7 @@ function getPredictedHarvestForBed(bed, number){
   return plantCount * (100 - lossRate) / 100;
 }
 
-function getLatestFullHarvestDateForPalletLegacy(key, targetDate, sourceRecords = records){
+function getLatestFullHarvestDateForPalletReference(key, targetDate, sourceRecords = records){
   const targetDay = startOfLocalDay(targetDate || new Date());
 
   for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
@@ -24191,10 +23599,10 @@ function getLatestFullHarvestDateForPalletLegacy(key, targetDate, sourceRecords 
   return null;
 }
 
-function getPartialHarvestCountForPalletLegacy(building, bed, number, targetDate = null, sourceRecords = records){
+function getPartialHarvestCountForPalletReference(building, bed, number, targetDate = null, sourceRecords = records){
   const key = getPalletKey(building, bed, number);
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
-  const latestFullHarvestDate = getLatestFullHarvestDateForPalletLegacy(key, targetDay, sourceRecords);
+  const latestFullHarvestDate = getLatestFullHarvestDateForPalletReference(key, targetDay, sourceRecords);
   let total = 0;
 
   for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
@@ -24309,7 +23717,7 @@ function getHarvestRecordLookup(targetDate, sourceRecords = records){
 function getLatestFullHarvestDateForPallet(key, targetDate, sourceRecords = records, options = {}){
   const lookup = options.lookup || getHarvestRecordLookup(targetDate, sourceRecords);
   if(!lookup){
-    return getLatestFullHarvestDateForPalletLegacy(key, targetDate, sourceRecords);
+    return getLatestFullHarvestDateForPalletReference(key, targetDate, sourceRecords);
   }
   return lookup.latestFullHarvestDateByPallet.get(key) || null;
 }
@@ -24317,16 +23725,16 @@ function getLatestFullHarvestDateForPallet(key, targetDate, sourceRecords = reco
 function getPartialHarvestCountForPallet(building, bed, number, targetDate = null, sourceRecords = records, options = {}){
   sourceRecords = getActiveHarvestTimelineRecords(sourceRecords);
   if(!harvestRecordLookupEnabled){
-    return getPartialHarvestCountForPalletLegacy(building, bed, number, targetDate, sourceRecords);
+    return getPartialHarvestCountForPalletReference(building, bed, number, targetDate, sourceRecords);
   }
   const key = getPalletKey(building, bed, number);
   const lookup = options.lookup || getHarvestRecordLookup(targetDate, sourceRecords);
   if(!lookup){
-    return getPartialHarvestCountForPalletLegacy(building, bed, number, targetDate, sourceRecords);
+    return getPartialHarvestCountForPalletReference(building, bed, number, targetDate, sourceRecords);
   }
   const fastTotal = lookup.partialHarvestCountByPallet.get(key) || 0;
   if(harvestRecordLookupValidationRemaining > 0){
-    const legacyTotal = getPartialHarvestCountForPalletLegacy(
+    const referenceTotal = getPartialHarvestCountForPalletReference(
       building,
       bed,
       number,
@@ -24334,16 +23742,16 @@ function getPartialHarvestCountForPallet(building, bed, number, targetDate = nul
       sourceRecords
     );
     harvestRecordLookupValidationRemaining--;
-    if(Math.abs(fastTotal - legacyTotal) > 0.000001){
+    if(Math.abs(fastTotal - referenceTotal) > 0.000001){
       harvestRecordLookupEnabled = false;
       invalidateHarvestRecordLookupCache();
       console.error("収穫記録の高速検索結果が一致しないため従来計算へ戻しました", {
         key,
         targetDate: formatDateOnlyString(startOfLocalDay(targetDate || getHarvestTargetDate())),
         fastTotal,
-        legacyTotal
+        referenceTotal
       });
-      return legacyTotal;
+      return referenceTotal;
     }
   }
   return fastTotal;
@@ -25599,11 +25007,7 @@ function getRecordById(id){
 }
 
 function getRecordByUuid(recordUuid){
-  return findHarvestRecordByIdentity(
-    { recordUuid },
-    records,
-    { fallbackToId: false }
-  );
+  return findHarvestRecordByIdentity({ recordUuid }, records);
 }
 
 function getActivePlantingRecord(){
@@ -25662,12 +25066,6 @@ function getStartupPlantingRecordToResume(savedHarvestState = null){
     }
   }
   return null;
-}
-
-function repairLegacyPendingPlantingRecords(savedHarvestState = null){
-  const migrated = migrateLegacyPlantingEvents();
-  syncHarvestPlantingPendingFlags();
-  return migrated;
 }
 
 function getPreviousFullHarvestRecord(options = {}){
@@ -28110,8 +27508,7 @@ async function savePlantingRecord(){
     createdAt: existingEvent?.createdAt || "",
     updatedAt: existingEvent?.updatedAt || "",
     openingCarryoverBefore: existingEvent?.openingCarryoverBefore ?? null,
-    detailsUnknown: false,
-    legacyMigrated: false
+    detailsUnknown: false
   });
   if(!event){
     showToast("苗植え記録を作成できませんでした。入力内容を確認してください");
@@ -29016,9 +28413,7 @@ function editHarvestRecord(id, options = {}){
 
   const palletSummaryInput = document.getElementById("recordPalletSummaryInput");
   if(palletSummaryInput){
-    palletSummaryInput.value = String(record.date || "") < PALLET_SUMMARY_CANONICAL_START_DATE
-      ? String(record.palletSummary || "")
-      : formatPalletSummary(harvestFillKeys);
+    palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
   }
 
   const memoInput = document.getElementById("recordMemoInput");
@@ -29341,15 +28736,13 @@ function renderDeletedRecordList(){
     const safeRecordUuid = escapeHtml(normalizeRecordUuid(record.recordUuid));
     const remainingDays = Math.max(1, Math.ceil((new Date(entry.expiresAt).getTime() - now) / (24 * 60 * 60 * 1000)));
     const typeText = record.type === "partialHarvest" ? "各パレット部分収穫" : "収穫記録";
-    const sheetText = entry.syncConflict
-      ? (entry.remoteDeleted ? "別端末の削除と競合した未送信内容を退避" : "別端末の更新と競合した未送信内容を退避")
-      : (entry.sheetDeleted ? "スプレッドシートも削除済み" : "アプリのみ削除");
+    const sheetText = entry.sheetDeleted ? "スプレッドシートも削除済み" : "アプリのみ削除";
     return `
       <div class="recordItem">
         <div class="recordTitle">${escapeHtml(record.date || "日付なし")} ${typeText}</div>
         <div class="recordMeta">収穫ケース数: ${escapeHtml(String(record.cases || 0))}\n${sheetText}\n復元可能: あと${remainingDays}日</div>
         <div class="recordActions">
-          <button class="thirdBtn" data-ui-click="restoreDeletedRecord" data-ui-number="${safeRecordId}" data-ui-number-first="true" data-ui-arg="${safeRecordUuid}">${entry.syncConflict ? "この内容を戻す" : "復元する"}</button>
+          <button class="thirdBtn" data-ui-click="restoreDeletedRecord" data-ui-number="${safeRecordId}" data-ui-number-first="true" data-ui-arg="${safeRecordUuid}">復元する</button>
         </div>
       </div>
     `;
@@ -29496,21 +28889,8 @@ async function restoreDeletedRecord(id, recordUuid = ""){
         : !activeIdCandidateUuid
     ) ? activeIdCandidate : null;
     const activeRecord = activeByUuid || activeById;
-    let restoredSource = serverCanonical || entry.record;
-    let restoredState = entry.sheetDeleted ? "confirmed" : "edited";
-    if(entry.syncConflict){
-      const versionSource = activeRecord || serverCanonical;
-      restoredSource = {
-        ...entry.record,
-        id: versionSource?.id ?? entry.record.id,
-        recordUuid: normalizeRecordUuid(versionSource?.recordUuid)
-          || normalizeRecordUuid(entry.record.recordUuid),
-        createdAt: versionSource?.createdAt || entry.record.createdAt || "",
-        updatedAt: versionSource?.updatedAt || entry.record.updatedAt || "",
-        plantingPending: versionSource?.plantingPending ?? entry.record.plantingPending
-      };
-      restoredState = "edited";
-    }
+    const restoredSource = serverCanonical || entry.record;
+    const restoredState = entry.sheetDeleted ? "confirmed" : "edited";
     const restoredRecord = normalizeRecordSnapshot(restoredSource);
     if(!restoredRecord){
       const validation = validateRecordForGoogleTransfer(restoredSource, { enforceDuplicateKey: false });
@@ -29549,14 +28929,12 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     deletedRecords = deletedRecords.filter(item => item !== entry);
     saveDeletedRecordsToStorage();
     setGoogleSheetSyncStatus(restoredRecord, restoredState);
-    if(!entry.sheetDeleted && !entry.syncConflict){
+    if(!entry.sheetDeleted){
       // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
       harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
     }
     refreshRecordDataUi();
-    showToast(entry.syncConflict
-      ? "退避していた内容を戻しました。確認後に再送信してください"
-      : (entry.sheetDeleted ? "アプリとスプレッドシートに復元しました" : "記録を復元しました"));
+    showToast(entry.sheetDeleted ? "アプリとスプレッドシートに復元しました" : "記録を復元しました");
   }finally{
     endGoogleSheetOperation(operationOwner);
   }
@@ -30094,7 +29472,7 @@ function renderPlantingEventItemHtml(event, consistencyIssue = null){
 }
 
 function formatActualSeedlingTrayText(record){
-  const trayCount = clampNumber(record?.actualSeedlingTrayCount, 0, 999999, clampNumber(record?.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record?.actualSeedling120TrayCount, 0, 999999, 0));
+  const trayCount = clampNumber(record?.actualSeedlingTrayCount, 0, 999999, 0);
   if(trayCount <= 0) return "-";
   const totalSeedlings = getSeedlingCountFromTrayCount(trayCount);
   return `${trayCount}枚（換算 ${totalSeedlings}株）`;
@@ -30155,31 +29533,19 @@ function normalizeImportedRecord(record, index){
   const plantingCaseInstruction = String(record.plantingCaseInstruction || "").trim();
   const plantingSummary = String(record.plantingSummary || "").trim();
   const plantingDate = String(record.plantingDate || "").trim();
-  const actualSeedlingTrayCount = clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0));
+  const actualSeedlingTrayCount = clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0);
   const actualSeedlingCarryoverMode = normalizeSeedlingCarryoverMode(record.actualSeedlingCarryoverMode);
   const actualSeedlingLossRate = String(record.actualSeedlingLossRate ?? "").trim();
   const actualLoss = String(record.actualLoss ?? "").trim();
-  const qualityMemo = record.qualityMemo || record.qualityTags || record.qualityText
-    ? normalizeQualityMemo(record.qualityMemo || {
-        qualityTags: parseMaybeJsonList(record.qualityTags),
-        qualityOther: record.qualityOther || record.qualityText || ""
-      })
-    : qualityMemoFromLegacySizeRating(record.sizeRating);
+  const qualityMemo = normalizeQualityMemo(record.qualityMemo || record.qualityText || null);
   const plantingAge = normalizePlantingAgeSnapshot(record.plantingAge);
   const palletKeys = getPalletKeysFromRecord(record);
-  const explicitLegacyCompletion = Object.prototype.hasOwnProperty.call(record, "plantingPending")
-    && record.plantingPending === false;
   const plantingPalletKeys = [...new Set([
     ...expandPalletKeyItemsToKeys(record.plantingPalletKeys),
-    ...expandPalletRangesToKeys(record.plantingRanges),
-    ...(explicitLegacyCompletion ? parsePalletSummaryToKeys(plantingSummary) : [])
+    ...expandPalletRangesToKeys(record.plantingRanges)
   ])]
     .filter(key => palletKeys.includes(key))
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-  // 読み込んだ日付や苗ロス率だけで、未完了の苗植えを完了扱いにしない。
-  // 旧形式は実際の苗植えパレットが明示されている場合だけ移行対象にする。
-  const hasExplicitLegacyPlantingSelection = plantingPalletKeys.length > 0;
-
   if(!date || !Number.isFinite(cases) || cases <= 0 || !palletSummary || !actualLoss || !palletKeys.length){
     return null;
   }
@@ -30197,7 +29563,7 @@ function normalizeImportedRecord(record, index){
     actualSeedlingTrayCount,
     actualSeedlingCarryoverMode,
     actualSeedlingLossRate,
-    plantingPending: !hasExplicitLegacyPlantingSelection,
+    plantingPending: plantingPalletKeys.length === 0,
     memo,
     actualLoss,
     qualityMemo,
@@ -30261,8 +29627,7 @@ function exportRecordsToFile(){
       ...entry,
       event: serializePlantingEventForStorage(entry.event)
     })),
-    syncConflicts: syncConflicts.map(serializeSyncConflictEntry).filter(Boolean),
-    migratedPlantingRecordIds: [...loadMigratedPlantingRecordIds()]
+    syncConflicts: syncConflicts.map(serializeSyncConflictEntry).filter(Boolean)
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type: "application/json"});
@@ -30441,7 +29806,7 @@ function harvestRecordMatchesIdentity(record, identity){
 }
 
 function isHarvestRecordHiddenByAppOnlyDelete(record){
-  return deletedRecords.some(entry => !entry.sheetDeleted && !entry.syncConflict
+  return deletedRecords.some(entry => !entry.sheetDeleted
     && harvestRecordMatchesIdentity(entry.record, record));
 }
 
@@ -30450,8 +29815,6 @@ function setGoogleSheetSyncStatusInObject(status, record, state){
   getGoogleSheetRecordSyncKeys(record).forEach(key => {
     status[key] = { state, updatedAt };
   });
-  const legacyId = String(record?.id || "").trim();
-  if(legacyId) delete status[legacyId];
 }
 
 function remapHarvestRecordIdReferences(oldId, newId, status){
@@ -30488,14 +29851,6 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   if(Number(editingPartialHarvestRecordId) === safeOldId) editingPartialHarvestRecordId = safeNewId;
   if(Number(plantingRecordDraft?.recordId) === safeOldId) plantingRecordDraft.recordId = safeNewId;
 
-  const migratedIds = loadMigratedPlantingRecordIds();
-  if(migratedIds.delete(safeOldId)){
-    migratedIds.add(safeNewId);
-    harvestnaviLocalStorage.writeJson(
-      PLANTING_EVENTS_MIGRATION_KEY,
-      [...migratedIds].sort((a, b) => a - b)
-    );
-  }
   if(status?.["id:" + safeOldId] && !status["id:" + safeNewId]){
     status["id:" + safeNewId] = status["id:" + safeOldId];
   }
@@ -30639,7 +29994,6 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
     }
     addRecordToTrash(local, {
       sheetDeleted: true,
-      syncConflict: false,
       remoteDeleted: true,
       deferSave: true
     });
@@ -30658,7 +30012,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
   const hiddenAppOnlyUuids = new Set();
   const hiddenAppOnlyIds = new Set();
   deletedRecords.forEach(entry => {
-    if(entry.sheetDeleted || entry.syncConflict) return;
+    if(entry.sheetDeleted) return;
     const uuid = normalizeRecordUuid(entry.record?.recordUuid);
     if(uuid) hiddenAppOnlyUuids.add(uuid);
     const id = getSafePositiveRecordId(entry.record?.id);
@@ -30701,7 +30055,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
       ? (trashByUuid.get(incomingUuid) || [])
       : (trashById.get(Number(incoming.id)) || []);
     restorableTrash.forEach(entry => {
-      if(entry.sheetDeleted && !entry.syncConflict) trashEntriesToRemove.add(entry);
+      if(entry.sheetDeleted) trashEntriesToRemove.add(entry);
     });
 
     if(!local){
@@ -30925,7 +30279,6 @@ function importRecordsFromSource(sourceRecords, successMessage, emptyMessage, op
   }
 
   records = [...imported, ...records].sort(compareRecordsByDateDesc);
-  if(!options.deferPlantingMigration) repairLegacyPendingPlantingRecords();
   saveRecordsToStorage();
   if(options.markGoogleSheetSynced){
     markGoogleSheetRecordsSynced(imported, "confirmed");
@@ -30994,17 +30347,7 @@ function prepareBackupPlantingEvents(sourceEvents, recordIdMap){
   return prepared;
 }
 
-function mergeBackupPlantingMetadata(parsed, recordIdMap){
-  const migratedIds = loadMigratedPlantingRecordIds();
-  const sourceMigratedIds = Array.isArray(parsed?.migratedPlantingRecordIds)
-    ? parsed.migratedPlantingRecordIds
-    : [];
-  sourceMigratedIds.forEach(value => {
-    const sourceId = getSafePositiveRecordId(value);
-    const mappedId = sourceId === null ? null : recordIdMap.get(sourceId);
-    if(mappedId !== undefined && mappedId !== null) migratedIds.add(Number(mappedId));
-  });
-
+function mergeBackupPlantingTrash(parsed, recordIdMap){
   const sourceTrash = Array.isArray(parsed?.deletedPlantingEvents) ? parsed.deletedPlantingEvents : [];
   if(sourceTrash.length > RECORD_BACKUP_MAX_ITEMS) throw new Error("削除済み苗植え記録が多すぎます");
   sourceTrash.forEach(entry => {
@@ -31029,7 +30372,6 @@ function mergeBackupPlantingMetadata(parsed, recordIdMap){
       wasSynced: !!entry.wasSynced
     });
   });
-  harvestnaviLocalStorage.writeJson(PLANTING_EVENTS_MIGRATION_KEY, [...migratedIds].sort((a, b) => a - b));
   saveDeletedPlantingEventsToStorage();
 }
 
@@ -31075,8 +30417,6 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
   RECORDS_KEY,
   PLANTING_EVENTS_KEY,
   PLANTING_EVENT_TRASH_KEY,
-  PLANTING_EVENTS_MIGRATION_KEY,
-  LEGACY_PLANTING_EVENT_BACKFILL_KEY,
   GOOGLE_SHEET_SYNC_STATUS_KEY,
   GOOGLE_SHEET_SYNC_REVISION_KEY,
   GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
@@ -31134,19 +30474,18 @@ function importRecordsFromFile(file){
     try{
       snapshot = createBackupImportSnapshot();
       const parsed = JSON.parse(String(reader.result || ""));
-      const rawSourceRecords = Array.isArray(parsed)
-        ? parsed
-        : (Array.isArray(parsed.records) ? parsed.records : null);
-      const sourceRecords = rawSourceRecords
-        ? rawSourceRecords.map(migrateStoredHarvestRecordToCurrentNumbering)
-        : null;
-      const sourcePlantingEvents = !Array.isArray(parsed) && Array.isArray(parsed.plantingEvents)
-        ? parsed.plantingEvents.map(migrateStoredPlantingEventToCurrentNumbering)
-        : null;
-      if(!sourceRecords){
-        showRecordImportError("読み込める記録ファイルではありません。");
+      const isCurrentBackup = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        && parsed.app === "Harvestnavi"
+        && parsed.type === "record-backup"
+        && Number(parsed.version) === 4
+        && Array.isArray(parsed.records)
+        && Array.isArray(parsed.plantingEvents);
+      if(!isCurrentBackup){
+        showRecordImportError("現在の形式（バックアップ版4）の記録ファイルではありません。");
         return;
       }
+      const sourceRecords = parsed.records;
+      const sourcePlantingEvents = parsed.plantingEvents;
       if(sourceRecords.length > RECORD_BACKUP_MAX_ITEMS
         || (sourcePlantingEvents && sourcePlantingEvents.length > RECORD_BACKUP_MAX_ITEMS)){
         throw new Error("バックアップの記録件数が上限を超えています");
@@ -31162,44 +30501,25 @@ function importRecordsFromFile(file){
         "{count}件の記録を読み込みました",
         "追加できる新しい記録はありませんでした",
         {
-          deferPlantingMigration: !!sourcePlantingEvents,
-          silentNoChange: !!sourcePlantingEvents,
-          silentSuccess: !!sourcePlantingEvents,
+          silentNoChange: true,
+          silentSuccess: true,
           skipExportPrompt: true,
           fromBackup: true,
           recordIdMap
         }
       );
-      const preparedPlantingEvents = sourcePlantingEvents
-        ? prepareBackupPlantingEvents(sourcePlantingEvents, recordIdMap)
-        : null;
-      const importedEventCount = preparedPlantingEvents
-        ? importPlantingEventsFromSource(preparedPlantingEvents, {
-            markGoogleSheetSynced: false,
-            fromBackup: true
-          })
-        : 0;
-      if(sourcePlantingEvents){
-        const migratedBackup = {
-          ...parsed,
-          deletedPlantingEvents: Array.isArray(parsed.deletedPlantingEvents)
-            ? parsed.deletedPlantingEvents.map(entry => ({
-                ...entry,
-                event: migrateStoredPlantingEventToCurrentNumbering(entry?.event)
-              }))
-            : parsed.deletedPlantingEvents
-        };
-        mergeBackupPlantingMetadata(migratedBackup, recordIdMap);
-        mergeBackupSyncConflicts(migratedBackup, recordIdMap);
-      }
-      migrateLegacyPlantingEvents();
+      const preparedPlantingEvents = prepareBackupPlantingEvents(sourcePlantingEvents, recordIdMap);
+      const importedEventCount = importPlantingEventsFromSource(preparedPlantingEvents, {
+        markGoogleSheetSynced: false,
+        fromBackup: true
+      });
+      mergeBackupPlantingTrash(parsed, recordIdMap);
+      mergeBackupSyncConflicts(parsed, recordIdMap);
       syncHarvestPlantingPendingFlags();
-      if(sourcePlantingEvents){
-        const changedCount = Number(importedRecordCount || 0) + Number(importedEventCount || 0);
-        showToast(changedCount
-          ? `収穫${Number(importedRecordCount || 0)}件・苗植え${Number(importedEventCount || 0)}件を読み込みました`
-          : "追加できる新しい記録はありませんでした");
-      }
+      const changedCount = Number(importedRecordCount || 0) + Number(importedEventCount || 0);
+      showToast(changedCount
+        ? `収穫${Number(importedRecordCount || 0)}件・苗植え${Number(importedEventCount || 0)}件を読み込みました`
+        : "追加できる新しい記録はありませんでした");
     }catch(e){
       let rollbackError = null;
       if(snapshot){
@@ -31341,8 +30661,6 @@ function initializeStartupSettingsAndStorage(){
   installEmptyInputHighlights();
   installHarvestStateSaveFlushListeners();
   installMonitorViewportResizeObserver();
-  normalizeRecordsStorageOnce();
-  migrateLegacyPlantingEvents();
   syncHarvestPlantingPendingFlags();
 }
 

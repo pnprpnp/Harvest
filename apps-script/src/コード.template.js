@@ -20,7 +20,7 @@
 
 <!-- build:include apps-script/src/11-record-trash-and-sheets.js -->
 
-<!-- build:include apps-script/src/12-migrations-and-spreadsheet.js -->
+<!-- build:include apps-script/src/12-spreadsheet-connection-and-repair.js -->
 
 <!-- build:include apps-script/src/13-monitor-sheet.js -->
 

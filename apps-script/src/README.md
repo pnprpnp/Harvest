@@ -21,7 +21,7 @@ python3 tools/build_apps_script.py
 - `09-harvest-sheet-and-list.js`: 収穫記録の一括保存、シート行、同期一覧
 - `10-planting-sheet.js`: 苗植えシート、削除情報、行の読み書き
 - `11-record-trash-and-sheets.js`: 収穫記録シート、削除一覧、復元期限
-- `12-migrations-and-spreadsheet.js`: データ移行、接続先スプレッドシート
+- `12-spreadsheet-connection-and-repair.js`: 接続先スプレッドシート、手動修復
 - `13-monitor-sheet.js`: モニター用シートの作成と保存形式
 - `14-record-sheet-format.js`: 収穫記録の列、表示形式、行の変換、API応答
 

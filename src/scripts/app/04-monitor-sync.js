@@ -45,8 +45,8 @@ function normalizeMonitorMemoItems(items, fallbackText = ""){
   if(Array.isArray(items)){
     return items.map(item => String(item ?? ""));
   }
-  const legacyText = String(fallbackText || "");
-  return legacyText ? [legacyText] : [];
+  const fallbackMemoText = String(fallbackText || "");
+  return fallbackMemoText ? [fallbackMemoText] : [];
 }
 
 function getMonitorMemoTextFromItems(items){
@@ -65,6 +65,7 @@ function getMonitorMemoItemsFromText(text){
 
 function normalizeRemoteMonitorContent(content){
   if(!content || typeof content !== "object" || Array.isArray(content)) return null;
+  if(Object.prototype.hasOwnProperty.call(content, "palletRanges")) return null;
   if(content.version !== undefined && content.version !== null && content.version !== ""
     && getStrictIntegerInRange(content.version, 0, Number.MAX_SAFE_INTEGER) === null) return null;
   if(content.updatedAt !== undefined && content.updatedAt !== null
@@ -77,11 +78,8 @@ function normalizeRemoteMonitorContent(content){
   if(Array.isArray(content.memoItems) && content.memoItems.length > MONITOR_MAX_MEMO_ITEMS) return null;
   if(Array.isArray(content.memoItems) && content.memoItems.some(item => typeof item !== "string" || !isBoundedTextValue(item, MONITOR_MAX_MEMO_ITEM_LENGTH))) return null;
   if(Array.isArray(content.harvestFillKeys) && content.harvestFillKeys.length > RECORD_MAX_PALLET_KEYS) return null;
-  if(Array.isArray(content.palletRanges) && content.palletRanges.length > RECORD_MAX_PALLET_KEYS) return null;
   if(content.harvestFillKeys !== undefined && content.harvestFillKeys !== null && !Array.isArray(content.harvestFillKeys)) return null;
-  if(content.palletRanges !== undefined && content.palletRanges !== null && !Array.isArray(content.palletRanges)) return null;
   if(Array.isArray(content.harvestFillKeys) && content.harvestFillKeys.some(item => typeof item !== "string" || !isValidTransferPalletItem(item))) return null;
-  if(Array.isArray(content.palletRanges) && content.palletRanges.some(item => typeof item !== "string" || !isValidTransferPalletItem(item))) return null;
 
   if(content.enabled !== undefined && content.enabled !== null && content.enabled !== ""){
     const enabledText = String(content.enabled).trim().toLowerCase();
@@ -89,10 +87,7 @@ function normalizeRemoteMonitorContent(content){
   }
 
   const enabled = content.enabled === true || ["true", "1", "yes", "on", "有効", "使う"].includes(String(content.enabled || "").trim().toLowerCase());
-  const harvestKeys = [
-    ...expandPalletKeyItemsToKeys(content.harvestFillKeys),
-    ...expandPalletRangesToKeys(content.palletRanges)
-  ];
+  const harvestKeys = expandPalletKeyItemsToKeys(content.harvestFillKeys);
   const memoItems = normalizeMonitorMemoItems(content.memoItems, content.memoText);
   if(getMonitorMemoTextFromItems(memoItems).length > MONITOR_MAX_MEMO_LENGTH) return null;
   const uniqueHarvestKeys = [...new Set(harvestKeys)].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));

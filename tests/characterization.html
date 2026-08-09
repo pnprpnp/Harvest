@@ -549,6 +549,7 @@
       await runTest("ブラウザーが作るAPI操作をApps Script側で同じ操作として解釈する", () => {
         const config = { token: "characterization-test-token" };
         const record = app.normalizeRecordSnapshot({
+          palletNumberingVersion: 2,
           id: 20000000000001,
           recordUuid: "33333333-3333-4333-8333-333333333333",
           syncSchemaVersion: 3,
@@ -610,6 +611,7 @@
 
       await runTest("ブラウザーが送る収穫記録をApps Script側で正規化できる", () => {
         const record = app.normalizeRecordSnapshot({
+          palletNumberingVersion: 2,
           id: 20000000000003,
           recordUuid: "44444444-4444-4444-8444-444444444444",
           syncSchemaVersion: 3,
@@ -721,6 +723,7 @@
           () => appsScript.normalizeHarvestRecord({
             palletNumberingVersion: 2,
             id: 20000000000006,
+            recordUuid: "77777777-7777-4777-8777-777777777777",
             type: "partialHarvest",
             date: "2026-08-09",
             cases: 2,
@@ -896,7 +899,9 @@
 
       await runTest("保存済みの収穫場所を読み込み、同じ範囲形式で保存できる", () => {
         const record = app.normalizeStoredRecord({
+          palletNumberingVersion: 2,
           id: 10,
+          recordUuid: "88888888-8888-4888-8888-888888888888",
           type: "fullHarvest",
           date: "2026-08-01",
           cases: 12,
@@ -908,9 +913,11 @@
         assertDeepEqual(serialized.palletRanges, ["2-A-1-3"], "保存時の範囲形式が変わりました");
       });
 
-      await runTest("旧形式の通常収穫記録も共通経路で欠落なく正規化する", () => {
-        const legacyRecord = {
+      await runTest("現行形式の通常収穫記録を共通経路で欠落なく正規化する", () => {
+        const currentRecord = {
+          palletNumberingVersion: 2,
           id: 41,
+          recordUuid: "99999999-9999-4999-8999-999999999999",
           type: "fullHarvest",
           date: "2026-08-07",
           cases: 8,
@@ -920,14 +927,14 @@
           plantingRanges: ["6-E-3-4"],
           plantingPending: false,
           actualLoss: "2.5",
-          sizeRating: "大きい",
-          memo: "旧形式メモ"
+          qualityMemo: { tags: ["large"], other: "" },
+          memo: "現行形式メモ"
         };
-        const snapshot = app.normalizeRecordSnapshot(legacyRecord);
-        assert(snapshot, "旧形式の通常収穫記録を正規化できません");
+        const snapshot = app.normalizeRecordSnapshot(currentRecord);
+        assert(snapshot, "現行形式の通常収穫記録を正規化できません");
         assertDeepEqual(snapshot.palletKeys, ["6-E-3", "6-E-4", "6-E-5"], "収穫場所が欠落しました");
         assertDeepEqual(snapshot.plantingPalletKeys, ["6-E-3", "6-E-4"], "苗植え場所が欠落しました");
-        assertDeepEqual(snapshot.qualityMemo, { tags: ["large"], other: "" }, "旧品質情報を引き継げません");
+        assertDeepEqual(snapshot.qualityMemo, { tags: ["large"], other: "" }, "品質情報を引き継げません");
         const serialized = app.serializeRecordForStorage(snapshot);
         assertDeepEqual(serialized.palletRanges, ["6-E-3-5"], "通常収穫の保存範囲が変わりました");
         assertDeepEqual(serialized.plantingRanges, ["6-E-3-4"], "苗植えの保存範囲が変わりました");
@@ -940,15 +947,114 @@
         const editedSnapshot = app.normalizeRecordSnapshot(snapshot);
         assertDeepEqual(editedSnapshot.palletKeys, ["6-E-10"], "スナップショット内で編集前の収穫場所が復活しました");
         assertDeepEqual(editedSnapshot.plantingPalletKeys, ["6-E-10"], "スナップショット内で編集前の苗植え場所が復活しました");
-        const imported = app.normalizeImportedRecord(legacyRecord, 0);
-        assert(imported, "旧形式の通常収穫記録をインポート経路で正規化できません");
+        const imported = app.normalizeImportedRecord(currentRecord, 0);
+        assert(imported, "現行形式の通常収穫記録をインポート経路で正規化できません");
         assertDeepEqual(imported.palletKeys, ["6-E-3", "6-E-4", "6-E-5"], "インポート時に収穫場所が欠落しました");
-        assertDeepEqual(imported.qualityMemo, { tags: ["large"], other: "" }, "インポート時に旧品質情報が欠落しました");
+        assertDeepEqual(imported.qualityMemo, { tags: ["large"], other: "" }, "インポート時に品質情報が欠落しました");
+
+        const oldDatedCurrentRecord = appsScript.normalizeHarvestRecord({
+          ...currentRecord,
+          id: 45,
+          recordUuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccd",
+          date: "2026-06-01",
+          palletSummary: "9号棟F:77-78",
+          palletKeys: ["2-A-1", "2-A-2"],
+          plantingPalletKeys: []
+        });
+        assertEqual(
+          oldDatedCurrentRecord.palletSummary,
+          "2号棟A:1-2",
+          "古い日付の現行記録で旧収穫場所文字列を優先しています"
+        );
+      });
+
+      await runTest("旧パレット番号方式の記録を受け付けない", () => {
+        const oldRecord = {
+          palletNumberingVersion: 1,
+          id: 43,
+          recordUuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
+          type: "fullHarvest",
+          date: "2026-08-08",
+          cases: 3,
+          palletSummary: "7号棟B:2-3",
+          palletRanges: ["7-B-2-3"],
+          actualLoss: "1",
+          qualityMemo: { tags: [], other: "" }
+        };
+        assertEqual(app.normalizeStoredRecord(oldRecord), null, "端末が旧パレット番号方式を読み込んでいます");
+        assertThrows(
+          () => appsScript.normalizeHarvestRecord({
+            ...oldRecord,
+            palletKeys: ["7-B-2", "7-B-3"]
+          }),
+          "パレット番号方式",
+          "Apps Scriptが旧パレット番号方式を受け付けています"
+        );
+
+        const oldPlantingEvent = {
+          palletNumberingVersion: 1,
+          eventId: 44,
+          plantingDate: "2026-08-08",
+          sourceAllocations: [{ harvestRecordId: 43, palletKeys: ["7-B-2"] }],
+          plantingPalletKeys: ["7-B-2"],
+          actualSeedlingTrayCount: 1,
+          actualTakenSeedlingCount: 120,
+          actualPlantedSeedlingCount: 20,
+          detailsUnknown: false
+        };
+        assertEqual(
+          app.normalizePlantingEvent(oldPlantingEvent),
+          null,
+          "端末が旧パレット番号方式の苗植え記録を読み込んでいます"
+        );
+        assertThrows(
+          () => appsScript.normalizePlantingEvent(oldPlantingEvent),
+          "パレット番号方式",
+          "Apps Scriptが旧パレット番号方式の苗植え記録を受け付けています"
+        );
+
+        const oldMonitorContent = { palletRanges: ["7-B-2-3"] };
+        assertEqual(
+          app.normalizeRemoteMonitorContent(oldMonitorContent),
+          null,
+          "端末が旧モニター収穫場所形式を読み込んでいます"
+        );
+        assertThrows(
+          () => appsScript.normalizeMonitorContentInput(oldMonitorContent),
+          "harvestFillKeys",
+          "Apps Scriptが旧モニター収穫場所形式を受け付けています"
+        );
+      });
+
+      await runTest("廃止した旧形式移行処理を読み込まない", () => {
+        const browserMigrationTypes = comparable(app.eval(`({
+          palletNumbering: typeof migrateLocalPalletNumberingToLeftOriginOnce,
+          plantingEvents: typeof migrateLegacyPlantingEvents,
+          conflicts: typeof migrateLegacyRecordSyncConflictsOnce
+        })`));
+        assertDeepEqual(browserMigrationTypes, {
+          palletNumbering: "undefined",
+          plantingEvents: "undefined",
+          conflicts: "undefined"
+        }, "端末側に廃止済みの移行処理が残っています");
+
+        assertEqual(
+          typeof appsScript.migrateAllPalletNumberingToLeftOriginOnce,
+          "undefined",
+          "Apps Script側に旧パレット番号の移行処理が残っています"
+        );
+        assertEqual(
+          typeof appsScript.migrateHarvestRecordSyncMetadataV1,
+          "undefined",
+          "Apps Script側に旧記録情報の自動移行処理が残っています"
+        );
       });
 
       await runTest("途中収穫の記録スナップショットも同じ経路で正規化する", () => {
         const snapshot = app.normalizeRecordSnapshot({
+          palletNumberingVersion: 2,
           id: 42,
+          recordUuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc",
           type: "partialHarvest",
           date: "2026-08-08",
           cases: 3,
@@ -974,9 +1080,9 @@
 
       await runTest("過去の記録を編集するとき、対象以降の記録を計算から外す", () => {
         replaceAppHistory(app, [
-          { id: 1, type: "fullHarvest", date: "2026-08-01", cases: 10, palletRanges: ["2-A-1-1"], plantingPending: true },
-          { id: 2, type: "fullHarvest", date: "2026-08-02", cases: 10, palletRanges: ["2-A-2-2"], plantingPending: true },
-          { id: 3, type: "fullHarvest", date: "2026-08-03", cases: 10, palletRanges: ["2-A-3-3"], plantingPending: true }
+          { palletNumberingVersion: 2, id: 1, recordUuid: "10000000-0000-4000-8000-000000000001", type: "fullHarvest", date: "2026-08-01", cases: 10, palletRanges: ["2-A-1-1"], plantingPending: true },
+          { palletNumberingVersion: 2, id: 2, recordUuid: "10000000-0000-4000-8000-000000000002", type: "fullHarvest", date: "2026-08-02", cases: 10, palletRanges: ["2-A-2-2"], plantingPending: true },
+          { palletNumberingVersion: 2, id: 3, recordUuid: "10000000-0000-4000-8000-000000000003", type: "fullHarvest", date: "2026-08-03", cases: 10, palletRanges: ["2-A-3-3"], plantingPending: true }
         ]);
         const visibleIds = app.getHarvestRecordEditTimelineRecords(2).map(record => record.id);
         assertDeepEqual(visibleIds, [1], "編集時に残る履歴が違います");
@@ -984,6 +1090,7 @@
 
       await runTest("重複した記録と収穫済みパレットの再使用を検出する", () => {
         const common = {
+          palletNumberingVersion: 2,
           type: "fullHarvest",
           date: "2026-08-04",
           cases: 10,
@@ -991,8 +1098,8 @@
           plantingPending: true
         };
         replaceAppHistory(app, [
-          { ...common, id: 1 },
-          { ...common, id: 2 }
+          { ...common, id: 1, recordUuid: "20000000-0000-4000-8000-000000000001" },
+          { ...common, id: 2, recordUuid: "20000000-0000-4000-8000-000000000002" }
         ]);
         const issues = comparable(app.buildRecordConsistencyAudit().orderedIssues);
         const reasons = issues.flatMap(issue => issue.reasons);
@@ -1022,6 +1129,7 @@
         const lookupKey = app.getSyncConflictLookupKey({
           entityType: "record",
           localVersion: {
+            palletNumberingVersion: 2,
             id: 30,
             recordUuid: uuid,
             type: "partialHarvest",
@@ -1048,7 +1156,7 @@
           `uuid:${firstUuid.toLowerCase()}`,
           "UUIDがある記録の同期キーが違います"
         );
-        assertEqual(app.getHarvestRecordIdentityKey({ id: 72 }), "id:72", "旧記録の同期キーが違います");
+        assertEqual(app.getHarvestRecordIdentityKey({ id: 72 }), "id:72", "UUIDがない識別子の同期キーが違います");
         assertEqual(
           app.findHarvestRecordByIdentity({ recordUuid: secondUuid, id: 70 }, [first, second]),
           second,
@@ -1056,17 +1164,8 @@
         );
         assertEqual(
           app.findHarvestRecordByIdentity({ recordUuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", id: 70 }, [first, second]),
-          first,
-          "UUIDが見つからない互換記録をIDで検索できません"
-        );
-        assertEqual(
-          app.findHarvestRecordByIdentity(
-            { recordUuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", id: 70 },
-            [first, second],
-            { fallbackToId: false }
-          ),
           null,
-          "UUIDだけで検索する経路がIDへ切り替わりました"
+          "存在しないUUIDを同じ数値IDの別記録へ切り替えています"
         );
         assertEqual(
           app.harvestRecordMatchesIdentity(first, { id: 70, recordUuid: secondUuid }),

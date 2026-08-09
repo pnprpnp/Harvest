@@ -25,52 +25,7 @@ function ensureHeaders(sheet) {
     .getRange(1, currentHeaders.length + 1, 1, addedHeaders.length)
     .setValues([addedHeaders]);
   applyAddedRecordColumnLayout(sheet, currentHeaders.length + 1, missingKeys);
-  const updatedHeaders = currentHeaders.concat(addedHeaders);
-  if (missingKeys.includes("receivedAt")) {
-    initializeLegacyHarvestRecordCommitMarkers(sheet, updatedHeaders);
-  }
-  return updatedHeaders;
-}
-
-function initializeLegacyHarvestRecordCommitMarkers(sheet, headers) {
-  const receivedAtColumn = getHeaderColumn(headers, "receivedAt");
-  const rowCount = Math.max(0, sheet.getLastRow() - 1);
-  if (receivedAtColumn <= 0 || !rowCount) return 0;
-  const rows = sheet.getRange(2, 1, rowCount, headers.length).getValues();
-  const seenIds = new Set();
-  const seenUuids = new Set();
-  let changed = 0;
-  const values = rows.map(row => {
-    if (!row.some(value => String(value == null ? "" : value).trim() !== "")) return [""];
-    try {
-      const record = normalizeHarvestRecord(rowToRecord(headers, row));
-      const id = String(record.id);
-      const uuid = String(record.recordUuid || "").trim().toLowerCase();
-      if (seenIds.has(id)) throw new Error("記録IDが重複しています: " + id);
-      if (uuid && seenUuids.has(uuid)) throw new Error("記録UUIDが重複しています: " + uuid);
-      seenIds.add(id);
-      if (uuid) seenUuids.add(uuid);
-      const committedAt = normalizeWriteTimestampToken(record.updatedAt) ||
-        normalizeWriteTimestampToken(record.createdAt) ||
-        normalizeWriteTimestampToken(record.date) || new Date().toISOString();
-      changed++;
-      return [new Date(committedAt)];
-    } catch (err) {
-      console.warn("旧収穫記録行を完了扱いにできません: " +
-        String(err && err.message || err));
-      return [""];
-    }
-  });
-  if (!changed) return 0;
-  setHarvestRecordColumnValuesWithValidationRecovery(
-    sheet,
-    2,
-    receivedAtColumn,
-    values,
-    HEADER_LABELS.receivedAt,
-    "旧記録の完了状態への更新"
-  );
-  return changed;
+  return currentHeaders.concat(addedHeaders);
 }
 
 function getRecordHeadersForRead(sheet) {
@@ -228,8 +183,7 @@ function hasDuplicateRecord(sheet, headers, duplicateKey, record) {
 
   const acceptableKeys = new Set([
     String(duplicateKey || "").trim(),
-    makeAnyDuplicateKey(record),
-    makeLegacyDuplicateKey(record)
+    makeDuplicateKey(record)
   ].filter(Boolean));
 
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
@@ -240,8 +194,7 @@ function hasDuplicateRecord(sheet, headers, duplicateKey, record) {
     const existingKey = duplicateKeyCol > 0 ? String(row[duplicateKeyCol - 1] || "").trim() : "";
     return [
       existingKey,
-      makeAnyDuplicateKey(existingRecord),
-      makeLegacyDuplicateKey(existingRecord)
+      makeDuplicateKey(existingRecord)
     ].filter(Boolean).some(key => acceptableKeys.has(key));
   });
 }
@@ -310,14 +263,6 @@ function makeDuplicateKey(record) {
   ].join("__");
 }
 
-function makeAnyDuplicateKey(record) {
-  return makeDuplicateKey(record);
-}
-
-function makeLegacyDuplicateKey(record) {
-  return makeDuplicateKey(record);
-}
-
 function formatSizeRatingValue(value) {
   const text = String(value || "").trim();
   if (text === "unknown" || text === "不明") return "不明";
@@ -337,10 +282,8 @@ function formatQualityTextValue(record) {
   if (typeof memo === "string") return memo.trim();
 
   if (memo && typeof memo === "object") {
-    const tags = Array.isArray(memo.tags)
-      ? memo.tags
-      : (Array.isArray(memo.qualityTags) ? memo.qualityTags : []);
-    const other = String(memo.other || memo.qualityOther || "").trim();
+    const tags = Array.isArray(memo.tags) ? memo.tags : [];
+    const other = String(memo.other || "").trim();
     return tags
       .map(formatQualityTagLabel)
       .filter(Boolean)
@@ -348,8 +291,7 @@ function formatQualityTextValue(record) {
       .join("、");
   }
 
-  const legacySize = formatSizeRatingValue(record.sizeRating);
-  return legacySize === "不明" ? "" : legacySize;
+  return "";
 }
 
 function formatQualityTagLabel(value) {
