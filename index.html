@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-modal-lifecycle-cleanup">
+<meta name="harvestnavi-version" content="20260809-tab-switch-cleanup">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10447,6 +10447,13 @@ let harvestProgressAvailable = false;
 let harvestProgressBuilding = 2;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
+const MAIN_TAB_DEFINITIONS = Object.freeze({
+  forecast: { label: "シミュ", afterSelection: prepareForecastMainTabSelection, afterPaint: finishForecastMainTabSelection },
+  monitor: { label: "モニター", afterPaint: finishMonitorMainTabSelection },
+  record: { label: "記録", loadingTargetId: "recordBeds", afterSelection: prepareRecordMainTabSelection, afterPaint: finishRecordMainTabSelection },
+  dashboard: { label: "集計", afterSelection: prepareDashboardMainTabSelection, keepsDashboardRender: true }
+});
+const MAIN_TAB_NAMES = Object.freeze(Object.keys(MAIN_TAB_DEFINITIONS));
 let tabSwitchScheduleId = 0;
 let dashboardRenderScheduleId = 0;
 let dashboardRenderedDayKey = "";
@@ -12460,6 +12467,13 @@ function renderDashboardIfVisible(){
   }
 }
 
+function normalizeMainTabName(tabName){
+  const normalized = tabName === "settings" ? "forecast" : String(tabName || "");
+  return Object.prototype.hasOwnProperty.call(MAIN_TAB_DEFINITIONS, normalized)
+    ? normalized
+    : "";
+}
+
 function saveCurrentTabScrollPosition(){
   if(!activeAppTab) return;
   tabScrollPositions[activeAppTab] = window.pageYOffset || 0;
@@ -12473,24 +12487,27 @@ function restoreTabScrollPosition(tabName){
 }
 
 function setMainTabSelection(tabName){
-  document.getElementById("forecastTab").style.display = tabName === "forecast" ? "block" : "none";
-  document.getElementById("monitorTab").style.display = tabName === "monitor" ? "block" : "none";
-  document.getElementById("settingsTab").style.display = "none";
-  document.getElementById("recordTab").style.display = tabName === "record" ? "block" : "none";
-  document.getElementById("dashboardTab").style.display = tabName === "dashboard" ? "block" : "none";
-  document.getElementById("forecastTabBtn").classList.toggle("active", tabName === "forecast");
-  document.getElementById("monitorTabBtn")?.classList.toggle("active", tabName === "monitor");
-  document.getElementById("recordTabBtn").classList.toggle("active", tabName === "record");
-  document.getElementById("dashboardTabBtn")?.classList.toggle("active", tabName === "dashboard");
+  MAIN_TAB_NAMES.forEach(name => {
+    const isSelected = name === tabName;
+    const panel = document.getElementById(name + "Tab");
+    const button = document.getElementById(name + "TabBtn");
+    if(panel) panel.style.display = isSelected ? "block" : "none";
+    button?.classList.toggle("active", isSelected);
+  });
+  const settingsTab = document.getElementById("settingsTab");
+  if(settingsTab) settingsTab.style.display = "none";
 }
 
 function setMainTabLoadingState(tabName, isLoading){
   const loadingState = document.getElementById("mainTabLoadingState");
   if(!loadingState) return;
-  const tabNames = ["forecast", "monitor", "record", "dashboard"];
-  tabNames.forEach(name => {
+  MAIN_TAB_NAMES.forEach(name => {
+    const definition = MAIN_TAB_DEFINITIONS[name];
     document.getElementById(name + "Tab")?.removeAttribute("aria-busy");
     document.getElementById(name + "TabBtn")?.removeAttribute("aria-busy");
+    if(definition.loadingTargetId){
+      document.getElementById(definition.loadingTargetId)?.removeAttribute("aria-busy");
+    }
   });
 
   if(!isLoading){
@@ -12500,13 +12517,8 @@ function setMainTabLoadingState(tabName, isLoading){
     return;
   }
 
-  const labels = {
-    forecast: "シミュ",
-    monitor: "モニター",
-    record: "記録",
-    dashboard: "集計"
-  };
-  const label = labels[tabName] || "画面";
+  const definition = MAIN_TAB_DEFINITIONS[tabName];
+  const label = definition?.label || "画面";
   const text = document.getElementById("mainTabLoadingText");
   if(text) text.textContent = label + "をロード中...";
   loadingState.setAttribute("data-loading-tab", tabName);
@@ -12520,54 +12532,99 @@ function setMainTabLoadingState(tabName, isLoading){
   document.getElementById(tabName + "TabBtn")?.setAttribute("aria-busy", "true");
 }
 
+function finishRecordMainTabSelection(){ drawRecordBeds(); }
+
+function finishForecastMainTabSelection(){
+  drawBeds();
+  renderForecastSummary();
+}
+
+function finishMonitorMainTabSelection(){
+  renderForecastSummary();
+  resizeAllMonitorMemoInputs();
+  refreshMonitorMemoInputsOnTabOpen();
+}
+
 function scheduleMainTabPostSelectionWork(tabName){
   const scheduleId = ++tabSwitchScheduleId;
-  const recordBeds = document.getElementById("recordBeds");
+  const definition = MAIN_TAB_DEFINITIONS[tabName];
+  const loadingTarget = definition?.loadingTargetId
+    ? document.getElementById(definition.loadingTargetId)
+    : null;
   setMainTabLoadingState(tabName, true);
-  if(tabName === "record"){
-    recordBeds?.setAttribute("aria-busy", "true");
-  }else{
-    recordBeds?.removeAttribute("aria-busy");
-  }
+  loadingTarget?.setAttribute("aria-busy", "true");
 
   runAfterUiSettles(() => {
     if(scheduleId !== tabSwitchScheduleId || activeAppTab !== tabName) return;
     try{
-      if(tabName === "record"){
-        drawRecordBeds();
-      }else if(tabName === "forecast"){
-        drawBeds();
-        renderForecastSummary();
-      }else if(tabName === "monitor"){
-        renderForecastSummary();
-        resizeAllMonitorMemoInputs();
-        refreshMonitorMemoInputsOnTabOpen();
-      }
+      definition?.afterPaint?.();
     }catch(error){
       console.error("Failed to finish tab selection", error);
       showToast("表示の更新に失敗しました。もう一度タブを押してください");
     }finally{
       if(scheduleId === tabSwitchScheduleId){
-        if(tabName === "record") recordBeds?.removeAttribute("aria-busy");
+        loadingTarget?.removeAttribute("aria-busy");
         setMainTabLoadingState(tabName, false);
       }
     }
   });
 }
 
-function switchTab(tabName){
-  if(tabName === "settings") tabName = "forecast";
-  if(!ensureProtectedTabAccess(tabName)) return false;
-  const previousTab = activeAppTab;
-  if(tabName === "record" && previousTab !== "record" && recordSelectionMode === "planting"){
+function preserveStateBeforeMainTabSwitch(previousTab, nextTab){
+  if(nextTab === "record" && previousTab !== "record" && recordSelectionMode === "planting"){
     preserveForecastStateBeforeRecordTab();
   }
-  if(previousTab === "record" && tabName !== "record" && recordSelectionMode === "planting"){
+  if(previousTab === "record" && nextTab !== "record" && recordSelectionMode === "planting"){
     preservePlantingStateBeforeTabSwitch({ render: false });
-  }else if(previousTab === "record" && tabName !== "record" && editingHarvestRecordId){
+  }else if(previousTab === "record" && nextTab !== "record" && editingHarvestRecordId){
     editingHarvestSelectionKeys = [...harvestFillKeys];
     restoreForecastSelectionState({ render: false });
   }
+}
+
+function prepareRecordMainTabSelection(){
+  updateTodayHarvestRecordedStatus();
+  if(recordSelectionMode === "planting"){
+    applyPlantingRecordDraft(getActivePlantingRecord());
+  }else if(editingHarvestRecordId && Array.isArray(editingHarvestSelectionKeys)){
+    harvestFillKeys = [...editingHarvestSelectionKeys];
+    if(harvestFillKeys.length){
+      recalcHarvestSummary();
+    }else{
+      harvestSummary = null;
+    }
+    const palletSummaryInput = document.getElementById("recordPalletSummaryInput");
+    if(palletSummaryInput) palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
+  }else{
+    captureRecordBaseSelection();
+    const palletSummaryInput = document.getElementById("recordPalletSummaryInput");
+    if(palletSummaryInput) palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
+  }
+  refreshRecordModeUi();
+  syncRecordPlantingSummaryFromSelection();
+  updateRecordActualLoss();
+}
+
+function prepareForecastMainTabSelection(){
+  syncCurrentBuildingToCasePlacement({ skipRendering: true, skipSummary: true });
+}
+
+function prepareDashboardMainTabSelection(){
+  syncDashboardSubtabUi();
+  scheduleDashboardRenderAfterTabSelection();
+}
+
+function cancelDashboardRenderAfterTabSelection(){
+  dashboardRenderScheduleId++;
+  setDashboardLoadingState(false);
+}
+
+function switchTab(tabName){
+  tabName = normalizeMainTabName(tabName);
+  if(!tabName) return false;
+  if(!ensureProtectedTabAccess(tabName)) return false;
+  const previousTab = activeAppTab;
+  preserveStateBeforeMainTabSwitch(previousTab, tabName);
   saveCurrentTabScrollPosition();
   closeRecordFloatingUi();
   resolveGoogleSheetConfirm(false);
@@ -12576,36 +12633,10 @@ function switchTab(tabName){
   setMainTabSelection(tabName);
   activeAppTab = tabName;
   scheduleMainTabPostSelectionWork(tabName);
-  if(tabName === "record"){
-    updateTodayHarvestRecordedStatus();
-    if(recordSelectionMode === "planting"){
-      applyPlantingRecordDraft(getActivePlantingRecord());
-    }else if(editingHarvestRecordId && Array.isArray(editingHarvestSelectionKeys)){
-      harvestFillKeys = [...editingHarvestSelectionKeys];
-      if(harvestFillKeys.length){
-        recalcHarvestSummary();
-      }else{
-        harvestSummary = null;
-      }
-      const palletSummaryInput = document.getElementById("recordPalletSummaryInput");
-      if(palletSummaryInput) palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
-    }else{
-      captureRecordBaseSelection();
-      document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
-    }
-    refreshRecordModeUi();
-    syncRecordPlantingSummaryFromSelection();
-    updateRecordActualLoss();
-  }
-  if(tabName === "forecast"){
-    syncCurrentBuildingToCasePlacement({ skipRendering: true, skipSummary: true });
-  }
-  if(tabName === "dashboard"){
-    syncDashboardSubtabUi();
-    scheduleDashboardRenderAfterTabSelection();
-  }else{
-    dashboardRenderScheduleId++;
-    setDashboardLoadingState(false);
+  const definition = MAIN_TAB_DEFINITIONS[tabName];
+  definition.afterSelection?.();
+  if(!definition.keepsDashboardRender){
+    cancelDashboardRenderAfterTabSelection();
   }
   deferPendingHarvestStateSaveUntilUiSettles();
   scheduleWorkflowGuideUpdate();

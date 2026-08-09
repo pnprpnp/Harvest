@@ -155,6 +155,10 @@
         "getSyncConflictLookupKey",
         "showPageBlockingUi",
         "hidePageBlockingUi",
+        "normalizeMainTabName",
+        "setMainTabSelection",
+        "setMainTabLoadingState",
+        "switchTab",
         "openDashboardForecastInfoWindow",
         "closeDashboardForecastInfoWindow",
         "openDashboardCalendarInfoWindow",
@@ -187,6 +191,49 @@
         assertDeepEqual(registeredIds, expectedIds, "背景スクロールを管理する画面一覧が違います");
         const missingElements = registeredIds.filter(id => !app.document.getElementById(id));
         assertDeepEqual(missingElements, [], "一覧に対応する画面要素がありません");
+      });
+
+      await runTest("4つのメインタブを一つの定義表で管理する", () => {
+        const definitions = comparable(app.eval(`Object.fromEntries(
+          MAIN_TAB_NAMES.map(name => [name, {
+            label: MAIN_TAB_DEFINITIONS[name].label,
+            hasAfterSelection: typeof MAIN_TAB_DEFINITIONS[name].afterSelection === "function",
+            hasAfterPaint: typeof MAIN_TAB_DEFINITIONS[name].afterPaint === "function",
+            keepsDashboardRender: !!MAIN_TAB_DEFINITIONS[name].keepsDashboardRender
+          }])
+        )`));
+        assertDeepEqual(definitions, {
+          forecast: { label: "シミュ", hasAfterSelection: true, hasAfterPaint: true, keepsDashboardRender: false },
+          monitor: { label: "モニター", hasAfterSelection: false, hasAfterPaint: true, keepsDashboardRender: false },
+          record: { label: "記録", hasAfterSelection: true, hasAfterPaint: true, keepsDashboardRender: false },
+          dashboard: { label: "集計", hasAfterSelection: true, hasAfterPaint: false, keepsDashboardRender: true }
+        }, "メインタブの定義が違います");
+        assertEqual(app.normalizeMainTabName("settings"), "forecast", "旧設定タブの移動先が変わりました");
+        assertEqual(app.normalizeMainTabName("unknown"), "", "不明なタブを受け入れています");
+      });
+
+      await runTest("タブ画面を先に切り替え、短い処理ではロード中を見せない", async () => {
+        const loadingState = app.document.getElementById("mainTabLoadingState");
+        app.eval("protectedAccessUnlocked = true");
+        try{
+          assertEqual(app.switchTab("record"), true, "記録タブへ移動できません");
+          assertEqual(app.document.getElementById("recordTab").style.display, "block", "記録画面がすぐ表示されません");
+          assertEqual(app.document.getElementById("recordBeds").getAttribute("aria-busy"), "true", "記録画面の描画状態を追跡できません");
+          assertEqual(app.switchTab("monitor"), true, "モニタータブへ移動できません");
+          assertEqual(app.eval("activeAppTab"), "monitor", "選択中のタブ状態が更新されません");
+          assertEqual(app.document.getElementById("monitorTab").style.display, "block", "モニター画面がすぐ表示されません");
+          assert(app.document.getElementById("monitorTabBtn").classList.contains("active"), "モニターのアイコンが選択表示になりません");
+          const activeButtons = app.eval("MAIN_TAB_NAMES.filter(name => document.getElementById(name + 'TabBtn')?.classList.contains('active'))");
+          assertDeepEqual(activeButtons, ["monitor"], "複数のタブが選択表示になっています");
+          assertEqual(app.document.getElementById("recordBeds").hasAttribute("aria-busy"), false, "前のタブのロード状態が残っています");
+          assertEqual(loadingState.hidden, false, "ロード状態の計測が始まっていません");
+          assertEqual(app.getComputedStyle(loadingState).visibility, "hidden", "0.3秒未満なのにロード中が見えています");
+          await new Promise(resolve => app.requestAnimationFrame(() => app.setTimeout(resolve, 40)));
+          assertEqual(loadingState.hidden, true, "短い描画後にロード状態が終了しません");
+        }finally{
+          app.switchTab("forecast");
+          await new Promise(resolve => app.requestAnimationFrame(() => app.setTimeout(resolve, 40)));
+        }
       });
 
       await runTest("パレット番号を範囲へ圧縮し、元へ戻せる", () => {
