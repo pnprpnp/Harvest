@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-tab-switch-cleanup">
+<meta name="harvestnavi-version" content="20260809-record-normalization-cleanup">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -13567,29 +13567,41 @@ function updateRecordInputGuides(){
   updateRecordAutoValueNotes();
 }
 
+function getRecordStorageCommonFields(record, type){
+  return {
+    ...getRecordSyncMetadata(record),
+    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+    id: record.id,
+    duplicateKey: getRecordDuplicateKey(record),
+    type,
+    date: record.date,
+    cases: record.cases,
+    memo: record.memo || ""
+  };
+}
+
+function getNormalizedRecordCommonFields(record, type){
+  return {
+    ...getRecordSyncMetadata(record),
+    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+    duplicateKey: String(record.duplicateKey || "").trim(),
+    type,
+    memo: record.memo || ""
+  };
+}
+
 function serializeRecordForStorage(record){
-  if(record?.type === "partialHarvest"){
+  const type = record?.type === "partialHarvest" ? "partialHarvest" : "fullHarvest";
+  const commonFields = getRecordStorageCommonFields(record, type);
+  if(type === "partialHarvest"){
     return {
-      ...getRecordSyncMetadata(record),
-      palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-      id: record.id,
-      duplicateKey: getRecordDuplicateKey(record),
-      type: "partialHarvest",
-      date: record.date,
-      cases: record.cases,
-      memo: record.memo || "",
+      ...commonFields,
       targets: normalizePartialHarvestTargets(record.targets)
     };
   }
 
   const payload = {
-    ...getRecordSyncMetadata(record),
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-    id: record.id,
-    duplicateKey: getRecordDuplicateKey(record),
-    type: "fullHarvest",
-    date: record.date,
-    cases: record.cases,
+    ...commonFields,
     palletSummary: record.palletSummary,
     plannedSeedlingTrayCount: clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0),
     plantingCaseInstruction: String(record.plantingCaseInstruction || "").trim(),
@@ -13598,10 +13610,10 @@ function serializeRecordForStorage(record){
     actualSeedlingTrayCount: clampNumber(record.actualSeedlingTrayCount, 0, 999999, clampNumber(record.actualSeedling60TrayCount, 0, 999999, 0) + clampNumber(record.actualSeedling120TrayCount, 0, 999999, 0)),
     actualSeedlingCarryoverMode: normalizeSeedlingCarryoverMode(record.actualSeedlingCarryoverMode),
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
-    memo: record.memo || "",
     actualLoss: record.actualLoss,
     qualityMemo: normalizeQualityMemo(record.qualityMemo),
     plantingAge: record.plantingAge || null,
+    // 読み込み元の古い範囲ではなく、画面上の現在選択を保存する。
     palletRanges: compressPalletKeysToRanges(record.palletKeys),
     plantingRanges: compressPalletKeysToRanges(record.plantingPalletKeys),
     plantingPending: !!record.plantingPending
@@ -13616,14 +13628,10 @@ function normalizeStoredRecord(record){
     const targets = normalizePartialHarvestTargets(record.targets);
     if(!targets.length) return null;
     return {
-      ...getRecordSyncMetadata(record),
-      palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+      ...getNormalizedRecordCommonFields(record, "partialHarvest"),
       id: record.id,
-      duplicateKey: String(record.duplicateKey || "").trim(),
-      type: "partialHarvest",
       date: String(record.date || "").trim(),
       cases: clampNumber(record.cases, 0, 999999, 0),
-      memo: record.memo || "",
       targets,
       palletKeys: []
     };
@@ -13633,11 +13641,7 @@ function normalizeStoredRecord(record){
   const plantingPalletKeys = getPlantingPalletKeysFromRecord(record, palletKeys);
   return {
     ...record,
-    ...getRecordSyncMetadata(record),
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-    duplicateKey: String(record.duplicateKey || "").trim(),
-    type: "fullHarvest",
-    memo: record.memo || "",
+    ...getNormalizedRecordCommonFields(record, "fullHarvest"),
     plannedSeedlingTrayCount: clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0),
     plantingCaseInstruction: String(record.plantingCaseInstruction || "").trim(),
     plantingSummary: String(record.plantingSummary || "").trim(),
@@ -13653,6 +13657,26 @@ function normalizeStoredRecord(record){
     plantingAge: normalizePlantingAgeSnapshot(record.plantingAge),
     palletKeys
   };
+}
+
+function normalizeRecordSnapshot(record, overrides = null){
+  if(!record || typeof record !== "object") return null;
+  const source = overrides && typeof overrides === "object"
+    ? { ...record, ...overrides }
+    : record;
+  const normalized = normalizeStoredRecord(source);
+  if(normalized?.type === "fullHarvest"){
+    const currentPalletKeys = getDirectPalletKeys(source.palletKeys);
+    const currentPlantingPalletKeys = getDirectPalletKeys(source.plantingPalletKeys);
+    if(currentPalletKeys !== null){
+      normalized.palletKeys = currentPalletKeys;
+      normalized.palletSummary = formatPalletSummary(currentPalletKeys);
+    }
+    if(currentPlantingPalletKeys !== null) normalized.plantingPalletKeys = currentPlantingPalletKeys;
+  }
+  return normalized
+    ? normalizeStoredRecord(serializeRecordForStorage(normalized))
+    : null;
 }
 
 function normalizePlantingEventSourceAllocations(value){
@@ -14641,7 +14665,7 @@ function addRecordToTrash(record, options = {}){
     return String(entry.record?.id ?? "") !== recordId;
   });
   deletedRecords.unshift({
-    record: normalizeStoredRecord(serializeRecordForStorage(record)),
+    record: normalizeRecordSnapshot(record),
     deletedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + RECORD_TRASH_RETENTION_MS).toISOString(),
     sheetDeleted: !!options.sheetDeleted,
@@ -14654,7 +14678,7 @@ function addRecordToTrash(record, options = {}){
 function normalizeSyncConflictEntityVersion(entityType, value){
   if(value === null || value === undefined) return null;
   if(entityType === "record"){
-    return normalizeStoredRecord(serializeRecordForStorage(value));
+    return normalizeRecordSnapshot(value);
   }
   if(entityType === "planting"){
     return normalizePlantingEvent(value);
@@ -15844,7 +15868,7 @@ function getActiveRecordForSyncConflict(entry){
 }
 
 function replaceActiveRecordForSyncConflict(entry, value){
-  const nextRecord = normalizeStoredRecord(serializeRecordForStorage(value));
+  const nextRecord = normalizeRecordSnapshot(value);
   if(!nextRecord) throw new Error("反映する収穫記録の形式が正しくありません");
   const current = getActiveRecordForSyncConflict(entry);
   const status = loadGoogleSheetSyncStatus();
@@ -15944,10 +15968,10 @@ async function applyLocalRecordSyncConflictVersion(entry, options = {}){
     throw new Error("競合解決の処理状態を確認できません");
   }
   try{
-    const localVersion = normalizeStoredRecord(serializeRecordForStorage(entry.localVersion));
+    const localVersion = normalizeRecordSnapshot(entry.localVersion);
     if(!localVersion) throw new Error("端末版の収穫記録を読み込めません");
     let baseVersion = entry.remoteVersion
-      ? normalizeStoredRecord(serializeRecordForStorage(entry.remoteVersion))
+      ? normalizeRecordSnapshot(entry.remoteVersion)
       : null;
     if(!baseVersion){
       const restoreResult = await restoreRecordToGoogleSheet(localVersion, { operationOwner });
@@ -29455,7 +29479,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
       };
       restoredState = "edited";
     }
-    const restoredRecord = normalizeStoredRecord(serializeRecordForStorage(restoredSource));
+    const restoredRecord = normalizeRecordSnapshot(restoredSource);
     if(!restoredRecord){
       const validation = validateRecordForGoogleTransfer(restoredSource, { enforceDuplicateKey: false });
       showRecordImportError([
@@ -30084,11 +30108,8 @@ function normalizeImportedRecord(record, index){
     }
 
     return {
-      ...getRecordSyncMetadata(record),
-      palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+      ...getNormalizedRecordCommonFields(record, "partialHarvest"),
       id: Number(record.id),
-      duplicateKey: String(record.duplicateKey || "").trim(),
-      type: "partialHarvest",
       date,
       cases,
       memo,
@@ -30132,11 +30153,8 @@ function normalizeImportedRecord(record, index){
   }
 
   return {
-    ...getRecordSyncMetadata(record),
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+    ...getNormalizedRecordCommonFields(record, "fullHarvest"),
     id: Number(record.id),
-    duplicateKey: String(record.duplicateKey || "").trim(),
-    type: "fullHarvest",
     date,
     cases,
     palletSummary,
@@ -30991,13 +31009,10 @@ function mergeBackupSyncConflicts(parsed, recordIdMap){
   const remapVersion = (entityType, value) => {
     if(!value) return null;
     if(entityType === "record"){
-      const record = normalizeStoredRecord(serializeRecordForStorage(value));
+      const record = normalizeRecordSnapshot(value);
       if(!record) return null;
       const mappedId = recordIdMap.get(getSafePositiveRecordId(record.id));
-      return normalizeStoredRecord(serializeRecordForStorage({
-        ...record,
-        id: mappedId ?? record.id
-      }));
+      return normalizeRecordSnapshot(record, { id: mappedId ?? record.id });
     }
     const remappedAllocations = Array.isArray(value.sourceAllocations)
       ? value.sourceAllocations.map(allocation => {

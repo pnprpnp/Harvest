@@ -147,6 +147,8 @@
         "parsePalletSummaryToKeys",
         "normalizePartialHarvestTargets",
         "normalizeStoredRecord",
+        "normalizeRecordSnapshot",
+        "normalizeImportedRecord",
         "serializeRecordForStorage",
         "getHarvestRecordCaseDisplayText",
         "getHarvestRecordEditTimelineRecords",
@@ -272,6 +274,62 @@
         assertDeepEqual(record.palletKeys, ["2-A-1", "2-A-2", "2-A-3"], "保存範囲を読み込めません");
         const serialized = app.serializeRecordForStorage(record);
         assertDeepEqual(serialized.palletRanges, ["2-A-1-3"], "保存時の範囲形式が変わりました");
+      });
+
+      await runTest("旧形式の通常収穫記録も共通経路で欠落なく正規化する", () => {
+        const legacyRecord = {
+          id: 41,
+          type: "fullHarvest",
+          date: "2026-08-07",
+          cases: 8,
+          palletSummary: "6号棟E:3-5",
+          palletRanges: ["6-E-3-5"],
+          plantingSummary: "6号棟E:3-4",
+          plantingRanges: ["6-E-3-4"],
+          plantingPending: false,
+          actualLoss: "2.5",
+          sizeRating: "大きい",
+          memo: "旧形式メモ"
+        };
+        const snapshot = app.normalizeRecordSnapshot(legacyRecord);
+        assert(snapshot, "旧形式の通常収穫記録を正規化できません");
+        assertDeepEqual(snapshot.palletKeys, ["6-E-3", "6-E-4", "6-E-5"], "収穫場所が欠落しました");
+        assertDeepEqual(snapshot.plantingPalletKeys, ["6-E-3", "6-E-4"], "苗植え場所が欠落しました");
+        assertDeepEqual(snapshot.qualityMemo, { tags: ["large"], other: "" }, "旧品質情報を引き継げません");
+        const serialized = app.serializeRecordForStorage(snapshot);
+        assertDeepEqual(serialized.palletRanges, ["6-E-3-5"], "通常収穫の保存範囲が変わりました");
+        assertDeepEqual(serialized.plantingRanges, ["6-E-3-4"], "苗植えの保存範囲が変わりました");
+        assertEqual(Object.prototype.hasOwnProperty.call(serialized, "palletKeys"), false, "保存形式に展開済みパレットが混入しました");
+        snapshot.palletKeys = ["6-E-10"];
+        snapshot.plantingPalletKeys = ["6-E-10"];
+        const edited = app.serializeRecordForStorage(snapshot);
+        assertDeepEqual(edited.palletRanges, ["6-E-10-10"], "編集前の収穫場所が保存時に復活しました");
+        assertDeepEqual(edited.plantingRanges, ["6-E-10-10"], "編集前の苗植え場所が保存時に復活しました");
+        const editedSnapshot = app.normalizeRecordSnapshot(snapshot);
+        assertDeepEqual(editedSnapshot.palletKeys, ["6-E-10"], "スナップショット内で編集前の収穫場所が復活しました");
+        assertDeepEqual(editedSnapshot.plantingPalletKeys, ["6-E-10"], "スナップショット内で編集前の苗植え場所が復活しました");
+        const imported = app.normalizeImportedRecord(legacyRecord, 0);
+        assert(imported, "旧形式の通常収穫記録をインポート経路で正規化できません");
+        assertDeepEqual(imported.palletKeys, ["6-E-3", "6-E-4", "6-E-5"], "インポート時に収穫場所が欠落しました");
+        assertDeepEqual(imported.qualityMemo, { tags: ["large"], other: "" }, "インポート時に旧品質情報が欠落しました");
+      });
+
+      await runTest("途中収穫の記録スナップショットも同じ経路で正規化する", () => {
+        const snapshot = app.normalizeRecordSnapshot({
+          id: 42,
+          type: "partialHarvest",
+          date: "2026-08-08",
+          cases: 3,
+          memo: "途中",
+          targets: [{ building: 7, bed: "B", start: 6, end: 2, plantsPerPallet: 11 }]
+        });
+        assert(snapshot, "途中収穫記録を正規化できません");
+        assertDeepEqual(snapshot.targets, [
+          { building: 7, bed: "B", start: 2, end: 6, plantsPerPallet: 11 }
+        ], "途中収穫場所の保存内容が変わりました");
+        const serialized = app.serializeRecordForStorage(snapshot);
+        assertEqual(serialized.type, "partialHarvest", "途中収穫の種類が変わりました");
+        assertEqual(Object.prototype.hasOwnProperty.call(serialized, "palletRanges"), false, "途中収穫へ通常収穫の範囲が混入しました");
       });
 
       await runTest("同じ日の通常収穫と途中収穫を現在の表示規則で集計する", () => {
