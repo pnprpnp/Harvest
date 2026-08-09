@@ -170,6 +170,208 @@
       });
     }
 
+    function loadVisualAppFrame(width, height, source = `../index.html?visual-characterization=${Date.now()}`){
+      return new Promise((resolve, reject) => {
+        const visualFrame = document.createElement("iframe");
+        visualFrame.title = "見た目比較用のHarvestnavi";
+        visualFrame.style.width = `${width}px`;
+        visualFrame.style.height = `${height}px`;
+        const timeout = setTimeout(() => {
+          visualFrame.remove();
+          reject(new Error("見た目比較用の画面を10秒以内に読み込めませんでした"));
+        }, 10000);
+        visualFrame.addEventListener("load", () => {
+          clearTimeout(timeout);
+          resolve(visualFrame);
+        }, { once: true });
+        visualFrame.src = source;
+        document.body.appendChild(visualFrame);
+      });
+    }
+
+    function getVisualFingerprint(app){
+      const properties = [
+        "display", "position", "inset", "top", "right", "bottom", "left",
+        "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
+        "marginTop", "marginRight", "marginBottom", "marginLeft",
+        "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+        "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+        "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor",
+        "borderRadius", "backgroundColor", "backgroundImage", "color", "opacity",
+        "visibility", "boxShadow", "transform", "overflow", "overflowX", "overflowY",
+        "fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing",
+        "textAlign", "gap", "rowGap", "columnGap", "gridTemplateColumns",
+        "gridTemplateRows", "flexDirection", "alignItems", "justifyContent"
+      ];
+      const entries = [];
+      let visibleCount = 0;
+      [...app.document.body.querySelectorAll("*")].forEach((element, index) => {
+        const style = app.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        const isVisible = style.display !== "none"
+          && style.visibility !== "hidden"
+          && rect.width > 0
+          && rect.height > 0;
+        if(isVisible) visibleCount++;
+        const identity = [
+          index,
+          element.localName,
+          element.id || "",
+          element.getAttribute("class") || ""
+        ];
+        const geometry = isVisible
+          ? [rect.x, rect.y, rect.width, rect.height].map(value => Math.round(value * 100) / 100)
+          : [];
+        const values = properties.map(property => style[property]);
+        const before = app.getComputedStyle(element, "::before");
+        const after = app.getComputedStyle(element, "::after");
+        entries.push(JSON.stringify([
+          identity,
+          geometry,
+          values,
+          [before.content, before.display, before.color, before.backgroundColor],
+          [after.content, after.display, after.color, after.backgroundColor]
+        ]));
+      });
+      let hash = 2166136261;
+      const source = entries.join("\n");
+      for(let index = 0; index < source.length; index++){
+        hash ^= source.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+      return {
+        hash: (hash >>> 0).toString(16).padStart(8, "0"),
+        elements: entries.length,
+        visible: visibleCount,
+        viewport: `${app.innerWidth}x${app.innerHeight}`
+      };
+    }
+
+    async function settleVisualApp(app){
+      if(app.document.fonts?.ready) await app.document.fonts.ready;
+      await new Promise(resolve => app.requestAnimationFrame(() => (
+        app.requestAnimationFrame(() => app.setTimeout(resolve, 120))
+      )));
+    }
+
+    function createVisualStateFixture(app){
+      const fixture = app.document.createElement("div");
+      fixture.id = "visualStateFixture";
+      fixture.style.cssText = "position:fixed;left:-1200px;top:0;width:1000px;z-index:-1;";
+      fixture.innerHTML = `
+        <label class="fieldAccentLabel">入力見本</label>
+        <input class="emptyInputField" placeholder="未入力">
+        <input class="recordInputNeedsAttention" placeholder="要確認">
+        <div class="inputUnitWrap"><input class="emptyInputField"><span class="inputUnitSuffix">ケース</span></div>
+        <span class="seedlingInlineWrap"><input class="seedlingInlineInput"><span class="seedlingInlineSuffix">枚</span></span>
+        <div class="casePlacementGrid"><div class="casePlacementItem"><label>手前</label></div></div>
+        <div class="bedMiniMapBar">
+          <span class="bedMiniMapSegment partialHarvest"></span>
+          <span class="bedMiniMapSegment selected partialHarvest"></span>
+          <span class="bedMiniMapSegment recorded partialHarvest"></span>
+          <span class="bedMiniMapSegment recorded partial partialHarvest"></span>
+        </div>
+        <div class="plantingBedMap"><div class="bedMiniMapBar">
+          <span class="bedMiniMapSegment plantingSelectable"></span>
+          <span class="bedMiniMapSegment plantingSelected"></span>
+          <span class="bedMiniMapSegment plantingUnavailable"></span>
+        </div></div>
+        <div class="palletGrid">
+          <span class="pallet multiple8Pair"></span><span class="pallet centerStrong"></span>
+          <span class="pallet harvestFill"></span><span class="pallet harvestStart"></span>
+          <span class="pallet harvestEnd"></span><span class="pallet recordedPallet"></span>
+          <span class="pallet partialHarvestPallet"></span><span class="pallet partialHarvestPallet recordedPallet"></span>
+          <span class="pallet plantingSelectablePallet"></span><span class="pallet plantingSelectedPallet"></span>
+          <span class="pallet plantingUnavailablePallet"></span><span class="pallet harvestProgressCompletedPallet"></span>
+        </div>
+        <div class="monitorBedBar">
+          <span class="monitorBedSegment partialHarvest"></span>
+          <span class="monitorBedSegment selected partialHarvest"></span>
+          <span class="monitorBedSegment recorded partialHarvest"></span>
+          <span class="monitorBedSegment recorded partial partialHarvest"></span>
+        </div>
+        <button class="harvestProgressBed is-selected"><span class="bedMiniMapSegment"></span></button>
+        <div class="bed harvestProgressCompletedBed"><span class="bedMiniMapSegment"></span></div>
+        <div class="bed bedCollapsed simulationBedOverview harvestProgressCompletedBed"></div>
+        <div class="recordDateInputRow"><input id="visualRecordDateInput" class="recordInputNeedsAttention" type="date"></div>
+        <div class="dashboardForecastValueInput"><input></div>
+        <div class="dashboardForecastValueInput autoValue"><input></div>
+        <label class="qualityChoice"><input type="checkbox">通常</label>
+        <label class="qualityChoice"><input type="checkbox" checked>選択</label>
+        <label class="qualityChoice qualityProblem"><input type="checkbox" checked>問題</label>
+        <div class="dashboardSeedlingStatusBed has-lot-selection">
+          <span class="dashboardSeedlingBedMapCell"></span>
+          <span class="dashboardSeedlingBedMapCell is-lot-selected is-lot-edge-top"></span>
+        </div>
+        <div class="recordLegendItem" hidden>非表示</div>
+        <div class="recordStageSection" hidden>非表示</div>
+        <div class="dashboardSubtabPanel" hidden>非表示</div>
+      `;
+      app.document.body.appendChild(fixture);
+      return fixture;
+    }
+
+    async function collectVisualFingerprints(){
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("harvestnaviWorkflowTitleHintShown_v1", "1");
+      const visualFrame = await loadVisualAppFrame(390, 844);
+      const app = visualFrame.contentWindow;
+      try{
+        app.eval("protectedAccessUnlocked = true");
+        const stabilityStyle = app.document.createElement("style");
+        stabilityStyle.textContent = "*,*::before,*::after{transition:none!important;animation:none!important;}";
+        app.document.head.appendChild(stabilityStyle);
+        app.document.getElementById("welcomeScreen")?.remove();
+        await settleVisualApp(app);
+        const fingerprints = {
+          mobileForecast: getVisualFingerprint(app)
+        };
+        const stateFixture = createVisualStateFixture(app);
+        fingerprints.cssStates = getVisualFingerprint(app);
+        stateFixture.querySelector(".emptyInputField")?.focus();
+        fingerprints.cssFocus = getVisualFingerprint(app);
+        stateFixture.remove();
+
+        app.switchTab("record");
+        const qualityInput = app.document.querySelector(".qualityChoice input");
+        if(qualityInput) qualityInput.checked = true;
+        await settleVisualApp(app);
+        fingerprints.mobileRecord = getVisualFingerprint(app);
+
+        app.switchTab("dashboard");
+        await settleVisualApp(app);
+        fingerprints.mobileDashboard = getVisualFingerprint(app);
+
+        app.openAppMenuWindow();
+        await settleVisualApp(app);
+        fingerprints.mobileMenu = getVisualFingerprint(app);
+        app.closeAppMenuWindow();
+
+        app.openForecastSettingsWindow();
+        await settleVisualApp(app);
+        fingerprints.mobileSettings = getVisualFingerprint(app);
+        app.closeForecastSettingsWindow();
+
+        app.switchTab("monitor");
+        await settleVisualApp(app);
+        fingerprints.mobileMonitor = getVisualFingerprint(app);
+
+        visualFrame.style.width = "1024px";
+        visualFrame.style.height = "900px";
+        app.switchTab("forecast");
+        await settleVisualApp(app);
+        fingerprints.wideForecast = getVisualFingerprint(app);
+
+        app.switchTab("dashboard");
+        await settleVisualApp(app);
+        fingerprints.wideDashboard = getVisualFingerprint(app);
+        return fingerprints;
+      }finally{
+        visualFrame.remove();
+      }
+    }
+
     async function runCharacterizationTests(iframe, appsScriptIframe){
       const app = iframe.contentWindow;
       const appsScript = appsScriptIframe.contentWindow;
@@ -936,6 +1138,22 @@
           app.closeDashboardForecastInfoWindow();
           app.closeDashboardCalendarInfoWindow();
         }
+      });
+
+      await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
+        const fingerprints = await collectVisualFingerprints();
+        assertDeepEqual(fingerprints, {
+          mobileForecast: { hash: "7c2b26a5", elements: 2020, visible: 647, viewport: "390x844" },
+          cssStates: { hash: "1f4a9346", elements: 2084, visible: 706, viewport: "390x844" },
+          cssFocus: { hash: "b54f6b29", elements: 2084, visible: 706, viewport: "390x844" },
+          mobileRecord: { hash: "0c92f324", elements: 2021, visible: 128, viewport: "390x844" },
+          mobileDashboard: { hash: "79289118", elements: 2021, visible: 130, viewport: "390x844" },
+          mobileMenu: { hash: "6286b238", elements: 2021, visible: 307, viewport: "390x844" },
+          mobileSettings: { hash: "40d9ac22", elements: 2021, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "590dcc03", elements: 2021, visible: 91, viewport: "390x844" },
+          wideForecast: { hash: "a00e8354", elements: 2021, visible: 653, viewport: "1024x900" },
+          wideDashboard: { hash: "5d67b76b", elements: 2021, visible: 136, viewport: "1024x900" }
+        }, "現在の見た目から変化しています");
       });
     }
 

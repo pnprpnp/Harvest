@@ -14,6 +14,13 @@ from source_bundle import BundleConfig, run_bundle
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 VERSION_MANIFEST_PATH = REPOSITORY_ROOT / "version.json"
 STORAGE_GATEWAY_PATH = REPOSITORY_ROOT / "src" / "scripts" / "browser-storage.js"
+CSS_ROOT = REPOSITORY_ROOT / "src" / "styles"
+REDUCED_MOTION_CSS_PATH = CSS_ROOT / "unified" / "inputs-and-responsive.css"
+REDUCED_MOTION_PRIORITY_RULE = (
+    "*,*::before,*::after{scroll-behavior:auto !important;"
+    "transition-duration:.01ms !important;animation-duration:.01ms !important;"
+    "animation-iteration-count:1 !important;}"
+)
 VERSION_META_PATTERN = re.compile(
     r'<meta\s+name="harvestnavi-version"\s+content="([^"]+)"\s*/?>'
 )
@@ -79,6 +86,43 @@ def check_browser_storage_access() -> bool:
     return False
 
 
+def check_css_priority_overrides() -> bool:
+    """Allow priority overrides only for the reduced-motion accessibility rule."""
+    violations: list[str] = []
+    found_reduced_motion_rule = False
+    for css_path in sorted(CSS_ROOT.rglob("*.css")):
+        source = css_path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(source.splitlines(), start=1):
+            if "!important" not in line:
+                continue
+            if (
+                css_path == REDUCED_MOTION_CSS_PATH
+                and line.strip() == REDUCED_MOTION_PRIORITY_RULE
+            ):
+                found_reduced_motion_rule = True
+                continue
+            violations.append(f"{css_path.relative_to(REPOSITORY_ROOT)}:{line_number}")
+
+    if not found_reduced_motion_rule:
+        print("動きを抑えるアクセシビリティ用CSSが見つかりません。")
+        return False
+    if not violations:
+        return True
+    print("アクセシビリティ用途以外の !important があります:")
+    for violation in violations:
+        print(f"  {violation}")
+    return False
+
+
+def check_index_source_invariants() -> bool:
+    """Validate source rules shared by the individual and all-output builds."""
+    return (
+        check_app_version_consistency()
+        and check_browser_storage_access()
+        and check_css_priority_overrides()
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -87,7 +131,7 @@ def main() -> int:
         help="index.htmlを書き換えず、分割ソースとの一致だけを確認する",
     )
     arguments = parser.parse_args()
-    if not check_app_version_consistency() or not check_browser_storage_access():
+    if not check_index_source_invariants():
         return 1
     return run_bundle(CONFIG, check=arguments.check)
 

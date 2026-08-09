@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 
 from build_apps_script import CONFIG as APPS_SCRIPT_CONFIG
-from build_index import CONFIG as INDEX_CONFIG
+from build_index import CONFIG as INDEX_CONFIG, check_index_source_invariants
 from source_bundle import run_bundle
 
 
@@ -18,6 +18,8 @@ def main() -> int:
         help="生成ファイルを書き換えず、分割ソースとの一致だけを確認する",
     )
     arguments = parser.parse_args()
+    if not check_index_source_invariants():
+        return 1
     for config in (INDEX_CONFIG, APPS_SCRIPT_CONFIG):
         result = run_bundle(config, check=arguments.check)
         if result != 0:
