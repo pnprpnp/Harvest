@@ -13923,12 +13923,7 @@ function savePlantingEventsToStorage(){
     PLANTING_EVENTS_KEY,
     JSON.stringify(plantingEvents.map(serializePlantingEventForStorage).filter(Boolean))
   );
-  invalidateRecordHistoryCache();
-  invalidatePlantingEventStateCache();
-  invalidateDashboardDerivedData();
-  workflowPendingRecordCache = null;
-  workflowPendingRecordCacheReady = false;
-  scheduleWorkflowGuideUpdate();
+  completeRecordDataMutation();
 }
 
 function loadDeletedPlantingEvents(){
@@ -14544,6 +14539,27 @@ function invalidateHarvestRecordEditTimelineCache(){
   harvestRecordEditTimelineCacheDate = "";
 }
 
+function invalidateWorkflowPendingRecordCache(){
+  workflowPendingRecordCache = null;
+  workflowPendingRecordCacheReady = false;
+}
+
+function invalidateRecordDerivedCaches(options = {}){
+  if(options.harvestRecords === true){
+    invalidateHarvestRecordEditTimelineCache();
+    invalidateHarvestRecordLookupCache();
+  }
+  invalidateRecordHistoryCache();
+  invalidatePlantingEventStateCache();
+  invalidateDashboardDerivedData();
+  invalidateWorkflowPendingRecordCache();
+}
+
+function completeRecordDataMutation(options = {}){
+  invalidateRecordDerivedCaches(options);
+  scheduleWorkflowGuideUpdate();
+}
+
 function getActiveHarvestTimelineRecords(sourceRecords = records){
   if(sourceRecords !== records) return sourceRecords;
   if(activeAppTab !== "record" || recordSelectionMode !== "harvest" || !editingHarvestRecordId){
@@ -14575,16 +14591,9 @@ function loadRecords(){
 }
 
 function saveRecordsToStorage(){
-  invalidateHarvestRecordEditTimelineCache();
-  invalidateHarvestRecordLookupCache();
-  invalidatePlantingEventStateCache();
-  invalidateDashboardDerivedData();
-  workflowPendingRecordCache = null;
-  workflowPendingRecordCacheReady = false;
   records.sort(compareRecordsByDateDesc);
   localStorage.setItem(RECORDS_KEY, JSON.stringify(records.map(serializeRecordForStorage)));
-  invalidateRecordHistoryCache();
-  scheduleWorkflowGuideUpdate();
+  completeRecordDataMutation({ harvestRecords: true });
 }
 
 function normalizeRecordsStorageOnce(){
@@ -14689,10 +14698,11 @@ function normalizeSyncConflictEntityVersion(entityType, value){
 function getSyncConflictEntityIdentity(entityType, localVersion, remoteVersion){
   const source = remoteVersion || localVersion;
   if(entityType === "record"){
-    const recordUuid = normalizeRecordUuid(source?.recordUuid);
-    const recordId = getSafePositiveRecordId(source?.id);
-    if(recordUuid) return { recordUuid, entityId: recordId };
-    return recordId === null ? null : { recordUuid: "", entityId: recordId };
+    const identity = getHarvestRecordIdentity(source);
+    if(identity.recordUuid){
+      return { recordUuid: identity.recordUuid, entityId: identity.id };
+    }
+    return identity.id === null ? null : { recordUuid: "", entityId: identity.id };
   }
   if(entityType === "planting"){
     const eventId = getSafePositiveRecordId(source?.eventId);
@@ -15139,6 +15149,34 @@ function getSafePositiveRecordId(value){
   return getStrictIntegerInRange(value, 1, RECORD_MAX_ID);
 }
 
+function getHarvestRecordIdentity(value){
+  return {
+    recordUuid: normalizeRecordUuid(value?.recordUuid),
+    id: getSafePositiveRecordId(value?.id)
+  };
+}
+
+function getHarvestRecordIdentityKey(value){
+  const identity = getHarvestRecordIdentity(value);
+  if(identity.recordUuid) return "uuid:" + identity.recordUuid;
+  return identity.id === null ? "" : "id:" + identity.id;
+}
+
+function findHarvestRecordByIdentity(identity, sourceRecords = records, options = {}){
+  const normalizedIdentity = getHarvestRecordIdentity(identity);
+  const candidates = Array.isArray(sourceRecords) ? sourceRecords : [];
+  if(normalizedIdentity.recordUuid){
+    const uuidMatch = candidates.find(record => (
+      normalizeRecordUuid(record?.recordUuid) === normalizedIdentity.recordUuid
+    )) || null;
+    if(uuidMatch || options.fallbackToId === false) return uuidMatch;
+  }
+  if(normalizedIdentity.id === null) return null;
+  return candidates.find(record => (
+    getSafePositiveRecordId(record?.id) === normalizedIdentity.id
+  )) || null;
+}
+
 function saveGoogleSheetConfigToStorage(config){
   const previousUrl = String(loadGoogleSheetConfig().url || "").trim();
   const nextUrl = String(config?.url || "").trim();
@@ -15253,7 +15291,7 @@ function getGoogleSheetRecordSyncKeys(record){
   if(!record || typeof record !== "object") return [];
 
   const keys = [];
-  const recordUuid = normalizeRecordUuid(record.recordUuid);
+  const recordUuid = getHarvestRecordIdentity(record).recordUuid;
   const id = String(record.id || "").trim();
   const duplicateKey = String(getRecordDuplicateKey(record) || record.duplicateKey || "").trim();
 
@@ -15420,18 +15458,16 @@ function ensureGoogleSheetLocalMutationAllowed(action, options = {}){
 }
 
 function getGoogleSheetBackgroundRecordKey(record){
-  const recordUuid = normalizeRecordUuid(record?.recordUuid);
-  if(recordUuid) return "uuid:" + recordUuid;
-  const recordId = getSafePositiveRecordId(record?.id);
-  return recordId === null ? "" : "id:" + recordId;
+  return getHarvestRecordIdentityKey(record);
 }
 
 function findGoogleSheetBackgroundRecord(job){
   if(!job) return null;
-  if(job.recordUuid){
-    return records.find(record => normalizeRecordUuid(record?.recordUuid) === job.recordUuid) || null;
-  }
-  return getRecordById(job.recordId);
+  return findHarvestRecordByIdentity(
+    { recordUuid: job.recordUuid, id: job.recordId },
+    records,
+    { fallbackToId: !job.recordUuid }
+  );
 }
 
 function queueGoogleSheetRecordSend(record, options = {}){
@@ -15861,10 +15897,10 @@ function closeSyncConflictPanel(){
 }
 
 function getActiveRecordForSyncConflict(entry){
-  const recordUuid = normalizeRecordUuid(entry?.recordUuid);
-  return (recordUuid ? getRecordByUuid(recordUuid) : null)
-    || getRecordById(entry?.entityId)
-    || null;
+  return findHarvestRecordByIdentity({
+    recordUuid: entry?.recordUuid,
+    id: entry?.entityId
+  });
 }
 
 function replaceActiveRecordForSyncConflict(entry, value){
@@ -18869,12 +18905,6 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
   let deletedEventIds = [];
   const seenCursorPairs = new Set();
   const seenSyncRevisions = new Set();
-  const getRecordRevisionIdentityKey = value => {
-    const recordUuid = normalizeRecordUuid(value?.recordUuid);
-    if(recordUuid) return "uuid:" + recordUuid;
-    const recordId = getSafePositiveRecordId(value?.id);
-    return recordId === null ? "" : "id:" + recordId;
-  };
   const removeMatchingItems = (items, key, getKey) => {
     if(!key) return;
     for(let index = items.length - 1; index >= 0; index--){
@@ -18886,7 +18916,7 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     const uniqueTombstones = [];
     const seenTombstones = new Set();
     tombstones.forEach(item => {
-      const key = item.recordUuid ? "uuid:" + item.recordUuid : "id:" + item.id;
+      const key = getHarvestRecordIdentityKey(item);
       if(seenTombstones.has(key)) return;
       seenTombstones.add(key);
       uniqueTombstones.push(item);
@@ -18963,17 +18993,17 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     if(isRevisionDelta){
       // 差分取得中に同じ記録が再更新されても、後のページを正とする。
       pageRecords.forEach(record => {
-        const key = getRecordRevisionIdentityKey(record);
+        const key = getHarvestRecordIdentityKey(record);
         if(!key) throw new Error("差分同期の収穫記録に識別情報がありません");
-        removeMatchingItems(recordsToSync, key, getRecordRevisionIdentityKey);
-        removeMatchingItems(tombstones, key, getRecordRevisionIdentityKey);
+        removeMatchingItems(recordsToSync, key, getHarvestRecordIdentityKey);
+        removeMatchingItems(tombstones, key, getHarvestRecordIdentityKey);
         recordsToSync.push(record);
       });
       pageTombstones.forEach(tombstone => {
-        const key = getRecordRevisionIdentityKey(tombstone);
+        const key = getHarvestRecordIdentityKey(tombstone);
         if(!key) throw new Error("差分同期の削除記録に識別情報がありません");
-        removeMatchingItems(recordsToSync, key, getRecordRevisionIdentityKey);
-        removeMatchingItems(tombstones, key, getRecordRevisionIdentityKey);
+        removeMatchingItems(recordsToSync, key, getHarvestRecordIdentityKey);
+        removeMatchingItems(tombstones, key, getHarvestRecordIdentityKey);
         tombstones.push(tombstone);
       });
       pageEvents.forEach(event => {
@@ -25563,15 +25593,15 @@ function syncRecordActualSeedlingTrayCountInput(record = getActivePlantingRecord
 }
 
 function getRecordById(id){
-  const safeId = Number(id);
-  if(!Number.isFinite(safeId)) return null;
-  return records.find(record => Number(record.id) === safeId) || null;
+  return findHarvestRecordByIdentity({ id });
 }
 
 function getRecordByUuid(recordUuid){
-  const normalizedUuid = normalizeRecordUuid(recordUuid);
-  if(!normalizedUuid) return null;
-  return records.find(record => normalizeRecordUuid(record.recordUuid) === normalizedUuid) || null;
+  return findHarvestRecordByIdentity(
+    { recordUuid },
+    records,
+    { fallbackToId: false }
+  );
 }
 
 function getActivePlantingRecord(){
@@ -30380,7 +30410,7 @@ function normalizeRemoteHarvestTombstones(result){
     const recordUuid = normalizeRecordUuid(value?.recordUuid ?? (typeof value === "string" ? value : ""));
     const id = getSafePositiveRecordId(value?.id ?? (typeof value === "number" ? value : null));
     if(!recordUuid && id === null) return;
-    const key = recordUuid ? "uuid:" + recordUuid : "id:" + id;
+    const key = getHarvestRecordIdentityKey({ recordUuid, id });
     if(seen.has(key)) return;
     seen.add(key);
     tombstones.push({
@@ -30399,12 +30429,14 @@ function normalizeRemoteHarvestTombstones(result){
 }
 
 function harvestRecordMatchesIdentity(record, identity){
-  const recordUuid = normalizeRecordUuid(record?.recordUuid);
-  const identityUuid = normalizeRecordUuid(identity?.recordUuid);
-  if(recordUuid && identityUuid) return recordUuid === identityUuid;
-  const recordId = getSafePositiveRecordId(record?.id);
-  const identityId = getSafePositiveRecordId(identity?.id);
-  return recordId !== null && identityId !== null && recordId === identityId;
+  const recordIdentity = getHarvestRecordIdentity(record);
+  const expectedIdentity = getHarvestRecordIdentity(identity);
+  if(recordIdentity.recordUuid && expectedIdentity.recordUuid){
+    return recordIdentity.recordUuid === expectedIdentity.recordUuid;
+  }
+  return recordIdentity.id !== null
+    && expectedIdentity.id !== null
+    && recordIdentity.id === expectedIdentity.id;
 }
 
 function isHarvestRecordHiddenByAppOnlyDelete(record){
@@ -30521,8 +30553,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
   });
   const incomingByIdentity = new Map();
   normalizedIncomingRaw.forEach(record => {
-    const uuid = normalizeRecordUuid(record.recordUuid);
-    const key = uuid ? "uuid:" + uuid : "id:" + String(record.id);
+    const key = getHarvestRecordIdentityKey(record);
     // ページ取得中に同じ記録が再更新された場合は、後から取得した最新版を採用する。
     incomingByIdentity.set(key, record);
   });
@@ -31085,12 +31116,7 @@ function restoreBackupImportSnapshot(snapshot){
   syncConflicts = deepClone(snapshot.syncConflicts || []);
   restoreBackupImportStorageSnapshot(snapshot.storageValues || {});
 
-  invalidateHarvestRecordLookupCache();
-  invalidateRecordHistoryCache();
-  invalidatePlantingEventStateCache();
-  workflowPendingRecordCache = null;
-  workflowPendingRecordCacheReady = false;
-  invalidateDashboardDerivedData();
+  invalidateRecordDerivedCaches({ harvestRecords: true });
 
   try{
     refreshRecordHistoryViews();

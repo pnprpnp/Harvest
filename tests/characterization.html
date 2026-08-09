@@ -150,6 +150,11 @@
         "normalizeRecordSnapshot",
         "normalizeImportedRecord",
         "serializeRecordForStorage",
+        "getHarvestRecordIdentity",
+        "getHarvestRecordIdentityKey",
+        "findHarvestRecordByIdentity",
+        "harvestRecordMatchesIdentity",
+        "invalidateRecordDerivedCaches",
         "getHarvestRecordCaseDisplayText",
         "getHarvestRecordEditTimelineRecords",
         "buildRecordConsistencyAudit",
@@ -399,6 +404,91 @@
           }
         });
         assertEqual(lookupKey, `record:uuid:${uuid}`, "競合記録の照合キーが違います");
+      });
+
+      await runTest("同期する収穫記録の識別と検索をUUID優先で統一する", () => {
+        const firstUuid = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
+        const secondUuid = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        const first = { id: 70, recordUuid: firstUuid, name: "first" };
+        const second = { id: 71, recordUuid: secondUuid, name: "second" };
+        const identity = app.getHarvestRecordIdentity(first);
+        assertDeepEqual(identity, {
+          recordUuid: firstUuid.toLowerCase(),
+          id: 70
+        }, "収穫記録の識別情報が違います");
+        assertEqual(
+          app.getHarvestRecordIdentityKey(first),
+          `uuid:${firstUuid.toLowerCase()}`,
+          "UUIDがある記録の同期キーが違います"
+        );
+        assertEqual(app.getHarvestRecordIdentityKey({ id: 72 }), "id:72", "旧記録の同期キーが違います");
+        assertEqual(
+          app.findHarvestRecordByIdentity({ recordUuid: secondUuid, id: 70 }, [first, second]),
+          second,
+          "数値IDよりUUIDを優先して検索できません"
+        );
+        assertEqual(
+          app.findHarvestRecordByIdentity({ recordUuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", id: 70 }, [first, second]),
+          first,
+          "UUIDが見つからない互換記録をIDで検索できません"
+        );
+        assertEqual(
+          app.findHarvestRecordByIdentity(
+            { recordUuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", id: 70 },
+            [first, second],
+            { fallbackToId: false }
+          ),
+          null,
+          "UUIDだけで検索する経路がIDへ切り替わりました"
+        );
+        assertEqual(
+          app.harvestRecordMatchesIdentity(first, { id: 70, recordUuid: secondUuid }),
+          false,
+          "異なるUUIDの記録を同一扱いしています"
+        );
+      });
+
+      await runTest("記録変更後の派生キャッシュを一括で解除する", () => {
+        app.eval(`
+          harvestRecordEditTimelineCache = {};
+          harvestRecordEditTimelineCacheId = 1;
+          harvestRecordLookupCache.set("test", {});
+          recordHistoryCache = {};
+          plantingEventStateCache = {};
+          plantingEventStateCacheKey = "test";
+          dashboardHarvestForecastModelCache = {};
+          dashboardSeedlingStatusModelCache = {};
+          dashboardPastCalendarItemsByDateCache = {};
+          workflowPendingRecordCache = {};
+          workflowPendingRecordCacheReady = true;
+          invalidateRecordDerivedCaches({ harvestRecords: true });
+        `);
+        const cacheState = comparable(app.eval(`({
+          editTimeline: harvestRecordEditTimelineCache,
+          editTimelineId: harvestRecordEditTimelineCacheId,
+          lookupSize: harvestRecordLookupCache.size,
+          history: recordHistoryCache,
+          planting: plantingEventStateCache,
+          plantingKey: plantingEventStateCacheKey,
+          forecast: dashboardHarvestForecastModelCache,
+          seedlings: dashboardSeedlingStatusModelCache,
+          calendar: dashboardPastCalendarItemsByDateCache,
+          workflow: workflowPendingRecordCache,
+          workflowReady: workflowPendingRecordCacheReady
+        })`));
+        assertDeepEqual(cacheState, {
+          editTimeline: null,
+          editTimelineId: null,
+          lookupSize: 0,
+          history: null,
+          planting: null,
+          plantingKey: "",
+          forecast: null,
+          seedlings: null,
+          calendar: null,
+          workflow: null,
+          workflowReady: false
+        }, "解除後も古い計算結果が残っています");
       });
 
       await runTest("重なった情報ウィンドウを閉じても背景スクロールを正しく管理する", () => {
