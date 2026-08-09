@@ -164,9 +164,9 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   const migratedIds = loadMigratedPlantingRecordIds();
   if(migratedIds.delete(safeOldId)){
     migratedIds.add(safeNewId);
-    localStorage.setItem(
+    harvestnaviLocalStorage.writeJson(
       PLANTING_EVENTS_MIGRATION_KEY,
-      JSON.stringify([...migratedIds].sort((a, b) => a - b))
+      [...migratedIds].sort((a, b) => a - b)
     );
   }
   if(status?.["id:" + safeOldId] && !status["id:" + safeNewId]){
@@ -702,7 +702,7 @@ function mergeBackupPlantingMetadata(parsed, recordIdMap){
       wasSynced: !!entry.wasSynced
     });
   });
-  localStorage.setItem(PLANTING_EVENTS_MIGRATION_KEY, JSON.stringify([...migratedIds].sort((a, b) => a - b)));
+  harvestnaviLocalStorage.writeJson(PLANTING_EVENTS_MIGRATION_KEY, [...migratedIds].sort((a, b) => a - b));
   saveDeletedPlantingEventsToStorage();
 }
 
@@ -759,26 +759,18 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
 ];
 
 function createBackupImportSnapshot(){
-  const storageValues = {};
-  BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS.forEach(key => {
-    storageValues[key] = localStorage.getItem(key);
-  });
   return {
     records: deepClone(records),
     plantingEvents: deepClone(plantingEvents),
     deletedPlantingEvents: deepClone(deletedPlantingEvents),
     deletedRecords: deepClone(deletedRecords),
     syncConflicts: deepClone(syncConflicts),
-    storageValues
+    storageValues: harvestnaviLocalStorage.snapshotItems(BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS)
   };
 }
 
 function restoreBackupImportStorageSnapshot(storageValues){
-  BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
-  BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS.forEach(key => {
-    const value = storageValues?.[key];
-    if(value !== null && typeof value !== "undefined") localStorage.setItem(key, value);
-  });
+  harvestnaviLocalStorage.restoreItems(storageValues, BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS);
 }
 
 function restoreBackupImportSnapshot(snapshot){

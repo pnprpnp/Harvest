@@ -13,6 +13,7 @@ python3 tools/build_index.py
 - `html/`: ヘッダー、各タブ、ダイアログなどの画面構造
 - `styles/legacy.css`: 従来からある基本デザイン
 - `styles/unified/`: 機能別の共通デザイン上書き
+- `scripts/browser-storage.js`: 端末内・一時保存の読み込み、保存、削除、退避・復元をまとめた共通窓口
 - `scripts/app-update.js`: アプリ本体の更新と前バージョンへの復元
 - `scripts/welcome-paint.js`: 起動画面の初回描画
 - `scripts/app/01-*.js` から `19-*.js`: 本体処理。番号は現在の実行順でもあるため、並びを変更しない
@@ -21,7 +22,7 @@ python3 tools/build_index.py
 
 ## 確認
 
-`index.html` を直接変更した場合や生成を忘れた場合は、次のコマンドが不一致を報告します。
+`index.html` を直接変更した場合、生成を忘れた場合、更新番号が一致しない場合、または共通窓口を通さないブラウザー内保存操作を追加した場合は、次のコマンドが不一致を報告します。
 
 ```sh
 python3 tools/build_index.py --check

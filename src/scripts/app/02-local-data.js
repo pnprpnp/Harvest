@@ -1,8 +1,7 @@
 function loadSettings(){
   try{
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if(!raw) return deepClone(defaultSettings);
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(SETTINGS_KEY, null);
+    if(!parsed) return deepClone(defaultSettings);
 
     const merged = deepClone(defaultSettings);
     if(Number.isFinite(Number(parsed.defaultLossRate))) merged.defaultLossRate = Number(parsed.defaultLossRate);
@@ -37,7 +36,7 @@ function loadSettings(){
 }
 
 function saveSettingsToStorage(){
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  harvestnaviLocalStorage.writeJson(SETTINGS_KEY, settings);
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
 }
@@ -810,9 +809,7 @@ function isPlantingEventBeforeLatestOpeningBoundary(event){
 
 function loadPlantingEvents(){
   try{
-    const raw = localStorage.getItem(PLANTING_EVENTS_KEY);
-    if(!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENTS_KEY, []);
     if(!Array.isArray(parsed)) return [];
     return parsed.map(normalizePlantingEvent).filter(Boolean).sort(comparePlantingEventsAsc);
   }catch(e){
@@ -825,16 +822,16 @@ function savePlantingEventsToStorage(){
     .map(normalizePlantingEvent)
     .filter(Boolean)
     .sort(comparePlantingEventsAsc);
-  localStorage.setItem(
+  harvestnaviLocalStorage.writeJson(
     PLANTING_EVENTS_KEY,
-    JSON.stringify(plantingEvents.map(serializePlantingEventForStorage).filter(Boolean))
+    plantingEvents.map(serializePlantingEventForStorage).filter(Boolean)
   );
   completeRecordDataMutation();
 }
 
 function loadDeletedPlantingEvents(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(PLANTING_EVENT_TRASH_KEY) || "[]");
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENT_TRASH_KEY, []);
     if(!Array.isArray(parsed)) return [];
     const now = Date.now();
     return parsed.map(entry => {
@@ -861,12 +858,12 @@ function saveDeletedPlantingEventsToStorage(){
     const expiresTime = new Date(entry?.expiresAt || "").getTime();
     return normalizePlantingEvent(entry?.event) && Number.isFinite(expiresTime) && expiresTime > now;
   });
-  localStorage.setItem(PLANTING_EVENT_TRASH_KEY, JSON.stringify(
+  harvestnaviLocalStorage.writeJson(PLANTING_EVENT_TRASH_KEY,
     deletedPlantingEvents.map(entry => ({
       ...entry,
       event: serializePlantingEventForStorage(entry.event)
     }))
-  ));
+  );
 }
 
 function pruneExpiredDeletedPlantingEvents(now = Date.now()){
@@ -898,7 +895,7 @@ function isPlantingEventTemporarilyDeleted(eventId){
 
 function loadPlantingEventSyncStatus(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(PLANTING_EVENT_SYNC_STATUS_KEY) || "{}");
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENT_SYNC_STATUS_KEY, {});
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   }catch(e){
     return {};
@@ -906,7 +903,7 @@ function loadPlantingEventSyncStatus(){
 }
 
 function savePlantingEventSyncStatus(status){
-  localStorage.setItem(PLANTING_EVENT_SYNC_STATUS_KEY, JSON.stringify(status || {}));
+  harvestnaviLocalStorage.writeJson(PLANTING_EVENT_SYNC_STATUS_KEY, status || {});
 }
 
 function setPlantingEventSyncStatus(event, state){
@@ -944,7 +941,7 @@ function getNextPlantingEventId(){
 
 function loadMigratedPlantingRecordIds(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(PLANTING_EVENTS_MIGRATION_KEY) || "[]");
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENTS_MIGRATION_KEY, []);
     return new Set(Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : []);
   }catch(e){
     return new Set();
@@ -999,9 +996,9 @@ function migrateLegacyPlantingEvents(recordsToMigrate = records){
     changed = true;
   });
 
-  localStorage.setItem(
+  harvestnaviLocalStorage.writeJson(
     PLANTING_EVENTS_MIGRATION_KEY,
-    JSON.stringify([...migratedRecordIds].sort((a, b) => a - b))
+    [...migratedRecordIds].sort((a, b) => a - b)
   );
   if(changed) savePlantingEventsToStorage();
   else invalidatePlantingEventStateCache();
@@ -1011,7 +1008,7 @@ function migrateLegacyPlantingEvents(recordsToMigrate = records){
 
 function shouldRunLegacyPlantingEventBackfill(){
   try{
-    const state = JSON.parse(localStorage.getItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY) || "null");
+    const state = harvestnaviLocalStorage.readJson(LEGACY_PLANTING_EVENT_BACKFILL_KEY, null);
     return state?.completed !== true;
   }catch(e){
     return true;
@@ -1019,13 +1016,13 @@ function shouldRunLegacyPlantingEventBackfill(){
 }
 
 function markLegacyPlantingEventBackfillCompleted(result = {}){
-  localStorage.setItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY, JSON.stringify({
+  harvestnaviLocalStorage.writeJson(LEGACY_PLANTING_EVENT_BACKFILL_KEY, {
     completed: true,
     completedAt: new Date().toISOString(),
     createdCount: Math.max(0, Number(result.createdCount || 0)),
     sentCount: Math.max(0, Number(result.sentCount || 0)),
     failedCount: Math.max(0, Number(result.failedCount || 0))
-  }));
+  });
 }
 
 function getUnsentLegacyPlantingEventsForBackfill(){
@@ -1479,9 +1476,7 @@ function getActiveHarvestTimelineRecords(sourceRecords = records){
 
 function loadRecords(){
   try{
-    const raw = localStorage.getItem(RECORDS_KEY);
-    if(!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(RECORDS_KEY, []);
     if(!Array.isArray(parsed)) return [];
     return parsed
       .map(normalizeStoredRecord)
@@ -1498,15 +1493,15 @@ function loadRecords(){
 
 function saveRecordsToStorage(){
   records.sort(compareRecordsByDateDesc);
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records.map(serializeRecordForStorage)));
+  harvestnaviLocalStorage.writeJson(RECORDS_KEY, records.map(serializeRecordForStorage));
   completeRecordDataMutation({ harvestRecords: true });
 }
 
 function normalizeRecordsStorageOnce(){
   try{
-    if(localStorage.getItem(RECORD_STORAGE_NORMALIZATION_KEY) === "1") return false;
+    if(harvestnaviLocalStorage.getItem(RECORD_STORAGE_NORMALIZATION_KEY) === "1") return false;
     if(records.length) saveRecordsToStorage();
-    localStorage.setItem(RECORD_STORAGE_NORMALIZATION_KEY, "1");
+    harvestnaviLocalStorage.setItem(RECORD_STORAGE_NORMALIZATION_KEY, "1");
     return true;
   }catch(error){
     console.warn("記録保存形式の初回整理を完了できませんでした", error);
@@ -1516,9 +1511,7 @@ function normalizeRecordsStorageOnce(){
 
 function loadDeletedRecords(){
   try{
-    const raw = localStorage.getItem(RECORD_TRASH_KEY);
-    if(!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(RECORD_TRASH_KEY, []);
     if(!Array.isArray(parsed)) return [];
     const now = Date.now();
     const activeEntries = parsed.map(entry => {
@@ -1537,7 +1530,7 @@ function loadDeletedRecords(){
         remoteDeleted: !!entry?.remoteDeleted
       };
     }).filter(Boolean);
-    localStorage.setItem(RECORD_TRASH_KEY, JSON.stringify(activeEntries.map(serializeDeletedRecordEntry)));
+    harvestnaviLocalStorage.writeJson(RECORD_TRASH_KEY, activeEntries.map(serializeDeletedRecordEntry));
     return activeEntries;
   }catch(e){
     return [];
@@ -1558,7 +1551,7 @@ function serializeDeletedRecordEntry(entry){
 function saveDeletedRecordsToStorage(){
   const now = Date.now();
   deletedRecords = deletedRecords.filter(entry => new Date(entry.expiresAt).getTime() > now);
-  localStorage.setItem(RECORD_TRASH_KEY, JSON.stringify(deletedRecords.map(serializeDeletedRecordEntry)));
+  harvestnaviLocalStorage.writeJson(RECORD_TRASH_KEY, deletedRecords.map(serializeDeletedRecordEntry));
 }
 
 function pruneExpiredDeletedRecords(now = Date.now()){
@@ -1681,7 +1674,7 @@ function serializeSyncConflictEntry(entry){
 
 function loadSyncConflicts(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_CONFLICTS_KEY) || "[]");
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_CONFLICTS_KEY, []);
     if(!Array.isArray(parsed) || parsed.length > GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS) return [];
     const byKey = new Map();
     parsed.forEach(value => {
@@ -1701,9 +1694,9 @@ function saveSyncConflictsToStorage(){
   if(syncConflicts.length > GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS){
     throw new Error("競合一覧が" + GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS + "件を超えています");
   }
-  localStorage.setItem(
+  harvestnaviLocalStorage.writeJson(
     GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
-    JSON.stringify(syncConflicts.map(serializeSyncConflictEntry).filter(Boolean))
+    syncConflicts.map(serializeSyncConflictEntry).filter(Boolean)
   );
 }
 
@@ -1801,12 +1794,12 @@ function ensureSyncConflictResolvedBeforeChange(entityType, entity, action){
 
 function migrateLegacyRecordSyncConflictsOnce(){
   try{
-    if(localStorage.getItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY) === "1") return 0;
+    if(harvestnaviLocalStorage.getItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY) === "1") return 0;
   }catch(e){}
   const legacyEntries = deletedRecords.filter(entry => entry?.syncConflict && entry?.record);
   if(!legacyEntries.length){
     try{
-      localStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
+      harvestnaviLocalStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
     }catch(e){}
     return 0;
   }
@@ -1844,7 +1837,7 @@ function migrateLegacyRecordSyncConflictsOnce(){
   }
   if(!deletedRecords.some(entry => entry?.syncConflict && entry?.record)){
     try{
-      localStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
+      harvestnaviLocalStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
     }catch(e){}
   }
   return migratedEntries.length;
@@ -1857,7 +1850,7 @@ function cleanupObsoleteGoogleSheetSyncStorage(){
     "harvestForecastGoogleSheetSyncNoticeRevision_v1"
   ].forEach(key => {
     try{
-      localStorage.removeItem(key);
+      harvestnaviLocalStorage.removeItem(key);
     }catch(e){}
   });
 }

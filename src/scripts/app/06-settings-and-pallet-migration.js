@@ -414,14 +414,14 @@ function migrateStoredHarvestStateToCurrentNumbering(state){
 
 function migrateLocalPalletNumberingToLeftOriginOnce(){
   try{
-    if(localStorage.getItem(PALLET_NUMBERING_MIGRATION_KEY) === "done") return;
+    if(harvestnaviLocalStorage.getItem(PALLET_NUMBERING_MIGRATION_KEY) === "done") return;
 
     const migrateArrayStorage = (key, migrateItem) => {
-      const raw = localStorage.getItem(key);
+      const raw = harvestnaviLocalStorage.getItem(key);
       if(!raw) return;
       const parsed = JSON.parse(raw);
       if(!Array.isArray(parsed)) return;
-      localStorage.setItem(key, JSON.stringify(parsed.map(migrateItem)));
+      harvestnaviLocalStorage.writeJson(key, parsed.map(migrateItem));
     };
 
     migrateArrayStorage(RECORDS_KEY, migrateStoredHarvestRecordToCurrentNumbering);
@@ -435,12 +435,12 @@ function migrateLocalPalletNumberingToLeftOriginOnce(){
       event: migrateStoredPlantingEventToCurrentNumbering(entry?.event)
     }));
 
-    const stateRaw = localStorage.getItem(HARVEST_STATE_KEY);
+    const stateRaw = harvestnaviLocalStorage.getItem(HARVEST_STATE_KEY);
     if(stateRaw){
       const state = migrateStoredHarvestStateToCurrentNumbering(JSON.parse(stateRaw));
-      localStorage.setItem(HARVEST_STATE_KEY, JSON.stringify(state));
+      harvestnaviLocalStorage.writeJson(HARVEST_STATE_KEY, state);
     }
-    localStorage.setItem(PALLET_NUMBERING_MIGRATION_KEY, "done");
+    harvestnaviLocalStorage.setItem(PALLET_NUMBERING_MIGRATION_KEY, "done");
   }catch(error){
     console.error("パレット番号の保存データ移行に失敗しました", error);
     throw error;

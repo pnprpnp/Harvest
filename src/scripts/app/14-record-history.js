@@ -681,7 +681,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     setGoogleSheetSyncStatus(restoredRecord, restoredState);
     if(!entry.sheetDeleted && !entry.syncConflict){
       // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
-      localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+      harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
     }
     refreshRecordDataUi();
     showToast(entry.syncConflict
@@ -1339,9 +1339,8 @@ function normalizeImportedRecord(record, index){
 
 function loadRecordExportStatus(){
   try{
-    const raw = localStorage.getItem(RECORD_EXPORT_STATUS_KEY);
-    if(!raw) return { lastExportRecordCount: 0, lastPromptRecordCount: 0 };
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(RECORD_EXPORT_STATUS_KEY, null);
+    if(!parsed) return { lastExportRecordCount: 0, lastPromptRecordCount: 0 };
     return {
       lastExportRecordCount: clampNumber(parsed.lastExportRecordCount, 0, 99999999, 0),
       lastPromptRecordCount: clampNumber(parsed.lastPromptRecordCount, 0, 99999999, 0)
@@ -1352,7 +1351,7 @@ function loadRecordExportStatus(){
 }
 
 function saveRecordExportStatus(status){
-  localStorage.setItem(RECORD_EXPORT_STATUS_KEY, JSON.stringify(status || {}));
+  harvestnaviLocalStorage.writeJson(RECORD_EXPORT_STATUS_KEY, status || {});
 }
 
 function markRecordsExported(){

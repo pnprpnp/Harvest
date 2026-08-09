@@ -128,7 +128,7 @@
     const target = getCanonicalAppUrl();
     target.searchParams.set(VERSION_QUERY_KEY, version);
     try{
-      sessionStorage.setItem(UPDATED_NOTICE_KEY, notice);
+      harvestnaviSessionStorage.setItem(UPDATED_NOTICE_KEY, notice);
     }catch(e){}
     window.location.replace(target.toString());
   }
@@ -166,7 +166,7 @@
       indexSource: source
     });
     try{
-      localStorage.setItem(VERSION_STORAGE_KEY, nextVersion);
+      harvestnaviLocalStorage.setItem(VERSION_STORAGE_KEY, nextVersion);
     }catch(e){}
     openAppVersion(nextVersion);
   }
@@ -176,7 +176,7 @@
     const previousVersion = String(result?.meta?.activeVersion || "").trim();
     if(!previousVersion) throw new Error("戻すバージョンを確認できません");
     try{
-      localStorage.setItem(VERSION_STORAGE_KEY, previousVersion);
+      harvestnaviLocalStorage.setItem(VERSION_STORAGE_KEY, previousVersion);
     }catch(e){}
     openAppVersion(previousVersion, "rollback");
   }
@@ -220,7 +220,7 @@
       const urlVersion = new URL(window.location.href).searchParams.get(VERSION_QUERY_KEY) || "";
       let savedVersion = "";
       try{
-        savedVersion = localStorage.getItem(VERSION_STORAGE_KEY) || "";
+        savedVersion = harvestnaviLocalStorage.getItem(VERSION_STORAGE_KEY) || "";
       }catch(e){}
       const currentVersion = loadedVersion || urlVersion || savedVersion;
 

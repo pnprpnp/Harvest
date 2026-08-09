@@ -4,10 +4,10 @@ function finalizeHarvestnaviStartup(){
   updateAccessProtectionStatus();
   refreshEmptyInputHighlights();
   updateWorkflowGuide();
-  sessionStorage.removeItem("harvestForecastStartupRecovered");
-  const appVersionNotice = sessionStorage.getItem("harvestnaviAppUpdatedNotice_v1");
+  harvestnaviSessionStorage.removeItem("harvestForecastStartupRecovered");
+  const appVersionNotice = harvestnaviSessionStorage.getItem("harvestnaviAppUpdatedNotice_v1");
   if(appVersionNotice){
-    sessionStorage.removeItem("harvestnaviAppUpdatedNotice_v1");
+    harvestnaviSessionStorage.removeItem("harvestnaviAppUpdatedNotice_v1");
     showToast(appVersionNotice === "rollback"
       ? "前の安定版に戻しました"
       : "アプリを最新版に更新しました");
@@ -19,8 +19,8 @@ function finalizeHarvestnaviStartup(){
 
 function showHarvestnaviStartupFailure(error){
   console.error(error);
-  if(!sessionStorage.getItem("harvestForecastStartupRecovered")){
-    sessionStorage.setItem("harvestForecastStartupRecovered", "1");
+  if(!harvestnaviSessionStorage.getItem("harvestForecastStartupRecovered")){
+    harvestnaviSessionStorage.setItem("harvestForecastStartupRecovered", "1");
     clearHarvestStateFromStorage();
     window.location.reload();
     return;

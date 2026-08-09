@@ -13,8 +13,13 @@ from source_bundle import BundleConfig, run_bundle
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 VERSION_MANIFEST_PATH = REPOSITORY_ROOT / "version.json"
+STORAGE_GATEWAY_PATH = REPOSITORY_ROOT / "src" / "scripts" / "browser-storage.js"
 VERSION_META_PATTERN = re.compile(
     r'<meta\s+name="harvestnavi-version"\s+content="([^"]+)"\s*/?>'
+)
+DIRECT_STORAGE_ACCESS_PATTERN = re.compile(
+    r"\b(?:localStorage|sessionStorage)\s*\.\s*"
+    r"(?:getItem|setItem|removeItem|clear)\s*\("
 )
 CONFIG = BundleConfig(
     repository_root=REPOSITORY_ROOT,
@@ -54,6 +59,26 @@ def check_app_version_consistency() -> bool:
     return True
 
 
+def check_browser_storage_access() -> bool:
+    """Keep browser storage operations behind the shared gateway."""
+    violations: list[str] = []
+    scripts_root = REPOSITORY_ROOT / "src" / "scripts"
+    for script_path in sorted(scripts_root.rglob("*.js")):
+        if script_path == STORAGE_GATEWAY_PATH:
+            continue
+        source = script_path.read_text(encoding="utf-8")
+        for match in DIRECT_STORAGE_ACCESS_PATTERN.finditer(source):
+            line_number = source.count("\n", 0, match.start()) + 1
+            violations.append(f"{script_path.relative_to(REPOSITORY_ROOT)}:{line_number}")
+
+    if not violations:
+        return True
+    print("ブラウザー内保存を共通窓口を通さず操作している箇所があります:")
+    for violation in violations:
+        print(f"  {violation}")
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -62,7 +87,7 @@ def main() -> int:
         help="index.htmlを書き換えず、分割ソースとの一致だけを確認する",
     )
     arguments = parser.parse_args()
-    if not check_app_version_consistency():
+    if not check_app_version_consistency() or not check_browser_storage_access():
         return 1
     return run_bundle(CONFIG, check=arguments.check)
 

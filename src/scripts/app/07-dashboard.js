@@ -400,8 +400,8 @@ function invalidateDashboardDerivedData(){
 
 function loadDashboardFilter(){
   try{
-    const raw = localStorage.getItem(DASHBOARD_FILTER_KEY);
-    if(!raw) return {
+    const parsed = harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, null);
+    if(!parsed) return {
       startDay: getDefaultDashboardStartDay(),
       graphStartDate: "",
       graphEndDate: "",
@@ -414,7 +414,6 @@ function loadDashboardFilter(){
       recordStartDate: "",
       recordEndDate: ""
     };
-    const parsed = JSON.parse(raw);
     const normalizeGranularity = value => ["month", "year"].includes(value) ? value : "month";
     const startDay = clampNumber(parsed?.startDay, 1, 31, getDefaultDashboardStartDay());
     return {
@@ -452,7 +451,7 @@ function loadDashboardFilter(){
 }
 
 function saveDashboardFilter(){
-  localStorage.setItem(DASHBOARD_FILTER_KEY, JSON.stringify(dashboardFilter));
+  harvestnaviLocalStorage.writeJson(DASHBOARD_FILTER_KEY, dashboardFilter);
 }
 
 function getDashboardStartDayInputs(){

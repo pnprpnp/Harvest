@@ -364,7 +364,7 @@ function resetProtectedAccessSession(){
 
 function loadProtectedAccessAuth(){
   try{
-    return localStorage.getItem(PROTECTED_ACCESS_AUTH_KEY) === "1";
+    return harvestnaviLocalStorage.getItem(PROTECTED_ACCESS_AUTH_KEY) === "1";
   }catch(e){
     return false;
   }
@@ -373,9 +373,9 @@ function loadProtectedAccessAuth(){
 function saveProtectedAccessAuth(isAuthorized){
   try{
     if(isAuthorized){
-      localStorage.setItem(PROTECTED_ACCESS_AUTH_KEY, "1");
+      harvestnaviLocalStorage.setItem(PROTECTED_ACCESS_AUTH_KEY, "1");
     }else{
-      localStorage.removeItem(PROTECTED_ACCESS_AUTH_KEY);
+      harvestnaviLocalStorage.removeItem(PROTECTED_ACCESS_AUTH_KEY);
     }
   }catch(e){
     return;
@@ -942,7 +942,7 @@ function saveHarvestStateToStorage(options = {}){
     workflowPlantingSessionActive,
     savedAt: new Date().toISOString()
   };
-  localStorage.setItem(HARVEST_STATE_KEY, JSON.stringify(payload));
+  harvestnaviLocalStorage.writeJson(HARVEST_STATE_KEY, payload);
   scheduleWorkflowGuideUpdate();
 }
 
@@ -1021,9 +1021,8 @@ function installHarvestStateSaveFlushListeners(){
 
 function loadHarvestStateFromStorage(){
   try{
-    const raw = localStorage.getItem(HARVEST_STATE_KEY);
-    if(!raw) return null;
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(HARVEST_STATE_KEY, null);
+    if(!parsed) return null;
     return {
       currentBuilding: BUILDINGS.includes(Number(parsed.currentBuilding)) ? Number(parsed.currentBuilding) : 2,
       casePlacementBuilding: BUILDINGS.includes(Number(parsed.casePlacementBuilding)) ? Number(parsed.casePlacementBuilding) : null,
@@ -1073,7 +1072,7 @@ function loadHarvestStateFromStorage(){
 
 function clearHarvestStateFromStorage(){
   cancelPendingHarvestStateSave();
-  localStorage.removeItem(HARVEST_STATE_KEY);
+  harvestnaviLocalStorage.removeItem(HARVEST_STATE_KEY);
 }
 
 function updateHarvestCasesAutoEstimatedAppearance(){
@@ -2707,7 +2706,7 @@ function setWorkflowBarVisibility(visible, options = {}){
   }
   if(options.persist !== false){
     try{
-      localStorage.setItem(WORKFLOW_BAR_VISIBILITY_KEY, isVisible ? "1" : "0");
+      harvestnaviLocalStorage.setItem(WORKFLOW_BAR_VISIBILITY_KEY, isVisible ? "1" : "0");
     }catch(e){
       console.warn("Failed to save workflow bar visibility", e);
     }
@@ -2724,19 +2723,19 @@ function toggleWorkflowBarVisibility(){
 
 function markWorkflowTitleHintShown(){
   try{
-    localStorage.setItem(WORKFLOW_TITLE_HINT_SHOWN_KEY, "1");
+    harvestnaviLocalStorage.setItem(WORKFLOW_TITLE_HINT_SHOWN_KEY, "1");
   }catch(e){}
 }
 
 function scheduleWorkflowTitleHintOnce(delayMs = 1800){
   try{
-    if(localStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
+    if(harvestnaviLocalStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
   }catch(e){}
   setTimeout(() => {
     const button = document.getElementById("workflowVisibilityBtn");
     if(!button) return;
     try{
-      if(localStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
+      if(harvestnaviLocalStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
     }catch(e){}
     markWorkflowTitleHintShown();
     button.classList.add("show-title-hint");
@@ -2747,7 +2746,7 @@ function scheduleWorkflowTitleHintOnce(delayMs = 1800){
 function restoreWorkflowBarVisibility(){
   let visible = true;
   try{
-    visible = localStorage.getItem(WORKFLOW_BAR_VISIBILITY_KEY) !== "0";
+    visible = harvestnaviLocalStorage.getItem(WORKFLOW_BAR_VISIBILITY_KEY) !== "0";
   }catch(e){
     visible = true;
   }

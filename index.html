@@ -7,13 +7,92 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-internal-structure-cleanup">
+<meta name="harvestnavi-version" content="20260809-browser-storage-gateway">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="manifest" href="manifest.json?v=20260716-2">
 <link rel="preload" as="image" href="welcome-screen.png?v=20260713" fetchpriority="high">
 <script>
+function createBrowserStorageGateway(storage, label){
+  let lastError = null;
+
+  function createOperationError(operation, key, cause){
+    const storageError = new Error(
+      `${label}の${operation}に失敗しました（保存項目: ${String(key || "不明")}）`
+    );
+    storageError.name = "HarvestnaviStorageError";
+    storageError.operation = operation;
+    storageError.storageKey = String(key || "");
+    storageError.cause = cause;
+    lastError = storageError;
+    return storageError;
+  }
+
+  function execute(operation, key, callback){
+    try{
+      return callback();
+    }catch(cause){
+      throw createOperationError(operation, key, cause);
+    }
+  }
+
+  function getItem(key){
+    return execute("読み込み", key, () => storage.getItem(key));
+  }
+
+  function setItem(key, value){
+    return execute("保存", key, () => storage.setItem(key, String(value)));
+  }
+
+  function removeItem(key){
+    return execute("削除", key, () => storage.removeItem(key));
+  }
+
+  function readJson(key, fallbackValue){
+    return execute("JSON読み込み", key, () => {
+      const raw = storage.getItem(key);
+      if(raw === null || typeof raw === "undefined") return fallbackValue;
+      return JSON.parse(raw);
+    });
+  }
+
+  function writeJson(key, value){
+    return execute("JSON保存", key, () => storage.setItem(key, JSON.stringify(value)));
+  }
+
+  function snapshotItems(keys){
+    const snapshot = {};
+    [...new Set(Array.isArray(keys) ? keys : [])].forEach(key => {
+      snapshot[key] = getItem(key);
+    });
+    return snapshot;
+  }
+
+  function restoreItems(snapshot, keys){
+    const values = snapshot && typeof snapshot === "object" ? snapshot : {};
+    const restoreKeys = Array.isArray(keys) ? keys : Object.keys(values);
+    [...new Set(restoreKeys)].forEach(key => removeItem(key));
+    Object.entries(values).forEach(([key, value]) => {
+      if(value !== null && typeof value !== "undefined") setItem(key, value);
+    });
+  }
+
+  return Object.freeze({
+    getItem,
+    setItem,
+    removeItem,
+    readJson,
+    writeJson,
+    snapshotItems,
+    restoreItems,
+    getLastError: () => lastError
+  });
+}
+
+const harvestnaviLocalStorage = createBrowserStorageGateway(window.localStorage, "端末内保存");
+const harvestnaviSessionStorage = createBrowserStorageGateway(window.sessionStorage, "一時保存");
+
 (() => {
   const VERSION_STORAGE_KEY = "harvestnaviAppSourceVersion_v1";
   const UPDATED_NOTICE_KEY = "harvestnaviAppUpdatedNotice_v1";
@@ -144,7 +223,7 @@
     const target = getCanonicalAppUrl();
     target.searchParams.set(VERSION_QUERY_KEY, version);
     try{
-      sessionStorage.setItem(UPDATED_NOTICE_KEY, notice);
+      harvestnaviSessionStorage.setItem(UPDATED_NOTICE_KEY, notice);
     }catch(e){}
     window.location.replace(target.toString());
   }
@@ -182,7 +261,7 @@
       indexSource: source
     });
     try{
-      localStorage.setItem(VERSION_STORAGE_KEY, nextVersion);
+      harvestnaviLocalStorage.setItem(VERSION_STORAGE_KEY, nextVersion);
     }catch(e){}
     openAppVersion(nextVersion);
   }
@@ -192,7 +271,7 @@
     const previousVersion = String(result?.meta?.activeVersion || "").trim();
     if(!previousVersion) throw new Error("戻すバージョンを確認できません");
     try{
-      localStorage.setItem(VERSION_STORAGE_KEY, previousVersion);
+      harvestnaviLocalStorage.setItem(VERSION_STORAGE_KEY, previousVersion);
     }catch(e){}
     openAppVersion(previousVersion, "rollback");
   }
@@ -236,7 +315,7 @@
       const urlVersion = new URL(window.location.href).searchParams.get(VERSION_QUERY_KEY) || "";
       let savedVersion = "";
       try{
-        savedVersion = localStorage.getItem(VERSION_STORAGE_KEY) || "";
+        savedVersion = harvestnaviLocalStorage.getItem(VERSION_STORAGE_KEY) || "";
       }catch(e){}
       const currentVersion = loadedVersion || urlVersion || savedVersion;
 
@@ -10610,7 +10689,7 @@ function resetProtectedAccessSession(){
 
 function loadProtectedAccessAuth(){
   try{
-    return localStorage.getItem(PROTECTED_ACCESS_AUTH_KEY) === "1";
+    return harvestnaviLocalStorage.getItem(PROTECTED_ACCESS_AUTH_KEY) === "1";
   }catch(e){
     return false;
   }
@@ -10619,9 +10698,9 @@ function loadProtectedAccessAuth(){
 function saveProtectedAccessAuth(isAuthorized){
   try{
     if(isAuthorized){
-      localStorage.setItem(PROTECTED_ACCESS_AUTH_KEY, "1");
+      harvestnaviLocalStorage.setItem(PROTECTED_ACCESS_AUTH_KEY, "1");
     }else{
-      localStorage.removeItem(PROTECTED_ACCESS_AUTH_KEY);
+      harvestnaviLocalStorage.removeItem(PROTECTED_ACCESS_AUTH_KEY);
     }
   }catch(e){
     return;
@@ -11188,7 +11267,7 @@ function saveHarvestStateToStorage(options = {}){
     workflowPlantingSessionActive,
     savedAt: new Date().toISOString()
   };
-  localStorage.setItem(HARVEST_STATE_KEY, JSON.stringify(payload));
+  harvestnaviLocalStorage.writeJson(HARVEST_STATE_KEY, payload);
   scheduleWorkflowGuideUpdate();
 }
 
@@ -11267,9 +11346,8 @@ function installHarvestStateSaveFlushListeners(){
 
 function loadHarvestStateFromStorage(){
   try{
-    const raw = localStorage.getItem(HARVEST_STATE_KEY);
-    if(!raw) return null;
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(HARVEST_STATE_KEY, null);
+    if(!parsed) return null;
     return {
       currentBuilding: BUILDINGS.includes(Number(parsed.currentBuilding)) ? Number(parsed.currentBuilding) : 2,
       casePlacementBuilding: BUILDINGS.includes(Number(parsed.casePlacementBuilding)) ? Number(parsed.casePlacementBuilding) : null,
@@ -11319,7 +11397,7 @@ function loadHarvestStateFromStorage(){
 
 function clearHarvestStateFromStorage(){
   cancelPendingHarvestStateSave();
-  localStorage.removeItem(HARVEST_STATE_KEY);
+  harvestnaviLocalStorage.removeItem(HARVEST_STATE_KEY);
 }
 
 function updateHarvestCasesAutoEstimatedAppearance(){
@@ -12953,7 +13031,7 @@ function setWorkflowBarVisibility(visible, options = {}){
   }
   if(options.persist !== false){
     try{
-      localStorage.setItem(WORKFLOW_BAR_VISIBILITY_KEY, isVisible ? "1" : "0");
+      harvestnaviLocalStorage.setItem(WORKFLOW_BAR_VISIBILITY_KEY, isVisible ? "1" : "0");
     }catch(e){
       console.warn("Failed to save workflow bar visibility", e);
     }
@@ -12970,19 +13048,19 @@ function toggleWorkflowBarVisibility(){
 
 function markWorkflowTitleHintShown(){
   try{
-    localStorage.setItem(WORKFLOW_TITLE_HINT_SHOWN_KEY, "1");
+    harvestnaviLocalStorage.setItem(WORKFLOW_TITLE_HINT_SHOWN_KEY, "1");
   }catch(e){}
 }
 
 function scheduleWorkflowTitleHintOnce(delayMs = 1800){
   try{
-    if(localStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
+    if(harvestnaviLocalStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
   }catch(e){}
   setTimeout(() => {
     const button = document.getElementById("workflowVisibilityBtn");
     if(!button) return;
     try{
-      if(localStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
+      if(harvestnaviLocalStorage.getItem(WORKFLOW_TITLE_HINT_SHOWN_KEY) === "1") return;
     }catch(e){}
     markWorkflowTitleHintShown();
     button.classList.add("show-title-hint");
@@ -12993,7 +13071,7 @@ function scheduleWorkflowTitleHintOnce(delayMs = 1800){
 function restoreWorkflowBarVisibility(){
   let visible = true;
   try{
-    visible = localStorage.getItem(WORKFLOW_BAR_VISIBILITY_KEY) !== "0";
+    visible = harvestnaviLocalStorage.getItem(WORKFLOW_BAR_VISIBILITY_KEY) !== "0";
   }catch(e){
     visible = true;
   }
@@ -13105,9 +13183,8 @@ function openWorkflowNextAction(){
 
 function loadSettings(){
   try{
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if(!raw) return deepClone(defaultSettings);
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(SETTINGS_KEY, null);
+    if(!parsed) return deepClone(defaultSettings);
 
     const merged = deepClone(defaultSettings);
     if(Number.isFinite(Number(parsed.defaultLossRate))) merged.defaultLossRate = Number(parsed.defaultLossRate);
@@ -13142,7 +13219,7 @@ function loadSettings(){
 }
 
 function saveSettingsToStorage(){
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  harvestnaviLocalStorage.writeJson(SETTINGS_KEY, settings);
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
 }
@@ -13915,9 +13992,7 @@ function isPlantingEventBeforeLatestOpeningBoundary(event){
 
 function loadPlantingEvents(){
   try{
-    const raw = localStorage.getItem(PLANTING_EVENTS_KEY);
-    if(!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENTS_KEY, []);
     if(!Array.isArray(parsed)) return [];
     return parsed.map(normalizePlantingEvent).filter(Boolean).sort(comparePlantingEventsAsc);
   }catch(e){
@@ -13930,16 +14005,16 @@ function savePlantingEventsToStorage(){
     .map(normalizePlantingEvent)
     .filter(Boolean)
     .sort(comparePlantingEventsAsc);
-  localStorage.setItem(
+  harvestnaviLocalStorage.writeJson(
     PLANTING_EVENTS_KEY,
-    JSON.stringify(plantingEvents.map(serializePlantingEventForStorage).filter(Boolean))
+    plantingEvents.map(serializePlantingEventForStorage).filter(Boolean)
   );
   completeRecordDataMutation();
 }
 
 function loadDeletedPlantingEvents(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(PLANTING_EVENT_TRASH_KEY) || "[]");
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENT_TRASH_KEY, []);
     if(!Array.isArray(parsed)) return [];
     const now = Date.now();
     return parsed.map(entry => {
@@ -13966,12 +14041,12 @@ function saveDeletedPlantingEventsToStorage(){
     const expiresTime = new Date(entry?.expiresAt || "").getTime();
     return normalizePlantingEvent(entry?.event) && Number.isFinite(expiresTime) && expiresTime > now;
   });
-  localStorage.setItem(PLANTING_EVENT_TRASH_KEY, JSON.stringify(
+  harvestnaviLocalStorage.writeJson(PLANTING_EVENT_TRASH_KEY,
     deletedPlantingEvents.map(entry => ({
       ...entry,
       event: serializePlantingEventForStorage(entry.event)
     }))
-  ));
+  );
 }
 
 function pruneExpiredDeletedPlantingEvents(now = Date.now()){
@@ -14003,7 +14078,7 @@ function isPlantingEventTemporarilyDeleted(eventId){
 
 function loadPlantingEventSyncStatus(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(PLANTING_EVENT_SYNC_STATUS_KEY) || "{}");
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENT_SYNC_STATUS_KEY, {});
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   }catch(e){
     return {};
@@ -14011,7 +14086,7 @@ function loadPlantingEventSyncStatus(){
 }
 
 function savePlantingEventSyncStatus(status){
-  localStorage.setItem(PLANTING_EVENT_SYNC_STATUS_KEY, JSON.stringify(status || {}));
+  harvestnaviLocalStorage.writeJson(PLANTING_EVENT_SYNC_STATUS_KEY, status || {});
 }
 
 function setPlantingEventSyncStatus(event, state){
@@ -14049,7 +14124,7 @@ function getNextPlantingEventId(){
 
 function loadMigratedPlantingRecordIds(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(PLANTING_EVENTS_MIGRATION_KEY) || "[]");
+    const parsed = harvestnaviLocalStorage.readJson(PLANTING_EVENTS_MIGRATION_KEY, []);
     return new Set(Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : []);
   }catch(e){
     return new Set();
@@ -14104,9 +14179,9 @@ function migrateLegacyPlantingEvents(recordsToMigrate = records){
     changed = true;
   });
 
-  localStorage.setItem(
+  harvestnaviLocalStorage.writeJson(
     PLANTING_EVENTS_MIGRATION_KEY,
-    JSON.stringify([...migratedRecordIds].sort((a, b) => a - b))
+    [...migratedRecordIds].sort((a, b) => a - b)
   );
   if(changed) savePlantingEventsToStorage();
   else invalidatePlantingEventStateCache();
@@ -14116,7 +14191,7 @@ function migrateLegacyPlantingEvents(recordsToMigrate = records){
 
 function shouldRunLegacyPlantingEventBackfill(){
   try{
-    const state = JSON.parse(localStorage.getItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY) || "null");
+    const state = harvestnaviLocalStorage.readJson(LEGACY_PLANTING_EVENT_BACKFILL_KEY, null);
     return state?.completed !== true;
   }catch(e){
     return true;
@@ -14124,13 +14199,13 @@ function shouldRunLegacyPlantingEventBackfill(){
 }
 
 function markLegacyPlantingEventBackfillCompleted(result = {}){
-  localStorage.setItem(LEGACY_PLANTING_EVENT_BACKFILL_KEY, JSON.stringify({
+  harvestnaviLocalStorage.writeJson(LEGACY_PLANTING_EVENT_BACKFILL_KEY, {
     completed: true,
     completedAt: new Date().toISOString(),
     createdCount: Math.max(0, Number(result.createdCount || 0)),
     sentCount: Math.max(0, Number(result.sentCount || 0)),
     failedCount: Math.max(0, Number(result.failedCount || 0))
-  }));
+  });
 }
 
 function getUnsentLegacyPlantingEventsForBackfill(){
@@ -14584,9 +14659,7 @@ function getActiveHarvestTimelineRecords(sourceRecords = records){
 
 function loadRecords(){
   try{
-    const raw = localStorage.getItem(RECORDS_KEY);
-    if(!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(RECORDS_KEY, []);
     if(!Array.isArray(parsed)) return [];
     return parsed
       .map(normalizeStoredRecord)
@@ -14603,15 +14676,15 @@ function loadRecords(){
 
 function saveRecordsToStorage(){
   records.sort(compareRecordsByDateDesc);
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records.map(serializeRecordForStorage)));
+  harvestnaviLocalStorage.writeJson(RECORDS_KEY, records.map(serializeRecordForStorage));
   completeRecordDataMutation({ harvestRecords: true });
 }
 
 function normalizeRecordsStorageOnce(){
   try{
-    if(localStorage.getItem(RECORD_STORAGE_NORMALIZATION_KEY) === "1") return false;
+    if(harvestnaviLocalStorage.getItem(RECORD_STORAGE_NORMALIZATION_KEY) === "1") return false;
     if(records.length) saveRecordsToStorage();
-    localStorage.setItem(RECORD_STORAGE_NORMALIZATION_KEY, "1");
+    harvestnaviLocalStorage.setItem(RECORD_STORAGE_NORMALIZATION_KEY, "1");
     return true;
   }catch(error){
     console.warn("記録保存形式の初回整理を完了できませんでした", error);
@@ -14621,9 +14694,7 @@ function normalizeRecordsStorageOnce(){
 
 function loadDeletedRecords(){
   try{
-    const raw = localStorage.getItem(RECORD_TRASH_KEY);
-    if(!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(RECORD_TRASH_KEY, []);
     if(!Array.isArray(parsed)) return [];
     const now = Date.now();
     const activeEntries = parsed.map(entry => {
@@ -14642,7 +14713,7 @@ function loadDeletedRecords(){
         remoteDeleted: !!entry?.remoteDeleted
       };
     }).filter(Boolean);
-    localStorage.setItem(RECORD_TRASH_KEY, JSON.stringify(activeEntries.map(serializeDeletedRecordEntry)));
+    harvestnaviLocalStorage.writeJson(RECORD_TRASH_KEY, activeEntries.map(serializeDeletedRecordEntry));
     return activeEntries;
   }catch(e){
     return [];
@@ -14663,7 +14734,7 @@ function serializeDeletedRecordEntry(entry){
 function saveDeletedRecordsToStorage(){
   const now = Date.now();
   deletedRecords = deletedRecords.filter(entry => new Date(entry.expiresAt).getTime() > now);
-  localStorage.setItem(RECORD_TRASH_KEY, JSON.stringify(deletedRecords.map(serializeDeletedRecordEntry)));
+  harvestnaviLocalStorage.writeJson(RECORD_TRASH_KEY, deletedRecords.map(serializeDeletedRecordEntry));
 }
 
 function pruneExpiredDeletedRecords(now = Date.now()){
@@ -14786,7 +14857,7 @@ function serializeSyncConflictEntry(entry){
 
 function loadSyncConflicts(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_CONFLICTS_KEY) || "[]");
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_CONFLICTS_KEY, []);
     if(!Array.isArray(parsed) || parsed.length > GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS) return [];
     const byKey = new Map();
     parsed.forEach(value => {
@@ -14806,9 +14877,9 @@ function saveSyncConflictsToStorage(){
   if(syncConflicts.length > GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS){
     throw new Error("競合一覧が" + GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS + "件を超えています");
   }
-  localStorage.setItem(
+  harvestnaviLocalStorage.writeJson(
     GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
-    JSON.stringify(syncConflicts.map(serializeSyncConflictEntry).filter(Boolean))
+    syncConflicts.map(serializeSyncConflictEntry).filter(Boolean)
   );
 }
 
@@ -14906,12 +14977,12 @@ function ensureSyncConflictResolvedBeforeChange(entityType, entity, action){
 
 function migrateLegacyRecordSyncConflictsOnce(){
   try{
-    if(localStorage.getItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY) === "1") return 0;
+    if(harvestnaviLocalStorage.getItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY) === "1") return 0;
   }catch(e){}
   const legacyEntries = deletedRecords.filter(entry => entry?.syncConflict && entry?.record);
   if(!legacyEntries.length){
     try{
-      localStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
+      harvestnaviLocalStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
     }catch(e){}
     return 0;
   }
@@ -14949,7 +15020,7 @@ function migrateLegacyRecordSyncConflictsOnce(){
   }
   if(!deletedRecords.some(entry => entry?.syncConflict && entry?.record)){
     try{
-      localStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
+      harvestnaviLocalStorage.setItem(LEGACY_SYNC_CONFLICT_MIGRATION_KEY, "1");
     }catch(e){}
   }
   return migratedEntries.length;
@@ -14962,7 +15033,7 @@ function cleanupObsoleteGoogleSheetSyncStorage(){
     "harvestForecastGoogleSheetSyncNoticeRevision_v1"
   ].forEach(key => {
     try{
-      localStorage.removeItem(key);
+      harvestnaviLocalStorage.removeItem(key);
     }catch(e){}
   });
 }
@@ -14984,9 +15055,8 @@ function isRecordTemporarilyDeleted(record){
 
 function loadGoogleSheetConfig(){
   try{
-    const raw = localStorage.getItem(GOOGLE_SHEET_CONFIG_KEY);
-    if(!raw) return { url: "", token: "" };
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_CONFIG_KEY, null);
+    if(!parsed) return { url: "", token: "" };
     return {
       url: String(parsed.url || "").trim(),
       token: String(parsed.token || "").trim()
@@ -15192,12 +15262,12 @@ function saveGoogleSheetConfigToStorage(config){
   const previousUrl = String(loadGoogleSheetConfig().url || "").trim();
   const nextUrl = String(config?.url || "").trim();
   if(previousUrl && previousUrl !== nextUrl){
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+    harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
   }
-  localStorage.setItem(GOOGLE_SHEET_CONFIG_KEY, JSON.stringify({
+  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_CONFIG_KEY, {
     url: nextUrl,
     token: String(config?.token || "").trim()
-  }));
+  });
 }
 
 function normalizeGoogleSheetSyncCursor(value){
@@ -15226,7 +15296,7 @@ function normalizeGoogleSheetSyncRevision(value){
 
 function loadGoogleSheetSyncRevision(config){
   try{
-    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_REVISION_KEY) || "null");
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_REVISION_KEY, null);
     if(!parsed || String(parsed.url || "").trim() !== String(config?.url || "").trim()) return null;
     return normalizeGoogleSheetSyncRevision(parsed.revision);
   }catch(e){
@@ -15237,13 +15307,13 @@ function loadGoogleSheetSyncRevision(config){
 function saveGoogleSheetSyncRevision(config, revision){
   const normalized = normalizeGoogleSheetSyncRevision(revision);
   if(normalized === null){
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+    harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
     return;
   }
-  localStorage.setItem(GOOGLE_SHEET_SYNC_REVISION_KEY, JSON.stringify({
+  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_SYNC_REVISION_KEY, {
     url: String(config?.url || "").trim(),
     revision: normalized
-  }));
+  });
 }
 
 function populateGoogleSheetConfigForm(){
@@ -15285,9 +15355,8 @@ function saveGoogleSheetConfig(){
 
 function loadGoogleSheetSyncStatus(){
   try{
-    const raw = localStorage.getItem(GOOGLE_SHEET_SYNC_STATUS_KEY);
-    if(!raw) return {};
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_STATUS_KEY, null);
+    if(!parsed) return {};
     return parsed && typeof parsed === "object" ? parsed : {};
   }catch(e){
     return {};
@@ -15295,7 +15364,7 @@ function loadGoogleSheetSyncStatus(){
 }
 
 function saveGoogleSheetSyncStatus(status){
-  localStorage.setItem(GOOGLE_SHEET_SYNC_STATUS_KEY, JSON.stringify(status || {}));
+  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_SYNC_STATUS_KEY, status || {});
 }
 
 function getGoogleSheetRecordSyncKeys(record){
@@ -18657,7 +18726,7 @@ async function checkAppUpdateAvailabilitySilently(){
 
 function getLastAutomaticAppUpdateCheckAt(){
   try{
-    const value = Number(localStorage.getItem(APP_UPDATE_AUTO_CHECK_AT_KEY));
+    const value = Number(harvestnaviLocalStorage.getItem(APP_UPDATE_AUTO_CHECK_AT_KEY));
     return Number.isFinite(value) && value > 0 ? value : 0;
   }catch(e){
     return 0;
@@ -18666,7 +18735,7 @@ function getLastAutomaticAppUpdateCheckAt(){
 
 function markAppUpdateCheckStarted(at = Date.now()){
   try{
-    localStorage.setItem(APP_UPDATE_AUTO_CHECK_AT_KEY, String(at));
+    harvestnaviLocalStorage.setItem(APP_UPDATE_AUTO_CHECK_AT_KEY, String(at));
   }catch(e){}
 }
 
@@ -19686,14 +19755,14 @@ function migrateStoredHarvestStateToCurrentNumbering(state){
 
 function migrateLocalPalletNumberingToLeftOriginOnce(){
   try{
-    if(localStorage.getItem(PALLET_NUMBERING_MIGRATION_KEY) === "done") return;
+    if(harvestnaviLocalStorage.getItem(PALLET_NUMBERING_MIGRATION_KEY) === "done") return;
 
     const migrateArrayStorage = (key, migrateItem) => {
-      const raw = localStorage.getItem(key);
+      const raw = harvestnaviLocalStorage.getItem(key);
       if(!raw) return;
       const parsed = JSON.parse(raw);
       if(!Array.isArray(parsed)) return;
-      localStorage.setItem(key, JSON.stringify(parsed.map(migrateItem)));
+      harvestnaviLocalStorage.writeJson(key, parsed.map(migrateItem));
     };
 
     migrateArrayStorage(RECORDS_KEY, migrateStoredHarvestRecordToCurrentNumbering);
@@ -19707,12 +19776,12 @@ function migrateLocalPalletNumberingToLeftOriginOnce(){
       event: migrateStoredPlantingEventToCurrentNumbering(entry?.event)
     }));
 
-    const stateRaw = localStorage.getItem(HARVEST_STATE_KEY);
+    const stateRaw = harvestnaviLocalStorage.getItem(HARVEST_STATE_KEY);
     if(stateRaw){
       const state = migrateStoredHarvestStateToCurrentNumbering(JSON.parse(stateRaw));
-      localStorage.setItem(HARVEST_STATE_KEY, JSON.stringify(state));
+      harvestnaviLocalStorage.writeJson(HARVEST_STATE_KEY, state);
     }
-    localStorage.setItem(PALLET_NUMBERING_MIGRATION_KEY, "done");
+    harvestnaviLocalStorage.setItem(PALLET_NUMBERING_MIGRATION_KEY, "done");
   }catch(error){
     console.error("パレット番号の保存データ移行に失敗しました", error);
     throw error;
@@ -20159,8 +20228,8 @@ function invalidateDashboardDerivedData(){
 
 function loadDashboardFilter(){
   try{
-    const raw = localStorage.getItem(DASHBOARD_FILTER_KEY);
-    if(!raw) return {
+    const parsed = harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, null);
+    if(!parsed) return {
       startDay: getDefaultDashboardStartDay(),
       graphStartDate: "",
       graphEndDate: "",
@@ -20173,7 +20242,6 @@ function loadDashboardFilter(){
       recordStartDate: "",
       recordEndDate: ""
     };
-    const parsed = JSON.parse(raw);
     const normalizeGranularity = value => ["month", "year"].includes(value) ? value : "month";
     const startDay = clampNumber(parsed?.startDay, 1, 31, getDefaultDashboardStartDay());
     return {
@@ -20211,7 +20279,7 @@ function loadDashboardFilter(){
 }
 
 function saveDashboardFilter(){
-  localStorage.setItem(DASHBOARD_FILTER_KEY, JSON.stringify(dashboardFilter));
+  harvestnaviLocalStorage.writeJson(DASHBOARD_FILTER_KEY, dashboardFilter);
 }
 
 function getDashboardStartDayInputs(){
@@ -29560,7 +29628,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     setGoogleSheetSyncStatus(restoredRecord, restoredState);
     if(!entry.sheetDeleted && !entry.syncConflict){
       // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
-      localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+      harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
     }
     refreshRecordDataUi();
     showToast(entry.syncConflict
@@ -30218,9 +30286,8 @@ function normalizeImportedRecord(record, index){
 
 function loadRecordExportStatus(){
   try{
-    const raw = localStorage.getItem(RECORD_EXPORT_STATUS_KEY);
-    if(!raw) return { lastExportRecordCount: 0, lastPromptRecordCount: 0 };
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(RECORD_EXPORT_STATUS_KEY, null);
+    if(!parsed) return { lastExportRecordCount: 0, lastPromptRecordCount: 0 };
     return {
       lastExportRecordCount: clampNumber(parsed.lastExportRecordCount, 0, 99999999, 0),
       lastPromptRecordCount: clampNumber(parsed.lastPromptRecordCount, 0, 99999999, 0)
@@ -30231,7 +30298,7 @@ function loadRecordExportStatus(){
 }
 
 function saveRecordExportStatus(status){
-  localStorage.setItem(RECORD_EXPORT_STATUS_KEY, JSON.stringify(status || {}));
+  harvestnaviLocalStorage.writeJson(RECORD_EXPORT_STATUS_KEY, status || {});
 }
 
 function markRecordsExported(){
@@ -30501,9 +30568,9 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   const migratedIds = loadMigratedPlantingRecordIds();
   if(migratedIds.delete(safeOldId)){
     migratedIds.add(safeNewId);
-    localStorage.setItem(
+    harvestnaviLocalStorage.writeJson(
       PLANTING_EVENTS_MIGRATION_KEY,
-      JSON.stringify([...migratedIds].sort((a, b) => a - b))
+      [...migratedIds].sort((a, b) => a - b)
     );
   }
   if(status?.["id:" + safeOldId] && !status["id:" + safeNewId]){
@@ -31039,7 +31106,7 @@ function mergeBackupPlantingMetadata(parsed, recordIdMap){
       wasSynced: !!entry.wasSynced
     });
   });
-  localStorage.setItem(PLANTING_EVENTS_MIGRATION_KEY, JSON.stringify([...migratedIds].sort((a, b) => a - b)));
+  harvestnaviLocalStorage.writeJson(PLANTING_EVENTS_MIGRATION_KEY, [...migratedIds].sort((a, b) => a - b));
   saveDeletedPlantingEventsToStorage();
 }
 
@@ -31096,26 +31163,18 @@ const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
 ];
 
 function createBackupImportSnapshot(){
-  const storageValues = {};
-  BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS.forEach(key => {
-    storageValues[key] = localStorage.getItem(key);
-  });
   return {
     records: deepClone(records),
     plantingEvents: deepClone(plantingEvents),
     deletedPlantingEvents: deepClone(deletedPlantingEvents),
     deletedRecords: deepClone(deletedRecords),
     syncConflicts: deepClone(syncConflicts),
-    storageValues
+    storageValues: harvestnaviLocalStorage.snapshotItems(BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS)
   };
 }
 
 function restoreBackupImportStorageSnapshot(storageValues){
-  BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS.forEach(key => localStorage.removeItem(key));
-  BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS.forEach(key => {
-    const value = storageValues?.[key];
-    if(value !== null && typeof value !== "undefined") localStorage.setItem(key, value);
-  });
+  harvestnaviLocalStorage.restoreItems(storageValues, BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS);
 }
 
 function restoreBackupImportSnapshot(snapshot){
@@ -31747,10 +31806,10 @@ function finalizeHarvestnaviStartup(){
   updateAccessProtectionStatus();
   refreshEmptyInputHighlights();
   updateWorkflowGuide();
-  sessionStorage.removeItem("harvestForecastStartupRecovered");
-  const appVersionNotice = sessionStorage.getItem("harvestnaviAppUpdatedNotice_v1");
+  harvestnaviSessionStorage.removeItem("harvestForecastStartupRecovered");
+  const appVersionNotice = harvestnaviSessionStorage.getItem("harvestnaviAppUpdatedNotice_v1");
   if(appVersionNotice){
-    sessionStorage.removeItem("harvestnaviAppUpdatedNotice_v1");
+    harvestnaviSessionStorage.removeItem("harvestnaviAppUpdatedNotice_v1");
     showToast(appVersionNotice === "rollback"
       ? "前の安定版に戻しました"
       : "アプリを最新版に更新しました");
@@ -31762,8 +31821,8 @@ function finalizeHarvestnaviStartup(){
 
 function showHarvestnaviStartupFailure(error){
   console.error(error);
-  if(!sessionStorage.getItem("harvestForecastStartupRecovered")){
-    sessionStorage.setItem("harvestForecastStartupRecovered", "1");
+  if(!harvestnaviSessionStorage.getItem("harvestForecastStartupRecovered")){
+    harvestnaviSessionStorage.setItem("harvestForecastStartupRecovered", "1");
     clearHarvestStateFromStorage();
     window.location.reload();
     return;

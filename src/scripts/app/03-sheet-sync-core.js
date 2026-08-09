@@ -1,8 +1,7 @@
 function loadGoogleSheetConfig(){
   try{
-    const raw = localStorage.getItem(GOOGLE_SHEET_CONFIG_KEY);
-    if(!raw) return { url: "", token: "" };
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_CONFIG_KEY, null);
+    if(!parsed) return { url: "", token: "" };
     return {
       url: String(parsed.url || "").trim(),
       token: String(parsed.token || "").trim()
@@ -208,12 +207,12 @@ function saveGoogleSheetConfigToStorage(config){
   const previousUrl = String(loadGoogleSheetConfig().url || "").trim();
   const nextUrl = String(config?.url || "").trim();
   if(previousUrl && previousUrl !== nextUrl){
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+    harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
   }
-  localStorage.setItem(GOOGLE_SHEET_CONFIG_KEY, JSON.stringify({
+  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_CONFIG_KEY, {
     url: nextUrl,
     token: String(config?.token || "").trim()
-  }));
+  });
 }
 
 function normalizeGoogleSheetSyncCursor(value){
@@ -242,7 +241,7 @@ function normalizeGoogleSheetSyncRevision(value){
 
 function loadGoogleSheetSyncRevision(config){
   try{
-    const parsed = JSON.parse(localStorage.getItem(GOOGLE_SHEET_SYNC_REVISION_KEY) || "null");
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_REVISION_KEY, null);
     if(!parsed || String(parsed.url || "").trim() !== String(config?.url || "").trim()) return null;
     return normalizeGoogleSheetSyncRevision(parsed.revision);
   }catch(e){
@@ -253,13 +252,13 @@ function loadGoogleSheetSyncRevision(config){
 function saveGoogleSheetSyncRevision(config, revision){
   const normalized = normalizeGoogleSheetSyncRevision(revision);
   if(normalized === null){
-    localStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+    harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
     return;
   }
-  localStorage.setItem(GOOGLE_SHEET_SYNC_REVISION_KEY, JSON.stringify({
+  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_SYNC_REVISION_KEY, {
     url: String(config?.url || "").trim(),
     revision: normalized
-  }));
+  });
 }
 
 function populateGoogleSheetConfigForm(){
@@ -301,9 +300,8 @@ function saveGoogleSheetConfig(){
 
 function loadGoogleSheetSyncStatus(){
   try{
-    const raw = localStorage.getItem(GOOGLE_SHEET_SYNC_STATUS_KEY);
-    if(!raw) return {};
-    const parsed = JSON.parse(raw);
+    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_STATUS_KEY, null);
+    if(!parsed) return {};
     return parsed && typeof parsed === "object" ? parsed : {};
   }catch(e){
     return {};
@@ -311,7 +309,7 @@ function loadGoogleSheetSyncStatus(){
 }
 
 function saveGoogleSheetSyncStatus(status){
-  localStorage.setItem(GOOGLE_SHEET_SYNC_STATUS_KEY, JSON.stringify(status || {}));
+  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_SYNC_STATUS_KEY, status || {});
 }
 
 function getGoogleSheetRecordSyncKeys(record){

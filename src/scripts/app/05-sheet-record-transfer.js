@@ -1127,7 +1127,7 @@ async function checkAppUpdateAvailabilitySilently(){
 
 function getLastAutomaticAppUpdateCheckAt(){
   try{
-    const value = Number(localStorage.getItem(APP_UPDATE_AUTO_CHECK_AT_KEY));
+    const value = Number(harvestnaviLocalStorage.getItem(APP_UPDATE_AUTO_CHECK_AT_KEY));
     return Number.isFinite(value) && value > 0 ? value : 0;
   }catch(e){
     return 0;
@@ -1136,7 +1136,7 @@ function getLastAutomaticAppUpdateCheckAt(){
 
 function markAppUpdateCheckStarted(at = Date.now()){
   try{
-    localStorage.setItem(APP_UPDATE_AUTO_CHECK_AT_KEY, String(at));
+    harvestnaviLocalStorage.setItem(APP_UPDATE_AUTO_CHECK_AT_KEY, String(at));
   }catch(e){}
 }
 

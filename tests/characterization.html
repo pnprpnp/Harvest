@@ -174,6 +174,7 @@
       const app = iframe.contentWindow;
       const appsScript = appsScriptIframe.contentWindow;
       const requiredFunctions = [
+        "createBrowserStorageGateway",
         "compressPalletKeysToRanges",
         "expandPalletRangesToKeys",
         "formatPalletSummary",
@@ -225,6 +226,56 @@
       await runTest("主要な計算関数を読み込める", () => {
         const missing = requiredFunctions.filter(name => typeof app[name] !== "function");
         assertDeepEqual(missing, [], `読み込めない関数があります: ${missing.join(", ")}`);
+      });
+
+      await runTest("ブラウザー内保存を共通窓口で読み書き・退避・復元する", () => {
+        const state = comparable(app.eval(`(() => {
+          const values = new Map();
+          const storage = {
+            getItem(key){ return values.has(String(key)) ? values.get(String(key)) : null; },
+            setItem(key, value){ values.set(String(key), String(value)); },
+            removeItem(key){ values.delete(String(key)); }
+          };
+          const gateway = createBrowserStorageGateway(storage, "テスト保存");
+          gateway.setItem("plain", 12);
+          gateway.writeJson("json", { count: 2, text: "保持" });
+          const jsonText = storage.getItem("json");
+          const snapshot = gateway.snapshotItems(["plain", "json", "missing"]);
+          gateway.setItem("plain", "changed");
+          gateway.setItem("missing", "temporary");
+          gateway.restoreItems(snapshot, ["plain", "json", "missing"]);
+
+          gateway.setItem("broken", "{");
+          let parseError = null;
+          try{
+            gateway.readJson("broken", null);
+          }catch(error){
+            parseError = {
+              name: error.name,
+              operation: error.operation,
+              storageKey: error.storageKey
+            };
+          }
+
+          return {
+            plain: gateway.getItem("plain"),
+            json: gateway.readJson("json", null),
+            jsonText,
+            missing: gateway.getItem("missing"),
+            parseError
+          };
+        })()`));
+        assertDeepEqual(state, {
+          plain: "12",
+          json: { count: 2, text: "保持" },
+          jsonText: '{"count":2,"text":"保持"}',
+          missing: null,
+          parseError: {
+            name: "HarvestnaviStorageError",
+            operation: "JSON読み込み",
+            storageKey: "broken"
+          }
+        }, "共通保存窓口で値またはエラー情報が変わりました");
       });
 
       await runTest("Apps Scriptの同期・正規化関数を読み込める", () => {
