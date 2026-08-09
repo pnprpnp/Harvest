@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-record-detail-location-map">
+<meta name="harvestnavi-version" content="20260809-simulation-vertical-bed-map">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7388,6 +7388,104 @@ button.harvestProgressBed.is-selected{
   border-color:#0f766e !important;
   color:#fff !important;
 }
+.bed.bedCollapsed.simulationBedOverview{
+  width:100%;
+  height:222px;
+  min-height:222px;
+  box-sizing:border-box;
+  border-color:#bfdbfe;
+  background:linear-gradient(180deg,#fff 0%,#eff6ff 100%);
+}
+.bed.bedCollapsed.simulationBedOverview.bedCollapsedFull{
+  border-color:#16a34a;
+}
+.bed.bedCollapsed.simulationBedOverview.harvestProgressCompletedBed{
+  border-color:#0f766e !important;
+  background:#ecfdf5 !important;
+}
+.bed.bedCollapsed.simulationBedOverview:focus-visible{
+  outline:3px solid rgba(37,99,235,.28);
+  outline-offset:2px;
+}
+.simulationBedOverview .bedTitle{
+  flex:0 0 auto;
+  cursor:inherit;
+}
+.simulationBedOverview .dashboardSeedlingBedMap{
+  margin-bottom:6px;
+}
+.simulationBedOverview .dashboardSeedlingBedMapGrid{
+  height:150px;
+}
+.simulationBedMapCell{
+  background:#dbeafe;
+}
+.simulationBedMapCell.is-selected{
+  background:#22c55e;
+}
+.simulationBedMapCell.is-partial-harvest{
+  background:#fbbf24;
+}
+.simulationBedMapCell.is-selected.is-partial-harvest{
+  background:repeating-linear-gradient(135deg,#22c55e 0 4px,#fbbf24 4px 8px);
+}
+.simulationBedMapCell.is-progress-completed{
+  background:#14b8a6;
+}
+.simulationBedMapCell.is-recorded{
+  background:#9ca3af;
+}
+.simulationBedOverviewCounts{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-height:16px;
+  margin-top:auto;
+  color:#475569;
+  font-size:9px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.simulationBedOverviewCountSelected{color:#15803d;}
+.simulationBedOverviewCountRecorded{color:#64748b;}
+.simulationBedMapLegend{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:5px 10px;
+  margin:10px 4px 0;
+  color:var(--ui-text-secondary);
+  font-size:10px;
+  font-weight:650;
+}
+.simulationBedMapLegendItem{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+}
+.simulationBedMapLegendSwatch{
+  width:10px;
+  height:10px;
+  box-sizing:border-box;
+  border:1px solid rgba(15,23,42,.12);
+  border-radius:3px;
+  background:#dbeafe;
+}
+.simulationBedMapLegendSwatch.is-selected{background:#22c55e;}
+.simulationBedMapLegendSwatch.is-recorded{background:#9ca3af;}
+.simulationBedMapLegendSwatch.is-progress-completed{background:#14b8a6;}
+.simulationBedMapLegendSwatch.is-partial-harvest{background:#fbbf24;}
+.bedDetailSelectionHint{
+  margin:0 0 9px;
+  color:#64748b;
+  font-size:11px;
+  font-weight:700;
+  line-height:1.45;
+  text-align:center;
+}
 
 /* Monitor and result surfaces */
 .monitorModeOverlay{
@@ -8572,7 +8670,13 @@ requestAnimationFrame(function(){
         <div class="casePlacementBedPanel">
           <div id="beds" class="bedWrap"></div>
         </div>
-        <div class="bedDetailOpenHint">ベッドは長押しで詳細表示</div>
+        <div class="simulationBedMapLegend" aria-label="ベッド配置図の色分け">
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>記録済み</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-progress-completed"></span>途中経過完了</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-partial-harvest"></span>部分収穫</span>
+        </div>
+        <div class="bedDetailOpenHint">ベッドを長押しすると拡大し、パレットを選択できます</div>
         <button type="button" class="forecastSettingsOpenBtn" onclick="openForecastSettingsWindow()">
           <span class="forecastSettingsOpenLabel">計算設定</span>
           <span id="forecastSettingsSummary" class="forecastSettingsSummary">0% / 20 / 20 / 60(0/3)</span>
@@ -22851,6 +22955,63 @@ function appendBedMiniMap(bedElement, building, bed, options = {}){
   bedElement.appendChild(bar);
 }
 
+function getForecastBedOverviewMapCellHtml(building, bed, number, sectionStart, options = {}){
+  const key = getPalletKey(building, bed, number);
+  const selectedSet = options.selectedSet || new Set();
+  const recordedSet = options.recordedSet || new Set();
+  const progressCompletedSet = options.progressCompletedSet || new Set();
+  const partialHarvestCount = options.hasPartialHarvestRecords
+    ? getPartialHarvestCountForPallet(
+        building,
+        bed,
+        number,
+        options.targetDate,
+        options.partialHarvestSourceRecords,
+        { lookup: options.partialHarvestLookup }
+      )
+    : 0;
+  const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell"];
+  let stateText = "未選択";
+
+  if(selectedSet.has(key)){
+    classes.push("is-selected");
+    stateText = "選択中";
+  }
+  if(partialHarvestCount > 0){
+    classes.push("is-partial-harvest");
+    stateText += `、部分収穫 ${partialHarvestCount}株`;
+  }
+  if(progressCompletedSet.has(key)){
+    classes.push("is-progress-completed");
+    stateText = "途中経過で完了";
+  }
+  if(recordedSet.has(key)){
+    classes.push("is-recorded");
+    stateText = "記録済み";
+  }
+  if(sectionStart) classes.push("is-section-start");
+
+  return `<span class="${classes.join(" ")}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
+}
+
+function appendForecastBedOverviewMap(bedElement, building, bed, options = {}){
+  if(!bedElement) return;
+  const cells = [];
+  for(let row = ROWS; row >= 1; row--){
+    const displayRowIndex = ROWS - row;
+    const sectionStart = displayRowIndex > 0
+      && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
+    cells.push(getForecastBedOverviewMapCellHtml(building, bed, row * 2 - 1, sectionStart, options));
+    cells.push(getForecastBedOverviewMapCellHtml(building, bed, row * 2, sectionStart, options));
+  }
+
+  const map = document.createElement("div");
+  map.className = "dashboardSeedlingBedMap simulationBedMap";
+  map.setAttribute("aria-hidden", "true");
+  map.innerHTML = `<div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>`;
+  bedElement.appendChild(map);
+}
+
 function applyRecordBedRange(action){
   const bed = activeRecordBedActionBed;
   const startValue = Number(document.getElementById("recordBedRangeStartInput")?.value || 0);
@@ -23114,6 +23275,8 @@ function attachBedDetailOpenLongPressHandlers(element, context, building, bed){
   element.onpointerleave = (event) => {
     if(event.pointerType === "mouse") finishBedDetailOpenLongPress(event);
   };
+  element.oncontextmenu = (event) => event.preventDefault();
+  element.ondragstart = (event) => event.preventDefault();
   element.onkeydown = (event) => {
     if(event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -23361,6 +23524,12 @@ function renderBedDetailWindow(){
   };
   title.ontouchcancel = handleBedDetailTitlePressEnd;
   body.innerHTML = "";
+  if(activeBedDetailContext === "forecast"){
+    const hint = document.createElement("div");
+    hint.className = "bedDetailSelectionHint";
+    hint.textContent = "パレットをタップ、または指でなぞって選択・解除できます";
+    body.appendChild(hint);
+  }
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     const legend = document.createElement("div");
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";
@@ -26457,19 +26626,23 @@ function drawBeds(){
   container.innerHTML = "";
   const recordedSet = getRecordedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
-  const hasPartialHarvestRecords = records.some(record => record.type === "partialHarvest");
+  const progressCompletedSet = getAppliedHarvestProgressCompletedKeySet();
+  const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
+  const hasPartialHarvestRecords = partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
+  const targetDate = getHarvestTargetDate();
+  const partialHarvestLookup = hasPartialHarvestRecords
+    ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
+    : null;
 
   bedMap.forEach(b => {
     const bed = document.createElement("div");
-    const isExpanded = false;
     const isProgressCompleted = isHarvestProgressCompletedBed(currentBuilding, b);
     const summaryCounts = getBedSummaryCounts(currentBuilding, b, { selectedSet, recordedSet });
-    const collapsedStateClass = summaryCounts.selected >= PALLETS_PER_BED
+    const collapsedStateClass = isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)
       ? " bedCollapsedFull"
-      : (!summaryCounts.selected && !summaryCounts.recorded ? " bedCollapsedInactive" : "");
-    bed.className = "bed " + (isExpanded ? "bedExpanded" : "bedCollapsed" + collapsedStateClass)
+      : "";
+    bed.className = "bed bedCollapsed simulationBedOverview" + collapsedStateClass
       + (isProgressCompleted ? " harvestProgressCompletedBed" : "");
-    const splitInfo = getYieldSplitVisualInfo(b);
 
     const title = document.createElement("div");
     let titleCls = "bedTitle";
@@ -26478,46 +26651,27 @@ function drawBeds(){
     title.innerHTML = `<span class="bedTitleMain">${b}</span>${isProgressCompleted ? '<span class="harvestProgressCompletedBadge">完了</span>' : ''}`;
     bed.appendChild(title);
 
-    if(!isExpanded){
-      appendBedMiniMap(bed, currentBuilding, b, { selectedSet, recordedSet });
-      attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
-      container.appendChild(bed);
-      return;
-    }
-
-    const grid = document.createElement("div");
-    grid.className = "palletGrid";
-
-    let count = 1;
-
-    for(let r = ROWS - 1; r >= 0; r--){
-      for(let c = 0; c < COLS; c++){
-        const number = count;
-        const key = getPalletKey(currentBuilding, b, number);
-        const pallet = document.createElement("div");
-        let cls = getPalletLayoutClassName(number, splitInfo);
-        const partialHarvestCount = hasPartialHarvestRecords ? getPartialHarvestCountForPallet(currentBuilding, b, number) : 0;
-        if(partialHarvestCount > 0) cls += " partialHarvestPallet";
-        if(selectedSet.has(key)) cls += " harvestFill";
-        if(recordedSet.has(key)) cls += " recordedPallet";
-
-        if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
-        if(harvestSummary && harvestSummary.end === key) cls += " harvestEnd";
-
-        pallet.className = cls;
-        pallet.textContent = number;
-        pallet.title = `${currentBuilding}号棟 ${b}-${number}` + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
-        pallet.style.gridRowStart = r + 1;
-        pallet.style.gridColumnStart = c + 1;
-        pallet.onclick = () => togglePallet(currentBuilding, b, number);
-
-        grid.appendChild(pallet);
-        count++;
-      }
-    }
-
-    bed.appendChild(grid);
-    appendYieldSplitInfo(bed, splitInfo);
+    appendForecastBedOverviewMap(bed, currentBuilding, b, {
+      selectedSet,
+      recordedSet,
+      progressCompletedSet,
+      hasPartialHarvestRecords,
+      targetDate,
+      partialHarvestSourceRecords,
+      partialHarvestLookup
+    });
+    const counts = document.createElement("div");
+    counts.className = "simulationBedOverviewCounts";
+    counts.innerHTML = `
+      <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+      <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
+    `;
+    bed.appendChild(counts);
+    attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
+    bed.setAttribute(
+      "aria-label",
+      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。長押しで拡大してパレットを選択`
+    );
     container.appendChild(bed);
   });
 }
