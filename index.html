@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260809-dashboard-record-cards">
+<meta name="harvestnavi-version" content="20260809-dashboard-record-details">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -6114,15 +6114,32 @@ button.monitorSaveBtn:active{
   transform:rotate(-90deg);
 }
 .dashboardRecordPeriodStatus{
+  min-width:0;
   margin-left:auto;
   color:var(--ui-accent-dark, #3730a3);
   font-weight:700;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 .dashboardRecordPeriodGrid{
   display:grid;
   grid-template-columns:repeat(2, minmax(0, 1fr));
   gap:8px;
   padding-top:8px;
+}
+.dashboardRecordPeriodGrid > label{
+  min-width:0;
+  margin:6px 0 0;
+}
+.dashboardRecordPeriodGrid input[type="date"]{
+  display:block;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  height:40px;
+  padding:7px 8px;
+  font-size:14px;
 }
 .dashboardTableFilterActions{
   display:flex;
@@ -6189,11 +6206,6 @@ button.monitorSaveBtn:active{
   color:#b91c1c;
   font-weight:800;
 }
-.dashboardNoteCell{
-  max-width:220px;
-  white-space:pre-wrap;
-  word-break:break-word;
-}
 .dashboardRecordDesktop{
   display:block;
 }
@@ -6231,19 +6243,14 @@ button.monitorSaveBtn:active{
   min-height:0;
   padding:13px 14px;
   border:1px solid var(--ui-line, #e5e7eb);
-  border-left:4px solid #34a853;
   border-radius:15px;
   background:#fff;
   color:var(--ui-text, #111827);
   text-align:left;
   box-shadow:var(--ui-shadow-sm, 0 1px 2px rgba(15,23,42,.08));
 }
-.dashboardRecordCard.partial{
-  border-left-color:#f59e0b;
-}
 .dashboardRecordCard.hasAttention{
   border-color:#fb923c;
-  border-left-color:#f97316;
   background:#fffaf5;
 }
 .dashboardRecordCard:focus-visible{
@@ -6287,8 +6294,7 @@ button.monitorSaveBtn:active{
   border-radius:11px;
   background:var(--ui-surface-muted, #f8fafc);
 }
-.dashboardRecordCardMetricLabel,
-.dashboardRecordCardMetaLabel{
+.dashboardRecordCardMetricLabel{
   color:var(--ui-text-tertiary, #64748b);
   font-size:10px;
   font-weight:800;
@@ -6297,54 +6303,6 @@ button.monitorSaveBtn:active{
   color:var(--ui-text, #111827);
   font-size:15px;
   font-weight:900;
-}
-.dashboardRecordCardMeta{
-  display:grid;
-  gap:7px;
-  margin-top:10px;
-}
-.dashboardRecordCardMetaRow{
-  display:grid;
-  grid-template-columns:66px minmax(0, 1fr);
-  gap:8px;
-  align-items:start;
-  font-size:12px;
-  line-height:1.45;
-}
-.dashboardRecordCardMetaValue{
-  min-width:0;
-  color:var(--ui-text-secondary, #475569);
-  font-weight:700;
-  overflow-wrap:anywhere;
-}
-.dashboardRecordCardLocation{
-  display:-webkit-box;
-  overflow:hidden;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:2;
-}
-.dashboardRecordCardMemo{
-  display:-webkit-box;
-  overflow:hidden;
-  margin-top:9px;
-  padding-top:9px;
-  border-top:1px solid var(--ui-line, #e5e7eb);
-  color:var(--ui-text-secondary, #475569);
-  font-size:12px;
-  line-height:1.45;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:1;
-}
-.dashboardRecordCardAlert{
-  display:-webkit-box;
-  overflow:hidden;
-  margin-top:9px;
-  color:#9a3412;
-  font-size:11px;
-  font-weight:800;
-  line-height:1.45;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:2;
 }
 .dashboardRecordCardCue{
   display:block;
@@ -6372,9 +6330,6 @@ button.monitorSaveBtn:active{
 }
 
 @media (max-width:640px){
-  .dashboardRecordPeriodGrid{
-    grid-template-columns:1fr 1fr;
-  }
   .dashboardCardGrid{
     grid-template-columns:1fr 1fr;
   }
@@ -6416,6 +6371,12 @@ button.monitorSaveBtn:active{
   .monitorModeHeader{
     align-items:flex-start;
     justify-content:flex-end;
+  }
+}
+
+@media (max-width:520px){
+  .dashboardRecordPeriodGrid{
+    grid-template-columns:1fr;
   }
 }
 
@@ -21450,35 +21411,34 @@ function getDashboardRecordMonthLabel(dateString){
 
 function getDashboardRecordListModel(record, harvestCaseTotalsByDate){
   const isPartial = record?.type === "partialHarvest";
-  const qualityMemo = isPartial ? "-" : (formatQualityMemo(record?.qualityMemo) || "-");
   const rawLoss = String(record?.actualLoss ?? "").trim();
   const lossText = isPartial || !rawLoss ? "-" : `${rawLoss}%`;
-  const summary = isPartial
-    ? formatPartialHarvestSummary(record?.targets)
-    : (record?.palletSummary || formatPalletSummary(getPalletKeysFromRecord(record)) || "");
-  const groupModel = isPartial ? null : getHarvestPlantingGroupModel(record);
-  const plantingText = !groupModel
-    ? ""
-    : [
-        ...(groupModel.relatedEvents.length
-          ? groupPlantingEventsByDate(groupModel.relatedEvents).map(group => {
-              const metrics = getPlantingEventGroupListMetrics(group.events);
-              return `苗 ${metrics.seedlingTrayText} / 苗ロス ${metrics.lossRateText}`;
-            })
-          : ["苗植え記録なし"]),
-        `未定植 ${groupModel.pendingPalletCount}枚`
-      ].join(" / ");
   return {
     isPartial,
     casesText: getHarvestRecordCaseDisplayText(record, harvestCaseTotalsByDate),
-    qualityMemo,
     rawLoss,
     lossText,
-    locationText: summary || formatDashboardBuildings(record),
-    plantingText,
-    noteText: [summary, plantingText, record?.memo || ""].filter(Boolean).join("\n"),
     attention: getDashboardRecordAttentionInfo(record)
   };
+}
+
+function getHarvestRecordPlantingDetailText(record){
+  if(!record || record.type === "partialHarvest") return "-";
+  const relatedEvents = getPlantingEventsForHarvest(record.id);
+  const plantingLines = groupPlantingEventsByDate(relatedEvents).map(group => {
+    const metrics = getPlantingEventGroupListMetrics(group.events);
+    const palletKeys = [...new Set(group.events.flatMap(event => {
+      const allocation = event.sourceAllocations.find(item => (
+        Number(item.harvestRecordId) === Number(record.id)
+      ));
+      return allocation?.palletKeys || [];
+    }))].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+    const locationText = formatPalletSummary(palletKeys) || "場所情報なし";
+    return `${group.plantingDate || "日付なし"}\n${locationText}\n苗枚数: ${metrics.seedlingTrayText} / 苗ロス率: ${metrics.lossRateText}`;
+  });
+  if(!plantingLines.length) plantingLines.push("苗植え記録なし");
+  plantingLines.push(`未定植: ${getUnplantedPalletKeysForHarvest(record.id).length}枚`);
+  return plantingLines.join("\n\n");
 }
 
 function getDashboardRecordTableHeaderHtml(){
@@ -21489,9 +21449,7 @@ function getDashboardRecordTableHeaderHtml(){
         <th>区分</th>
         <th>ケース</th>
         <th>ロス率</th>
-        <th>号棟</th>
-        <th>品質メモ</th>
-        <th>メモ / 収穫・苗植え情報</th>
+        <th>状態</th>
         <th>詳細</th>
       </tr>
     </thead>
@@ -21527,12 +21485,10 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
     return `
       <tr${model.attention.hasAttention ? ' class="dashboardRecordTableAttention"' : ""}>
         <td>${escapeHtml(record.date || "-")}</td>
-        <td><span class="dashboardTypeBadge ${model.isPartial ? "partial" : "full"}">${escapeHtml(getDashboardRecordTypeLabel(record))}</span>${model.attention.hasAttention ? `<br><span class="dashboardRecordAttentionBadge">${escapeHtml(model.attention.label)}</span>` : ""}</td>
+        <td><span class="dashboardTypeBadge ${model.isPartial ? "partial" : "full"}">${escapeHtml(getDashboardRecordTypeLabel(record))}</span></td>
         <td>${escapeHtml(model.casesText)}</td>
         <td>${lossHtml}</td>
-        <td>${escapeHtml(formatDashboardBuildings(record))}</td>
-        <td>${escapeHtml(model.qualityMemo)}</td>
-        <td class="dashboardNoteCell">${escapeHtml(model.noteText || "-")}</td>
+        <td>${model.attention.hasAttention ? `<span class="dashboardRecordAttentionBadge">${escapeHtml(model.attention.label)}</span>` : "-"}</td>
         <td><button type="button" class="dashboardRecordTableDetailBtn" onclick="openRecordDetailWindow('${detailKind}', ${safeRecordId})">見る</button></td>
       </tr>
     `;
@@ -21553,7 +21509,6 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
             const model = getDashboardRecordListModel(record, harvestCaseTotalsByDate);
             const safeRecordId = getSafePositiveRecordId(record?.id) ?? 0;
             const detailKind = model.isPartial ? "partialHarvest" : "harvest";
-            const alertText = model.attention.reasons.join(" ");
             const accessibleLabel = `${record?.date || "日付なし"} ${getDashboardRecordTypeLabel(record)} ${model.casesText}ケースの詳細`;
             return `
               <button type="button" class="dashboardRecordCard ${model.isPartial ? "partial" : "full"}${model.attention.hasAttention ? " hasAttention" : ""}"
@@ -21573,16 +21528,6 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
                     <span class="dashboardRecordCardMetricValue${Number(model.rawLoss) >= 15 ? " dashboardLossHigh" : ""}">${escapeHtml(model.lossText)}</span>
                   </span>
                 </span>
-                <span class="dashboardRecordCardMeta">
-                  <span class="dashboardRecordCardMetaRow">
-                    <span class="dashboardRecordCardMetaLabel">収穫場所</span>
-                    <span class="dashboardRecordCardMetaValue dashboardRecordCardLocation">${escapeHtml(model.locationText || "-")}</span>
-                  </span>
-                  ${!model.isPartial ? `<span class="dashboardRecordCardMetaRow"><span class="dashboardRecordCardMetaLabel">品質</span><span class="dashboardRecordCardMetaValue">${escapeHtml(model.qualityMemo)}</span></span>` : ""}
-                  ${model.plantingText ? `<span class="dashboardRecordCardMetaRow"><span class="dashboardRecordCardMetaLabel">苗植え</span><span class="dashboardRecordCardMetaValue">${escapeHtml(model.plantingText)}</span></span>` : ""}
-                </span>
-                ${record?.memo ? `<span class="dashboardRecordCardMemo">メモ：${escapeHtml(record.memo)}</span>` : ""}
-                ${alertText ? `<span class="dashboardRecordCardAlert">${escapeHtml(alertText)}</span>` : ""}
                 <span class="dashboardRecordCardCue">詳細を見る ›</span>
               </button>
             `;
@@ -29848,14 +29793,21 @@ function openRecordDetailWindow(kind, id){
       showToast("詳細を表示する収穫記録が見つかりません");
       return;
     }
+    const attention = getDashboardRecordAttentionInfo(record);
+    const harvestLocationText = record.palletSummary
+      || formatPalletSummary(getPalletKeysFromRecord(record))
+      || "-";
     titleText = `${record.date || "日付なし"} 収穫の詳細`;
     locationTitle = "収穫場所";
     infoRows = [
       { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
       { label: "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
+      { label: "収穫場所", value: harvestLocationText },
       { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
+      { label: "苗植え", value: getHarvestRecordPlantingDetailText(record) },
       { label: "予定苗枚数", value: `${record.plannedSeedlingTrayCount || 0}枚` },
       { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
+      ...(attention.hasAttention ? [{ label: attention.label, value: attention.reasons.join("\n") || "内容を確認してください" }] : []),
       ...(record.memo ? [{ label: "メモ", value: record.memo }] : [])
     ];
   }else if(kind === "partialHarvest"){
@@ -29864,11 +29816,13 @@ function openRecordDetailWindow(kind, id){
       showToast("詳細を表示する部分収穫記録が見つかりません");
       return;
     }
+    const attention = getDashboardRecordAttentionInfo(record);
     titleText = `${record.date || "日付なし"} 部分収穫の詳細`;
     locationTitle = "部分収穫場所";
     infoRows = [
       { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
-      { label: "収穫範囲と株数", value: formatPartialHarvestSummary(record.targets) || "-" },
+      { label: "収穫場所・株数", value: formatPartialHarvestSummary(record.targets) || "-" },
+      ...(attention.hasAttention ? [{ label: attention.label, value: attention.reasons.join("\n") || "内容を確認してください" }] : []),
       ...(record.memo ? [{ label: "メモ", value: record.memo }] : [])
     ];
   }else if(kind === "planting"){
