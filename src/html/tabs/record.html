@@ -1,0 +1,403 @@
+  <div id="recordTab" style="display:none;">
+    <div id="recordSaveCard" class="card">
+      <h2 id="recordSaveSectionTitle" class="sectionTitle workflowFocusHeading">
+        <span id="recordSaveSectionTitleText">記録を保存</span>
+        <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
+      </h2>
+      <div id="recordStepIndicator" class="recordStepIndicator">
+        <div id="recordStepHarvest" class="recordStepItem active">
+          <span class="recordStepNumber">1</span>
+          <span>収穫記録</span>
+        </div>
+        <div id="recordStepPlanting" class="recordStepItem">
+          <span class="recordStepNumber">2</span>
+          <span>苗植え記録</span>
+        </div>
+      </div>
+
+      <div id="recordHarvestStageSection" class="recordStageSection">
+        <div class="recordStageHeader">
+          <div class="recordStageCaption">第一段階: 収穫記録</div>
+        </div>
+
+        <div class="recordDateField">
+          <label class="fieldAccentLabel">日付</label>
+          <div class="recordDateInputRow">
+            <input id="recordDateInput" type="date">
+            <div id="recordWeekdayDisplay" class="recordWeekdayDisplay">（--）</div>
+          </div>
+        </div>
+
+        <div class="recordActualRow recordActualCasesRow">
+          <div>
+            <label class="fieldAccentLabel">実際の収穫ケース数</label>
+            <div class="recordCasesInputColumn">
+              <span class="inputUnitWrap recordCasesUnitWrap">
+                <input id="recordCasesInput" type="number" min="0" inputmode="numeric">
+                <span class="inputUnitSuffix">ケース</span>
+              </span>
+              <div id="recordCasesAutoValueNote" class="recordAutoValueNote" hidden>予測値から引き継ぎ</div>
+              <div id="recordPartialHarvestIncludedNote" class="recordPartialHarvestIncludedNote" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="recordPlantingStageSection" class="recordStageSection" hidden>
+        <div class="recordStageHeader">
+          <h3 id="recordPlantingStageCaption" class="recordStageCaption workflowFocusHeading">第二段階: 苗植え記録</h3>
+        </div>
+        <section class="plantingActionCard" aria-labelledby="plantingActionTitle">
+          <div id="plantingActionTitle" class="plantingActionTitle">今回の指示</div>
+          <div class="plantingActionList">
+            <div class="plantingActionItem">
+              <span class="plantingActionNumber">1</span>
+              <div>
+                <div class="plantingActionLabel">その棟の残り収穫可能ケース数</div>
+                <div id="recordPlantingCaseInstruction" class="plantingActionValue">計算中です。</div>
+              </div>
+            </div>
+            <div class="plantingActionItem">
+              <span class="plantingActionNumber">2</span>
+              <div>
+                <div class="plantingActionLabel">追加で取る苗</div>
+                <div id="recordAdditionalSeedlingInstruction" class="plantingActionValue">計算中です。</div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <details class="recordSeedlingDetails">
+          <summary>苗の計算・余り苗の詳細</summary>
+          <div id="recordSeedlingDiffBox" class="recordSeedlingDiffBox">苗枚数を計算中です。</div>
+        </details>
+
+        <div class="recordSeedlingRow">
+          <div>
+            <label class="fieldAccentLabel">実際に取った苗</label>
+            <div class="recordSeedlingInputColumn">
+              <span class="inputUnitWrap recordSeedlingUnitWrap">
+                <input id="recordActualSeedlingTrayCountInput" type="number" min="0" inputmode="numeric" placeholder="0">
+                <span class="inputUnitSuffix">枚</span>
+              </span>
+              <div id="recordSeedlingAutoValueNote" class="recordAutoValueNote" hidden>予測値から引き継ぎ</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="fieldAccentLabel">苗が余ったらチェックしてください</label>
+          <div class="recordSeedlingCarryoverChoice">
+            <label class="recordSeedlingCarryoverOption">
+              <input id="recordSeedlingCarryoverCheckbox" type="checkbox" name="recordSeedlingCarryoverMode" value="carryover">
+              <span>余った</span>
+            </label>
+          </div>
+          <div id="recordSeedlingCarryoverHint" class="recordSeedlingCarryoverHint"></div>
+        </div>
+
+        <div class="recordActualRow">
+          <div class="hiddenRecordField">
+            <label>実際に取った苗 合計株数</label>
+            <div id="recordActualSeedlingTotalDisplay" class="recordLossDisplay empty" data-value="">--</div>
+          </div>
+          <div>
+            <label>実際の苗ロス率</label>
+            <div id="recordActualSeedlingLossInput" class="recordLossDisplay empty" data-value="">--</div>
+          </div>
+        </div>
+      </div>
+
+      <label class="hiddenRecordField">実際に収穫したパレット番号（自動まとめ表示）</label>
+      <textarea id="recordPalletSummaryInput" class="hiddenRecordField" readonly placeholder="選択結果をここへ反映できます"></textarea>
+
+      <label class="hiddenRecordField">実際に苗植えした場所</label>
+      <textarea id="recordPlantingSummaryInput" class="hiddenRecordField" readonly placeholder="収穫を記録した後、表で苗植え場所を選ぶと入ります"></textarea>
+
+      <div class="recordHarvestAdjustBox">
+        <div id="recordEditNotice" class="recordEditNotice">実際の収穫場所に調整してください。</div>
+        <div id="recordPlantingLegend" class="recordPlantingLegend" hidden>
+          <span class="recordLegendItem"><span class="recordLegendSwatch unplanted"></span>未定植</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch planting-now"></span>今回定植</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch planted"></span>定植済み</span>
+        </div>
+
+        <div id="recordBeds" class="recordBuildingMapList"></div>
+      </div>
+
+      <div class="recordActualLossField">
+        <label>実際のロス率</label>
+        <div id="recordActualLossInput" class="recordLossDisplay empty" data-value="">--</div>
+      </div>
+
+      <div id="recordQualityMemoSection" class="recordHarvestMemoSection">
+        <label id="recordQualityMemoLabel" class="fieldAccentLabel">品質メモ</label>
+        <div class="qualityChoiceRow">
+          <label class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
+          <label id="qualityMemoMediumChoice" class="qualityChoice" hidden><input type="checkbox" name="qualityMemoTag" value="medium">中</label>
+          <label class="qualityChoice qualitySmall"><input type="checkbox" name="qualityMemoTag" value="small">小さい</label>
+          <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="elongated">徒長</label>
+          <label id="qualityMemoChipChoice" class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip">チップ</label>
+          <label class="qualityChoice qualityOther"><input type="checkbox" id="qualityMemoOtherToggle" name="qualityMemoTag" value="other">その他</label>
+        </div>
+        <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他" hidden>
+      </div>
+
+      <div id="recordHarvestMemoSection" class="recordHarvestMemoSection">
+        <label class="fieldAccentLabel">メモ</label>
+        <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
+      </div>
+      <div class="recordFormActionRow">
+        <button id="recordDiscardEditBtn" class="actionBtn secondaryBtn" onclick="discardRecordEditChanges()" hidden>編集を破棄して戻る</button>
+        <button id="recordClearActionBtn" class="actionBtn secondaryBtn recordClearBtn" onclick="handleRecordClearAction()">クリア</button>
+        <button id="recordPrimaryActionBtn" class="actionBtn thirdBtn" onclick="handleRecordPrimaryAction()">収穫場所を記録する</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sectionTitle">記録一覧</div>
+      <div id="syncConflictAlert" class="syncConflictAlert" role="status" aria-live="polite" hidden>
+        <div class="syncConflictAlertCopy">
+          <div id="syncConflictAlertTitle" class="syncConflictAlertTitle">競合する記録があります</div>
+          <div class="syncConflictAlertText">端末とスプレッドシートで内容が異なります。比較して、残す内容を選んでください。</div>
+        </div>
+        <button id="syncConflictBtn" class="actionBtn syncConflictBtn" type="button" onclick="openSyncConflictPanel()" hidden>競合を比較・選択（0）</button>
+      </div>
+      <div id="recordConsistencyAlert" class="recordConsistencyAlert" role="alert" hidden>
+        <div class="recordConsistencyAlertCopy">
+          <div id="recordConsistencyAlertTitle" class="recordConsistencyAlertTitle">確認が必要な記録があります</div>
+          <div id="recordConsistencyAlertText" class="recordConsistencyAlertText"></div>
+        </div>
+        <button class="actionBtn recordConsistencyAlertBtn" type="button" onclick="editFirstRecordConsistencyIssue()">古い記録から編集</button>
+      </div>
+      <div id="recordList" class="smallText">まだ記録がありません。</div>
+      <div class="externalSaveTools">
+        <div class="googleSheetResendHelpWrap">
+          <button id="googleSheetResendBtn" class="actionBtn secondaryBtn" onclick="sendPendingRecordsToGoogleSheet()">未送信の記録（0）</button>
+          <details id="recordTrashDetails" class="recordToggleWrap recordTrashDetailsInline">
+            <summary id="recordTrashSummary" class="recordTrashIconBtn" aria-label="削除済みの記録">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 13h10l1-13"></path><path d="M9 7V4h6v3"></path>
+              </svg><span aria-hidden="true">（</span><span id="recordTrashCount">0</span><span aria-hidden="true">）</span>
+            </summary>
+            <div id="recordTrashList" class="recordToggleBody smallText">削除済みの記録はありません。</div>
+          </details>
+        </div>
+        <div class="recordImportChoice">
+          <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" onclick="toggleRecordImportMenu()">記録を読み込む</button>
+          <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
+            <div id="recordImportTitle" class="recordImportTitle">記録を読み込む</div>
+            <button id="googleSheetImportBtn" class="actionBtn thirdBtn" onclick="hideRecordImportMenu(); importRecordsFromGoogleSheet()">スプレッドシートから読み込む</button>
+            <button class="actionBtn secondaryBtn" onclick="hideRecordImportMenu(); triggerImportRecords()">JSONファイルを読み込む</button>
+            <button class="actionBtn secondaryBtn" onclick="hideRecordImportMenu()">キャンセル</button>
+          </div>
+        </div>
+        <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
+        <details id="recordHelpDetails" class="recordToggleWrap">
+          <summary class="recordToggleSummary">ヘルプ</summary>
+          <div class="recordToggleBody">
+            <details class="recordToggleWrap">
+              <summary class="recordToggleSummary">計算式について</summary>
+              <div class="recordToggleBody">
+                <p class="calculationHelpIntro">アプリ内で自動計算する主な値の計算式です。共通して「1ケース＝12株」で換算します。収穫時・定植時の株数は、計算設定の「全体設定」より「ベッド別設定」、さらに有効な場合は「手前・奥の設定」を優先します。収穫ロス率は、有効なベッド別設定がなければ全体設定を使います。</p>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpHarvestTitle">
+                  <h4 id="calculationHelpHarvestTitle" class="calculationHelpTitle">収穫場所の計算</h4>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">通常順で収穫するケース数</div>
+                    <span class="calculationHelpFormula">通常順のケース数 ＝ 入力した総ケース数 − 同じ日に記録済みの部分収穫ケース数</span>
+                    <p class="calculationHelpText">同じ日の通常収穫がまだ記録されていないときだけ、部分収穫分を差し引きます。0ケース未満にはしません。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">必要な収穫株数</div>
+                    <span class="calculationHelpFormula">必要株数 ＝ 通常順のケース数 × 12株</span>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">1パレットの予想収穫株数</div>
+                    <span class="calculationHelpFormula">予想収穫株数 ＝ 最大0株｛設定株数 ×（100 − 収穫ロス率）÷ 100 − 部分収穫済み株数｝</span>
+                    <p class="calculationHelpText">部分収穫済み株数は、直近35日以内かつ、そのパレットの前回の通常収穫より後に記録した分を合計します。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">収穫場所の選択</div>
+                    <span class="calculationHelpFormula">選択場所の予想収穫株数 ＝ 選択した各パレットの予想収穫株数の合計</span>
+                    <p class="calculationHelpText">直近7件の通常収穫で記録済みのパレットを除き、収穫順に合計して、必要株数へ達するまでを収穫場所として選びます。合計は小数第2位を四捨五入し、小数第1位まで扱います。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">パレット選択から求めるケース数</div>
+                    <span class="calculationHelpFormula">自動ケース数 ＝ 切り捨て（選択場所の予想収穫株数 ÷ 12）＋ 同じ日の部分収穫ケース数</span>
+                    <p class="calculationHelpText">ケース数を手入力していないときに、選択したパレットから自動入力する値です。</p>
+                  </div>
+                </section>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpProgressTitle">
+                  <h4 id="calculationHelpProgressTitle" class="calculationHelpTitle">途中経過の再計算</h4>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">残りの通常収穫ケース数</div>
+                    <span class="calculationHelpFormula">残りケース数 ＝ 通常順のケース数 − 完了ベッドから実際に取れたケース数</span>
+                    <p class="calculationHelpText">選択した完了ベッドは残りの候補から除きます。最初の収穫場所が自動計算なら残りの場所を自動更新し、手動選択なら現在の残り場所を維持して、不足するケース数を表示します。</p>
+                  </div>
+                </section>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpPartialTitle">
+                  <h4 id="calculationHelpPartialTitle" class="calculationHelpTitle">各パレット部分収穫の計算</h4>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">1パレットあたりの部分収穫株数</div>
+                    <span class="calculationHelpFormula">平均株数 ＝ 部分収穫ケース数 × 12株 ÷（78パレット × 選択したベッド数）</span>
+                    <p class="calculationHelpText">取れた株数を選択した全パレットへ均等に割り振り、小数第7位を四捨五入して、次回の収穫予測から差し引きます。パレット自体は収穫済みにしません。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">部分収穫後の残り予想</div>
+                    <span class="calculationHelpFormula">残り予想ケース数 ＝ 四捨五入｛選択ベッドの予想収穫株数合計 ÷ 12 − 今回の部分収穫ケース数｝</span>
+                    <p class="calculationHelpText">記録のメモに表示する目安で、0ケース未満にはしません。</p>
+                  </div>
+                </section>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpCasesTitle">
+                  <h4 id="calculationHelpCasesTitle" class="calculationHelpTitle">ケース配置と「残すケース」の計算</h4>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">場所ごとに必要なケース数</div>
+                    <span class="calculationHelpFormula">場所別ケース数 ＝ 総ケース数 × その場所の予想収穫株数 ÷ 選択場所全体の予想収穫株数</span>
+                    <p class="calculationHelpText">号棟と前側・中央・後ろごとに配分します。整数へ切り捨てた後、小数部分が大きい場所から1ケースずつ加え、合計を総ケース数へ合わせます。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">残すケース・不足ケース</div>
+                    <span class="calculationHelpFormula">残すケース合計 ＝ 最大0ケース（配置したケース合計 − 総ケース数）</span>
+                    <span class="calculationHelpFormula">不足ケース ＝ 最大0ケース（総ケース数 − 配置したケース合計）</span>
+                    <p class="calculationHelpText">まず収穫場所と同じ位置のケースを使い、不足時は同じ号棟の別位置、次の号棟の前側の順で補います。号棟を取り切る場合の余りは次の号棟へ繰り越します。表示時は中央・後ろを10ケース単位に丸め、前側で合計を合わせます。</p>
+                  </div>
+                </section>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpSeedlingTitle">
+                  <h4 id="calculationHelpSeedlingTitle" class="calculationHelpTitle">苗枚数の計算</h4>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">植え付けに必要な株数</div>
+                    <span class="calculationHelpFormula">植え付け株数 ＝ 選択した各パレットの「収穫後に植える株数」の合計</span>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">苗ロスを含めて取る株数</div>
+                    <span class="calculationHelpFormula">取る苗の必要株数 ＝ 切り捨て｛最大0株（植え付け株数 − 前回からの繰越苗）÷（1 − 苗ロス率 ÷ 100）｝</span>
+                    <p class="calculationHelpText">苗ロス率が100%未満のときに計算します。繰越苗は先に植え付けへ充当します。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">必要な苗パレット枚数</div>
+                    <span class="calculationHelpFormula">苗枚数 ＝ 120株用・60株用の設定パターンを先頭から足し、必要株数を超えない範囲で数えた枚数</span>
+                    <p class="calculationHelpText">「3枚中の60個用パレット枚数」で設定した並びを繰り返します。前回までの未定植場所があれば、その必要分も含め、増えた枚数を「追加で取る苗」として表示します。</p>
+                  </div>
+                </section>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpActualTitle">
+                  <h4 id="calculationHelpActualTitle" class="calculationHelpTitle">記録時の実績計算</h4>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">実際の収穫ロス率</div>
+                    <span class="calculationHelpFormula">実際の収穫ロス率 ＝ 100 −｛（通常収穫ケース数 × 12株 ＋ 選択場所の部分収穫済み株数）÷ 選択場所の設定株数合計 × 100｝</span>
+                    <p class="calculationHelpText">小数第2位を四捨五入し、小数第1位まで表示します。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">実際に取った苗の株数</div>
+                    <span class="calculationHelpFormula">取った苗の株数 ＝ 入力した苗枚数に、設定した120株・60株の並びを順番に当てはめた合計</span>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">実際の苗ロス率（「余った」のチェックなし）</div>
+                    <span class="calculationHelpFormula">苗ロス率 ＝（取った苗 − 今回使った苗）÷ 取った苗 × 100</span>
+                    <p class="calculationHelpText">前回からの繰越苗を先に使い、その後に今回取った苗を使ったものとして計算します。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">苗を「余った」とした場合の繰越</div>
+                    <span class="calculationHelpFormula">今回の繰越苗 ＝ 最大0株｛取った苗 − 今回使った苗 − 四捨五入（取った苗 × 使用する苗ロス率 ÷ 100）｝</span>
+                    <span class="calculationHelpFormula">作業後の繰越苗 ＝ 前回の繰越苗 − 前回分から使った苗 ＋ 今回の繰越苗</span>
+                    <p class="calculationHelpText">使用する苗ロス率は、直近10件の苗植え記録にある苗ロス率の単純平均です。該当する実績がない場合は、計算設定の苗ロス率を使います。</p>
+                  </div>
+                </section>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpRemainingTitle">
+                  <h4 id="calculationHelpRemainingTitle" class="calculationHelpTitle">残り収穫可能ケース数</h4>
+                  <div class="calculationHelpItem">
+                    <span class="calculationHelpFormula">残りケース数 ＝ 切り捨て｛未収穫パレットの予想収穫株数合計 ÷ 12 × 10｝÷ 10</span>
+                    <p class="calculationHelpText">記録済みのパレットと今回収穫したパレットを除き、部分収穫済み株数も差し引いて、0.1ケース単位で表示します。</p>
+                  </div>
+                </section>
+
+                <section class="calculationHelpSection" aria-labelledby="calculationHelpDashboardTitle">
+                  <h4 id="calculationHelpDashboardTitle" class="calculationHelpTitle">集計と収穫時期の計算</h4>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">平均収穫ケース数</div>
+                    <span class="calculationHelpFormula">直近1ヶ月の平均 ＝ 期間内の総ケース数 ÷ ケース記録がある日数</span>
+                    <p class="calculationHelpText">通常収穫と部分収穫を同じ日の合計へまとめます。収穫ケース数グラフの「1日あたり」は、期間内の総ケース数を100ケース超の日数で割り、100ケース以下の日は日数のかっこ内へ表示して割る日数には含めません。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">平均収穫ロス率</div>
+                    <span class="calculationHelpFormula">1日の平均ロス率 ＝ Σ（通常収穫のロス率 × その通常収穫のケース数）÷ その日の通常収穫ケース数</span>
+                    <span class="calculationHelpFormula">期間の平均ロス率 ＝ Σ（1日の平均ロス率 × その日の総ケース数）÷ 対象日の総ケース数合計</span>
+                    <p class="calculationHelpText">ロス率自体は通常収穫記録から求め、日ごとの重みには同日の部分収穫を含む総ケース数を使います。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">平均苗ロス率</div>
+                    <span class="calculationHelpFormula">平均苗ロス率 ＝ 苗植え記録の苗ロス率合計 ÷ 苗ロス率がある記録数</span>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">収穫時期の目安</div>
+                    <span class="calculationHelpFormula">1収穫日の必要株数 ＝ 最大0株（1日あたりケース数 − 同日の部分収穫ケース数）× 12株</span>
+                    <p class="calculationHelpText">火・水・木・土・日を収穫日として、指定したロス率で収穫場所の計算を日ごとに仮想実行します。実際の記録済みの日は重ねて計算せず、場所ごとの予測日を求めます。</p>
+                  </div>
+                  <div class="calculationHelpItem">
+                    <div class="calculationHelpLabel">定植からの経過日数</div>
+                    <span class="calculationHelpFormula">経過日数 ＝ 表示する日または予測収穫日 − そのパレットの最新定植日</span>
+                    <p class="calculationHelpText">日付の差を暦日で数えます。定植日がない場所は、収穫時期の予測内では次回から次々回の収穫日に定植する想定を使います。</p>
+                  </div>
+                </section>
+
+                <div class="calculationHelpNote">Σ（シグマ）は「すべて足す」という意味です。「切り捨て」「四捨五入」の記載がない途中計算は端数を保ち、各式に記した段階で丸めます。</div>
+              </div>
+            </details>
+            <details class="recordToggleWrap">
+              <summary class="recordToggleSummary">・各パレットの一部だけ収穫したい</summary>
+              <div class="recordToggleBody">
+                <div class="smallText" style="white-space:pre-line; margin-bottom:12px;">今回の収穫のうち、通常の順番ではないベッドの各パレットから少しずつ取ったときに記録します。
+株数やロス率の入力は不要です。ケース数から各パレットの平均収穫株数を自動計算し、その場所の順番が来たときの予測から差し引きます。パレット自体は収穫済みにしません。</div>
+                <div class="partialHarvestGrid" style="margin-bottom:10px;">
+                  <div>
+                    <label>号棟</label>
+                    <select id="partialHarvestBuildingInput">
+                      <option value="2">2号棟</option>
+                      <option value="3">3号棟</option>
+                      <option value="4">4号棟</option>
+                      <option value="5">5号棟</option>
+                      <option value="6">6号棟</option>
+                      <option value="7">7号棟</option>
+                      <option value="8">8号棟</option>
+                      <option value="9">9号棟</option>
+                    </select>
+                  </div>
+                </div>
+                <label>ベッド</label>
+                <div class="partialBedChoiceRow" style="margin-bottom:10px;">
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="A">A</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="B">B</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="C">C</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="D">D</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="E">E</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="F">F</label>
+                </div>
+                <label>今回の総ケースのうち、この場所から取れたケース数</label>
+                <input id="partialHarvestCasesInput" type="number" min="0" inputmode="numeric">
+                <button class="actionBtn thirdBtn" onclick="savePartialHarvestRecord()">各パレット部分収穫を記録する</button>
+              </div>
+            </details>
+            <details class="recordToggleWrap">
+              <summary class="recordToggleSummary">・記録を外部保存</summary>
+              <div class="recordToggleBody">
+                <div class="smallText" style="margin-bottom:12px;">端末内の記録をJSONファイルとして保存します。</div>
+                <button class="actionBtn secondaryBtn" onclick="exportRecordsToFile()">JSONファイルを保存する</button>
+              </div>
+            </details>
+            <details class="recordToggleWrap">
+              <summary class="recordToggleSummary">・前の安定版に戻す</summary>
+              <div class="recordToggleBody">
+                <div id="appRollbackStatus" class="appRollbackStatus" hidden></div>
+                <button id="appRollbackBtn" type="button" class="actionBtn secondaryBtn appRollbackBtn" onclick="confirmAppVersionRollback()" hidden>前の安定版に戻す</button>
+              </div>
+            </details>
+          </div>
+        </details>
+        <div id="recordHelpRestorePoint"></div>
+      </div>
+    </div>
+  </div>

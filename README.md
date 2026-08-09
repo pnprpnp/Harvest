@@ -1,5 +1,23 @@
 # Harvestnavi
 
+## 開発用ソースと公開用ファイル
+
+画面、デザイン、本体処理の開発用ソースは、機能別に [`src`](src) 以下へ分割しています。公開時に読み込むファイルは従来どおりルートの `index.html` 1つなので、端末の更新方式は変わりません。
+
+ソースを変更した後は、次のコマンドで公開用 `index.html` を生成します。
+
+```sh
+python3 tools/build_index.py
+```
+
+生成済みかどうかだけを確認するときは、次を実行します。この確認はブラウザ動作テストの開始時にも自動で行われます。
+
+```sh
+python3 tools/build_index.py --check
+```
+
+各ファイルの担当範囲と編集方法は [`src/README.md`](src/README.md) にまとめています。
+
 ## Firebaseによるモニター更新通知
 
 モニターの内容は従来どおりGoogle Apps Scriptに保存します。Firebase Realtime Databaseには内容を保存せず、変更を知らせる短い更新番号と時刻だけを保存します。

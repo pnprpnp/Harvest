@@ -1,0 +1,104 @@
+<div class="appTopChrome">
+<header>
+  <button id="headerMenuBtn" type="button" class="headerMenuBtn" onclick="openAppMenuWindow()" aria-label="メニューを開く"></button>
+  <button id="workflowVisibilityBtn" type="button" class="appTitleButton" onclick="toggleWorkflowBarVisibility()" aria-controls="workflowBar" aria-expanded="true" aria-label="Harvestnavi。ナビバーを閉じる" title="ナビバーを閉じる">
+    <span class="appTitle">Harvestnavi</span>
+    <span class="appTitleToggleIndicator" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+        <path d="m7 14 5-5 5 5"></path>
+      </svg>
+    </span>
+    <span class="appTitleHint" aria-hidden="true">タップでナビを開閉</span>
+  </button>
+  <div class="headerActions">
+    <button id="headerRecordSyncBtn" type="button" class="headerActionBtn headerLatestRefreshBtn headerRecordSyncBtn availabilityNoticeTarget" onclick="syncRecordsFromHeader()" aria-label="スプレッドシートから最新の記録を読み込む">
+      <span class="headerRecordSyncMain">
+        <span class="headerLatestRefreshMain" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M20 6v5h-5"></path>
+            <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
+          </svg>
+        </span>
+      </span>
+      <span id="headerLatestRecordDate" class="headerLatestRefreshSub">記録なし</span>
+    </button>
+  </div>
+</header>
+
+<nav id="workflowBar" class="workflowBar" aria-label="収穫作業の進行状況">
+  <div class="workflowBarInner">
+    <ol class="workflowSteps">
+      <li id="workflowStepPlan" class="workflowStep is-current" aria-current="step">
+        <span class="workflowStepMarker" aria-hidden="true">1</span>
+        <span class="workflowStepLabel"><span class="workflowStepLabelLong">収穫計算</span><span class="workflowStepLabelShort">計算</span></span>
+        <span class="workflowStepState">未入力</span>
+      </li>
+      <li id="workflowStepMonitor" class="workflowStep is-upcoming">
+        <span class="workflowStepMarker" aria-hidden="true">2</span>
+        <span class="workflowStepLabel"><span class="workflowStepLabelLong">モニター送信</span><span class="workflowStepLabelShort">送信</span></span>
+        <span class="workflowStepState">このあと</span>
+      </li>
+      <li id="workflowStepHarvest" class="workflowStep is-upcoming">
+        <span class="workflowStepMarker" aria-hidden="true">3</span>
+        <span class="workflowStepLabel"><span class="workflowStepLabelLong">収穫記録</span><span class="workflowStepLabelShort">収穫</span></span>
+        <span class="workflowStepState">このあと</span>
+      </li>
+      <li id="workflowStepPlanting" class="workflowStep is-upcoming">
+        <span class="workflowStepMarker" aria-hidden="true">4</span>
+        <span class="workflowStepLabel"><span class="workflowStepLabelLong">苗植え記録</span><span class="workflowStepLabelShort">苗植え</span></span>
+        <span class="workflowStepState">このあと</span>
+      </li>
+    </ol>
+    <div class="workflowNextActionGroup">
+      <div class="workflowNextCopy">
+        <span class="workflowNextEyebrow">次の作業</span>
+        <strong id="workflowNextTitle" class="workflowNextTitle">収穫ケース数とケース配置を入力</strong>
+      </div>
+      <button id="workflowNextActionBtn" type="button" class="workflowNextActionBtn" onclick="openWorkflowNextAction()">
+        <span class="workflowNextMobilePrefix">次：</span><span id="workflowNextActionLabel">計算を開く</span>
+        <span class="workflowNextActionArrow" aria-hidden="true">›</span>
+      </button>
+    </div>
+  </div>
+  <span id="workflowLiveRegion" class="workflowLiveRegion" role="status" aria-live="polite" aria-atomic="true"></span>
+</nav>
+</div>
+
+<nav class="tabBar" aria-label="メインタブ">
+    <button id="forecastTabBtn" class="tabBtn hasTabIcon active" onclick="switchTab('forecast')">
+      <span class="tabIconFrame" aria-hidden="true"><span class="tabIcon forecastTabIcon"></span></span>
+      <span class="tabBtnText">シミュ</span>
+    </button>
+    <button id="monitorTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('monitor')">
+      <span class="tabIconFrame" aria-hidden="true"><span class="tabIcon monitorTabIcon"></span></span>
+      <span class="tabBtnText">モニター</span>
+    </button>
+    <button id="recordTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('record')">
+      <span class="tabIconFrame" aria-hidden="true"><span class="tabIcon recordTabIcon"></span></span>
+      <span class="tabBtnText">記録</span>
+      <span id="recordTabConflictBadge" class="recordTabConflictBadge" aria-label="未解決の競合" hidden>0</span>
+    </button>
+    <button id="dashboardTabBtn" class="tabBtn hasTabIcon" onclick="switchTab('dashboard')">
+      <span class="tabIconFrame" aria-hidden="true">
+        <span class="tabIcon dashboardTabIcon">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <rect x="3" y="12" width="4" height="9" rx="1" fill="currentColor"></rect>
+            <rect x="10" y="5" width="4" height="16" rx="1" fill="currentColor"></rect>
+            <rect x="17" y="8" width="4" height="13" rx="1" fill="currentColor"></rect>
+            <path d="M2.5 21.5h19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+          </svg>
+        </span>
+      </span>
+      <span class="tabBtnText">集計</span>
+    </button>
+</nav>
+
+<div id="mainTabLoadingState" class="mainTabLoadingState" role="status" aria-live="polite" aria-atomic="true" hidden>
+  <span class="mainTabLoadingIcon" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+      <path d="M20 6v5h-5"></path>
+      <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
+    </svg>
+  </span>
+  <span id="mainTabLoadingText">ロード中...</span>
+</div>

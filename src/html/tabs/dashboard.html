@@ -1,0 +1,212 @@
+  <div id="dashboardTab" style="display:none;">
+    <div id="dashboardLoadingState" class="dashboardLoadingState" role="status" aria-live="polite" aria-label="集計を読み込み中" hidden>
+      <span class="dashboardLoadingRefreshIcon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+          <path d="M20 6v5h-5"></path>
+          <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
+        </svg>
+      </span>
+      <span>Now loading...</span>
+    </div>
+    <div class="dashboardSubtabNav">
+      <div class="dashboardSubtabBar" role="tablist" aria-label="集計の表示内容" onkeydown="handleDashboardSubtabKeydown(event)">
+        <button id="dashboardSubtabGuideBtn" type="button" class="dashboardSubtabBtn active" role="tab" aria-selected="true" aria-controls="dashboardSubtabGuide" data-dashboard-subtab="guide" onclick="setDashboardSubtab('guide')">目安</button>
+        <button id="dashboardSubtabCalendarBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabCalendar" data-dashboard-subtab="calendar" onclick="setDashboardSubtab('calendar')">カレンダー</button>
+        <button id="dashboardSubtabSeedlingsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabSeedlings" data-dashboard-subtab="seedlings" onclick="setDashboardSubtab('seedlings')">二次定植</button>
+        <button id="dashboardSubtabGraphsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGraphs" data-dashboard-subtab="graphs" onclick="setDashboardSubtab('graphs')">グラフ</button>
+      </div>
+    </div>
+
+    <div id="dashboardSubtabGuide" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabGuideBtn" data-dashboard-subtab-panel="guide">
+      <div class="card dashboardHarvestForecastCard">
+        <div class="dashboardForecastHeader">
+          <button id="dashboardForecastInfoBtn" type="button" class="dashboardForecastInfoBtn" onclick="openDashboardForecastInfoWindow()" aria-label="収穫時期の目安について">i</button>
+          <div class="dashboardForecastViewSwitch" role="group" aria-label="収穫時期の目安の表示方法">
+            <button type="button" class="dashboardForecastViewBtn" data-dashboard-forecast-view="beds" onclick="setDashboardHarvestForecastView('beds')" aria-pressed="true">ベッド別</button>
+            <button type="button" class="dashboardForecastViewBtn" data-dashboard-forecast-view="days" onclick="setDashboardHarvestForecastView('days')" aria-pressed="false">日別一覧</button>
+          </div>
+        </div>
+        <div class="dashboardForecastControls">
+          <label class="dashboardForecastControlField" for="dashboardForecastCasesInput">
+            <span class="dashboardForecastControlLabel">1日あたり収穫ケース数</span>
+            <span id="dashboardForecastCasesInputWrap" class="dashboardForecastValueInput">
+              <input id="dashboardForecastCasesInput" type="number" min="0.1" max="999999" step="0.1" inputmode="decimal" oninput="handleDashboardHarvestForecastInput('cases')">
+              <span class="dashboardForecastInputSuffix">ケース</span>
+            </span>
+          </label>
+          <label class="dashboardForecastControlField" for="dashboardForecastLossInput">
+            <span class="dashboardForecastControlLabel">収穫ロス率</span>
+            <span id="dashboardForecastLossInputWrap" class="dashboardForecastValueInput">
+              <input id="dashboardForecastLossInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" oninput="handleDashboardHarvestForecastInput('loss')">
+              <span class="dashboardForecastInputSuffix">%</span>
+            </span>
+          </label>
+          <div class="dashboardForecastActions">
+            <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" onclick="resetDashboardHarvestForecastInputs()">平均に戻す</button>
+            <button id="dashboardForecastApplyBtn" type="button" class="dashboardForecastApplyBtn" onclick="applyDashboardHarvestForecastInputs()">予測する</button>
+          </div>
+        </div>
+        <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
+        <div id="dashboardHarvestForecastBeds" class="dashboardForecastBeds"></div>
+        <div id="dashboardHarvestForecastDaysFrame" class="dashboardForecastDayListFrame" hidden>
+          <div id="dashboardHarvestForecastDays" class="dashboardForecastDayList"></div>
+          <div id="dashboardForecastDayListToolbar" class="dashboardForecastDayListToolbar" hidden>
+            <button id="dashboardForecastDaysMoreBtn" type="button" class="dashboardForecastDaysMoreBtn" onclick="openDashboardForecastDaysAllWindow()" hidden>8日後以降 ↓</button>
+          </div>
+        </div>
+        <div id="dashboardHarvestForecastLegend" class="dashboardForecastLegend" aria-label="収穫時期の色分け">
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#ef4444"></span>今日</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#f97316"></span>1日後</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#eab308"></span>2日後</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#84cc16"></span>3日後</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#22c55e"></span>4日後</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#14b8a6"></span>5日後</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#0ea5e9"></span>6日後</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#8b5cf6"></span>7日後</span>
+          <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="dashboardSubtabCalendar" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabCalendarBtn" data-dashboard-subtab-panel="calendar" hidden>
+      <div class="card dashboardHarvestStartCard">
+        <div class="dashboardHarvestStartTitleRow">
+          <div class="sectionTitle">カレンダー</div>
+          <button id="dashboardCalendarInfoBtn" type="button" class="dashboardForecastInfoBtn" onclick="openDashboardCalendarInfoWindow()" aria-label="カレンダーの見方" aria-haspopup="dialog" aria-controls="dashboardCalendarInfoModal">i</button>
+          <button id="dashboardCalendarPastBtn" type="button" class="dashboardCalendarPastBtn" onclick="toggleDashboardPastCalendar()" aria-pressed="false" aria-expanded="false" aria-controls="dashboardCalendarHistoryControls">年月を選択</button>
+        </div>
+        <div id="dashboardCalendarHistoryControls" class="dashboardCalendarHistoryControls" hidden>
+          <button type="button" class="dashboardCalendarMonthNavBtn" onclick="shiftDashboardPastCalendarMonth(-1)" aria-label="前の月を表示">‹</button>
+          <label class="dashboardCalendarMonthField">
+            <span>表示開始</span>
+            <input id="dashboardCalendarMonthInput" class="dashboardCalendarMonthInput" type="month" onchange="setDashboardPastCalendarMonth(this.value)" aria-label="表示を始める年月">
+          </label>
+          <button type="button" class="dashboardCalendarMonthNavBtn" onclick="shiftDashboardPastCalendarMonth(1)" aria-label="次の月を表示">›</button>
+        </div>
+        <div id="dashboardHarvestStartTimeline" class="dashboardHarvestStartMonthColumns"></div>
+      </div>
+    </div>
+
+    <div id="dashboardSubtabSeedlings" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabSeedlingsBtn" data-dashboard-subtab-panel="seedlings" hidden>
+      <div class="card dashboardSeedlingStatusCard">
+        <div class="dashboardSeedlingStatusHead">
+          <div class="dashboardSeedlingStatusNote">
+            <p class="dashboardSeedlingStatusSummary">定植時の苗の品質、定植からの経過時間を表示します。<span>（※注）</span></p>
+          </div>
+        </div>
+        <div id="dashboardSeedlingStatusBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="二次定植を表示する号棟"></div>
+        <div id="dashboardSeedlingStatusBeds" class="dashboardForecastBeds dashboardSeedlingStatusBeds"></div>
+        <div class="dashboardSeedlingStatusMapGuide" aria-label="苗の配置図の色分け">
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch"></span>中</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-large"></span>大きい</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-small"></span>小さい</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-problem"></span>徒長・欠け</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-mixed"></span>複数・その他</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unknown"></span>記録なし</span>
+          <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>未定植</span>
+        </div>
+        <div id="dashboardSeedlingStatusDetail" class="dashboardSeedlingStatusDetail" aria-live="polite"></div>
+        <div class="dashboardSeedlingStatusCaution">
+          <div class="dashboardSeedlingStatusCautionTitle">注意</div>
+          <ul>
+            <li>「大きい」「中」「小さい」は、記録時の見た目による評価です。時期に応じた適正な大きさとの差を示すものではありません。</li>
+            <li>同じ日に苗植えした場所の品質メモは、ベッドごとではなく一括で記録しています。そのため、実際の苗の状態と異なる場合があります。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="dashboardSubtabGraphs" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabGraphsBtn" data-dashboard-subtab-panel="graphs" hidden>
+      <section class="dashboardMetricsGroup" aria-labelledby="dashboardMetricsTitle">
+        <div id="dashboardMetricsTitle" class="sectionTitle">集計カード</div>
+        <div class="dashboardCardGrid" id="dashboardMetrics"></div>
+        <div id="dashboardMetricsNote" class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
+      </section>
+
+      <div class="card dashboardChartCard">
+        <div class="dashboardChartHead">
+          <div class="dashboardChartHeadMain">
+            <div class="sectionTitle">収穫ケース数</div>
+            <div class="dashboardChartNote" id="dashboardCasesChartNote"></div>
+          </div>
+          <div class="dashboardChartControls">
+            <select id="dashboardCasesGranularityInput" class="dashboardChartSelect">
+              <option value="month">月</option>
+              <option value="year">年</option>
+            </select>
+          </div>
+        </div>
+        <div id="dashboardCasesChart"></div>
+        <div id="dashboardCasesChartTable"></div>
+        <div class="dashboardCasesMoreActions">
+          <button id="dashboardCasesMoreBtn" type="button" class="dashboardCasesMoreBtn" onclick="openDashboardCasesAllWindow()">さらに表示</button>
+        </div>
+      </div>
+
+      <div class="card dashboardChartCard">
+        <div class="dashboardChartHead">
+          <div class="dashboardChartHeadMain">
+            <div class="sectionTitle">平均ロス率</div>
+            <div class="dashboardChartNote" id="dashboardLossChartNote">通常収穫の記録のみ</div>
+          </div>
+          <div class="dashboardChartControls">
+            <select id="dashboardLossGranularityInput" class="dashboardChartSelect">
+              <option value="month">月</option>
+              <option value="year">年</option>
+            </select>
+          </div>
+        </div>
+        <div id="dashboardLossChart"></div>
+      </div>
+
+      <details id="dashboardHistoryDetails" class="card dashboardRangeBox dashboardRangeDetails dashboardHistoryDetails">
+        <summary class="sectionTitle">集計カードの履歴</summary>
+        <div id="dashboardHistoryContent" class="dashboardHistoryPanel"></div>
+      </details>
+
+      <div class="card dashboardStartDayCard">
+        <div class="dashboardControlRow">
+          <div class="dashboardStartDayField">
+            <label for="dashboardStartDayInput">集計の基準日</label>
+            <select id="dashboardStartDayInput" class="dashboardStartDayInput" data-dashboard-start-day-input></select>
+          </div>
+        </div>
+      </div>
+
+      <details class="card dashboardRangeBox dashboardRangeDetails">
+        <summary class="sectionTitle">記録一覧</summary>
+        <div class="dashboardTableFilterBox">
+          <div class="dashboardRecordFilterChips" role="group" aria-label="記録の種類で絞り込む">
+            <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="all" aria-pressed="true" onclick="setDashboardRecordTypeFilter('all')">すべて</button>
+            <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="full" aria-pressed="false" onclick="setDashboardRecordTypeFilter('full')">通常収穫</button>
+            <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="partial" aria-pressed="false" onclick="setDashboardRecordTypeFilter('partial')">部分収穫</button>
+            <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="attention" aria-pressed="false" onclick="setDashboardRecordTypeFilter('attention')">要確認</button>
+          </div>
+          <div class="dashboardTableFilterGrid">
+            <label class="dashboardRecordSearchField">
+              <span>検索</span>
+              <input id="dashboardRecordSearchInput" type="text" placeholder="メモ・品質メモ・号棟・区分など">
+            </label>
+          </div>
+          <details id="dashboardRecordPeriodDetails" class="dashboardRecordPeriodDetails">
+            <summary><span>期間を指定</span><span id="dashboardRecordPeriodStatus" class="dashboardRecordPeriodStatus">全期間</span></summary>
+            <div class="dashboardRecordPeriodGrid">
+              <label>
+                <span>開始日</span>
+                <input id="dashboardRecordStartDateInput" type="date">
+              </label>
+              <label>
+                <span>終了日</span>
+                <input id="dashboardRecordEndDateInput" type="date">
+              </label>
+            </div>
+          </details>
+          <div class="dashboardTableFilterActions">
+            <button type="button" class="dashboardInlineBtn" onclick="clearDashboardRecordFilters()">一覧フィルタを解除</button>
+          </div>
+        </div>
+        <div id="dashboardRecordTable"></div>
+      </details>
+    </div>
+  </div>
+</div>

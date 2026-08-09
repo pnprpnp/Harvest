@@ -1,0 +1,1429 @@
+function scrollToRecordActiveStage(options = {}){
+  const targetId = recordSelectionMode === "planting" ? "recordPlantingStageSection" : "recordSaveCard";
+  const target = document.getElementById(targetId);
+  if(!target) return;
+  const headerOffset = getAppTopChromeOffset();
+  const top = target.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+  window.scrollTo({ top: Math.max(0, top), behavior: getWorkflowScrollBehavior(options.behavior || "auto") });
+}
+
+function switchToRecordSaveCard(options = {}){
+  if(switchTab("record") === false) return;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      scrollToRecordSaveCard();
+      if(options.focus) focusWorkflowTarget("recordSaveSectionTitle");
+    });
+  });
+}
+
+
+
+
+function getPlantingCountForPallet(bed, number){
+  const bedSettings = settings?.beds?.[bed] || {};
+  if(!settings?.useBedPlantSettings){
+    return normalizeYield(settings?.defaultPlantingCount, defaultSettings.defaultPlantingCount);
+  }
+  const raw = bedSettings.plant;
+  const basePlant = normalizeYield(raw, settings.defaultPlantingCount);
+
+  if(!bedSettings.plantUseFrontBack){
+    return basePlant;
+  }
+
+  const frontCount = clampNumber(bedSettings.plantFrontCount, 0, PALLETS_PER_BED, 39);
+  const frontPlant = normalizeYield(bedSettings.plantFront, basePlant);
+  const backPlant = normalizeYield(bedSettings.plantBack, basePlant);
+
+  return Number(number) <= frontCount ? frontPlant : backPlant;
+}
+
+function getSelectedSeedlingNeed(){
+  let total = 0;
+  harvestFillKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    total += getPlantingCountForPallet(p.bed, p.number);
+  });
+  return total;
+}
+
+function getRequiredSeedlingsWithLoss(){
+  const totalPlanting = getSelectedSeedlingNeed();
+  return getRequiredSeedlingsWithLossFromPlantingTotal(totalPlanting);
+}
+
+function getRecordSeedlingCarryoverMode(){
+  const checked = document.querySelector('input[name="recordSeedlingCarryoverMode"]:checked');
+  return normalizeSeedlingCarryoverMode(checked?.value || "loss");
+}
+
+function getSeedlingCarryoverHintText(mode, averageInfo = null){
+  if(normalizeSeedlingCarryoverMode(mode) === "carryover"){
+    if(averageInfo && Number.isFinite(averageInfo.averageLossRate) && averageInfo.recordCount > 0){
+      return `余りあり: 直近${averageInfo.recordCount}件の平均苗ロス率 ${formatDashboardMetricNumber(averageInfo.averageLossRate, "%")} を使って繰越分を計算します。`;
+    }
+    return `余りあり: 直近の記録に苗ロス率がないため、設定の苗ロス率 ${formatDashboardMetricNumber(settings.seedlingLossRate || 0, "%")} を使って繰越分を計算します。`;
+  }
+  return "";
+}
+
+function formatSeedlingCarryoverLossSourceText(usage){
+  if(!usage || normalizeSeedlingCarryoverMode(usage.mode) !== "carryover") return "";
+  const hasAverage = Number.isFinite(usage.averageInfo?.averageLossRate) && usage.averageInfo?.recordCount > 0;
+  return hasAverage
+    ? `直近${usage.averageInfo.recordCount}件平均 ${formatDashboardMetricNumber(usage.effectiveLossRate, "%")}`
+    : `設定値 ${formatDashboardMetricNumber(usage.effectiveLossRate, "%")}`;
+}
+
+function setRecordSeedlingCarryoverMode(mode, options = {}){
+  const normalizedMode = normalizeSeedlingCarryoverMode(mode);
+  const input = document.getElementById("recordSeedlingCarryoverCheckbox") || document.querySelector('input[name="recordSeedlingCarryoverMode"][value="carryover"]');
+  if(input) input.checked = normalizedMode === "carryover";
+  updateRecordSeedlingCarryoverHint();
+  if(!options.silent){
+    updateRecordSeedlingDiffDisplay();
+    updateRecordActualSeedlingDisplays();
+    saveHarvestStateToStorage();
+  }
+}
+
+function bindRecordSeedlingCarryoverModeInputs(){
+  document.querySelectorAll('input[name="recordSeedlingCarryoverMode"]').forEach(input => {
+    if(input.dataset.bound === "1") return;
+    input.addEventListener("change", () => {
+      updateRecordSeedlingCarryoverHint();
+      updateRecordSeedlingDiffDisplay();
+      updateRecordActualSeedlingDisplays();
+      saveHarvestStateToStorage();
+    });
+    input.dataset.bound = "1";
+  });
+}
+
+function getAverageRecentSeedlingLossRate(referenceDateValue = "", options = {}){
+  const excludeEventId = getSafePositiveRecordId(options.excludeEventId);
+  const targetEvent = excludeEventId === null ? null : getPlantingEventById(excludeEventId);
+  const targetDate = parseDateOnlyString(String(referenceDateValue || targetEvent?.plantingDate || "").trim()) || new Date();
+  const targetTime = targetDate ? startOfLocalDay(targetDate).getTime() : Infinity;
+  const previousEvents = plantingEvents
+    .filter(event => {
+      if(excludeEventId !== null && Number(event.eventId) === excludeEventId) return false;
+      const eventDate = parseDateOnlyString(String(event.plantingDate || ""));
+      if(!eventDate) return false;
+      const eventTime = startOfLocalDay(eventDate).getTime();
+      if(eventTime < targetTime) return true;
+      return eventTime === targetTime
+        && (excludeEventId === null || Number(event.eventId) < excludeEventId);
+    })
+    .sort(comparePlantingEventsAsc);
+
+  const lossRates = previousEvents
+    .slice(-10)
+    .map(event => {
+      const rawValue = String(event?.actualSeedlingLossRate ?? "").trim();
+      if(rawValue === "") return null;
+      const value = Number(rawValue);
+      return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+    })
+    .filter(value => Number.isFinite(value));
+  const averageLossRate = lossRates.length
+    ? lossRates.reduce((sum, value) => sum + value, 0) / lossRates.length
+    : null;
+
+  return {
+    averageLossRate,
+    recordCount: lossRates.length
+  };
+}
+
+function getCurrentSeedlingLossRateAverageInfo(recordId = null){
+  const referenceDateValue = document.getElementById("recordDateInput")?.value || getHarvestTargetDateString();
+  return getAverageRecentSeedlingLossRate(referenceDateValue, { excludeEventId: editingPlantingEventId });
+}
+
+function updateRecordSeedlingCarryoverHint(){
+  const hint = document.getElementById("recordSeedlingCarryoverHint");
+  if(!hint) return;
+  const activeRecord = getActivePlantingRecord();
+  const mode = getRecordSeedlingCarryoverMode();
+  const averageInfo = getCurrentSeedlingLossRateAverageInfo(activeRecord?.id);
+  hint.textContent = getSeedlingCarryoverHintText(mode, averageInfo);
+}
+
+function getCompletedFullHarvestRecordsInPlantingOrder(){
+  return records
+    .filter(record => record?.type === "fullHarvest" && !record.plantingPending)
+    .sort((a, b) => {
+      const timeA = parseDateOnlyString(a?.plantingDate || a?.date)?.getTime() ?? -Infinity;
+      const timeB = parseDateOnlyString(b?.plantingDate || b?.date)?.getTime() ?? -Infinity;
+      if(timeA !== timeB) return timeA - timeB;
+      return Number(a?.id || 0) - Number(b?.id || 0);
+    });
+}
+
+function getPlantingOrderDateForRecord(record){
+  return getEffectivePlantingDateForRecord(record) || parseDateOnlyString(String(record?.plantingDate || record?.date || "").trim());
+}
+
+function getPreviousCompletedFullHarvestRecord(options = {}){
+  const targetId = Number(options.recordId ?? options.excludeRecordId);
+  const targetRecord = Number.isFinite(targetId) ? getRecordById(targetId) : null;
+  const targetDate = targetRecord
+    ? getPlantingOrderDateForRecord(targetRecord)
+    : (parseDateOnlyString(String(options.referenceDateValue || "").trim()) || new Date());
+  const targetTime = targetDate ? startOfLocalDay(targetDate).getTime() : Infinity;
+  const orderedRecords = getCompletedFullHarvestRecordsInPlantingOrder();
+  let previousRecord = null;
+
+  for(const record of orderedRecords){
+    if(Number.isFinite(targetId) && Number(record.id) === targetId) break;
+    const recordDate = getPlantingOrderDateForRecord(record);
+    if(!recordDate) continue;
+    const recordTime = startOfLocalDay(recordDate).getTime();
+    const recordId = Number(record.id);
+
+    if(recordTime > targetTime) break;
+    if(recordTime === targetTime && Number.isFinite(targetId) && Number.isFinite(recordId) && recordId >= targetId) break;
+
+    previousRecord = record;
+  }
+
+  return previousRecord;
+}
+
+function getActualTakenSeedlingTotalForTrayCount(trayCount){
+  return getSeedlingCountFromTrayCount(trayCount);
+}
+
+function getActualPlantedSeedlingTotalForRecord(record){
+  if(!record || record.type !== "fullHarvest") return 0;
+  const plantingKeys = getPlantingPalletKeysFromRecord(record);
+  return getActualPlantedSeedlingTotal(plantingKeys);
+}
+
+function getSeedlingLossCountFromRate(totalSeedlings, lossRate){
+  const safeTotal = clampNumber(totalSeedlings, 0, 999999, 0);
+  const safeRate = clampNumber(lossRate, 0, 100, 0);
+  return Math.round(safeTotal * safeRate / 100);
+}
+
+function getSeedlingUsageContext(options = {}){
+  const recordId = Number(options.recordId);
+  const mode = normalizeSeedlingCarryoverMode(options.mode ?? getRecordSeedlingCarryoverMode());
+  const hasCarryoverBeforeOverride = typeof options.carryoverBeforeSeedlings !== "undefined";
+  const carryoverBefore = clampNumber(
+    options.carryoverBeforeSeedlings,
+    0,
+    999999,
+    Number.isFinite(recordId) ? getCarryoverSeedlingStockBeforeRecord(recordId) : getCurrentCarryoverSeedlingStock()
+  );
+  const takenTotal = clampNumber(options.takenTotalSeedlings, 0, 999999, getActualTakenSeedlingTotal());
+  const plantedTotal = clampNumber(options.plantedTotalSeedlings, 0, 999999, getActualPlantedSeedlingTotal());
+  const usedFromCarryover = Math.min(carryoverBefore, plantedTotal);
+  const remainingNeed = Math.max(0, plantedTotal - usedFromCarryover);
+  const usedFromCurrent = Math.min(takenTotal, remainingNeed);
+  const fallbackLossRate = takenTotal > 0
+    ? Math.max(0, ((takenTotal - usedFromCurrent) / takenTotal) * 100)
+    : 0;
+  const averageInfo = options.averageInfo || (
+    hasCarryoverBeforeOverride
+      ? { averageLossRate: null, recordCount: 0 }
+      : getCurrentSeedlingLossRateAverageInfo(recordId)
+  );
+  const effectiveLossRate = normalizeSeedlingCarryoverMode(mode) === "carryover"
+    ? clampNumber(
+        options.lossRateOverride,
+        0,
+        100,
+        Number.isFinite(averageInfo?.averageLossRate) ? averageInfo.averageLossRate : settings.seedlingLossRate
+      )
+    : clampNumber(options.lossRateOverride, 0, 100, fallbackLossRate);
+  const actualLossSeedlings = normalizeSeedlingCarryoverMode(mode) === "carryover"
+    ? getSeedlingLossCountFromRate(takenTotal, effectiveLossRate)
+    : Math.max(0, takenTotal - usedFromCurrent);
+  const currentCarryoverAfter = normalizeSeedlingCarryoverMode(mode) === "carryover"
+    ? Math.max(0, takenTotal - usedFromCurrent - actualLossSeedlings)
+    : 0;
+  const carryoverAfter = normalizeSeedlingCarryoverMode(mode) === "carryover"
+    ? Math.max(0, carryoverBefore - usedFromCarryover + currentCarryoverAfter)
+    : 0;
+
+  return {
+    mode,
+    carryoverBefore,
+    takenTotal,
+    plantedTotal,
+    usedFromCarryover,
+    usedFromCurrent,
+    actualLossSeedlings,
+    effectiveLossRate,
+    averageInfo,
+    carryoverAfter,
+    currentCarryoverAfter
+  };
+}
+
+function getCarryoverSeedlingStockBeforeRecord(recordId = null){
+  const plantingDateValue = document.getElementById("recordDateInput")?.value || formatDateOnlyString(new Date());
+  return getPlantingCarryoverBeforePosition(plantingDateValue, editingPlantingEventId);
+}
+
+function getCurrentCarryoverSeedlingStock(){
+  return getPlantingEventStateIndex().currentCarryover;
+}
+
+function getRequiredSeedlingsWithLossFromPlantingTotal(totalPlanting, options = {}){
+  const lossRate = clampNumber(settings.seedlingLossRate, 0, 100, 0);
+  const surviveRate = (100 - lossRate) / 100;
+  if(totalPlanting <= 0) return 0;
+  if(surviveRate <= 0) return 0;
+  const carryoverSeedlings = clampNumber(options.carryoverSeedlings, 0, 999999, getCurrentCarryoverSeedlingStock());
+  const remainingPlanting = Math.max(0, totalPlanting - carryoverSeedlings);
+  return Math.floor(remainingPlanting / surviveRate);
+}
+
+function getSeedlingNeedForKeys(keys){
+  if(!Array.isArray(keys) || !keys.length) return 0;
+  let total = 0;
+  keys.forEach(key => {
+    const p = parsePalletKey(String(key || ""));
+    if(!BUILDINGS.includes(p.building) || !bedOrder.includes(p.bed) || !Number.isFinite(p.number)) return;
+    total += getPlantingCountForPallet(p.bed, p.number);
+  });
+  return total;
+}
+
+function getRemainingHarvestableCasesForBuilding(building, options = {}){
+  const normalizedBuilding = Number(building);
+  if(!BUILDINGS.includes(normalizedBuilding)) return 0;
+  const referenceDate = options.referenceDate instanceof Date
+    ? options.referenceDate
+    : getHarvestTargetDate();
+  const sourceRecords = Array.isArray(options.sourceRecords) ? options.sourceRecords : records;
+  const recordedSet = options.recordedSet instanceof Set
+    ? options.recordedSet
+    : getRecordedPalletSet(referenceDate);
+  const excludedSet = new Set(Array.isArray(options.excludedPalletKeys) ? options.excludedPalletKeys : []);
+  const hasPartialHarvestRecords = sourceRecords.some(record => record.type === "partialHarvest");
+  let remainingHeads = 0;
+
+  for(const bed of bedOrder){
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      const key = getPalletKey(normalizedBuilding, bed, number);
+      if(recordedSet.has(key)) continue;
+      if(excludedSet.has(key)) continue;
+      remainingHeads += hasPartialHarvestRecords
+        ? getPredictedHarvestForPallet(normalizedBuilding, bed, number, referenceDate, sourceRecords)
+        : getPredictedHarvestForBed(bed, number);
+    }
+  }
+
+  return Math.floor((remainingHeads / CASE_SIZE) * 10) / 10;
+}
+
+function getRemainingCasesForCurrentBuilding(){
+  return getRemainingHarvestableCasesForBuilding(currentBuilding, {
+    recordedSet: getRecordedPalletSet(),
+    excludedPalletKeys: harvestFillKeys
+  });
+}
+
+function getSpecialPalletPattern(n){
+  const safeN = clampNumber(n, 0, 3, 0);
+  const pattern = [];
+  const count120 = 3 - safeN;
+
+  for(let i = 0; i < count120; i++) pattern.push(120);
+  for(let i = 0; i < safeN; i++) pattern.push(60);
+
+  return pattern;
+}
+
+function getRequiredSpecialPalletCount(){
+  return getSeedlingInstructionCounts().totalCount;
+}
+
+function getSpecialPalletCountForRequiredSeedlings(requiredSeedlings){
+  if(requiredSeedlings <= 0) return 0;
+
+  const pattern = getSpecialPalletPattern(settings.specialPallet60CountPer3);
+  if(!pattern.length) return 0;
+
+  let total = 0;
+  let count = 0;
+  let index = 0;
+
+  while(true){
+    const nextCount = pattern[index % pattern.length];
+    if(total + nextCount > requiredSeedlings) break;
+    total += nextCount;
+    count++;
+    index++;
+  }
+
+  return count;
+}
+
+function getSeedlingTrayCountNeededForKeys(keys, options = {}){
+  const totalPlanting = getSeedlingNeedForKeys(keys);
+  const requiredSeedlings = getRequiredSeedlingsWithLossFromPlantingTotal(totalPlanting, options);
+  return getSpecialPalletCountForRequiredSeedlings(requiredSeedlings);
+}
+
+function getSeedlingKeysWithUnplanted(keys = harvestFillKeys, options = {}){
+  const combined = new Set(Array.isArray(keys) ? keys : []);
+  getUnplantedPalletSet({
+    excludeEventId: options.excludeEventId ?? editingPlantingEventId
+  }).forEach(key => combined.add(key));
+  return [...combined];
+}
+
+function getSeedlingInstructionCounts(keys = harvestFillKeys, options = {}){
+  const baseKeys = Array.isArray(keys) ? keys : [];
+  const carryoverSeedlings = clampNumber(options.carryoverSeedlings, 0, 999999, getCurrentCarryoverSeedlingStock());
+  const baseCount = getSeedlingTrayCountNeededForKeys(baseKeys, { carryoverSeedlings });
+  const totalCount = getSeedlingTrayCountNeededForKeys(
+    getSeedlingKeysWithUnplanted(baseKeys, { recordId: options.recordId }),
+    { carryoverSeedlings }
+  );
+  return {
+    baseCount,
+    totalCount,
+    additionalCount: Math.max(0, totalCount - baseCount),
+    carryoverSeedlings
+  };
+}
+
+function normalizeManualSeedlingCount(value){
+  if(value === null || value === "" || typeof value === "undefined") return null;
+  if(!Number.isFinite(Number(value))) return null;
+  return clampNumber(value, 0, 999999, 0);
+}
+
+function hasManualSeedlingCount(){
+  return manualSeedlingCount !== null
+    && manualSeedlingCount !== ""
+    && typeof manualSeedlingCount !== "undefined"
+    && Number.isFinite(Number(manualSeedlingCount));
+}
+
+function getDisplayedSeedlingCount(autoCount){
+  return hasManualSeedlingCount()
+    ? clampNumber(manualSeedlingCount, 0, 999999, autoCount)
+    : autoCount;
+}
+
+function getSeedlingAdditionalNote(additionalCount){
+  const safeCount = clampNumber(additionalCount, 0, 999999, 0);
+  return safeCount > 0 ? `（未定植分 +${safeCount}枚）` : "";
+}
+
+function getSeedlingCarryoverNote(carryoverSeedlings){
+  const safeCount = clampNumber(carryoverSeedlings, 0, 999999, 0);
+  return safeCount > 0 ? `（前回余った苗 ${safeCount}株反映）` : "";
+}
+
+function getSeedlingInstructionText(autoCount, additionalCount = 0, carryoverSeedlings = 0){
+  const additionalNote = getSeedlingAdditionalNote(additionalCount);
+  const carryoverNote = getSeedlingCarryoverNote(carryoverSeedlings);
+  if(!hasManualSeedlingCount()){
+    return "苗: " + autoCount + "枚" + additionalNote + carryoverNote;
+  }
+  const manualCount = getDisplayedSeedlingCount(autoCount);
+  return "苗: " + manualCount + "枚（自動: " + autoCount + "枚）" + additionalNote + carryoverNote;
+}
+
+function getSeedlingInstructionTextForMonitor(autoCount, carryoverSeedlings = 0){
+  return "苗: " + getDisplayedSeedlingCount(autoCount) + "枚" + getSeedlingCarryoverNote(carryoverSeedlings);
+}
+
+function getSeedlingInstructionEditorHtml(autoCount, additionalCount = 0, carryoverSeedlings = 0){
+  const displayedCount = getDisplayedSeedlingCount(autoCount);
+  const autoNote = hasManualSeedlingCount()
+    ? `<span class="instructionAutoNote">（自動: ${autoCount}枚）</span>`
+    : "";
+  const additionalNote = getSeedlingAdditionalNote(additionalCount);
+  const carryoverNote = getSeedlingCarryoverNote(carryoverSeedlings);
+  const additionalHtml = additionalNote
+    ? `<span class="instructionAutoNote">${escapeHtml(additionalNote)}</span>`
+    : "";
+  const carryoverHtml = carryoverNote
+    ? `<span class="instructionAutoNote">${escapeHtml(carryoverNote)}</span>`
+    : "";
+  return `苗: <span class="seedlingInlineWrap"><input id="seedlingInlineInput" class="seedlingInlineInput" type="number" min="0" inputmode="numeric" value="${escapeHtml(String(displayedCount))}" placeholder="${escapeHtml(String(autoCount))}" aria-label="苗枚数"><span class="seedlingInlineSuffix">枚</span></span>${autoNote}${additionalHtml}${carryoverHtml}`;
+}
+
+function handleSeedlingInlineCommit(rawValue){
+  const value = String(rawValue || "").trim();
+  if(value === ""){
+    if(hasManualSeedlingCount()){
+      invalidateWorkflowMonitorCheckpoint();
+      manualSeedlingCount = null;
+      renderForecastSummary();
+      saveHarvestStateToStorage();
+      showToast("苗枚数を自動計算に戻しました");
+    }else{
+      renderForecastSummary();
+    }
+    return;
+  }
+
+  invalidateWorkflowMonitorCheckpoint();
+  manualSeedlingCount = clampNumber(value, 0, 999999, 0);
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+  showToast("苗枚数を手動変更しました");
+}
+
+function bindSeedlingInlineInput(){
+  const input = document.getElementById("seedlingInlineInput");
+  if(!input || input.dataset.bound === "1") return;
+
+  input.addEventListener("focus", () => {
+    if(input.dataset.clearedOnFocus === "1") return;
+    input.dataset.previousValue = input.value;
+    input.dataset.clearedOnFocus = "1";
+    input.dataset.enteredSinceFocus = "0";
+    input.value = "";
+  });
+  input.addEventListener("input", () => {
+    if(input.dataset.clearedOnFocus === "1"){
+      input.dataset.enteredSinceFocus = "1";
+    }
+  });
+  input.addEventListener("keydown", (event) => {
+    if(event.key === "Enter"){
+      event.preventDefault();
+      input.blur();
+    }
+  });
+  input.addEventListener("blur", () => {
+    const value = input.value;
+    const restorePrevious = input.dataset.clearedOnFocus === "1"
+      && input.dataset.enteredSinceFocus !== "1"
+      && String(value || "").trim() === "";
+    if(restorePrevious){
+      input.value = input.dataset.previousValue || "";
+    }else{
+      handleSeedlingInlineCommit(value);
+    }
+    delete input.dataset.previousValue;
+    delete input.dataset.clearedOnFocus;
+    delete input.dataset.enteredSinceFocus;
+  });
+  input.dataset.bound = "1";
+}
+
+function applyManualSeedlingCount(){
+  const input = document.getElementById("seedlingInlineInput");
+  handleSeedlingInlineCommit(input?.value || "");
+}
+
+function clearManualSeedlingCount(){
+  manualSeedlingCount = null;
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+  showToast("苗枚数を自動計算に戻しました");
+}
+
+function isContinuousFromFront(numbers){
+  return numbers.every((number, index) => number === index + 1);
+}
+
+function isContinuousFromBack(numbers){
+  const start = PALLETS_PER_BED - numbers.length + 1;
+  return numbers.every((number, index) => number === start + index);
+}
+
+function formatPinDirectionForPartialBed(numbers){
+  const selectedCount = numbers.length;
+  if(selectedCount <= 0) return "";
+
+  if(isContinuousFromFront(numbers)){
+    const remainingCount = PALLETS_PER_BED - selectedCount;
+    const takePins = Math.floor(selectedCount / PALLETS_PER_PIN);
+    const leavePins = Math.ceil(remainingCount / PALLETS_PER_PIN);
+
+    if(remainingCount > 0 && leavePins > 0 && (takePins <= 0 || leavePins < takePins)){
+      return "後ろ" + leavePins + "ピン残す";
+    }
+    if(takePins > 0) return "前" + takePins + "ピンとる";
+    return "前" + selectedCount + "枚とる";
+  }
+
+  if(isContinuousFromBack(numbers)){
+    const selectedCount = numbers.length;
+    const remainingCount = PALLETS_PER_BED - selectedCount;
+    const takePins = Math.floor(selectedCount / PALLETS_PER_PIN);
+    const leavePins = Math.ceil(remainingCount / PALLETS_PER_PIN);
+
+    if(remainingCount > 0 && leavePins > 0 && (takePins <= 0 || leavePins < takePins)){
+      return "前" + leavePins + "ピン残す";
+    }
+    if(takePins > 0) return "後ろ" + takePins + "ピンとる";
+    return "後ろ" + selectedCount + "枚とる";
+  }
+
+  return "個別選択";
+}
+
+function formatHarvestLocationInstruction(keys = harvestFillKeys, referenceDate = new Date()){
+  const selectedKeys = Array.isArray(keys) ? keys : [];
+  if(!selectedKeys.length) return "収穫場所: -";
+
+  const groups = {};
+  const recordedSet = getRecordedPalletSet(referenceDate);
+  const selectedKeySet = new Set(selectedKeys);
+  selectedKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    if(!BUILDINGS.includes(p.building) || !bedOrder.includes(p.bed) || !Number.isFinite(p.number)) return;
+    const groupKey = p.building + "-" + p.bed;
+    if(!groups[groupKey]){
+      groups[groupKey] = { building: p.building, bed: p.bed, numbers: [] };
+    }
+    groups[groupKey].numbers.push(p.number);
+  });
+
+  const parts = [];
+  BUILDINGS.forEach(building => {
+    let buildingHasAvailable = false;
+    let buildingAllAvailableSelected = true;
+
+    for(const bed of bedOrder){
+      for(let number = 1; number <= PALLETS_PER_BED; number++){
+        const key = getPalletKey(building, bed, number);
+        if(recordedSet.has(key)) continue;
+        buildingHasAvailable = true;
+        if(!selectedKeySet.has(key)){
+          buildingAllAvailableSelected = false;
+          break;
+        }
+      }
+      if(!buildingAllAvailableSelected) break;
+    }
+
+    if(buildingHasAvailable && buildingAllAvailableSelected){
+      parts.push(building + "号棟全部");
+      return;
+    }
+
+    const fullBeds = [];
+    const partialParts = [];
+
+    bedOrder.forEach(bed => {
+      const group = groups[building + "-" + bed];
+      if(!group) return;
+
+      const numbers = [...new Set(group.numbers)].sort((a, b) => a - b);
+      const selectedSet = new Set(numbers);
+      let allAvailableSelected = false;
+      let hasAvailable = false;
+
+      for(let number = 1; number <= PALLETS_PER_BED; number++){
+        const key = getPalletKey(building, bed, number);
+        if(recordedSet.has(key)) continue;
+        hasAvailable = true;
+        if(!selectedSet.has(number)){
+          allAvailableSelected = false;
+          break;
+        }
+        allAvailableSelected = true;
+      }
+
+      if(numbers.length >= PALLETS_PER_BED || (hasAvailable && allAvailableSelected)){
+        fullBeds.push(bed);
+        return;
+      }
+
+      const direction = formatPinDirectionForPartialBed(numbers);
+      partialParts.push(bed + " " + direction);
+    });
+
+    const buildingParts = [];
+    if(fullBeds.length){
+      buildingParts.push(fullBeds.join(",") + "全部");
+    }
+    partialParts.forEach(part => buildingParts.push(part));
+    if(buildingParts.length){
+      parts.push(building + "号棟 " + buildingParts.join("、"));
+    }
+  });
+
+  if(!parts.length) return "収穫場所: -";
+  if(parts.length === 1) return "収穫場所: " + parts[0];
+  return "収穫場所: " + parts.join("\n");
+}
+
+function getPlantingSummaryFromSelection(){
+  return formatPalletSummary(harvestFillKeys);
+}
+
+function formatPlantingSummaryForKeys(keys){
+  return formatPalletSummary(Array.isArray(keys) ? keys : []);
+}
+
+function syncRecordPlantingSummaryFromSelection(options = {}){
+  const input = document.getElementById("recordPlantingSummaryInput");
+  if(!input) return;
+  if(recordSelectionMode !== "planting" && !options.force){
+    return;
+  }
+  if(recordPlantingSummaryEdited && !options.force) return;
+  input.value = recordSelectionMode === "planting" ? getPlantingSummaryFromSelection() : "";
+}
+
+function getPlannedSeedlingTrayCountForRecord(){
+  const plannedKeys = Array.isArray(recordBaseFillKeys) && recordBaseFillKeys.length
+    ? recordBaseFillKeys
+    : harvestFillKeys;
+  const seedlingCounts = getSeedlingInstructionCounts(plannedKeys);
+  if(hasManualSeedlingCount()){
+    return getDisplayedSeedlingCount(seedlingCounts.totalCount);
+  }
+  return seedlingCounts.totalCount;
+}
+
+function syncRecordActualSeedlingTrayCountInput(record = getActivePlantingRecord(), options = {}){
+  const input = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(!input) return;
+  if(!record || record.type !== "fullHarvest"){
+    if(options.force) input.value = "";
+    updateRecordAutoValueNotes();
+    return;
+  }
+  if(input.dataset.userEdited === "1" && !options.force){
+    updateRecordAutoValueNotes();
+    return;
+  }
+  const value = clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0) || clampNumber(record.plannedSeedlingTrayCount, 0, 999999, 0);
+  input.value = value > 0 ? String(value) : "";
+  updateRecordAutoValueNotes();
+}
+
+function getRecordById(id){
+  return findHarvestRecordByIdentity({ id });
+}
+
+function getRecordByUuid(recordUuid){
+  return findHarvestRecordByIdentity(
+    { recordUuid },
+    records,
+    { fallbackToId: false }
+  );
+}
+
+function getActivePlantingRecord(){
+  return getRecordById(activePlantingRecordId);
+}
+
+function getPlantingCandidateRecordIdSet(){
+  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
+  const editingDate = parseDateOnlyString(String(editingEvent?.plantingDate || "").trim());
+  const candidateIds = new Set(
+    [...records]
+      .filter(record => record?.type === "fullHarvest")
+      .filter(record => {
+        if(!editingDate) return true;
+        const recordDate = parseDateOnlyString(String(record?.date || "").trim());
+        return !!recordDate && recordDate.getTime() <= editingDate.getTime();
+      })
+      .sort(compareRecordsByDateDesc)
+      .slice(0, PLANTING_CANDIDATE_RECORD_LIMIT)
+      .map(record => Number(record.id))
+      .filter(Number.isFinite)
+  );
+
+  // 過去の苗植え記録はその日以前の3件を参照し、既存の記録元も編集対象から外さない。
+  (editingEvent?.sourceAllocations || []).forEach(allocation => {
+    const recordId = Number(allocation.harvestRecordId);
+    if(Number.isFinite(recordId)) candidateIds.add(recordId);
+  });
+  return candidateIds;
+}
+
+function getLatestPendingPlantingRecord(){
+  const candidateIds = getPlantingCandidateRecordIdSet();
+  return [...records]
+    .filter(record => record?.type === "fullHarvest" && candidateIds.has(Number(record.id)))
+    .sort(compareRecordsByDateDesc)
+    .find(record => getUnplantedPalletKeysForHarvest(record.id).length > 0) || null;
+}
+
+function shouldOfferPlantingRecordResume(record){
+  if(!record || record.type !== "fullHarvest") return false;
+  return getPlantingCandidateRecordIdSet().has(Number(record.id))
+    && getUnplantedPalletKeysForHarvest(record.id).length > 0;
+}
+
+function getStartupPlantingRecordToResume(savedHarvestState = null){
+  if(savedHarvestState?.recordSelectionMode === "planting" && editingPlantingEventId){
+    const editingEvent = getPlantingEventById(editingPlantingEventId);
+    const sourceRecord = getRecordById(editingEvent?.sourceAllocations?.[0]?.harvestRecordId);
+    if(sourceRecord?.type === "fullHarvest") return sourceRecord;
+  }
+  if(savedHarvestState?.recordSelectionMode === "planting" && savedHarvestState.workflowPlantingSessionActive){
+    const savedRecord = getRecordById(savedHarvestState.activePlantingRecordId);
+    if(savedRecord?.type === "fullHarvest" && shouldOfferPlantingRecordResume(savedRecord)){
+      return savedRecord;
+    }
+  }
+  return null;
+}
+
+function repairLegacyPendingPlantingRecords(savedHarvestState = null){
+  const migrated = migrateLegacyPlantingEvents();
+  syncHarvestPlantingPendingFlags();
+  return migrated;
+}
+
+function getPreviousFullHarvestRecord(options = {}){
+  const excludeId = Number(options.excludeRecordId);
+  const orderedRecords = [...records]
+    .filter(record => record?.type === "fullHarvest")
+    .sort(compareRecordsByDateDesc);
+
+  if(Number.isFinite(excludeId)){
+    const activeIndex = orderedRecords.findIndex(record => Number(record.id) === excludeId);
+    if(activeIndex >= 0){
+      return orderedRecords[activeIndex + 1] || null;
+    }
+    return orderedRecords.find(record => Number(record.id) !== excludeId) || null;
+  }
+
+  return orderedRecords[0] || null;
+}
+
+function getUnplantedPalletSet(options = {}){
+  const state = options.excludeEventId
+    ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
+    : getPlantingEventStateIndex();
+  const candidateIds = getPlantingCandidateRecordIdSet();
+  const allowed = new Set();
+  candidateIds.forEach(recordId => {
+    (state.pendingByHarvestId.get(Number(recordId)) || new Set()).forEach(key => allowed.add(key));
+  });
+  return allowed;
+}
+
+function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecord, options = {}){
+  if(!activeRecord || activeRecord.type !== "fullHarvest") return [];
+  const activeRecordId = Number(activeRecord.id);
+  const state = options.excludeEventId
+    ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
+    : getPlantingEventStateIndex();
+  const selectedLotKeys = new Set(
+    (Array.isArray(sourceAllocations) ? sourceAllocations : []).flatMap(allocation => (
+      (Array.isArray(allocation?.palletKeys) ? allocation.palletKeys : []).map(palletKey => (
+        getPlantingLotKey(allocation.harvestRecordId, palletKey)
+      ))
+    ))
+  );
+  const missingLots = [];
+
+  getPlantingCandidateRecordIdSet().forEach(harvestRecordId => {
+    const safeHarvestRecordId = Number(harvestRecordId);
+    if(!Number.isFinite(safeHarvestRecordId) || safeHarvestRecordId === activeRecordId) return;
+    (state.pendingByHarvestId.get(safeHarvestRecordId) || new Set()).forEach(palletKey => {
+      if(selectedLotKeys.has(getPlantingLotKey(safeHarvestRecordId, palletKey))) return;
+      missingLots.push({ harvestRecordId: safeHarvestRecordId, palletKey });
+    });
+  });
+
+  return missingLots.sort((a, b) => {
+    const recordOrder = compareRecordsByDateDesc(
+      state.harvestById.get(a.harvestRecordId)?.record,
+      state.harvestById.get(b.harvestRecordId)?.record
+    );
+    return recordOrder || getOrderIndexFromKey(a.palletKey) - getOrderIndexFromKey(b.palletKey);
+  });
+}
+
+function formatUnselectedPreviousUnplantedPalletLots(lots){
+  const groupedByHarvestRecord = new Map();
+  (Array.isArray(lots) ? lots : []).forEach(lot => {
+    const harvestRecordId = Number(lot?.harvestRecordId);
+    const palletKey = String(lot?.palletKey || "").trim();
+    if(!Number.isFinite(harvestRecordId) || !isValidPalletKeyString(palletKey)) return;
+    if(!groupedByHarvestRecord.has(harvestRecordId)){
+      groupedByHarvestRecord.set(harvestRecordId, []);
+    }
+    groupedByHarvestRecord.get(harvestRecordId).push(palletKey);
+  });
+
+  return [...groupedByHarvestRecord.entries()].map(([harvestRecordId, palletKeys]) => {
+    const sourceRecord = getRecordById(harvestRecordId);
+    const dateLabel = String(sourceRecord?.date || "").trim() || "日付不明";
+    const uniqueKeys = [...new Set(palletKeys)]
+      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+    return `${dateLabel}の収穫\n${formatPlantingSummaryForKeys(uniqueKeys)}`;
+  }).join("\n\n");
+}
+
+function invalidatePlantingAllowedPalletSetCache(){
+  plantingAllowedPalletSetCache = null;
+  plantingAllowedPalletSetCacheRecordId = null;
+  plantingAllowedPalletSetCacheRecordCount = 0;
+  plantingAllowedPalletSetCacheEventId = null;
+}
+
+function getFastPlantingAllowedPalletSet(){
+  const activeRecord = getActivePlantingRecord();
+  const allowed = new Set(harvestFillKeys || []);
+  getUnplantedPalletSet().forEach(key => allowed.add(key));
+  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
+  (editingEvent?.plantingPalletKeys || []).forEach(key => allowed.add(key));
+  if(plantingAllowedPalletSetCache
+    && Number(plantingAllowedPalletSetCacheRecordId) === Number(activeRecord?.id)
+    && Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId)){
+    plantingAllowedPalletSetCache.forEach(key => allowed.add(key));
+  }
+  return allowed;
+}
+
+function getPlantingAllowedPalletSet(options = {}){
+  const activeRecord = getActivePlantingRecord();
+  if(options.fast){
+    return getFastPlantingAllowedPalletSet();
+  }
+
+  const activeRecordId = Number(activeRecord?.id);
+  if(
+    plantingAllowedPalletSetCache &&
+    Number(plantingAllowedPalletSetCacheRecordId) === activeRecordId &&
+    plantingAllowedPalletSetCacheRecordCount === records.length &&
+    Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId)
+  ){
+    return new Set(plantingAllowedPalletSetCache);
+  }
+
+  const allowed = getUnplantedPalletSet({ excludeEventId: editingPlantingEventId });
+  harvestFillKeys.forEach(key => allowed.add(key));
+
+  plantingAllowedPalletSetCache = new Set(allowed);
+  plantingAllowedPalletSetCacheRecordId = activeRecordId;
+  plantingAllowedPalletSetCacheRecordCount = records.length;
+  plantingAllowedPalletSetCacheEventId = editingPlantingEventId;
+  return allowed;
+}
+
+function isPlantingSelectionAllowed(key, options = {}){
+  return getPlantingAllowedPalletSet(options).has(key);
+}
+
+function enterHarvestRecordMode(){
+  recordSelectionMode = "harvest";
+  activePlantingRecordId = null;
+  workflowPlantingSessionActive = false;
+  editingPlantingEventId = null;
+  plantingRecordDraft = null;
+  recordPlantingSummaryEdited = false;
+  const input = document.getElementById("recordActualSeedlingTrayCountInput");
+  if(input) delete input.dataset.userEdited;
+  refreshRecordModeUi();
+}
+
+function enterPlantingRecordMode(record){
+  if(!record) return;
+  closeRecordFloatingUi();
+  recordSelectionMode = "planting";
+  activePlantingRecordId = Number(record.id);
+  workflowPlantingSessionActive = true;
+  recordPlantingSummaryEdited = false;
+  editingHarvestRecordId = null;
+  applyPlantingRecordDraft(record);
+  if(harvestFillKeys.length){
+    recalcHarvestSummary();
+  }else{
+    harvestSummary = null;
+  }
+  refreshRecordModeUi();
+  saveHarvestStateToStorage();
+  drawRecordBeds();
+  runAfterUiSettles(() => {
+    drawBeds();
+    renderForecastSummary();
+  });
+  requestAnimationFrame(() => requestAnimationFrame(scrollToRecordActiveStage));
+}
+
+function isRecordEditMode(){
+  return !!editingHarvestRecordId || !!editingPlantingEventId;
+}
+
+function refreshRecordModeUi(){
+  const sectionTitleText = document.getElementById("recordSaveSectionTitleText");
+  const actionRow = document.querySelector(".recordFormActionRow");
+  const discardEditButton = document.getElementById("recordDiscardEditBtn");
+  const notice = document.getElementById("recordEditNotice");
+  const button = document.getElementById("recordPrimaryActionBtn");
+  const plantingInput = document.getElementById("recordPlantingSummaryInput");
+  const harvestStageSection = document.getElementById("recordHarvestStageSection");
+  const plantingStageSection = document.getElementById("recordPlantingStageSection");
+  const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
+  const qualityMemoLabel = document.getElementById("recordQualityMemoLabel");
+  const qualityMemoMediumChoice = document.getElementById("qualityMemoMediumChoice");
+  const qualityMemoChipChoice = document.getElementById("qualityMemoChipChoice");
+  const actualLossField = document.querySelector(".recordActualLossField");
+  const harvestStep = document.getElementById("recordStepHarvest");
+  const plantingStep = document.getElementById("recordStepPlanting");
+  const plantingLegend = document.getElementById("recordPlantingLegend");
+  const isPlantingMode = recordSelectionMode === "planting";
+  const isEditing = isRecordEditMode();
+  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
+  const lockPlantingDate = isPlantingMode
+    && editingEvent?.openingCarryoverBefore !== null
+    && editingEvent?.openingCarryoverBefore !== undefined;
+  const recordDateInput = document.getElementById("recordDateInput");
+  if(qualityMemoMediumChoice){
+    qualityMemoMediumChoice.hidden = !isPlantingMode;
+    const input = qualityMemoMediumChoice.querySelector("input");
+    if(input){
+      input.disabled = !isPlantingMode;
+      if(!isPlantingMode) input.checked = false;
+    }
+  }
+  if(qualityMemoChipChoice){
+    qualityMemoChipChoice.hidden = isPlantingMode;
+    const input = qualityMemoChipChoice.querySelector("input");
+    if(input){
+      input.disabled = isPlantingMode;
+      if(isPlantingMode) input.checked = false;
+    }
+  }
+  if(recordDateInput){
+    recordDateInput.readOnly = !!lockPlantingDate;
+    recordDateInput.title = lockPlantingDate
+      ? "1,000件以前の繰越基準になっているため、この履歴の日付は変更できません"
+      : "";
+  }
+
+  if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
+  if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
+  if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
+  if(sectionTitleText) sectionTitleText.textContent = isEditing ? "記録を編集" : "記録を保存";
+  if(discardEditButton) discardEditButton.hidden = !isEditing;
+  if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
+
+  if(isPlantingMode){
+    if(notice) notice.textContent = editingPlantingEventId
+      ? (lockPlantingDate
+          ? "長期履歴の繰越基準を保つため、日付以外を編集できます。"
+          : "保存済みの苗植え記録を編集中です。")
+      : "実際に苗植えした場所を選択してください。";
+    if(button) button.textContent = editingPlantingEventId
+      ? "苗植え記録を更新して送信する"
+      : "苗植え場所を記録して送信する";
+    if(plantingInput) plantingInput.placeholder = "表で実際に苗植えした場所を選ぶと入ります";
+    if(harvestStageSection) harvestStageSection.hidden = true;
+    if(plantingStageSection) plantingStageSection.hidden = false;
+    if(harvestMemoSection) harvestMemoSection.hidden = true;
+    if(qualityMemoLabel) qualityMemoLabel.textContent = "苗の品質メモ（任意）";
+    if(actualLossField) actualLossField.hidden = true;
+    updateRecordSeedlingDiffDisplay();
+  }else{
+    if(notice) notice.textContent = editingHarvestRecordId
+      ? "保存済みの収穫記録を編集中です。この記録と、それ以降の記録を一時的に計算対象から外しています。"
+      : "実際の収穫場所に調整してください。";
+    if(button) button.textContent = editingHarvestRecordId ? "収穫記録を更新する" : "収穫場所を記録する";
+    if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
+    if(harvestStageSection) harvestStageSection.hidden = false;
+    if(plantingStageSection) plantingStageSection.hidden = true;
+    if(harvestMemoSection) harvestMemoSection.hidden = false;
+    if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
+    if(actualLossField) actualLossField.hidden = false;
+  }
+  updateRecordAutoValueNotes();
+  scheduleWorkflowGuideUpdate();
+}
+
+function handleRecordClearAction(){
+  if(recordSelectionMode === "planting"){
+    resetPlantingRecordChanges();
+    return;
+  }
+  clearRecordForm();
+}
+
+function discardRecordEditChanges(){
+  if(!isRecordEditMode()) return;
+  closeRecordFloatingUi();
+  clearRecordForm();
+  showToast("編集内容を破棄して戻りました");
+}
+
+async function handleRecordPrimaryAction(){
+  try{
+    closeRecordFloatingUi();
+    if(recordSelectionMode === "planting"){
+      await savePlantingRecord();
+      return;
+    }
+    saveRecord();
+  }catch(e){
+    console.error("Record action failed", e);
+    closeRecordFloatingUi();
+    showToast("記録処理中にエラーが発生しました。再読み込みしてもう一度試してください");
+  }
+}
+
+function getCaseLocationForPallet(bed, number){
+  const isFrontSide = Number(number) <= Math.ceil(PALLETS_PER_BED / 2);
+  if(["A","C","E"].includes(bed)){
+    return isFrontSide ? "front" : "middle";
+  }
+  return Number(number) > PALLETS_PER_BED - 20 ? "back" : "middle";
+}
+
+function getCaseLocationLabel(location){
+  if(location === "front") return "前側";
+  if(location === "middle") return "中央";
+  return "後ろ";
+}
+
+function distributeCaseDemandByHarvestLocation(totalCases){
+  const buckets = [];
+
+  harvestFillKeys.forEach(key => {
+    const p = parsePalletKey(key);
+    const location = getCaseLocationForPallet(p.bed, p.number);
+    let bucket = buckets.find(item => item.building === p.building && item.location === location);
+    if(!bucket){
+      bucket = { building: p.building, location, heads: 0 };
+      buckets.push(bucket);
+    }
+    bucket.heads += getPredictedHarvestForPallet(p.building, p.bed, p.number);
+  });
+
+  const demandByBuilding = {};
+  const totalHeads = buckets.reduce((sum, bucket) => sum + bucket.heads, 0);
+  if(totalCases <= 0 || totalHeads <= 0) return demandByBuilding;
+
+  const remainders = buckets.map(bucket => {
+    const raw = (bucket.heads / totalHeads) * totalCases;
+    const buildingKey = String(bucket.building);
+    if(!demandByBuilding[buildingKey]){
+      demandByBuilding[buildingKey] = { front: 0, middle: 0, back: 0 };
+    }
+    demandByBuilding[buildingKey][bucket.location] = Math.floor(raw);
+    return {
+      building: bucket.building,
+      location: bucket.location,
+      remainder: raw - Math.floor(raw)
+    };
+  }).sort((a, b) => b.remainder - a.remainder);
+
+  let assigned = Object.values(demandByBuilding).reduce((total, demand) => {
+    return total + demand.front + demand.middle + demand.back;
+  }, 0);
+  let index = 0;
+  while(assigned < totalCases){
+    const target = remainders[index % remainders.length];
+    demandByBuilding[String(target.building)][target.location]++;
+    assigned++;
+    index++;
+  }
+
+  return demandByBuilding;
+}
+
+function consumeCasesFromPlacement(available, demand){
+  const remaining = { ...available };
+  let shortage = 0;
+  const fallbackOrder = {
+    front: ["front", "middle", "back"],
+    middle: ["middle", "front", "back"],
+    back: ["back", "middle", "front"]
+  };
+
+  ["front", "middle", "back"].forEach(primary => {
+    let need = demand[primary];
+    fallbackOrder[primary].forEach(location => {
+      if(need <= 0) return;
+      const used = Math.min(remaining[location], need);
+      remaining[location] -= used;
+      need -= used;
+    });
+    shortage += need;
+  });
+
+  return { remaining, shortage };
+}
+
+function getBorrowableFrontCasesFromNextBuilding(building, demandByBuilding, carriedCasesByBuilding, borrowedFrontCasesByBuilding){
+  const nextBuilding = getNextBuilding(building);
+  if(!nextBuilding) return 0;
+
+  const nextPlacement = getCasePlacementForBuilding(nextBuilding);
+  const nextAvailable = {
+    ...nextPlacement,
+    front: Math.max(
+      0,
+      nextPlacement.front +
+      clampNumber(carriedCasesByBuilding[String(nextBuilding)], 0, 999999, 0) -
+      clampNumber(borrowedFrontCasesByBuilding[String(nextBuilding)], 0, 999999, 0)
+    )
+  };
+  const nextDemand = demandByBuilding[String(nextBuilding)] || { front: 0, middle: 0, back: 0 };
+  const preview = consumeCasesFromPlacement(nextAvailable, nextDemand);
+  return Math.max(0, preview.remaining.front);
+}
+
+function getNextBuilding(building){
+  const index = BUILDINGS.indexOf(building);
+  if(index < 0) return null;
+  return BUILDINGS[(index + 1) % BUILDINGS.length];
+}
+
+function hasSelectedPalletInBuilding(building){
+  return harvestFillKeys.some(key => {
+    const p = parsePalletKey(String(key || ""));
+    return p.building === building;
+  });
+}
+
+function isBuildingCompletedByCurrentSelection(building){
+  return hasSelectedPalletInBuilding(building) && getUnharvestedCountForBuilding(building) === 0;
+}
+
+function getCasePlacementProcessingOrder(){
+  const startPallet = harvestSummary?.start || (harvestFillKeys.length ? harvestFillKeys[0] : "");
+  const firstSelected = startPallet ? parsePalletKey(startPallet) : null;
+  const startBuilding = BUILDINGS.includes(firstSelected?.building) ? firstSelected.building : currentBuilding;
+  const startIndex = Math.max(0, BUILDINGS.indexOf(startBuilding));
+  return [...BUILDINGS.slice(startIndex), ...BUILDINGS.slice(0, startIndex)];
+}
+
+function getTotalCasePlacementCount(){
+  return BUILDINGS.reduce((sum, building) => {
+    const placement = getCasePlacementForBuilding(building);
+    return sum + placement.front + placement.middle + placement.back;
+  }, 0);
+}
+
+function getRemainingCaseTotal(remainingByBuilding){
+  return Object.values(remainingByBuilding).reduce((sum, remaining) => {
+    return sum + remaining.front + remaining.middle + remaining.back;
+  }, 0);
+}
+
+function ensureRemainingCaseEntry(remainingByBuilding, building){
+  const key = String(building);
+  if(!remainingByBuilding[key]){
+    remainingByBuilding[key] = { front: 0, middle: 0, back: 0 };
+  }
+  return remainingByBuilding[key];
+}
+
+function adjustRemainingCasesToTarget(remainingByBuilding, targetTotal, options = {}){
+  let diff = targetTotal - getRemainingCaseTotal(remainingByBuilding);
+  if(diff === 0) return;
+
+  const processingOrder = getCasePlacementProcessingOrder();
+  if(diff > 0){
+    const addOrder = processingOrder.filter(building => !isBuildingCompletedByCurrentSelection(building));
+    if(!addOrder.length) addOrder.push(...processingOrder);
+    for(const building of addOrder){
+      const placement = getCasePlacementForBuilding(building);
+      const remaining = ensureRemainingCaseEntry(remainingByBuilding, building);
+      const carriedFrontCases = clampNumber(options.carriedCasesByBuilding?.[String(building)], 0, 999999, 0);
+      const borrowedFrontCases = clampNumber(options.borrowedFrontCasesByBuilding?.[String(building)], 0, 999999, 0);
+      for(const location of ["front", "middle", "back"]){
+        if(diff <= 0) return;
+        const capacityBase = location === "front"
+          ? placement.front + carriedFrontCases - borrowedFrontCases
+          : placement[location];
+        const capacity = Math.max(0, capacityBase - remaining[location]);
+        const add = Math.min(capacity, diff);
+        remaining[location] += add;
+        diff -= add;
+      }
+    }
+    return;
+  }
+
+  diff = Math.abs(diff);
+  for(const building of processingOrder){
+    const remaining = ensureRemainingCaseEntry(remainingByBuilding, building);
+    for(const location of ["front", "middle", "back"]){
+      if(diff <= 0) return;
+      const remove = Math.min(remaining[location], diff);
+      remaining[location] -= remove;
+      diff -= remove;
+    }
+  }
+}
+
+function getCasePlacementSummaryText(){
+  const totalCases = getHarvestCasePlan().totalCases;
+  syncCurrentCasePlacementFromInputs();
+  const totalPlacementCases = getTotalCasePlacementCount();
+  const targetRemainingTotal = Math.max(0, totalPlacementCases - totalCases);
+  const targetShortage = Math.max(0, totalCases - totalPlacementCases);
+  const demandByBuilding = distributeCaseDemandByHarvestLocation(totalCases);
+  const carriedCasesByBuilding = {};
+  const borrowedFrontCasesByBuilding = {};
+  const remainingByBuilding = {};
+
+  getCasePlacementProcessingOrder().forEach(building => {
+    const demand = demandByBuilding[String(building)] || { front: 0, middle: 0, back: 0 };
+    const placement = getCasePlacementForBuilding(building);
+    const available = {
+      ...placement,
+      front: Math.max(
+        0,
+        placement.front +
+        clampNumber(carriedCasesByBuilding[String(building)], 0, 999999, 0) -
+        clampNumber(borrowedFrontCasesByBuilding[String(building)], 0, 999999, 0)
+      )
+    };
+    const hasDemand = demand.front > 0 || demand.middle > 0 || demand.back > 0;
+    const hasPlacement = available.front > 0 || available.middle > 0 || available.back > 0;
+    if(!hasDemand && !hasPlacement) return;
+
+    const result = consumeCasesFromPlacement(available, demand);
+    let remaining = result.remaining;
+    let shortage = result.shortage;
+
+    if(shortage > 0){
+      const nextBuilding = getNextBuilding(building);
+      const borrowableFrontCases = getBorrowableFrontCasesFromNextBuilding(
+        building,
+        demandByBuilding,
+        carriedCasesByBuilding,
+        borrowedFrontCasesByBuilding
+      );
+      const borrowedCases = Math.min(shortage, borrowableFrontCases);
+      if(nextBuilding && borrowedCases > 0){
+        borrowedFrontCasesByBuilding[String(nextBuilding)] =
+          clampNumber(borrowedFrontCasesByBuilding[String(nextBuilding)], 0, 999999, 0) + borrowedCases;
+        shortage -= borrowedCases;
+      }
+    }
+
+    if(isBuildingCompletedByCurrentSelection(building)){
+      const carryCases = remaining.front + remaining.middle + remaining.back;
+      const nextBuilding = getNextBuilding(building);
+      if(carryCases > 0 && nextBuilding){
+        carriedCasesByBuilding[String(nextBuilding)] = clampNumber(carriedCasesByBuilding[String(nextBuilding)], 0, 999999, 0) + carryCases;
+        remaining = { front: 0, middle: 0, back: 0 };
+      }
+    }
+
+    remainingByBuilding[String(building)] = remaining;
+  });
+
+  adjustRemainingCasesToTarget(remainingByBuilding, targetRemainingTotal, {
+    carriedCasesByBuilding,
+    borrowedFrontCasesByBuilding
+  });
+
+  const remainingLines = [];
+  BUILDINGS.forEach(building => {
+    const remaining = remainingByBuilding[String(building)];
+    if(!remaining) return;
+    const rawCounts = {
+      front: clampNumber(remaining.front, 0, 999999, 0),
+      middle: clampNumber(remaining.middle, 0, 999999, 0),
+      back: clampNumber(remaining.back, 0, 999999, 0)
+    };
+    const originalTotal = rawCounts.front + rawCounts.middle + rawCounts.back;
+    const displayCounts = {
+      front: 0,
+      middle: Math.round(rawCounts.middle / 10) * 10,
+      back: Math.round(rawCounts.back / 10) * 10
+    };
+    displayCounts.front = originalTotal - displayCounts.middle - displayCounts.back;
+
+    while(displayCounts.front < 0){
+      const adjustableLocation = ["middle", "back"]
+        .filter(location => displayCounts[location] >= 10)
+        .sort((a, b) => (displayCounts[b] - rawCounts[b]) - (displayCounts[a] - rawCounts[a]))[0];
+      if(!adjustableLocation) break;
+      displayCounts[adjustableLocation] -= 10;
+      displayCounts.front = originalTotal - displayCounts.middle - displayCounts.back;
+    }
+
+    ["front", "middle", "back"].forEach(location => {
+      const displayCount = Math.max(0, displayCounts[location]);
+      if(displayCount > 0){
+        remainingLines.push(building + "号棟 " + getCaseLocationLabel(location) + ": " + displayCount + "ケース");
+      }
+    });
+  });
+
+  let text = remainingLines.length ? remainingLines.join("\n") : "なし";
+
+  if(targetShortage > 0){
+    text = remainingLines.length
+      ? text + "\n" + targetShortage + "ケース不足"
+      : targetShortage + "ケース不足";
+  }
+
+  return text;
+}
+
+function renderCasePlacementSummary(){
+  const box = document.getElementById("casePlacementSummary");
+  if(!box) return;
+  const text = getCasePlacementSummaryText();
+  box.textContent = text;
+}
+
+function setDefaultCasePlacement(){
+  invalidateWorkflowMonitorCheckpoint();
+  const front = document.getElementById("frontCaseInput");
+  const middle = document.getElementById("middleCaseInput");
+  const back = document.getElementById("backCaseInput");
+  if(front) front.value = STANDARD_CASE_PLACEMENT.front;
+  if(middle) middle.value = STANDARD_CASE_PLACEMENT.middle;
+  if(back) back.value = STANDARD_CASE_PLACEMENT.back;
+  updateCasePlacementTotal();
+  refreshEmptyInputHighlights();
+  syncCurrentCasePlacementFromInputs();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+}
+
+function resetAllCasePlacements(){
+  casePlacementByBuilding = {};
+  BUILDINGS.forEach(building => {
+    casePlacementByBuilding[String(building)] = { ...DEFAULT_CASE_PLACEMENT };
+  });
+  populateCasePlacementInputs();
+  renderForecastSummary();
+}
+
+function resetForecastCasesInput(){
+  invalidateWorkflowMonitorCheckpoint();
+  const casesInput = document.getElementById("casesInput");
+  if(casesInput) casesInput.value = "";
+  harvestProgressAvailable = false;
+  harvestCasesAutoEstimated = false;
+  updateHarvestCasesAutoEstimatedAppearance();
+  refreshEmptyInputHighlights();
+  renderForecastSummary();
+}
+
+function clearCasePlacement(){
+  invalidateWorkflowMonitorCheckpoint();
+  const front = document.getElementById("frontCaseInput");
+  const middle = document.getElementById("middleCaseInput");
+  const back = document.getElementById("backCaseInput");
+  if(front) front.value = "";
+  if(middle) middle.value = "";
+  if(back) back.value = "";
+  updateCasePlacementTotal();
+  refreshEmptyInputHighlights();
+  syncCurrentCasePlacementFromInputs();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+}
+
+function handleCasePlacementInput(){
+  invalidateWorkflowMonitorCheckpoint();
+  updateCasePlacementTotal();
+  syncCurrentCasePlacementFromInputs();
+  renderForecastSummary();
+  scheduleHarvestStateSave();
+}

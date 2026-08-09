@@ -1,0 +1,133 @@
+  <div id="forecastTab">
+    <div id="forecastSimulationCard" class="card tabLinkedCard">
+      <h2 id="forecastSectionTitle" class="sectionTitle workflowFocusHeading">シミュレーション</h2>
+
+      <div class="forecastControlRow">
+        <div class="forecastCaseField">
+          <div class="forecastFieldHeader">
+            <div class="forecastFieldLabelStack">
+              <label class="fieldAccentLabel" for="casesInput">収穫ケース数</label>
+              <div id="partialHarvestDeductionNote" class="partialHarvestDeductionNote" hidden></div>
+            </div>
+          </div>
+          <span class="inputUnitWrap forecastCaseUnitWrap">
+            <input id="casesInput" type="number" min="0" value="" inputmode="numeric" aria-label="収穫ケース数" oninput="handleHarvestCasesInputChange()">
+            <span class="inputUnitSuffix">ケース</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="casePlacementDivider"></div>
+
+      <div class="casePlacementPanel">
+        <div class="casePlacementHeader">
+          <div class="buildingSwitch casePlacementBuildingSwitch">
+            <button type="button" class="buildingBtn" onclick="prevCasePlacementBuilding()" aria-label="前の号棟">‹</button>
+            <button id="casePlacementBuildingBtn" class="buildingBtn active">2号棟</button>
+            <button type="button" class="buildingBtn" onclick="nextCasePlacementBuilding()" aria-label="次の号棟">›</button>
+          </div>
+        </div>
+        <div class="buildingStatusCards">
+          <div id="plantingAgeSummaryCard" class="buildingStatusCard">
+            <button type="button" id="plantingAgeSummary" class="buildingStatusValue plantingAgeSummaryButton" onclick="openPlantingAgeWindow()">収穫場所未選択</button>
+          </div>
+          <div id="remainingCasesSummaryCard" class="buildingStatusCard">
+            <div id="remainingCasesSummary" class="buildingStatusValue">残り 0ケース</div>
+          </div>
+        </div>
+        <div class="casePlacementGrid">
+          <div class="casePlacementItem withTitle">
+            <div class="casePlacementTitleRow">
+              <div class="casePlacementInlineTitle">ケース配置</div>
+              <button type="button" class="casePlacementDefaultBtn" onclick="setDefaultCasePlacement()">標準配置</button>
+            </div>
+            <label>奥</label>
+            <span class="inputUnitWrap casePlacementUnitWrap">
+              <input id="backCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
+          </div>
+          <div class="casePlacementItem">
+            <label>中央</label>
+            <span class="inputUnitWrap casePlacementUnitWrap">
+              <input id="middleCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
+          </div>
+          <div class="casePlacementItem">
+            <label>手前</label>
+            <span class="inputUnitWrap casePlacementUnitWrap">
+              <input id="frontCaseInput" type="number" min="0" value="" inputmode="numeric" oninput="handleCasePlacementInput()">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
+          </div>
+          <div class="casePlacementTotal">
+            <div class="casePlacementTotalLabelWrap">
+              <button type="button" class="casePlacementClearInlineBtn" onclick="clearCasePlacement()" aria-label="この号棟のケース配置を消す">消す</button>
+              <div class="casePlacementTotalLabel">合計</div>
+            </div>
+            <div class="casePlacementTotalDisplay">
+              <span id="casePlacementTotalValue" class="casePlacementTotalValue">0</span>
+              <span class="inputUnitSuffix">ケース</span>
+            </div>
+          </div>
+        </div>
+        <div class="casePlacementBedPanel">
+          <div id="beds" class="bedWrap"></div>
+        </div>
+        <div class="simulationBedMapLegend" aria-label="ベッド配置図の色分け">
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>記録済み</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-progress-completed"></span>途中経過完了</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-partial-harvest"></span>部分収穫</span>
+        </div>
+        <div class="bedDetailOpenHint">ベッドを長押しすると拡大し、パレットを選択できます</div>
+        <button type="button" class="forecastSettingsOpenBtn" onclick="openForecastSettingsWindow()">
+          <span class="forecastSettingsOpenLabel">計算設定</span>
+          <span id="forecastSettingsSummary" class="forecastSettingsSummary">0% / 20 / 20 / 60(0/3)</span>
+          <span class="forecastSettingsOpenText">開く</span>
+        </button>
+        <div class="forecastActionRow">
+          <button class="actionBtn secondaryBtn forecastClearBtn" onclick="clearHarvestPrediction()">クリア</button>
+          <button class="actionBtn casePlacementCalculateBtn" onclick="runHarvestPrediction()">計算する</button>
+        </div>
+        <details id="harvestProgressPanel" class="harvestProgressPanel" ontoggle="handleHarvestProgressPanelToggle()" hidden>
+          <summary class="harvestProgressSummary">
+            <span class="harvestProgressTitle">途中経過</span>
+            <span class="harvestProgressOptionalBadge">任意</span>
+            <span id="harvestProgressSummaryStatus" class="harvestProgressSummaryStatus">収穫中に使えます</span>
+          </summary>
+          <div class="harvestProgressBody">
+            <p class="harvestProgressLead">収穫が完了したベッドをタップし、そのベッドから取れたケース数の合計を入力してください。</p>
+            <div class="buildingSwitch harvestProgressBuildingSwitch">
+              <button type="button" class="buildingBtn" onclick="shiftHarvestProgressBuilding(-1)" aria-label="前の号棟">‹</button>
+              <button id="harvestProgressBuildingBtn" type="button" class="buildingBtn active">2号棟</button>
+              <button type="button" class="buildingBtn" onclick="shiftHarvestProgressBuilding(1)" aria-label="次の号棟">›</button>
+            </div>
+            <div id="harvestProgressBeds" class="bedWrap harvestProgressBeds"></div>
+            <div id="harvestProgressSelectionText" class="harvestProgressSelectionText">完了したベッドを選択してください</div>
+            <div class="harvestProgressCaseField">
+              <label for="harvestProgressCasesInput">選択した完了ベッドから取れた合計</label>
+              <span class="inputUnitWrap">
+                <input id="harvestProgressCasesInput" type="number" min="0" step="1" inputmode="numeric" oninput="handleHarvestProgressCasesInput()">
+                <span class="inputUnitSuffix">ケース</span>
+              </span>
+            </div>
+            <div id="harvestProgressResult" class="harvestProgressResult">先に通常の収穫場所を計算または選択してください。</div>
+            <div class="harvestProgressActions">
+              <button type="button" class="actionBtn" onclick="recalculateFromHarvestProgress()">残りを再計算する</button>
+              <button id="harvestProgressResetBtn" type="button" class="actionBtn secondaryBtn harvestProgressResetBtn" onclick="resetHarvestProgress()" hidden>取り消す</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <details class="forecastSummaryCard" hidden>
+        <summary class="sectionTitle forecastSummaryTitle">選択結果</summary>
+        <div id="forecastSummary" class="resultBox">開始パレット: -
+選択枚数: 0
+終了パレット: -</div>
+      </details>
+    </div>
+
+  </div>
