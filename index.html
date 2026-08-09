@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260808-restore-diagnostics">
+<meta name="harvestnavi-version" content="20260809-record-detail-location-map">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -2515,6 +2515,97 @@ button.monitorSaveBtn:active{
   line-height:1.75;
   white-space:pre-wrap;
   overflow-wrap:anywhere;
+}
+.recordDetailWindow.recordDetailLocationWindow{
+  width:min(720px, 100%);
+}
+.recordDetailWindowBody.hasLocationDisplay{
+  white-space:normal;
+}
+.recordDetailInfoList{
+  display:grid;
+  gap:8px;
+  margin-bottom:18px;
+}
+.recordDetailInfoRow{
+  display:grid;
+  grid-template-columns:minmax(92px, auto) minmax(0, 1fr);
+  gap:8px 12px;
+  align-items:start;
+}
+.recordDetailInfoLabel{
+  color:#64748b;
+  font-size:12px;
+  font-weight:800;
+}
+.recordDetailInfoValue{
+  min-width:0;
+  color:#1f2937;
+  font-weight:750;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.recordDetailLocationSection{
+  padding-top:15px;
+  border-top:1px solid #e5e7eb;
+}
+.recordDetailLocationTitle{
+  margin-bottom:10px;
+  color:#111827;
+  font-size:16px;
+  font-weight:900;
+}
+.recordDetailLocationLoading{
+  min-height:150px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  color:#64748b;
+  font-size:12px;
+  font-weight:800;
+}
+.recordDetailLocationLoading::before{
+  content:"";
+  width:24px;
+  height:24px;
+  box-sizing:border-box;
+  border:3px solid #dbe4ea;
+  border-top-color:#248a4b;
+  border-radius:50%;
+  animation:recordDetailLocationSpin .75s linear infinite;
+}
+@keyframes recordDetailLocationSpin{to{transform:rotate(360deg);}}
+.recordDetailLocationBuildingTabs{
+  grid-template-columns:repeat(auto-fit, minmax(64px, 1fr));
+}
+.recordDetailLocationBeds{
+  margin-top:2px;
+}
+.recordDetailLocationBed{
+  cursor:pointer !important;
+}
+.recordDetailLocationBed .dashboardSeedlingStatusAgeSummary{
+  white-space:normal;
+}
+.recordDetailLocationDetail{
+  margin-top:10px;
+}
+.recordDetailLocationLot{
+  cursor:default;
+}
+.recordDetailLocationEmpty{
+  padding:14px;
+  border:1px solid #d1d5db;
+  border-radius:12px;
+  background:#f8fafc;
+  color:#64748b;
+  font-size:13px;
+  font-weight:750;
+}
+@media(max-width:430px){
+  .recordDetailInfoRow{grid-template-columns:1fr;gap:2px;}
 }
 .partialHarvestEditWindowBody{
   display:grid;
@@ -9599,7 +9690,7 @@ requestAnimationFrame(function(){
   </div>
 </div>
 <div id="recordDetailModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="recordDetailWindowTitle" aria-describedby="recordDetailWindowBody">
-  <div class="recordDetailWindow">
+  <div class="recordDetailWindow recordDetailLocationWindow">
     <div class="recordDetailWindowHeader">
       <div id="recordDetailWindowTitle" class="recordDetailWindowTitle">記録の詳細</div>
       <button id="recordDetailWindowCloseBtn" type="button" class="recordDetailWindowClose" onclick="closeRecordDetailWindow()">閉じる</button>
@@ -9990,6 +10081,10 @@ let expandedRecordBed = null;
 let activeBedDetailContext = null;
 let activeBedDetailBed = null;
 let recordDetailReturnFocus = null;
+let recordDetailLocationModel = null;
+let recordDetailLocationBuilding = null;
+let recordDetailLocationSelectedBed = null;
+let recordDetailLoadToken = 0;
 let partialHarvestEditReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
 let dashboardForecastInfoReturnFocus = null;
@@ -28913,6 +29008,187 @@ async function restoreDeletedRecord(id, recordUuid = ""){
   }
 }
 
+function getRecordDetailInfoHtml(rows){
+  return `<div class="recordDetailInfoList">${rows.map(row => `
+    <div class="recordDetailInfoRow">
+      <span class="recordDetailInfoLabel">${escapeHtml(row.label)}</span>
+      <span class="recordDetailInfoValue">${escapeHtml(row.value || "-")}</span>
+    </div>
+  `).join("")}</div>`;
+}
+
+function buildRecordDetailLocationModel(kind, entity){
+  const palletKeys = [...new Set(
+    (kind === "planting"
+      ? (Array.isArray(entity?.plantingPalletKeys) ? entity.plantingPalletKeys : [])
+      : getPalletKeysFromRecord(entity))
+      .filter(isValidPalletKeyString)
+  )].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  const keySet = new Set(palletKeys);
+  const palletNumbersByBed = new Map();
+  palletKeys.forEach(key => {
+    const pallet = parsePalletKey(key);
+    const bedKey = `${pallet.building}-${pallet.bed}`;
+    if(!palletNumbersByBed.has(bedKey)) palletNumbersByBed.set(bedKey, []);
+    palletNumbersByBed.get(bedKey).push(pallet.number);
+  });
+  const buildings = BUILDINGS.filter(building => (
+    palletKeys.some(key => parsePalletKey(key).building === building)
+  ));
+  const qualityText = kind === "planting"
+    ? formatPlantingQualityMemo(entity?.qualityMemo)
+    : (formatQualityMemo(entity?.qualityMemo) || "記録なし");
+  return {
+    kind,
+    keySet,
+    palletNumbersByBed,
+    buildings,
+    qualityText,
+    qualityClass: getDashboardSeedlingQualityClass(entity?.qualityMemo),
+    actionLabel: kind === "planting" ? "苗植え" : "収穫"
+  };
+}
+
+function getRecordDetailLocationDefaultBed(model, building){
+  return bedMap.find(bed => (
+    (model?.palletNumbersByBed.get(`${building}-${bed}`) || []).length > 0
+  )) || bedMap[0];
+}
+
+function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectionStart){
+  const isIncluded = model.keySet.has(getPalletKey(building, bed, number));
+  const stateClass = isIncluded ? model.qualityClass : "is-unplanted";
+  const stateText = isIncluded ? `今回の${model.actionLabel}` : "対象外";
+  return `<span class="dashboardSeedlingBedMapCell ${stateClass}${sectionStart ? " is-section-start" : ""}" data-record-detail-pallet-number="${number}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
+}
+
+function getRecordDetailLocationBedMapHtml(model, building, bed){
+  const cells = [];
+  for(let row = ROWS; row >= 1; row--){
+    const displayRowIndex = ROWS - row;
+    const sectionStart = displayRowIndex > 0
+      && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
+    cells.push(getRecordDetailLocationMapCellHtml(model, building, bed, row * 2 - 1, sectionStart));
+    cells.push(getRecordDetailLocationMapCellHtml(model, building, bed, row * 2, sectionStart));
+  }
+  return `
+    <div class="dashboardSeedlingBedMap" aria-hidden="true">
+      <div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>
+    </div>
+  `;
+}
+
+function renderRecordDetailLocationDisplay(){
+  const mount = document.getElementById("recordDetailLocationMount");
+  const model = recordDetailLocationModel;
+  if(!mount || !model) return;
+  if(!model.buildings.length){
+    mount.innerHTML = '<div class="recordDetailLocationEmpty">この記録には表示できる場所情報がありません。</div>';
+    return;
+  }
+  if(!model.buildings.includes(recordDetailLocationBuilding)){
+    recordDetailLocationBuilding = model.buildings[0];
+  }
+  if(!bedMap.includes(recordDetailLocationSelectedBed)){
+    recordDetailLocationSelectedBed = getRecordDetailLocationDefaultBed(model, recordDetailLocationBuilding);
+  }
+
+  const building = recordDetailLocationBuilding;
+  const selectedBed = recordDetailLocationSelectedBed;
+  const selectedNumbers = model.palletNumbersByBed.get(`${building}-${selectedBed}`) || [];
+  const selectedNumberText = formatPalletNumberSideRanges(selectedNumbers) || "対象なし";
+  mount.innerHTML = `
+    <div class="dashboardForecastBuildingTabs recordDetailLocationBuildingTabs" aria-label="場所を表示する号棟">
+      ${model.buildings.map(item => `
+        <button type="button" class="dashboardForecastBuildingBtn${item === building ? " active" : ""}"
+          data-record-detail-building="${item}" onclick="setRecordDetailLocationBuilding(${item})">
+          ${item}号棟
+        </button>
+      `).join("")}
+    </div>
+    <div class="dashboardForecastBeds dashboardSeedlingStatusBeds recordDetailLocationBeds">
+      ${bedMap.map(bed => {
+        const numbers = model.palletNumbersByBed.get(`${building}-${bed}`) || [];
+        const hasLocation = numbers.length > 0;
+        const isSelected = bed === selectedBed;
+        return `
+          <button type="button"
+            class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed recordDetailLocationBed${hasLocation ? "" : " is-unplanted"}${isSelected ? " is-selected" : ""}"
+            data-record-detail-bed="${bed}" onclick="setRecordDetailLocationBed('${bed}')"
+            aria-pressed="${isSelected ? "true" : "false"}"
+            aria-label="${bed}ベッド 今回の${model.actionLabel} ${numbers.length}パレット。詳細を表示">
+            <div class="bedTitle"><span class="dashboardForecastBedName">${bed}</span></div>
+            ${getRecordDetailLocationBedMapHtml(model, building, bed)}
+            <span class="dashboardSeedlingStatusAgeBlock">
+              ${hasLocation ? `<span class="dashboardSeedlingStatusAgeLabel">今回の${model.actionLabel}</span>` : ""}
+              <span class="dashboardSeedlingStatusAgeSummary">${hasLocation ? `${numbers.length}パレット` : "対象なし"}</span>
+            </span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+    <div class="dashboardSeedlingStatusMapGuide" aria-label="配置図の色分け">
+      <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${model.qualityClass}"></span>今回の${model.actionLabel}（${escapeHtml(model.qualityText)}）</span>
+      <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>対象外</span>
+    </div>
+    <div class="dashboardSeedlingStatusDetail recordDetailLocationDetail" aria-live="polite">
+      <div class="dashboardSeedlingStatusDetailHeader">
+        <span class="dashboardSeedlingStatusDetailTitle">${selectedBed}ベッドの詳細</span>
+        <span class="dashboardSeedlingStatusDetailSummary">${selectedNumbers.length}パレット</span>
+      </div>
+      ${selectedNumbers.length ? `
+        <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
+          <div class="dashboardSeedlingStatusLot recordDetailLocationLot">
+            <span class="dashboardSeedlingStatusLotHeader">
+              <span class="dashboardSeedlingStatusQuality ${model.qualityClass}">${escapeHtml(model.qualityText)}</span>
+            </span>
+            <span class="dashboardSeedlingStatusCount">
+              <span>番号 ${escapeHtml(selectedNumberText)}</span>
+              <span>${selectedNumbers.length}パレット</span>
+            </span>
+          </div>
+        </div>
+      ` : '<div class="recordDetailLocationEmpty">このベッドは今回の対象に含まれていません。</div>'}
+    </div>
+  `;
+}
+
+function setRecordDetailLocationBuilding(building){
+  const normalized = Number(building);
+  if(!recordDetailLocationModel?.buildings.includes(normalized)) return;
+  recordDetailLocationBuilding = normalized;
+  recordDetailLocationSelectedBed = getRecordDetailLocationDefaultBed(recordDetailLocationModel, normalized);
+  renderRecordDetailLocationDisplay();
+}
+
+function setRecordDetailLocationBed(bed){
+  if(!bedMap.includes(bed) || !recordDetailLocationModel) return;
+  recordDetailLocationSelectedBed = bed;
+  renderRecordDetailLocationDisplay();
+}
+
+function loadRecordDetailLocation(kind, id, loadToken){
+  if(loadToken !== recordDetailLoadToken
+    || !document.getElementById("recordDetailModal")?.classList.contains("show")) return;
+  const entity = kind === "planting" ? getPlantingEventById(id) : getRecordById(id);
+  const mount = document.getElementById("recordDetailLocationMount");
+  if(!entity || !mount){
+    if(mount) mount.innerHTML = '<div class="recordDetailLocationEmpty">場所情報を読み込めませんでした。</div>';
+    return;
+  }
+  try{
+    recordDetailLocationModel = buildRecordDetailLocationModel(kind, entity);
+    recordDetailLocationBuilding = recordDetailLocationModel.buildings[0] ?? null;
+    recordDetailLocationSelectedBed = recordDetailLocationBuilding === null
+      ? null
+      : getRecordDetailLocationDefaultBed(recordDetailLocationModel, recordDetailLocationBuilding);
+    renderRecordDetailLocationDisplay();
+  }catch(error){
+    console.error("記録詳細の場所表示を読み込めませんでした", error);
+    mount.innerHTML = '<div class="recordDetailLocationEmpty">場所表示を読み込めませんでした。記録の場所情報を確認してください。</div>';
+  }
+}
+
 function openRecordDetailWindow(kind, id){
   const modal = document.getElementById("recordDetailModal");
   const title = document.getElementById("recordDetailWindowTitle");
@@ -28927,7 +29203,8 @@ function openRecordDetailWindow(kind, id){
   }
 
   let titleText = "記録の詳細";
-  let detailLines = [];
+  let infoRows = [];
+  let locationTitle = "場所";
   if(kind === "harvest"){
     const record = getRecordById(safeId);
     if(!record || record.type !== "fullHarvest"){
@@ -28935,14 +29212,14 @@ function openRecordDetailWindow(kind, id){
       return;
     }
     titleText = `${record.date || "日付なし"} 収穫の詳細`;
-    detailLines = [
-      `収穫ケース数: ${getHarvestRecordCaseDisplayText(record)}ケース`,
-      `収穫ロス率: ${String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%"}`,
-      `品質メモ: ${formatQualityMemo(record.qualityMemo) || "-"}`,
-      `予定苗枚数: ${record.plannedSeedlingTrayCount || 0}枚`,
-      `定植日数の詳細: ${formatPlantingAgeForRecordDetailDisplay(record) || "-"}`,
-      `収穫場所: ${formatStoredPalletSummaryForDisplay(record.palletSummary, record.palletKeys) || "-"}`,
-      ...(record.memo ? [`メモ: ${record.memo}`] : [])
+    locationTitle = "収穫場所";
+    infoRows = [
+      { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
+      { label: "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
+      { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
+      { label: "予定苗枚数", value: `${record.plannedSeedlingTrayCount || 0}枚` },
+      { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
+      ...(record.memo ? [{ label: "メモ", value: record.memo }] : [])
     ];
   }else if(kind === "planting"){
     const event = getPlantingEventById(safeId);
@@ -28956,33 +29233,47 @@ function openRecordDetailWindow(kind, id){
       return `${source?.date || "日付不明"}の収穫 ${allocation.palletKeys.length}パレット`;
     }).join(" / ");
     const detailsUnknown = !!event.detailsUnknown;
-    const carryoverText = event.actualSeedlingCarryoverMode === "carryover"
-      ? "余った"
-      : "余っていない";
+    const carryoverText = event.actualSeedlingCarryoverMode === "carryover" ? "余った" : "余っていない";
     titleText = `${event.plantingDate || "日付なし"} 苗植えの詳細`;
-    detailLines = [
-      `実際に取った苗: ${detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株"}`,
-      `苗植えした株数: ${detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株"}`,
-      `苗の品質メモ: ${formatPlantingQualityMemo(event.qualityMemo)}`,
-      `今回余った苗の設定: ${detailsUnknown ? "不明" : carryoverText}`,
-      `作業後の繰越苗: ${detailsUnknown ? "不明" : (usage?.carryoverAfter ?? 0) + "株"}`,
-      ...(isPlantingEventUnsent(event) ? ["Google: 未送信"] : []),
-      `収穫元: ${sourceText || "-"}`,
-      `苗植え場所: ${formatPlantingSummaryForKeys(event.plantingPalletKeys) || "-"}`
+    locationTitle = "苗植え場所";
+    infoRows = [
+      { label: "実際に取った苗", value: detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株" },
+      { label: "苗植えした株数", value: detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株" },
+      { label: "苗の品質メモ", value: formatPlantingQualityMemo(event.qualityMemo) },
+      { label: "今回余った苗", value: detailsUnknown ? "不明" : carryoverText },
+      { label: "作業後の繰越苗", value: detailsUnknown ? "不明" : (usage?.carryoverAfter ?? 0) + "株" },
+      ...(isPlantingEventUnsent(event) ? [{ label: "Google", value: "未送信" }] : []),
+      { label: "収穫元", value: sourceText || "-" }
     ];
   }else{
     return;
   }
 
+  const loadToken = ++recordDetailLoadToken;
+  recordDetailLocationModel = null;
+  recordDetailLocationBuilding = null;
+  recordDetailLocationSelectedBed = null;
   recordDetailReturnFocus = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null;
   title.textContent = titleText;
-  body.textContent = detailLines.join("\n");
+  body.classList.add("hasLocationDisplay");
+  body.innerHTML = `
+    ${getRecordDetailInfoHtml(infoRows)}
+    <section class="recordDetailLocationSection" aria-labelledby="recordDetailLocationTitle">
+      <div id="recordDetailLocationTitle" class="recordDetailLocationTitle">${escapeHtml(locationTitle)}</div>
+      <div id="recordDetailLocationMount">
+        <div class="recordDetailLocationLoading" role="status">${escapeHtml(locationTitle)}を読み込んでいます...</div>
+      </div>
+    </section>
+  `;
   body.scrollTop = 0;
   modal.classList.add("show");
   document.body.style.overflow = "hidden";
-  requestAnimationFrame(() => closeButton?.focus({ preventScroll: true }));
+  requestAnimationFrame(() => {
+    closeButton?.focus({ preventScroll: true });
+    requestAnimationFrame(() => loadRecordDetailLocation(kind, safeId, loadToken));
+  });
 }
 
 function closeRecordDetailWindow(options = {}){
@@ -28990,8 +29281,15 @@ function closeRecordDetailWindow(options = {}){
   const body = document.getElementById("recordDetailWindowBody");
   const shouldRestoreFocus = options.restoreFocus !== false;
   const returnFocus = recordDetailReturnFocus;
+  recordDetailLoadToken++;
+  recordDetailLocationModel = null;
+  recordDetailLocationBuilding = null;
+  recordDetailLocationSelectedBed = null;
   if(modal) modal.classList.remove("show");
-  if(body) body.textContent = "";
+  if(body){
+    body.classList.remove("hasLocationDisplay");
+    body.textContent = "";
+  }
   recordDetailReturnFocus = null;
   unlockPageAfterRecordUiClose();
   if(shouldRestoreFocus && returnFocus?.isConnected){
