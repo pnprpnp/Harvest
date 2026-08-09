@@ -18,6 +18,12 @@ python3 tools/build_index.py --check
 
 各ファイルの担当範囲と編集方法は [`src/README.md`](src/README.md) にまとめています。
 
+Apps Script側も機能別ソースから生成するため、両方をまとめて生成するときは次を実行します。
+
+```sh
+python3 tools/build_all.py
+```
+
 ## Firebaseによるモニター更新通知
 
 モニターの内容は従来どおりGoogle Apps Scriptに保存します。Firebase Realtime Databaseには内容を保存せず、変更を知らせる短い更新番号と時刻だけを保存します。

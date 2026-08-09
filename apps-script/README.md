@@ -5,7 +5,17 @@ This directory is reserved for the Harvestnavi Apps Script project.
 - `clasp pull` and status checks are manual.
 - `clasp push`, version creation, and deployment are run only after an explicit request.
 - `.clasp.json` and Google authentication credentials must never be committed.
+- `コード.js` is generated from the feature-oriented files under `src`; edit those sources instead.
+- `.claspignore` excludes `src` so only the generated `コード.js` and manifest are uploaded.
 - `コード.js` and `appsscript.json` are tracked in Git. `.clasp.json` remains local-only.
+
+Before checking or pushing the Apps Script project, generate `コード.js` from the split sources:
+
+```sh
+python3 tools/build_apps_script.py
+```
+
+Use `python3 tools/build_apps_script.py --check` to verify the generated file without changing it. The source-file responsibilities and order are documented in [`src/README.md`](src/README.md).
 
 ## Spreadsheet connection
 

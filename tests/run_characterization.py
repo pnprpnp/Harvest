@@ -70,23 +70,23 @@ def find_chrome() -> str:
     raise RuntimeError("Google Chrome または Chromium が見つかりません。CHROME_BIN を指定してください。")
 
 
-def check_generated_index() -> bool:
+def check_generated_sources() -> bool:
     result = subprocess.run(
-        [sys.executable, str(REPOSITORY_ROOT / "tools" / "build_index.py"), "--check"],
+        [sys.executable, str(REPOSITORY_ROOT / "tools" / "build_all.py"), "--check"],
         cwd=REPOSITORY_ROOT,
         check=False,
     )
     if result.returncode == 0:
         return True
     print(
-        "エラー: 分割ソースとindex.htmlが一致しないため、ブラウザテストを開始しません。",
+        "エラー: 分割ソースと生成ファイルが一致しないため、ブラウザテストを開始しません。",
         file=sys.stderr,
     )
     return False
 
 
 def main() -> int:
-    if not check_generated_index():
+    if not check_generated_sources():
         return 2
     try:
         chrome = find_chrome()
