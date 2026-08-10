@@ -1184,6 +1184,49 @@
         );
       });
 
+      await runTest("苗植えベッド配置図の下は選択可能枚数だけを表示する", () => {
+        const countState = comparable(app.eval(`(() => {
+          const recordTab = document.getElementById("recordTab");
+          const previous = {
+            display: recordTab.style.display,
+            mode: recordSelectionMode,
+            building: currentBuilding,
+            keys: [...harvestFillKeys],
+            counts: { ...recordPlantingCountsByPallet },
+            getAllowed: getPlantingAllowedPalletSet
+          };
+          try{
+            recordTab.style.display = "block";
+            recordSelectionMode = "planting";
+            currentBuilding = 2;
+            harvestFillKeys = ["2-A-1"];
+            recordPlantingCountsByPallet = { "2-A-1": 12 };
+            getPlantingAllowedPalletSet = () => new Set(["2-A-1", "2-A-2", "2-A-3"]);
+            drawRecordBeds();
+            const bed = [...document.querySelectorAll("#recordBeds .recordBedOverview")]
+              .find(item => item.querySelector(".bedTitleMain")?.textContent === "A");
+            const counts = bed?.querySelector(".recordBedOverviewCounts");
+            return {
+              text: counts?.textContent.replace(/\s+/g, " ").trim() || "",
+              selectedCountElements: counts?.querySelectorAll(".recordBedOverviewCountSelected").length || 0,
+              selectableCountElements: counts?.querySelectorAll(".recordBedOverviewCountSelectable").length || 0
+            };
+          }finally{
+            recordTab.style.display = previous.display;
+            recordSelectionMode = previous.mode;
+            currentBuilding = previous.building;
+            harvestFillKeys = previous.keys;
+            recordPlantingCountsByPallet = previous.counts;
+            getPlantingAllowedPalletSet = previous.getAllowed;
+          }
+        })()`));
+        assertDeepEqual(countState, {
+          text: "選択可 3",
+          selectedCountElements: 0,
+          selectableCountElements: 1
+        }, "苗植えベッド配置図の下に選択枚数が残っています");
+      });
+
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
         const inlineEventAttributes = [
           "onclick", "onchange", "oninput", "ontoggle", "onkeydown"

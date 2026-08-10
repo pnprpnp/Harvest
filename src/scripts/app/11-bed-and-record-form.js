@@ -289,19 +289,9 @@ function drawRecordBeds(){
       });
       const counts = document.createElement("div");
       counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
-      const bedSelectedKeys = harvestFillKeys.filter(key => {
-        const pallet = parsePalletKey(key);
-        return pallet.building === building && pallet.bed === b;
-      });
-      const plantingDistribution = getRecordPlantingCountDistribution(bedSelectedKeys);
-      const plantingCountText = [12, 16, 20]
-        .filter(count => plantingDistribution[count] > 0)
-        .map(count => `${count}×${plantingDistribution[count]}`)
-        .join("/");
       counts.innerHTML = plantingAllowedSet
         ? `
-          <span class="recordBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-          <span class="recordBedOverviewCountSelectable">${plantingCountText || `選択可 ${selectableCount}`}</span>
+          <span class="recordBedOverviewCountSelectable">選択可 ${selectableCount}</span>
         `
         : `
           <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
