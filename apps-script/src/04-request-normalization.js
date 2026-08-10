@@ -225,6 +225,10 @@ function normalizePlantingEvent(event) {
     plantingPalletKeys.some(key => !uniqueAllocatedKeys.has(key))) {
     throw new Error("収穫元割当と苗植えパレットが一致しません");
   }
+  const plantingCountsByPallet = normalizePlantingCountsByPallet(
+    event.plantingCountsByPallet,
+    plantingKeySet
+  );
 
   return {
     palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
@@ -232,6 +236,7 @@ function normalizePlantingEvent(event) {
     plantingDate,
     sourceAllocations,
     plantingPalletKeys,
+    plantingCountsByPallet,
     actualSeedlingTrayCount: normalizeOptionalInteger(
       event.actualSeedlingTrayCount,
       "実苗枚数",
@@ -266,6 +271,25 @@ function normalizePlantingEvent(event) {
     createdAt: normalizeOptionalTimestamp(event.createdAt, "作成日時"),
     updatedAt: normalizeOptionalTimestamp(event.updatedAt, "更新日時")
   };
+}
+
+function normalizePlantingCountsByPallet(value, plantingKeySet) {
+  if (value === null || typeof value === "undefined" || value === "") return {};
+  if (!isPlainObject(value)) {
+    throw new Error("パレット別植え付け株数はオブジェクトで指定してください");
+  }
+  const normalized = {};
+  Object.keys(value).forEach(key => {
+    if (!plantingKeySet.has(key)) {
+      throw new Error("パレット別植え付け株数に苗植え場所ではないパレットがあります");
+    }
+    const count = normalizeRequiredInteger(value[key], "パレット別植え付け株数", 12, 20);
+    if (![12, 16, 20].includes(count)) {
+      throw new Error("パレット別植え付け株数は12・16・20のいずれかで指定してください");
+    }
+    normalized[key] = count;
+  });
+  return normalized;
 }
 
 function normalizePlantingSourceAllocations(value) {

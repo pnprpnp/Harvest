@@ -34,6 +34,8 @@ function resetInvalidStartupPlantingState(){
   recordSelectionMode = "harvest";
   activePlantingRecordId = null;
   plantingRecordDraft = null;
+  recordPlantingCountPreset = 20;
+  recordPlantingCountsByPallet = {};
   workflowPlantingSessionActive = false;
 }
 
@@ -55,6 +57,11 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   recordCasesEdited = !!savedHarvestState.recordCasesEdited;
   recordPlantingSummaryEdited = !!savedHarvestState.recordPlantingSummaryEdited;
   recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
+  recordPlantingCountPreset = normalizePlantingCountPreset(savedHarvestState.recordPlantingCountPreset);
+  recordPlantingCountsByPallet = normalizePlantingCountsByPallet(
+    savedHarvestState.recordPlantingCountsByPallet,
+    savedHarvestState.harvestFillKeys
+  );
   activePlantingRecordId = savedHarvestState.activePlantingRecordId;
   editingPlantingEventId = savedHarvestState.editingPlantingEventId;
   plantingRecordDraft = savedHarvestState.plantingRecordDraft;

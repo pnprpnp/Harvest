@@ -39,6 +39,134 @@ function getPlantingCountForPallet(bed, number){
   return Number(number) <= frontCount ? frontPlant : backPlant;
 }
 
+function normalizePlantingCountPreset(value, fallback = 20){
+  const fallbackNumber = ALLOWED_YIELDS.includes(Number(fallback)) ? Number(fallback) : 20;
+  const number = Number(value);
+  return ALLOWED_YIELDS.includes(number) ? number : fallbackNumber;
+}
+
+function normalizePlantingCountsByPallet(value, allowedKeys = null){
+  if(!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const allowedSet = Array.isArray(allowedKeys)
+    ? new Set(allowedKeys.map(key => String(key || "")))
+    : null;
+  const normalized = {};
+  Object.entries(value).forEach(([rawKey, rawCount]) => {
+    const key = String(rawKey || "");
+    if(!isValidPalletKeyString(key) || (allowedSet && !allowedSet.has(key))) return;
+    const count = Number(rawCount);
+    if(!ALLOWED_YIELDS.includes(count)) return;
+    normalized[key] = count;
+  });
+  return normalized;
+}
+
+function getConfiguredPlantingCountForKey(key){
+  const pallet = parsePalletKey(String(key || ""));
+  if(!bedOrder.includes(pallet.bed) || !Number.isFinite(pallet.number)){
+    return normalizePlantingCountPreset(settings?.defaultPlantingCount);
+  }
+  return normalizePlantingCountPreset(getPlantingCountForPallet(pallet.bed, pallet.number));
+}
+
+function getConfiguredPlantingCountForFirstKey(keys){
+  const firstKey = Array.isArray(keys) ? keys.find(isValidPalletKeyString) : null;
+  return firstKey ? getConfiguredPlantingCountForKey(firstKey) : normalizePlantingCountPreset(settings?.defaultPlantingCount);
+}
+
+function getPlantingCountForSelectedKey(key, countsByPallet = recordPlantingCountsByPallet){
+  const explicit = Number(countsByPallet?.[key]);
+  return ALLOWED_YIELDS.includes(explicit) ? explicit : getConfiguredPlantingCountForKey(key);
+}
+
+function buildPlantingCountsByPalletForKeys(keys, countsByPallet = recordPlantingCountsByPallet){
+  const result = {};
+  [...new Set(Array.isArray(keys) ? keys : [])]
+    .filter(isValidPalletKeyString)
+    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b))
+    .forEach(key => {
+      result[key] = getPlantingCountForSelectedKey(key, countsByPallet);
+    });
+  return result;
+}
+
+function ensureRecordPlantingCountsForKeys(keys, options = {}){
+  const selectedKeys = Array.isArray(keys) ? keys : [];
+  selectedKeys.forEach(key => {
+    if(ALLOWED_YIELDS.includes(Number(recordPlantingCountsByPallet[key]))) return;
+    recordPlantingCountsByPallet[key] = options.useConfiguredCount
+      ? getConfiguredPlantingCountForKey(key)
+      : recordPlantingCountPreset;
+  });
+  recordPlantingCountsByPallet = normalizePlantingCountsByPallet(recordPlantingCountsByPallet, selectedKeys);
+}
+
+function setRecordPlantingCountForKey(key, count = recordPlantingCountPreset){
+  if(!isValidPalletKeyString(key)) return;
+  recordPlantingCountsByPallet[key] = normalizePlantingCountPreset(count, recordPlantingCountPreset);
+}
+
+function removeRecordPlantingCountForKey(key){
+  if(Object.prototype.hasOwnProperty.call(recordPlantingCountsByPallet, key)){
+    delete recordPlantingCountsByPallet[key];
+  }
+}
+
+function getRecordPlantingCountDistribution(keys = harvestFillKeys){
+  const distribution = { 12: 0, 16: 0, 20: 0 };
+  (Array.isArray(keys) ? keys : []).forEach(key => {
+    const count = getPlantingCountForSelectedKey(key);
+    if(Object.prototype.hasOwnProperty.call(distribution, count)) distribution[count]++;
+  });
+  return distribution;
+}
+
+function updateRecordPlantingCountPresetUi(){
+  const toolbar = document.getElementById("recordPlantingCountPreset");
+  const isPlantingMode = recordSelectionMode === "planting";
+  if(toolbar) toolbar.hidden = !isPlantingMode;
+  document.querySelectorAll("[data-record-planting-count]").forEach(button => {
+    const active = Number(button.dataset.recordPlantingCount) === recordPlantingCountPreset;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  const summary = document.getElementById("recordPlantingCountSummary");
+  if(summary){
+    const distribution = getRecordPlantingCountDistribution();
+    const parts = [12, 16, 20]
+      .filter(count => distribution[count] > 0)
+      .map(count => `${count}植え×${distribution[count]}`);
+    summary.textContent = parts.length ? parts.join("・") : "パレットを選択してください";
+  }
+}
+
+function setRecordPlantingCountPreset(count){
+  if(recordSelectionMode !== "planting") return;
+  recordPlantingCountPreset = normalizePlantingCountPreset(count, recordPlantingCountPreset);
+  updateRecordPlantingCountPresetUi();
+  scheduleHarvestStateSave();
+}
+
+function applyRecordPlantingCountPresetToSelection(){
+  if(recordSelectionMode !== "planting") return;
+  if(!harvestFillKeys.length){
+    showToast("株数を設定するパレットを選択してください");
+    return;
+  }
+  const nextCounts = { ...recordPlantingCountsByPallet };
+  harvestFillKeys.forEach(key => {
+    nextCounts[key] = recordPlantingCountPreset;
+  });
+  if(!canPlantSeedlingKeysWithinCapacity(harvestFillKeys, getActivePlantingRecord(), nextCounts)){
+    showToast(getPlantingCapacityExceededMessage());
+    return;
+  }
+  recordPlantingCountsByPallet = normalizePlantingCountsByPallet(nextCounts, harvestFillKeys);
+  refreshAfterHarvestSelectionChanged();
+  refreshBedDetailWindow();
+  showToast(`選択中のパレットを${recordPlantingCountPreset}植えに変更しました`);
+}
+
 function getSelectedSeedlingNeed(){
   let total = 0;
   harvestFillKeys.forEach(key => {
@@ -315,7 +443,7 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
       if(excludedSet.has(key)) continue;
       remainingHeads += hasPartialHarvestRecords
         ? getPredictedHarvestForPallet(normalizedBuilding, bed, number, referenceDate, sourceRecords)
-        : getPredictedHarvestForBed(bed, number);
+        : getPredictedHarvestForBed(normalizedBuilding, bed, number, referenceDate);
     }
   }
 
@@ -907,6 +1035,8 @@ function enterHarvestRecordMode(){
   workflowPlantingSessionActive = false;
   editingPlantingEventId = null;
   plantingRecordDraft = null;
+  recordPlantingCountPreset = 20;
+  recordPlantingCountsByPallet = {};
   recordPlantingSummaryEdited = false;
   const input = document.getElementById("recordActualSeedlingTrayCountInput");
   if(input) delete input.dataset.userEdited;
@@ -993,6 +1123,7 @@ function refreshRecordModeUi(){
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
+  updateRecordPlantingCountPresetUi();
   if(sectionTitleText) sectionTitleText.textContent = isEditing ? "記録を編集" : "記録を保存";
   if(discardEditButton) discardEditButton.hidden = !isEditing;
   if(actionRow) actionRow.classList.toggle("isEditing", isEditing);

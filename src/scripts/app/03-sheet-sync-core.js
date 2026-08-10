@@ -722,6 +722,11 @@ function formatSyncConflictPlantingAllocations(event){
   }).join("\n") || "場所なし";
 }
 
+function formatSyncConflictPlantingCounts(event){
+  if(!event) return "削除済み";
+  return formatPlantingCountsByPalletSummary(event);
+}
+
 function formatSyncConflictQualityMemo(value){
   const normalized = normalizeQualityMemo(value);
   const tagLabels = {
@@ -748,6 +753,7 @@ function getSyncConflictComparisonRows(entry){
       ["苗トレー数", local ? String(local.actualSeedlingTrayCount ?? 0) : "削除済み", remote ? String(remote.actualSeedlingTrayCount ?? 0) : "削除済み"],
       ["取った苗株数", local ? String(local.actualTakenSeedlingCount ?? 0) : "削除済み", remote ? String(remote.actualTakenSeedlingCount ?? 0) : "削除済み"],
       ["植えた苗株数", local ? String(local.actualPlantedSeedlingCount ?? 0) : "削除済み", remote ? String(remote.actualPlantedSeedlingCount ?? 0) : "削除済み"],
+      ["パレット別の植え付け数", formatSyncConflictPlantingCounts(local), formatSyncConflictPlantingCounts(remote)],
       ["苗ロス率", local ? String(local.actualSeedlingLossRate || "未入力") : "削除済み", remote ? String(remote.actualSeedlingLossRate || "未入力") : "削除済み"],
       ["品質メモ", local ? formatSyncConflictQualityMemo(local.qualityMemo) : "削除済み", remote ? formatSyncConflictQualityMemo(remote.qualityMemo) : "削除済み"],
       ["更新日時", local?.updatedAt || "なし", remote?.updatedAt || "なし"]
@@ -1437,6 +1443,7 @@ function getPlantingEventForGoogleTransfer(event){
       palletKeys: [...allocation.palletKeys]
     })),
     plantingPalletKeys: [...normalized.plantingPalletKeys],
+    plantingCountsByPallet: { ...normalized.plantingCountsByPallet },
     actualSeedlingTrayCount: normalized.actualSeedlingTrayCount,
     actualTakenSeedlingCount: normalized.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: normalized.actualPlantedSeedlingCount,

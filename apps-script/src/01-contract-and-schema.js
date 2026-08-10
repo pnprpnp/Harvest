@@ -29,7 +29,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-09-current-schema-only-1";
+const API_BUILD_VERSION = "2026-08-10-planting-count-presets-1";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -186,6 +186,7 @@ const PLANTING_EVENT_FIELD_KEYS = [
   "plantingDate",
   "sourceAllocations",
   "plantingPalletKeys",
+  "plantingCountsByPallet",
   "actualSeedlingTrayCount",
   "actualTakenSeedlingCount",
   "actualPlantedSeedlingCount",
@@ -203,6 +204,7 @@ const PLANTING_EVENT_HEADER_LABELS = {
   plantingDate: "苗植え日",
   sourceAllocations: "収穫元割当JSON",
   plantingPalletKeys: "苗植え詳細JSON",
+  plantingCountsByPallet: "パレット別植え付け株数JSON",
   actualSeedlingTrayCount: "実苗枚数",
   actualTakenSeedlingCount: "実取得苗株数",
   actualPlantedSeedlingCount: "実苗植え株数",
@@ -223,6 +225,7 @@ const PLANTING_EVENT_TOMBSTONE_HEADERS = ["苗植えイベントID", "削除日�
 const PLANTING_EVENT_FORMULA_SAFE_KEYS = new Set([
   "sourceAllocations",
   "plantingPalletKeys",
+  "plantingCountsByPallet",
   "qualityMemo"
 ]);
 

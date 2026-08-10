@@ -158,6 +158,7 @@ function toggleRecordPallet(building, bed, number){
   const fillIndex = harvestFillKeys.indexOf(key);
   if(fillIndex >= 0){
     harvestFillKeys.splice(fillIndex, 1);
+    if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
     recalcHarvestSummary();
     renderHarvestSelectionMapsForActiveTab();
     renderForecastSummary();
@@ -167,11 +168,12 @@ function toggleRecordPallet(building, bed, number){
     scheduleHarvestStateSave();
     return;
   }else{
-    if(recordSelectionMode === "planting" && !canAddPlantingPallet(key)){
+    if(recordSelectionMode === "planting" && !canAddPlantingPallet(key, getActivePlantingRecord(), recordPlantingCountPreset)){
       showToast(getPlantingCapacityExceededMessage());
       return;
     }
     harvestFillKeys.push(key);
+    if(recordSelectionMode === "planting") setRecordPlantingCountForKey(key);
     sortHarvestFillKeys();
     recalcHarvestSummary();
     renderHarvestSelectionMapsForActiveTab();
@@ -279,6 +281,7 @@ function drawRecordBeds(){
         selectedSet,
         recordedSet,
         plantingAllowedSet,
+        plantingCountsByPallet: recordPlantingCountsByPallet,
         hasPartialHarvestRecords,
         targetDate,
         partialHarvestSourceRecords,
@@ -286,10 +289,19 @@ function drawRecordBeds(){
       });
       const counts = document.createElement("div");
       counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
+      const bedSelectedKeys = harvestFillKeys.filter(key => {
+        const pallet = parsePalletKey(key);
+        return pallet.building === building && pallet.bed === b;
+      });
+      const plantingDistribution = getRecordPlantingCountDistribution(bedSelectedKeys);
+      const plantingCountText = [12, 16, 20]
+        .filter(count => plantingDistribution[count] > 0)
+        .map(count => `${count}×${plantingDistribution[count]}`)
+        .join("/");
       counts.innerHTML = plantingAllowedSet
         ? `
           <span class="recordBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-          <span class="recordBedOverviewCountSelectable">選択可 ${selectableCount}</span>
+          <span class="recordBedOverviewCountSelectable">${plantingCountText || `選択可 ${selectableCount}`}</span>
         `
         : `
           <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
@@ -323,27 +335,6 @@ function syncRecordCasesFromMain(force = false){
   updateRecordAutoValueNotes();
 }
 
-function getYieldCountForPallet(bed, number){
-  const bedSettings = settings?.beds?.[bed] || {};
-
-  if(!settings?.useBedYieldSettings){
-    return normalizeYield(settings?.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
-  }
-
-  const raw = bedSettings.yield;
-  const baseYield = normalizeYield(raw, settings.defaultYieldPerPallet);
-
-  if(!bedSettings.yieldUseFrontBack){
-    return baseYield;
-  }
-
-  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
-  const frontYield = normalizeYield(bedSettings.yieldFront, baseYield);
-  const backYield = normalizeYield(bedSettings.yieldBack, baseYield);
-
-  return Number(number) <= frontCount ? frontYield : backYield;
-}
-
 function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRecords = records){
   if(!harvestFillKeys.length || cases <= 0) return "";
 
@@ -352,7 +343,7 @@ function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRe
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
   harvestFillKeys.forEach(key => {
     const p = parsePalletKey(key);
-    plantedTotal += getYieldCountForPallet(p.bed, p.number);
+    plantedTotal += getHarvestPlantCountForPallet(p.building, p.bed, p.number, targetDay);
     partialHarvestTotal += getPartialHarvestCountForPallet(
       p.building,
       p.bed,
@@ -445,13 +436,13 @@ function getActualTakenSeedlingTotal(){
   return getSeedlingCountFromTrayCount(getRecordActualSeedlingTrayCount());
 }
 
-function getActualPlantedSeedlingTotal(keys = harvestFillKeys){
+function getActualPlantedSeedlingTotal(keys = harvestFillKeys, countsByPallet = recordPlantingCountsByPallet){
   if(!Array.isArray(keys) || !keys.length) return 0;
   let total = 0;
   keys.forEach(key => {
     const p = parsePalletKey(String(key || ""));
     if(!BUILDINGS.includes(p.building) || !bedOrder.includes(p.bed) || !Number.isFinite(p.number)) return;
-    total += getPlantingCountForPallet(p.bed, p.number);
+    total += getPlantingCountForSelectedKey(key, countsByPallet);
   });
   return total;
 }
@@ -464,8 +455,8 @@ function getPlantingAvailableSeedlingTotal(record = getActivePlantingRecord()){
   return takenTotal + carryoverTotal;
 }
 
-function canPlantSeedlingKeysWithinCapacity(keys, record = getActivePlantingRecord()){
-  return getActualPlantedSeedlingTotal(keys) <= getPlantingAvailableSeedlingTotal(record);
+function canPlantSeedlingKeysWithinCapacity(keys, record = getActivePlantingRecord(), countsByPallet = recordPlantingCountsByPallet){
+  return getActualPlantedSeedlingTotal(keys, countsByPallet) <= getPlantingAvailableSeedlingTotal(record);
 }
 
 function getSequentialPlantingPalletKeysWithinCapacity(keys, record = getActivePlantingRecord()){
@@ -492,9 +483,13 @@ function getSequentialPlantingPalletKeysWithinCapacity(keys, record = getActiveP
   return selectedKeys;
 }
 
-function canAddPlantingPallet(key, record = getActivePlantingRecord()){
+function canAddPlantingPallet(key, record = getActivePlantingRecord(), plantingCount = recordPlantingCountPreset){
   if(recordSelectionMode !== "planting" || harvestFillKeys.includes(key)) return true;
-  return canPlantSeedlingKeysWithinCapacity([...harvestFillKeys, key], record);
+  return canPlantSeedlingKeysWithinCapacity(
+    [...harvestFillKeys, key],
+    record,
+    { ...recordPlantingCountsByPallet, [key]: normalizePlantingCountPreset(plantingCount) }
+  );
 }
 
 function getPlantingCapacityExceededMessage(record = getActivePlantingRecord()){

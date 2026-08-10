@@ -661,9 +661,10 @@
             palletKeys: ["3-B-4", "3-B-5"]
           }],
           plantingPalletKeys: ["3-B-4", "3-B-5"],
+          plantingCountsByPallet: { "3-B-4": 16, "3-B-5": 20 },
           actualSeedlingTrayCount: 2,
           actualTakenSeedlingCount: 240,
-          actualPlantedSeedlingCount: 40,
+          actualPlantedSeedlingCount: 36,
           actualSeedlingCarryoverMode: "loss",
           actualSeedlingLossRate: "2",
           qualityMemo: { tags: ["small"], other: "" },
@@ -676,8 +677,64 @@
           palletKeys: ["3-B-4", "3-B-5"]
         }], "収穫元割当が変わりました");
         assertDeepEqual(serverEvent.plantingPalletKeys, ["3-B-4", "3-B-5"], "苗植えパレットが変わりました");
+        assertDeepEqual(serverEvent.plantingCountsByPallet, {
+          "3-B-4": 16,
+          "3-B-5": 20
+        }, "パレット別の植え付け株数が変わりました");
         assertEqual(serverEvent.actualTakenSeedlingCount, 240, "取得苗株数が変わりました");
-        assertEqual(serverEvent.actualPlantedSeedlingCount, 40, "苗植え株数が変わりました");
+        assertEqual(serverEvent.actualPlantedSeedlingCount, 36, "苗植え株数が変わりました");
+      });
+
+      await runTest("苗植え実績を次回収穫の理想株数として設定より優先する", () => {
+        const originalSettings = comparable(app.eval("settings"));
+        try{
+          app.eval(`settings = {
+            ...settings,
+            useBedYieldSettings: false,
+            defaultYieldPerPallet: 20,
+            useBedLossSettings: false,
+            defaultLossRate: 10
+          }`);
+          replaceAppHistory(app, [], [{
+            palletNumberingVersion: 2,
+            eventId: 20000000000006,
+            plantingDate: "2026-08-09",
+            sourceAllocations: [{
+              harvestRecordId: 20000000000003,
+              palletKeys: ["3-B-4", "3-B-5"]
+            }],
+            plantingPalletKeys: ["3-B-4", "3-B-5"],
+            plantingCountsByPallet: { "3-B-4": 16 },
+            actualSeedlingTrayCount: 1,
+            actualTakenSeedlingCount: 120,
+            actualPlantedSeedlingCount: 36,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "0",
+            qualityMemo: null,
+            detailsUnknown: false
+          }]);
+          app.invalidatePlantingEventStateCache();
+          const nextHarvestDate = new Date(2026, 7, 10);
+          assertEqual(
+            app.getHarvestPlantCountForPallet(3, "B", 4, nextHarvestDate),
+            16,
+            "16植えの実績が収穫の理想株数へ反映されません"
+          );
+          assertEqual(
+            app.getPredictedHarvestForBed(3, "B", 4, nextHarvestDate),
+            14.4,
+            "16植えを理想株数にしてから収穫ロス率を適用できません"
+          );
+          assertEqual(
+            app.getHarvestPlantCountForPallet(3, "B", 5, nextHarvestDate),
+            20,
+            "パレット別実績がない場所で収穫設定へ戻りません"
+          );
+        }finally{
+          app.eval(`settings = ${JSON.stringify(originalSettings)}`);
+          replaceAppHistory(app, [], []);
+          app.invalidatePlantingEventStateCache();
+        }
       });
 
       await runTest("同期番号とカーソルをブラウザー・Apps Script間で同じ値として扱う", () => {
@@ -892,6 +949,65 @@
           role: "button",
           label: "2号棟 Fベッド。選択 0パレット、記録済み 0パレット。長押しで拡大してパレットを選択"
         }, "記録タブの縦型パレット配置図がシミュと一致しません");
+      });
+
+      await runTest("苗植えパレットへ12・16・20植えを混在して設定できる", () => {
+        const presetState = comparable(app.eval(`(() => {
+          const recordTab = document.getElementById("recordTab");
+          const previous = {
+            display: recordTab.style.display,
+            mode: recordSelectionMode,
+            preset: recordPlantingCountPreset,
+            counts: { ...recordPlantingCountsByPallet },
+            keys: [...harvestFillKeys]
+          };
+          try{
+            recordTab.style.display = "block";
+            recordSelectionMode = "planting";
+            harvestFillKeys = ["2-A-1", "2-A-2"];
+            recordPlantingCountsByPallet = {};
+            setRecordPlantingCountPreset(12);
+            setRecordPlantingCountForKey("2-A-1");
+            setRecordPlantingCountPreset(16);
+            setRecordPlantingCountForKey("2-A-2");
+            updateRecordPlantingCountPresetUi();
+            const toolbar = document.getElementById("recordPlantingCountPreset");
+            const mapHost = document.createElement("div");
+            appendBedOverviewMap(mapHost, 2, "A", {
+              context: "record",
+              selectedSet: new Set(harvestFillKeys),
+              plantingAllowedSet: new Set(harvestFillKeys),
+              plantingCountsByPallet: recordPlantingCountsByPallet
+            });
+            return {
+              toolbarVisible: !toolbar.hidden,
+              fitsWidth: toolbar.scrollWidth <= toolbar.clientWidth,
+              preset: recordPlantingCountPreset,
+              counts: { ...recordPlantingCountsByPallet },
+              pressed: document.querySelector('[data-record-planting-count][aria-pressed="true"]')?.textContent || "",
+              summary: document.getElementById("recordPlantingCountSummary")?.textContent || "",
+              count12Cells: mapHost.querySelectorAll(".is-planting-count-12").length,
+              count16Cells: mapHost.querySelectorAll(".is-planting-count-16").length
+            };
+          }finally{
+            recordSelectionMode = previous.mode;
+            recordPlantingCountPreset = previous.preset;
+            recordPlantingCountsByPallet = previous.counts;
+            harvestFillKeys = previous.keys;
+            recordTab.style.display = previous.display;
+            updateRecordPlantingCountPresetUi();
+          }
+        })()`));
+        assertDeepEqual(presetState, {
+          toolbarVisible: true,
+          fitsWidth: true,
+          preset: 16,
+          counts: { "2-A-1": 12, "2-A-2": 16 },
+          pressed: "16植え",
+          summary: "12植え×1・16植え×1",
+          count12Cells: 1,
+          count16Cells: 1
+        }, "植え付け数プリセットの選択状態が一致しません");
       });
 
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
@@ -1304,16 +1420,16 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "978bd9d4", elements: 2028, visible: 647, viewport: "390x844" },
-          cssStates: { hash: "f063e91f", elements: 2096, visible: 706, viewport: "390x844" },
-          cssFocus: { hash: "15597ff2", elements: 2096, visible: 706, viewport: "390x844" },
-          mobileRecord: { hash: "9cf6b307", elements: 2029, visible: 136, viewport: "390x844" },
-          mobileDashboard: { hash: "789ff49d", elements: 2029, visible: 130, viewport: "390x844" },
-          mobileMenu: { hash: "d9193deb", elements: 2029, visible: 307, viewport: "390x844" },
-          mobileSettings: { hash: "10b042c7", elements: 2029, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "462fc9f0", elements: 2029, visible: 91, viewport: "390x844" },
-          wideForecast: { hash: "c8ace399", elements: 2029, visible: 653, viewport: "1024x900" },
-          wideDashboard: { hash: "53bd4008", elements: 2029, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "38b92c61", elements: 2043, visible: 647, viewport: "390x844" },
+          cssStates: { hash: "05b94580", elements: 2111, visible: 706, viewport: "390x844" },
+          cssFocus: { hash: "7fbaf955", elements: 2111, visible: 706, viewport: "390x844" },
+          mobileRecord: { hash: "b9222faf", elements: 2044, visible: 136, viewport: "390x844" },
+          mobileDashboard: { hash: "57669755", elements: 2044, visible: 130, viewport: "390x844" },
+          mobileMenu: { hash: "fbcc0de3", elements: 2044, visible: 307, viewport: "390x844" },
+          mobileSettings: { hash: "07f4881f", elements: 2044, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "c7bd4fba", elements: 2044, visible: 91, viewport: "390x844" },
+          wideForecast: { hash: "c84ae511", elements: 2044, visible: 653, viewport: "1024x900" },
+          wideDashboard: { hash: "fe99ef64", elements: 2044, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

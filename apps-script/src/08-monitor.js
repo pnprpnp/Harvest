@@ -12,6 +12,20 @@ function parseStoredJsonArray(value, label) {
   return parsed;
 }
 
+function parseStoredJsonObject(value, label) {
+  if (isPlainObject(value)) return value;
+  const text = String(value == null ? "" : value).trim().replace(/^'(?=[\[{])/, "");
+  if (!text) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(label + "の保存形式が正しくありません");
+  }
+  if (!isPlainObject(parsed)) throw new Error(label + "の保存形式が正しくありません");
+  return parsed;
+}
+
 function readMonitorSettingsTable(sheet, rowCount) {
   const safeRowCount = Math.max(Number(rowCount) || 0, MONITOR_SETTING_KEYS.length);
   const values = sheet.getRange(1, 1, safeRowCount + 1, 2).getValues();

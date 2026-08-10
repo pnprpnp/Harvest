@@ -150,6 +150,7 @@ function getPlantingEventContentSignature(event) {
     plantingDate: event.plantingDate,
     sourceAllocations: event.sourceAllocations,
     plantingPalletKeys: event.plantingPalletKeys,
+    plantingCountsByPallet: event.plantingCountsByPallet,
     actualSeedlingTrayCount: event.actualSeedlingTrayCount,
     actualTakenSeedlingCount: event.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: event.actualPlantedSeedlingCount,

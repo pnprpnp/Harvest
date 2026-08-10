@@ -14,12 +14,12 @@ function getEffectivePlantingDateForRecord(record){
   return parseDateOnlyString(String(record.date || "").trim());
 }
 
-function getLatestPlantingDateByPallet(targetDate, options = {}){
+function getLatestPlantingStateByPallet(targetDate, options = {}){
   const targetDay = startOfLocalDay(targetDate);
   const includeTargetDate = !!options.includeTargetDate;
   const cacheKey = `${formatDateOnlyString(targetDay)}:${includeTargetDate ? 1 : 0}`;
-  if(plantingDateByPalletCache.has(cacheKey)){
-    return plantingDateByPalletCache.get(cacheKey);
+  if(plantingStateByPalletCache.has(cacheKey)){
+    return plantingStateByPalletCache.get(cacheKey);
   }
   const map = new Map();
 
@@ -38,12 +38,36 @@ function getLatestPlantingDateByPallet(targetDate, options = {}){
     plantingKeys.forEach(key => {
       const palletKey = String(key || "");
       const current = map.get(palletKey);
-      if(!current || recordDay.getTime() > current.getTime()){
-        map.set(palletKey, recordDay);
+      const eventId = Number(event?.eventId) || 0;
+      if(!current
+        || recordDay.getTime() > current.date.getTime()
+        || (recordDay.getTime() === current.date.getTime() && eventId > current.eventId)){
+        const explicitCount = Number(event?.plantingCountsByPallet?.[palletKey]);
+        map.set(palletKey, {
+          date: recordDay,
+          eventId,
+          plantingCount: ALLOWED_YIELDS.includes(explicitCount) ? explicitCount : null
+        });
       }
     });
   }
 
+  plantingStateByPalletCache.set(cacheKey, map);
+  if(plantingStateByPalletCache.size > 16){
+    plantingStateByPalletCache.delete(plantingStateByPalletCache.keys().next().value);
+  }
+  return map;
+}
+
+function getLatestPlantingDateByPallet(targetDate, options = {}){
+  const targetDay = startOfLocalDay(targetDate);
+  const includeTargetDate = !!options.includeTargetDate;
+  const cacheKey = `${formatDateOnlyString(targetDay)}:${includeTargetDate ? 1 : 0}`;
+  if(plantingDateByPalletCache.has(cacheKey)) return plantingDateByPalletCache.get(cacheKey);
+  const map = new Map();
+  getLatestPlantingStateByPallet(targetDay, options).forEach((state, key) => {
+    if(state?.date) map.set(key, state.date);
+  });
   plantingDateByPalletCache.set(cacheKey, map);
   if(plantingDateByPalletCache.size > 16){
     plantingDateByPalletCache.delete(plantingDateByPalletCache.keys().next().value);
@@ -601,7 +625,9 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
       stateText = "選択不可";
     }else if(selectedSet.has(key)){
       classes.push("is-planting-selected");
-      stateText = "選択済み";
+      const plantingCount = getPlantingCountForSelectedKey(key, options.plantingCountsByPallet);
+      classes.push(`is-planting-count-${plantingCount}`);
+      stateText = `選択済み、${plantingCount}植え`;
     }else{
       classes.push("is-planting-selectable");
       stateText = "選択可能";
@@ -687,6 +713,7 @@ function applyRecordBedRange(action){
       }
 
       harvestFillKeys.push(key);
+      if(recordSelectionMode === "planting") setRecordPlantingCountForKey(key);
       changed++;
     }
   }else{
@@ -696,6 +723,7 @@ function applyRecordBedRange(action){
       if(fillIndex < 0) continue;
 
       harvestFillKeys.splice(fillIndex, 1);
+      if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
       changed++;
     }
   }
@@ -1015,6 +1043,7 @@ function applyRecordPalletDragChange(building, bed, number, mode){
   if(mode === "remove"){
     if(fillIndex < 0) return false;
     harvestFillKeys.splice(fillIndex, 1);
+    if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
     return true;
   }
 
@@ -1024,6 +1053,7 @@ function applyRecordPalletDragChange(building, bed, number, mode){
     return false;
   }
   harvestFillKeys.push(key);
+  if(recordSelectionMode === "planting") setRecordPlantingCountForKey(key);
   return true;
 }
 
@@ -1033,12 +1063,21 @@ function updatePalletElementForDrag(pallet, context, mode){
     pallet.classList.add("harvestFill");
     if(context === "record" && recordSelectionMode === "planting"){
       pallet.classList.remove("plantingSelectablePallet");
-      pallet.classList.add("plantingSelectedPallet");
+      pallet.classList.remove("plantingCount12", "plantingCount16", "plantingCount20");
+      pallet.classList.add("plantingSelectedPallet", `plantingCount${recordPlantingCountPreset}`);
     }
     return;
   }
 
-  pallet.classList.remove("harvestFill", "harvestStart", "harvestEnd", "plantingSelectedPallet");
+  pallet.classList.remove(
+    "harvestFill",
+    "harvestStart",
+    "harvestEnd",
+    "plantingSelectedPallet",
+    "plantingCount12",
+    "plantingCount16",
+    "plantingCount20"
+  );
   if(context === "record" && recordSelectionMode === "planting" && !pallet.classList.contains("plantingUnavailablePallet")){
     pallet.classList.add("plantingSelectablePallet");
   }
@@ -1160,7 +1199,9 @@ function renderBedDetailWindow(){
     legend.setAttribute("aria-label", "各パレットの色分け");
     legend.innerHTML = `
       <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
-      <span class="recordLegendItem"><span class="recordLegendSwatch selected"></span>選択済み</span>
+      <span class="recordLegendItem"><span class="recordLegendSwatch count12"></span>12植え</span>
+      <span class="recordLegendItem"><span class="recordLegendSwatch count16"></span>16植え</span>
+      <span class="recordLegendItem"><span class="recordLegendSwatch count20"></span>20植え</span>
       <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
     `;
     body.appendChild(legend);
@@ -1257,7 +1298,8 @@ function appendRecordBedDetail(container, b){
         if(!plantingAllowedSet.has(key)){
           cls += " plantingUnavailablePallet";
         }else if(isSelected){
-          cls += " plantingSelectedPallet";
+          const plantingCount = getPlantingCountForSelectedKey(key);
+          cls += ` plantingSelectedPallet plantingCount${plantingCount}`;
         }else{
           cls += " plantingSelectablePallet";
         }
@@ -1269,11 +1311,16 @@ function appendRecordBedDetail(container, b){
       if(harvestSummary && harvestSummary.end === key) cls += " harvestEnd";
 
       pallet.className = cls;
-      pallet.textContent = number;
+      if(recordSelectionMode === "planting" && isSelected){
+        const plantingCount = getPlantingCountForSelectedKey(key);
+        pallet.innerHTML = `<span class="recordPalletNumber">${number}</span><span class="recordPalletPlantingCount">${plantingCount}</span>`;
+      }else{
+        pallet.textContent = number;
+      }
       let statusText = "";
       if(recordSelectionMode === "planting"){
         statusText = plantingAllowedSet.has(key)
-          ? (isSelected ? " 選択済み" : " 選択可能")
+          ? (isSelected ? ` 選択済み ${getPlantingCountForSelectedKey(key)}植え` : " 選択可能")
           : " 選択不可";
       }
       pallet.title = `${currentBuilding}号棟 ${b}-${number}` + statusText + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
@@ -1327,7 +1374,7 @@ function clearHarvestPrediction(){
   scheduleWorkflowGuideUpdate();
 }
 
-function getHarvestPlantCountForPallet(bed, number){
+function getConfiguredHarvestPlantCountForPallet(bed, number){
   const bedSettings = settings?.beds?.[bed] || {};
   if(!settings?.useBedYieldSettings){
     return normalizeYield(settings?.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
@@ -1344,6 +1391,18 @@ function getHarvestPlantCountForPallet(bed, number){
   const backYield = normalizeYield(bedSettings.yieldBack, baseYield);
 
   return Number(number) <= frontCount ? frontYield : backYield;
+}
+
+function getHarvestPlantCountForPallet(building, bed, number, targetDate = null){
+  const key = getPalletKey(Number(building), bed, Number(number));
+  if(isValidPalletKeyString(key)){
+    const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
+    const plantingState = getLatestPlantingStateByPallet(targetDay).get(key);
+    if(ALLOWED_YIELDS.includes(Number(plantingState?.plantingCount))){
+      return Number(plantingState.plantingCount);
+    }
+  }
+  return getConfiguredHarvestPlantCountForPallet(bed, number);
 }
 
 function getYieldSplitVisualInfo(bed){
@@ -1387,8 +1446,8 @@ function getAppliedLossRateForBed(bed){
   return clampNumber(bedLoss, 0, 100, clampNumber(settings.defaultLossRate, 0, 100, 0));
 }
 
-function getPredictedHarvestForBed(bed, number){
-  const plantCount = getHarvestPlantCountForPallet(bed, number);
+function getPredictedHarvestForBed(building, bed, number, targetDate = null){
+  const plantCount = getHarvestPlantCountForPallet(building, bed, number, targetDate);
   const lossRate = getAppliedLossRateForBed(bed);
   return plantCount * (100 - lossRate) / 100;
 }
@@ -1572,7 +1631,7 @@ function getPartialHarvestCountForPallet(building, bed, number, targetDate = nul
 }
 
 function getPredictedHarvestForPallet(building, bed, number, targetDate = null, sourceRecords = records){
-  const baseHarvest = getPredictedHarvestForBed(bed, number);
+  const baseHarvest = getPredictedHarvestForBed(building, bed, number, targetDate);
   const partialCount = getPartialHarvestCountForPallet(building, bed, number, targetDate, sourceRecords);
   return Math.max(0, baseHarvest - partialCount);
 }
@@ -1921,8 +1980,8 @@ function calculateHarvestSelectionFromRecords(options = {}){
         { lookup: harvestRecordLookup }
       );
       const baseHarvest = harvestRate === null
-        ? getPredictedHarvestForBed(current.bed, current.number)
-        : getHarvestPlantCountForPallet(current.bed, current.number) * harvestRate;
+        ? getPredictedHarvestForBed(current.building, current.bed, current.number, partialTargetDate)
+        : getHarvestPlantCountForPallet(current.building, current.bed, current.number, partialTargetDate) * harvestRate;
       const harvest = Math.max(0, baseHarvest - partialCount);
       palletKeys.push(key);
       totalHarvest += harvest;

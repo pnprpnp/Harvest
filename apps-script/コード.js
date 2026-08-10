@@ -29,7 +29,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-09-current-schema-only-1";
+const API_BUILD_VERSION = "2026-08-10-planting-count-presets-1";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -186,6 +186,7 @@ const PLANTING_EVENT_FIELD_KEYS = [
   "plantingDate",
   "sourceAllocations",
   "plantingPalletKeys",
+  "plantingCountsByPallet",
   "actualSeedlingTrayCount",
   "actualTakenSeedlingCount",
   "actualPlantedSeedlingCount",
@@ -203,6 +204,7 @@ const PLANTING_EVENT_HEADER_LABELS = {
   plantingDate: "苗植え日",
   sourceAllocations: "収穫元割当JSON",
   plantingPalletKeys: "苗植え詳細JSON",
+  plantingCountsByPallet: "パレット別植え付け株数JSON",
   actualSeedlingTrayCount: "実苗枚数",
   actualTakenSeedlingCount: "実取得苗株数",
   actualPlantedSeedlingCount: "実苗植え株数",
@@ -223,6 +225,7 @@ const PLANTING_EVENT_TOMBSTONE_HEADERS = ["苗植えイベントID", "削除日�
 const PLANTING_EVENT_FORMULA_SAFE_KEYS = new Set([
   "sourceAllocations",
   "plantingPalletKeys",
+  "plantingCountsByPallet",
   "qualityMemo"
 ]);
 
@@ -1422,6 +1425,10 @@ function normalizePlantingEvent(event) {
     plantingPalletKeys.some(key => !uniqueAllocatedKeys.has(key))) {
     throw new Error("収穫元割当と苗植えパレットが一致しません");
   }
+  const plantingCountsByPallet = normalizePlantingCountsByPallet(
+    event.plantingCountsByPallet,
+    plantingKeySet
+  );
 
   return {
     palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
@@ -1429,6 +1436,7 @@ function normalizePlantingEvent(event) {
     plantingDate,
     sourceAllocations,
     plantingPalletKeys,
+    plantingCountsByPallet,
     actualSeedlingTrayCount: normalizeOptionalInteger(
       event.actualSeedlingTrayCount,
       "実苗枚数",
@@ -1463,6 +1471,25 @@ function normalizePlantingEvent(event) {
     createdAt: normalizeOptionalTimestamp(event.createdAt, "作成日時"),
     updatedAt: normalizeOptionalTimestamp(event.updatedAt, "更新日時")
   };
+}
+
+function normalizePlantingCountsByPallet(value, plantingKeySet) {
+  if (value === null || typeof value === "undefined" || value === "") return {};
+  if (!isPlainObject(value)) {
+    throw new Error("パレット別植え付け株数はオブジェクトで指定してください");
+  }
+  const normalized = {};
+  Object.keys(value).forEach(key => {
+    if (!plantingKeySet.has(key)) {
+      throw new Error("パレット別植え付け株数に苗植え場所ではないパレットがあります");
+    }
+    const count = normalizeRequiredInteger(value[key], "パレット別植え付け株数", 12, 20);
+    if (![12, 16, 20].includes(count)) {
+      throw new Error("パレット別植え付け株数は12・16・20のいずれかで指定してください");
+    }
+    normalized[key] = count;
+  });
+  return normalized;
 }
 
 function normalizePlantingSourceAllocations(value) {
@@ -3221,6 +3248,7 @@ function getPlantingEventContentSignature(event) {
     plantingDate: event.plantingDate,
     sourceAllocations: event.sourceAllocations,
     plantingPalletKeys: event.plantingPalletKeys,
+    plantingCountsByPallet: event.plantingCountsByPallet,
     actualSeedlingTrayCount: event.actualSeedlingTrayCount,
     actualTakenSeedlingCount: event.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: event.actualPlantedSeedlingCount,
@@ -4178,6 +4206,20 @@ function parseStoredJsonArray(value, label) {
     throw new Error(label + "の保存形式が正しくありません");
   }
   if (!Array.isArray(parsed)) throw new Error(label + "の保存形式が正しくありません");
+  return parsed;
+}
+
+function parseStoredJsonObject(value, label) {
+  if (isPlainObject(value)) return value;
+  const text = String(value == null ? "" : value).trim().replace(/^'(?=[\[{])/, "");
+  if (!text) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(label + "の保存形式が正しくありません");
+  }
+  if (!isPlainObject(parsed)) throw new Error(label + "の保存形式が正しくありません");
   return parsed;
 }
 
@@ -6026,6 +6068,7 @@ function applyAddedPlantingEventColumnLayout(sheet, startColumn, keys) {
     "eventId",
     "sourceAllocations",
     "plantingPalletKeys",
+    "plantingCountsByPallet",
     "palletNumberingVersion"
   ]);
   keys.forEach((key, index) => {
@@ -6068,7 +6111,7 @@ function applyPlantingEventSheetLayout(sheet, headers) {
       .setNumberFormat(formats[key]);
   });
   sheet.showColumns(1, Math.max(sheet.getLastColumn(), headers.length));
-  ["eventId", "sourceAllocations", "plantingPalletKeys", "palletNumberingVersion"].forEach(key => {
+  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "palletNumberingVersion"].forEach(key => {
     const column = getPlantingEventHeaderColumn(headers, key);
     if (column > 0) sheet.hideColumns(column);
   });
@@ -6087,6 +6130,9 @@ function buildPlantingEventRow(headers, event) {
     ),
     plantingPalletKeys: escapeSpreadsheetFormulaText(
       JSON.stringify(event.plantingPalletKeys || [])
+    ),
+    plantingCountsByPallet: escapeSpreadsheetFormulaText(
+      JSON.stringify(event.plantingCountsByPallet || {})
     ),
     actualSeedlingTrayCount: detailsUnknown ? "" : event.actualSeedlingTrayCount ?? "",
     actualTakenSeedlingCount: detailsUnknown ? "" : event.actualTakenSeedlingCount ?? "",
@@ -6294,6 +6340,10 @@ function rowToPlantingEvent(headers, row) {
     plantingDate: formatDateValue(item.plantingDate),
     sourceAllocations: parseStoredJsonArray(item.sourceAllocations, "収穫元割当"),
     plantingPalletKeys: parseStoredJsonArray(item.plantingPalletKeys, "苗植えパレット"),
+    plantingCountsByPallet: parseStoredJsonObject(
+      item.plantingCountsByPallet,
+      "パレット別植え付け株数"
+    ),
     actualSeedlingTrayCount: item.actualSeedlingTrayCount,
     actualTakenSeedlingCount: item.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: item.actualPlantedSeedlingCount,
@@ -6469,29 +6519,29 @@ function validatePlantingEventTrashSheetHeaders(sheet) {
   }
 }
 
-function validatePlantingEventTrashSheetHeadersForRead(sheet) {
-  if (!sheet || sheet.getLastRow() === 0) return;
-  if (sheet.getLastColumn() < PLANTING_EVENT_TRASH_HEADERS.length) {
-    throw new Error(
-      "削除済み苗植えイベントシートの見出しが現在の形式と異なります。" +
-      "データ保護のため処理を中止しました。"
-    );
-  }
-  const headers = sheet
-    .getRange(1, 1, 1, PLANTING_EVENT_TRASH_HEADERS.length)
-    .getValues()[0];
-  const matches = PLANTING_EVENT_TRASH_HEADERS.every(
-    (header, index) => String(headers[index] || "").trim() === header
-  );
-  if (!matches) {
-    throw new Error(
-      "削除済み苗植えイベントシートの見出しが現在の形式と異なります。" +
-      "データ保護のため処理を中止しました。"
-    );
-  }
+function migratePlantingEventTrashSheetPlantingCountsColumn(sheet) {
+  if (!sheet || sheet.getLastRow() === 0) return false;
+  const legacyHeaders = PLANTING_EVENT_FIELD_KEYS
+    .filter(key => key !== "plantingCountsByPallet")
+    .map(key => PLANTING_EVENT_HEADER_LABELS[key])
+    .concat(["削除日時", "復元期限"]);
+  if (sheet.getLastColumn() < legacyHeaders.length) return false;
+  const currentHeaders = sheet
+    .getRange(1, 1, 1, legacyHeaders.length)
+    .getValues()[0]
+    .map(value => String(value || "").trim());
+  if (!legacyHeaders.every((header, index) => currentHeaders[index] === header)) return false;
+
+  const insertColumn = PLANTING_EVENT_FIELD_KEYS.indexOf("plantingCountsByPallet") + 1;
+  sheet.insertColumnBefore(insertColumn);
+  sheet
+    .getRange(1, insertColumn)
+    .setValue(PLANTING_EVENT_HEADER_LABELS.plantingCountsByPallet);
+  return true;
 }
 
 function ensurePlantingEventTrashSheet(sheet) {
+  migratePlantingEventTrashSheetPlantingCountsColumn(sheet);
   if (sheet.getMaxColumns() < PLANTING_EVENT_TRASH_HEADERS.length) {
     sheet.insertColumnsAfter(
       sheet.getMaxColumns(),
@@ -6538,7 +6588,7 @@ function applyPlantingEventTrashSheetLayout(sheet) {
   if (lossRateColumn > 0) {
     sheet.getRange(2, lossRateColumn, rowCount, 1).setNumberFormat("0.0");
   }
-  ["eventId", "sourceAllocations", "plantingPalletKeys", "palletNumberingVersion"].forEach(key => {
+  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "palletNumberingVersion"].forEach(key => {
     const column = PLANTING_EVENT_HEADERS.indexOf(PLANTING_EVENT_HEADER_LABELS[key]) + 1;
     if (column > 0) sheet.hideColumns(column);
   });
@@ -6587,7 +6637,7 @@ function getDeletedPlantingEventIdSet() {
   );
   const sheet = getExistingPlantingEventTrashSheet();
   if (!sheet || sheet.getLastRow() < 2) return deletedIds;
-  validatePlantingEventTrashSheetHeaders(sheet);
+  ensurePlantingEventTrashSheet(sheet);
   const idColumn = PLANTING_EVENT_HEADERS.indexOf(
     PLANTING_EVENT_HEADER_LABELS.eventId
   ) + 1;
@@ -6606,7 +6656,7 @@ function listDeletedPlantingEventIds() {
   });
   const sheet = getExistingPlantingEventTrashSheet();
   if (sheet && sheet.getLastRow() >= 2) {
-    validatePlantingEventTrashSheetHeadersForRead(sheet);
+    ensurePlantingEventTrashSheet(sheet);
     const rowCount = sheet.getLastRow() - 1;
     const idColumn = PLANTING_EVENT_HEADERS.indexOf(PLANTING_EVENT_HEADER_LABELS.eventId);
     const deletedAtColumn = PLANTING_EVENT_HEADERS.length;

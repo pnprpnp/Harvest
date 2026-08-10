@@ -682,6 +682,19 @@ function getRecordDetailInfoHtml(rows){
   `).join("")}</div>`;
 }
 
+function formatPlantingCountsByPalletSummary(event){
+  const counts = normalizePlantingCountsByPallet(
+    event?.plantingCountsByPallet,
+    event?.plantingPalletKeys
+  );
+  const parts = [12, 16, 20].map(count => {
+    const keys = Object.keys(counts).filter(key => counts[key] === count);
+    if(!keys.length) return "";
+    return `${count}植え: ${compressPalletKeysToRanges(keys).join("、")}`;
+  }).filter(Boolean);
+  return parts.join("\n") || "パレット別の内訳なし（収穫設定を使用）";
+}
+
 function buildRecordDetailLocationModel(kind, entity){
   const partialHarvestPalletKeys = kind === "partialHarvest"
     ? normalizePartialHarvestTargets(entity?.targets).flatMap(target => {
@@ -935,6 +948,7 @@ function openRecordDetailWindow(kind, id){
     infoRows = [
       { label: "実際に取った苗", value: detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株" },
       { label: "苗植えした株数", value: detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株" },
+      { label: "パレット別の植え付け数", value: detailsUnknown ? "不明" : formatPlantingCountsByPalletSummary(event) },
       { label: "苗の品質メモ", value: formatPlantingQualityMemo(event.qualityMemo) },
       { label: "今回余った苗", value: detailsUnknown ? "不明" : carryoverText },
       { label: "作業後の繰越苗", value: detailsUnknown ? "不明" : (usage?.carryoverAfter ?? 0) + "株" },

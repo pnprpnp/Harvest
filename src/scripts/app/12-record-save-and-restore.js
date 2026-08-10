@@ -318,21 +318,34 @@ async function savePlantingRecord(){
   const samePlantingKeys = existingEvent
     && existingEvent.plantingPalletKeys.length === normalizedSelectedKeys.length
     && existingEvent.plantingPalletKeys.every((key, index) => key === normalizedSelectedKeys[index]);
+  const plantingCountsByPallet = buildPlantingCountsByPalletForKeys(normalizedSelectedKeys);
+  const existingPlantingCountsByPallet = existingEvent
+    ? buildPlantingCountsByPalletForKeys(existingEvent.plantingPalletKeys, existingEvent.plantingCountsByPallet)
+    : {};
+  const existingHasCompletePlantingCounts = !!existingEvent
+    && existingEvent.plantingPalletKeys.every(key => (
+      ALLOWED_YIELDS.includes(Number(existingEvent.plantingCountsByPallet?.[key]))
+    ));
+  const samePlantingCounts = samePlantingKeys && existingHasCompletePlantingCounts
+    && normalizedSelectedKeys.every(key => (
+      plantingCountsByPallet[key] === existingPlantingCountsByPallet[key]
+    ));
   const event = normalizePlantingEvent({
     palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
     eventId: existingEvent?.eventId || getNextPlantingEventId(),
     plantingDate,
     sourceAllocations,
     plantingPalletKeys: normalizedSelectedKeys,
+    plantingCountsByPallet,
     actualSeedlingTrayCount,
     actualTakenSeedlingCount: sameTrayCount
       ? existingEvent.actualTakenSeedlingCount
       : getActualTakenSeedlingTotalForTrayCount(actualSeedlingTrayCount),
-    actualPlantedSeedlingCount: samePlantingKeys
+    actualPlantedSeedlingCount: samePlantingKeys && samePlantingCounts
       ? existingEvent.actualPlantedSeedlingCount
-      : getActualPlantedSeedlingTotal(normalizedSelectedKeys),
+      : getActualPlantedSeedlingTotal(normalizedSelectedKeys, plantingCountsByPallet),
     actualSeedlingCarryoverMode,
-    actualSeedlingLossRate: sameTrayCount && samePlantingKeys
+    actualSeedlingLossRate: sameTrayCount && samePlantingKeys && samePlantingCounts
       && existingEvent.actualSeedlingCarryoverMode === actualSeedlingCarryoverMode
       ? existingEvent.actualSeedlingLossRate
       : actualSeedlingLossRate,
@@ -454,6 +467,14 @@ function editPlantingEvent(eventId){
   plantingRecordDraft = {
     recordId: Number(record.id),
     keys: [...event.plantingPalletKeys],
+    plantingCountPreset: normalizePlantingCountPreset(
+      Object.values(event.plantingCountsByPallet || {})[0],
+      getConfiguredPlantingCountForFirstKey(event.plantingPalletKeys)
+    ),
+    plantingCountsByPallet: buildPlantingCountsByPalletForKeys(
+      event.plantingPalletKeys,
+      event.plantingCountsByPallet
+    ),
     date: event.plantingDate,
     actualSeedlingTrayCount: event.detailsUnknown ? "" : String(event.actualSeedlingTrayCount || ""),
     actualSeedlingCarryoverMode: event.actualSeedlingCarryoverMode,

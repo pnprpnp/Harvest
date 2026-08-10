@@ -229,6 +229,8 @@ const tabScrollPositions = {
 };
 let recordBaseFillKeys = [];
 let recordSelectionMode = "harvest";
+let recordPlantingCountPreset = 20;
+let recordPlantingCountsByPallet = {};
 let activePlantingRecordId = null;
 let plantingRecordDraft = null;
 let plantingAllowedPalletSetCache = null;
@@ -243,6 +245,7 @@ let harvestRecordEditTimelineCacheId = null;
 let harvestRecordEditTimelineCacheRecordCount = 0;
 let harvestRecordEditTimelineCacheDate = "";
 let plantingDateByPalletCache = new Map();
+let plantingStateByPalletCache = new Map();
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
 let recordHistoryCache = null;
@@ -922,6 +925,8 @@ function saveHarvestStateToStorage(options = {}){
     recordCasesEdited,
     recordPlantingSummaryEdited,
     recordSelectionMode,
+    recordPlantingCountPreset,
+    recordPlantingCountsByPallet,
     activePlantingRecordId,
     editingPlantingEventId,
     plantingRecordDraft,
@@ -1047,6 +1052,8 @@ function loadHarvestStateFromStorage(){
       recordCasesEdited: !!parsed.recordCasesEdited,
       recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
+      recordPlantingCountPreset: normalizePlantingCountPreset(parsed.recordPlantingCountPreset),
+      recordPlantingCountsByPallet: normalizePlantingCountsByPallet(parsed.recordPlantingCountsByPallet, parsed.harvestFillKeys),
       activePlantingRecordId: Number.isFinite(Number(parsed.activePlantingRecordId)) ? Number(parsed.activePlantingRecordId) : null,
       editingPlantingEventId: getSafePositiveRecordId(parsed.editingPlantingEventId),
       plantingRecordDraft: normalizePlantingRecordDraft(parsed.plantingRecordDraft),
@@ -1165,6 +1172,7 @@ function refreshAfterHarvestSelectionChanged(options = {}){
   updateRecordActualLoss();
   updateRecordSeedlingDiffDisplay();
   updateRecordActualSeedlingDisplays();
+  updateRecordPlantingCountPresetUi();
   scheduleHarvestStateSave();
 }
 
@@ -1516,6 +1524,8 @@ function normalizePlantingRecordDraft(value){
   return {
     recordId,
     keys: Array.isArray(value.keys) ? value.keys.filter(key => typeof key === "string") : [],
+    plantingCountPreset: normalizePlantingCountPreset(value.plantingCountPreset),
+    plantingCountsByPallet: normalizePlantingCountsByPallet(value.plantingCountsByPallet, value.keys),
     date: String(value.date || "").trim(),
     actualSeedlingTrayCount: String(value.actualSeedlingTrayCount ?? "").trim(),
     actualSeedlingCarryoverMode: normalizeSeedlingCarryoverMode(value.actualSeedlingCarryoverMode),
@@ -1538,6 +1548,8 @@ function capturePlantingRecordDraft(){
   plantingRecordDraft = {
     recordId: Number(record.id),
     keys: [...harvestFillKeys],
+    plantingCountPreset: recordPlantingCountPreset,
+    plantingCountsByPallet: normalizePlantingCountsByPallet(recordPlantingCountsByPallet, harvestFillKeys),
     date: document.getElementById("recordDateInput")?.value || "",
     actualSeedlingTrayCount: document.getElementById("recordActualSeedlingTrayCountInput")?.value || "",
     actualSeedlingCarryoverMode: getRecordSeedlingCarryoverMode(),
@@ -1554,6 +1566,15 @@ function applyPlantingRecordDraft(record){
   harvestFillKeys = draft
     ? [...draft.keys]
     : getUnplantedPalletKeysForHarvest(record.id);
+  recordPlantingCountPreset = normalizePlantingCountPreset(
+    draft?.plantingCountPreset,
+    getConfiguredPlantingCountForFirstKey(harvestFillKeys)
+  );
+  recordPlantingCountsByPallet = normalizePlantingCountsByPallet(
+    draft?.plantingCountsByPallet,
+    harvestFillKeys
+  );
+  ensureRecordPlantingCountsForKeys(harvestFillKeys, { useConfiguredCount: true });
 
   const dateInput = document.getElementById("recordDateInput");
   if(dateInput){
@@ -1582,6 +1603,10 @@ function applyPlantingRecordDraft(record){
   setRecordSeedlingCarryoverMode(draft?.actualSeedlingCarryoverMode || record.actualSeedlingCarryoverMode || "loss", { silent: true });
   if(!draft){
     harvestFillKeys = getSequentialPlantingPalletKeysWithinCapacity(harvestFillKeys, record);
+    recordPlantingCountsByPallet = normalizePlantingCountsByPallet(
+      recordPlantingCountsByPallet,
+      harvestFillKeys
+    );
   }
 
   recordPlantingSummaryEdited = !!draft?.recordPlantingSummaryEdited;

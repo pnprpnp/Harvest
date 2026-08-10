@@ -675,6 +675,10 @@ function normalizePlantingEvent(value){
     || plantingPalletKeys.some((key, index) => key !== allocatedPalletKeys[index])){
     return null;
   }
+  const plantingCountsByPallet = normalizePlantingCountsByPallet(
+    value.plantingCountsByPallet,
+    plantingPalletKeys
+  );
 
   const actualSeedlingTrayCount = getStrictIntegerInRange(
     value.actualSeedlingTrayCount ?? 0,
@@ -691,7 +695,10 @@ function normalizePlantingEvent(value){
     0,
     999999999
   );
-  const fallbackPlantedSeedlingCount = getActualPlantedSeedlingTotal(plantingPalletKeys);
+  const fallbackPlantedSeedlingCount = getActualPlantedSeedlingTotal(
+    plantingPalletKeys,
+    plantingCountsByPallet
+  );
   const rawPlantedSeedlingCount = String(value.actualPlantedSeedlingCount ?? "").trim() === ""
     ? fallbackPlantedSeedlingCount
     : value.actualPlantedSeedlingCount;
@@ -721,6 +728,7 @@ function normalizePlantingEvent(value){
     plantingDate,
     sourceAllocations,
     plantingPalletKeys,
+    plantingCountsByPallet,
     actualSeedlingTrayCount,
     actualTakenSeedlingCount,
     actualPlantedSeedlingCount,
@@ -930,6 +938,7 @@ function invalidatePlantingEventStateCache(){
   plantingEventStateCache = null;
   plantingEventStateCacheKey = "";
   plantingDateByPalletCache.clear();
+  plantingStateByPalletCache.clear();
   invalidatePlantingAllowedPalletSetCache();
 }
 
@@ -987,7 +996,7 @@ function calculatePlantingEventUsage(events, options = {}){
       event.actualPlantedSeedlingCount,
       0,
       999999999,
-      getActualPlantedSeedlingTotal(event.plantingPalletKeys)
+      getActualPlantedSeedlingTotal(event.plantingPalletKeys, event.plantingCountsByPallet)
     );
     const usedFromCarryover = Math.min(carryoverBefore, plantedTotal);
     const remainingCarryover = Math.max(0, carryoverBefore - usedFromCarryover);
