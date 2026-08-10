@@ -980,10 +980,7 @@ function closeBedDetailWindow(){
 
 function refreshBedDetailWindow(){
   if(isBedDetailWindowOpen()){
-    const body = document.getElementById("bedDetailWindowBody");
-    const scrollTop = body?.scrollTop || 0;
     renderBedDetailWindow();
-    if(body) body.scrollTop = scrollTop;
   }
 }
 
@@ -1117,21 +1114,15 @@ function startPalletDrag(event, context, building, bed, number){
   if(event.pointerType === "mouse" && event.button !== 0) return;
   const key = getPalletKey(building, bed, number);
   const isSelected = harvestFillKeys.includes(key);
-  const pendingTouchTap = event.pointerType === "touch";
   palletDragState = {
     pointerId: event.pointerId,
     context,
     mode: isSelected ? "remove" : "add",
     captureElement: event.currentTarget,
-    startX: event.clientX,
-    startY: event.clientY,
-    pendingTouchTap,
-    touchMoved: false,
     touchedKeys: new Set(),
     toastMessages: new Set(),
     changed: false
   };
-  if(pendingTouchTap) return;
   event.preventDefault();
   event.currentTarget?.setPointerCapture?.(event.pointerId);
   applyPalletDragTarget(event.currentTarget);
@@ -1139,34 +1130,17 @@ function startPalletDrag(event, context, building, bed, number){
 
 function handlePalletDragMove(event){
   if(!palletDragState || event.pointerId !== palletDragState.pointerId) return;
-  if(palletDragState.pendingTouchTap){
-    const distance = Math.hypot(
-      event.clientX - palletDragState.startX,
-      event.clientY - palletDragState.startY
-    );
-    if(distance > 8) palletDragState.touchMoved = true;
-    return;
-  }
   event.preventDefault();
   applyPalletDragTarget(getPalletElementFromPointer(event));
 }
 
 function finishPalletDrag(event){
   if(!palletDragState || event.pointerId !== palletDragState.pointerId) return;
-  const pendingTouchTap = palletDragState.pendingTouchTap;
-  if(pendingTouchTap){
-    if(event.type !== "pointercancel" && !palletDragState.touchMoved){
-      applyPalletDragTarget(palletDragState.captureElement);
-    }
-  }else{
-    event.preventDefault();
-  }
+  event.preventDefault();
   const changed = palletDragState.changed;
-  if(!pendingTouchTap){
-    try{
-      palletDragState.captureElement?.releasePointerCapture?.(event.pointerId);
-    }catch(e){}
-  }
+  try{
+    palletDragState.captureElement?.releasePointerCapture?.(event.pointerId);
+  }catch(e){}
   palletDragState = null;
   if(!changed) return;
 
@@ -1213,11 +1187,10 @@ function renderBedDetailWindow(){
   };
   title.ontouchcancel = handleBedDetailTitlePressEnd;
   body.innerHTML = "";
-  if(activeBedDetailContext === "forecast"
-    || (activeBedDetailContext === "record" && recordSelectionMode === "planting")){
+  if(activeBedDetailContext === "forecast"){
     const hint = document.createElement("div");
     hint.className = "bedDetailSelectionHint";
-    hint.textContent = "パレットをタップして選択・解除。上下にスワイプして移動できます";
+    hint.textContent = "パレットをタップ、または指でなぞって選択・解除できます";
     body.appendChild(hint);
   }
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
@@ -1340,7 +1313,7 @@ function appendRecordBedDetail(container, b){
       pallet.className = cls;
       if(recordSelectionMode === "planting" && isSelected){
         const plantingCount = getPlantingCountForSelectedKey(key);
-        pallet.innerHTML = `<span class="recordPalletNumber">${number}</span><span class="recordPalletPlantingCount">${plantingCount}株</span>`;
+        pallet.innerHTML = `<span class="recordPalletNumber">${number}</span><span class="recordPalletPlantingCount">${plantingCount}</span>`;
       }else{
         pallet.textContent = number;
       }
