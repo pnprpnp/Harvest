@@ -1108,6 +1108,47 @@
         }, "植え付け数プリセットの選択状態が一致しません");
       });
 
+      await runTest("苗植えベッド詳細のパレット内には番号だけを表示する", () => {
+        const detailState = comparable(app.eval(`(() => {
+          const previous = {
+            mode: recordSelectionMode,
+            building: currentBuilding,
+            keys: [...harvestFillKeys],
+            counts: { ...recordPlantingCountsByPallet },
+            getAllowed: getPlantingAllowedPalletSet
+          };
+          const host = document.createElement("div");
+          host.className = "bedDetailContent";
+          try{
+            recordSelectionMode = "planting";
+            currentBuilding = 2;
+            harvestFillKeys = ["2-A-1"];
+            recordPlantingCountsByPallet = { "2-A-1": 12 };
+            getPlantingAllowedPalletSet = () => new Set(["2-A-1", "2-A-2"]);
+            appendRecordBedDetail(host, "A");
+            const pallet = host.querySelector('[data-pallet-key="2-A-1"]');
+            return {
+              text: pallet?.textContent || "",
+              childCount: pallet?.children.length || 0,
+              selected: pallet?.classList.contains("plantingSelectedPallet") || false,
+              countColor: pallet?.classList.contains("plantingCount12") || false
+            };
+          }finally{
+            recordSelectionMode = previous.mode;
+            currentBuilding = previous.building;
+            harvestFillKeys = previous.keys;
+            recordPlantingCountsByPallet = previous.counts;
+            getPlantingAllowedPalletSet = previous.getAllowed;
+          }
+        })()`));
+        assertDeepEqual(detailState, {
+          text: "1",
+          childCount: 0,
+          selected: true,
+          countColor: true
+        }, "株数文字を隠した後にパレット番号または色分けが変わっています");
+      });
+
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
         const inlineEventAttributes = [
           "onclick", "onchange", "oninput", "ontoggle", "onkeydown"

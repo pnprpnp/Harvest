@@ -1311,12 +1311,7 @@ function appendRecordBedDetail(container, b){
       if(harvestSummary && harvestSummary.end === key) cls += " harvestEnd";
 
       pallet.className = cls;
-      if(recordSelectionMode === "planting" && isSelected){
-        const plantingCount = getPlantingCountForSelectedKey(key);
-        pallet.innerHTML = `<span class="recordPalletNumber">${number}</span><span class="recordPalletPlantingCount">${plantingCount}</span>`;
-      }else{
-        pallet.textContent = number;
-      }
+      pallet.textContent = number;
       let statusText = "";
       if(recordSelectionMode === "planting"){
         statusText = plantingAllowedSet.has(key)
