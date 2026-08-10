@@ -1184,7 +1184,7 @@
         );
       });
 
-      await runTest("苗植えベッド配置図の下は選択可能枚数だけを表示する", () => {
+      await runTest("苗植えベッド配置図の下は選択内訳だけを表示する", () => {
         const countState = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");
           const previous = {
@@ -1199,17 +1199,22 @@
             recordTab.style.display = "block";
             recordSelectionMode = "planting";
             currentBuilding = 2;
-            harvestFillKeys = ["2-A-1"];
-            recordPlantingCountsByPallet = { "2-A-1": 12 };
-            getPlantingAllowedPalletSet = () => new Set(["2-A-1", "2-A-2", "2-A-3"]);
+            harvestFillKeys = ["2-A-1", "2-A-2", "2-A-3"];
+            recordPlantingCountsByPallet = {
+              "2-A-1": 12,
+              "2-A-2": 16,
+              "2-A-3": 20
+            };
+            getPlantingAllowedPalletSet = () => new Set(["2-A-1", "2-A-2", "2-A-3", "2-A-4"]);
             drawRecordBeds();
             const bed = [...document.querySelectorAll("#recordBeds .recordBedOverview")]
               .find(item => item.querySelector(".bedTitleMain")?.textContent === "A");
             const counts = bed?.querySelector(".recordBedOverviewCounts");
             return {
               text: counts?.textContent.replace(/\s+/g, " ").trim() || "",
-              selectedCountElements: counts?.querySelectorAll(".recordBedOverviewCountSelected").length || 0,
-              selectableCountElements: counts?.querySelectorAll(".recordBedOverviewCountSelectable").length || 0
+              breakdownElements: counts?.querySelectorAll(".recordBedOverviewCountBreakdown").length || 0,
+              selectableText: counts?.textContent.includes("選択可") || false,
+              ariaLabel: bed?.getAttribute("aria-label") || ""
             };
           }finally{
             recordTab.style.display = previous.display;
@@ -1221,10 +1226,11 @@
           }
         })()`));
         assertDeepEqual(countState, {
-          text: "選択可 3",
-          selectedCountElements: 0,
-          selectableCountElements: 1
-        }, "苗植えベッド配置図の下に選択枚数が残っています");
+          text: "12×1/16×1/20×1",
+          breakdownElements: 1,
+          selectableText: false,
+          ariaLabel: "2号棟 Aベッド。植え付け数 12×1/16×1/20×1。長押しで拡大してパレットを選択"
+        }, "苗植えベッド配置図の下が選択内訳だけになっていません");
       });
 
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {

@@ -289,10 +289,19 @@ function drawRecordBeds(){
       });
       const counts = document.createElement("div");
       counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
+      const bedSelectedKeys = harvestFillKeys.filter(key => {
+        const pallet = parsePalletKey(key);
+        return pallet.building === building && pallet.bed === b;
+      });
+      const plantingDistribution = getRecordPlantingCountDistribution(bedSelectedKeys);
+      const plantingCountText = [12, 16, 20]
+        .filter(count => plantingDistribution[count] > 0)
+        .map(count => `${count}×${plantingDistribution[count]}`)
+        .join("/");
       counts.innerHTML = plantingAllowedSet
-        ? `
-          <span class="recordBedOverviewCountSelectable">選択可 ${selectableCount}</span>
-        `
+        ? (plantingCountText
+            ? `<span class="recordBedOverviewCountBreakdown">${plantingCountText}</span>`
+            : "")
         : `
           <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
           <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
@@ -302,7 +311,7 @@ function drawRecordBeds(){
       bed.setAttribute(
         "aria-label",
         plantingAllowedSet
-          ? `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${selectableCount}パレット。長押しで拡大してパレットを選択`
+          ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。長押しで拡大してパレットを選択`
           : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。長押しで拡大してパレットを選択`
       );
       beds.appendChild(bed);
