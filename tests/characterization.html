@@ -1149,6 +1149,41 @@
         }, "株数文字を隠した後にパレット番号または色分けが変わっています");
       });
 
+      await runTest("苗植えベッド詳細の色例は植え付け株数だけを表示する", () => {
+        const legendLabels = comparable(app.eval(`(() => {
+          const previous = {
+            context: activeBedDetailContext,
+            bed: activeBedDetailBed,
+            mode: recordSelectionMode,
+            building: currentBuilding,
+            getAllowed: getPlantingAllowedPalletSet
+          };
+          const body = document.getElementById("bedDetailWindowBody");
+          try{
+            activeBedDetailContext = "record";
+            activeBedDetailBed = "A";
+            recordSelectionMode = "planting";
+            currentBuilding = 2;
+            getPlantingAllowedPalletSet = () => new Set();
+            renderBedDetailWindow();
+            return [...body.querySelectorAll(".bedDetailPlantingLegend .recordLegendItem")]
+              .map(item => item.textContent.trim());
+          }finally{
+            body.textContent = "";
+            activeBedDetailContext = previous.context;
+            activeBedDetailBed = previous.bed;
+            recordSelectionMode = previous.mode;
+            currentBuilding = previous.building;
+            getPlantingAllowedPalletSet = previous.getAllowed;
+          }
+        })()`));
+        assertDeepEqual(
+          legendLabels,
+          ["12植え", "16植え", "20植え"],
+          "苗植えベッド詳細に選択可能・選択不可の色例が残っています"
+        );
+      });
+
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
         const inlineEventAttributes = [
           "onclick", "onchange", "oninput", "ontoggle", "onkeydown"

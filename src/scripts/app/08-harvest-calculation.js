@@ -1198,11 +1198,9 @@ function renderBedDetailWindow(){
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";
     legend.setAttribute("aria-label", "各パレットの色分け");
     legend.innerHTML = `
-      <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
       <span class="recordLegendItem"><span class="recordLegendSwatch count12"></span>12植え</span>
       <span class="recordLegendItem"><span class="recordLegendSwatch count16"></span>16植え</span>
       <span class="recordLegendItem"><span class="recordLegendSwatch count20"></span>20植え</span>
-      <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
     `;
     body.appendChild(legend);
   }
