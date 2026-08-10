@@ -1233,6 +1233,41 @@
         }, "苗植えベッド配置図の下が選択内訳だけになっていません");
       });
 
+      await runTest("12植えと16植えの色を入れ替えて統一する", () => {
+        const colors = comparable(app.eval(`(() => {
+          const host = document.createElement("div");
+          host.innerHTML = [
+            '<div class="recordBedOverview">',
+            '<span class="simulationBedMapCell is-planting-selected is-planting-count-12"></span>',
+            '<span class="simulationBedMapCell is-planting-selected is-planting-count-16"></span>',
+            '</div>',
+            '<span class="recordLegendSwatch count12"></span>',
+            '<span class="recordLegendSwatch count16"></span>'
+          ].join("");
+          document.body.appendChild(host);
+          try{
+            const read = selector => {
+              const style = getComputedStyle(host.querySelector(selector));
+              return { background: style.backgroundColor, border: style.borderColor };
+            };
+            return {
+              map12: read(".is-planting-count-12"),
+              map16: read(".is-planting-count-16"),
+              legend12: read(".recordLegendSwatch.count12"),
+              legend16: read(".recordLegendSwatch.count16")
+            };
+          }finally{
+            host.remove();
+          }
+        })()`));
+        assertDeepEqual(colors, {
+          map12: { background: "rgb(37, 99, 235)", border: "rgb(29, 78, 216)" },
+          map16: { background: "rgb(15, 118, 110)", border: "rgb(17, 94, 89)" },
+          legend12: { background: "rgb(37, 99, 235)", border: "rgb(29, 78, 216)" },
+          legend16: { background: "rgb(15, 118, 110)", border: "rgb(17, 94, 89)" }
+        }, "12植えと16植えの色が配置図と色例で一致していません");
+      });
+
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
         const inlineEventAttributes = [
           "onclick", "onchange", "oninput", "ontoggle", "onkeydown"
@@ -1655,16 +1690,16 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "38b92c61", elements: 2043, visible: 647, viewport: "390x844" },
-          cssStates: { hash: "05b94580", elements: 2111, visible: 706, viewport: "390x844" },
-          cssFocus: { hash: "7fbaf955", elements: 2111, visible: 706, viewport: "390x844" },
-          mobileRecord: { hash: "b9222faf", elements: 2044, visible: 136, viewport: "390x844" },
-          mobileDashboard: { hash: "57669755", elements: 2044, visible: 130, viewport: "390x844" },
-          mobileMenu: { hash: "fbcc0de3", elements: 2044, visible: 307, viewport: "390x844" },
-          mobileSettings: { hash: "07f4881f", elements: 2044, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "c7bd4fba", elements: 2044, visible: 91, viewport: "390x844" },
-          wideForecast: { hash: "c84ae511", elements: 2044, visible: 653, viewport: "1024x900" },
-          wideDashboard: { hash: "fe99ef64", elements: 2044, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "316c0e25", elements: 2043, visible: 647, viewport: "390x844" },
+          cssStates: { hash: "71daa36c", elements: 2111, visible: 706, viewport: "390x844" },
+          cssFocus: { hash: "685dd9e1", elements: 2111, visible: 706, viewport: "390x844" },
+          mobileRecord: { hash: "6b9955fb", elements: 2044, visible: 136, viewport: "390x844" },
+          mobileDashboard: { hash: "abad67e1", elements: 2044, visible: 130, viewport: "390x844" },
+          mobileMenu: { hash: "39c23247", elements: 2044, visible: 307, viewport: "390x844" },
+          mobileSettings: { hash: "679366f3", elements: 2044, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "f019409e", elements: 2044, visible: 91, viewport: "390x844" },
+          wideForecast: { hash: "f7892401", elements: 2044, visible: 653, viewport: "1024x900" },
+          wideDashboard: { hash: "133cd4f0", elements: 2044, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
