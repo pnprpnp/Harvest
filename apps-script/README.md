@@ -35,6 +35,16 @@ container-bound, it can be run without an argument from the Apps Script editor.
 
 ## Current deployment note
 
+### 2026年7月の植え付け数移行
+
+Apps Scriptエディタから次の順で手動実行できます。
+
+1. `previewJuly2026PlantingCountMigration`: 対象件数と変更予定だけを確認する。
+2. `migrateJuly2026PlantingCounts`: 苗植えイベントシートを非表示シートへ複製してから、7月を12植え、6月30日以前を株数未記録へ移行する。
+3. `verifyJuly2026PlantingCountMigration`: 更新漏れがないことを確認する。`valid: true`なら完了。
+
+移行関数は再実行しても完了済みの行を変更しません。バックアップシート名は実行結果の`backupSheet`へ表示されます。
+
 - The current source accepts only pallet-numbering version 2 and no longer runs
   the retired pallet-numbering, planting-event, conflict, or record-metadata
   migrations during normal requests. Deploy it only after every device has
