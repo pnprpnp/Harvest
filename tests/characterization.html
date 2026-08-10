@@ -721,49 +721,6 @@
         assertDeepEqual(juneServerEvent.plantingCountsByPallet, {}, "Apps Script側で6月以前が未記録になりません");
       });
 
-      await runTest("7月記録の実データ移行前に対象と変更内容を確認できる", () => {
-        const headers = comparable(appsScript.eval("PLANTING_EVENT_HEADERS"));
-        const keys = headers.map(header => appsScript.getPlantingEventHeaderKey(header));
-        const makeRow = values => keys.map(key => values[key] ?? "");
-        const plan = comparable(appsScript.buildJuly2026PlantingCountMigrationPlan(headers, [
-          makeRow({
-            eventId: 20000000000013,
-            plantingDate: "2026-07-15",
-            plantingPalletKeys: JSON.stringify(["3-B-10", "3-B-11"]),
-            plantingCountsByPallet: "",
-            actualPlantedSeedlingCount: 40,
-            detailsUnknown: ""
-          }),
-          makeRow({
-            eventId: 20000000000014,
-            plantingDate: "2026-06-30",
-            plantingPalletKeys: JSON.stringify(["3-B-12"]),
-            plantingCountsByPallet: JSON.stringify({ "3-B-12": 16 }),
-            actualPlantedSeedlingCount: 16,
-            detailsUnknown: ""
-          }),
-          makeRow({
-            eventId: 20000000000015,
-            plantingDate: "2026-08-01",
-            plantingPalletKeys: JSON.stringify(["3-B-13"]),
-            plantingCountsByPallet: JSON.stringify({ "3-B-13": 20 }),
-            actualPlantedSeedlingCount: 20,
-            detailsUnknown: ""
-          })
-        ]));
-        assertEqual(plan.julyRows, 1, "7月の対象行数が違います");
-        assertEqual(plan.julyPallets, 2, "7月の対象パレット数が違います");
-        assertEqual(plan.earlierRows, 1, "7月以前の対象行数が違います");
-        assertEqual(plan.updates.length, 2, "移行対象の更新件数が違います");
-        assertDeepEqual(plan.updates[0].nextCounts, {
-          "3-B-10": 12,
-          "3-B-11": 12
-        }, "7月の移行内容が12植えになりません");
-        assertEqual(plan.updates[0].expectedPlantedTotal, 24, "7月の実苗植え株数が合いません");
-        assertDeepEqual(plan.updates[1].nextCounts, {}, "7月以前を未記録へ戻せません");
-        assertDeepEqual(plan.issues, [], "正常な移行対象が問題行になりました");
-      });
-
       await runTest("二次定植の詳細を植え付け数ごとに分けて表示する", () => {
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
@@ -1367,6 +1324,18 @@
           "undefined",
           "Apps Script側に旧記録情報の自動移行処理が残っています"
         );
+        [
+          "previewJuly2026PlantingCountMigration",
+          "migrateJuly2026PlantingCounts",
+          "verifyJuly2026PlantingCountMigration",
+          "installHarvestSyncRevisionEditTrigger"
+        ].forEach(name => {
+          assertEqual(
+            typeof appsScript[name],
+            "undefined",
+            `Apps Script側に使用済みの一度限りの関数が残っています: ${name}`
+          );
+        });
       });
 
       await runTest("途中収穫の記録スナップショットも同じ経路で正規化する", () => {

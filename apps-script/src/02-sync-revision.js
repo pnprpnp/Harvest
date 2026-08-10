@@ -497,7 +497,3 @@ function installHarvestSyncRevisionTrigger() {
     syncRevision: getHarvestSyncRevisionState().revision
   };
 }
-
-function installHarvestSyncRevisionEditTrigger() {
-  return installHarvestSyncRevisionTrigger();
-}
