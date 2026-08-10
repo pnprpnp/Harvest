@@ -29,7 +29,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-10-planting-count-presets-1";
+const API_BUILD_VERSION = "2026-08-10-dashboard-planting-counts-1";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -43,6 +43,9 @@ const RECORD_MEMO_LENGTH_LIMIT = 10000;
 const RECORD_SUMMARY_LENGTH_LIMIT = 20000;
 const RECORD_QUALITY_LENGTH_LIMIT = 2000;
 const RECORD_DUPLICATE_KEY_LENGTH_LIMIT = 128;
+const PLANTING_COUNT_BACKFILL_START_DATE = "2026-07-01";
+const PLANTING_COUNT_BACKFILL_END_DATE = "2026-07-31";
+const PLANTING_COUNT_BACKFILL_VALUE = 12;
 const RECORD_UUID_LENGTH_LIMIT = 64;
 const PLANTING_AGE_SUMMARY_LENGTH_LIMIT = 2000;
 const PLANTING_AGE_DETAIL_LENGTH_LIMIT = 20000;
@@ -1425,9 +1428,10 @@ function normalizePlantingEvent(event) {
     plantingPalletKeys.some(key => !uniqueAllocatedKeys.has(key))) {
     throw new Error("収穫元割当と苗植えパレットが一致しません");
   }
-  const plantingCountsByPallet = normalizePlantingCountsByPallet(
-    event.plantingCountsByPallet,
-    plantingKeySet
+  const plantingCountsByPallet = applyHistoricalPlantingCountBackfill(
+    plantingDate,
+    plantingPalletKeys,
+    normalizePlantingCountsByPallet(event.plantingCountsByPallet, plantingKeySet)
   );
 
   return {
@@ -1488,6 +1492,19 @@ function normalizePlantingCountsByPallet(value, plantingKeySet) {
       throw new Error("パレット別植え付け株数は12・16・20のいずれかで指定してください");
     }
     normalized[key] = count;
+  });
+  return normalized;
+}
+
+function applyHistoricalPlantingCountBackfill(plantingDate, plantingPalletKeys, countsByPallet) {
+  const normalized = { ...(countsByPallet || {}) };
+  if (plantingDate < PLANTING_COUNT_BACKFILL_START_DATE ||
+      plantingDate > PLANTING_COUNT_BACKFILL_END_DATE) {
+    return normalized;
+  }
+  plantingPalletKeys.forEach(key => {
+    if ([12, 16, 20].includes(Number(normalized[key]))) return;
+    normalized[key] = PLANTING_COUNT_BACKFILL_VALUE;
   });
   return normalized;
 }

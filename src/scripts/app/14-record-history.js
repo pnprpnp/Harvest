@@ -692,7 +692,7 @@ function formatPlantingCountsByPalletSummary(event){
     if(!keys.length) return "";
     return `${count}植え: ${compressPalletKeysToRanges(keys).join("、")}`;
   }).filter(Boolean);
-  return parts.join("\n") || "パレット別の内訳なし（収穫設定を使用）";
+  return parts.join("\n") || "株数未記録（収穫予測では収穫設定を使用）";
 }
 
 function buildRecordDetailLocationModel(kind, entity){

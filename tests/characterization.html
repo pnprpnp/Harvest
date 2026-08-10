@@ -685,6 +685,104 @@
         assertEqual(serverEvent.actualPlantedSeedlingCount, 36, "苗植え株数が変わりました");
       });
 
+      await runTest("2026年7月の旧記録だけ12植えで補完し、それ以前は未記録にする", () => {
+        const buildEvent = (eventId, plantingDate, palletKey) => ({
+          palletNumberingVersion: 2,
+          eventId,
+          plantingDate,
+          sourceAllocations: [{
+            harvestRecordId: 20000000000003,
+            palletKeys: [palletKey]
+          }],
+          plantingPalletKeys: [palletKey],
+          actualSeedlingTrayCount: 1,
+          actualTakenSeedlingCount: 120,
+          actualPlantedSeedlingCount: 12,
+          actualSeedlingCarryoverMode: "loss",
+          actualSeedlingLossRate: "0",
+          qualityMemo: null,
+          detailsUnknown: false
+        });
+        const julyClientEvent = app.normalizePlantingEvent(
+          buildEvent(20000000000007, "2026-07-15", "3-B-6")
+        );
+        const juneClientEvent = app.normalizePlantingEvent(
+          buildEvent(20000000000008, "2026-06-30", "3-B-7")
+        );
+        const julyServerEvent = comparable(appsScript.normalizePlantingEvent(
+          buildEvent(20000000000009, "2026-07-31", "3-B-8")
+        ));
+        const juneServerEvent = comparable(appsScript.normalizePlantingEvent(
+          buildEvent(20000000000010, "2026-06-30", "3-B-9")
+        ));
+        assertDeepEqual(julyClientEvent.plantingCountsByPallet, { "3-B-6": 12 }, "ブラウザー側で7月を12植えにできません");
+        assertDeepEqual(juneClientEvent.plantingCountsByPallet, {}, "ブラウザー側で6月以前が未記録になりません");
+        assertDeepEqual(julyServerEvent.plantingCountsByPallet, { "3-B-8": 12 }, "Apps Script側で7月を12植えにできません");
+        assertDeepEqual(juneServerEvent.plantingCountsByPallet, {}, "Apps Script側で6月以前が未記録になりません");
+      });
+
+      await runTest("二次定植の詳細を植え付け数ごとに分けて表示する", () => {
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        try{
+          replaceAppHistory(app, [], [{
+            palletNumberingVersion: 2,
+            eventId: 20000000000011,
+            plantingDate: "2026-08-01",
+            sourceAllocations: [{
+              harvestRecordId: 20000000000003,
+              palletKeys: ["3-B-4", "3-B-5"]
+            }],
+            plantingPalletKeys: ["3-B-4", "3-B-5"],
+            plantingCountsByPallet: { "3-B-4": 16, "3-B-5": 20 },
+            actualSeedlingTrayCount: 1,
+            actualTakenSeedlingCount: 120,
+            actualPlantedSeedlingCount: 36,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "0",
+            qualityMemo: null,
+            detailsUnknown: false
+          }, {
+            palletNumberingVersion: 2,
+            eventId: 20000000000012,
+            plantingDate: "2026-06-30",
+            sourceAllocations: [{
+              harvestRecordId: 20000000000003,
+              palletKeys: ["3-B-6"]
+            }],
+            plantingPalletKeys: ["3-B-6"],
+            actualSeedlingTrayCount: 1,
+            actualTakenSeedlingCount: 120,
+            actualPlantedSeedlingCount: 12,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "0",
+            qualityMemo: null,
+            detailsUnknown: false
+          }]);
+          const lots = comparable(app.eval(`buildDashboardSeedlingStatusModel(
+            new Date(2026, 7, 10)
+          ).bedLots.get("3-B").filter(lot => !lot.isUnplanted).map(lot => ({
+            plantingCountText: lot.plantingCountText,
+            palletNumbers: lot.palletNumbers
+          }))`));
+          assertDeepEqual(lots, [
+            { plantingCountText: "株数未記録", palletNumbers: [6] },
+            { plantingCountText: "20植え", palletNumbers: [5] },
+            { plantingCountText: "16植え", palletNumbers: [4] }
+          ], "二次定植が植え付け数ごとの表示に分かれません");
+          const lotHtml = app.eval(`buildDashboardSeedlingStatusModel(
+            new Date(2026, 7, 10)
+          ).bedLots.get("3-B").filter(lot => !lot.isUnplanted).map(
+            (lot, index) => getDashboardSeedlingStatusLotHtml(lot, index, false)
+          ).join("")`);
+          assert(lotHtml.includes(">16植え<"), "二次定植に16植えバッジが表示されません");
+          assert(lotHtml.includes(">20植え<"), "二次定植に20植えバッジが表示されません");
+          assert(lotHtml.includes(">株数未記録<"), "二次定植に未記録バッジが表示されません");
+        }finally{
+          replaceAppHistory(app, previousRecords, previousEvents);
+        }
+      });
+
       await runTest("苗植え実績を次回収穫の理想株数として設定より優先する", () => {
         const originalSettings = comparable(app.eval("settings"));
         try{

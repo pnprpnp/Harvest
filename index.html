@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260810-planting-count-presets">
+<meta name="harvestnavi-version" content="20260810-dashboard-planting-counts">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -5533,6 +5533,26 @@ button.monitorSaveBtn:active{
   justify-content:space-between;
   gap:5px;
 }
+.dashboardSeedlingStatusLotBadges{
+  display:inline-flex;
+  flex:0 0 auto;
+  align-items:center;
+  gap:4px;
+}
+.dashboardSeedlingStatusPlantingCount{
+  padding:3px 7px;
+  border-radius:999px;
+  background:#e0e7ff;
+  color:#3730a3;
+  font-size:9px;
+  font-weight:900;
+  line-height:1.2;
+  white-space:nowrap;
+}
+.dashboardSeedlingStatusPlantingCount.is-unrecorded{
+  background:#e5e7eb;
+  color:#4b5563;
+}
 .dashboardSeedlingStatusSelectedLabel{
   display:none;
   flex:0 0 auto;
@@ -10469,6 +10489,9 @@ const DASHBOARD_FORECAST_DAY_COLORS = Object.freeze([
 const DASHBOARD_FORECAST_LATER_COLOR = "#94a3b8";
 const DASHBOARD_FORECAST_EMPTY_COLOR = "#e5e5ea";
 const ALLOWED_YIELDS = [20, 16, 12];
+const PLANTING_COUNT_BACKFILL_START_DATE = "2026-07-01";
+const PLANTING_COUNT_BACKFILL_END_DATE = "2026-07-31";
+const PLANTING_COUNT_BACKFILL_VALUE = 12;
 const BED_LONG_PRESS_MS = 450;
 const BED_DETAIL_OPEN_LONG_PRESS_MS = 350;
 const BED_DETAIL_OPEN_MOVE_THRESHOLD_PX = 10;
@@ -13894,9 +13917,10 @@ function normalizePlantingEvent(value){
     || plantingPalletKeys.some((key, index) => key !== allocatedPalletKeys[index])){
     return null;
   }
-  const plantingCountsByPallet = normalizePlantingCountsByPallet(
-    value.plantingCountsByPallet,
-    plantingPalletKeys
+  const plantingCountsByPallet = applyHistoricalPlantingCountBackfill(
+    plantingDate,
+    plantingPalletKeys,
+    value.plantingCountsByPallet
   );
 
   const actualSeedlingTrayCount = getStrictIntegerInRange(
@@ -21902,11 +21926,18 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
     if(!bedLotMaps.has(bedKey)) bedLotMaps.set(bedKey, new Map());
     const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
     const plantingDateText = formatDateOnlyString(status.plantingDate);
-    const lotKey = `${plantingDateText}\n${qualityText}`;
+    const plantingCount = Number(status.event?.plantingCountsByPallet?.[palletKey]);
+    const normalizedPlantingCount = ALLOWED_YIELDS.includes(plantingCount) ? plantingCount : null;
+    const plantingCountText = normalizedPlantingCount === null
+      ? "株数未記録"
+      : `${normalizedPlantingCount}植え`;
+    const lotKey = `${plantingDateText}\n${qualityText}\n${plantingCountText}`;
     const lots = bedLotMaps.get(bedKey);
     if(!lots.has(lotKey)){
       lots.set(lotKey, {
         plantingDate: status.plantingDate,
+        plantingCount: normalizedPlantingCount,
+        plantingCountText,
         qualityText,
         qualityClass: getDashboardSeedlingQualityClass(status.event?.qualityMemo),
         palletCount: 0,
@@ -21975,8 +22006,10 @@ function getDashboardSeedlingBedMapCellHtml(model, building, bed, number, sectio
 
   const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
   const qualityClass = getDashboardSeedlingQualityClass(status.event?.qualityMemo);
+  const plantingCount = Number(status.event?.plantingCountsByPallet?.[getPalletKey(building, bed, number)]);
+  const plantingCountText = ALLOWED_YIELDS.includes(plantingCount) ? `${plantingCount}植え` : "株数未記録";
   const ageDays = Math.max(0, getLocalDayDiff(status.plantingDate, model.referenceDate));
-  const label = `${number}番 ${qualityText} ${ageDays}日経過`;
+  const label = `${number}番 ${qualityText} ${plantingCountText} ${ageDays}日経過`;
   return `<span class="dashboardSeedlingBedMapCell ${qualityClass}${sectionStart ? " is-section-start" : ""}" data-dashboard-seedling-pallet-number="${number}" title="${escapeHtml(label)}"></span>`;
 }
 
@@ -22023,6 +22056,7 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
   const numberText = formatPalletNumberSideRanges(lot.palletNumbers);
   const ariaLabel = [
     lot.qualityText,
+    lot.isUnplanted ? "" : lot.plantingCountText,
     ageText,
     `番号 ${numberText}`,
     `${lot.palletCount}パレット`,
@@ -22037,7 +22071,10 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
       aria-label="${escapeHtml(ariaLabel)}">
       <span class="dashboardSeedlingStatusLotHeader">
         <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
-        <span class="dashboardSeedlingStatusSelectedLabel" aria-hidden="true">選択中</span>
+        <span class="dashboardSeedlingStatusLotBadges">
+          ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCount${lot.plantingCount === null ? " is-unrecorded" : ""}">${escapeHtml(lot.plantingCountText)}</span>`}
+          <span class="dashboardSeedlingStatusSelectedLabel" aria-hidden="true">選択中</span>
+        </span>
       </span>
       ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
       <span class="dashboardSeedlingStatusCount">
@@ -24573,6 +24610,20 @@ function normalizePlantingCountsByPallet(value, allowedKeys = null){
     const count = Number(rawCount);
     if(!ALLOWED_YIELDS.includes(count)) return;
     normalized[key] = count;
+  });
+  return normalized;
+}
+
+function applyHistoricalPlantingCountBackfill(plantingDate, keys, countsByPallet){
+  const normalized = normalizePlantingCountsByPallet(countsByPallet, keys);
+  const dateText = String(plantingDate || "").trim();
+  if(dateText < PLANTING_COUNT_BACKFILL_START_DATE || dateText > PLANTING_COUNT_BACKFILL_END_DATE){
+    return normalized;
+  }
+  (Array.isArray(keys) ? keys : []).forEach(key => {
+    if(!isValidPalletKeyString(key)) return;
+    if(ALLOWED_YIELDS.includes(Number(normalized[key]))) return;
+    normalized[key] = PLANTING_COUNT_BACKFILL_VALUE;
   });
   return normalized;
 }
@@ -29367,7 +29418,7 @@ function formatPlantingCountsByPalletSummary(event){
     if(!keys.length) return "";
     return `${count}植え: ${compressPalletKeysToRanges(keys).join("、")}`;
   }).filter(Boolean);
-  return parts.join("\n") || "パレット別の内訳なし（収穫設定を使用）";
+  return parts.join("\n") || "株数未記録（収穫予測では収穫設定を使用）";
 }
 
 function buildRecordDetailLocationModel(kind, entity){

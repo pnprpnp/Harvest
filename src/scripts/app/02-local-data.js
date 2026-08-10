@@ -675,9 +675,10 @@ function normalizePlantingEvent(value){
     || plantingPalletKeys.some((key, index) => key !== allocatedPalletKeys[index])){
     return null;
   }
-  const plantingCountsByPallet = normalizePlantingCountsByPallet(
-    value.plantingCountsByPallet,
-    plantingPalletKeys
+  const plantingCountsByPallet = applyHistoricalPlantingCountBackfill(
+    plantingDate,
+    plantingPalletKeys,
+    value.plantingCountsByPallet
   );
 
   const actualSeedlingTrayCount = getStrictIntegerInRange(

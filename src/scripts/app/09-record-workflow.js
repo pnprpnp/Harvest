@@ -61,6 +61,20 @@ function normalizePlantingCountsByPallet(value, allowedKeys = null){
   return normalized;
 }
 
+function applyHistoricalPlantingCountBackfill(plantingDate, keys, countsByPallet){
+  const normalized = normalizePlantingCountsByPallet(countsByPallet, keys);
+  const dateText = String(plantingDate || "").trim();
+  if(dateText < PLANTING_COUNT_BACKFILL_START_DATE || dateText > PLANTING_COUNT_BACKFILL_END_DATE){
+    return normalized;
+  }
+  (Array.isArray(keys) ? keys : []).forEach(key => {
+    if(!isValidPalletKeyString(key)) return;
+    if(ALLOWED_YIELDS.includes(Number(normalized[key]))) return;
+    normalized[key] = PLANTING_COUNT_BACKFILL_VALUE;
+  });
+  return normalized;
+}
+
 function getConfiguredPlantingCountForKey(key){
   const pallet = parsePalletKey(String(key || ""));
   if(!bedOrder.includes(pallet.bed) || !Number.isFinite(pallet.number)){

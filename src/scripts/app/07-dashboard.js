@@ -2604,11 +2604,18 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
     if(!bedLotMaps.has(bedKey)) bedLotMaps.set(bedKey, new Map());
     const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
     const plantingDateText = formatDateOnlyString(status.plantingDate);
-    const lotKey = `${plantingDateText}\n${qualityText}`;
+    const plantingCount = Number(status.event?.plantingCountsByPallet?.[palletKey]);
+    const normalizedPlantingCount = ALLOWED_YIELDS.includes(plantingCount) ? plantingCount : null;
+    const plantingCountText = normalizedPlantingCount === null
+      ? "株数未記録"
+      : `${normalizedPlantingCount}植え`;
+    const lotKey = `${plantingDateText}\n${qualityText}\n${plantingCountText}`;
     const lots = bedLotMaps.get(bedKey);
     if(!lots.has(lotKey)){
       lots.set(lotKey, {
         plantingDate: status.plantingDate,
+        plantingCount: normalizedPlantingCount,
+        plantingCountText,
         qualityText,
         qualityClass: getDashboardSeedlingQualityClass(status.event?.qualityMemo),
         palletCount: 0,
@@ -2677,8 +2684,10 @@ function getDashboardSeedlingBedMapCellHtml(model, building, bed, number, sectio
 
   const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
   const qualityClass = getDashboardSeedlingQualityClass(status.event?.qualityMemo);
+  const plantingCount = Number(status.event?.plantingCountsByPallet?.[getPalletKey(building, bed, number)]);
+  const plantingCountText = ALLOWED_YIELDS.includes(plantingCount) ? `${plantingCount}植え` : "株数未記録";
   const ageDays = Math.max(0, getLocalDayDiff(status.plantingDate, model.referenceDate));
-  const label = `${number}番 ${qualityText} ${ageDays}日経過`;
+  const label = `${number}番 ${qualityText} ${plantingCountText} ${ageDays}日経過`;
   return `<span class="dashboardSeedlingBedMapCell ${qualityClass}${sectionStart ? " is-section-start" : ""}" data-dashboard-seedling-pallet-number="${number}" title="${escapeHtml(label)}"></span>`;
 }
 
@@ -2725,6 +2734,7 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
   const numberText = formatPalletNumberSideRanges(lot.palletNumbers);
   const ariaLabel = [
     lot.qualityText,
+    lot.isUnplanted ? "" : lot.plantingCountText,
     ageText,
     `番号 ${numberText}`,
     `${lot.palletCount}パレット`,
@@ -2739,7 +2749,10 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
       aria-label="${escapeHtml(ariaLabel)}">
       <span class="dashboardSeedlingStatusLotHeader">
         <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
-        <span class="dashboardSeedlingStatusSelectedLabel" aria-hidden="true">選択中</span>
+        <span class="dashboardSeedlingStatusLotBadges">
+          ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCount${lot.plantingCount === null ? " is-unrecorded" : ""}">${escapeHtml(lot.plantingCountText)}</span>`}
+          <span class="dashboardSeedlingStatusSelectedLabel" aria-hidden="true">選択中</span>
+        </span>
       </span>
       ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
       <span class="dashboardSeedlingStatusCount">

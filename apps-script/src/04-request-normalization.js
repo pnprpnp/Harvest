@@ -225,9 +225,10 @@ function normalizePlantingEvent(event) {
     plantingPalletKeys.some(key => !uniqueAllocatedKeys.has(key))) {
     throw new Error("収穫元割当と苗植えパレットが一致しません");
   }
-  const plantingCountsByPallet = normalizePlantingCountsByPallet(
-    event.plantingCountsByPallet,
-    plantingKeySet
+  const plantingCountsByPallet = applyHistoricalPlantingCountBackfill(
+    plantingDate,
+    plantingPalletKeys,
+    normalizePlantingCountsByPallet(event.plantingCountsByPallet, plantingKeySet)
   );
 
   return {
@@ -288,6 +289,19 @@ function normalizePlantingCountsByPallet(value, plantingKeySet) {
       throw new Error("パレット別植え付け株数は12・16・20のいずれかで指定してください");
     }
     normalized[key] = count;
+  });
+  return normalized;
+}
+
+function applyHistoricalPlantingCountBackfill(plantingDate, plantingPalletKeys, countsByPallet) {
+  const normalized = { ...(countsByPallet || {}) };
+  if (plantingDate < PLANTING_COUNT_BACKFILL_START_DATE ||
+      plantingDate > PLANTING_COUNT_BACKFILL_END_DATE) {
+    return normalized;
+  }
+  plantingPalletKeys.forEach(key => {
+    if ([12, 16, 20].includes(Number(normalized[key]))) return;
+    normalized[key] = PLANTING_COUNT_BACKFILL_VALUE;
   });
   return normalized;
 }
