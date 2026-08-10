@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260810-dashboard-planting-count-migration">
+<meta name="harvestnavi-version" content="20260810-planting-bed-detail-readability">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8307,9 +8307,51 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   box-shadow:0 3px 10px rgba(37,99,235,.12);
 }
 .recordPlantingCountSummary{min-height:16px;color:var(--ui-text-secondary);font-size:11px;font-weight:700;text-align:center;}
-.recordPalletNumber{font-size:10px;line-height:1;}
-.recordPalletPlantingCount{font-size:9px;line-height:1;opacity:.95;}
-.pallet:has(.recordPalletPlantingCount){display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
+.bedDetailWindow{width:min(360px,calc(100vw - 20px));}
+.bedDetailWindowBody{padding:10px;overscroll-behavior:contain;}
+.bedDetailContent{width:min(320px,100%);}
+.bedDetailContent .palletGrid{
+  grid-template-rows:repeat(39,26px);
+  gap:3px;
+}
+.bedDetailContent .pallet{
+  min-width:0;
+  min-height:26px;
+  padding:2px 6px;
+  border-radius:7px;
+  font-size:11px;
+  touch-action:pan-y;
+}
+.recordPalletNumber{
+  min-width:0;
+  overflow:hidden;
+  font-size:11px;
+  line-height:1;
+  text-align:left;
+  text-overflow:ellipsis;
+}
+.recordPalletPlantingCount{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:30px;
+  min-height:18px;
+  padding:1px 5px;
+  border:1px solid rgba(255,255,255,.5);
+  border-radius:999px;
+  background:rgba(15,23,42,.22);
+  box-sizing:border-box;
+  font-size:10px;
+  line-height:1;
+  white-space:nowrap;
+}
+.bedDetailContent .pallet:has(.recordPalletPlantingCount){
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  justify-content:initial;
+  gap:5px;
+}
 .recordSeedlingCarryoverOption{
   border:0;
   border-radius:13px;
@@ -23359,7 +23401,10 @@ function closeBedDetailWindow(){
 
 function refreshBedDetailWindow(){
   if(isBedDetailWindowOpen()){
+    const body = document.getElementById("bedDetailWindowBody");
+    const scrollTop = body?.scrollTop || 0;
     renderBedDetailWindow();
+    if(body) body.scrollTop = scrollTop;
   }
 }
 
@@ -23493,15 +23538,21 @@ function startPalletDrag(event, context, building, bed, number){
   if(event.pointerType === "mouse" && event.button !== 0) return;
   const key = getPalletKey(building, bed, number);
   const isSelected = harvestFillKeys.includes(key);
+  const pendingTouchTap = event.pointerType === "touch";
   palletDragState = {
     pointerId: event.pointerId,
     context,
     mode: isSelected ? "remove" : "add",
     captureElement: event.currentTarget,
+    startX: event.clientX,
+    startY: event.clientY,
+    pendingTouchTap,
+    touchMoved: false,
     touchedKeys: new Set(),
     toastMessages: new Set(),
     changed: false
   };
+  if(pendingTouchTap) return;
   event.preventDefault();
   event.currentTarget?.setPointerCapture?.(event.pointerId);
   applyPalletDragTarget(event.currentTarget);
@@ -23509,17 +23560,34 @@ function startPalletDrag(event, context, building, bed, number){
 
 function handlePalletDragMove(event){
   if(!palletDragState || event.pointerId !== palletDragState.pointerId) return;
+  if(palletDragState.pendingTouchTap){
+    const distance = Math.hypot(
+      event.clientX - palletDragState.startX,
+      event.clientY - palletDragState.startY
+    );
+    if(distance > 8) palletDragState.touchMoved = true;
+    return;
+  }
   event.preventDefault();
   applyPalletDragTarget(getPalletElementFromPointer(event));
 }
 
 function finishPalletDrag(event){
   if(!palletDragState || event.pointerId !== palletDragState.pointerId) return;
-  event.preventDefault();
+  const pendingTouchTap = palletDragState.pendingTouchTap;
+  if(pendingTouchTap){
+    if(event.type !== "pointercancel" && !palletDragState.touchMoved){
+      applyPalletDragTarget(palletDragState.captureElement);
+    }
+  }else{
+    event.preventDefault();
+  }
   const changed = palletDragState.changed;
-  try{
-    palletDragState.captureElement?.releasePointerCapture?.(event.pointerId);
-  }catch(e){}
+  if(!pendingTouchTap){
+    try{
+      palletDragState.captureElement?.releasePointerCapture?.(event.pointerId);
+    }catch(e){}
+  }
   palletDragState = null;
   if(!changed) return;
 
@@ -23566,10 +23634,11 @@ function renderBedDetailWindow(){
   };
   title.ontouchcancel = handleBedDetailTitlePressEnd;
   body.innerHTML = "";
-  if(activeBedDetailContext === "forecast"){
+  if(activeBedDetailContext === "forecast"
+    || (activeBedDetailContext === "record" && recordSelectionMode === "planting")){
     const hint = document.createElement("div");
     hint.className = "bedDetailSelectionHint";
-    hint.textContent = "パレットをタップ、または指でなぞって選択・解除できます";
+    hint.textContent = "パレットをタップして選択・解除。上下にスワイプして移動できます";
     body.appendChild(hint);
   }
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
@@ -23692,7 +23761,7 @@ function appendRecordBedDetail(container, b){
       pallet.className = cls;
       if(recordSelectionMode === "planting" && isSelected){
         const plantingCount = getPlantingCountForSelectedKey(key);
-        pallet.innerHTML = `<span class="recordPalletNumber">${number}</span><span class="recordPalletPlantingCount">${plantingCount}</span>`;
+        pallet.innerHTML = `<span class="recordPalletNumber">${number}</span><span class="recordPalletPlantingCount">${plantingCount}株</span>`;
       }else{
         pallet.textContent = number;
       }

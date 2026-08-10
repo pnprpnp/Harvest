@@ -344,6 +344,27 @@
         await settleVisualApp(app);
         fingerprints.mobileRecord = getVisualFingerprint(app);
 
+        app.eval(`
+          window.__visualPreviousGetPlantingAllowedPalletSet = getPlantingAllowedPalletSet;
+          recordSelectionMode = "planting";
+          currentBuilding = 2;
+          harvestFillKeys = ["2-A-1", "2-A-2", "2-A-3"];
+          recordPlantingCountsByPallet = { "2-A-1": 12, "2-A-2": 16, "2-A-3": 20 };
+          getPlantingAllowedPalletSet = () => new Set(["2-A-1", "2-A-2", "2-A-3", "2-A-4"]);
+        `);
+        app.openBedDetailWindow("record", "A");
+        await settleVisualApp(app);
+        fingerprints.mobilePlantingBedDetail = getVisualFingerprint(app);
+        app.closeBedDetailWindow();
+        app.document.getElementById("bedDetailWindowBody").textContent = "";
+        app.eval(`
+          getPlantingAllowedPalletSet = window.__visualPreviousGetPlantingAllowedPalletSet;
+          delete window.__visualPreviousGetPlantingAllowedPalletSet;
+          recordSelectionMode = "harvest";
+          harvestFillKeys = [];
+          recordPlantingCountsByPallet = {};
+        `);
+
         app.switchTab("dashboard");
         await settleVisualApp(app);
         fingerprints.mobileDashboard = getVisualFingerprint(app);
@@ -1108,6 +1129,120 @@
         }, "植え付け数プリセットの選択状態が一致しません");
       });
 
+      await runTest("苗植えベッド詳細でパレット番号と株数を分けて押しやすく表示する", () => {
+        const detailState = comparable(app.eval(`(() => {
+          const previous = {
+            mode: recordSelectionMode,
+            building: currentBuilding,
+            keys: [...harvestFillKeys],
+            counts: { ...recordPlantingCountsByPallet },
+            getAllowed: getPlantingAllowedPalletSet
+          };
+          const host = document.createElement("div");
+          host.className = "bedDetailContent";
+          document.body.appendChild(host);
+          try{
+            recordSelectionMode = "planting";
+            currentBuilding = 2;
+            harvestFillKeys = ["2-A-1", "2-A-2"];
+            recordPlantingCountsByPallet = { "2-A-1": 12, "2-A-2": 16 };
+            getPlantingAllowedPalletSet = () => new Set(["2-A-1", "2-A-2", "2-A-3"]);
+            appendRecordBedDetail(host, "A");
+            const pallet = host.querySelector('[data-pallet-key="2-A-1"]');
+            const number = pallet?.querySelector(".recordPalletNumber");
+            const count = pallet?.querySelector(".recordPalletPlantingCount");
+            const style = pallet ? getComputedStyle(pallet) : null;
+            return {
+              number: number?.textContent || "",
+              count: count?.textContent || "",
+              layout: style?.display || "",
+              touchAction: style?.touchAction || "",
+              height: pallet?.getBoundingClientRect().height || 0,
+              countBoxSeparate: !!count && count.getBoundingClientRect().left > number.getBoundingClientRect().right
+            };
+          }finally{
+            recordSelectionMode = previous.mode;
+            currentBuilding = previous.building;
+            harvestFillKeys = previous.keys;
+            recordPlantingCountsByPallet = previous.counts;
+            getPlantingAllowedPalletSet = previous.getAllowed;
+            host.remove();
+          }
+        })()`));
+        assertEqual(detailState.number, "1", "パレット番号が表示されません");
+        assertEqual(detailState.count, "12株", "苗植え株数が独立した表示になりません");
+        assertEqual(detailState.layout, "grid", "番号と株数が横並びになりません");
+        assertEqual(detailState.touchAction, "pan-y", "詳細内を上下へスクロールできません");
+        assert(detailState.height >= 26, "パレットのタップ領域が十分な高さになっていません");
+        assert(detailState.countBoxSeparate, "パレット番号と苗植え株数が重なっています");
+      });
+
+      await runTest("苗植えベッド詳細では短いタップだけを選択として扱う", () => {
+        const touchState = comparable(app.eval(`(() => {
+          const previous = {
+            mode: recordSelectionMode,
+            apply: applyRecordPalletDragChange,
+            refresh: refreshAfterHarvestSelectionChanged,
+            refreshDetail: refreshBedDetailWindow
+          };
+          const pallet = document.createElement("div");
+          const changes = [];
+          let prevented = false;
+          try{
+            recordSelectionMode = "planting";
+            applyRecordPalletDragChange = (...args) => {
+              changes.push(args);
+              return true;
+            };
+            refreshAfterHarvestSelectionChanged = () => {};
+            refreshBedDetailWindow = () => {};
+            attachPalletDragHandlers(pallet, "record", 2, "A", 1);
+            startPalletDrag({
+              pointerType: "touch",
+              button: 0,
+              pointerId: 1,
+              clientX: 10,
+              clientY: 10,
+              currentTarget: pallet,
+              preventDefault(){ prevented = true; }
+            }, "record", 2, "A", 1);
+            const beforeTap = changes.length;
+            finishPalletDrag({ type: "pointerup", pointerId: 1, preventDefault(){} });
+            const afterTap = changes.length;
+
+            startPalletDrag({
+              pointerType: "touch",
+              button: 0,
+              pointerId: 2,
+              clientX: 10,
+              clientY: 10,
+              currentTarget: pallet,
+              preventDefault(){ prevented = true; }
+            }, "record", 2, "A", 1);
+            handlePalletDragMove({ pointerId: 2, clientX: 10, clientY: 30, preventDefault(){} });
+            finishPalletDrag({ type: "pointerup", pointerId: 2, preventDefault(){} });
+            return {
+              beforeTap,
+              afterTap,
+              afterSwipe: changes.length,
+              prevented
+            };
+          }finally{
+            palletDragState = null;
+            recordSelectionMode = previous.mode;
+            applyRecordPalletDragChange = previous.apply;
+            refreshAfterHarvestSelectionChanged = previous.refresh;
+            refreshBedDetailWindow = previous.refreshDetail;
+          }
+        })()`));
+        assertDeepEqual(touchState, {
+          beforeTap: 0,
+          afterTap: 1,
+          afterSwipe: 1,
+          prevented: false
+        }, "スクロール操作がパレット選択として扱われています");
+      });
+
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
         const inlineEventAttributes = [
           "onclick", "onchange", "oninput", "ontoggle", "onkeydown"
@@ -1530,16 +1665,17 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "38b92c61", elements: 2043, visible: 647, viewport: "390x844" },
-          cssStates: { hash: "05b94580", elements: 2111, visible: 706, viewport: "390x844" },
-          cssFocus: { hash: "7fbaf955", elements: 2111, visible: 706, viewport: "390x844" },
-          mobileRecord: { hash: "b9222faf", elements: 2044, visible: 136, viewport: "390x844" },
-          mobileDashboard: { hash: "57669755", elements: 2044, visible: 130, viewport: "390x844" },
-          mobileMenu: { hash: "fbcc0de3", elements: 2044, visible: 307, viewport: "390x844" },
-          mobileSettings: { hash: "07f4881f", elements: 2044, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "c7bd4fba", elements: 2044, visible: 91, viewport: "390x844" },
-          wideForecast: { hash: "c84ae511", elements: 2044, visible: 653, viewport: "1024x900" },
-          wideDashboard: { hash: "fe99ef64", elements: 2044, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "f0c885aa", elements: 2043, visible: 647, viewport: "390x844" },
+          cssStates: { hash: "ca3dd0bd", elements: 2111, visible: 706, viewport: "390x844" },
+          cssFocus: { hash: "328ac5d4", elements: 2111, visible: 706, viewport: "390x844" },
+          mobileRecord: { hash: "9da1431c", elements: 2044, visible: 136, viewport: "390x844" },
+          mobilePlantingBedDetail: { hash: "048b6013", elements: 2143, visible: 241, viewport: "390x844" },
+          mobileDashboard: { hash: "ddac8412", elements: 2044, visible: 130, viewport: "390x844" },
+          mobileMenu: { hash: "e1c45ad8", elements: 2044, visible: 307, viewport: "390x844" },
+          mobileSettings: { hash: "ec5259cc", elements: 2044, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "928fea89", elements: 2044, visible: 91, viewport: "390x844" },
+          wideForecast: { hash: "cfe5c4f2", elements: 2044, visible: 653, viewport: "1024x900" },
+          wideDashboard: { hash: "6f32610f", elements: 2044, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
