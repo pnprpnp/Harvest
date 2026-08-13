@@ -29,7 +29,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-13-zero-seedling-record";
+const API_BUILD_VERSION = "2026-08-13-own-write-revision-ack";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -354,7 +354,13 @@ function recordHarvestSyncChangesSafely(values) {
   const entries = (Array.isArray(values) ? values : [values])
     .map(normalizeSyncChangeEntry)
     .filter(Boolean);
-  if (!entries.length) return getHarvestSyncRevisionState().revision;
+  if (!entries.length) {
+    const currentRevision = getHarvestSyncRevisionState().revision;
+    return {
+      previousSyncRevision: currentRevision,
+      syncRevision: currentRevision
+    };
+  }
   try {
     return withRecordWriteLock(() => {
       const state = getHarvestSyncRevisionState();
@@ -402,22 +408,33 @@ function recordHarvestSyncChangesSafely(values) {
         nextFloorRevision = Math.max(nextFloorRevision, firstRetainedRevision - 1);
       }
       setHarvestSyncRevisionState(nextRevision, nextFloorRevision);
-      return nextRevision;
+      return {
+        previousSyncRevision: state.revision,
+        syncRevision: nextRevision
+      };
     });
   } catch (err) {
     console.error("同期変更履歴を保存できませんでした", err);
     try {
-      return invalidateHarvestSyncRevision(err && err.message || err);
+      return {
+        previousSyncRevision: null,
+        syncRevision: invalidateHarvestSyncRevision(err && err.message || err)
+      };
     } catch (invalidateError) {
       console.error("同期番号の全件確認切り替えにも失敗しました", invalidateError);
-      return null;
+      return {
+        previousSyncRevision: null,
+        syncRevision: null
+      };
     }
   }
 }
 
 function recordHarvestRecordSyncResult(result, action) {
-  if (!result || !result.record) return null;
-  if (action !== "delete" && (result.unchanged || result.duplicate)) return null;
+  if (!result || !result.record ||
+    (action !== "delete" && (result.unchanged || result.duplicate))) {
+    return recordHarvestSyncChangesSafely([]);
+  }
   return recordHarvestSyncChangesSafely({
     entityType: "record",
     recordUuid: result.record.recordUuid,
@@ -443,7 +460,7 @@ function recordPlantingEventSyncResult(result, sourceEvent, action) {
   requestScopedChangedHarvestRecordIds.forEach(entityId => {
     changes.push({ entityType: "record", entityId, action: "upsert" });
   });
-  return changes.length ? recordHarvestSyncChangesSafely(changes) : null;
+  return recordHarvestSyncChangesSafely(changes);
 }
 
 function findFirstSyncChangeRowAfter(sheet, revision) {
@@ -859,13 +876,14 @@ function doPost(e) {
     if (operation === "deleteRecord") {
       apiStage = "収穫記録の削除中";
       const result = deleteHarvestRecord(body.record);
-      recordHarvestRecordSyncResult(
+      const revisionAcknowledgement = recordHarvestRecordSyncResult(
         { ...result, record: result.record || body.record },
         "delete"
       );
       return jsonResponse({
         ok: true,
         ...result,
+        ...revisionAcknowledgement,
         record: result.record ? compactHarvestRecordForApi(result.record) : null
       });
     }
@@ -873,10 +891,11 @@ function doPost(e) {
     if (operation === "restoreRecord") {
       apiStage = "収穫記録の復元中";
       const result = restoreHarvestRecord(body.record);
-      recordHarvestRecordSyncResult(result, "upsert");
+      const revisionAcknowledgement = recordHarvestRecordSyncResult(result, "upsert");
       return jsonResponse({
         ok: true,
         ...result,
+        ...revisionAcknowledgement,
         record: result.record ? compactHarvestRecordForApi(result.record) : null
       });
     }
@@ -905,12 +924,12 @@ function doPost(e) {
     if (operation === "savePlantingEvent") {
       apiStage = "苗植えイベントの保存中";
       const result = savePlantingEvent(body.event);
-      const syncRevision = recordPlantingEventSyncResult(result, body.event, "upsert");
+      const revisionAcknowledgement = recordPlantingEventSyncResult(result, body.event, "upsert");
       apiStage = "苗植えイベントの応答作成中";
       return jsonResponse({
         ok: true,
         ...result,
-        syncRevision,
+        ...revisionAcknowledgement,
         message: result.updated ? "苗植えイベントを更新しました" : "苗植えイベントを保存しました"
       });
     }
@@ -918,22 +937,22 @@ function doPost(e) {
     if (operation === "deletePlantingEvent") {
       apiStage = "苗植えイベントの削除中";
       const result = deletePlantingEvent(body.event);
-      const syncRevision = recordPlantingEventSyncResult(result, body.event, "delete");
+      const revisionAcknowledgement = recordPlantingEventSyncResult(result, body.event, "delete");
       return jsonResponse({
         ok: true,
         ...result,
-        syncRevision
+        ...revisionAcknowledgement
       });
     }
 
     if (operation === "restorePlantingEvent") {
       apiStage = "苗植えイベントの復元中";
       const result = restorePlantingEvent(body.event);
-      const syncRevision = recordPlantingEventSyncResult(result, body.event, "upsert");
+      const revisionAcknowledgement = recordPlantingEventSyncResult(result, body.event, "upsert");
       return jsonResponse({
         ok: true,
         ...result,
-        syncRevision
+        ...revisionAcknowledgement
       });
     }
 
@@ -966,7 +985,7 @@ function doPost(e) {
     if (operation === "saveRecordBatch") {
       apiStage = "収穫記録の一括保存中";
       const result = saveHarvestRecordsBatch(body.records);
-      recordHarvestSyncChangesSafely(result.results
+      const revisionAcknowledgement = recordHarvestSyncChangesSafely(result.results
         .filter(item => item && item.ok === true && item.record && !item.duplicate)
         .map(item => ({
           entityType: "record",
@@ -978,6 +997,7 @@ function doPost(e) {
       return jsonResponse({
         ok: true,
         ...result,
+        ...revisionAcknowledgement,
         results: result.results.map(item => ({
           ...item,
           record: item.record ? compactHarvestRecordForApi(item.record) : item.record
@@ -988,13 +1008,14 @@ function doPost(e) {
     if (operation !== "saveRecord") throw new Error("許可されていない操作です");
     apiStage = "収穫記録の保存中";
     const result = saveHarvestRecord(body.record, body.duplicateKey);
-    recordHarvestRecordSyncResult(result, "upsert");
+    const revisionAcknowledgement = recordHarvestRecordSyncResult(result, "upsert");
 
     apiStage = "収穫記録の応答作成中";
     return jsonResponse({
       ok: true,
       duplicate: result.duplicate,
       updated: result.updated,
+      ...revisionAcknowledgement,
       record: result.record ? compactHarvestRecordForApi(result.record) : null,
       message: result.updated ? "記録を更新しました" : (result.duplicate ? "保存済みの記録です" : "保存しました")
     });

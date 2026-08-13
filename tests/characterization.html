@@ -953,6 +953,103 @@
         );
       });
 
+      await runTest("自端末の送信だけなら同期番号を進めて通知ドットを消す", () => {
+        const config = {
+          url: "https://example.test/harvestnavi-own-write-ack",
+          token: "test-token"
+        };
+        const previousRevisionStorage = app.eval(
+          "harvestnaviLocalStorage.getItem(GOOGLE_SHEET_SYNC_REVISION_KEY)"
+        );
+        try{
+          app.saveGoogleSheetSyncRevision(config, 40);
+          const record = app.normalizeRecordSnapshot({
+            palletNumberingVersion: 2,
+            id: 20000000000020,
+            recordUuid: "20202020-2020-4020-8020-202020202020",
+            type: "fullHarvest",
+            date: "2026-08-13",
+            cases: 12,
+            palletKeys: ["3-C-10"],
+            plantingPending: true
+          });
+          const event = app.normalizePlantingEvent({
+            palletNumberingVersion: 2,
+            eventId: 20000000000021,
+            plantingDate: "2026-08-13",
+            sourceAllocations: [{ harvestRecordId: record.id, palletKeys: ["3-C-10"] }],
+            plantingPalletKeys: ["3-C-10"],
+            actualSeedlingTrayCount: 1,
+            actualTakenSeedlingCount: 120,
+            actualPlantedSeedlingCount: 20,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "0",
+            qualityMemo: null,
+            detailsUnknown: false
+          });
+          const mutationPayloads = [
+            app.buildGoogleSheetRecordPayload(record, config),
+            app.buildGoogleSheetBatchPayload([record], config),
+            app.buildGoogleSheetRecordDeletePayload(record, config),
+            app.buildGoogleSheetRecordRestorePayload(record, config),
+            app.buildGoogleSheetPlantingEventPayload(event, config, "save"),
+            app.buildGoogleSheetPlantingEventPayload(event, config, "delete"),
+            app.buildGoogleSheetPlantingEventPayload(event, config, "restore")
+          ];
+          mutationPayloads.forEach(payload => {
+            assertEqual(payload.syncRevision, 40, "送信前の同期番号が変更操作へ入りません");
+          });
+
+          app.setRecordSyncAvailabilityNotice(true);
+          assertEqual(
+            app.acknowledgeGoogleSheetMutationRevision(config, 40, {
+              previousSyncRevision: 40,
+              syncRevision: 42
+            }),
+            true,
+            "自端末だけの更新を確認済みにできません"
+          );
+          assertEqual(app.loadGoogleSheetSyncRevision(config), 42, "送信後の同期番号を保存できません");
+          assertEqual(
+            app.document.getElementById("headerRecordSyncBtn").classList.contains("hasAvailabilityNotice"),
+            false,
+            "自端末だけの更新で通知ドットが残りました"
+          );
+
+          assertEqual(
+            app.acknowledgeGoogleSheetMutationRevision(config, 42, {
+              previousSyncRevision: 43,
+              syncRevision: 44
+            }),
+            false,
+            "別端末の更新が混ざった同期番号を確認済みにしました"
+          );
+          assertEqual(app.loadGoogleSheetSyncRevision(config), 42, "別端末の更新を飛び越えて同期番号を進めました");
+          assertEqual(
+            app.document.getElementById("headerRecordSyncBtn").classList.contains("hasAvailabilityNotice"),
+            true,
+            "別端末の更新が混ざったのに通知ドットが出ません"
+          );
+
+          appsScript.resetAppsScriptTestState();
+          appsScript.__appsScriptTestState.propertyValues.HARVEST_SYNC_REVISION_V1 = "42";
+          appsScript.__appsScriptTestState.propertyValues.HARVEST_SYNC_REVISION_FLOOR_V1 = "30";
+          assertDeepEqual(
+            comparable(appsScript.recordHarvestSyncChangesSafely([])),
+            { previousSyncRevision: 42, syncRevision: 42 },
+            "変更なしの応答で送信前後の同期番号を返せません"
+          );
+        }finally{
+          app.eval(`(() => {
+            const previous = ${JSON.stringify(previousRevisionStorage)};
+            if(previous === null) harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+            else harvestnaviLocalStorage.setItem(GOOGLE_SHEET_SYNC_REVISION_KEY, previous);
+          })()`);
+          app.setRecordSyncAvailabilityNotice(false);
+          appsScript.resetAppsScriptTestState();
+        }
+      });
+
       await runTest("Apps Script側で不正な操作と記録を拒否する", () => {
         assertThrows(
           () => appsScript.resolveApiOperation({ action: "syncAll", type: "harvest-record-list" }),

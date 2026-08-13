@@ -122,13 +122,14 @@ function doPost(e) {
     if (operation === "deleteRecord") {
       apiStage = "収穫記録の削除中";
       const result = deleteHarvestRecord(body.record);
-      recordHarvestRecordSyncResult(
+      const revisionAcknowledgement = recordHarvestRecordSyncResult(
         { ...result, record: result.record || body.record },
         "delete"
       );
       return jsonResponse({
         ok: true,
         ...result,
+        ...revisionAcknowledgement,
         record: result.record ? compactHarvestRecordForApi(result.record) : null
       });
     }
@@ -136,10 +137,11 @@ function doPost(e) {
     if (operation === "restoreRecord") {
       apiStage = "収穫記録の復元中";
       const result = restoreHarvestRecord(body.record);
-      recordHarvestRecordSyncResult(result, "upsert");
+      const revisionAcknowledgement = recordHarvestRecordSyncResult(result, "upsert");
       return jsonResponse({
         ok: true,
         ...result,
+        ...revisionAcknowledgement,
         record: result.record ? compactHarvestRecordForApi(result.record) : null
       });
     }
@@ -168,12 +170,12 @@ function doPost(e) {
     if (operation === "savePlantingEvent") {
       apiStage = "苗植えイベントの保存中";
       const result = savePlantingEvent(body.event);
-      const syncRevision = recordPlantingEventSyncResult(result, body.event, "upsert");
+      const revisionAcknowledgement = recordPlantingEventSyncResult(result, body.event, "upsert");
       apiStage = "苗植えイベントの応答作成中";
       return jsonResponse({
         ok: true,
         ...result,
-        syncRevision,
+        ...revisionAcknowledgement,
         message: result.updated ? "苗植えイベントを更新しました" : "苗植えイベントを保存しました"
       });
     }
@@ -181,22 +183,22 @@ function doPost(e) {
     if (operation === "deletePlantingEvent") {
       apiStage = "苗植えイベントの削除中";
       const result = deletePlantingEvent(body.event);
-      const syncRevision = recordPlantingEventSyncResult(result, body.event, "delete");
+      const revisionAcknowledgement = recordPlantingEventSyncResult(result, body.event, "delete");
       return jsonResponse({
         ok: true,
         ...result,
-        syncRevision
+        ...revisionAcknowledgement
       });
     }
 
     if (operation === "restorePlantingEvent") {
       apiStage = "苗植えイベントの復元中";
       const result = restorePlantingEvent(body.event);
-      const syncRevision = recordPlantingEventSyncResult(result, body.event, "upsert");
+      const revisionAcknowledgement = recordPlantingEventSyncResult(result, body.event, "upsert");
       return jsonResponse({
         ok: true,
         ...result,
-        syncRevision
+        ...revisionAcknowledgement
       });
     }
 
@@ -229,7 +231,7 @@ function doPost(e) {
     if (operation === "saveRecordBatch") {
       apiStage = "収穫記録の一括保存中";
       const result = saveHarvestRecordsBatch(body.records);
-      recordHarvestSyncChangesSafely(result.results
+      const revisionAcknowledgement = recordHarvestSyncChangesSafely(result.results
         .filter(item => item && item.ok === true && item.record && !item.duplicate)
         .map(item => ({
           entityType: "record",
@@ -241,6 +243,7 @@ function doPost(e) {
       return jsonResponse({
         ok: true,
         ...result,
+        ...revisionAcknowledgement,
         results: result.results.map(item => ({
           ...item,
           record: item.record ? compactHarvestRecordForApi(item.record) : item.record
@@ -251,13 +254,14 @@ function doPost(e) {
     if (operation !== "saveRecord") throw new Error("許可されていない操作です");
     apiStage = "収穫記録の保存中";
     const result = saveHarvestRecord(body.record, body.duplicateKey);
-    recordHarvestRecordSyncResult(result, "upsert");
+    const revisionAcknowledgement = recordHarvestRecordSyncResult(result, "upsert");
 
     apiStage = "収穫記録の応答作成中";
     return jsonResponse({
       ok: true,
       duplicate: result.duplicate,
       updated: result.updated,
+      ...revisionAcknowledgement,
       record: result.record ? compactHarvestRecordForApi(result.record) : null,
       message: result.updated ? "記録を更新しました" : (result.duplicate ? "保存済みの記録です" : "保存しました")
     });

@@ -433,6 +433,7 @@ async function sendRecordToGoogleSheet(record, options = {}){
     if(result.ok !== true){
       throw new Error(result.message || "スプレッドシートへの送信に失敗しました");
     }
+    acknowledgeGoogleSheetMutationRevision(config, payloadObject.syncRevision, result);
 
     if(!setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config, "confirmed", result.record)){
       if(showNotice) showToast("送信中に記録が変更されたため、最新版を再送してください");
@@ -468,7 +469,8 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_BATCH_TIMEOUT_MS);
 
   try{
-    const payload = buildValidatedGoogleSheetRequestBody(buildGoogleSheetBatchPayload(recordSnapshots, config));
+    const payloadObject = buildGoogleSheetBatchPayload(recordSnapshots, config);
+    const payload = buildValidatedGoogleSheetRequestBody(payloadObject);
     const response = await fetch(config.url, {
       method: "POST",
       mode: "cors",
@@ -489,6 +491,7 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
     if(!Array.isArray(result.results) || result.results.length > recordSnapshots.length){
       throw new Error("スプレッドシートの応答件数が正しくありません");
     }
+    acknowledgeGoogleSheetMutationRevision(config, payloadObject.syncRevision, result);
 
     const totals = { successCount: 0, updatedCount: 0, duplicateCount: 0, failCount: 0 };
     let firstError = "";

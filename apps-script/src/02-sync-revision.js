@@ -117,7 +117,13 @@ function recordHarvestSyncChangesSafely(values) {
   const entries = (Array.isArray(values) ? values : [values])
     .map(normalizeSyncChangeEntry)
     .filter(Boolean);
-  if (!entries.length) return getHarvestSyncRevisionState().revision;
+  if (!entries.length) {
+    const currentRevision = getHarvestSyncRevisionState().revision;
+    return {
+      previousSyncRevision: currentRevision,
+      syncRevision: currentRevision
+    };
+  }
   try {
     return withRecordWriteLock(() => {
       const state = getHarvestSyncRevisionState();
@@ -165,22 +171,33 @@ function recordHarvestSyncChangesSafely(values) {
         nextFloorRevision = Math.max(nextFloorRevision, firstRetainedRevision - 1);
       }
       setHarvestSyncRevisionState(nextRevision, nextFloorRevision);
-      return nextRevision;
+      return {
+        previousSyncRevision: state.revision,
+        syncRevision: nextRevision
+      };
     });
   } catch (err) {
     console.error("同期変更履歴を保存できませんでした", err);
     try {
-      return invalidateHarvestSyncRevision(err && err.message || err);
+      return {
+        previousSyncRevision: null,
+        syncRevision: invalidateHarvestSyncRevision(err && err.message || err)
+      };
     } catch (invalidateError) {
       console.error("同期番号の全件確認切り替えにも失敗しました", invalidateError);
-      return null;
+      return {
+        previousSyncRevision: null,
+        syncRevision: null
+      };
     }
   }
 }
 
 function recordHarvestRecordSyncResult(result, action) {
-  if (!result || !result.record) return null;
-  if (action !== "delete" && (result.unchanged || result.duplicate)) return null;
+  if (!result || !result.record ||
+    (action !== "delete" && (result.unchanged || result.duplicate))) {
+    return recordHarvestSyncChangesSafely([]);
+  }
   return recordHarvestSyncChangesSafely({
     entityType: "record",
     recordUuid: result.record.recordUuid,
@@ -206,7 +223,7 @@ function recordPlantingEventSyncResult(result, sourceEvent, action) {
   requestScopedChangedHarvestRecordIds.forEach(entityId => {
     changes.push({ entityType: "record", entityId, action: "upsert" });
   });
-  return changes.length ? recordHarvestSyncChangesSafely(changes) : null;
+  return recordHarvestSyncChangesSafely(changes);
 }
 
 function findFirstSyncChangeRowAfter(sheet, revision) {

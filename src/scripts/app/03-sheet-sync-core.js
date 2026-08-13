@@ -260,6 +260,29 @@ function saveGoogleSheetSyncRevision(config, revision){
   });
 }
 
+function getGoogleSheetMutationSyncRevision(config){
+  return loadGoogleSheetSyncRevision(config);
+}
+
+function acknowledgeGoogleSheetMutationRevision(config, requestedRevision, result){
+  const sentRevision = normalizeGoogleSheetSyncRevision(requestedRevision);
+  const currentLocalRevision = loadGoogleSheetSyncRevision(config);
+  const previousRemoteRevision = normalizeGoogleSheetSyncRevision(result?.previousSyncRevision);
+  const nextRemoteRevision = normalizeGoogleSheetSyncRevision(result?.syncRevision);
+  if(sentRevision === null || currentLocalRevision !== sentRevision
+    || previousRemoteRevision === null || nextRemoteRevision === null
+    || previousRemoteRevision !== sentRevision || nextRemoteRevision < previousRemoteRevision){
+    if(sentRevision !== null && previousRemoteRevision !== null
+      && previousRemoteRevision !== sentRevision){
+      setRecordSyncAvailabilityNotice(true);
+    }
+    return false;
+  }
+  saveGoogleSheetSyncRevision(config, nextRemoteRevision);
+  setRecordSyncAvailabilityNotice(false);
+  return true;
+}
+
 function populateGoogleSheetConfigForm(){
   const config = loadGoogleSheetConfig();
   const validation = validateGoogleSheetConfig(config);
@@ -1340,6 +1363,7 @@ function buildGoogleSheetRecordPayload(record, config){
     type: "harvest-record",
     version: 1,
     token: config.token || "",
+    syncRevision: getGoogleSheetMutationSyncRevision(config),
     duplicateKey,
     record: {
       ...syncMetadata,
@@ -1405,6 +1429,7 @@ function buildGoogleSheetBatchPayload(recordsToSend, config){
     type: "harvest-record-batch",
     version: 1,
     token: config.token || "",
+    syncRevision: getGoogleSheetMutationSyncRevision(config),
     records: recordsToSend.map(record => buildGoogleSheetRecordPayload(record, config).record)
   };
 }
@@ -1416,6 +1441,7 @@ function buildGoogleSheetRecordDeletePayload(record, config){
     action: "deleteRecord",
     version: 1,
     token: config.token || "",
+    syncRevision: getGoogleSheetMutationSyncRevision(config),
     record: buildGoogleSheetRecordPayload(record, config).record
   };
 }
@@ -1427,6 +1453,7 @@ function buildGoogleSheetRecordRestorePayload(record, config){
     action: "restoreRecord",
     version: 1,
     token: config.token || "",
+    syncRevision: getGoogleSheetMutationSyncRevision(config),
     record: buildGoogleSheetRecordPayload(record, config).record
   };
 }
@@ -1476,6 +1503,7 @@ function buildGoogleSheetPlantingEventPayload(event, config, operation = "save")
     ...operationConfig,
     version: 1,
     token: config.token || "",
+    syncRevision: getGoogleSheetMutationSyncRevision(config),
     event: getPlantingEventForGoogleTransfer(event)
   };
 }
@@ -1520,13 +1548,12 @@ async function postGoogleSheetPlantingEvent(event, operation = "save", options =
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_BATCH_TIMEOUT_MS);
 
   try{
+    const payloadObject = buildGoogleSheetPlantingEventPayload(snapshot, config, operation);
     const response = await fetch(config.url, {
       method: "POST",
       mode: "cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: buildValidatedGoogleSheetRequestBody(
-        buildGoogleSheetPlantingEventPayload(snapshot, config, operation)
-      ),
+      body: buildValidatedGoogleSheetRequestBody(payloadObject),
       signal: controller.signal
     });
     const text = await response.text();
@@ -1538,6 +1565,7 @@ async function postGoogleSheetPlantingEvent(event, operation = "save", options =
       throw new Error("スプレッドシートの応答を読み込めません");
     }
     if(result.ok !== true) throw new Error(result.message || "苗植え記録をスプレッドシートへ送信できませんでした");
+    acknowledgeGoogleSheetMutationRevision(config, payloadObject.syncRevision, result);
 
     if(operation === "save"){
       const current = getPlantingEventById(snapshot.eventId);
@@ -1683,6 +1711,7 @@ async function sendGoogleSheetRecordMutation(payload, failureMessage, options = 
       throw new Error("スプレッドシートの応答を読み込めません");
     }
     if(result.ok !== true) throw new Error(result.message || failureMessage);
+    acknowledgeGoogleSheetMutationRevision(config, payload?.syncRevision, result);
     return result;
   }catch(e){
     if(e?.name === "AbortError") throw new Error("スプレッドシートとの通信がタイムアウトしました");
