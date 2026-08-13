@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260813-current-version-display">
+<meta name="harvestnavi-version" content="20260813-active-tab-scroll-top">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8876,20 +8876,20 @@ requestAnimationFrame(function(){
 </div>
 
 <nav class="tabBar" aria-label="メインタブ">
-    <button id="forecastTabBtn" class="tabBtn hasTabIcon active" data-ui-click="switchTab" data-ui-arg="forecast">
+    <button id="forecastTabBtn" class="tabBtn hasTabIcon active" data-ui-click="handleMainTabPress" data-ui-arg="forecast">
       <span class="tabIconFrame" aria-hidden="true"><span class="tabIcon forecastTabIcon"></span></span>
       <span class="tabBtnText">シミュ</span>
     </button>
-    <button id="monitorTabBtn" class="tabBtn hasTabIcon" data-ui-click="switchTab" data-ui-arg="monitor">
+    <button id="monitorTabBtn" class="tabBtn hasTabIcon" data-ui-click="handleMainTabPress" data-ui-arg="monitor">
       <span class="tabIconFrame" aria-hidden="true"><span class="tabIcon monitorTabIcon"></span></span>
       <span class="tabBtnText">モニター</span>
     </button>
-    <button id="recordTabBtn" class="tabBtn hasTabIcon" data-ui-click="switchTab" data-ui-arg="record">
+    <button id="recordTabBtn" class="tabBtn hasTabIcon" data-ui-click="handleMainTabPress" data-ui-arg="record">
       <span class="tabIconFrame" aria-hidden="true"><span class="tabIcon recordTabIcon"></span></span>
       <span class="tabBtnText">記録</span>
       <span id="recordTabConflictBadge" class="recordTabConflictBadge" aria-label="未解決の競合" hidden>0</span>
     </button>
-    <button id="dashboardTabBtn" class="tabBtn hasTabIcon" data-ui-click="switchTab" data-ui-arg="dashboard">
+    <button id="dashboardTabBtn" class="tabBtn hasTabIcon" data-ui-click="handleMainTabPress" data-ui-arg="dashboard">
       <span class="tabIconFrame" aria-hidden="true">
         <span class="tabIcon dashboardTabIcon">
           <svg viewBox="0 0 24 24" focusable="false">
@@ -12651,6 +12651,18 @@ function restoreTabScrollPosition(tabName){
   requestAnimationFrame(() => {
     window.scrollTo({ top, behavior: "auto" });
   });
+}
+
+function handleMainTabPress(tabName){
+  tabName = normalizeMainTabName(tabName);
+  if(!tabName) return false;
+  if(tabName !== activeAppTab) return switchTab(tabName);
+  tabScrollPositions[tabName] = 0;
+  window.scrollTo({
+    top: 0,
+    behavior: getWorkflowScrollBehavior("smooth")
+  });
+  return true;
 }
 
 function setMainTabSelection(tabName){

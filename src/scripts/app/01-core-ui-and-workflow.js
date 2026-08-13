@@ -2268,6 +2268,18 @@ function restoreTabScrollPosition(tabName){
   });
 }
 
+function handleMainTabPress(tabName){
+  tabName = normalizeMainTabName(tabName);
+  if(!tabName) return false;
+  if(tabName !== activeAppTab) return switchTab(tabName);
+  tabScrollPositions[tabName] = 0;
+  window.scrollTo({
+    top: 0,
+    behavior: getWorkflowScrollBehavior("smooth")
+  });
+  return true;
+}
+
 function setMainTabSelection(tabName){
   MAIN_TAB_NAMES.forEach(name => {
     const isSelected = name === tabName;

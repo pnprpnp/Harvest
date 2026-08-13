@@ -415,6 +415,7 @@
         "showPageBlockingUi",
         "hidePageBlockingUi",
         "normalizeMainTabName",
+        "handleMainTabPress",
         "setMainTabSelection",
         "setMainTabLoadingState",
         "switchTab",
@@ -1186,21 +1187,47 @@
         const previousCheck = app.checkHarvestnaviAppUpdate;
         const status = app.document.getElementById("appUpdateCheckStatus");
         const previousStatus = status?.textContent || "";
+        const declaredVersion = app.document
+          .querySelector('meta[name="harvestnavi-version"]')
+          ?.getAttribute("content") || "";
         try{
           app.checkHarvestnaviAppUpdate = async () => ({
             updateAvailable: false,
-            currentVersion: "20260813-current-version-display",
-            latestVersion: "20260813-current-version-display"
+            currentVersion: declaredVersion,
+            latestVersion: declaredVersion
           });
           await app.checkLatestAppFromMenu();
           assertEqual(
             status?.textContent || "",
-            "現在のバージョンは20260813-current-version-displayです",
+            `現在のバージョンは${declaredVersion}です`,
             "現在のバージョン番号が表示されません"
           );
         }finally{
           app.checkHarvestnaviAppUpdate = previousCheck;
           if(status) status.textContent = previousStatus;
+        }
+      });
+
+      await runTest("表示中のメインタブを押すとそのタブの先頭へ戻る", () => {
+        const previousScrollTo = app.scrollTo;
+        const scrollCalls = [];
+        try{
+          app.eval(`
+            activeAppTab = "forecast";
+            tabScrollPositions.forecast = 480;
+          `);
+          app.scrollTo = options => scrollCalls.push(options);
+          app.document.getElementById("forecastTabBtn")?.click();
+          assertDeepEqual(comparable(scrollCalls), [
+            { top: 0, behavior: "smooth" }
+          ], "表示中のタブを押しても先頭へ移動しません");
+          assertEqual(
+            app.eval("tabScrollPositions.forecast"),
+            0,
+            "先頭へ戻った後のスクロール位置が保存されません"
+          );
+        }finally{
+          app.scrollTo = previousScrollTo;
         }
       });
 
