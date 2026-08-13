@@ -26485,6 +26485,18 @@ function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCou
   });
 }
 
+function isMonitorBedFullySelected(numbers, building, bed, recordedSet){
+  const selected = new Set(Array.isArray(numbers) ? numbers : []);
+  let selectableCount = 0;
+  for(let number = 1; number <= PALLETS_PER_BED; number++){
+    const key = getPalletKey(building, bed, number);
+    if(recordedSet?.has(key)) continue;
+    selectableCount++;
+    if(!selected.has(number)) return false;
+  }
+  return selectableCount > 0;
+}
+
 function getMonitorSelectionMapHtml(keysOverride){
   const sourceKeys = Array.isArray(keysOverride) ? keysOverride : harvestFillKeys;
   if(!sourceKeys.length){
@@ -26518,7 +26530,7 @@ function getMonitorSelectionMapHtml(keysOverride){
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
               const selectedCount = new Set(numbers).size;
-              const isFullBed = selectedCount >= PALLETS_PER_BED;
+              const isFullBed = isMonitorBedFullySelected(numbers, building, bed, recordedSet);
               const hasPartialHarvest = getPartialHarvestCountForPallet(building, bed, 1) > 0;
               let recordedCount = 0;
               for(let number = 1; number <= PALLETS_PER_BED; number++){

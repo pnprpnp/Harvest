@@ -1145,6 +1145,43 @@
         assertEqual(app.normalizeMainTabName("unknown"), "", "不明なタブを受け入れています");
       });
 
+      await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
+        const monitorState = comparable(app.eval(`(() => {
+          const previousGetRecorded = getRecordedPalletSet;
+          const selectedKeys = Array.from(
+            { length: PALLETS_PER_BED - 2 },
+            (_, index) => getPalletKey(2, "A", index + 1)
+          );
+          const recordedSet = new Set([
+            getPalletKey(2, "A", PALLETS_PER_BED - 1),
+            getPalletKey(2, "A", PALLETS_PER_BED)
+          ]);
+          const readBedState = keys => {
+            const host = document.createElement("div");
+            host.innerHTML = getMonitorSelectionMapHtml(keys);
+            const card = [...host.querySelectorAll(".monitorBedCard")]
+              .find(item => item.querySelector(".monitorBedName")?.textContent === "A");
+            return {
+              full: card?.classList.contains("full") || false,
+              segments: card?.querySelectorAll(".monitorBedSegment").length || 0
+            };
+          };
+          try{
+            getRecordedPalletSet = () => recordedSet;
+            return {
+              allSelectableSelected: readBedState(selectedKeys),
+              oneSelectableMissing: readBedState(selectedKeys.slice(0, -1))
+            };
+          }finally{
+            getRecordedPalletSet = previousGetRecorded;
+          }
+        })()`));
+        assertDeepEqual(monitorState, {
+          allSelectableSelected: { full: true, segments: 6 },
+          oneSelectableMissing: { full: false, segments: 6 }
+        }, "モニターの簡易パレット連結条件が選択可能パレットと一致しません");
+      });
+
       await runTest("タブ画面を先に切り替え、短い処理ではロード中を見せない", async () => {
         const loadingState = app.document.getElementById("mainTabLoadingState");
         app.eval("protectedAccessUnlocked = true");
