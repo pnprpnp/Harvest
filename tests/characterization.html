@@ -1505,6 +1505,62 @@
         }, "12植えと16植えの色が配置図と色例で一致していません");
       });
 
+      await runTest("部分収穫済みパレットを選択した時は選択中の色だけを表示する", () => {
+        const colorMatches = comparable(app.eval(`(() => {
+          const host = document.createElement("div");
+          host.innerHTML = [
+            '<div class="bedMiniMapBar">',
+            '<span class="bedMiniMapSegment selected active"></span>',
+            '<span class="bedMiniMapSegment selected active partialHarvest"></span>',
+            '<span class="bedMiniMapSegment selected partial"></span>',
+            '<span class="bedMiniMapSegment selected partial partialHarvest"></span>',
+            '</div>',
+            '<div class="palletGrid">',
+            '<span class="pallet harvestFill"></span>',
+            '<span class="pallet harvestFill partialHarvestPallet"></span>',
+            '<span class="pallet harvestStart"></span>',
+            '<span class="pallet harvestStart partialHarvestPallet"></span>',
+            '<span class="pallet harvestEnd"></span>',
+            '<span class="pallet harvestEnd partialHarvestPallet"></span>',
+            '</div>',
+            '<span class="simulationBedMapCell is-selected"></span>',
+            '<span class="simulationBedMapCell is-selected is-partial-harvest"></span>',
+            '<div class="monitorBedBar">',
+            '<span class="monitorBedSegment selected active"></span>',
+            '<span class="monitorBedSegment selected active partialHarvest"></span>',
+            '<span class="monitorBedSegment selected partial"></span>',
+            '<span class="monitorBedSegment selected partial partialHarvest"></span>',
+            '</div>'
+          ].join("");
+          document.body.appendChild(host);
+          try{
+            const selectors = [
+              [".bedMiniMapSegment.selected.active:not(.partialHarvest)", ".bedMiniMapSegment.selected.active.partialHarvest"],
+              [".bedMiniMapSegment.selected.partial:not(.partialHarvest)", ".bedMiniMapSegment.selected.partial.partialHarvest"],
+              [".pallet.harvestFill:not(.partialHarvestPallet)", ".pallet.harvestFill.partialHarvestPallet"],
+              [".pallet.harvestStart:not(.partialHarvestPallet)", ".pallet.harvestStart.partialHarvestPallet"],
+              [".pallet.harvestEnd:not(.partialHarvestPallet)", ".pallet.harvestEnd.partialHarvestPallet"],
+              [".simulationBedMapCell.is-selected:not(.is-partial-harvest)", ".simulationBedMapCell.is-selected.is-partial-harvest"],
+              [".monitorBedSegment.selected.active:not(.partialHarvest)", ".monitorBedSegment.selected.active.partialHarvest"],
+              [".monitorBedSegment.selected.partial:not(.partialHarvest)", ".monitorBedSegment.selected.partial.partialHarvest"]
+            ];
+            const properties = ["backgroundColor", "backgroundImage", "borderColor", "boxShadow"];
+            return selectors.map(([plainSelector, partialSelector]) => {
+              const plainStyle = getComputedStyle(host.querySelector(plainSelector));
+              const partialStyle = getComputedStyle(host.querySelector(partialSelector));
+              return properties.every(property => plainStyle[property] === partialStyle[property]);
+            });
+          }finally{
+            host.remove();
+          }
+        })()`));
+        assertDeepEqual(
+          colorMatches,
+          [true, true, true, true, true, true, true, true],
+          "部分収穫の色が選択中の色へ置き換わっていません"
+        );
+      });
+
       await runTest("起動処理を機能別に分け、画面操作を共通登録する", () => {
         const inlineEventAttributes = [
           "onclick", "onchange", "oninput", "ontoggle", "onkeydown"
@@ -1928,8 +1984,8 @@
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
           mobileForecast: { hash: "316c0e25", elements: 2043, visible: 647, viewport: "390x844" },
-          cssStates: { hash: "71daa36c", elements: 2111, visible: 706, viewport: "390x844" },
-          cssFocus: { hash: "685dd9e1", elements: 2111, visible: 706, viewport: "390x844" },
+          cssStates: { hash: "13e15ff5", elements: 2111, visible: 706, viewport: "390x844" },
+          cssFocus: { hash: "e8248d9c", elements: 2111, visible: 706, viewport: "390x844" },
           mobileRecord: { hash: "6b9955fb", elements: 2044, visible: 136, viewport: "390x844" },
           mobileDashboard: { hash: "abad67e1", elements: 2044, visible: 130, viewport: "390x844" },
           mobileMenu: { hash: "39c23247", elements: 2044, visible: 307, viewport: "390x844" },
