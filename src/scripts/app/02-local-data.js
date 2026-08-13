@@ -571,8 +571,9 @@ function normalizeRecordSnapshot(record, overrides = null){
     : null;
 }
 
-function normalizePlantingEventSourceAllocations(value){
+function normalizePlantingEventSourceAllocations(value, options = {}){
   if(!Array.isArray(value) || value.length > GOOGLE_SHEET_MAX_LIST_RECORDS) return [];
+  const allowEmptyPalletKeys = options.allowEmptyPalletKeys === true;
   const allocations = [];
   const seenLots = new Set();
   const seenPalletKeys = new Set();
@@ -592,7 +593,6 @@ function normalizePlantingEventSourceAllocations(value){
         ? getDirectPalletKeys(allocation.palletKeys)
         : null;
     }else if(Array.isArray(allocation.palletRanges)
-      && allocation.palletRanges.length > 0
       && allocation.palletRanges.length <= RECORD_MAX_PALLET_KEYS){
       const expandedKeys = [];
       const expandedKeySet = new Set();
@@ -633,7 +633,9 @@ function normalizePlantingEventSourceAllocations(value){
         palletKeys = expandedKeys.sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
       }
     }
-    if(harvestRecordId === null || !palletKeys?.length){
+    if(harvestRecordId === null
+      || !Array.isArray(palletKeys)
+      || (!palletKeys.length && !allowEmptyPalletKeys)){
       hasDuplicatePalletKey = true;
       return;
     }
@@ -652,7 +654,9 @@ function normalizePlantingEventSourceAllocations(value){
       seenPalletKeys.add(key);
       return true;
     });
-    if(uniqueKeys.length) allocations.push({ harvestRecordId, palletKeys: uniqueKeys });
+    if(uniqueKeys.length || allowEmptyPalletKeys){
+      allocations.push({ harvestRecordId, palletKeys: uniqueKeys });
+    }
   });
 
   return hasDuplicatePalletKey ? [] : allocations;
@@ -665,12 +669,27 @@ function normalizePlantingEvent(value){
   const plantingDate = String(value.plantingDate || "").trim();
   if(eventId === null || !isStrictDateOnlyString(plantingDate)) return null;
 
-  const sourceAllocations = normalizePlantingEventSourceAllocations(value.sourceAllocations);
+  const actualSeedlingTrayCount = getStrictIntegerInRange(
+    value.actualSeedlingTrayCount ?? 0,
+    0,
+    RECORD_MAX_SEEDLING_TRAYS
+  );
+  if(actualSeedlingTrayCount === null) return null;
+  const sourceAllocations = normalizePlantingEventSourceAllocations(value.sourceAllocations, {
+    allowEmptyPalletKeys: actualSeedlingTrayCount === 0
+  });
   if(!sourceAllocations.length) return null;
   const allocatedPalletKeys = [...new Set(sourceAllocations.flatMap(allocation => allocation.palletKeys))]
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   const directPlantingKeys = getDirectPalletKeys(value.plantingPalletKeys);
   const plantingPalletKeys = directPlantingKeys?.length ? directPlantingKeys : allocatedPalletKeys;
+  const noPlantingEvent = actualSeedlingTrayCount === 0
+    && sourceAllocations.length === 1
+    && sourceAllocations[0].palletKeys.length === 0
+    && plantingPalletKeys.length === 0;
+  if(sourceAllocations.some(allocation => allocation.palletKeys.length === 0) && !noPlantingEvent){
+    return null;
+  }
   if(plantingPalletKeys.length !== allocatedPalletKeys.length
     || plantingPalletKeys.some((key, index) => key !== allocatedPalletKeys[index])){
     return null;
@@ -681,12 +700,6 @@ function normalizePlantingEvent(value){
     value.plantingCountsByPallet
   );
 
-  const actualSeedlingTrayCount = getStrictIntegerInRange(
-    value.actualSeedlingTrayCount ?? 0,
-    0,
-    RECORD_MAX_SEEDLING_TRAYS
-  );
-  if(actualSeedlingTrayCount === null) return null;
   const fallbackTakenSeedlingCount = getSeedlingCountFromTrayCount(actualSeedlingTrayCount);
   const rawTakenSeedlingCount = String(value.actualTakenSeedlingCount ?? "").trim() === ""
     ? fallbackTakenSeedlingCount
@@ -709,6 +722,9 @@ function normalizePlantingEvent(value){
     999999999
   );
   if(actualTakenSeedlingCount === null || actualPlantedSeedlingCount === null) return null;
+  if(noPlantingEvent && (actualTakenSeedlingCount !== 0 || actualPlantedSeedlingCount !== 0)){
+    return null;
+  }
   const actualSeedlingCarryoverMode = normalizeSeedlingCarryoverMode(value.actualSeedlingCarryoverMode);
   const rawLossRate = String(value.actualSeedlingLossRate ?? "").trim();
   if(rawLossRate !== "" && getStrictDecimalInRange(rawLossRate, 0, 100) === null) return null;
@@ -741,6 +757,17 @@ function normalizePlantingEvent(value){
     createdAt: String(value.createdAt || "").slice(0, 64),
     updatedAt: String(value.updatedAt || "").slice(0, 64)
   };
+}
+
+function isNoPlantingEvent(event){
+  return !!event
+    && Number(event.actualSeedlingTrayCount) === 0
+    && Array.isArray(event.plantingPalletKeys)
+    && event.plantingPalletKeys.length === 0
+    && Array.isArray(event.sourceAllocations)
+    && event.sourceAllocations.length === 1
+    && Array.isArray(event.sourceAllocations[0]?.palletKeys)
+    && event.sourceAllocations[0].palletKeys.length === 0;
 }
 
 function serializePlantingEventForStorage(event){
@@ -1078,6 +1105,7 @@ function buildPlantingEventStateIndex(options = {}){
   const pendingByHarvestId = new Map();
   const allocatedLotKeys = new Set();
   const eventsByHarvestId = new Map();
+  const noPlantingCompletedHarvestIds = new Set();
   const orderedEvents = plantingEvents
     .filter(event => excludeEventId === null || Number(event.eventId) !== excludeEventId)
     .sort(comparePlantingEventsAsc);
@@ -1094,6 +1122,7 @@ function buildPlantingEventStateIndex(options = {}){
       const harvestRecordId = Number(allocation.harvestRecordId);
       if(!eventsByHarvestId.has(harvestRecordId)) eventsByHarvestId.set(harvestRecordId, []);
       eventsByHarvestId.get(harvestRecordId).push(event);
+      if(isNoPlantingEvent(event)) noPlantingCompletedHarvestIds.add(harvestRecordId);
       const pendingKeys = pendingByHarvestId.get(harvestRecordId);
       allocation.palletKeys.forEach(key => {
         allocatedLotKeys.add(getPlantingLotKey(harvestRecordId, key));
@@ -1138,6 +1167,7 @@ function buildPlantingEventStateIndex(options = {}){
     allowedPalletSet,
     allocatedLotKeys,
     eventsByHarvestId,
+    noPlantingCompletedHarvestIds,
     orderedEvents,
     usageByEventId: usageLedger.usageByEventId,
     currentCarryover: usageLedger.currentCarryover
@@ -1217,7 +1247,9 @@ function syncHarvestPlantingPendingFlags(options = {}){
   let changed = false;
   records.forEach(record => {
     if(record?.type !== "fullHarvest") return;
-    const nextPending = (state.pendingByHarvestId.get(Number(record.id))?.size || 0) > 0;
+    const harvestRecordId = Number(record.id);
+    const nextPending = (state.pendingByHarvestId.get(harvestRecordId)?.size || 0) > 0
+      && !state.noPlantingCompletedHarvestIds.has(harvestRecordId);
     if(!!record.plantingPending === nextPending) return;
     record.plantingPending = nextPending;
     changed = true;

@@ -189,12 +189,12 @@ function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, act
     : getSeedlingCountFromTrayCount(actualSeedlingTrayCount);
   const actualTakenText = actualSeedlingTrayCount > 0
     ? `${actualSeedlingTrayCount}枚（換算 ${takenSeedlings}株）`
-    : "-";
+    : "0枚（換算 0株）";
   const carryoverModeText = normalizeSeedlingCarryoverMode(actualSeedlingCarryoverMode) === "carryover" ? "余った" : "余っていない";
   const plantedTotal = Number.isFinite(Number(actualPlantedSeedlingCount))
     ? Number(actualPlantedSeedlingCount)
     : getActualPlantedSeedlingTotal(selectedKeys);
-  const plantingSummary = formatPlantingSummaryForKeys(selectedKeys) || "-";
+  const plantingSummary = formatPlantingSummaryForKeys(selectedKeys) || "苗植えなし";
   const qualityText = formatQualityMemo(record.qualityMemo) || "-";
   const memoText = String(record.memo || "").trim() || "-";
   const actualLossText = String(record.actualLoss || "").trim();
@@ -259,7 +259,9 @@ async function savePlantingRecord(){
     return;
   }
 
-  if(!harvestFillKeys.length){
+  const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
+  const noPlantingEvent = actualSeedlingTrayCount === 0 && harvestFillKeys.length === 0;
+  if(!harvestFillKeys.length && !noPlantingEvent){
     showToast("苗植えした場所を選択してください");
     return;
   }
@@ -272,7 +274,6 @@ async function savePlantingRecord(){
   }
 
   const selectedKeys = [...harvestFillKeys];
-  const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
   const actualSeedlingCarryoverMode = getRecordSeedlingCarryoverMode();
   const actualSeedlingLossRate = getActualSeedlingLossRateValue();
   const qualityMemo = normalizeOptionalQualityMemo(getSelectedQualityMemo());
@@ -298,11 +299,13 @@ async function savePlantingRecord(){
     showToast("1,000件以前の繰越基準より前の日付では、新しい苗植え記録を作成できません");
     return;
   }
-  const sourceAllocations = resolvePlantingEventAllocations(selectedKeys, {
-    preferredHarvestId: record.id,
-    excludeEventId: existingEvent?.eventId,
-    existingEvent
-  });
+  const sourceAllocations = noPlantingEvent
+    ? [{ harvestRecordId: Number(record.id), palletKeys: [] }]
+    : resolvePlantingEventAllocations(selectedKeys, {
+        preferredHarvestId: record.id,
+        excludeEventId: existingEvent?.eventId,
+        existingEvent
+      });
   const allocatedKeys = [...new Set(sourceAllocations.flatMap(allocation => allocation.palletKeys))]
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   const normalizedSelectedKeys = [...new Set(selectedKeys)]
@@ -476,7 +479,7 @@ function editPlantingEvent(eventId){
       event.plantingCountsByPallet
     ),
     date: event.plantingDate,
-    actualSeedlingTrayCount: event.detailsUnknown ? "" : String(event.actualSeedlingTrayCount || ""),
+    actualSeedlingTrayCount: event.detailsUnknown ? "" : String(event.actualSeedlingTrayCount ?? ""),
     actualSeedlingCarryoverMode: event.actualSeedlingCarryoverMode,
     actualSeedlingUserEdited: true,
     plantingSummaryInput: formatPlantingSummaryForKeys(event.plantingPalletKeys),

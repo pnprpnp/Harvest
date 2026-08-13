@@ -882,15 +882,21 @@ function getPlantingCandidateRecordIdSet(){
 
 function getLatestPendingPlantingRecord(){
   const candidateIds = getPlantingCandidateRecordIdSet();
+  const state = getPlantingEventStateIndex();
   return [...records]
     .filter(record => record?.type === "fullHarvest" && candidateIds.has(Number(record.id)))
     .sort(compareRecordsByDateDesc)
-    .find(record => getUnplantedPalletKeysForHarvest(record.id).length > 0) || null;
+    .find(record => (
+      !state.noPlantingCompletedHarvestIds.has(Number(record.id))
+      && getUnplantedPalletKeysForHarvest(record.id).length > 0
+    )) || null;
 }
 
 function shouldOfferPlantingRecordResume(record){
   if(!record || record.type !== "fullHarvest") return false;
+  const state = getPlantingEventStateIndex();
   return getPlantingCandidateRecordIdSet().has(Number(record.id))
+    && !state.noPlantingCompletedHarvestIds.has(Number(record.id))
     && getUnplantedPalletKeysForHarvest(record.id).length > 0;
 }
 

@@ -203,14 +203,32 @@ function normalizePlantingEvent(event) {
   );
   normalizePalletNumberingVersion(event.palletNumberingVersion);
   const plantingDate = normalizeRequiredDate(event.plantingDate, "苗植え日");
-  const rawSourceAllocations = normalizePlantingSourceAllocations(event.sourceAllocations);
+  const actualSeedlingTrayCount = normalizeOptionalInteger(
+    event.actualSeedlingTrayCount,
+    "実苗枚数",
+    0,
+    RECORD_SEEDLING_TRAY_LIMIT,
+    0
+  );
+  const rawSourceAllocations = normalizePlantingSourceAllocations(event.sourceAllocations, {
+    allowEmptyPalletKeys: actualSeedlingTrayCount === 0
+  });
   const rawPlantingPalletKeys = normalizeDirectPalletKeys(
     event.plantingPalletKeys,
     "苗植えイベントのパレット"
   );
   const sourceAllocations = rawSourceAllocations;
   const plantingPalletKeys = rawPlantingPalletKeys;
-  if (!plantingPalletKeys.length) throw new Error("苗植えイベントのパレットがありません");
+  const noPlantingEvent = actualSeedlingTrayCount === 0 &&
+    sourceAllocations.length === 1 &&
+    sourceAllocations[0].palletKeys.length === 0 &&
+    plantingPalletKeys.length === 0;
+  if (sourceAllocations.some(allocation => allocation.palletKeys.length === 0) && !noPlantingEvent) {
+    throw new Error("苗植え場所なしで記録できるのは実苗枚数が0枚のときだけです");
+  }
+  if (!plantingPalletKeys.length && !noPlantingEvent) {
+    throw new Error("苗植えイベントのパレットがありません");
+  }
 
   const allocatedKeys = [];
   sourceAllocations.forEach(allocation => {
@@ -231,6 +249,25 @@ function normalizePlantingEvent(event) {
     normalizePlantingCountsByPallet(event.plantingCountsByPallet, plantingKeySet)
   );
 
+  const actualTakenSeedlingCount = normalizeOptionalInteger(
+    event.actualTakenSeedlingCount,
+    "実際に取った苗株数",
+    0,
+    PLANTING_EVENT_SEEDLING_COUNT_LIMIT,
+    ""
+  );
+  const actualPlantedSeedlingCount = normalizeOptionalInteger(
+    event.actualPlantedSeedlingCount,
+    "実際に苗植えした株数",
+    0,
+    PLANTING_EVENT_SEEDLING_COUNT_LIMIT,
+    ""
+  );
+  if (noPlantingEvent && (Number(actualTakenSeedlingCount || 0) !== 0 ||
+    Number(actualPlantedSeedlingCount || 0) !== 0)) {
+    throw new Error("苗植えなしの記録では苗株数を0にしてください");
+  }
+
   return {
     palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
     eventId,
@@ -238,27 +275,9 @@ function normalizePlantingEvent(event) {
     sourceAllocations,
     plantingPalletKeys,
     plantingCountsByPallet,
-    actualSeedlingTrayCount: normalizeOptionalInteger(
-      event.actualSeedlingTrayCount,
-      "実苗枚数",
-      0,
-      RECORD_SEEDLING_TRAY_LIMIT,
-      0
-    ),
-    actualTakenSeedlingCount: normalizeOptionalInteger(
-      event.actualTakenSeedlingCount,
-      "実際に取った苗株数",
-      0,
-      PLANTING_EVENT_SEEDLING_COUNT_LIMIT,
-      ""
-    ),
-    actualPlantedSeedlingCount: normalizeOptionalInteger(
-      event.actualPlantedSeedlingCount,
-      "実際に苗植えした株数",
-      0,
-      PLANTING_EVENT_SEEDLING_COUNT_LIMIT,
-      ""
-    ),
+    actualSeedlingTrayCount,
+    actualTakenSeedlingCount,
+    actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: normalizeOptionalCarryoverMode(event.actualSeedlingCarryoverMode),
     actualSeedlingLossRate: normalizeOptionalFiniteNumber(
       event.actualSeedlingLossRate,
@@ -306,7 +325,8 @@ function applyHistoricalPlantingCountBackfill(plantingDate, plantingPalletKeys, 
   return normalized;
 }
 
-function normalizePlantingSourceAllocations(value) {
+function normalizePlantingSourceAllocations(value, options) {
+  const allowEmptyPalletKeys = options && options.allowEmptyPalletKeys === true;
   if (!Array.isArray(value)) throw new Error("収穫元割当は配列で指定してください");
   if (!value.length) throw new Error("収穫元割当がありません");
   if (value.length > PLANTING_EVENT_ALLOCATION_LIMIT) {
@@ -333,7 +353,7 @@ function normalizePlantingSourceAllocations(value) {
       allocation.palletKeys,
       "収穫元割当" + (index + 1) + "のパレット"
     );
-    if (!palletKeys.length) {
+    if (!palletKeys.length && !allowEmptyPalletKeys) {
       throw new Error("収穫元割当" + (index + 1) + "のパレットがありません");
     }
     return { harvestRecordId, palletKeys };

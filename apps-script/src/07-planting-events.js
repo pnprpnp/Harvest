@@ -1045,10 +1045,10 @@ function syncRecordSheetPlantingLocationSummaries(harvestRecordIds) {
 }
 
 function assertHarvestRecordSupportsPlantingEvents(record, allocatedKeysByHarvestRecord) {
-  const allocatedKeys = allocatedKeysByHarvestRecord
-    ? (allocatedKeysByHarvestRecord.get(Number(record.id)) || new Set())
-    : getPlantingEventAllocatedKeysForHarvestRecord(record.id);
-  if (!allocatedKeys.size) return;
+  const allocationMap = allocatedKeysByHarvestRecord || buildPlantingEventAllocatedKeysByHarvestRecord();
+  const harvestRecordId = Number(record.id);
+  const allocatedKeys = allocationMap.get(harvestRecordId) || new Set();
+  if (!allocationMap.has(harvestRecordId)) return;
   if (record.type !== "fullHarvest") {
     throw new Error("苗植えイベントで使用中の収穫記録は先取り収穫へ変更できません");
   }
@@ -1060,7 +1060,7 @@ function assertHarvestRecordSupportsPlantingEvents(record, allocatedKeysByHarves
 }
 
 function assertHarvestRecordHasNoPlantingEvents(harvestRecordId) {
-  if (getPlantingEventAllocatedKeysForHarvestRecord(harvestRecordId).size) {
+  if (buildPlantingEventAllocatedKeysByHarvestRecord().has(Number(harvestRecordId))) {
     throw new Error("この収穫記録を使った苗植えイベントがあります。先に苗植えイベントを削除してください");
   }
 }
