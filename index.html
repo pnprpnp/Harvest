@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260813-own-write-revision-ack">
+<meta name="harvestnavi-version" content="20260813-current-version-display">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -321,6 +321,7 @@ const harvestnaviSessionStorage = createBrowserStorageGateway(window.sessionStor
 
       return {
         updateAvailable: !currentVersion || currentVersion !== latestVersion,
+        currentVersion,
         latestVersion
       };
     })().catch(error => {
@@ -18748,7 +18749,12 @@ async function checkLatestAppFromMenu(){
     const updateResult = await window.checkHarvestnaviAppUpdate();
     if(!updateResult?.updateAvailable){
       setAppUpdateAvailabilityNotice(false);
-      setAppUpdateCheckLoading(false, "現在のアプリは最新版です");
+      const currentVersion = String(
+        updateResult?.currentVersion || updateResult?.latestVersion || ""
+      ).trim();
+      setAppUpdateCheckLoading(false, currentVersion
+        ? `現在のバージョンは${currentVersion}です`
+        : "現在のバージョンを確認できませんでした");
       return;
     }
 

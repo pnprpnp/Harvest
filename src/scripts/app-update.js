@@ -226,6 +226,7 @@
 
       return {
         updateAvailable: !currentVersion || currentVersion !== latestVersion,
+        currentVersion,
         latestVersion
       };
     })().catch(error => {

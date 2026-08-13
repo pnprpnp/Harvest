@@ -1265,7 +1265,12 @@ async function checkLatestAppFromMenu(){
     const updateResult = await window.checkHarvestnaviAppUpdate();
     if(!updateResult?.updateAvailable){
       setAppUpdateAvailabilityNotice(false);
-      setAppUpdateCheckLoading(false, "現在のアプリは最新版です");
+      const currentVersion = String(
+        updateResult?.currentVersion || updateResult?.latestVersion || ""
+      ).trim();
+      setAppUpdateCheckLoading(false, currentVersion
+        ? `現在のバージョンは${currentVersion}です`
+        : "現在のバージョンを確認できませんでした");
       return;
     }
 

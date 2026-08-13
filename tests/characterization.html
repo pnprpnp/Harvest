@@ -1182,6 +1182,28 @@
         }, "モニターの簡易パレット連結条件が選択可能パレットと一致しません");
       });
 
+      await runTest("最新版の確認後に現在のバージョン番号を表示する", async () => {
+        const previousCheck = app.checkHarvestnaviAppUpdate;
+        const status = app.document.getElementById("appUpdateCheckStatus");
+        const previousStatus = status?.textContent || "";
+        try{
+          app.checkHarvestnaviAppUpdate = async () => ({
+            updateAvailable: false,
+            currentVersion: "20260813-current-version-display",
+            latestVersion: "20260813-current-version-display"
+          });
+          await app.checkLatestAppFromMenu();
+          assertEqual(
+            status?.textContent || "",
+            "現在のバージョンは20260813-current-version-displayです",
+            "現在のバージョン番号が表示されません"
+          );
+        }finally{
+          app.checkHarvestnaviAppUpdate = previousCheck;
+          if(status) status.textContent = previousStatus;
+        }
+      });
+
       await runTest("タブ画面を先に切り替え、短い処理ではロード中を見せない", async () => {
         const loadingState = app.document.getElementById("mainTabLoadingState");
         app.eval("protectedAccessUnlocked = true");
