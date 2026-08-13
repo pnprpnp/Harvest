@@ -1047,7 +1047,22 @@ function applyRecordPalletDragChange(building, bed, number, mode){
     return true;
   }
 
-  if(fillIndex >= 0) return false;
+  if(fillIndex >= 0){
+    if(recordSelectionMode !== "planting"
+      || getPlantingCountForSelectedKey(key) === recordPlantingCountPreset){
+      return false;
+    }
+    const nextCounts = {
+      ...recordPlantingCountsByPallet,
+      [key]: recordPlantingCountPreset
+    };
+    if(!canPlantSeedlingKeysWithinCapacity(harvestFillKeys, getActivePlantingRecord(), nextCounts)){
+      showPalletDragToast(getPlantingCapacityExceededMessage());
+      return false;
+    }
+    setRecordPlantingCountForKey(key);
+    return true;
+  }
   if(recordSelectionMode === "planting" && !canAddPlantingPallet(key)){
     showPalletDragToast(getPlantingCapacityExceededMessage());
     return false;
@@ -1114,10 +1129,14 @@ function startPalletDrag(event, context, building, bed, number){
   if(event.pointerType === "mouse" && event.button !== 0) return;
   const key = getPalletKey(building, bed, number);
   const isSelected = harvestFillKeys.includes(key);
+  const shouldOverwritePlantingCount = context === "record"
+    && recordSelectionMode === "planting"
+    && isSelected
+    && getPlantingCountForSelectedKey(key) !== recordPlantingCountPreset;
   palletDragState = {
     pointerId: event.pointerId,
     context,
-    mode: isSelected ? "remove" : "add",
+    mode: isSelected && !shouldOverwritePlantingCount ? "remove" : "add",
     captureElement: event.currentTarget,
     touchedKeys: new Set(),
     toastMessages: new Set(),

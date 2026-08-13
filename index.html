@@ -9484,8 +9484,8 @@ requestAnimationFrame(function(){
         <div id="recordPlantingCountPreset" class="recordPlantingCountPreset" hidden>
           <div class="recordPlantingCountPresetHeader">
             <div>
-              <div class="recordPlantingCountPresetTitle">新しく選ぶパレットの植え付け数</div>
-              <div class="recordPlantingCountPresetHint">株数を選んでからパレットをタップしてください</div>
+              <div class="recordPlantingCountPresetTitle">選ぶパレットの植え付け数</div>
+              <div class="recordPlantingCountPresetHint">選択済みでも、別の株数でタップすると上書きできます</div>
             </div>
             <button class="recordPlantingCountApplyBtn" type="button" data-ui-click="applyRecordPlantingCountPresetToSelection">選択中に適用</button>
           </div>
@@ -23486,7 +23486,22 @@ function applyRecordPalletDragChange(building, bed, number, mode){
     return true;
   }
 
-  if(fillIndex >= 0) return false;
+  if(fillIndex >= 0){
+    if(recordSelectionMode !== "planting"
+      || getPlantingCountForSelectedKey(key) === recordPlantingCountPreset){
+      return false;
+    }
+    const nextCounts = {
+      ...recordPlantingCountsByPallet,
+      [key]: recordPlantingCountPreset
+    };
+    if(!canPlantSeedlingKeysWithinCapacity(harvestFillKeys, getActivePlantingRecord(), nextCounts)){
+      showPalletDragToast(getPlantingCapacityExceededMessage());
+      return false;
+    }
+    setRecordPlantingCountForKey(key);
+    return true;
+  }
   if(recordSelectionMode === "planting" && !canAddPlantingPallet(key)){
     showPalletDragToast(getPlantingCapacityExceededMessage());
     return false;
@@ -23553,10 +23568,14 @@ function startPalletDrag(event, context, building, bed, number){
   if(event.pointerType === "mouse" && event.button !== 0) return;
   const key = getPalletKey(building, bed, number);
   const isSelected = harvestFillKeys.includes(key);
+  const shouldOverwritePlantingCount = context === "record"
+    && recordSelectionMode === "planting"
+    && isSelected
+    && getPlantingCountForSelectedKey(key) !== recordPlantingCountPreset;
   palletDragState = {
     pointerId: event.pointerId,
     context,
-    mode: isSelected ? "remove" : "add",
+    mode: isSelected && !shouldOverwritePlantingCount ? "remove" : "add",
     captureElement: event.currentTarget,
     touchedKeys: new Set(),
     toastMessages: new Set(),
@@ -26951,6 +26970,26 @@ function toggleRecordPallet(building, bed, number){
 
   const fillIndex = harvestFillKeys.indexOf(key);
   if(fillIndex >= 0){
+    if(recordSelectionMode === "planting"
+      && getPlantingCountForSelectedKey(key) !== recordPlantingCountPreset){
+      const nextCounts = {
+        ...recordPlantingCountsByPallet,
+        [key]: recordPlantingCountPreset
+      };
+      if(!canPlantSeedlingKeysWithinCapacity(harvestFillKeys, getActivePlantingRecord(), nextCounts)){
+        showToast(getPlantingCapacityExceededMessage());
+        return;
+      }
+      setRecordPlantingCountForKey(key);
+      recalcHarvestSummary();
+      renderHarvestSelectionMapsForActiveTab();
+      renderForecastSummary();
+      syncRecordPlantingSummaryFromSelection();
+      updateRecordActualLoss();
+      updateRecordPlantingCountPresetUi();
+      scheduleHarvestStateSave();
+      return;
+    }
     harvestFillKeys.splice(fillIndex, 1);
     if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
     recalcHarvestSummary();

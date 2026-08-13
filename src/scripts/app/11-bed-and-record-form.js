@@ -157,6 +157,26 @@ function toggleRecordPallet(building, bed, number){
 
   const fillIndex = harvestFillKeys.indexOf(key);
   if(fillIndex >= 0){
+    if(recordSelectionMode === "planting"
+      && getPlantingCountForSelectedKey(key) !== recordPlantingCountPreset){
+      const nextCounts = {
+        ...recordPlantingCountsByPallet,
+        [key]: recordPlantingCountPreset
+      };
+      if(!canPlantSeedlingKeysWithinCapacity(harvestFillKeys, getActivePlantingRecord(), nextCounts)){
+        showToast(getPlantingCapacityExceededMessage());
+        return;
+      }
+      setRecordPlantingCountForKey(key);
+      recalcHarvestSummary();
+      renderHarvestSelectionMapsForActiveTab();
+      renderForecastSummary();
+      syncRecordPlantingSummaryFromSelection();
+      updateRecordActualLoss();
+      updateRecordPlantingCountPresetUi();
+      scheduleHarvestStateSave();
+      return;
+    }
     harvestFillKeys.splice(fillIndex, 1);
     if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
     recalcHarvestSummary();

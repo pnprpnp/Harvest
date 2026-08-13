@@ -1283,6 +1283,68 @@
         }, "植え付け数プリセットの選択状態が一致しません");
       });
 
+      await runTest("植え付け数を変えて選択済みパレットをタップすると上書きする", () => {
+        const selectionState = comparable(app.eval(`(() => {
+          const previous = {
+            mode: recordSelectionMode,
+            preset: recordPlantingCountPreset,
+            counts: { ...recordPlantingCountsByPallet },
+            keys: [...harvestFillKeys],
+            dragState: palletDragState,
+            isAllowed: isPlantingSelectionAllowed,
+            canPlant: canPlantSeedlingKeysWithinCapacity
+          };
+          const tapPallet = () => {
+            const pallet = document.createElement("div");
+            pallet.setPointerCapture = () => {};
+            attachPalletDragHandlers(pallet, "record", 2, "A", 1);
+            pallet.onpointerdown({
+              pointerType: "touch",
+              pointerId: 1,
+              currentTarget: pallet,
+              preventDefault(){}
+            });
+            const dragMode = palletDragState?.mode || "";
+            palletDragState = null;
+            return dragMode;
+          };
+          try{
+            recordSelectionMode = "planting";
+            recordPlantingCountPreset = 16;
+            harvestFillKeys = ["2-A-1"];
+            recordPlantingCountsByPallet = { "2-A-1": 12 };
+            isPlantingSelectionAllowed = () => true;
+            canPlantSeedlingKeysWithinCapacity = () => true;
+
+            const overwriteMode = tapPallet();
+            const overwritten = {
+              mode: overwriteMode,
+              selected: harvestFillKeys.includes("2-A-1"),
+              count: recordPlantingCountsByPallet["2-A-1"]
+            };
+            const removeMode = tapPallet();
+            const removed = {
+              mode: removeMode,
+              selected: harvestFillKeys.includes("2-A-1"),
+              hasCount: Object.prototype.hasOwnProperty.call(recordPlantingCountsByPallet, "2-A-1")
+            };
+            return { overwritten, removed };
+          }finally{
+            recordSelectionMode = previous.mode;
+            recordPlantingCountPreset = previous.preset;
+            recordPlantingCountsByPallet = previous.counts;
+            harvestFillKeys = previous.keys;
+            palletDragState = previous.dragState;
+            isPlantingSelectionAllowed = previous.isAllowed;
+            canPlantSeedlingKeysWithinCapacity = previous.canPlant;
+          }
+        })()`));
+        assertDeepEqual(selectionState, {
+          overwritten: { mode: "add", selected: true, count: 16 },
+          removed: { mode: "remove", selected: false, hasCount: false }
+        }, "選択済みパレットの植え付け数を直接上書きできません");
+      });
+
       await runTest("苗植えベッド詳細のパレット内には番号だけを表示する", () => {
         const detailState = comparable(app.eval(`(() => {
           const previous = {
