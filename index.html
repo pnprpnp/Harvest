@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260814-hide-planting-count-summary">
+<meta name="harvestnavi-version" content="20260814-planting-detail-quality-colors">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8383,28 +8383,10 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   background:#fff;
   color:var(--ui-accent-dark);
 }
-.recordDetailLocationSection .dashboardSeedlingBedMapCell.is-planting-count-12,
-.recordDetailLocationSection .dashboardSeedlingStatusMapGuideSwatch.is-planting-count-12{background:#2563eb;}
-.recordDetailLocationSection .dashboardSeedlingBedMapCell.is-planting-count-16,
-.recordDetailLocationSection .dashboardSeedlingStatusMapGuideSwatch.is-planting-count-16{background:#0f766e;}
-.recordDetailLocationSection .dashboardSeedlingBedMapCell.is-planting-count-20,
-.recordDetailLocationSection .dashboardSeedlingStatusMapGuideSwatch.is-planting-count-20{background:#7c3aed;}
-.recordDetailLocationSection .dashboardSeedlingBedMapCell.is-planting-count-unknown,
-.recordDetailLocationSection .dashboardSeedlingStatusMapGuideSwatch.is-planting-count-unknown{
-  background:repeating-linear-gradient(135deg,#e2e8f0 0 3px,#cbd5e1 3px 6px);
-}
-.recordDetailLocationGroupLabel.is-planting-count-12{color:#1d4ed8;}
-.recordDetailLocationGroupLabel.is-planting-count-16{color:#0f766e;}
-.recordDetailLocationGroupLabel.is-planting-count-20{color:#6d28d9;}
-.recordDetailLocationGroupLabel.is-planting-count-unknown{color:#64748b;}
 .recordDetailLocationCountTabs{
   grid-template-columns:repeat(auto-fit,minmax(76px,1fr));
   margin-bottom:4px;
 }
-.recordDetailLocationCountBtn.active.is-planting-count-12{background:#2563eb;color:#fff;}
-.recordDetailLocationCountBtn.active.is-planting-count-16{background:#0f766e;color:#fff;}
-.recordDetailLocationCountBtn.active.is-planting-count-20{background:#7c3aed;color:#fff;}
-.recordDetailLocationCountBtn.active.is-planting-count-unknown{background:#64748b;color:#fff;}
 .recordActions button{border-radius:12px;box-shadow:none;}
 .recordActions .recordListDeleteBtn{background:#dc2626;color:#fff;}
 .recordActions .recordListDeleteBtn:hover{background:#b91c1c;}
@@ -29706,7 +29688,9 @@ function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectio
   const group = isIncluded
     ? (selectedGroup || model.locationGroups.find(item => item.keySet.has(key)))
     : null;
-  const stateClass = group?.className || (isIncluded ? model.qualityClass : "is-unplanted");
+  const stateClass = isIncluded
+    ? (model.kind === "planting" ? model.qualityClass : (group?.className || model.qualityClass))
+    : "is-unplanted";
   const stateText = isIncluded
     ? `今回の${model.actionLabel}${group?.label ? `、${group.label}` : ""}`
     : "対象外";
@@ -29817,8 +29801,10 @@ function renderRecordDetailLocationDisplay(){
       }).join("")}
     </div>
     <div class="dashboardSeedlingStatusMapGuide" aria-label="配置図の色分け">
-      ${(selectedGroup ? [selectedGroup] : model.locationGroups).map(group => `
-        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>${model.kind === "planting" ? escapeHtml(group.label) : `今回の${model.actionLabel}（${escapeHtml(group.label)}）`}</span>
+      ${model.kind === "planting" ? `
+        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${model.qualityClass}"></span>苗の品質（${escapeHtml(model.qualityText)}）</span>
+      ` : model.locationGroups.map(group => `
+        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>今回の${model.actionLabel}（${escapeHtml(group.label)}）</span>
       `).join("")}
       <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>対象外</span>
     </div>
@@ -29832,7 +29818,7 @@ function renderRecordDetailLocationDisplay(){
           ${selectedLocationGroups.map(group => `
             <div class="dashboardSeedlingStatusLot recordDetailLocationLot">
               <span class="dashboardSeedlingStatusLotHeader">
-                <span class="dashboardSeedlingStatusQuality recordDetailLocationGroupLabel ${group.className}">${escapeHtml(group.label)}</span>
+                <span class="dashboardSeedlingStatusQuality recordDetailLocationGroupLabel ${model.kind === "planting" ? model.qualityClass : group.className}">${escapeHtml(group.label)}</span>
               </span>
               <span class="dashboardSeedlingStatusCount">
                 <span>番号 ${escapeHtml(formatPalletNumberSideRanges(group.palletNumbers))}</span>

@@ -805,7 +805,9 @@ function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectio
   const group = isIncluded
     ? (selectedGroup || model.locationGroups.find(item => item.keySet.has(key)))
     : null;
-  const stateClass = group?.className || (isIncluded ? model.qualityClass : "is-unplanted");
+  const stateClass = isIncluded
+    ? (model.kind === "planting" ? model.qualityClass : (group?.className || model.qualityClass))
+    : "is-unplanted";
   const stateText = isIncluded
     ? `今回の${model.actionLabel}${group?.label ? `、${group.label}` : ""}`
     : "対象外";
@@ -916,8 +918,10 @@ function renderRecordDetailLocationDisplay(){
       }).join("")}
     </div>
     <div class="dashboardSeedlingStatusMapGuide" aria-label="配置図の色分け">
-      ${(selectedGroup ? [selectedGroup] : model.locationGroups).map(group => `
-        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>${model.kind === "planting" ? escapeHtml(group.label) : `今回の${model.actionLabel}（${escapeHtml(group.label)}）`}</span>
+      ${model.kind === "planting" ? `
+        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${model.qualityClass}"></span>苗の品質（${escapeHtml(model.qualityText)}）</span>
+      ` : model.locationGroups.map(group => `
+        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>今回の${model.actionLabel}（${escapeHtml(group.label)}）</span>
       `).join("")}
       <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>対象外</span>
     </div>
@@ -931,7 +935,7 @@ function renderRecordDetailLocationDisplay(){
           ${selectedLocationGroups.map(group => `
             <div class="dashboardSeedlingStatusLot recordDetailLocationLot">
               <span class="dashboardSeedlingStatusLotHeader">
-                <span class="dashboardSeedlingStatusQuality recordDetailLocationGroupLabel ${group.className}">${escapeHtml(group.label)}</span>
+                <span class="dashboardSeedlingStatusQuality recordDetailLocationGroupLabel ${model.kind === "planting" ? model.qualityClass : group.className}">${escapeHtml(group.label)}</span>
               </span>
               <span class="dashboardSeedlingStatusCount">
                 <span>番号 ${escapeHtml(formatPalletNumberSideRanges(group.palletNumbers))}</span>
