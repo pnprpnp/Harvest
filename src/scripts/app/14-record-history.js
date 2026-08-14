@@ -682,7 +682,8 @@ function getRecordDetailInfoHtml(rows){
   `).join("")}</div>`;
 }
 
-function getRecordDetailWindowBodyHtml(infoRows, locationTitle, locationFirst = false){
+function getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind = ""){
+  const locationFirst = kind === "planting" || kind === "harvest";
   const infoHtml = getRecordDetailInfoHtml(infoRows);
   const locationHtml = `
     <section class="recordDetailLocationSection${locationFirst ? " is-first" : ""}" aria-labelledby="recordDetailLocationTitle">
@@ -1121,7 +1122,7 @@ function openRecordDetailWindow(kind, id){
     : null;
   title.textContent = titleText;
   body.classList.add("hasLocationDisplay");
-  body.innerHTML = getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind === "planting");
+  body.innerHTML = getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind);
   body.scrollTop = 0;
   showPageBlockingUi(modal);
   requestAnimationFrame(() => {

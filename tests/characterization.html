@@ -1579,24 +1579,35 @@
         }, "苗植えベッド配置図の下が選択内訳だけになっていません");
       });
 
-      await runTest("苗植え詳細は二次定植した場所を一番上に表示する", () => {
+      await runTest("苗植えと収穫の詳細は場所配置図を一番上に表示する", () => {
         const layoutState = comparable(app.eval(`(() => {
-          const host = document.createElement("div");
-          host.innerHTML = getRecordDetailWindowBodyHtml(
-            [{ label: "実際に取った苗", value: "120株" }],
-            "二次定植した場所",
-            true
-          );
+          const read = (kind, locationTitle) => {
+            const host = document.createElement("div");
+            host.innerHTML = getRecordDetailWindowBodyHtml(
+              [{ label: "記録の内容", value: "確認用" }],
+              locationTitle,
+              kind
+            );
+            return {
+              firstClass: host.firstElementChild?.className || "",
+              firstTitle: host.firstElementChild?.querySelector(".recordDetailLocationTitle")?.textContent || "",
+              secondClass: host.children[1]?.className || ""
+            };
+          };
           return {
-            firstClass: host.firstElementChild?.className || "",
-            firstTitle: host.firstElementChild?.querySelector(".recordDetailLocationTitle")?.textContent || "",
-            secondClass: host.children[1]?.className || ""
+            planting: read("planting", "二次定植した場所"),
+            harvest: read("harvest", "収穫場所"),
+            partialHarvest: read("partialHarvest", "部分収穫場所")
           };
         })()`));
-        assert(layoutState.firstClass.includes("recordDetailLocationSection"), "二次定植した場所が詳細の一番上にありません");
-        assert(layoutState.firstClass.includes("is-first"), "先頭用の場所表示になっていません");
-        assertEqual(layoutState.firstTitle, "二次定植した場所", "苗植え場所の名前が一致しません");
-        assert(layoutState.secondClass.includes("recordDetailInfoList"), "基本情報が二次定植場所の後ろにありません");
+        assert(layoutState.planting.firstClass.includes("recordDetailLocationSection is-first"), "二次定植した場所が詳細の一番上にありません");
+        assertEqual(layoutState.planting.firstTitle, "二次定植した場所", "苗植え場所の名前が一致しません");
+        assert(layoutState.planting.secondClass.includes("recordDetailInfoList"), "苗植えの基本情報が場所の後ろにありません");
+        assert(layoutState.harvest.firstClass.includes("recordDetailLocationSection is-first"), "収穫場所配置図が収穫詳細の一番上にありません");
+        assertEqual(layoutState.harvest.firstTitle, "収穫場所", "収穫場所の見出しが一致しません");
+        assert(layoutState.harvest.secondClass.includes("recordDetailInfoList"), "収穫の基本情報が収穫場所の後ろにありません");
+        assert(layoutState.partialHarvest.firstClass.includes("recordDetailInfoList"), "部分収穫詳細の表示順が変わりました");
+        assert(layoutState.partialHarvest.secondClass.includes("recordDetailLocationSection"), "部分収穫場所が表示されません");
       });
 
       await runTest("苗植え詳細の場所を植え付け数で切り替え、苗の品質色で表示する", () => {
