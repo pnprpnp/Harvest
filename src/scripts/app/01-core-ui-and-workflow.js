@@ -2844,7 +2844,7 @@ function openWorkflowNextAction(){
     if(canCalculate) runHarvestPrediction();
     requestAnimationFrame(() => requestAnimationFrame(() => {
       scrollToWorkflowTarget("forecastSimulationCard");
-      focusWorkflowTarget("forecastSectionTitle");
+      focusWorkflowTarget("forecastSimulationCard");
     }));
     return;
   }
@@ -2857,7 +2857,7 @@ function openWorkflowNextAction(){
     }
     requestAnimationFrame(() => requestAnimationFrame(() => {
       scrollToWorkflowTarget("monitorCard");
-      focusWorkflowTarget("monitorSectionTitle");
+      focusWorkflowTarget("monitorCard");
     }));
     return;
   }
@@ -2865,7 +2865,7 @@ function openWorkflowNextAction(){
     if(switchTab("forecast") === false) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
       scrollToWorkflowTarget("forecastSimulationCard");
-      focusWorkflowTarget("forecastSectionTitle");
+      focusWorkflowTarget("forecastSimulationCard");
     }));
     return;
   }

@@ -1226,6 +1226,23 @@
         }, "ページ背景にグラデーションまたは別の色が残っています");
       });
 
+      await runTest("主要タブ上部の項目名を表示しない", () => {
+        const headings = comparable(app.eval(`(() => ({
+          forecast: !!document.getElementById("forecastSectionTitle"),
+          monitor: !!document.getElementById("monitorSectionTitle"),
+          record: !!document.getElementById("recordSaveSectionTitleText"),
+          monitorActions: document.querySelectorAll("#monitorCard .sectionTitleActions button").length,
+          recordStatusExists: !!document.getElementById("recordTodayRecordedStatus")
+        }))()`));
+        assertDeepEqual(headings, {
+          forecast: false,
+          monitor: false,
+          record: false,
+          monitorActions: 2,
+          recordStatusExists: true
+        }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
+      });
+
       await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
         const monitorState = comparable(app.eval(`(() => {
           const previousGetRecorded = getRecordedPalletSet;

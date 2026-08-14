@@ -12,7 +12,7 @@ function switchToRecordSaveCard(options = {}){
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       scrollToRecordSaveCard();
-      if(options.focus) focusWorkflowTarget("recordSaveSectionTitle");
+      if(options.focus) focusWorkflowTarget("recordSaveCard");
     });
   });
 }
@@ -1092,7 +1092,6 @@ function isRecordEditMode(){
 }
 
 function refreshRecordModeUi(){
-  const sectionTitleText = document.getElementById("recordSaveSectionTitleText");
   const actionRow = document.querySelector(".recordFormActionRow");
   const discardEditButton = document.getElementById("recordDiscardEditBtn");
   const notice = document.getElementById("recordEditNotice");
@@ -1144,7 +1143,6 @@ function refreshRecordModeUi(){
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();
-  if(sectionTitleText) sectionTitleText.textContent = isEditing ? "記録を編集" : "記録を保存";
   if(discardEditButton) discardEditButton.hidden = !isEditing;
   if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
 
