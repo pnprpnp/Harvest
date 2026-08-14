@@ -682,6 +682,21 @@ function getRecordDetailInfoHtml(rows){
   `).join("")}</div>`;
 }
 
+function getRecordDetailWindowBodyHtml(infoRows, locationTitle, locationFirst = false){
+  const infoHtml = getRecordDetailInfoHtml(infoRows);
+  const locationHtml = `
+    <section class="recordDetailLocationSection${locationFirst ? " is-first" : ""}" aria-labelledby="recordDetailLocationTitle">
+      <div id="recordDetailLocationTitle" class="recordDetailLocationTitle">${escapeHtml(locationTitle)}</div>
+      <div id="recordDetailLocationMount">
+        <div class="recordDetailLocationLoading" role="status">${escapeHtml(locationTitle)}を読み込んでいます...</div>
+      </div>
+    </section>
+  `;
+  return locationFirst
+    ? `${locationHtml}${infoHtml}`
+    : `${infoHtml}${locationHtml}`;
+}
+
 function formatPlantingCountsByPalletSummary(event){
   const palletKeys = [...new Set(
     (Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : [])
@@ -1082,7 +1097,7 @@ function openRecordDetailWindow(kind, id){
     const detailsUnknown = !!event.detailsUnknown;
     const carryoverText = event.actualSeedlingCarryoverMode === "carryover" ? "余った" : "余っていない";
     titleText = `${event.plantingDate || "日付なし"} 苗植えの詳細`;
-    locationTitle = "植え付け数ごとの苗植え場所";
+    locationTitle = "二次定植した場所";
     infoRows = [
       { label: "実際に取った苗", value: detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株" },
       { label: "苗植えした株数", value: detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株" },
@@ -1106,15 +1121,7 @@ function openRecordDetailWindow(kind, id){
     : null;
   title.textContent = titleText;
   body.classList.add("hasLocationDisplay");
-  body.innerHTML = `
-    ${getRecordDetailInfoHtml(infoRows)}
-    <section class="recordDetailLocationSection" aria-labelledby="recordDetailLocationTitle">
-      <div id="recordDetailLocationTitle" class="recordDetailLocationTitle">${escapeHtml(locationTitle)}</div>
-      <div id="recordDetailLocationMount">
-        <div class="recordDetailLocationLoading" role="status">${escapeHtml(locationTitle)}を読み込んでいます...</div>
-      </div>
-    </section>
-  `;
+  body.innerHTML = getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind === "planting");
   body.scrollTop = 0;
   showPageBlockingUi(modal);
   requestAnimationFrame(() => {

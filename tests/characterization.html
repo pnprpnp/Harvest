@@ -1556,6 +1556,26 @@
         }, "苗植えベッド配置図の下が選択内訳だけになっていません");
       });
 
+      await runTest("苗植え詳細は二次定植した場所を一番上に表示する", () => {
+        const layoutState = comparable(app.eval(`(() => {
+          const host = document.createElement("div");
+          host.innerHTML = getRecordDetailWindowBodyHtml(
+            [{ label: "実際に取った苗", value: "120株" }],
+            "二次定植した場所",
+            true
+          );
+          return {
+            firstClass: host.firstElementChild?.className || "",
+            firstTitle: host.firstElementChild?.querySelector(".recordDetailLocationTitle")?.textContent || "",
+            secondClass: host.children[1]?.className || ""
+          };
+        })()`));
+        assert(layoutState.firstClass.includes("recordDetailLocationSection"), "二次定植した場所が詳細の一番上にありません");
+        assert(layoutState.firstClass.includes("is-first"), "先頭用の場所表示になっていません");
+        assertEqual(layoutState.firstTitle, "二次定植した場所", "苗植え場所の名前が一致しません");
+        assert(layoutState.secondClass.includes("recordDetailInfoList"), "基本情報が二次定植場所の後ろにありません");
+      });
+
       await runTest("苗植え詳細の場所を植え付け数で切り替え、苗の品質色で表示する", () => {
         const locationState = comparable(app.eval(`(() => {
           const previous = {
