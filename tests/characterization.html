@@ -1169,6 +1169,26 @@
         assert(sizes.current.height >= 52, "中央の号棟表示と移動ボタンの高さが揃っていません");
       });
 
+      await runTest("シミュレーション欄の外枠を表示しない", () => {
+        const frameStyle = comparable(app.eval(`(() => {
+          const style = getComputedStyle(document.getElementById("forecastSimulationCard"));
+          return {
+            borderTopWidth: style.borderTopWidth,
+            borderRightWidth: style.borderRightWidth,
+            borderBottomWidth: style.borderBottomWidth,
+            borderLeftWidth: style.borderLeftWidth,
+            boxShadow: style.boxShadow
+          };
+        })()`));
+        assertDeepEqual(frameStyle, {
+          borderTopWidth: "0px",
+          borderRightWidth: "0px",
+          borderBottomWidth: "0px",
+          borderLeftWidth: "0px",
+          boxShadow: "none"
+        }, "シミュレーション欄の外枠または影が残っています");
+      });
+
       await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
         const monitorState = comparable(app.eval(`(() => {
           const previousGetRecorded = getRecordedPalletSet;
