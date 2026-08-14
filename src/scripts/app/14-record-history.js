@@ -683,15 +683,23 @@ function getRecordDetailInfoHtml(rows){
 }
 
 function formatPlantingCountsByPalletSummary(event){
+  const palletKeys = [...new Set(
+    (Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : [])
+      .filter(isValidPalletKeyString)
+  )].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   const counts = normalizePlantingCountsByPallet(
     event?.plantingCountsByPallet,
-    event?.plantingPalletKeys
+    palletKeys
   );
   const parts = [12, 16, 20].map(count => {
-    const keys = Object.keys(counts).filter(key => counts[key] === count);
+    const keys = palletKeys.filter(key => counts[key] === count);
     if(!keys.length) return "";
     return `${count}植え: ${compressPalletKeysToRanges(keys).join("、")}`;
   }).filter(Boolean);
+  const unrecordedKeys = palletKeys.filter(key => !ALLOWED_YIELDS.includes(Number(counts[key])));
+  if(unrecordedKeys.length){
+    parts.push(`株数未記録: ${compressPalletKeysToRanges(unrecordedKeys).join("、")}`);
+  }
   return parts.join("\n") || "株数未記録（収穫予測では収穫設定を使用）";
 }
 
@@ -725,13 +733,37 @@ function buildRecordDetailLocationModel(kind, entity){
   const qualityText = kind === "planting"
     ? formatPlantingQualityMemo(entity?.qualityMemo)
     : (kind === "partialHarvest" ? "部分収穫" : (formatQualityMemo(entity?.qualityMemo) || "記録なし"));
+  const qualityClass = kind === "partialHarvest"
+    ? "is-mixed"
+    : getDashboardSeedlingQualityClass(entity?.qualityMemo);
+  const plantingCountsByPallet = kind === "planting"
+    ? normalizePlantingCountsByPallet(entity?.plantingCountsByPallet, palletKeys)
+    : {};
+  const locationGroups = kind === "planting"
+    ? [
+        ...[12, 16, 20].map(count => ({
+          label: `${count}植え`,
+          className: `is-planting-count-${count}`,
+          keys: palletKeys.filter(key => Number(plantingCountsByPallet[key]) === count)
+        })),
+        {
+          label: "株数未記録",
+          className: "is-planting-count-unknown",
+          keys: palletKeys.filter(key => !ALLOWED_YIELDS.includes(Number(plantingCountsByPallet[key])))
+        }
+      ].filter(group => group.keys.length > 0)
+    : [{ label: qualityText, className: qualityClass, keys: palletKeys }];
+  locationGroups.forEach(group => {
+    group.keySet = new Set(group.keys);
+  });
   return {
     kind,
     keySet,
     palletNumbersByBed,
     buildings,
     qualityText,
-    qualityClass: kind === "partialHarvest" ? "is-mixed" : getDashboardSeedlingQualityClass(entity?.qualityMemo),
+    qualityClass,
+    locationGroups,
     actionLabel: kind === "planting" ? "苗植え" : (kind === "partialHarvest" ? "部分収穫" : "収穫")
   };
 }
@@ -743,10 +775,28 @@ function getRecordDetailLocationDefaultBed(model, building){
 }
 
 function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectionStart){
-  const isIncluded = model.keySet.has(getPalletKey(building, bed, number));
-  const stateClass = isIncluded ? model.qualityClass : "is-unplanted";
-  const stateText = isIncluded ? `今回の${model.actionLabel}` : "対象外";
+  const key = getPalletKey(building, bed, number);
+  const isIncluded = model.keySet.has(key);
+  const group = isIncluded
+    ? model.locationGroups.find(item => item.keySet.has(key))
+    : null;
+  const stateClass = group?.className || (isIncluded ? model.qualityClass : "is-unplanted");
+  const stateText = isIncluded
+    ? `今回の${model.actionLabel}${group?.label ? `、${group.label}` : ""}`
+    : "対象外";
   return `<span class="dashboardSeedlingBedMapCell ${stateClass}${sectionStart ? " is-section-start" : ""}" data-record-detail-pallet-number="${number}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
+}
+
+function getRecordDetailLocationGroupsForBed(model, building, bed){
+  return (Array.isArray(model?.locationGroups) ? model.locationGroups : []).map(group => ({
+    label: group.label,
+    className: group.className,
+    palletNumbers: group.keys
+      .map(key => parsePalletKey(key))
+      .filter(pallet => pallet.building === building && pallet.bed === bed)
+      .map(pallet => pallet.number)
+      .sort((a, b) => a - b)
+  })).filter(group => group.palletNumbers.length > 0);
 }
 
 function getRecordDetailLocationBedMapHtml(model, building, bed){
@@ -783,7 +833,7 @@ function renderRecordDetailLocationDisplay(){
   const building = recordDetailLocationBuilding;
   const selectedBed = recordDetailLocationSelectedBed;
   const selectedNumbers = model.palletNumbersByBed.get(`${building}-${selectedBed}`) || [];
-  const selectedNumberText = formatPalletNumberSideRanges(selectedNumbers) || "対象なし";
+  const selectedLocationGroups = getRecordDetailLocationGroupsForBed(model, building, selectedBed);
   mount.innerHTML = `
     <div class="dashboardForecastBuildingTabs recordDetailLocationBuildingTabs" aria-label="場所を表示する号棟">
       ${model.buildings.map(item => `
@@ -796,8 +846,12 @@ function renderRecordDetailLocationDisplay(){
     <div class="dashboardForecastBeds dashboardSeedlingStatusBeds recordDetailLocationBeds">
       ${bedMap.map(bed => {
         const numbers = model.palletNumbersByBed.get(`${building}-${bed}`) || [];
+        const locationGroups = getRecordDetailLocationGroupsForBed(model, building, bed);
         const hasLocation = numbers.length > 0;
         const isSelected = bed === selectedBed;
+        const summaryText = model.kind === "planting"
+          ? locationGroups.map(group => `${group.label}×${group.palletNumbers.length}`).join(" / ")
+          : `${numbers.length}パレット`;
         return `
           <button type="button"
             class="bed bedCollapsed dashboardForecastBed dashboardSeedlingStatusBed recordDetailLocationBed${hasLocation ? "" : " is-unplanted"}${isSelected ? " is-selected" : ""}"
@@ -808,14 +862,16 @@ function renderRecordDetailLocationDisplay(){
             ${getRecordDetailLocationBedMapHtml(model, building, bed)}
             <span class="dashboardSeedlingStatusAgeBlock">
               ${hasLocation ? `<span class="dashboardSeedlingStatusAgeLabel">今回の${model.actionLabel}</span>` : ""}
-              <span class="dashboardSeedlingStatusAgeSummary">${hasLocation ? `${numbers.length}パレット` : "対象なし"}</span>
+              <span class="dashboardSeedlingStatusAgeSummary">${hasLocation ? escapeHtml(summaryText) : "対象なし"}</span>
             </span>
           </button>
         `;
       }).join("")}
     </div>
     <div class="dashboardSeedlingStatusMapGuide" aria-label="配置図の色分け">
-      <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${model.qualityClass}"></span>今回の${model.actionLabel}（${escapeHtml(model.qualityText)}）</span>
+      ${model.locationGroups.map(group => `
+        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>${model.kind === "planting" ? escapeHtml(group.label) : `今回の${model.actionLabel}（${escapeHtml(group.label)}）`}</span>
+      `).join("")}
       <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>対象外</span>
     </div>
     <div class="dashboardSeedlingStatusDetail recordDetailLocationDetail" aria-live="polite">
@@ -825,15 +881,17 @@ function renderRecordDetailLocationDisplay(){
       </div>
       ${selectedNumbers.length ? `
         <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
-          <div class="dashboardSeedlingStatusLot recordDetailLocationLot">
-            <span class="dashboardSeedlingStatusLotHeader">
-              <span class="dashboardSeedlingStatusQuality ${model.qualityClass}">${escapeHtml(model.qualityText)}</span>
-            </span>
-            <span class="dashboardSeedlingStatusCount">
-              <span>番号 ${escapeHtml(selectedNumberText)}</span>
-              <span>${selectedNumbers.length}パレット</span>
-            </span>
-          </div>
+          ${selectedLocationGroups.map(group => `
+            <div class="dashboardSeedlingStatusLot recordDetailLocationLot">
+              <span class="dashboardSeedlingStatusLotHeader">
+                <span class="dashboardSeedlingStatusQuality recordDetailLocationGroupLabel ${group.className}">${escapeHtml(group.label)}</span>
+              </span>
+              <span class="dashboardSeedlingStatusCount">
+                <span>番号 ${escapeHtml(formatPalletNumberSideRanges(group.palletNumbers))}</span>
+                <span>${group.palletNumbers.length}パレット</span>
+              </span>
+            </div>
+          `).join("")}
         </div>
       ` : '<div class="recordDetailLocationEmpty">このベッドは今回の対象に含まれていません。</div>'}
     </div>
@@ -944,7 +1002,7 @@ function openRecordDetailWindow(kind, id){
     const detailsUnknown = !!event.detailsUnknown;
     const carryoverText = event.actualSeedlingCarryoverMode === "carryover" ? "余った" : "余っていない";
     titleText = `${event.plantingDate || "日付なし"} 苗植えの詳細`;
-    locationTitle = "苗植え場所";
+    locationTitle = "植え付け数ごとの苗植え場所";
     infoRows = [
       { label: "実際に取った苗", value: detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株" },
       { label: "苗植えした株数", value: detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株" },
