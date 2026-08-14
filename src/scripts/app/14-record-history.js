@@ -768,17 +768,42 @@ function buildRecordDetailLocationModel(kind, entity){
   };
 }
 
-function getRecordDetailLocationDefaultBed(model, building){
+function getRecordDetailLocationSelectedGroup(model){
+  if(model?.kind !== "planting") return null;
+  return model.locationGroups.find(group => (
+    group.className === recordDetailLocationSelectedGroupClass
+  )) || model.locationGroups[0] || null;
+}
+
+function getRecordDetailLocationVisibleBuildings(model, group){
+  if(model?.kind !== "planting" || !group) return model?.buildings || [];
+  return BUILDINGS.filter(building => (
+    group.keys.some(key => parsePalletKey(key).building === building)
+  ));
+}
+
+function getRecordDetailLocationPalletNumbersForBed(model, building, bed, group){
+  if(model?.kind !== "planting" || !group){
+    return model?.palletNumbersByBed.get(`${building}-${bed}`) || [];
+  }
+  return group.keys
+    .map(key => parsePalletKey(key))
+    .filter(pallet => pallet.building === building && pallet.bed === bed)
+    .map(pallet => pallet.number)
+    .sort((a, b) => a - b);
+}
+
+function getRecordDetailLocationDefaultBed(model, building, group = null){
   return bedMap.find(bed => (
-    (model?.palletNumbersByBed.get(`${building}-${bed}`) || []).length > 0
+    getRecordDetailLocationPalletNumbersForBed(model, building, bed, group).length > 0
   )) || bedMap[0];
 }
 
-function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectionStart){
+function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectionStart, selectedGroup){
   const key = getPalletKey(building, bed, number);
-  const isIncluded = model.keySet.has(key);
+  const isIncluded = selectedGroup ? selectedGroup.keySet.has(key) : model.keySet.has(key);
   const group = isIncluded
-    ? model.locationGroups.find(item => item.keySet.has(key))
+    ? (selectedGroup || model.locationGroups.find(item => item.keySet.has(key)))
     : null;
   const stateClass = group?.className || (isIncluded ? model.qualityClass : "is-unplanted");
   const stateText = isIncluded
@@ -787,8 +812,11 @@ function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectio
   return `<span class="dashboardSeedlingBedMapCell ${stateClass}${sectionStart ? " is-section-start" : ""}" data-record-detail-pallet-number="${number}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
 }
 
-function getRecordDetailLocationGroupsForBed(model, building, bed){
-  return (Array.isArray(model?.locationGroups) ? model.locationGroups : []).map(group => ({
+function getRecordDetailLocationGroupsForBed(model, building, bed, selectedGroup = null){
+  const groups = selectedGroup
+    ? [selectedGroup]
+    : (Array.isArray(model?.locationGroups) ? model.locationGroups : []);
+  return groups.map(group => ({
     label: group.label,
     className: group.className,
     palletNumbers: group.keys
@@ -799,14 +827,14 @@ function getRecordDetailLocationGroupsForBed(model, building, bed){
   })).filter(group => group.palletNumbers.length > 0);
 }
 
-function getRecordDetailLocationBedMapHtml(model, building, bed){
+function getRecordDetailLocationBedMapHtml(model, building, bed, selectedGroup){
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
     const sectionStart = displayRowIndex > 0
       && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
-    cells.push(getRecordDetailLocationMapCellHtml(model, building, bed, row * 2 - 1, sectionStart));
-    cells.push(getRecordDetailLocationMapCellHtml(model, building, bed, row * 2, sectionStart));
+    cells.push(getRecordDetailLocationMapCellHtml(model, building, bed, row * 2 - 1, sectionStart, selectedGroup));
+    cells.push(getRecordDetailLocationMapCellHtml(model, building, bed, row * 2, sectionStart, selectedGroup));
   }
   return `
     <div class="dashboardSeedlingBedMap" aria-hidden="true">
@@ -823,20 +851,39 @@ function renderRecordDetailLocationDisplay(){
     mount.innerHTML = '<div class="recordDetailLocationEmpty">この記録には表示できる場所情報がありません。</div>';
     return;
   }
-  if(!model.buildings.includes(recordDetailLocationBuilding)){
-    recordDetailLocationBuilding = model.buildings[0];
+  const selectedGroup = getRecordDetailLocationSelectedGroup(model);
+  if(model.kind === "planting"){
+    recordDetailLocationSelectedGroupClass = selectedGroup?.className || null;
+  }
+  const visibleBuildings = getRecordDetailLocationVisibleBuildings(model, selectedGroup);
+  if(!visibleBuildings.includes(recordDetailLocationBuilding)){
+    recordDetailLocationBuilding = visibleBuildings[0];
   }
   if(!bedMap.includes(recordDetailLocationSelectedBed)){
-    recordDetailLocationSelectedBed = getRecordDetailLocationDefaultBed(model, recordDetailLocationBuilding);
+    recordDetailLocationSelectedBed = getRecordDetailLocationDefaultBed(model, recordDetailLocationBuilding, selectedGroup);
   }
 
   const building = recordDetailLocationBuilding;
   const selectedBed = recordDetailLocationSelectedBed;
-  const selectedNumbers = model.palletNumbersByBed.get(`${building}-${selectedBed}`) || [];
-  const selectedLocationGroups = getRecordDetailLocationGroupsForBed(model, building, selectedBed);
+  const selectedNumbers = getRecordDetailLocationPalletNumbersForBed(model, building, selectedBed, selectedGroup);
+  const selectedLocationGroups = getRecordDetailLocationGroupsForBed(model, building, selectedBed, selectedGroup);
   mount.innerHTML = `
+    ${model.kind === "planting" ? `
+      <div class="dashboardForecastBuildingTabs recordDetailLocationCountTabs" aria-label="表示する植え付け数">
+        ${model.locationGroups.map(group => {
+          const isSelected = group.className === selectedGroup?.className;
+          return `
+            <button type="button" class="dashboardForecastBuildingBtn recordDetailLocationCountBtn ${group.className}${isSelected ? " active" : ""}"
+              data-ui-click="setRecordDetailLocationGroup" data-ui-arg="${group.className}"
+              aria-pressed="${isSelected ? "true" : "false"}">
+              ${escapeHtml(group.label)}
+            </button>
+          `;
+        }).join("")}
+      </div>
+    ` : ""}
     <div class="dashboardForecastBuildingTabs recordDetailLocationBuildingTabs" aria-label="場所を表示する号棟">
-      ${model.buildings.map(item => `
+      ${visibleBuildings.map(item => `
         <button type="button" class="dashboardForecastBuildingBtn${item === building ? " active" : ""}"
           data-record-detail-building="${item}" data-ui-click="setRecordDetailLocationBuilding" data-ui-number="${item}">
           ${item}号棟
@@ -845,8 +892,8 @@ function renderRecordDetailLocationDisplay(){
     </div>
     <div class="dashboardForecastBeds dashboardSeedlingStatusBeds recordDetailLocationBeds">
       ${bedMap.map(bed => {
-        const numbers = model.palletNumbersByBed.get(`${building}-${bed}`) || [];
-        const locationGroups = getRecordDetailLocationGroupsForBed(model, building, bed);
+        const numbers = getRecordDetailLocationPalletNumbersForBed(model, building, bed, selectedGroup);
+        const locationGroups = getRecordDetailLocationGroupsForBed(model, building, bed, selectedGroup);
         const hasLocation = numbers.length > 0;
         const isSelected = bed === selectedBed;
         const summaryText = model.kind === "planting"
@@ -859,7 +906,7 @@ function renderRecordDetailLocationDisplay(){
             aria-pressed="${isSelected ? "true" : "false"}"
             aria-label="${bed}ベッド 今回の${model.actionLabel} ${numbers.length}パレット。詳細を表示">
             <div class="bedTitle"><span class="dashboardForecastBedName">${bed}</span></div>
-            ${getRecordDetailLocationBedMapHtml(model, building, bed)}
+            ${getRecordDetailLocationBedMapHtml(model, building, bed, selectedGroup)}
             <span class="dashboardSeedlingStatusAgeBlock">
               ${hasLocation ? `<span class="dashboardSeedlingStatusAgeLabel">今回の${model.actionLabel}</span>` : ""}
               <span class="dashboardSeedlingStatusAgeSummary">${hasLocation ? escapeHtml(summaryText) : "対象なし"}</span>
@@ -869,7 +916,7 @@ function renderRecordDetailLocationDisplay(){
       }).join("")}
     </div>
     <div class="dashboardSeedlingStatusMapGuide" aria-label="配置図の色分け">
-      ${model.locationGroups.map(group => `
+      ${(selectedGroup ? [selectedGroup] : model.locationGroups).map(group => `
         <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>${model.kind === "planting" ? escapeHtml(group.label) : `今回の${model.actionLabel}（${escapeHtml(group.label)}）`}</span>
       `).join("")}
       <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>対象外</span>
@@ -898,11 +945,35 @@ function renderRecordDetailLocationDisplay(){
   `;
 }
 
+function setRecordDetailLocationGroup(groupClass){
+  const model = recordDetailLocationModel;
+  if(model?.kind !== "planting") return;
+  const group = model.locationGroups.find(item => item.className === groupClass);
+  if(!group) return;
+  recordDetailLocationSelectedGroupClass = group.className;
+  const visibleBuildings = getRecordDetailLocationVisibleBuildings(model, group);
+  if(!visibleBuildings.includes(recordDetailLocationBuilding)){
+    recordDetailLocationBuilding = visibleBuildings[0];
+  }
+  recordDetailLocationSelectedBed = getRecordDetailLocationDefaultBed(
+    model,
+    recordDetailLocationBuilding,
+    group
+  );
+  renderRecordDetailLocationDisplay();
+}
+
 function setRecordDetailLocationBuilding(building){
   const normalized = Number(building);
-  if(!recordDetailLocationModel?.buildings.includes(normalized)) return;
+  const selectedGroup = getRecordDetailLocationSelectedGroup(recordDetailLocationModel);
+  const visibleBuildings = getRecordDetailLocationVisibleBuildings(recordDetailLocationModel, selectedGroup);
+  if(!visibleBuildings.includes(normalized)) return;
   recordDetailLocationBuilding = normalized;
-  recordDetailLocationSelectedBed = getRecordDetailLocationDefaultBed(recordDetailLocationModel, normalized);
+  recordDetailLocationSelectedBed = getRecordDetailLocationDefaultBed(
+    recordDetailLocationModel,
+    normalized,
+    selectedGroup
+  );
   renderRecordDetailLocationDisplay();
 }
 
@@ -923,10 +994,15 @@ function loadRecordDetailLocation(kind, id, loadToken){
   }
   try{
     recordDetailLocationModel = buildRecordDetailLocationModel(kind, entity);
-    recordDetailLocationBuilding = recordDetailLocationModel.buildings[0] ?? null;
+    recordDetailLocationSelectedGroupClass = recordDetailLocationModel.kind === "planting"
+      ? (recordDetailLocationModel.locationGroups[0]?.className || null)
+      : null;
+    const selectedGroup = getRecordDetailLocationSelectedGroup(recordDetailLocationModel);
+    const visibleBuildings = getRecordDetailLocationVisibleBuildings(recordDetailLocationModel, selectedGroup);
+    recordDetailLocationBuilding = visibleBuildings[0] ?? null;
     recordDetailLocationSelectedBed = recordDetailLocationBuilding === null
       ? null
-      : getRecordDetailLocationDefaultBed(recordDetailLocationModel, recordDetailLocationBuilding);
+      : getRecordDetailLocationDefaultBed(recordDetailLocationModel, recordDetailLocationBuilding, selectedGroup);
     renderRecordDetailLocationDisplay();
   }catch(error){
     console.error("記録詳細の場所表示を読み込めませんでした", error);
@@ -1021,6 +1097,7 @@ function openRecordDetailWindow(kind, id){
   recordDetailLocationModel = null;
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
+  recordDetailLocationSelectedGroupClass = null;
   recordDetailReturnFocus = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null;
@@ -1052,6 +1129,7 @@ function closeRecordDetailWindow(options = {}){
   recordDetailLocationModel = null;
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
+  recordDetailLocationSelectedGroupClass = null;
   hidePageBlockingUi(modal);
   if(body){
     body.classList.remove("hasLocationDisplay");

@@ -1556,12 +1556,13 @@
         }, "苗植えベッド配置図の下が選択内訳だけになっていません");
       });
 
-      await runTest("苗植え詳細の場所をパレット別の植え付け数で分けて表示する", () => {
+      await runTest("苗植え詳細の場所を植え付け数ボタンで切り替える", () => {
         const locationState = comparable(app.eval(`(() => {
           const previous = {
             model: recordDetailLocationModel,
             building: recordDetailLocationBuilding,
-            bed: recordDetailLocationSelectedBed
+            bed: recordDetailLocationSelectedBed,
+            groupClass: recordDetailLocationSelectedGroupClass
           };
           const mount = document.createElement("div");
           mount.id = "recordDetailLocationMount";
@@ -1579,36 +1580,53 @@
             });
             recordDetailLocationBuilding = 2;
             recordDetailLocationSelectedBed = "A";
+            recordDetailLocationSelectedGroupClass = "is-planting-count-12";
             renderRecordDetailLocationDisplay();
-            const aBed = [...mount.querySelectorAll(".recordDetailLocationBed")]
-              .find(item => item.querySelector(".dashboardForecastBedName")?.textContent === "A");
-            const cellClass = number => aBed
-              ?.querySelector(`[data-record-detail-pallet-number="${number}"]`)
-              ?.className || "";
+            const readDisplayState = () => {
+              const selectedBed = mount.querySelector(".recordDetailLocationBed.is-selected");
+              const cellClass = number => selectedBed
+                ?.querySelector(`[data-record-detail-pallet-number="${number}"]`)
+                ?.className || "";
+              return {
+                activeButton: mount.querySelector(".recordDetailLocationCountBtn.active")?.textContent.trim() || "",
+                guide: [...mount.querySelectorAll(".dashboardSeedlingStatusMapGuideItem")]
+                  .map(item => item.textContent.trim()),
+                selectedBed: mount.querySelector(".dashboardSeedlingStatusDetailTitle")?.textContent || "",
+                bedSummary: selectedBed?.querySelector(".dashboardSeedlingStatusAgeSummary")?.textContent || "",
+                detailGroups: [...mount.querySelectorAll(".recordDetailLocationGroupLabel")]
+                  .map(item => item.textContent.trim()),
+                detailCounts: [...mount.querySelectorAll(".recordDetailLocationLot .dashboardSeedlingStatusCount span:last-child")]
+                  .map(item => item.textContent.trim()),
+                mapClasses: {
+                  pallet1: cellClass(1),
+                  pallet2: cellClass(2),
+                  pallet4: cellClass(4),
+                  pallet5: cellClass(5)
+                }
+              };
+            };
+            const twelve = readDisplayState();
+            setRecordDetailLocationGroup("is-planting-count-16");
+            const sixteen = readDisplayState();
+            setRecordDetailLocationGroup("is-planting-count-20");
+            const twenty = readDisplayState();
             return {
               groups: recordDetailLocationModel.locationGroups.map(group => ({
                 label: group.label,
                 count: group.keys.length
               })),
-              guide: [...mount.querySelectorAll(".dashboardSeedlingStatusMapGuideItem")]
+              buttons: [...mount.querySelectorAll(".recordDetailLocationCountBtn")]
                 .map(item => item.textContent.trim()),
-              bedSummary: aBed?.querySelector(".dashboardSeedlingStatusAgeSummary")?.textContent || "",
-              detailGroups: [...mount.querySelectorAll(".recordDetailLocationGroupLabel")]
-                .map(item => item.textContent.trim()),
-              detailCounts: [...mount.querySelectorAll(".recordDetailLocationLot .dashboardSeedlingStatusCount span:last-child")]
-                .map(item => item.textContent.trim()),
-              mapClasses: {
-                pallet1: cellClass(1),
-                pallet2: cellClass(2),
-                pallet4: cellClass(4),
-                pallet5: cellClass(5)
-              }
+              twelve,
+              sixteen,
+              twenty
             };
           }finally{
             mount.remove();
             recordDetailLocationModel = previous.model;
             recordDetailLocationBuilding = previous.building;
             recordDetailLocationSelectedBed = previous.bed;
+            recordDetailLocationSelectedGroupClass = previous.groupClass;
           }
         })()`));
         assertDeepEqual(locationState.groups, [
@@ -1617,14 +1635,22 @@
           { label: "20植え", count: 1 },
           { label: "株数未記録", count: 1 }
         ], "苗植え場所を植え付け数ごとに分けられません");
-        assertDeepEqual(locationState.guide, ["12植え", "16植え", "20植え", "株数未記録", "対象外"], "苗植え場所の色分けが一致しません");
-        assertEqual(locationState.bedSummary, "12植え×2 / 16植え×1 / 株数未記録×1", "ベッドの植え付け数内訳が一致しません");
-        assertDeepEqual(locationState.detailGroups, ["12植え", "16植え", "株数未記録"], "選択したベッドの場所が植え付け数別に表示されません");
-        assertDeepEqual(locationState.detailCounts, ["2パレット", "1パレット", "1パレット"], "植え付け数別のパレット数が一致しません");
-        assert(locationState.mapClasses.pallet1.includes("is-planting-count-12"), "12植えの色が配置図へ反映されません");
-        assert(locationState.mapClasses.pallet2.includes("is-planting-count-16"), "16植えの色が配置図へ反映されません");
-        assert(locationState.mapClasses.pallet4.includes("is-unplanted"), "対象外パレットの色が変わりました");
-        assert(locationState.mapClasses.pallet5.includes("is-planting-count-unknown"), "株数未記録の色が配置図へ反映されません");
+        assertDeepEqual(locationState.buttons, ["12植え", "16植え", "20植え", "株数未記録"], "植え付け数の切り替えボタンが一致しません");
+        assertEqual(locationState.twelve.activeButton, "12植え", "12植えボタンが選択中になりません");
+        assertDeepEqual(locationState.twelve.guide, ["12植え", "対象外"], "12植え以外の凡例が表示されています");
+        assertEqual(locationState.twelve.bedSummary, "12植え×2", "12植えのベッド内訳が一致しません");
+        assertDeepEqual(locationState.twelve.detailGroups, ["12植え"], "12植えの場所だけが表示されません");
+        assertDeepEqual(locationState.twelve.detailCounts, ["2パレット"], "12植えのパレット数が一致しません");
+        assert(locationState.twelve.mapClasses.pallet1.includes("is-planting-count-12"), "12植えの色が配置図へ反映されません");
+        assert(locationState.twelve.mapClasses.pallet2.includes("is-unplanted"), "12植え選択中に16植えが表示されています");
+        assertEqual(locationState.sixteen.activeButton, "16植え", "16植えボタンへ切り替わりません");
+        assertEqual(locationState.sixteen.bedSummary, "16植え×1", "16植えのベッド内訳が一致しません");
+        assert(locationState.sixteen.mapClasses.pallet1.includes("is-unplanted"), "16植え選択中に12植えが表示されています");
+        assert(locationState.sixteen.mapClasses.pallet2.includes("is-planting-count-16"), "16植えの色が配置図へ反映されません");
+        assertEqual(locationState.twenty.activeButton, "20植え", "20植えボタンへ切り替わりません");
+        assertEqual(locationState.twenty.selectedBed, "Bベッドの詳細", "20植えの場所があるベッドへ切り替わりません");
+        assertEqual(locationState.twenty.bedSummary, "20植え×1", "20植えのベッド内訳が一致しません");
+        assert(locationState.twenty.mapClasses.pallet4.includes("is-planting-count-20"), "20植えの色が配置図へ反映されません");
       });
 
       await runTest("12植えと16植えの色を入れ替えて統一する", () => {

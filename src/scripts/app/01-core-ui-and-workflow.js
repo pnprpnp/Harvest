@@ -180,6 +180,7 @@ let recordDetailReturnFocus = null;
 let recordDetailLocationModel = null;
 let recordDetailLocationBuilding = null;
 let recordDetailLocationSelectedBed = null;
+let recordDetailLocationSelectedGroupClass = null;
 let recordDetailLoadToken = 0;
 let partialHarvestEditReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
