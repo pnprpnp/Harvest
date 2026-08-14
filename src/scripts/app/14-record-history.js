@@ -1082,7 +1082,6 @@ function openRecordDetailWindow(kind, id){
     infoRows = [
       { label: "実際に取った苗", value: detailsUnknown ? "不明" : event.actualTakenSeedlingCount + "株" },
       { label: "苗植えした株数", value: detailsUnknown ? "不明" : event.actualPlantedSeedlingCount + "株" },
-      { label: "パレット別の植え付け数", value: detailsUnknown ? "不明" : formatPlantingCountsByPalletSummary(event) },
       { label: "苗の品質メモ", value: formatPlantingQualityMemo(event.qualityMemo) },
       { label: "今回余った苗", value: detailsUnknown ? "不明" : carryoverText },
       { label: "作業後の繰越苗", value: detailsUnknown ? "不明" : (usage?.carryoverAfter ?? 0) + "株" },
