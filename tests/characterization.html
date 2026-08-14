@@ -1169,22 +1169,34 @@
         assert(sizes.current.height >= 52, "中央の号棟表示と移動ボタンの高さが揃っていません");
       });
 
-      await runTest("シミュレーション欄の外枠を表示しない", () => {
-        const frameStyle = comparable(app.eval(`(() => {
-          const style = getComputedStyle(document.getElementById("forecastSimulationCard"));
-          return {
-            borderTopWidth: style.borderTopWidth,
-            borderRightWidth: style.borderRightWidth,
-            borderBottomWidth: style.borderBottomWidth,
-            borderLeftWidth: style.borderLeftWidth,
-            borderRadius: style.borderRadius,
-            backgroundColor: style.backgroundColor,
-            boxShadow: style.boxShadow,
-            backdropFilter: style.backdropFilter,
-            webkitBackdropFilter: style.webkitBackdropFilter
+      await runTest("各メインタブの外側カードをページ背景と一体化する", () => {
+        const frameStyles = comparable(app.eval(`(() => {
+          const selectors = {
+            forecast: "#forecastSimulationCard",
+            monitor: "#monitorCard",
+            recordSave: "#recordSaveCard",
+            recordList: "#recordTab > .card:not(#recordSaveCard)",
+            dashboardGuide: "#dashboardSubtabGuide > .card",
+            dashboardCalendar: "#dashboardSubtabCalendar > .card",
+            dashboardSeedlings: "#dashboardSubtabSeedlings > .card",
+            dashboardGraph: "#dashboardSubtabGraphs > .dashboardChartCard"
           };
+          return Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+            const style = getComputedStyle(document.querySelector(selector));
+            return [name, {
+              borderTopWidth: style.borderTopWidth,
+              borderRightWidth: style.borderRightWidth,
+              borderBottomWidth: style.borderBottomWidth,
+              borderLeftWidth: style.borderLeftWidth,
+              borderRadius: style.borderRadius,
+              backgroundColor: style.backgroundColor,
+              boxShadow: style.boxShadow,
+              backdropFilter: style.backdropFilter,
+              webkitBackdropFilter: style.webkitBackdropFilter
+            }];
+          }));
         })()`));
-        assertDeepEqual(frameStyle, {
+        const expectedStyle = {
           borderTopWidth: "0px",
           borderRightWidth: "0px",
           borderBottomWidth: "0px",
@@ -1194,7 +1206,10 @@
           boxShadow: "none",
           backdropFilter: "none",
           webkitBackdropFilter: "none"
-        }, "シミュレーション欄の白いカード背景または外枠が残っています");
+        };
+        Object.entries(frameStyles).forEach(([name, style]) => {
+          assertDeepEqual(style, expectedStyle, `${name}に白いカード背景または外枠が残っています`);
+        });
       });
 
       await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
