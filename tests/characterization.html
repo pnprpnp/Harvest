@@ -1212,6 +1212,20 @@
         });
       });
 
+      await runTest("ページ背景をグラデーションのない単色にする", () => {
+        const pageStyle = comparable(app.eval(`(() => {
+          const style = getComputedStyle(document.body);
+          return {
+            backgroundColor: style.backgroundColor,
+            backgroundImage: style.backgroundImage
+          };
+        })()`));
+        assertDeepEqual(pageStyle, {
+          backgroundColor: "rgb(245, 245, 247)",
+          backgroundImage: "none"
+        }, "ページ背景にグラデーションまたは別の色が残っています");
+      });
+
       await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
         const monitorState = comparable(app.eval(`(() => {
           const previousGetRecorded = getRecordedPalletSet;
