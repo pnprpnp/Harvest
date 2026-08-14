@@ -1610,6 +1610,46 @@
         assert(layoutState.partialHarvest.secondClass.includes("recordDetailLocationSection"), "部分収穫場所が表示されません");
       });
 
+      await runTest("収穫の詳細に苗植えと予定苗枚数を表示しない", () => {
+        const detailState = comparable(app.eval(`(() => {
+          const previousRecords = records;
+          let normalized = null;
+          let labels = [];
+          try{
+            normalized = normalizeStoredRecord({
+              palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+              id: 20999999999991,
+              recordUuid: "77777777-7777-4777-8777-777777777777",
+              type: "fullHarvest",
+              date: "2026-08-14",
+              cases: 8,
+              palletRanges: ["2-A-1-2"],
+              plantingRanges: ["2-A-1-2"],
+              plannedSeedlingTrayCount: 3,
+              plantingPending: false
+            });
+            records = normalized ? [normalized] : [];
+            invalidateHarvestRecordEditTimelineCache();
+            invalidateRecordHistoryCache();
+            if(normalized){
+              openRecordDetailWindow("harvest", normalized.id);
+              labels = [...document.querySelectorAll("#recordDetailWindowBody .recordDetailInfoLabel")]
+                .map(item => item.textContent.trim());
+            }
+          }finally{
+            closeRecordDetailWindow({ restoreFocus: false });
+            records = previousRecords;
+            invalidateHarvestRecordEditTimelineCache();
+            invalidateRecordHistoryCache();
+          }
+          return { normalized: !!normalized, labels };
+        })()`));
+        assertEqual(detailState.normalized, true, "確認用の収穫記録を作成できません");
+        assert(!detailState.labels.includes("苗植え"), "収穫の詳細に苗植えが表示されています");
+        assert(!detailState.labels.includes("予定苗枚数"), "収穫の詳細に予定苗枚数が表示されています");
+        assert(detailState.labels.includes("定植日数の詳細"), "残す定植日数の詳細が消えています");
+      });
+
       await runTest("苗植え詳細の場所を植え付け数で切り替え、苗の品質色で表示する", () => {
         const locationState = comparable(app.eval(`(() => {
           const previous = {

@@ -1063,8 +1063,6 @@ function openRecordDetailWindow(kind, id){
       { label: "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
       { label: "収穫場所", value: harvestLocationText },
       { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
-      { label: "苗植え", value: getHarvestRecordPlantingDetailText(record) },
-      { label: "予定苗枚数", value: `${record.plannedSeedlingTrayCount || 0}枚` },
       { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
       ...(attention.hasAttention ? [{ label: attention.label, value: attention.reasons.join("\n") || "内容を確認してください" }] : []),
       ...(record.memo ? [{ label: "メモ", value: record.memo }] : [])
