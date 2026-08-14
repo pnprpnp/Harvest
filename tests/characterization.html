@@ -1146,6 +1146,29 @@
         assertEqual(app.normalizeMainTabName("unknown"), "", "不明なタブを受け入れています");
       });
 
+      await runTest("シミュタブの号棟移動ボタンを押しやすい大きさにする", () => {
+        const sizes = comparable(app.eval(`(() => {
+          const moveButton = document.querySelector(".casePlacementBuildingSwitch .buildingBtn:not(.active)");
+          const currentButton = document.getElementById("casePlacementBuildingBtn");
+          const read = element => {
+            const style = getComputedStyle(element);
+            return {
+              width: parseFloat(style.width),
+              minWidth: parseFloat(style.minWidth),
+              height: parseFloat(style.height)
+            };
+          };
+          return {
+            move: read(moveButton),
+            current: read(currentButton)
+          };
+        })()`));
+        assert(sizes.move.width >= 52, "号棟移動ボタンの幅が52px未満です");
+        assert(sizes.move.minWidth >= 52, "狭い画面で号棟移動ボタンが縮みます");
+        assert(sizes.move.height >= 52, "号棟移動ボタンの高さが52px未満です");
+        assert(sizes.current.height >= 52, "中央の号棟表示と移動ボタンの高さが揃っていません");
+      });
+
       await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
         const monitorState = comparable(app.eval(`(() => {
           const previousGetRecorded = getRecordedPalletSet;
