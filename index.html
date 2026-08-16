@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260816-dashboard-calendar-values-only">
+<meta name="harvestnavi-version" content="20260816-dashboard-calendar-grid-cells">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -6247,21 +6247,32 @@ button.monitorSaveBtn:active{
   color:#b91c1c;
   font-weight:800;
 }
+.dashboardRecordCalendarFrame{
+  overflow:hidden;
+  border:1px solid var(--ui-line, #e5e7eb);
+  border-radius:12px;
+  background:#fff;
+}
 .dashboardRecordCalendarWeekdays,
 .dashboardRecordCalendarGrid{
   display:grid;
   grid-template-columns:repeat(7, minmax(0, 1fr));
-  gap:3px;
+  gap:0;
 }
 .dashboardRecordCalendarWeekdays{
-  margin-bottom:4px;
+  border-bottom:1px solid var(--ui-line, #e5e7eb);
+  background:#f8fafc;
 }
 .dashboardRecordCalendarWeekdays > span{
-  padding:4px 0;
+  padding:6px 0;
+  border-right:1px solid var(--ui-line, #e5e7eb);
   color:#64748b;
   font-size:11px;
   font-weight:850;
   text-align:center;
+}
+.dashboardRecordCalendarWeekdays > span:last-child{
+  border-right:0;
 }
 .dashboardRecordCalendarWeekdays .is-sunday,
 .dashboardRecordCalendarDay.is-sunday .dashboardRecordCalendarDateNumber{
@@ -6280,15 +6291,16 @@ button.monitorSaveBtn:active{
   min-height:78px;
   box-sizing:border-box;
   padding:5px 4px;
-  border:1px solid var(--ui-line, #e5e7eb);
-  border-radius:10px;
+  border:0;
+  border-right:1px solid var(--ui-line, #e5e7eb);
+  border-bottom:1px solid var(--ui-line, #e5e7eb);
+  border-radius:0;
   background:#fff;
   color:#111827;
   text-align:left;
   box-shadow:none;
 }
 button.dashboardRecordCalendarDay.has-records{
-  border-color:#c4b5fd;
   background:#faf8ff;
   cursor:pointer;
 }
@@ -6298,15 +6310,20 @@ button.dashboardRecordCalendarDay.has-records:active{
 button.dashboardRecordCalendarDay.has-records:focus-visible{
   position:relative;
   z-index:1;
-  outline:3px solid rgba(109,40,217,.22);
-  outline-offset:1px;
+  outline:3px solid rgba(109,40,217,.28);
+  outline-offset:-3px;
 }
 .dashboardRecordCalendarDay.is-today{
   box-shadow:inset 0 0 0 2px #8b5cf6;
 }
 .dashboardRecordCalendarDay.is-outside{
-  border-color:transparent;
-  background:transparent;
+  background:#f8fafc;
+}
+.dashboardRecordCalendarDay:nth-child(7n){
+  border-right:0;
+}
+.dashboardRecordCalendarDay:nth-last-child(-n+7){
+  border-bottom:0;
 }
 .dashboardRecordCalendarDateNumber{
   align-self:flex-start;
@@ -21450,10 +21467,12 @@ function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
   container.dataset.loadedMonth = period.monthKey;
   container.innerHTML = `
     <div class="dashboardTableSummary" role="status">${escapeHtml(summaryText)}</div>
-    <div class="dashboardRecordCalendarWeekdays" aria-hidden="true">
-      ${["日", "月", "火", "水", "木", "金", "土"].map((label, index) => `<span class="${index === 0 ? "is-sunday" : (index === 6 ? "is-saturday" : "")}">${label}</span>`).join("")}
+    <div class="dashboardRecordCalendarFrame">
+      <div class="dashboardRecordCalendarWeekdays" aria-hidden="true">
+        ${["日", "月", "火", "水", "木", "金", "土"].map((label, index) => `<span class="${index === 0 ? "is-sunday" : (index === 6 ? "is-saturday" : "")}">${label}</span>`).join("")}
+      </div>
+      <div class="dashboardRecordCalendarGrid">${dayCells}</div>
     </div>
-    <div class="dashboardRecordCalendarGrid">${dayCells}</div>
   `;
 }
 

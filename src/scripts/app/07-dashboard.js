@@ -1863,10 +1863,12 @@ function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
   container.dataset.loadedMonth = period.monthKey;
   container.innerHTML = `
     <div class="dashboardTableSummary" role="status">${escapeHtml(summaryText)}</div>
-    <div class="dashboardRecordCalendarWeekdays" aria-hidden="true">
-      ${["日", "月", "火", "水", "木", "金", "土"].map((label, index) => `<span class="${index === 0 ? "is-sunday" : (index === 6 ? "is-saturday" : "")}">${label}</span>`).join("")}
+    <div class="dashboardRecordCalendarFrame">
+      <div class="dashboardRecordCalendarWeekdays" aria-hidden="true">
+        ${["日", "月", "火", "水", "木", "金", "土"].map((label, index) => `<span class="${index === 0 ? "is-sunday" : (index === 6 ? "is-saturday" : "")}">${label}</span>`).join("")}
+      </div>
+      <div class="dashboardRecordCalendarGrid">${dayCells}</div>
     </div>
-    <div class="dashboardRecordCalendarGrid">${dayCells}</div>
   `;
 }
 
