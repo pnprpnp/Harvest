@@ -2995,6 +2995,7 @@ function renderDashboardSeedlingStatus(){
 }
 
 function renderDashboardGraphs(){
+  renderDashboardRecordResults();
   const period = getDashboardPeriod();
   const metricsPeriod = renderDashboardMetrics();
   const metricsNote = document.getElementById("dashboardMetricsNote");

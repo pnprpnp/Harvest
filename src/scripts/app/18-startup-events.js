@@ -179,11 +179,6 @@ function handleStartupEscapeKey(event){
     closeRecordDetailWindow();
     return;
   }
-  const dashboardRecordListModal = document.getElementById("dashboardRecordListModal");
-  if(dashboardRecordListModal?.classList.contains("show")){
-    closeDashboardRecordListWindow();
-    return;
-  }
   const partialHarvestEditModal = document.getElementById("partialHarvestEditModal");
   if(partialHarvestEditModal?.classList.contains("show")){
     closePartialHarvestEditWindow();

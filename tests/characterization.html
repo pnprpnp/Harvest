@@ -352,10 +352,6 @@
         await settleVisualApp(app);
         fingerprints.mobileDashboardRecord = getVisualFingerprint(app);
 
-        app.openDashboardRecordListWindow();
-        await settleVisualApp(app);
-        fingerprints.mobileDashboardRecordWindow = getVisualFingerprint(app);
-        app.closeDashboardRecordListWindow();
         app.setDashboardSubtab("guide");
         await settleVisualApp(app);
 
@@ -442,8 +438,6 @@
         "closeDashboardForecastInfoWindow",
         "openDashboardCalendarInfoWindow",
         "closeDashboardCalendarInfoWindow",
-        "openDashboardRecordListWindow",
-        "closeDashboardRecordListWindow",
         "loadDashboardRecordCalendarMonth",
         "shiftDashboardRecordCalendarMonth"
       ];
@@ -1130,7 +1124,6 @@
           "dashboardCalendarInfoModal",
           "dashboardForecastInfoModal",
           "dashboardForecastDaysAllModal",
-          "dashboardRecordListModal",
           "plantingAgeModal",
           "bedDetailModal",
           "recordDetailModal",
@@ -1300,66 +1293,53 @@
         }
       });
 
-      await runTest("集計の記録タブ先頭から記録一覧をウィンドウで開く", () => {
+      await runTest("集計の記録タブ先頭に記録カレンダーを常時表示する", () => {
         const subtabButton = app.document.getElementById("dashboardSubtabGraphsBtn");
         const panel = app.document.getElementById("dashboardSubtabGraphs");
-        const openButton = app.document.getElementById("dashboardRecordListOpenBtn");
+        const calendarCard = app.document.getElementById("dashboardRecordCalendarCard");
+        const table = app.document.getElementById("dashboardRecordTable");
         assertEqual(subtabButton?.textContent.trim(), "記録", "グラフのサブタブ名が記録へ変わっていません");
-        assert(panel?.firstElementChild === openButton, "記録一覧を開く操作が記録タブの一番上にありません");
-        assert(!panel?.querySelector("#dashboardRecordTable"), "記録一覧が記録タブ内の折りたたみ表示に残っています");
+        assert(panel?.firstElementChild === calendarCard, "記録カレンダーが記録タブの一番上にありません");
+        assert(table?.closest("#dashboardSubtabGraphs") === panel, "記録カレンダーが記録タブ内に常設されていません");
+        assert(!app.document.getElementById("dashboardRecordListOpenBtn"), "記録一覧を開くボタンが残っています");
+        assert(!app.document.getElementById("dashboardRecordListModal"), "記録一覧の専用ウィンドウが残っています");
 
         const currentMonth = app.eval("normalizeDashboardRecordCalendarMonth(new Date())");
-        assertEqual(app.document.getElementById("dashboardRecordTable")?.childElementCount || 0, 0, "記録一覧を開く前に月の記録を読み込んでいます");
-        try{
-          app.openDashboardRecordListWindow();
-          const windowState = comparable(app.eval(`(() => {
-            const modal = document.getElementById("dashboardRecordListModal");
-            const table = document.getElementById("dashboardRecordTable");
-            return {
-              open: modal?.classList.contains("show") || false,
-              title: document.getElementById("dashboardRecordListWindowTitle")?.textContent.trim() || "",
-              tableInWindow: table?.closest("#dashboardRecordListModal") === modal,
-              filtersInWindow: document.getElementById("dashboardRecordSearchInput")?.closest("#dashboardRecordListModal") === modal,
-              filterOpen: document.getElementById("dashboardRecordFilterDetails")?.open || false,
-              loadedMonth: table?.dataset.loadedMonth || ""
-            };
-          })()`));
-          assertDeepEqual(windowState, {
-            open: true,
-            title: "記録一覧",
-            tableInWindow: true,
-            filtersInWindow: true,
-            filterOpen: false,
-            loadedMonth: currentMonth
-          }, "記録一覧が今月分を読み込む専用ウィンドウで開きません");
+        app.eval(`dashboardRecordCalendarMonth = null; dashboardRenderedSubtabs.delete("graphs");`);
+        app.setDashboardSubtab("guide");
+        app.setDashboardSubtab("graphs");
+        const inlineState = comparable(app.eval(`({
+          loadedMonth: document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || "",
+          filterOpen: document.getElementById("dashboardRecordFilterDetails")?.open || false,
+          filtersInTab: document.getElementById("dashboardRecordSearchInput")?.closest("#dashboardSubtabGraphs") === document.getElementById("dashboardSubtabGraphs")
+        })`));
+        assertDeepEqual(inlineState, {
+          loadedMonth: currentMonth,
+          filterOpen: false,
+          filtersInTab: true
+        }, "記録タブを表示した時に当月のカレンダーが直接表示されません");
 
-          app.shiftDashboardRecordCalendarMonth(-1);
-          const previousMonthState = comparable(app.eval(`({
-            selectedMonth: dashboardRecordCalendarMonth,
-            loadedMonth: document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || ""
-          })`));
-          const expectedPreviousMonth = app.eval(`(() => {
-            const period = getDashboardRecordCalendarPeriod(${JSON.stringify(currentMonth)});
-            return normalizeDashboardRecordCalendarMonth(new Date(period.year, period.month - 2, 1));
-          })()`);
-          assertDeepEqual(previousMonthState, {
-            selectedMonth: expectedPreviousMonth,
-            loadedMonth: expectedPreviousMonth
-          }, "前月へ移動した時にその月の記録を読み込んでいません");
-        }finally{
-          app.closeDashboardRecordListWindow();
-        }
+        app.shiftDashboardRecordCalendarMonth(-1);
+        const previousMonthState = comparable(app.eval(`({
+          selectedMonth: dashboardRecordCalendarMonth,
+          loadedMonth: document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || ""
+        })`));
+        const expectedPreviousMonth = app.eval(`(() => {
+          const period = getDashboardRecordCalendarPeriod(${JSON.stringify(currentMonth)});
+          return normalizeDashboardRecordCalendarMonth(new Date(period.year, period.month - 2, 1));
+        })()`);
+        assertDeepEqual(previousMonthState, {
+          selectedMonth: expectedPreviousMonth,
+          loadedMonth: expectedPreviousMonth
+        }, "前月へ移動した時にその月の記録を読み込んでいません");
 
-        try{
-          app.openDashboardRecordListWindow();
-          assertEqual(
-            app.document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || "",
-            currentMonth,
-            "記録一覧を開き直した時に今月分へ戻っていません"
-          );
-        }finally{
-          app.closeDashboardRecordListWindow();
-        }
+        app.setDashboardSubtab("guide");
+        app.setDashboardSubtab("graphs");
+        assertEqual(
+          app.document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || "",
+          expectedPreviousMonth,
+          "記録タブへ戻った時に表示月が維持されません"
+        );
       });
 
       await runTest("集計の記録一覧は月カレンダーに日ごとの収穫値を表示し、詳細で場所を切り替える", () => {
@@ -2618,18 +2598,17 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "165acd88", elements: 2057, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "fdc1f9c8", elements: 2125, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "0cb37325", elements: 2125, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "212fcf6f", elements: 2058, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "32a2a8cc", elements: 2058, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f15144c2", elements: 2073, visible: 116, viewport: "390x844" },
-          mobileDashboardRecordWindow: { hash: "478dd1e1", elements: 2156, visible: 238, viewport: "390x844" },
-          mobileMenu: { hash: "530e2393", elements: 2156, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "7703cef3", elements: 2156, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "9fa801fb", elements: 2156, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "84bd34bd", elements: 2156, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "9f589c12", elements: 2156, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "b1e8a245", elements: 2046, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "f3635043", elements: 2114, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "f841558a", elements: 2114, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "6a10493a", elements: 2047, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "1ea30fd5", elements: 2047, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "8c133b0b", elements: 2145, visible: 227, viewport: "390x844" },
+          mobileMenu: { hash: "445ffe07", elements: 2145, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "fa843a37", elements: 2145, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "a3a1880b", elements: 2145, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "1d59298d", elements: 2145, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "70e7bc36", elements: 2145, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
