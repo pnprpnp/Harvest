@@ -1243,6 +1243,112 @@
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
       });
 
+      await runTest("集計の記録一覧を日ごとにまとめ、二次定植場所も表示する", () => {
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previousFilter = comparable(app.eval("dashboardFilter"));
+        try{
+          replaceAppHistory(app, [{
+            palletNumberingVersion: 2,
+            id: 20000000000040,
+            recordUuid: "40404040-4040-4040-8040-404040404040",
+            type: "fullHarvest",
+            date: "2026-08-15",
+            cases: 12,
+            palletRanges: ["3-B-4-5"],
+            plantingRanges: ["3-B-4-5"],
+            plannedSeedlingTrayCount: 2,
+            actualLoss: "4",
+            plantingPending: false
+          }, {
+            palletNumberingVersion: 2,
+            id: 20000000000041,
+            recordUuid: "41414141-4141-4141-8141-414141414141",
+            type: "partialHarvest",
+            date: "2026-08-15",
+            cases: 3,
+            targets: [{ building: 3, bed: "B", start: 6, end: 6, plantsPerPallet: 9 }]
+          }, {
+            palletNumberingVersion: 2,
+            id: 20000000000042,
+            recordUuid: "42424242-4242-4242-8242-424242424242",
+            type: "fullHarvest",
+            date: "2026-08-14",
+            cases: 9,
+            palletRanges: ["2-A-1-2"],
+            plantingRanges: ["2-A-1-2"],
+            plannedSeedlingTrayCount: 2,
+            actualLoss: "2",
+            plantingPending: true
+          }], [{
+            palletNumberingVersion: 2,
+            eventId: 20000000000043,
+            plantingDate: "2026-08-15",
+            sourceAllocations: [{
+              harvestRecordId: 20000000000040,
+              palletKeys: ["3-B-4", "3-B-5"]
+            }],
+            plantingPalletKeys: ["3-B-4", "3-B-5"],
+            plantingCountsByPallet: { "3-B-4": 16, "3-B-5": 16 },
+            actualSeedlingTrayCount: 2,
+            actualTakenSeedlingCount: 240,
+            actualPlantedSeedlingCount: 32,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "3",
+            qualityMemo: { tags: ["medium"], other: "" },
+            detailsUnknown: false
+          }]);
+          app.invalidatePlantingEventStateCache();
+          app.eval(`
+            dashboardFilter.recordType = "all";
+            dashboardFilter.recordSearch = "";
+            dashboardFilter.recordStartDate = "";
+            dashboardFilter.recordEndDate = "";
+            document.getElementById("dashboardRecordSearchInput").value = "";
+            document.getElementById("dashboardRecordStartDateInput").value = "";
+            document.getElementById("dashboardRecordEndDateInput").value = "";
+            renderDashboardRecordResults();
+          `);
+          const allState = comparable(app.eval(`(() => {
+            const groups = [...document.querySelectorAll("#dashboardRecordTable .dashboardRecordDayGroup")];
+            const first = groups[0];
+            const plantingCard = first.querySelector('.dashboardRecordCard[data-ui-arg="planting"]');
+            const locationMetric = [...plantingCard.querySelectorAll(".dashboardRecordCardMetric")]
+              .find(metric => metric.querySelector(".dashboardRecordCardMetricLabel")?.textContent === "二次定植場所");
+            return {
+              summary: document.querySelector("#dashboardRecordTable .dashboardTableSummary")?.textContent || "",
+              dayCount: groups.length,
+              firstDate: first.querySelector(".dashboardRecordDayTitle")?.textContent || "",
+              firstMeta: first.querySelector(".dashboardRecordDayMeta")?.textContent || "",
+              badges: [...first.querySelectorAll(".dashboardTypeBadge")].map(item => item.textContent),
+              plantingLocation: locationMetric?.querySelector(".dashboardRecordCardMetricValue")?.textContent || "",
+              plantingDetailId: Number(plantingCard?.dataset.uiNumber || 0)
+            };
+          })()`));
+          assert(allState.summary.startsWith("2日 / 4件"), "記録一覧の件数が日ごとの表示になっていません");
+          assertEqual(allState.dayCount, 2, "同じ日の記録が一つの日付グループにまとまりません");
+          assertEqual(allState.firstDate, "2026/8/15（土）", "日付見出しが一致しません");
+          assertEqual(allState.firstMeta, "収穫 2件 / 苗植え 1件 / 合計 15ケース", "日ごとの集計が一致しません");
+          assertDeepEqual(allState.badges, ["部分収穫", "通常収穫", "苗植え"], "同日の収穫・苗植え記録が揃っていません");
+          assert(allState.plantingLocation.includes("3号棟") && allState.plantingLocation.includes("B"), "二次定植場所が一覧に表示されません");
+          assertEqual(allState.plantingDetailId, 20000000000043, "苗植え詳細への識別子が一致しません");
+
+          app.setDashboardRecordTypeFilter("planting");
+          const plantingOnlyState = comparable(app.eval(`({
+            summary: document.querySelector("#dashboardRecordTable .dashboardTableSummary")?.textContent || "",
+            dayCount: document.querySelectorAll("#dashboardRecordTable .dashboardRecordDayGroup").length,
+            cardCount: document.querySelectorAll("#dashboardRecordTable .dashboardRecordCard").length
+          })`));
+          assert(plantingOnlyState.summary.startsWith("1日 / 1件 / 苗植え"), "苗植えだけの絞り込み件数が一致しません");
+          assertDeepEqual([plantingOnlyState.dayCount, plantingOnlyState.cardCount], [1, 1], "苗植えだけに絞り込めません");
+        }finally{
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.invalidatePlantingEventStateCache();
+          app.eval(`dashboardFilter = ${JSON.stringify(previousFilter)};`);
+          app.syncDashboardRecordFilterControls();
+        }
+      });
+
       await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
         const monitorState = comparable(app.eval(`(() => {
           const previousGetRecorded = getRecordedPalletSet;
@@ -2341,16 +2447,16 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "c2899c6a", elements: 2039, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "a190b440", elements: 2107, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "688f9fd9", elements: 2107, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "4ada55ab", elements: 2040, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "2cbe997a", elements: 2040, visible: 130, viewport: "390x844" },
-          mobileMenu: { hash: "3665341a", elements: 2040, visible: 307, viewport: "390x844" },
-          mobileSettings: { hash: "687e9dee", elements: 2040, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "a95edfa4", elements: 2040, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "bef66969", elements: 2040, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "b083dbc0", elements: 2040, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "3a0f9af5", elements: 2040, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "02490f57", elements: 2108, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "6014c4a6", elements: 2108, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "1829c550", elements: 2041, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "6d877ccd", elements: 2041, visible: 130, viewport: "390x844" },
+          mobileMenu: { hash: "c1d063ed", elements: 2041, visible: 307, viewport: "390x844" },
+          mobileSettings: { hash: "d7a77b4f", elements: 2041, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "a7ae23ff", elements: 2041, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "e094e5ee", elements: 2041, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "9191bfdb", elements: 2041, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

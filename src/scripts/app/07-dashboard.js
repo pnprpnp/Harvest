@@ -386,7 +386,7 @@ function normalizeDashboardSubtab(value){
 }
 
 function normalizeDashboardRecordTypeFilter(value){
-  return ["all", "full", "partial", "attention"].includes(value) ? value : "all";
+  return ["all", "full", "partial", "planting", "attention"].includes(value) ? value : "all";
 }
 
 function invalidateDashboardDerivedData(){
@@ -649,6 +649,7 @@ function getDashboardRecordTypeFilterLabel(value = dashboardFilter.recordType){
   const normalized = normalizeDashboardRecordTypeFilter(value);
   if(normalized === "full") return "通常収穫";
   if(normalized === "partial") return "部分収穫";
+  if(normalized === "planting") return "苗植え";
   if(normalized === "attention") return "要確認";
   return "すべて";
 }
@@ -685,13 +686,13 @@ function setDashboardRecordTypeFilter(value){
 function renderDashboardRecordResults(){
   syncDashboardRecordFilterControls();
   const tablePeriod = getDashboardTablePeriod();
-  const tableRecords = filterDashboardRecords(getDashboardRecordsForPeriod(tablePeriod));
+  const tableItems = filterDashboardRecordItems(getDashboardRecordItemsForPeriod(tablePeriod));
   const keyword = String(
     document.getElementById("dashboardRecordSearchInput")?.value
       || dashboardFilter.recordSearch
       || ""
   ).trim();
-  renderDashboardRecordTable(tableRecords, {
+  renderDashboardRecordTable(tableItems, {
     period: tablePeriod,
     keyword,
     recordType: dashboardFilter.recordType
@@ -757,11 +758,19 @@ function getDashboardPlantingEventsForPeriod(period){
     .sort(comparePlantingEventsDesc);
 }
 
+function getDashboardRecordItemsForPeriod(period){
+  return getRecordHistoryCache().historyItems.filter(item => isDateInPeriod(item.date, period));
+}
+
+function getDashboardHistoryDates(){
+  return [
+    ...records.map(record => parseDateOnlyString(record.date)),
+    ...plantingEvents.map(event => parseDateOnlyString(event.plantingDate))
+  ].filter(date => !!date).sort((a, b) => a.getTime() - b.getTime());
+}
+
 function getAllRecordsPeriod(){
-  const allRecordDates = records
-    .map(record => parseDateOnlyString(record.date))
-    .filter(date => !!date)
-    .sort((a, b) => a.getTime() - b.getTime());
+  const allRecordDates = getDashboardHistoryDates();
   const fallbackDay = startOfLocalDay(new Date());
   const start = allRecordDates[0] ? startOfLocalDay(allRecordDates[0]) : fallbackDay;
   const endInclusive = allRecordDates.length ? startOfLocalDay(allRecordDates[allRecordDates.length - 1]) : fallbackDay;
@@ -788,10 +797,7 @@ function getDashboardTablePeriod(defaultPeriod = getAllRecordsPeriod()){
     };
   }
 
-  const allRecordDates = records
-    .map(record => parseDateOnlyString(record.date))
-    .filter(date => !!date)
-    .sort((a, b) => a.getTime() - b.getTime());
+  const allRecordDates = getDashboardHistoryDates();
   const fallbackStart = allRecordDates[0] ? startOfLocalDay(allRecordDates[0]) : startOfLocalDay(new Date());
   const fallbackEnd = allRecordDates.length ? startOfLocalDay(allRecordDates[allRecordDates.length - 1]) : startOfLocalDay(new Date());
 
@@ -842,11 +848,38 @@ function getDashboardRecordSearchText(record, harvestCaseTotalsByDate = null){
   ].join("\n").toLowerCase();
 }
 
-function getDashboardRecordAttentionInfo(record){
+function getDashboardPlantingEventSearchText(event){
+  const metrics = getPlantingEventListMetrics(event);
+  const sourceText = (event?.sourceAllocations || []).map(allocation => {
+    const source = getRecordById(allocation.harvestRecordId);
+    return `${source?.date || "日付不明"}の収穫 ${allocation.palletKeys.length}パレット`;
+  }).join("\n");
+  return [
+    event?.plantingDate || "",
+    "苗植え",
+    "二次定植",
+    formatPlantingSummaryForKeys(event?.plantingPalletKeys || []) || "苗植えなし",
+    metrics.seedlingTrayText,
+    metrics.lossRateText,
+    formatPlantingQualityMemo(event?.qualityMemo),
+    sourceText
+  ].join("\n").toLowerCase();
+}
+
+function getDashboardRecordItemSearchText(item, harvestCaseTotalsByDate = null){
+  return item?.kind === "planting"
+    ? getDashboardPlantingEventSearchText(item.value)
+    : getDashboardRecordSearchText(item?.value, harvestCaseTotalsByDate);
+}
+
+function getDashboardRecordItemAttentionInfo(item){
+  const isPlanting = item?.kind === "planting";
+  const entity = item?.value;
+  const id = isPlanting ? entity?.eventId : entity?.id;
   const issue = getRecordHistoryCache().consistencyAudit?.issueByKey?.get(
-    getRecordConsistencyIssueKey("harvest", record?.id)
+    getRecordConsistencyIssueKey(isPlanting ? "planting" : "harvest", id)
   ) || null;
-  const conflict = getSyncConflictForEntity("record", record);
+  const conflict = getSyncConflictForEntity(isPlanting ? "planting" : "record", entity);
   const reasons = [
     ...(conflict ? [getSyncConflictReasonText(conflict)] : []),
     ...(issue?.reasons || [])
@@ -858,21 +891,27 @@ function getDashboardRecordAttentionInfo(record){
   };
 }
 
-function filterDashboardRecords(recordsInPeriod){
+function getDashboardRecordAttentionInfo(record){
+  return getDashboardRecordItemAttentionInfo({ kind: "harvest", value: record });
+}
+
+function filterDashboardRecordItems(itemsInPeriod){
   const recordType = normalizeDashboardRecordTypeFilter(dashboardFilter.recordType);
   const keyword = String(document.getElementById("dashboardRecordSearchInput")?.value || dashboardFilter.recordSearch || "").trim().toLowerCase();
-  let filteredRecords = recordsInPeriod;
+  let filteredItems = itemsInPeriod;
   if(recordType === "full"){
-    filteredRecords = filteredRecords.filter(record => record?.type !== "partialHarvest");
+    filteredItems = filteredItems.filter(item => item?.kind === "harvest" && item.value?.type !== "partialHarvest");
   }else if(recordType === "partial"){
-    filteredRecords = filteredRecords.filter(record => record?.type === "partialHarvest");
+    filteredItems = filteredItems.filter(item => item?.kind === "harvest" && item.value?.type === "partialHarvest");
+  }else if(recordType === "planting"){
+    filteredItems = filteredItems.filter(item => item?.kind === "planting");
   }else if(recordType === "attention"){
-    filteredRecords = filteredRecords.filter(record => getDashboardRecordAttentionInfo(record).hasAttention);
+    filteredItems = filteredItems.filter(item => getDashboardRecordItemAttentionInfo(item).hasAttention);
   }
-  if(!keyword) return filteredRecords;
+  if(!keyword) return filteredItems;
   const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(records);
-  return filteredRecords.filter(record => (
-    getDashboardRecordSearchText(record, harvestCaseTotalsByDate).includes(keyword)
+  return filteredItems.filter(item => (
+    getDashboardRecordItemSearchText(item, harvestCaseTotalsByDate).includes(keyword)
   ));
 }
 
@@ -1641,28 +1680,53 @@ function renderDashboardCasesAllWindow(){
   });
 }
 
-function formatDashboardRecordCardDate(dateString){
+function formatDashboardRecordDayDate(dateString){
   const date = parseDateOnlyString(dateString);
   if(!date) return String(dateString || "日付なし");
   const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-  return `${date.getMonth() + 1}/${date.getDate()}（${weekdays[date.getDay()]}）`;
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}（${weekdays[date.getDay()]}）`;
 }
 
-function getDashboardRecordMonthLabel(dateString){
-  const date = parseDateOnlyString(dateString);
-  return date ? `${date.getFullYear()}年${date.getMonth() + 1}月` : "日付なし";
-}
+function getDashboardRecordListModel(item){
+  if(item?.kind === "planting"){
+    const event = item.value;
+    const metrics = getPlantingEventListMetrics(event);
+    return {
+      kind: "planting",
+      badgeClass: "planting",
+      badgeLabel: "苗植え",
+      detailKind: "planting",
+      safeId: getSafePositiveRecordId(event?.eventId) ?? 0,
+      attention: getDashboardRecordItemAttentionInfo(item),
+      metrics: [
+        {
+          label: "二次定植場所",
+          value: isNoPlantingEvent(event)
+            ? "苗植えなし"
+            : (formatPlantingSummaryForKeys(event?.plantingPalletKeys || []) || "場所情報なし"),
+          wide: true
+        },
+        { label: "苗枚数", value: metrics.seedlingTrayText },
+        { label: "苗ロス率", value: metrics.lossRateText }
+      ]
+    };
+  }
 
-function getDashboardRecordListModel(record, harvestCaseTotalsByDate){
+  const record = item?.value;
   const isPartial = record?.type === "partialHarvest";
   const rawLoss = String(record?.actualLoss ?? "").trim();
   const lossText = isPartial || !rawLoss ? "-" : `${rawLoss}%`;
   return {
-    isPartial,
-    casesText: getHarvestRecordCaseDisplayText(record, harvestCaseTotalsByDate),
-    rawLoss,
-    lossText,
-    attention: getDashboardRecordAttentionInfo(record)
+    kind: "harvest",
+    badgeClass: isPartial ? "partial" : "full",
+    badgeLabel: getDashboardRecordTypeLabel(record),
+    detailKind: isPartial ? "partialHarvest" : "harvest",
+    safeId: getSafePositiveRecordId(record?.id) ?? 0,
+    attention: getDashboardRecordItemAttentionInfo(item),
+    metrics: [
+      { label: "収穫ケース数", value: `${clampNumber(record?.cases, 0, 999999, 0)}ケース` },
+      { label: "収穫ロス率", value: lossText, high: Number(rawLoss) >= 15 }
+    ]
   };
 }
 
@@ -1685,33 +1749,73 @@ function getHarvestRecordPlantingDetailText(record){
   return plantingLines.join("\n\n");
 }
 
-function getDashboardRecordTableHeaderHtml(){
+function groupDashboardRecordItemsByDate(items){
+  const groups = new Map();
+  (Array.isArray(items) ? items : []).forEach(item => {
+    const dateKey = String(item?.date || "");
+    if(!groups.has(dateKey)) groups.set(dateKey, { date: dateKey, items: [] });
+    groups.get(dateKey).items.push(item);
+  });
+  return [...groups.values()];
+}
+
+function getDashboardRecordDayGroupHtml(group){
+  const harvestItems = group.items.filter(item => item?.kind === "harvest");
+  const plantingItems = group.items.filter(item => item?.kind === "planting");
+  const caseTotal = harvestItems.reduce((sum, item) => (
+    sum + clampNumber(item.value?.cases, 0, 999999, 0)
+  ), 0);
+  const summaryParts = [
+    harvestItems.length ? `収穫 ${harvestItems.length}件` : "",
+    plantingItems.length ? `苗植え ${plantingItems.length}件` : "",
+    harvestItems.length ? `合計 ${caseTotal}ケース` : ""
+  ].filter(Boolean);
+  const cards = group.items.map(item => {
+    const model = getDashboardRecordListModel(item);
+    const accessibleLabel = `${group.date || "日付なし"} ${model.badgeLabel}の詳細`;
+    return `
+      <button type="button" class="dashboardRecordCard ${model.badgeClass}${model.attention.hasAttention ? " hasAttention" : ""}"
+        aria-label="${escapeHtml(accessibleLabel)}" data-ui-click="openRecordDetailWindow" data-ui-arg="${model.detailKind}" data-ui-number="${model.safeId}">
+        <span class="dashboardRecordCardTop">
+          <span class="dashboardTypeBadge ${model.badgeClass}">${escapeHtml(model.badgeLabel)}</span>
+          ${model.attention.hasAttention ? `<span class="dashboardRecordAttentionBadge">${escapeHtml(model.attention.label)}</span>` : ""}
+        </span>
+        <span class="dashboardRecordCardMetrics">
+          ${model.metrics.map(metric => `
+            <span class="dashboardRecordCardMetric${metric.wide ? " is-wide" : ""}">
+              <span class="dashboardRecordCardMetricLabel">${escapeHtml(metric.label)}</span>
+              <span class="dashboardRecordCardMetricValue${metric.high ? " dashboardLossHigh" : ""}">${escapeHtml(metric.value)}</span>
+            </span>
+          `).join("")}
+        </span>
+        <span class="dashboardRecordCardCue">詳細を見る ›</span>
+      </button>
+    `;
+  }).join("");
   return `
-    <thead>
-      <tr>
-        <th>日付</th>
-        <th>区分</th>
-        <th>ケース</th>
-        <th>ロス率</th>
-        <th>状態</th>
-        <th>詳細</th>
-      </tr>
-    </thead>
+    <section class="dashboardRecordDayGroup" aria-label="${escapeHtml(formatDashboardRecordDayDate(group.date))}の記録">
+      <div class="dashboardRecordDayHeader">
+        <h3 class="dashboardRecordDayTitle"><time datetime="${escapeHtml(group.date)}">${escapeHtml(formatDashboardRecordDayDate(group.date))}</time></h3>
+        <span class="dashboardRecordDayMeta">${escapeHtml(summaryParts.join(" / "))}</span>
+      </div>
+      <div class="dashboardRecordCardList">${cards}</div>
+    </section>
   `;
 }
 
-function renderDashboardRecordTable(recordsInPeriod, options = {}){
+function renderDashboardRecordTable(itemsInPeriod, options = {}){
   const container = document.getElementById("dashboardRecordTable");
   if(!container) return;
-  const harvestCaseTotalsByDate = getHarvestCaseTotalsByDate(records);
+  const dayGroups = groupDashboardRecordItemsByDate(itemsInPeriod);
   const period = options.period || null;
   const hasKeyword = !!String(options.keyword || "").trim();
   const recordType = normalizeDashboardRecordTypeFilter(options.recordType);
   const typeSummary = recordType === "all" ? "" : ` / ${getDashboardRecordTypeFilterLabel(recordType)}`;
+  const countSummary = `${dayGroups.length}日 / ${itemsInPeriod.length}件`;
   const summaryText = period
-    ? `${recordsInPeriod.length}件${typeSummary}${period.isCustom ? ` / ${period.startLabel} 〜 ${period.endLabel}` : (period.isAllPeriod ? ` / 全期間 ${period.startLabel} 〜 ${period.endLabel}` : ` / 集計期間 ${period.startLabel} 〜 ${period.endLabel}`)}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`
-    : `${recordsInPeriod.length}件${typeSummary}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`;
-  if(!recordsInPeriod.length){
+    ? `${countSummary}${typeSummary}${period.isCustom ? ` / ${period.startLabel} 〜 ${period.endLabel}` : (period.isAllPeriod ? ` / 全期間 ${period.startLabel} 〜 ${period.endLabel}` : ` / 集計期間 ${period.startLabel} 〜 ${period.endLabel}`)}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`
+    : `${countSummary}${typeSummary}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`;
+  if(!itemsInPeriod.length){
     container.innerHTML = `
       <div class="dashboardTableSummary">${escapeHtml(summaryText)}</div>
       <div class="dashboardEmpty">条件に合う記録がありません。</div>
@@ -1719,107 +1823,22 @@ function renderDashboardRecordTable(recordsInPeriod, options = {}){
     return;
   }
 
-  const buildRows = list => list.map(record => {
-    const model = getDashboardRecordListModel(record, harvestCaseTotalsByDate);
-    const safeRecordId = getSafePositiveRecordId(record?.id) ?? 0;
-    const detailKind = model.isPartial ? "partialHarvest" : "harvest";
-    const lossHtml = model.lossText === "-"
-      ? "-"
-      : `<span class="${Number(model.rawLoss) >= 15 ? "dashboardLossHigh" : ""}">${escapeHtml(model.lossText)}</span>`;
-    return `
-      <tr${model.attention.hasAttention ? ' class="dashboardRecordTableAttention"' : ""}>
-        <td>${escapeHtml(record.date || "-")}</td>
-        <td><span class="dashboardTypeBadge ${model.isPartial ? "partial" : "full"}">${escapeHtml(getDashboardRecordTypeLabel(record))}</span></td>
-        <td>${escapeHtml(model.casesText)}</td>
-        <td>${lossHtml}</td>
-        <td>${model.attention.hasAttention ? `<span class="dashboardRecordAttentionBadge">${escapeHtml(model.attention.label)}</span>` : "-"}</td>
-        <td><button type="button" class="dashboardRecordTableDetailBtn" data-ui-click="openRecordDetailWindow" data-ui-arg="${detailKind}" data-ui-number="${safeRecordId}">見る</button></td>
-      </tr>
-    `;
-  }).join("");
-
-  const buildCards = list => {
-    const groups = new Map();
-    list.forEach(record => {
-      const monthLabel = getDashboardRecordMonthLabel(record?.date);
-      if(!groups.has(monthLabel)) groups.set(monthLabel, []);
-      groups.get(monthLabel).push(record);
-    });
-    return [...groups.entries()].map(([monthLabel, groupRecords]) => `
-      <section class="dashboardRecordMonthGroup" aria-label="${escapeHtml(monthLabel)}">
-        <h3 class="dashboardRecordMonthTitle">${escapeHtml(monthLabel)}</h3>
-        <div class="dashboardRecordCardList">
-          ${groupRecords.map(record => {
-            const model = getDashboardRecordListModel(record, harvestCaseTotalsByDate);
-            const safeRecordId = getSafePositiveRecordId(record?.id) ?? 0;
-            const detailKind = model.isPartial ? "partialHarvest" : "harvest";
-            const accessibleLabel = `${record?.date || "日付なし"} ${getDashboardRecordTypeLabel(record)} ${model.casesText}ケースの詳細`;
-            return `
-              <button type="button" class="dashboardRecordCard ${model.isPartial ? "partial" : "full"}${model.attention.hasAttention ? " hasAttention" : ""}"
-                aria-label="${escapeHtml(accessibleLabel)}" data-ui-click="openRecordDetailWindow" data-ui-arg="${detailKind}" data-ui-number="${safeRecordId}">
-                <span class="dashboardRecordCardTop">
-                  <span class="dashboardRecordCardDate">${escapeHtml(formatDashboardRecordCardDate(record?.date))}</span>
-                  <span class="dashboardTypeBadge ${model.isPartial ? "partial" : "full"}">${escapeHtml(getDashboardRecordTypeLabel(record))}</span>
-                  ${model.attention.hasAttention ? `<span class="dashboardRecordAttentionBadge">${escapeHtml(model.attention.label)}</span>` : ""}
-                </span>
-                <span class="dashboardRecordCardMetrics">
-                  <span class="dashboardRecordCardMetric">
-                    <span class="dashboardRecordCardMetricLabel">収穫ケース数</span>
-                    <span class="dashboardRecordCardMetricValue">${escapeHtml(model.casesText)}ケース</span>
-                  </span>
-                  <span class="dashboardRecordCardMetric">
-                    <span class="dashboardRecordCardMetricLabel">収穫ロス率</span>
-                    <span class="dashboardRecordCardMetricValue${Number(model.rawLoss) >= 15 ? " dashboardLossHigh" : ""}">${escapeHtml(model.lossText)}</span>
-                  </span>
-                </span>
-                <span class="dashboardRecordCardCue">詳細を見る ›</span>
-              </button>
-            `;
-          }).join("")}
-        </div>
-      </section>
-    `).join("");
-  };
-
-  const visibleRecords = recordsInPeriod.slice(0, DASHBOARD_RECORD_INITIAL_DISPLAY_LIMIT);
-  const hiddenRecords = recordsInPeriod.slice(DASHBOARD_RECORD_INITIAL_DISPLAY_LIMIT);
-  const visibleRows = buildRows(visibleRecords);
-  const hiddenRows = buildRows(hiddenRecords);
-  const visibleCards = buildCards(visibleRecords);
-  const hiddenCards = buildCards(hiddenRecords);
-  const desktopHiddenSummary = hiddenRecords.length
+  const visibleGroups = dayGroups.slice(0, DASHBOARD_RECORD_INITIAL_DAY_LIMIT);
+  const hiddenGroups = dayGroups.slice(DASHBOARD_RECORD_INITIAL_DAY_LIMIT);
+  const hiddenItemCount = hiddenGroups.reduce((sum, group) => sum + group.items.length, 0);
+  const hiddenSummary = hiddenGroups.length
     ? `
-      <details class="recordToggleWrap">
-        <summary class="recordToggleSummary">残りを見る（${hiddenRecords.length}件）</summary>
-        <div class="recordToggleBody">
-          <div class="dashboardTableWrap">
-            <table class="dashboardTable">${getDashboardRecordTableHeaderHtml()}<tbody>${hiddenRows}</tbody></table>
-          </div>
-        </div>
-      </details>
-    `
-    : "";
-  const mobileHiddenSummary = hiddenRecords.length
-    ? `
-      <details class="recordToggleWrap">
-        <summary class="recordToggleSummary">残りを見る（${hiddenRecords.length}件）</summary>
-        <div class="recordToggleBody">${hiddenCards}</div>
+      <details class="recordToggleWrap dashboardRecordRemainingDays">
+        <summary class="recordToggleSummary">残りを見る（${hiddenGroups.length}日 / ${hiddenItemCount}件）</summary>
+        <div class="recordToggleBody dashboardRecordDayList">${hiddenGroups.map(getDashboardRecordDayGroupHtml).join("")}</div>
       </details>
     `
     : "";
 
   container.innerHTML = `
     <div class="dashboardTableSummary">${escapeHtml(summaryText)}</div>
-    <div class="dashboardRecordDesktop">
-      <div class="dashboardTableWrap">
-        <table class="dashboardTable">${getDashboardRecordTableHeaderHtml()}<tbody>${visibleRows}</tbody></table>
-      </div>
-      ${desktopHiddenSummary}
-    </div>
-    <div class="dashboardRecordMobile">
-      ${visibleCards}
-      ${mobileHiddenSummary}
-    </div>
+    <div class="dashboardRecordDayList">${visibleGroups.map(getDashboardRecordDayGroupHtml).join("")}</div>
+    ${hiddenSummary}
   `;
 }
 
