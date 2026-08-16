@@ -709,9 +709,7 @@ function getDashboardDayRecordDetailBodyHtml(infoRows){
           role="tab" aria-controls="recordDetailLocationMount" aria-selected="false"
           data-ui-click="setRecordDetailDayLocationView" data-ui-arg="planting">二次定植場所</button>
       </div>
-      <div id="recordDetailLocationMount">
-        <div class="recordDetailLocationLoading" role="status">場所を読み込んでいます...</div>
-      </div>
+      <div id="recordDetailLocationMount"></div>
     </section>
     ${getRecordDetailInfoHtml(infoRows)}
   `;
@@ -1198,12 +1196,10 @@ function openDashboardDayRecordDetail(dateString){
   title.textContent = `${context.date} 記録の詳細`;
   body.classList.add("hasLocationDisplay");
   body.innerHTML = getDashboardDayRecordDetailBodyHtml(getDashboardDayRecordDetailInfoRows(context));
+  setRecordDetailDayLocationView(recordDetailDayLocationView);
   body.scrollTop = 0;
   showPageBlockingUi(modal);
-  requestAnimationFrame(() => {
-    closeButton?.focus({ preventScroll: true });
-    requestAnimationFrame(() => setRecordDetailDayLocationView(recordDetailDayLocationView));
-  });
+  requestAnimationFrame(() => closeButton?.focus({ preventScroll: true }));
 }
 
 function openRecordDetailWindow(kind, id){

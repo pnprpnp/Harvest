@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260816-dashboard-calendar-inline">
+<meta name="harvestnavi-version" content="20260816-dashboard-detail-ready">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -29717,9 +29717,7 @@ function getDashboardDayRecordDetailBodyHtml(infoRows){
           role="tab" aria-controls="recordDetailLocationMount" aria-selected="false"
           data-ui-click="setRecordDetailDayLocationView" data-ui-arg="planting">二次定植場所</button>
       </div>
-      <div id="recordDetailLocationMount">
-        <div class="recordDetailLocationLoading" role="status">場所を読み込んでいます...</div>
-      </div>
+      <div id="recordDetailLocationMount"></div>
     </section>
     ${getRecordDetailInfoHtml(infoRows)}
   `;
@@ -30206,12 +30204,10 @@ function openDashboardDayRecordDetail(dateString){
   title.textContent = `${context.date} 記録の詳細`;
   body.classList.add("hasLocationDisplay");
   body.innerHTML = getDashboardDayRecordDetailBodyHtml(getDashboardDayRecordDetailInfoRows(context));
+  setRecordDetailDayLocationView(recordDetailDayLocationView);
   body.scrollTop = 0;
   showPageBlockingUi(modal);
-  requestAnimationFrame(() => {
-    closeButton?.focus({ preventScroll: true });
-    requestAnimationFrame(() => setRecordDetailDayLocationView(recordDetailDayLocationView));
-  });
+  requestAnimationFrame(() => closeButton?.focus({ preventScroll: true }));
 }
 
 function openRecordDetailWindow(kind, id){

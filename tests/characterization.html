@@ -1455,9 +1455,10 @@
           assertDeepEqual([allState.detailAction, allState.detailDate], ["openDashboardDayRecordDetail", "2026-08-15"], "日ごとの詳細を開けません");
 
           app.openDashboardDayRecordDetail("2026-08-15");
-          app.setRecordDetailDayLocationView("harvest");
           const harvestDetailState = comparable(app.eval(`({
             firstSectionClass: document.getElementById("recordDetailWindowBody")?.firstElementChild?.className || "",
+            loadingPlaceholderCount: document.querySelectorAll("#recordDetailWindowBody .recordDetailLocationLoading").length,
+            locationRendered: !!document.querySelector("#recordDetailLocationMount .recordDetailLocationBeds"),
             tabs: [...document.querySelectorAll(".recordDetailLocationViewBtn")].map(button => ({
               text: button.textContent.trim(),
               selected: button.getAttribute("aria-selected")
@@ -1467,6 +1468,11 @@
             infoLabels: [...document.querySelectorAll("#recordDetailWindowBody .recordDetailInfoLabel")].map(item => item.textContent)
           })`));
           assert(harvestDetailState.firstSectionClass.includes("recordDetailLocationSection is-first"), "場所切り替えが詳細の一番上にありません");
+          assertDeepEqual(
+            [harvestDetailState.loadingPlaceholderCount, harvestDetailState.locationRendered],
+            [0, true],
+            "読み込み画面を挟まずに場所の詳細を表示できていません"
+          );
           assertDeepEqual(harvestDetailState.tabs, [
             { text: "収穫場所", selected: "true" },
             { text: "二次定植場所", selected: "false" }
