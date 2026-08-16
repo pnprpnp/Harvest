@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260816-dashboard-day-detail-toggle">
+<meta name="harvestnavi-version" content="20260816-dashboard-start-day-menu">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4495,13 +4495,6 @@ button.monitorSaveBtn:active{
 }
 .dashboardSubtabPanel[hidden]{
   display:none;
-}
-.dashboardControlRow{
-  display:flex;
-  justify-content:flex-end;
-}
-.dashboardStartDayCard{
-  padding:14px 16px;
 }
 .dashboardStartDayField{
   display:flex;
@@ -9962,15 +9955,6 @@ requestAnimationFrame(function(){
         <div id="dashboardHistoryContent" class="dashboardHistoryPanel"></div>
       </details>
 
-      <div class="card dashboardStartDayCard">
-        <div class="dashboardControlRow">
-          <div class="dashboardStartDayField">
-            <label for="dashboardStartDayInput">集計の基準日</label>
-            <select id="dashboardStartDayInput" class="dashboardStartDayInput" data-dashboard-start-day-input></select>
-          </div>
-        </div>
-      </div>
-
       <details class="card dashboardRangeBox dashboardRangeDetails">
         <summary class="sectionTitle">記録一覧</summary>
         <div class="dashboardTableFilterBox">
@@ -10129,6 +10113,12 @@ requestAnimationFrame(function(){
           <span id="appUpdateCheckStatus" class="headerLatestRefreshSub"></span>
         </span>
       </button>
+      <div id="dashboardStartDayMenuSetting" class="settingCluster dashboardStartDayMenuSetting">
+        <div class="dashboardStartDayField">
+          <label for="dashboardStartDayInput">集計の基準日</label>
+          <select id="dashboardStartDayInput" class="dashboardStartDayInput" data-dashboard-start-day-input></select>
+        </div>
+      </div>
     </div>
     <div class="appMenuWindowFooter">
       <button type="button" class="actionBtn appMenuSaveBtn" data-ui-click="saveAppMenuSettingsAndClose">設定を保存</button>
@@ -10985,8 +10975,13 @@ function moveMenuSettingsToWindow(){
   const accessDetails = document.getElementById("accessProtectionDetails");
   const googleDetails = document.getElementById("googleSheetConfigDetails");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
+  const dashboardStartDayMenuSetting = document.getElementById("dashboardStartDayMenuSetting");
   if(!body || !accessDetails || !googleDetails) return;
-  if(recordHelpDetails) body.appendChild(recordHelpDetails);
+  if(recordHelpDetails && dashboardStartDayMenuSetting){
+    dashboardStartDayMenuSetting.before(recordHelpDetails);
+  }else if(recordHelpDetails){
+    body.appendChild(recordHelpDetails);
+  }
   body.appendChild(accessDetails);
   body.appendChild(googleDetails);
 }

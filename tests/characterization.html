@@ -1243,6 +1243,47 @@
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
       });
 
+      await runTest("集計の基準日をメニューのヘルプ直下で変更できる", () => {
+        const previousFilter = comparable(app.eval("dashboardFilter"));
+        try{
+          app.openAppMenuWindow();
+          const menuState = comparable(app.eval(`(() => {
+            const body = document.getElementById("appMenuWindowBody");
+            const help = document.getElementById("recordHelpDetails");
+            const setting = document.getElementById("dashboardStartDayMenuSetting");
+            const input = document.getElementById("dashboardStartDayInput");
+            return {
+              menuOpen: document.getElementById("appMenuModal")?.classList.contains("show") || false,
+              helpInMenu: help?.parentElement === body,
+              settingImmediatelyAfterHelp: help?.nextElementSibling === setting,
+              inputInMenu: input?.closest("#appMenuWindowBody") === body,
+              inputInDashboard: !!document.querySelector("#dashboardTab [data-dashboard-start-day-input]"),
+              optionCount: input?.options.length || 0
+            };
+          })()`));
+          assertDeepEqual(menuState, {
+            menuOpen: true,
+            helpInMenu: true,
+            settingImmediatelyAfterHelp: true,
+            inputInMenu: true,
+            inputInDashboard: false,
+            optionCount: 31
+          }, "集計の基準日の配置が一致しません");
+
+          const input = app.document.getElementById("dashboardStartDayInput");
+          input.value = "7";
+          input.dispatchEvent(new app.Event("change", { bubbles: true }));
+          const savedState = comparable(app.eval(`({
+            current: dashboardFilter.startDay,
+            saved: harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, {}).startDay
+          })`));
+          assertDeepEqual(savedState, { current: 7, saved: 7 }, "メニューで変更した基準日が集計へ保存されません");
+        }finally{
+          app.eval(`dashboardFilter = ${JSON.stringify(previousFilter)}; saveDashboardFilter(); syncDashboardStartDayInputs();`);
+          app.closeAppMenuWindow();
+        }
+      });
+
       await runTest("集計の記録一覧は日ごとの収穫値だけを表示し、詳細で場所を切り替える", () => {
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
@@ -2479,16 +2520,16 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "3a0f9af5", elements: 2040, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "02490f57", elements: 2108, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "6014c4a6", elements: 2108, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "1829c550", elements: 2041, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "6d877ccd", elements: 2041, visible: 130, viewport: "390x844" },
-          mobileMenu: { hash: "c1d063ed", elements: 2041, visible: 307, viewport: "390x844" },
-          mobileSettings: { hash: "d7a77b4f", elements: 2041, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "a7ae23ff", elements: 2041, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "e094e5ee", elements: 2041, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "9191bfdb", elements: 2041, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "2455309e", elements: 2039, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "36eaccec", elements: 2107, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "05b63785", elements: 2107, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "e5cab895", elements: 2040, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "84653064", elements: 2040, visible: 130, viewport: "390x844" },
+          mobileMenu: { hash: "51cad196", elements: 2040, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "05ce1c20", elements: 2040, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "5fbd76fe", elements: 2040, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "e7c29c6d", elements: 2040, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "ead96508", elements: 2040, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -617,8 +617,13 @@ function moveMenuSettingsToWindow(){
   const accessDetails = document.getElementById("accessProtectionDetails");
   const googleDetails = document.getElementById("googleSheetConfigDetails");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
+  const dashboardStartDayMenuSetting = document.getElementById("dashboardStartDayMenuSetting");
   if(!body || !accessDetails || !googleDetails) return;
-  if(recordHelpDetails) body.appendChild(recordHelpDetails);
+  if(recordHelpDetails && dashboardStartDayMenuSetting){
+    dashboardStartDayMenuSetting.before(recordHelpDetails);
+  }else if(recordHelpDetails){
+    body.appendChild(recordHelpDetails);
+  }
   body.appendChild(accessDetails);
   body.appendChild(googleDetails);
 }
