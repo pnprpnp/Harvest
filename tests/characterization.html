@@ -348,6 +348,17 @@
         await settleVisualApp(app);
         fingerprints.mobileDashboard = getVisualFingerprint(app);
 
+        app.setDashboardSubtab("graphs");
+        await settleVisualApp(app);
+        fingerprints.mobileDashboardRecord = getVisualFingerprint(app);
+
+        app.openDashboardRecordListWindow();
+        await settleVisualApp(app);
+        fingerprints.mobileDashboardRecordWindow = getVisualFingerprint(app);
+        app.closeDashboardRecordListWindow();
+        app.setDashboardSubtab("guide");
+        await settleVisualApp(app);
+
         app.openAppMenuWindow();
         await settleVisualApp(app);
         fingerprints.mobileMenu = getVisualFingerprint(app);
@@ -430,7 +441,9 @@
         "openDashboardForecastInfoWindow",
         "closeDashboardForecastInfoWindow",
         "openDashboardCalendarInfoWindow",
-        "closeDashboardCalendarInfoWindow"
+        "closeDashboardCalendarInfoWindow",
+        "openDashboardRecordListWindow",
+        "closeDashboardRecordListWindow"
       ];
 
       await runTest("主要な計算関数を読み込める", () => {
@@ -1115,6 +1128,7 @@
           "dashboardCalendarInfoModal",
           "dashboardForecastInfoModal",
           "dashboardForecastDaysAllModal",
+          "dashboardRecordListModal",
           "plantingAgeModal",
           "bedDetailModal",
           "recordDetailModal",
@@ -1281,6 +1295,37 @@
         }finally{
           app.eval(`dashboardFilter = ${JSON.stringify(previousFilter)}; saveDashboardFilter(); syncDashboardStartDayInputs();`);
           app.closeAppMenuWindow();
+        }
+      });
+
+      await runTest("集計の記録タブ先頭から記録一覧をウィンドウで開く", () => {
+        const subtabButton = app.document.getElementById("dashboardSubtabGraphsBtn");
+        const panel = app.document.getElementById("dashboardSubtabGraphs");
+        const openButton = app.document.getElementById("dashboardRecordListOpenBtn");
+        assertEqual(subtabButton?.textContent.trim(), "記録", "グラフのサブタブ名が記録へ変わっていません");
+        assert(panel?.firstElementChild === openButton, "記録一覧を開く操作が記録タブの一番上にありません");
+        assert(!panel?.querySelector("#dashboardRecordTable"), "記録一覧が記録タブ内の折りたたみ表示に残っています");
+
+        try{
+          app.openDashboardRecordListWindow();
+          const windowState = comparable(app.eval(`(() => {
+            const modal = document.getElementById("dashboardRecordListModal");
+            const table = document.getElementById("dashboardRecordTable");
+            return {
+              open: modal?.classList.contains("show") || false,
+              title: document.getElementById("dashboardRecordListWindowTitle")?.textContent.trim() || "",
+              tableInWindow: table?.closest("#dashboardRecordListModal") === modal,
+              filtersInWindow: document.getElementById("dashboardRecordSearchInput")?.closest("#dashboardRecordListModal") === modal
+            };
+          })()`));
+          assertDeepEqual(windowState, {
+            open: true,
+            title: "記録一覧",
+            tableInWindow: true,
+            filtersInWindow: true
+          }, "記録一覧が専用ウィンドウで開きません");
+        }finally{
+          app.closeDashboardRecordListWindow();
         }
       });
 
@@ -2520,16 +2565,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "2455309e", elements: 2039, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "36eaccec", elements: 2107, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "05b63785", elements: 2107, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "e5cab895", elements: 2040, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "84653064", elements: 2040, visible: 130, viewport: "390x844" },
-          mobileMenu: { hash: "51cad196", elements: 2040, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "05ce1c20", elements: 2040, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "5fbd76fe", elements: 2040, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "e7c29c6d", elements: 2040, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "ead96508", elements: 2040, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "09738683", elements: 2049, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "849c212d", elements: 2117, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "749b7bec", elements: 2117, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "fd22e1bf", elements: 2050, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "9bdd2bf4", elements: 2050, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "14991002", elements: 2067, visible: 116, viewport: "390x844" },
+          mobileDashboardRecordWindow: { hash: "2c33a4e6", elements: 2067, visible: 149, viewport: "390x844" },
+          mobileMenu: { hash: "2c555bfc", elements: 2067, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "4280f1b0", elements: 2067, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "3637b2b0", elements: 2067, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "59e83143", elements: 2067, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "816a7da8", elements: 2067, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

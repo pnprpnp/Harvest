@@ -189,6 +189,7 @@ let dashboardCasesAllReturnFocus = null;
 let dashboardForecastInfoReturnFocus = null;
 let dashboardCalendarInfoReturnFocus = null;
 let dashboardForecastDaysAllReturnFocus = null;
+let dashboardRecordListReturnFocus = null;
 let palletDragState = null;
 let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
@@ -452,6 +453,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "dashboardCalendarInfoModal",
   "dashboardForecastInfoModal",
   "dashboardForecastDaysAllModal",
+  "dashboardRecordListModal",
   "plantingAgeModal",
   "bedDetailModal",
   "recordDetailModal",
@@ -527,6 +529,24 @@ function closeMonitorEditorWindow(){
 
 function openDashboardWindow(){
   switchTab("dashboard");
+}
+
+function openDashboardRecordListWindow(){
+  const modal = document.getElementById("dashboardRecordListModal");
+  const closeButton = document.getElementById("dashboardRecordListWindowClose");
+  if(!modal) return;
+  dashboardRecordListReturnFocus = document.activeElement;
+  renderDashboardRecordResults();
+  showPageBlockingUi(modal);
+  requestAnimationFrame(() => closeButton?.focus());
+}
+
+function closeDashboardRecordListWindow(){
+  const modal = document.getElementById("dashboardRecordListModal");
+  hidePageBlockingUi(modal);
+  const returnFocus = dashboardRecordListReturnFocus;
+  dashboardRecordListReturnFocus = null;
+  requestAnimationFrame(() => returnFocus?.focus?.());
 }
 
 function openDashboardForecastInfoWindow(){
