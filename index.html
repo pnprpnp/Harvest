@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260816-dashboard-calendar-grid-cells">
+<meta name="harvestnavi-version" content="20260816-dashboard-calendar-compact-cells">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -6264,7 +6264,7 @@ button.monitorSaveBtn:active{
   background:#f8fafc;
 }
 .dashboardRecordCalendarWeekdays > span{
-  padding:6px 0;
+  padding:4px 0;
   border-right:1px solid var(--ui-line, #e5e7eb);
   color:#64748b;
   font-size:11px;
@@ -6286,11 +6286,11 @@ button.monitorSaveBtn:active{
   display:flex;
   flex-direction:column;
   align-items:stretch;
-  gap:3px;
+  gap:1px;
   min-width:0;
-  min-height:78px;
+  min-height:46px;
   box-sizing:border-box;
-  padding:5px 4px;
+  padding:3px 2px;
   border:0;
   border-right:1px solid var(--ui-line, #e5e7eb);
   border-bottom:1px solid var(--ui-line, #e5e7eb);
@@ -6341,7 +6341,7 @@ button.dashboardRecordCalendarDay.has-records:focus-visible{
   color:#111827;
   font-size:11px;
   font-weight:850;
-  line-height:1.25;
+  line-height:1.1;
   text-align:center;
   text-overflow:clip;
   white-space:nowrap;
@@ -6369,8 +6369,8 @@ button.dashboardRecordCalendarDay.has-records:focus-visible{
     padding:10px;
   }
   .dashboardRecordCalendarDay{
-    min-height:72px;
-    padding:5px 2px;
+    min-height:44px;
+    padding:3px 1px;
   }
   .dashboardRecordCalendarCases,
   .dashboardRecordCalendarLoss{
@@ -21416,14 +21416,6 @@ function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
   const dayGroups = groupDashboardRecordItemsByDate(itemsInPeriod);
   const period = options.period || getDashboardRecordCalendarPeriod();
   const groupsByDate = new Map(dayGroups.map(group => [group.date, group]));
-  const hasKeyword = !!String(options.keyword || "").trim();
-  const recordType = normalizeDashboardRecordTypeFilter(options.recordType);
-  const typeSummary = recordType === "all" ? "" : ` / ${getDashboardRecordTypeFilterLabel(recordType)}`;
-  const countSummary = `${dayGroups.length}日`;
-  const dateFilterSummary = options.dateFilterPeriod?.isCustom
-    ? ` / ${options.dateFilterPeriod.startLabel} 〜 ${options.dateFilterPeriod.endLabel}`
-    : "";
-  const summaryText = `${countSummary} / ${period.year}年${period.month}月${typeSummary}${dateFilterSummary}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`;
   const todayKey = formatDateOnlyString(new Date());
   const firstWeekday = period.start.getDay();
   const daysInMonth = period.endInclusive.getDate();
@@ -21466,7 +21458,6 @@ function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
 
   container.dataset.loadedMonth = period.monthKey;
   container.innerHTML = `
-    <div class="dashboardTableSummary" role="status">${escapeHtml(summaryText)}</div>
     <div class="dashboardRecordCalendarFrame">
       <div class="dashboardRecordCalendarWeekdays" aria-hidden="true">
         ${["日", "月", "火", "水", "木", "金", "土"].map((label, index) => `<span class="${index === 0 ? "is-sunday" : (index === 6 ? "is-saturday" : "")}">${label}</span>`).join("")}

@@ -1432,7 +1432,7 @@
             const recordDays = [...document.querySelectorAll("#dashboardRecordTable [data-dashboard-record-date]")];
             const first = document.querySelector('#dashboardRecordTable [data-dashboard-record-date="2026-08-15"]');
             return {
-              summary: document.querySelector("#dashboardRecordTable .dashboardTableSummary")?.textContent || "",
+              summaryExists: !!document.querySelector("#dashboardRecordTable .dashboardTableSummary"),
               calendarDayCount: document.querySelectorAll("#dashboardRecordTable [data-dashboard-calendar-date]").length,
               recordDayCount: recordDays.length,
               firstDate: first?.querySelector(".dashboardRecordCalendarDateNumber")?.textContent || "",
@@ -1445,12 +1445,13 @@
               calendarColumnGap: getComputedStyle(document.querySelector(".dashboardRecordCalendarGrid")).columnGap,
               calendarRowGap: getComputedStyle(document.querySelector(".dashboardRecordCalendarGrid")).rowGap,
               dayBorderRadius: first ? getComputedStyle(first).borderRadius : "",
+              dayHeight: first ? first.getBoundingClientRect().height : 0,
               detailAction: first?.dataset.uiClick || "",
               detailDate: first?.dataset.uiArg || "",
               typeBadgeCount: first.querySelectorAll(".dashboardTypeBadge").length
             };
           })()`));
-          assert(allState.summary.startsWith("2日 / 2026年8月"), "記録一覧の月と件数が一致しません");
+          assertEqual(allState.summaryExists, false, "記録一覧に件数と年月の集計行が残っています");
           assertEqual(allState.calendarDayCount, 31, "8月の日付がカレンダーに揃っていません");
           assertEqual(allState.recordDayCount, 2, "同じ日の記録が一つの日付セルにまとまりません");
           assertEqual(allState.firstDate, "15", "日付セルの日付が一致しません");
@@ -1465,6 +1466,7 @@
             ["1px", "0px", "0px", "0px"],
             "各日がつながったカレンダーのセル形式になっていません"
           );
+          assert(allState.dayHeight <= 46, "日付セルの縦幅が十分に短くなっていません");
           assertEqual(allState.typeBadgeCount, 0, "一覧に通常収穫・苗植えの区分が残っています");
           assertDeepEqual([allState.detailAction, allState.detailDate], ["openDashboardDayRecordDetail", "2026-08-15"], "日ごとの詳細を開けません");
 
@@ -1502,10 +1504,8 @@
 
           app.setDashboardRecordTypeFilter("planting");
           const plantingOnlyState = comparable(app.eval(`({
-            summary: document.querySelector("#dashboardRecordTable .dashboardTableSummary")?.textContent || "",
             dayCount: document.querySelectorAll("#dashboardRecordTable [data-dashboard-record-date]").length
           })`));
-          assert(plantingOnlyState.summary.startsWith("1日 / 2026年8月 / 苗植え"), "苗植えだけの絞り込み件数が一致しません");
           assertEqual(plantingOnlyState.dayCount, 1, "苗植えだけに絞り込めません");
         }finally{
           app.closeRecordDetailWindow({ restoreFocus: false });
@@ -2620,12 +2620,12 @@
           mobileRecord: { hash: "212fcf6f", elements: 2058, visible: 134, viewport: "390x844" },
           mobileDashboard: { hash: "32a2a8cc", elements: 2058, visible: 130, viewport: "390x844" },
           mobileDashboardRecord: { hash: "f15144c2", elements: 2073, visible: 116, viewport: "390x844" },
-          mobileDashboardRecordWindow: { hash: "29de22b5", elements: 2157, visible: 239, viewport: "390x844" },
-          mobileMenu: { hash: "33ee4fc1", elements: 2157, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "15466319", elements: 2157, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "857d93cb", elements: 2157, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "4ef8400c", elements: 2157, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "43d9b471", elements: 2157, visible: 136, viewport: "1024x900" }
+          mobileDashboardRecordWindow: { hash: "faae1dc2", elements: 2156, visible: 238, viewport: "390x844" },
+          mobileMenu: { hash: "06ec98cb", elements: 2156, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "8e94b2c3", elements: 2156, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "b669caeb", elements: 2156, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "1e262645", elements: 2156, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "414f2612", elements: 2156, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

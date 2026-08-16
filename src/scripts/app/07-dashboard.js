@@ -1812,14 +1812,6 @@ function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
   const dayGroups = groupDashboardRecordItemsByDate(itemsInPeriod);
   const period = options.period || getDashboardRecordCalendarPeriod();
   const groupsByDate = new Map(dayGroups.map(group => [group.date, group]));
-  const hasKeyword = !!String(options.keyword || "").trim();
-  const recordType = normalizeDashboardRecordTypeFilter(options.recordType);
-  const typeSummary = recordType === "all" ? "" : ` / ${getDashboardRecordTypeFilterLabel(recordType)}`;
-  const countSummary = `${dayGroups.length}日`;
-  const dateFilterSummary = options.dateFilterPeriod?.isCustom
-    ? ` / ${options.dateFilterPeriod.startLabel} 〜 ${options.dateFilterPeriod.endLabel}`
-    : "";
-  const summaryText = `${countSummary} / ${period.year}年${period.month}月${typeSummary}${dateFilterSummary}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`;
   const todayKey = formatDateOnlyString(new Date());
   const firstWeekday = period.start.getDay();
   const daysInMonth = period.endInclusive.getDate();
@@ -1862,7 +1854,6 @@ function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
 
   container.dataset.loadedMonth = period.monthKey;
   container.innerHTML = `
-    <div class="dashboardTableSummary" role="status">${escapeHtml(summaryText)}</div>
     <div class="dashboardRecordCalendarFrame">
       <div class="dashboardRecordCalendarWeekdays" aria-hidden="true">
         ${["日", "月", "火", "水", "木", "金", "土"].map((label, index) => `<span class="${index === 0 ? "is-sunday" : (index === 6 ? "is-saturday" : "")}">${label}</span>`).join("")}
