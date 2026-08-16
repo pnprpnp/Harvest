@@ -93,7 +93,6 @@ const CASE_SIZE = 12;
 const CALCULATION_LOOKBACK_DAYS = 35;
 const HARVEST_CYCLE_GAP_DAYS = 7;
 const RECORD_LIST_DISPLAY_LIMIT = 30;
-const DASHBOARD_RECORD_INITIAL_DAY_LIMIT = 8;
 const DASHBOARD_RECORD_FILTER_DELAY_MS = 180;
 const HARVEST_STATE_SAVE_DELAY_MS = 250;
 const HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT = 24;
@@ -190,6 +189,7 @@ let dashboardForecastInfoReturnFocus = null;
 let dashboardCalendarInfoReturnFocus = null;
 let dashboardForecastDaysAllReturnFocus = null;
 let dashboardRecordListReturnFocus = null;
+let dashboardRecordCalendarMonth = null;
 let palletDragState = null;
 let recordCasesEdited = false;
 let harvestCasesAutoEstimated = false;
@@ -536,8 +536,10 @@ function openDashboardRecordListWindow(){
   const closeButton = document.getElementById("dashboardRecordListWindowClose");
   if(!modal) return;
   dashboardRecordListReturnFocus = document.activeElement;
-  renderDashboardRecordResults();
+  const filterDetails = document.getElementById("dashboardRecordFilterDetails");
+  if(filterDetails) filterDetails.open = false;
   showPageBlockingUi(modal);
+  loadDashboardRecordCalendarMonth(new Date());
   requestAnimationFrame(() => closeButton?.focus());
 }
 
@@ -2274,6 +2276,9 @@ function renderDashboardIfVisible(){
   const dashboardTab = document.getElementById("dashboardTab");
   if(dashboardTab && dashboardTab.style.display === "block"){
     renderDashboard();
+  }
+  if(document.getElementById("dashboardRecordListModal")?.classList.contains("show")){
+    renderDashboardRecordResults();
   }
 }
 

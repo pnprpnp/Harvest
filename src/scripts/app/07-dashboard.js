@@ -645,6 +645,51 @@ function cancelDashboardRecordFilterRefresh(){
   }
 }
 
+function normalizeDashboardRecordCalendarMonth(value, fallbackDate = new Date()){
+  if(value instanceof Date && !Number.isNaN(value.getTime())){
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
+  }
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{4})-(\d{2})$/);
+  if(match){
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if(year >= 1 && year <= 9999 && month >= 1 && month <= 12) return `${match[1]}-${match[2]}`;
+  }
+  return `${fallbackDate.getFullYear()}-${String(fallbackDate.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getDashboardRecordCalendarPeriod(month = dashboardRecordCalendarMonth){
+  const monthKey = normalizeDashboardRecordCalendarMonth(month);
+  const [year, monthNumber] = monthKey.split("-").map(Number);
+  const start = new Date(year, monthNumber - 1, 1);
+  const endExclusive = new Date(year, monthNumber, 1);
+  return {
+    monthKey,
+    year,
+    month: monthNumber,
+    start,
+    endExclusive,
+    endInclusive: addDays(endExclusive, -1),
+    startLabel: formatDateOnlyString(start),
+    endLabel: formatDateOnlyString(addDays(endExclusive, -1)),
+    isCustom: false,
+    isAllPeriod: false
+  };
+}
+
+function loadDashboardRecordCalendarMonth(month = new Date()){
+  dashboardRecordCalendarMonth = normalizeDashboardRecordCalendarMonth(month);
+  renderDashboardRecordResults();
+  return dashboardRecordCalendarMonth;
+}
+
+function shiftDashboardRecordCalendarMonth(offset){
+  const period = getDashboardRecordCalendarPeriod();
+  const monthOffset = Math.trunc(clampNumber(offset, -1200, 1200, 0));
+  return loadDashboardRecordCalendarMonth(new Date(period.year, period.month - 1 + monthOffset, 1));
+}
+
 function getDashboardRecordTypeFilterLabel(value = dashboardFilter.recordType){
   const normalized = normalizeDashboardRecordTypeFilter(value);
   if(normalized === "full") return "通常収穫";
@@ -674,6 +719,13 @@ function syncDashboardRecordFilterControls(){
   if((startValue || endValue) && document.getElementById("dashboardRecordPeriodDetails")){
     document.getElementById("dashboardRecordPeriodDetails").open = true;
   }
+  const filterStatus = document.getElementById("dashboardRecordFilterStatus");
+  if(filterStatus){
+    const activeFilterCount = Number(recordType !== "all")
+      + Number(!!String(document.getElementById("dashboardRecordSearchInput")?.value || dashboardFilter.recordSearch || "").trim())
+      + Number(!!(startValue || endValue));
+    filterStatus.textContent = activeFilterCount ? `${activeFilterCount}件設定` : "なし";
+  }
 }
 
 function setDashboardRecordTypeFilter(value){
@@ -685,9 +737,17 @@ function setDashboardRecordTypeFilter(value){
 
 function renderDashboardRecordResults(){
   syncDashboardRecordFilterControls();
-  const tablePeriod = getDashboardTablePeriod();
-  const allItems = getDashboardRecordItemsForPeriod(tablePeriod);
-  const matchingItems = filterDashboardRecordItems(allItems);
+  const calendarPeriod = getDashboardRecordCalendarPeriod();
+  dashboardRecordCalendarMonth = calendarPeriod.monthKey;
+  const monthLabel = document.getElementById("dashboardRecordCalendarMonthLabel");
+  if(monthLabel) monthLabel.textContent = `${calendarPeriod.year}年${calendarPeriod.month}月`;
+
+  const allItems = getDashboardRecordItemsForPeriod(calendarPeriod);
+  const dateFilterPeriod = getDashboardTablePeriod(calendarPeriod);
+  const filteredItems = dateFilterPeriod.isCustom
+    ? allItems.filter(item => isDateInPeriod(item?.date, dateFilterPeriod))
+    : allItems;
+  const matchingItems = filterDashboardRecordItems(filteredItems);
   const matchingDates = new Set(matchingItems.map(item => String(item?.date || "")));
   const tableItems = allItems.filter(item => matchingDates.has(String(item?.date || "")));
   const keyword = String(
@@ -695,8 +755,9 @@ function renderDashboardRecordResults(){
       || dashboardFilter.recordSearch
       || ""
   ).trim();
-  renderDashboardRecordTable(tableItems, {
-    period: tablePeriod,
+  renderDashboardRecordCalendar(tableItems, {
+    period: calendarPeriod,
+    dateFilterPeriod,
     keyword,
     recordType: dashboardFilter.recordType
   });
@@ -1736,70 +1797,76 @@ function groupDashboardRecordItemsByDate(items){
   return [...groups.values()];
 }
 
-function getDashboardRecordDayGroupHtml(group){
+function getDashboardRecordCalendarDayMetrics(group){
   const harvestItems = group.items.filter(item => item?.kind === "harvest");
   const caseTotal = harvestItems.reduce((sum, item) => (
     sum + clampNumber(item.value?.cases, 0, 999999, 0)
   ), 0);
   const lossText = getDashboardDayHarvestLossText(harvestItems);
-  return `
-    <section class="dashboardRecordDayGroup" aria-label="${escapeHtml(formatDashboardRecordDayDate(group.date))}の記録">
-      <button type="button" class="dashboardRecordCard dashboardRecordDayCard"
-        aria-label="${escapeHtml(`${group.date || "日付なし"}の詳細`)}" data-ui-click="openDashboardDayRecordDetail" data-ui-arg="${escapeHtml(group.date)}">
-        <span class="dashboardRecordDayHeader">
-          <span class="dashboardRecordDayTitle"><time datetime="${escapeHtml(group.date)}">${escapeHtml(formatDashboardRecordDayDate(group.date))}</time></span>
-        </span>
-        <span class="dashboardRecordCardMetrics">
-          <span class="dashboardRecordCardMetric">
-            <span class="dashboardRecordCardMetricLabel">収穫ケース数</span>
-            <span class="dashboardRecordCardMetricValue">${caseTotal}ケース</span>
-          </span>
-          <span class="dashboardRecordCardMetric">
-            <span class="dashboardRecordCardMetricLabel">収穫ロス率</span>
-            <span class="dashboardRecordCardMetricValue${Number.parseFloat(lossText) >= 15 ? " dashboardLossHigh" : ""}">${escapeHtml(lossText)}</span>
-          </span>
-        </span>
-        <span class="dashboardRecordCardCue">詳細を見る ›</span>
-      </button>
-    </section>
-  `;
+  return { caseTotal, lossText };
 }
 
-function renderDashboardRecordTable(itemsInPeriod, options = {}){
+function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
   const container = document.getElementById("dashboardRecordTable");
   if(!container) return;
   const dayGroups = groupDashboardRecordItemsByDate(itemsInPeriod);
-  const period = options.period || null;
+  const period = options.period || getDashboardRecordCalendarPeriod();
+  const groupsByDate = new Map(dayGroups.map(group => [group.date, group]));
   const hasKeyword = !!String(options.keyword || "").trim();
   const recordType = normalizeDashboardRecordTypeFilter(options.recordType);
   const typeSummary = recordType === "all" ? "" : ` / ${getDashboardRecordTypeFilterLabel(recordType)}`;
   const countSummary = `${dayGroups.length}日`;
-  const summaryText = period
-    ? `${countSummary}${typeSummary}${period.isCustom ? ` / ${period.startLabel} 〜 ${period.endLabel}` : (period.isAllPeriod ? ` / 全期間 ${period.startLabel} 〜 ${period.endLabel}` : ` / 集計期間 ${period.startLabel} 〜 ${period.endLabel}`)}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`
-    : `${countSummary}${typeSummary}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`;
-  if(!itemsInPeriod.length){
-    container.innerHTML = `
-      <div class="dashboardTableSummary">${escapeHtml(summaryText)}</div>
-      <div class="dashboardEmpty">条件に合う記録がありません。</div>
-    `;
-    return;
-  }
-
-  const visibleGroups = dayGroups.slice(0, DASHBOARD_RECORD_INITIAL_DAY_LIMIT);
-  const hiddenGroups = dayGroups.slice(DASHBOARD_RECORD_INITIAL_DAY_LIMIT);
-  const hiddenSummary = hiddenGroups.length
-    ? `
-      <details class="recordToggleWrap dashboardRecordRemainingDays">
-        <summary class="recordToggleSummary">残りを見る（${hiddenGroups.length}日）</summary>
-        <div class="recordToggleBody dashboardRecordDayList">${hiddenGroups.map(getDashboardRecordDayGroupHtml).join("")}</div>
-      </details>
-    `
+  const dateFilterSummary = options.dateFilterPeriod?.isCustom
+    ? ` / ${options.dateFilterPeriod.startLabel} 〜 ${options.dateFilterPeriod.endLabel}`
     : "";
+  const summaryText = `${countSummary} / ${period.year}年${period.month}月${typeSummary}${dateFilterSummary}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`;
+  const todayKey = formatDateOnlyString(new Date());
+  const firstWeekday = period.start.getDay();
+  const daysInMonth = period.endInclusive.getDate();
+  const totalCellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+  const dayCells = Array.from({ length: totalCellCount }, (_, index) => {
+    const dayNumber = index - firstWeekday + 1;
+    if(dayNumber < 1 || dayNumber > daysInMonth){
+      return `<div class="dashboardRecordCalendarDay is-outside" aria-hidden="true"></div>`;
+    }
+    const date = new Date(period.year, period.month - 1, dayNumber);
+    const dateKey = formatDateOnlyString(date);
+    const group = groupsByDate.get(dateKey) || null;
+    const weekday = date.getDay();
+    const stateClasses = [
+      weekday === 0 ? "is-sunday" : "",
+      weekday === 6 ? "is-saturday" : "",
+      dateKey === todayKey ? "is-today" : "",
+      group ? "has-records" : ""
+    ].filter(Boolean).join(" ");
+    if(!group){
+      return `
+        <div class="dashboardRecordCalendarDay ${stateClasses}" data-dashboard-calendar-date="${dateKey}">
+          <time class="dashboardRecordCalendarDateNumber" datetime="${dateKey}">${dayNumber}</time>
+        </div>
+      `;
+    }
+    const metrics = getDashboardRecordCalendarDayMetrics(group);
+    const lossIsHigh = Number.parseFloat(metrics.lossText) >= 15;
+    return `
+      <button type="button" class="dashboardRecordCalendarDay ${stateClasses}"
+        data-dashboard-calendar-date="${dateKey}" data-dashboard-record-date="${dateKey}"
+        data-ui-click="openDashboardDayRecordDetail" data-ui-arg="${dateKey}"
+        aria-label="${escapeHtml(`${formatDashboardRecordDayDate(dateKey)}、${metrics.caseTotal}ケース、ロス率${metrics.lossText}、詳細を開く`)}">
+        <time class="dashboardRecordCalendarDateNumber" datetime="${dateKey}">${dayNumber}</time>
+        <span class="dashboardRecordCalendarCases">${metrics.caseTotal}ケース</span>
+        <span class="dashboardRecordCalendarLoss${lossIsHigh ? " dashboardLossHigh" : ""}">ロス率 ${escapeHtml(metrics.lossText)}</span>
+      </button>
+    `;
+  }).join("");
 
+  container.dataset.loadedMonth = period.monthKey;
   container.innerHTML = `
-    <div class="dashboardTableSummary">${escapeHtml(summaryText)}</div>
-    <div class="dashboardRecordDayList">${visibleGroups.map(getDashboardRecordDayGroupHtml).join("")}</div>
-    ${hiddenSummary}
+    <div class="dashboardTableSummary" role="status">${escapeHtml(summaryText)}</div>
+    <div class="dashboardRecordCalendarWeekdays" aria-hidden="true">
+      ${["日", "月", "火", "水", "木", "金", "土"].map((label, index) => `<span class="${index === 0 ? "is-sunday" : (index === 6 ? "is-saturday" : "")}">${label}</span>`).join("")}
+    </div>
+    <div class="dashboardRecordCalendarGrid">${dayCells}</div>
   `;
 }
 
@@ -2983,15 +3050,6 @@ function renderDashboardGraphs(){
     formatValue: (value, axisOnly = false) => `${(axisOnly ? Math.round(value) : value.toFixed(1))}%`
   });
 
-  const dashboardRecordSearchInput = document.getElementById("dashboardRecordSearchInput");
-  const dashboardRecordStartDateInput = document.getElementById("dashboardRecordStartDateInput");
-  const dashboardRecordEndDateInput = document.getElementById("dashboardRecordEndDateInput");
-  if(dashboardRecordSearchInput && dashboardRecordSearchInput.value !== (dashboardFilter.recordSearch || "")) dashboardRecordSearchInput.value = dashboardFilter.recordSearch || "";
-  if(dashboardRecordStartDateInput && dashboardRecordStartDateInput.value !== (dashboardFilter.recordStartDate || "")) dashboardRecordStartDateInput.value = dashboardFilter.recordStartDate || "";
-  if(dashboardRecordEndDateInput && dashboardRecordEndDateInput.value !== (dashboardFilter.recordEndDate || "")) dashboardRecordEndDateInput.value = dashboardFilter.recordEndDate || "";
-
-  cancelDashboardRecordFilterRefresh();
-  renderDashboardRecordResults();
 }
 
 function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options = {}){

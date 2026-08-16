@@ -443,7 +443,9 @@
         "openDashboardCalendarInfoWindow",
         "closeDashboardCalendarInfoWindow",
         "openDashboardRecordListWindow",
-        "closeDashboardRecordListWindow"
+        "closeDashboardRecordListWindow",
+        "loadDashboardRecordCalendarMonth",
+        "shiftDashboardRecordCalendarMonth"
       ];
 
       await runTest("主要な計算関数を読み込める", () => {
@@ -1306,6 +1308,8 @@
         assert(panel?.firstElementChild === openButton, "記録一覧を開く操作が記録タブの一番上にありません");
         assert(!panel?.querySelector("#dashboardRecordTable"), "記録一覧が記録タブ内の折りたたみ表示に残っています");
 
+        const currentMonth = app.eval("normalizeDashboardRecordCalendarMonth(new Date())");
+        assertEqual(app.document.getElementById("dashboardRecordTable")?.childElementCount || 0, 0, "記録一覧を開く前に月の記録を読み込んでいます");
         try{
           app.openDashboardRecordListWindow();
           const windowState = comparable(app.eval(`(() => {
@@ -1315,21 +1319,50 @@
               open: modal?.classList.contains("show") || false,
               title: document.getElementById("dashboardRecordListWindowTitle")?.textContent.trim() || "",
               tableInWindow: table?.closest("#dashboardRecordListModal") === modal,
-              filtersInWindow: document.getElementById("dashboardRecordSearchInput")?.closest("#dashboardRecordListModal") === modal
+              filtersInWindow: document.getElementById("dashboardRecordSearchInput")?.closest("#dashboardRecordListModal") === modal,
+              filterOpen: document.getElementById("dashboardRecordFilterDetails")?.open || false,
+              loadedMonth: table?.dataset.loadedMonth || ""
             };
           })()`));
           assertDeepEqual(windowState, {
             open: true,
             title: "記録一覧",
             tableInWindow: true,
-            filtersInWindow: true
-          }, "記録一覧が専用ウィンドウで開きません");
+            filtersInWindow: true,
+            filterOpen: false,
+            loadedMonth: currentMonth
+          }, "記録一覧が今月分を読み込む専用ウィンドウで開きません");
+
+          app.shiftDashboardRecordCalendarMonth(-1);
+          const previousMonthState = comparable(app.eval(`({
+            selectedMonth: dashboardRecordCalendarMonth,
+            loadedMonth: document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || ""
+          })`));
+          const expectedPreviousMonth = app.eval(`(() => {
+            const period = getDashboardRecordCalendarPeriod(${JSON.stringify(currentMonth)});
+            return normalizeDashboardRecordCalendarMonth(new Date(period.year, period.month - 2, 1));
+          })()`);
+          assertDeepEqual(previousMonthState, {
+            selectedMonth: expectedPreviousMonth,
+            loadedMonth: expectedPreviousMonth
+          }, "前月へ移動した時にその月の記録を読み込んでいません");
+        }finally{
+          app.closeDashboardRecordListWindow();
+        }
+
+        try{
+          app.openDashboardRecordListWindow();
+          assertEqual(
+            app.document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || "",
+            currentMonth,
+            "記録一覧を開き直した時に今月分へ戻っていません"
+          );
         }finally{
           app.closeDashboardRecordListWindow();
         }
       });
 
-      await runTest("集計の記録一覧は日ごとの収穫値だけを表示し、詳細で場所を切り替える", () => {
+      await runTest("集計の記録一覧は月カレンダーに日ごとの収穫値を表示し、詳細で場所を切り替える", () => {
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
         const previousFilter = comparable(app.eval("dashboardFilter"));
@@ -1393,28 +1426,28 @@
             document.getElementById("dashboardRecordSearchInput").value = "";
             document.getElementById("dashboardRecordStartDateInput").value = "";
             document.getElementById("dashboardRecordEndDateInput").value = "";
-            renderDashboardRecordResults();
+            loadDashboardRecordCalendarMonth("2026-08");
           `);
           const allState = comparable(app.eval(`(() => {
-            const groups = [...document.querySelectorAll("#dashboardRecordTable .dashboardRecordDayGroup")];
-            const first = groups[0];
-            const card = first.querySelector(".dashboardRecordDayCard");
+            const recordDays = [...document.querySelectorAll("#dashboardRecordTable [data-dashboard-record-date]")];
+            const first = document.querySelector('#dashboardRecordTable [data-dashboard-record-date="2026-08-15"]');
             return {
               summary: document.querySelector("#dashboardRecordTable .dashboardTableSummary")?.textContent || "",
-              dayCount: groups.length,
-              firstDate: first.querySelector(".dashboardRecordDayTitle")?.textContent || "",
-              metricLabels: [...first.querySelectorAll(".dashboardRecordCardMetricLabel")].map(item => item.textContent),
-              metricValues: [...first.querySelectorAll(".dashboardRecordCardMetricValue")].map(item => item.textContent),
-              detailAction: card?.dataset.uiClick || "",
-              detailDate: card?.dataset.uiArg || "",
+              calendarDayCount: document.querySelectorAll("#dashboardRecordTable [data-dashboard-calendar-date]").length,
+              recordDayCount: recordDays.length,
+              firstDate: first?.querySelector(".dashboardRecordCalendarDateNumber")?.textContent || "",
+              caseText: first?.querySelector(".dashboardRecordCalendarCases")?.textContent || "",
+              lossText: first?.querySelector(".dashboardRecordCalendarLoss")?.textContent || "",
+              detailAction: first?.dataset.uiClick || "",
+              detailDate: first?.dataset.uiArg || "",
               typeBadgeCount: first.querySelectorAll(".dashboardTypeBadge").length
             };
           })()`));
-          assert(allState.summary.startsWith("2日"), "記録一覧の件数が日ごとの表示になっていません");
-          assertEqual(allState.dayCount, 2, "同じ日の記録が一つの日付グループにまとまりません");
-          assertEqual(allState.firstDate, "2026/8/15（土）", "日付見出しが一致しません");
-          assertDeepEqual(allState.metricLabels, ["収穫ケース数", "収穫ロス率"], "一覧に収穫値以外の情報が表示されています");
-          assertDeepEqual(allState.metricValues, ["15ケース", "4%"], "日ごとの収穫値が一致しません");
+          assert(allState.summary.startsWith("2日 / 2026年8月"), "記録一覧の月と件数が一致しません");
+          assertEqual(allState.calendarDayCount, 31, "8月の日付がカレンダーに揃っていません");
+          assertEqual(allState.recordDayCount, 2, "同じ日の記録が一つの日付セルにまとまりません");
+          assertEqual(allState.firstDate, "15", "日付セルの日付が一致しません");
+          assertDeepEqual([allState.caseText, allState.lossText], ["15ケース", "ロス率 4%"], "日付の下のケース数とロス率が一致しません");
           assertEqual(allState.typeBadgeCount, 0, "一覧に通常収穫・苗植えの区分が残っています");
           assertDeepEqual([allState.detailAction, allState.detailDate], ["openDashboardDayRecordDetail", "2026-08-15"], "日ごとの詳細を開けません");
 
@@ -1453,11 +1486,10 @@
           app.setDashboardRecordTypeFilter("planting");
           const plantingOnlyState = comparable(app.eval(`({
             summary: document.querySelector("#dashboardRecordTable .dashboardTableSummary")?.textContent || "",
-            dayCount: document.querySelectorAll("#dashboardRecordTable .dashboardRecordDayGroup").length,
-            cardCount: document.querySelectorAll("#dashboardRecordTable .dashboardRecordCard").length
+            dayCount: document.querySelectorAll("#dashboardRecordTable [data-dashboard-record-date]").length
           })`));
-          assert(plantingOnlyState.summary.startsWith("1日 / 苗植え"), "苗植えだけの絞り込み件数が一致しません");
-          assertDeepEqual([plantingOnlyState.dayCount, plantingOnlyState.cardCount], [1, 1], "苗植えだけに絞り込めません");
+          assert(plantingOnlyState.summary.startsWith("1日 / 2026年8月 / 苗植え"), "苗植えだけの絞り込み件数が一致しません");
+          assertEqual(plantingOnlyState.dayCount, 1, "苗植えだけに絞り込めません");
         }finally{
           app.closeRecordDetailWindow({ restoreFocus: false });
           replaceAppHistory(app, previousRecords, previousEvents);
@@ -2565,18 +2597,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "09738683", elements: 2049, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "849c212d", elements: 2117, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "749b7bec", elements: 2117, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "fd22e1bf", elements: 2050, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "9bdd2bf4", elements: 2050, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "14991002", elements: 2067, visible: 116, viewport: "390x844" },
-          mobileDashboardRecordWindow: { hash: "2c33a4e6", elements: 2067, visible: 149, viewport: "390x844" },
-          mobileMenu: { hash: "2c555bfc", elements: 2067, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "4280f1b0", elements: 2067, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "3637b2b0", elements: 2067, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "59e83143", elements: 2067, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "816a7da8", elements: 2067, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "165acd88", elements: 2057, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "fdc1f9c8", elements: 2125, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "0cb37325", elements: 2125, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "212fcf6f", elements: 2058, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "32a2a8cc", elements: 2058, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f15144c2", elements: 2073, visible: 116, viewport: "390x844" },
+          mobileDashboardRecordWindow: { hash: "d68660e9", elements: 2156, visible: 238, viewport: "390x844" },
+          mobileMenu: { hash: "d8c4afe9", elements: 2156, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "f8d1dea1", elements: 2156, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "fe984bf1", elements: 2156, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "4d84ec46", elements: 2156, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "2d454117", elements: 2156, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
