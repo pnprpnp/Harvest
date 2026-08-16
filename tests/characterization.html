@@ -1243,7 +1243,7 @@
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
       });
 
-      await runTest("集計の記録一覧を日ごとにまとめ、二次定植場所も表示する", () => {
+      await runTest("集計の記録一覧は日ごとの収穫値だけを表示し、詳細で場所を切り替える", () => {
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
         const previousFilter = comparable(app.eval("dashboardFilter"));
@@ -1312,26 +1312,57 @@
           const allState = comparable(app.eval(`(() => {
             const groups = [...document.querySelectorAll("#dashboardRecordTable .dashboardRecordDayGroup")];
             const first = groups[0];
-            const plantingCard = first.querySelector('.dashboardRecordCard[data-ui-arg="planting"]');
-            const locationMetric = [...plantingCard.querySelectorAll(".dashboardRecordCardMetric")]
-              .find(metric => metric.querySelector(".dashboardRecordCardMetricLabel")?.textContent === "二次定植場所");
+            const card = first.querySelector(".dashboardRecordDayCard");
             return {
               summary: document.querySelector("#dashboardRecordTable .dashboardTableSummary")?.textContent || "",
               dayCount: groups.length,
               firstDate: first.querySelector(".dashboardRecordDayTitle")?.textContent || "",
-              firstMeta: first.querySelector(".dashboardRecordDayMeta")?.textContent || "",
-              badges: [...first.querySelectorAll(".dashboardTypeBadge")].map(item => item.textContent),
-              plantingLocation: locationMetric?.querySelector(".dashboardRecordCardMetricValue")?.textContent || "",
-              plantingDetailId: Number(plantingCard?.dataset.uiNumber || 0)
+              metricLabels: [...first.querySelectorAll(".dashboardRecordCardMetricLabel")].map(item => item.textContent),
+              metricValues: [...first.querySelectorAll(".dashboardRecordCardMetricValue")].map(item => item.textContent),
+              detailAction: card?.dataset.uiClick || "",
+              detailDate: card?.dataset.uiArg || "",
+              typeBadgeCount: first.querySelectorAll(".dashboardTypeBadge").length
             };
           })()`));
-          assert(allState.summary.startsWith("2日 / 4件"), "記録一覧の件数が日ごとの表示になっていません");
+          assert(allState.summary.startsWith("2日"), "記録一覧の件数が日ごとの表示になっていません");
           assertEqual(allState.dayCount, 2, "同じ日の記録が一つの日付グループにまとまりません");
           assertEqual(allState.firstDate, "2026/8/15（土）", "日付見出しが一致しません");
-          assertEqual(allState.firstMeta, "収穫 2件 / 苗植え 1件 / 合計 15ケース", "日ごとの集計が一致しません");
-          assertDeepEqual(allState.badges, ["部分収穫", "通常収穫", "苗植え"], "同日の収穫・苗植え記録が揃っていません");
-          assert(allState.plantingLocation.includes("3号棟") && allState.plantingLocation.includes("B"), "二次定植場所が一覧に表示されません");
-          assertEqual(allState.plantingDetailId, 20000000000043, "苗植え詳細への識別子が一致しません");
+          assertDeepEqual(allState.metricLabels, ["収穫ケース数", "収穫ロス率"], "一覧に収穫値以外の情報が表示されています");
+          assertDeepEqual(allState.metricValues, ["15ケース", "4%"], "日ごとの収穫値が一致しません");
+          assertEqual(allState.typeBadgeCount, 0, "一覧に通常収穫・苗植えの区分が残っています");
+          assertDeepEqual([allState.detailAction, allState.detailDate], ["openDashboardDayRecordDetail", "2026-08-15"], "日ごとの詳細を開けません");
+
+          app.openDashboardDayRecordDetail("2026-08-15");
+          app.setRecordDetailDayLocationView("harvest");
+          const harvestDetailState = comparable(app.eval(`({
+            firstSectionClass: document.getElementById("recordDetailWindowBody")?.firstElementChild?.className || "",
+            tabs: [...document.querySelectorAll(".recordDetailLocationViewBtn")].map(button => ({
+              text: button.textContent.trim(),
+              selected: button.getAttribute("aria-selected")
+            })),
+            locationKind: recordDetailLocationModel?.kind || "",
+            locationKeys: [...(recordDetailLocationModel?.keySet || [])],
+            infoLabels: [...document.querySelectorAll("#recordDetailWindowBody .recordDetailInfoLabel")].map(item => item.textContent)
+          })`));
+          assert(harvestDetailState.firstSectionClass.includes("recordDetailLocationSection is-first"), "場所切り替えが詳細の一番上にありません");
+          assertDeepEqual(harvestDetailState.tabs, [
+            { text: "収穫場所", selected: "true" },
+            { text: "二次定植場所", selected: "false" }
+          ], "収穫場所と二次定植場所の切り替えボタンが一致しません");
+          assertEqual(harvestDetailState.locationKind, "harvest", "収穫場所が最初に表示されません");
+          assertDeepEqual(harvestDetailState.locationKeys, ["3-B-4", "3-B-5", "3-B-6"], "同日の収穫場所がまとまりません");
+          assert(harvestDetailState.infoLabels.includes("苗植え記録"), "苗植え情報が詳細へ移動していません");
+
+          app.setRecordDetailDayLocationView("planting");
+          const plantingDetailState = comparable(app.eval(`({
+            tabs: [...document.querySelectorAll(".recordDetailLocationViewBtn")].map(button => button.getAttribute("aria-selected")),
+            locationKind: recordDetailLocationModel?.kind || "",
+            locationKeys: [...(recordDetailLocationModel?.keySet || [])]
+          })`));
+          assertDeepEqual(plantingDetailState.tabs, ["false", "true"], "二次定植場所ボタンへ切り替わりません");
+          assertEqual(plantingDetailState.locationKind, "planting", "二次定植場所が表示されません");
+          assertDeepEqual(plantingDetailState.locationKeys, ["3-B-4", "3-B-5"], "同日の二次定植場所がまとまりません");
+          app.closeRecordDetailWindow({ restoreFocus: false });
 
           app.setDashboardRecordTypeFilter("planting");
           const plantingOnlyState = comparable(app.eval(`({
@@ -1339,9 +1370,10 @@
             dayCount: document.querySelectorAll("#dashboardRecordTable .dashboardRecordDayGroup").length,
             cardCount: document.querySelectorAll("#dashboardRecordTable .dashboardRecordCard").length
           })`));
-          assert(plantingOnlyState.summary.startsWith("1日 / 1件 / 苗植え"), "苗植えだけの絞り込み件数が一致しません");
+          assert(plantingOnlyState.summary.startsWith("1日 / 苗植え"), "苗植えだけの絞り込み件数が一致しません");
           assertDeepEqual([plantingOnlyState.dayCount, plantingOnlyState.cardCount], [1, 1], "苗植えだけに絞り込めません");
         }finally{
+          app.closeRecordDetailWindow({ restoreFocus: false });
           replaceAppHistory(app, previousRecords, previousEvents);
           app.invalidatePlantingEventStateCache();
           app.eval(`dashboardFilter = ${JSON.stringify(previousFilter)};`);

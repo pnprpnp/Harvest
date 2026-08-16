@@ -686,7 +686,10 @@ function setDashboardRecordTypeFilter(value){
 function renderDashboardRecordResults(){
   syncDashboardRecordFilterControls();
   const tablePeriod = getDashboardTablePeriod();
-  const tableItems = filterDashboardRecordItems(getDashboardRecordItemsForPeriod(tablePeriod));
+  const allItems = getDashboardRecordItemsForPeriod(tablePeriod);
+  const matchingItems = filterDashboardRecordItems(allItems);
+  const matchingDates = new Set(matchingItems.map(item => String(item?.date || "")));
+  const tableItems = allItems.filter(item => matchingDates.has(String(item?.date || "")));
   const keyword = String(
     document.getElementById("dashboardRecordSearchInput")?.value
       || dashboardFilter.recordSearch
@@ -1687,47 +1690,21 @@ function formatDashboardRecordDayDate(dateString){
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}（${weekdays[date.getDay()]}）`;
 }
 
-function getDashboardRecordListModel(item){
-  if(item?.kind === "planting"){
-    const event = item.value;
-    const metrics = getPlantingEventListMetrics(event);
-    return {
-      kind: "planting",
-      badgeClass: "planting",
-      badgeLabel: "苗植え",
-      detailKind: "planting",
-      safeId: getSafePositiveRecordId(event?.eventId) ?? 0,
-      attention: getDashboardRecordItemAttentionInfo(item),
-      metrics: [
-        {
-          label: "二次定植場所",
-          value: isNoPlantingEvent(event)
-            ? "苗植えなし"
-            : (formatPlantingSummaryForKeys(event?.plantingPalletKeys || []) || "場所情報なし"),
-          wide: true
-        },
-        { label: "苗枚数", value: metrics.seedlingTrayText },
-        { label: "苗ロス率", value: metrics.lossRateText }
-      ]
-    };
-  }
-
-  const record = item?.value;
-  const isPartial = record?.type === "partialHarvest";
-  const rawLoss = String(record?.actualLoss ?? "").trim();
-  const lossText = isPartial || !rawLoss ? "-" : `${rawLoss}%`;
-  return {
-    kind: "harvest",
-    badgeClass: isPartial ? "partial" : "full",
-    badgeLabel: getDashboardRecordTypeLabel(record),
-    detailKind: isPartial ? "partialHarvest" : "harvest",
-    safeId: getSafePositiveRecordId(record?.id) ?? 0,
-    attention: getDashboardRecordItemAttentionInfo(item),
-    metrics: [
-      { label: "収穫ケース数", value: `${clampNumber(record?.cases, 0, 999999, 0)}ケース` },
-      { label: "収穫ロス率", value: lossText, high: Number(rawLoss) >= 15 }
-    ]
-  };
+function getDashboardDayHarvestLossText(harvestItems){
+  const lossRecords = (Array.isArray(harvestItems) ? harvestItems : [])
+    .map(item => item?.value || item)
+    .filter(record => record?.type !== "partialHarvest")
+    .map(record => ({
+      loss: getFiniteNumberInRange(record?.actualLoss, 0, 100),
+      cases: clampNumber(record?.cases, 0, 999999, 0)
+    }))
+    .filter(item => item.loss !== null);
+  if(!lossRecords.length) return "-";
+  const totalCases = lossRecords.reduce((sum, item) => sum + item.cases, 0);
+  const averageLoss = totalCases > 0
+    ? lossRecords.reduce((sum, item) => sum + item.loss * item.cases, 0) / totalCases
+    : lossRecords.reduce((sum, item) => sum + item.loss, 0) / lossRecords.length;
+  return `${Math.round(averageLoss * 10) / 10}%`;
 }
 
 function getHarvestRecordPlantingDetailText(record){
@@ -1761,44 +1738,29 @@ function groupDashboardRecordItemsByDate(items){
 
 function getDashboardRecordDayGroupHtml(group){
   const harvestItems = group.items.filter(item => item?.kind === "harvest");
-  const plantingItems = group.items.filter(item => item?.kind === "planting");
   const caseTotal = harvestItems.reduce((sum, item) => (
     sum + clampNumber(item.value?.cases, 0, 999999, 0)
   ), 0);
-  const summaryParts = [
-    harvestItems.length ? `収穫 ${harvestItems.length}件` : "",
-    plantingItems.length ? `苗植え ${plantingItems.length}件` : "",
-    harvestItems.length ? `合計 ${caseTotal}ケース` : ""
-  ].filter(Boolean);
-  const cards = group.items.map(item => {
-    const model = getDashboardRecordListModel(item);
-    const accessibleLabel = `${group.date || "日付なし"} ${model.badgeLabel}の詳細`;
-    return `
-      <button type="button" class="dashboardRecordCard ${model.badgeClass}${model.attention.hasAttention ? " hasAttention" : ""}"
-        aria-label="${escapeHtml(accessibleLabel)}" data-ui-click="openRecordDetailWindow" data-ui-arg="${model.detailKind}" data-ui-number="${model.safeId}">
-        <span class="dashboardRecordCardTop">
-          <span class="dashboardTypeBadge ${model.badgeClass}">${escapeHtml(model.badgeLabel)}</span>
-          ${model.attention.hasAttention ? `<span class="dashboardRecordAttentionBadge">${escapeHtml(model.attention.label)}</span>` : ""}
+  const lossText = getDashboardDayHarvestLossText(harvestItems);
+  return `
+    <section class="dashboardRecordDayGroup" aria-label="${escapeHtml(formatDashboardRecordDayDate(group.date))}の記録">
+      <button type="button" class="dashboardRecordCard dashboardRecordDayCard"
+        aria-label="${escapeHtml(`${group.date || "日付なし"}の詳細`)}" data-ui-click="openDashboardDayRecordDetail" data-ui-arg="${escapeHtml(group.date)}">
+        <span class="dashboardRecordDayHeader">
+          <span class="dashboardRecordDayTitle"><time datetime="${escapeHtml(group.date)}">${escapeHtml(formatDashboardRecordDayDate(group.date))}</time></span>
         </span>
         <span class="dashboardRecordCardMetrics">
-          ${model.metrics.map(metric => `
-            <span class="dashboardRecordCardMetric${metric.wide ? " is-wide" : ""}">
-              <span class="dashboardRecordCardMetricLabel">${escapeHtml(metric.label)}</span>
-              <span class="dashboardRecordCardMetricValue${metric.high ? " dashboardLossHigh" : ""}">${escapeHtml(metric.value)}</span>
-            </span>
-          `).join("")}
+          <span class="dashboardRecordCardMetric">
+            <span class="dashboardRecordCardMetricLabel">収穫ケース数</span>
+            <span class="dashboardRecordCardMetricValue">${caseTotal}ケース</span>
+          </span>
+          <span class="dashboardRecordCardMetric">
+            <span class="dashboardRecordCardMetricLabel">収穫ロス率</span>
+            <span class="dashboardRecordCardMetricValue${Number.parseFloat(lossText) >= 15 ? " dashboardLossHigh" : ""}">${escapeHtml(lossText)}</span>
+          </span>
         </span>
         <span class="dashboardRecordCardCue">詳細を見る ›</span>
       </button>
-    `;
-  }).join("");
-  return `
-    <section class="dashboardRecordDayGroup" aria-label="${escapeHtml(formatDashboardRecordDayDate(group.date))}の記録">
-      <div class="dashboardRecordDayHeader">
-        <h3 class="dashboardRecordDayTitle"><time datetime="${escapeHtml(group.date)}">${escapeHtml(formatDashboardRecordDayDate(group.date))}</time></h3>
-        <span class="dashboardRecordDayMeta">${escapeHtml(summaryParts.join(" / "))}</span>
-      </div>
-      <div class="dashboardRecordCardList">${cards}</div>
     </section>
   `;
 }
@@ -1811,7 +1773,7 @@ function renderDashboardRecordTable(itemsInPeriod, options = {}){
   const hasKeyword = !!String(options.keyword || "").trim();
   const recordType = normalizeDashboardRecordTypeFilter(options.recordType);
   const typeSummary = recordType === "all" ? "" : ` / ${getDashboardRecordTypeFilterLabel(recordType)}`;
-  const countSummary = `${dayGroups.length}日 / ${itemsInPeriod.length}件`;
+  const countSummary = `${dayGroups.length}日`;
   const summaryText = period
     ? `${countSummary}${typeSummary}${period.isCustom ? ` / ${period.startLabel} 〜 ${period.endLabel}` : (period.isAllPeriod ? ` / 全期間 ${period.startLabel} 〜 ${period.endLabel}` : ` / 集計期間 ${period.startLabel} 〜 ${period.endLabel}`)}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`
     : `${countSummary}${typeSummary}${hasKeyword ? ` / 検索: ${options.keyword}` : ""}`;
@@ -1825,11 +1787,10 @@ function renderDashboardRecordTable(itemsInPeriod, options = {}){
 
   const visibleGroups = dayGroups.slice(0, DASHBOARD_RECORD_INITIAL_DAY_LIMIT);
   const hiddenGroups = dayGroups.slice(DASHBOARD_RECORD_INITIAL_DAY_LIMIT);
-  const hiddenItemCount = hiddenGroups.reduce((sum, group) => sum + group.items.length, 0);
   const hiddenSummary = hiddenGroups.length
     ? `
       <details class="recordToggleWrap dashboardRecordRemainingDays">
-        <summary class="recordToggleSummary">残りを見る（${hiddenGroups.length}日 / ${hiddenItemCount}件）</summary>
+        <summary class="recordToggleSummary">残りを見る（${hiddenGroups.length}日）</summary>
         <div class="recordToggleBody dashboardRecordDayList">${hiddenGroups.map(getDashboardRecordDayGroupHtml).join("")}</div>
       </details>
     `

@@ -698,6 +698,36 @@ function getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind = ""){
     : `${infoHtml}${locationHtml}`;
 }
 
+function getDashboardDayRecordDetailBodyHtml(infoRows){
+  return `
+    <section class="recordDetailLocationSection is-first" aria-label="場所の表示切り替え">
+      <div class="recordDetailLocationViewTabs" role="tablist" aria-label="表示する場所">
+        <button id="recordDetailHarvestLocationViewBtn" type="button" class="recordDetailLocationViewBtn"
+          role="tab" aria-controls="recordDetailLocationMount" aria-selected="false"
+          data-ui-click="setRecordDetailDayLocationView" data-ui-arg="harvest">収穫場所</button>
+        <button id="recordDetailPlantingLocationViewBtn" type="button" class="recordDetailLocationViewBtn"
+          role="tab" aria-controls="recordDetailLocationMount" aria-selected="false"
+          data-ui-click="setRecordDetailDayLocationView" data-ui-arg="planting">二次定植場所</button>
+      </div>
+      <div id="recordDetailLocationMount">
+        <div class="recordDetailLocationLoading" role="status">場所を読み込んでいます...</div>
+      </div>
+    </section>
+    ${getRecordDetailInfoHtml(infoRows)}
+  `;
+}
+
+function getRecordDetailHarvestPalletKeys(record){
+  if(record?.type !== "partialHarvest") return getPalletKeysFromRecord(record);
+  return normalizePartialHarvestTargets(record?.targets).flatMap(target => {
+    const keys = [];
+    for(let number = target.start; number <= target.end; number++){
+      keys.push(getPalletKey(target.building, target.bed, number));
+    }
+    return keys;
+  });
+}
+
 function formatPlantingCountsByPalletSummary(event){
   const palletKeys = [...new Set(
     (Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : [])
@@ -720,19 +750,10 @@ function formatPlantingCountsByPalletSummary(event){
 }
 
 function buildRecordDetailLocationModel(kind, entity){
-  const partialHarvestPalletKeys = kind === "partialHarvest"
-    ? normalizePartialHarvestTargets(entity?.targets).flatMap(target => {
-        const keys = [];
-        for(let number = target.start; number <= target.end; number++){
-          keys.push(getPalletKey(target.building, target.bed, number));
-        }
-        return keys;
-      })
-    : [];
   const palletKeys = [...new Set(
     (kind === "planting"
       ? (Array.isArray(entity?.plantingPalletKeys) ? entity.plantingPalletKeys : [])
-      : (kind === "partialHarvest" ? partialHarvestPalletKeys : getPalletKeysFromRecord(entity)))
+      : getRecordDetailHarvestPalletKeys(entity))
       .filter(isValidPalletKeyString)
   )].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   const keySet = new Set(palletKeys);
@@ -780,7 +801,8 @@ function buildRecordDetailLocationModel(kind, entity){
     qualityText,
     qualityClass,
     locationGroups,
-    actionLabel: kind === "planting" ? "苗植え" : (kind === "partialHarvest" ? "部分収穫" : "収穫")
+    actionLabel: kind === "planting" ? "苗植え" : (kind === "partialHarvest" ? "部分収穫" : "収穫"),
+    emptyText: String(entity?.locationEmptyText || "").trim()
   };
 }
 
@@ -866,7 +888,7 @@ function renderRecordDetailLocationDisplay(){
   const model = recordDetailLocationModel;
   if(!mount || !model) return;
   if(!model.buildings.length){
-    mount.innerHTML = '<div class="recordDetailLocationEmpty">この記録には表示できる場所情報がありません。</div>';
+    mount.innerHTML = `<div class="recordDetailLocationEmpty">${escapeHtml(model.emptyText || "この記録には表示できる場所情報がありません。")}</div>`;
     return;
   }
   const selectedGroup = getRecordDetailLocationSelectedGroup(model);
@@ -1030,6 +1052,160 @@ function loadRecordDetailLocation(kind, id, loadToken){
   }
 }
 
+function getDashboardDayRecordDetailContext(dateString){
+  const date = String(dateString || "").trim();
+  if(!isStrictDateOnlyString(date)) return null;
+  const items = [...(getRecordHistoryCache().itemsByDate.get(date) || [])];
+  if(!items.length) return null;
+  return {
+    date,
+    items,
+    harvestRecords: items.filter(item => item.kind === "harvest").map(item => item.value),
+    plantingEvents: items.filter(item => item.kind === "planting").map(item => item.value)
+  };
+}
+
+function getDashboardDayRecordDetailInfoRows(context){
+  const harvestRecords = context?.harvestRecords || [];
+  const plantingEventsForDay = context?.plantingEvents || [];
+  const fullRecords = harvestRecords.filter(record => record?.type !== "partialHarvest");
+  const partialRecords = harvestRecords.filter(record => record?.type === "partialHarvest");
+  const totalCases = harvestRecords.reduce((sum, record) => (
+    sum + clampNumber(record?.cases, 0, 999999, 0)
+  ), 0);
+  const fullCases = fullRecords.reduce((sum, record) => sum + clampNumber(record?.cases, 0, 999999, 0), 0);
+  const partialCases = partialRecords.reduce((sum, record) => sum + clampNumber(record?.cases, 0, 999999, 0), 0);
+  const harvestBreakdown = [
+    fullRecords.length ? `通常収穫 ${fullCases}ケース（${fullRecords.length}件）` : "",
+    partialRecords.length ? `部分収穫 ${partialCases}ケース（${partialRecords.length}件）` : ""
+  ].filter(Boolean).join(" / ") || "-";
+  const harvestQualityText = [...new Set(fullRecords
+    .map(record => formatQualityMemo(record?.qualityMemo))
+    .filter(Boolean))].join(" / ") || "-";
+  const plantingMetrics = getPlantingEventGroupListMetrics(plantingEventsForDay);
+  const plantingQualityText = [...new Set(plantingEventsForDay
+    .map(event => formatPlantingQualityMemo(event?.qualityMemo))
+    .filter(Boolean))].join(" / ") || "-";
+  const plantingCountText = plantingEventsForDay.some(event => event?.detailsUnknown)
+    ? "不明"
+    : `${plantingEventsForDay.reduce((sum, event) => (
+        sum + clampNumber(event?.actualPlantedSeedlingCount, 0, 999999999, 0)
+      ), 0)}株`;
+  const plantingAgeText = fullRecords.map((record, index) => {
+    const text = formatPlantingAgeForRecordDetailDisplay(record);
+    return text ? `${fullRecords.length > 1 ? `${index + 1}件目: ` : ""}${text}` : "";
+  }).filter(Boolean).join("\n") || "-";
+  const memoText = harvestRecords.map(record => {
+    const memo = String(record?.memo || "").trim();
+    return memo ? `${getDashboardRecordTypeLabel(record)}: ${memo}` : "";
+  }).filter(Boolean).join("\n") || "-";
+  const attentionReasons = [...new Set((context?.items || []).flatMap(item => (
+    getDashboardRecordItemAttentionInfo(item).reasons
+  )))];
+  return [
+    { label: "収穫ケース数", value: `${totalCases}ケース` },
+    { label: "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
+    { label: "収穫内訳", value: harvestBreakdown },
+    { label: "収穫品質メモ", value: harvestQualityText },
+    { label: "定植日数の詳細", value: plantingAgeText },
+    ...(plantingEventsForDay.length ? [
+      { label: "苗植え記録", value: `${plantingEventsForDay.length}件` },
+      { label: "苗枚数", value: plantingMetrics.seedlingTrayText },
+      { label: "苗ロス率", value: plantingMetrics.lossRateText },
+      { label: "苗植えした株数", value: plantingCountText },
+      { label: "苗の品質メモ", value: plantingQualityText }
+    ] : []),
+    ...(attentionReasons.length ? [{ label: "要確認", value: attentionReasons.join("\n") }] : []),
+    ...(memoText !== "-" ? [{ label: "メモ", value: memoText }] : [])
+  ];
+}
+
+function buildDashboardDayRecordLocationEntity(context, view){
+  if(view === "planting"){
+    const events = context?.plantingEvents || [];
+    const plantingPalletKeys = [...new Set(events.flatMap(event => (
+      Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : []
+    )))].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+    const plantingCountsByPallet = {};
+    events.forEach(event => {
+      const counts = normalizePlantingCountsByPallet(event?.plantingCountsByPallet, event?.plantingPalletKeys || []);
+      Object.entries(counts).forEach(([key, value]) => {
+        plantingCountsByPallet[key] = value;
+      });
+    });
+    return {
+      plantingPalletKeys,
+      plantingCountsByPallet,
+      qualityMemo: events.length === 1 ? events[0]?.qualityMemo : { other: "複数記録" },
+      locationEmptyText: "この日の二次定植場所はありません。"
+    };
+  }
+
+  const harvestRecords = context?.harvestRecords || [];
+  return {
+    palletKeys: [...new Set(harvestRecords.flatMap(getRecordDetailHarvestPalletKeys))]
+      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b)),
+    qualityMemo: harvestRecords.length === 1 ? harvestRecords[0]?.qualityMemo : { other: "複数記録" },
+    locationEmptyText: "この日の収穫場所はありません。"
+  };
+}
+
+function setRecordDetailDayLocationView(view){
+  if(!recordDetailDayContext) return;
+  recordDetailDayLocationView = view === "planting" ? "planting" : "harvest";
+  document.querySelectorAll(".recordDetailLocationViewBtn").forEach(button => {
+    const active = button.dataset.uiArg === recordDetailDayLocationView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
+  });
+  const entity = buildDashboardDayRecordLocationEntity(recordDetailDayContext, recordDetailDayLocationView);
+  recordDetailLocationModel = buildRecordDetailLocationModel(recordDetailDayLocationView, entity);
+  recordDetailLocationSelectedGroupClass = recordDetailLocationModel.kind === "planting"
+    ? (recordDetailLocationModel.locationGroups[0]?.className || null)
+    : null;
+  const selectedGroup = getRecordDetailLocationSelectedGroup(recordDetailLocationModel);
+  const visibleBuildings = getRecordDetailLocationVisibleBuildings(recordDetailLocationModel, selectedGroup);
+  recordDetailLocationBuilding = visibleBuildings[0] ?? null;
+  recordDetailLocationSelectedBed = recordDetailLocationBuilding === null
+    ? null
+    : getRecordDetailLocationDefaultBed(recordDetailLocationModel, recordDetailLocationBuilding, selectedGroup);
+  renderRecordDetailLocationDisplay();
+}
+
+function openDashboardDayRecordDetail(dateString){
+  const modal = document.getElementById("recordDetailModal");
+  const title = document.getElementById("recordDetailWindowTitle");
+  const body = document.getElementById("recordDetailWindowBody");
+  const closeButton = document.getElementById("recordDetailWindowCloseBtn");
+  if(!modal || !title || !body) return;
+  const context = getDashboardDayRecordDetailContext(dateString);
+  if(!context){
+    showToast("詳細を表示する日の記録が見つかりません");
+    return;
+  }
+
+  recordDetailLoadToken++;
+  recordDetailDayContext = context;
+  recordDetailDayLocationView = context.harvestRecords.length ? "harvest" : "planting";
+  recordDetailLocationModel = null;
+  recordDetailLocationBuilding = null;
+  recordDetailLocationSelectedBed = null;
+  recordDetailLocationSelectedGroupClass = null;
+  recordDetailReturnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  title.textContent = `${context.date} 記録の詳細`;
+  body.classList.add("hasLocationDisplay");
+  body.innerHTML = getDashboardDayRecordDetailBodyHtml(getDashboardDayRecordDetailInfoRows(context));
+  body.scrollTop = 0;
+  showPageBlockingUi(modal);
+  requestAnimationFrame(() => {
+    closeButton?.focus({ preventScroll: true });
+    requestAnimationFrame(() => setRecordDetailDayLocationView(recordDetailDayLocationView));
+  });
+}
+
 function openRecordDetailWindow(kind, id){
   const modal = document.getElementById("recordDetailModal");
   const title = document.getElementById("recordDetailWindowTitle");
@@ -1111,6 +1287,7 @@ function openRecordDetailWindow(kind, id){
   }
 
   const loadToken = ++recordDetailLoadToken;
+  recordDetailDayContext = null;
   recordDetailLocationModel = null;
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
@@ -1139,6 +1316,8 @@ function closeRecordDetailWindow(options = {}){
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
   recordDetailLocationSelectedGroupClass = null;
+  recordDetailDayContext = null;
+  recordDetailDayLocationView = "harvest";
   hidePageBlockingUi(modal);
   if(body){
     body.classList.remove("hasLocationDisplay");
