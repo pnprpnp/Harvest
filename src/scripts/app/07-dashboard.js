@@ -385,6 +385,10 @@ function normalizeDashboardSubtab(value){
   return ["guide", "calendar", "seedlings", "graphs"].includes(value) ? value : "guide";
 }
 
+function normalizeDashboardResultsView(value){
+  return value === "graphs" ? "graphs" : "calendar";
+}
+
 function normalizeDashboardRecordTypeFilter(value){
   return ["all", "full", "partial", "planting", "attention"].includes(value) ? value : "all";
 }
@@ -409,6 +413,7 @@ function loadDashboardFilter(){
       lossGranularity: "month",
       harvestForecastView: "beds",
       dashboardSubtab: "guide",
+      resultsView: "calendar",
       recordType: "all",
       recordSearch: "",
       recordStartDate: "",
@@ -427,6 +432,7 @@ function loadDashboardFilter(){
         ? parsed.harvestForecastView
         : "beds",
       dashboardSubtab: normalizeDashboardSubtab(parsed?.dashboardSubtab),
+      resultsView: normalizeDashboardResultsView(parsed?.resultsView),
       recordType: normalizeDashboardRecordTypeFilter(parsed?.recordType),
       recordSearch: String(parsed?.recordSearch || "").trim(),
       recordStartDate: parseDateOnlyString(parsed?.recordStartDate || "") ? String(parsed.recordStartDate) : "",
@@ -442,6 +448,7 @@ function loadDashboardFilter(){
       lossGranularity: "month",
       harvestForecastView: "beds",
       dashboardSubtab: "guide",
+      resultsView: "calendar",
       recordType: "all",
       recordSearch: "",
       recordStartDate: "",
@@ -527,7 +534,52 @@ function syncDashboardSubtabUi(){
   document.querySelectorAll("[data-dashboard-subtab-panel]").forEach(panel => {
     panel.hidden = panel.dataset.dashboardSubtabPanel !== activeSubtab;
   });
+  syncDashboardResultsViewUi();
   scheduleDashboardSelectedBuildingButtonReveal(activeSubtab);
+}
+
+function syncDashboardResultsViewUi(){
+  const activeView = normalizeDashboardResultsView(dashboardFilter.resultsView);
+  dashboardFilter.resultsView = activeView;
+  document.querySelectorAll("[data-dashboard-results-view]").forEach(button => {
+    const isActive = button.dataset.dashboardResultsView === activeView;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.tabIndex = isActive ? 0 : -1;
+  });
+  document.querySelectorAll("[data-dashboard-results-view-panel]").forEach(panel => {
+    panel.hidden = panel.dataset.dashboardResultsViewPanel !== activeView;
+  });
+}
+
+function setDashboardResultsView(value){
+  const nextView = normalizeDashboardResultsView(value);
+  if(dashboardFilter.resultsView !== nextView){
+    dashboardFilter.resultsView = nextView;
+    saveDashboardFilter();
+  }
+  syncDashboardResultsViewUi();
+  if(nextView === "graphs"){
+    renderDashboardGraphs();
+  }else{
+    renderDashboardRecordResults();
+  }
+}
+
+function handleDashboardResultsViewKeydown(event){
+  if(!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const buttons = Array.from(document.querySelectorAll("[data-dashboard-results-view]"));
+  if(!buttons.length) return;
+  const currentIndex = Math.max(0, buttons.indexOf(event.target));
+  let nextIndex = currentIndex;
+  if(event.key === "Home") nextIndex = 0;
+  if(event.key === "End") nextIndex = buttons.length - 1;
+  if(event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+  if(event.key === "ArrowRight") nextIndex = (currentIndex + 1) % buttons.length;
+  event.preventDefault();
+  const nextButton = buttons[nextIndex];
+  setDashboardResultsView(nextButton?.dataset.dashboardResultsView);
+  nextButton?.focus();
 }
 
 function setDashboardSubtab(value){
@@ -2995,7 +3047,6 @@ function renderDashboardSeedlingStatus(){
 }
 
 function renderDashboardGraphs(){
-  renderDashboardRecordResults();
   const period = getDashboardPeriod();
   const metricsPeriod = renderDashboardMetrics();
   const metricsNote = document.getElementById("dashboardMetricsNote");
@@ -3046,6 +3097,15 @@ function renderDashboardGraphs(){
 
 }
 
+function renderDashboardResults(){
+  syncDashboardResultsViewUi();
+  if(normalizeDashboardResultsView(dashboardFilter.resultsView) === "graphs"){
+    renderDashboardGraphs();
+  }else{
+    renderDashboardRecordResults();
+  }
+}
+
 function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options = {}){
   const normalizedSubtab = normalizeDashboardSubtab(subtab);
   if(!options.force && dashboardRenderedSubtabs.has(normalizedSubtab)){
@@ -3060,7 +3120,7 @@ function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options
   }else if(normalizedSubtab === "seedlings"){
     renderDashboardSeedlingStatus();
   }else{
-    renderDashboardGraphs();
+    renderDashboardResults();
   }
   dashboardRenderedSubtabs.add(normalizedSubtab);
   scheduleDashboardSelectedBuildingButtonReveal(normalizedSubtab);

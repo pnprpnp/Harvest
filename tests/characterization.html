@@ -351,6 +351,10 @@
         app.setDashboardSubtab("graphs");
         await settleVisualApp(app);
         fingerprints.mobileDashboardRecord = getVisualFingerprint(app);
+        app.setDashboardResultsView("graphs");
+        await settleVisualApp(app);
+        fingerprints.mobileDashboardResultsGraph = getVisualFingerprint(app);
+        app.setDashboardResultsView("calendar");
 
         app.setDashboardSubtab("guide");
         await settleVisualApp(app);
@@ -438,6 +442,7 @@
         "closeDashboardForecastInfoWindow",
         "openDashboardCalendarInfoWindow",
         "closeDashboardCalendarInfoWindow",
+        "setDashboardResultsView",
         "loadDashboardRecordCalendarMonth",
         "shiftDashboardRecordCalendarMonth"
       ];
@@ -1188,7 +1193,7 @@
             dashboardGuide: "#dashboardSubtabGuide > .card",
             dashboardCalendar: "#dashboardSubtabCalendar > .card",
             dashboardSeedlings: "#dashboardSubtabSeedlings > .card",
-            dashboardGraph: "#dashboardSubtabGraphs > .dashboardChartCard"
+            dashboardGraph: "#dashboardResultsGraphsView > .dashboardChartCard"
           };
           return Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
             const style = getComputedStyle(document.querySelector(selector));
@@ -1293,31 +1298,52 @@
         }
       });
 
-      await runTest("集計の記録タブ先頭に記録カレンダーを常時表示する", () => {
+      await runTest("集計の実績タブで記録カレンダーとグラフを切り替える", () => {
+        const harvestStartButton = app.document.getElementById("dashboardSubtabCalendarBtn");
         const subtabButton = app.document.getElementById("dashboardSubtabGraphsBtn");
         const panel = app.document.getElementById("dashboardSubtabGraphs");
+        const viewSwitch = panel?.querySelector(".dashboardResultsViewSwitch");
+        const calendarPanel = app.document.getElementById("dashboardResultsCalendarView");
+        const graphsPanel = app.document.getElementById("dashboardResultsGraphsView");
         const calendarCard = app.document.getElementById("dashboardRecordCalendarCard");
         const table = app.document.getElementById("dashboardRecordTable");
-        assertEqual(subtabButton?.textContent.trim(), "記録", "グラフのサブタブ名が記録へ変わっていません");
-        assert(panel?.firstElementChild === calendarCard, "記録カレンダーが記録タブの一番上にありません");
-        assert(table?.closest("#dashboardSubtabGraphs") === panel, "記録カレンダーが記録タブ内に常設されていません");
+        assertDeepEqual(
+          [harvestStartButton?.textContent.trim(), subtabButton?.textContent.trim()],
+          ["収穫開始", "実績"],
+          "集計サブタブの名前が目的別に整理されていません"
+        );
+        assert(panel?.firstElementChild === viewSwitch, "カレンダーとグラフの切り替えが実績タブの一番上にありません");
+        assert(calendarPanel?.firstElementChild === calendarCard, "記録カレンダーがカレンダー表示の先頭にありません");
+        assert(table?.closest("#dashboardResultsCalendarView") === calendarPanel, "記録カレンダーが実績タブのカレンダー表示内にありません");
         assert(!app.document.getElementById("dashboardRecordListOpenBtn"), "記録一覧を開くボタンが残っています");
         assert(!app.document.getElementById("dashboardRecordListModal"), "記録一覧の専用ウィンドウが残っています");
 
         const currentMonth = app.eval("normalizeDashboardRecordCalendarMonth(new Date())");
-        app.eval(`dashboardRecordCalendarMonth = null; dashboardRenderedSubtabs.delete("graphs");`);
+        app.eval(`dashboardFilter.resultsView = "calendar"; dashboardRecordCalendarMonth = null; dashboardRenderedSubtabs.delete("graphs");`);
         app.setDashboardSubtab("guide");
         app.setDashboardSubtab("graphs");
         const inlineState = comparable(app.eval(`({
+          viewButtons: [...document.querySelectorAll("[data-dashboard-results-view]")].map(button => ({
+            text: button.textContent.trim(),
+            selected: button.getAttribute("aria-selected")
+          })),
+          calendarHidden: document.getElementById("dashboardResultsCalendarView")?.hidden || false,
+          graphsHidden: document.getElementById("dashboardResultsGraphsView")?.hidden || false,
           loadedMonth: document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || "",
           filterOpen: document.getElementById("dashboardRecordFilterDetails")?.open || false,
-          filtersInTab: document.getElementById("dashboardRecordSearchInput")?.closest("#dashboardSubtabGraphs") === document.getElementById("dashboardSubtabGraphs")
+          filtersInCalendar: document.getElementById("dashboardRecordSearchInput")?.closest("#dashboardResultsCalendarView") === document.getElementById("dashboardResultsCalendarView")
         })`));
         assertDeepEqual(inlineState, {
+          viewButtons: [
+            { text: "カレンダー", selected: "true" },
+            { text: "グラフ", selected: "false" }
+          ],
+          calendarHidden: false,
+          graphsHidden: true,
           loadedMonth: currentMonth,
           filterOpen: false,
-          filtersInTab: true
-        }, "記録タブを表示した時に当月のカレンダーが直接表示されません");
+          filtersInCalendar: true
+        }, "実績タブを表示した時に当月のカレンダーが直接表示されません");
 
         app.shiftDashboardRecordCalendarMonth(-1);
         const previousMonthState = comparable(app.eval(`({
@@ -1338,11 +1364,34 @@
         assertEqual(
           app.document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || "",
           expectedPreviousMonth,
-          "記録タブへ戻った時に表示月が維持されません"
+          "実績タブへ戻った時に表示月が維持されません"
         );
+
+        app.setDashboardResultsView("graphs");
+        const graphState = comparable(app.eval(`({
+          selectedView: dashboardFilter.resultsView,
+          savedView: harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, {}).resultsView,
+          calendarHidden: document.getElementById("dashboardResultsCalendarView")?.hidden || false,
+          graphsHidden: document.getElementById("dashboardResultsGraphsView")?.hidden || false,
+          metricCount: document.getElementById("dashboardMetrics")?.childElementCount || 0,
+          chartCount: document.querySelectorAll("#dashboardResultsGraphsView .dashboardChartCard").length
+        })`));
+        assertDeepEqual(graphState, {
+          selectedView: "graphs",
+          savedView: "graphs",
+          calendarHidden: true,
+          graphsHidden: false,
+          metricCount: 4,
+          chartCount: 2
+        }, "グラフ表示への切り替えまたは選択状態の保存ができません");
+
+        app.setDashboardSubtab("guide");
+        app.setDashboardSubtab("graphs");
+        assertEqual(app.eval("dashboardFilter.resultsView"), "graphs", "実績タブへ戻った時に最後の表示方法が維持されません");
+        app.setDashboardResultsView("calendar");
       });
 
-      await runTest("集計の記録一覧は月カレンダーに日ごとの収穫値を表示し、詳細で場所を切り替える", () => {
+      await runTest("集計の実績カレンダーは日ごとの収穫値を表示し、詳細で場所を切り替える", () => {
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
         const previousFilter = comparable(app.eval("dashboardFilter"));
@@ -2604,17 +2653,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "b1e8a245", elements: 2046, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "f3635043", elements: 2114, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "f841558a", elements: 2114, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "6a10493a", elements: 2047, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "1ea30fd5", elements: 2047, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "8c133b0b", elements: 2145, visible: 227, viewport: "390x844" },
-          mobileMenu: { hash: "445ffe07", elements: 2145, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "fa843a37", elements: 2145, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "a3a1880b", elements: 2145, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "1d59298d", elements: 2145, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "70e7bc36", elements: 2145, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "50b0ed02", elements: 2051, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "8f1e8e33", elements: 2119, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "9251db5a", elements: 2119, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "4858251d", elements: 2052, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "3c1a76b6", elements: 2052, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "0136f7f7", elements: 2135, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "36b95f7a", elements: 2150, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "54ef057f", elements: 2150, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "acc01777", elements: 2150, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "d910aa09", elements: 2150, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "21c55b99", elements: 2150, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "d2ba1d0e", elements: 2150, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

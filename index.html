@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260816-dashboard-detail-ready">
+<meta name="harvestnavi-version" content="20260816-dashboard-results-views">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4496,6 +4496,41 @@ button.monitorSaveBtn:active{
 .dashboardSubtabPanel[hidden]{
   display:none;
 }
+.dashboardResultsViewSwitch{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:4px;
+  width:min(100%, 420px);
+  box-sizing:border-box;
+  margin:0 auto 12px;
+  padding:4px;
+  border:1px solid #ddd6fe;
+  border-radius:14px;
+  background:#f1f5f9;
+}
+.dashboardResultsViewBtn{
+  min-width:0;
+  min-height:40px;
+  padding:8px 12px;
+  border:0;
+  border-radius:10px;
+  background:transparent;
+  color:#64748b;
+  font-size:13px;
+  font-weight:850;
+}
+.dashboardResultsViewBtn.active{
+  background:#fff;
+  color:#6d28d9;
+  box-shadow:0 1px 4px rgba(15,23,42,.12);
+}
+.dashboardResultsViewBtn:focus-visible{
+  outline:3px solid rgba(109,40,217,.24);
+  outline-offset:1px;
+}
+[data-dashboard-results-view-panel][hidden]{
+  display:none;
+}
 .card.dashboardRecordCalendarCard{
   margin:0 0 14px;
   padding:14px;
@@ -7021,7 +7056,8 @@ header{
 #monitorCard,
 #recordTab > #recordSaveCard,
 #recordTab > .card:not(#recordSaveCard),
-#dashboardTab .dashboardSubtabPanel > .card{
+#dashboardTab .dashboardSubtabPanel > .card,
+#dashboardTab .dashboardSubtabPanel > [data-dashboard-results-view-panel] > .card{
   border:0;
   border-radius:0;
   background:transparent;
@@ -9911,9 +9947,9 @@ requestAnimationFrame(function(){
     <div class="dashboardSubtabNav">
       <div class="dashboardSubtabBar" role="tablist" aria-label="集計の表示内容" data-ui-keydown="handleDashboardSubtabKeydown" data-ui-event-first="true">
         <button id="dashboardSubtabGuideBtn" type="button" class="dashboardSubtabBtn active" role="tab" aria-selected="true" aria-controls="dashboardSubtabGuide" data-dashboard-subtab="guide" data-ui-click="setDashboardSubtab" data-ui-arg="guide">目安</button>
-        <button id="dashboardSubtabCalendarBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabCalendar" data-dashboard-subtab="calendar" data-ui-click="setDashboardSubtab" data-ui-arg="calendar">カレンダー</button>
+        <button id="dashboardSubtabCalendarBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabCalendar" data-dashboard-subtab="calendar" data-ui-click="setDashboardSubtab" data-ui-arg="calendar">収穫開始</button>
         <button id="dashboardSubtabSeedlingsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabSeedlings" data-dashboard-subtab="seedlings" data-ui-click="setDashboardSubtab" data-ui-arg="seedlings">二次定植</button>
-        <button id="dashboardSubtabGraphsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGraphs" data-dashboard-subtab="graphs" data-ui-click="setDashboardSubtab" data-ui-arg="graphs">記録</button>
+        <button id="dashboardSubtabGraphsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGraphs" data-dashboard-subtab="graphs" data-ui-click="setDashboardSubtab" data-ui-arg="graphs">実績</button>
       </div>
     </div>
 
@@ -9971,8 +10007,8 @@ requestAnimationFrame(function(){
     <div id="dashboardSubtabCalendar" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabCalendarBtn" data-dashboard-subtab-panel="calendar" hidden>
       <div class="card dashboardHarvestStartCard">
         <div class="dashboardHarvestStartTitleRow">
-          <div class="sectionTitle">カレンダー</div>
-          <button id="dashboardCalendarInfoBtn" type="button" class="dashboardForecastInfoBtn" data-ui-click="openDashboardCalendarInfoWindow" aria-label="カレンダーの見方" aria-haspopup="dialog" aria-controls="dashboardCalendarInfoModal">i</button>
+          <div class="sectionTitle">収穫開始</div>
+          <button id="dashboardCalendarInfoBtn" type="button" class="dashboardForecastInfoBtn" data-ui-click="openDashboardCalendarInfoWindow" aria-label="収穫開始の見方" aria-haspopup="dialog" aria-controls="dashboardCalendarInfoModal">i</button>
           <button id="dashboardCalendarPastBtn" type="button" class="dashboardCalendarPastBtn" data-ui-click="toggleDashboardPastCalendar" aria-pressed="false" aria-expanded="false" aria-controls="dashboardCalendarHistoryControls">年月を選択</button>
         </div>
         <div id="dashboardCalendarHistoryControls" class="dashboardCalendarHistoryControls" hidden>
@@ -10017,98 +10053,111 @@ requestAnimationFrame(function(){
     </div>
 
     <div id="dashboardSubtabGraphs" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabGraphsBtn" data-dashboard-subtab-panel="graphs" hidden>
-      <section id="dashboardRecordCalendarCard" class="card dashboardRecordCalendarCard" aria-label="記録一覧カレンダー">
-        <div class="dashboardRecordCalendarToolbar">
-          <button type="button" class="dashboardRecordCalendarMonthBtn" data-ui-click="shiftDashboardRecordCalendarMonth" data-ui-number="-1" aria-label="前の月の記録を読み込む">‹</button>
-          <div id="dashboardRecordCalendarMonthLabel" class="dashboardRecordCalendarMonthLabel" aria-live="polite"></div>
-          <button type="button" class="dashboardRecordCalendarMonthBtn" data-ui-click="shiftDashboardRecordCalendarMonth" data-ui-number="1" aria-label="次の月の記録を読み込む">›</button>
-        </div>
-        <details id="dashboardRecordFilterDetails" class="dashboardRecordFilterDetails">
-          <summary>
-            <span>フィルタ</span>
-            <span id="dashboardRecordFilterStatus" class="dashboardRecordFilterStatus">なし</span>
-          </summary>
-          <div class="dashboardTableFilterBox">
-            <div class="dashboardRecordFilterChips" role="group" aria-label="記録の種類で絞り込む">
-              <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="all" aria-pressed="true" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="all">すべて</button>
-              <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="full" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="full">通常収穫</button>
-              <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="partial" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="partial">部分収穫</button>
-              <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="planting" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="planting">苗植え</button>
-              <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="attention" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="attention">要確認</button>
-            </div>
-            <div class="dashboardTableFilterGrid">
-              <label class="dashboardRecordSearchField">
-                <span>検索</span>
-                <input id="dashboardRecordSearchInput" type="text" placeholder="メモ・品質メモ・号棟・二次定植場所など">
-              </label>
-            </div>
-            <details id="dashboardRecordPeriodDetails" class="dashboardRecordPeriodDetails">
-              <summary><span>期間を指定</span><span id="dashboardRecordPeriodStatus" class="dashboardRecordPeriodStatus">全期間</span></summary>
-              <div class="dashboardRecordPeriodGrid">
-                <label>
-                  <span>開始日</span>
-                  <input id="dashboardRecordStartDateInput" type="date">
-                </label>
-                <label>
-                  <span>終了日</span>
-                  <input id="dashboardRecordEndDateInput" type="date">
+      <div class="dashboardResultsViewSwitch" role="tablist" aria-label="実績の表示方法" data-ui-keydown="handleDashboardResultsViewKeydown" data-ui-event-first="true">
+        <button id="dashboardResultsCalendarViewBtn" type="button" class="dashboardResultsViewBtn active"
+          role="tab" aria-selected="true" aria-controls="dashboardResultsCalendarView"
+          data-dashboard-results-view="calendar" data-ui-click="setDashboardResultsView" data-ui-arg="calendar">カレンダー</button>
+        <button id="dashboardResultsGraphsViewBtn" type="button" class="dashboardResultsViewBtn"
+          role="tab" aria-selected="false" aria-controls="dashboardResultsGraphsView"
+          data-dashboard-results-view="graphs" data-ui-click="setDashboardResultsView" data-ui-arg="graphs">グラフ</button>
+      </div>
+
+      <div id="dashboardResultsCalendarView" role="tabpanel" aria-labelledby="dashboardResultsCalendarViewBtn" data-dashboard-results-view-panel="calendar">
+        <section id="dashboardRecordCalendarCard" class="card dashboardRecordCalendarCard" aria-label="記録一覧カレンダー">
+          <div class="dashboardRecordCalendarToolbar">
+            <button type="button" class="dashboardRecordCalendarMonthBtn" data-ui-click="shiftDashboardRecordCalendarMonth" data-ui-number="-1" aria-label="前の月の記録を読み込む">‹</button>
+            <div id="dashboardRecordCalendarMonthLabel" class="dashboardRecordCalendarMonthLabel" aria-live="polite"></div>
+            <button type="button" class="dashboardRecordCalendarMonthBtn" data-ui-click="shiftDashboardRecordCalendarMonth" data-ui-number="1" aria-label="次の月の記録を読み込む">›</button>
+          </div>
+          <details id="dashboardRecordFilterDetails" class="dashboardRecordFilterDetails">
+            <summary>
+              <span>フィルタ</span>
+              <span id="dashboardRecordFilterStatus" class="dashboardRecordFilterStatus">なし</span>
+            </summary>
+            <div class="dashboardTableFilterBox">
+              <div class="dashboardRecordFilterChips" role="group" aria-label="記録の種類で絞り込む">
+                <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="all" aria-pressed="true" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="all">すべて</button>
+                <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="full" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="full">通常収穫</button>
+                <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="partial" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="partial">部分収穫</button>
+                <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="planting" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="planting">苗植え</button>
+                <button type="button" class="dashboardRecordFilterChip" data-dashboard-record-type="attention" aria-pressed="false" data-ui-click="setDashboardRecordTypeFilter" data-ui-arg="attention">要確認</button>
+              </div>
+              <div class="dashboardTableFilterGrid">
+                <label class="dashboardRecordSearchField">
+                  <span>検索</span>
+                  <input id="dashboardRecordSearchInput" type="text" placeholder="メモ・品質メモ・号棟・二次定植場所など">
                 </label>
               </div>
-            </details>
-            <div class="dashboardTableFilterActions">
-              <button type="button" class="dashboardInlineBtn" data-ui-click="clearDashboardRecordFilters">一覧フィルタを解除</button>
+              <details id="dashboardRecordPeriodDetails" class="dashboardRecordPeriodDetails">
+                <summary><span>期間を指定</span><span id="dashboardRecordPeriodStatus" class="dashboardRecordPeriodStatus">全期間</span></summary>
+                <div class="dashboardRecordPeriodGrid">
+                  <label>
+                    <span>開始日</span>
+                    <input id="dashboardRecordStartDateInput" type="date">
+                  </label>
+                  <label>
+                    <span>終了日</span>
+                    <input id="dashboardRecordEndDateInput" type="date">
+                  </label>
+                </div>
+              </details>
+              <div class="dashboardTableFilterActions">
+                <button type="button" class="dashboardInlineBtn" data-ui-click="clearDashboardRecordFilters">一覧フィルタを解除</button>
+              </div>
+            </div>
+          </details>
+          <div id="dashboardRecordTable"></div>
+        </section>
+      </div>
+
+      <div id="dashboardResultsGraphsView" role="tabpanel" aria-labelledby="dashboardResultsGraphsViewBtn" data-dashboard-results-view-panel="graphs" hidden>
+        <section class="dashboardMetricsGroup" aria-labelledby="dashboardMetricsTitle">
+          <div id="dashboardMetricsTitle" class="sectionTitle">集計カード</div>
+          <div class="dashboardCardGrid" id="dashboardMetrics"></div>
+          <div id="dashboardMetricsNote" class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
+        </section>
+
+        <div class="card dashboardChartCard">
+          <div class="dashboardChartHead">
+            <div class="dashboardChartHeadMain">
+              <div class="sectionTitle">収穫ケース数</div>
+              <div class="dashboardChartNote" id="dashboardCasesChartNote"></div>
+            </div>
+            <div class="dashboardChartControls">
+              <select id="dashboardCasesGranularityInput" class="dashboardChartSelect">
+                <option value="month">月</option>
+                <option value="year">年</option>
+              </select>
             </div>
           </div>
+          <div id="dashboardCasesChart"></div>
+          <div id="dashboardCasesChartTable"></div>
+          <div class="dashboardCasesMoreActions">
+            <button id="dashboardCasesMoreBtn" type="button" class="dashboardCasesMoreBtn" data-ui-click="openDashboardCasesAllWindow">さらに表示</button>
+          </div>
+        </div>
+
+        <div class="card dashboardChartCard">
+          <div class="dashboardChartHead">
+            <div class="dashboardChartHeadMain">
+              <div class="sectionTitle">平均ロス率</div>
+              <div class="dashboardChartNote" id="dashboardLossChartNote">通常収穫の記録のみ</div>
+            </div>
+            <div class="dashboardChartControls">
+              <select id="dashboardLossGranularityInput" class="dashboardChartSelect">
+                <option value="month">月</option>
+                <option value="year">年</option>
+              </select>
+            </div>
+          </div>
+          <div id="dashboardLossChart"></div>
+        </div>
+
+        <details id="dashboardHistoryDetails" class="card dashboardRangeBox dashboardRangeDetails dashboardHistoryDetails">
+          <summary class="sectionTitle">集計カードの履歴</summary>
+          <div id="dashboardHistoryContent" class="dashboardHistoryPanel"></div>
         </details>
-        <div id="dashboardRecordTable"></div>
-      </section>
-
-      <section class="dashboardMetricsGroup" aria-labelledby="dashboardMetricsTitle">
-        <div id="dashboardMetricsTitle" class="sectionTitle">集計カード</div>
-        <div class="dashboardCardGrid" id="dashboardMetrics"></div>
-        <div id="dashboardMetricsNote" class="dashboardMetricsNote">※直近1ヶ月のデータを参照しています。</div>
-      </section>
-
-      <div class="card dashboardChartCard">
-        <div class="dashboardChartHead">
-          <div class="dashboardChartHeadMain">
-            <div class="sectionTitle">収穫ケース数</div>
-            <div class="dashboardChartNote" id="dashboardCasesChartNote"></div>
-          </div>
-          <div class="dashboardChartControls">
-            <select id="dashboardCasesGranularityInput" class="dashboardChartSelect">
-              <option value="month">月</option>
-              <option value="year">年</option>
-            </select>
-          </div>
-        </div>
-        <div id="dashboardCasesChart"></div>
-        <div id="dashboardCasesChartTable"></div>
-        <div class="dashboardCasesMoreActions">
-          <button id="dashboardCasesMoreBtn" type="button" class="dashboardCasesMoreBtn" data-ui-click="openDashboardCasesAllWindow">さらに表示</button>
-        </div>
       </div>
-
-      <div class="card dashboardChartCard">
-        <div class="dashboardChartHead">
-          <div class="dashboardChartHeadMain">
-            <div class="sectionTitle">平均ロス率</div>
-            <div class="dashboardChartNote" id="dashboardLossChartNote">通常収穫の記録のみ</div>
-          </div>
-          <div class="dashboardChartControls">
-            <select id="dashboardLossGranularityInput" class="dashboardChartSelect">
-              <option value="month">月</option>
-              <option value="year">年</option>
-            </select>
-          </div>
-        </div>
-        <div id="dashboardLossChart"></div>
-      </div>
-
-      <details id="dashboardHistoryDetails" class="card dashboardRangeBox dashboardRangeDetails dashboardHistoryDetails">
-        <summary class="sectionTitle">集計カードの履歴</summary>
-        <div id="dashboardHistoryContent" class="dashboardHistoryPanel"></div>
-      </details>
     </div>
   </div>
 </div>
@@ -10128,7 +10177,7 @@ requestAnimationFrame(function(){
 <div id="dashboardCalendarInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardCalendarInfoWindowTitle" aria-describedby="dashboardCalendarInfoWindowBody" data-ui-backdrop-click="closeDashboardCalendarInfoWindow">
   <div class="recordDetailWindow">
     <div class="recordDetailWindowHeader">
-      <div id="dashboardCalendarInfoWindowTitle" class="recordDetailWindowTitle">カレンダーの見方</div>
+      <div id="dashboardCalendarInfoWindowTitle" class="recordDetailWindowTitle">収穫開始の見方</div>
       <button id="dashboardCalendarInfoWindowClose" type="button" class="recordDetailWindowClose" data-ui-click="closeDashboardCalendarInfoWindow">閉じる</button>
     </div>
     <div id="dashboardCalendarInfoWindowBody" class="recordDetailWindowBody dashboardCalendarInfoBody">
@@ -19907,6 +19956,10 @@ function normalizeDashboardSubtab(value){
   return ["guide", "calendar", "seedlings", "graphs"].includes(value) ? value : "guide";
 }
 
+function normalizeDashboardResultsView(value){
+  return value === "graphs" ? "graphs" : "calendar";
+}
+
 function normalizeDashboardRecordTypeFilter(value){
   return ["all", "full", "partial", "planting", "attention"].includes(value) ? value : "all";
 }
@@ -19931,6 +19984,7 @@ function loadDashboardFilter(){
       lossGranularity: "month",
       harvestForecastView: "beds",
       dashboardSubtab: "guide",
+      resultsView: "calendar",
       recordType: "all",
       recordSearch: "",
       recordStartDate: "",
@@ -19949,6 +20003,7 @@ function loadDashboardFilter(){
         ? parsed.harvestForecastView
         : "beds",
       dashboardSubtab: normalizeDashboardSubtab(parsed?.dashboardSubtab),
+      resultsView: normalizeDashboardResultsView(parsed?.resultsView),
       recordType: normalizeDashboardRecordTypeFilter(parsed?.recordType),
       recordSearch: String(parsed?.recordSearch || "").trim(),
       recordStartDate: parseDateOnlyString(parsed?.recordStartDate || "") ? String(parsed.recordStartDate) : "",
@@ -19964,6 +20019,7 @@ function loadDashboardFilter(){
       lossGranularity: "month",
       harvestForecastView: "beds",
       dashboardSubtab: "guide",
+      resultsView: "calendar",
       recordType: "all",
       recordSearch: "",
       recordStartDate: "",
@@ -20049,7 +20105,52 @@ function syncDashboardSubtabUi(){
   document.querySelectorAll("[data-dashboard-subtab-panel]").forEach(panel => {
     panel.hidden = panel.dataset.dashboardSubtabPanel !== activeSubtab;
   });
+  syncDashboardResultsViewUi();
   scheduleDashboardSelectedBuildingButtonReveal(activeSubtab);
+}
+
+function syncDashboardResultsViewUi(){
+  const activeView = normalizeDashboardResultsView(dashboardFilter.resultsView);
+  dashboardFilter.resultsView = activeView;
+  document.querySelectorAll("[data-dashboard-results-view]").forEach(button => {
+    const isActive = button.dataset.dashboardResultsView === activeView;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.tabIndex = isActive ? 0 : -1;
+  });
+  document.querySelectorAll("[data-dashboard-results-view-panel]").forEach(panel => {
+    panel.hidden = panel.dataset.dashboardResultsViewPanel !== activeView;
+  });
+}
+
+function setDashboardResultsView(value){
+  const nextView = normalizeDashboardResultsView(value);
+  if(dashboardFilter.resultsView !== nextView){
+    dashboardFilter.resultsView = nextView;
+    saveDashboardFilter();
+  }
+  syncDashboardResultsViewUi();
+  if(nextView === "graphs"){
+    renderDashboardGraphs();
+  }else{
+    renderDashboardRecordResults();
+  }
+}
+
+function handleDashboardResultsViewKeydown(event){
+  if(!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const buttons = Array.from(document.querySelectorAll("[data-dashboard-results-view]"));
+  if(!buttons.length) return;
+  const currentIndex = Math.max(0, buttons.indexOf(event.target));
+  let nextIndex = currentIndex;
+  if(event.key === "Home") nextIndex = 0;
+  if(event.key === "End") nextIndex = buttons.length - 1;
+  if(event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+  if(event.key === "ArrowRight") nextIndex = (currentIndex + 1) % buttons.length;
+  event.preventDefault();
+  const nextButton = buttons[nextIndex];
+  setDashboardResultsView(nextButton?.dataset.dashboardResultsView);
+  nextButton?.focus();
 }
 
 function setDashboardSubtab(value){
@@ -22517,7 +22618,6 @@ function renderDashboardSeedlingStatus(){
 }
 
 function renderDashboardGraphs(){
-  renderDashboardRecordResults();
   const period = getDashboardPeriod();
   const metricsPeriod = renderDashboardMetrics();
   const metricsNote = document.getElementById("dashboardMetricsNote");
@@ -22568,6 +22668,15 @@ function renderDashboardGraphs(){
 
 }
 
+function renderDashboardResults(){
+  syncDashboardResultsViewUi();
+  if(normalizeDashboardResultsView(dashboardFilter.resultsView) === "graphs"){
+    renderDashboardGraphs();
+  }else{
+    renderDashboardRecordResults();
+  }
+}
+
 function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options = {}){
   const normalizedSubtab = normalizeDashboardSubtab(subtab);
   if(!options.force && dashboardRenderedSubtabs.has(normalizedSubtab)){
@@ -22582,7 +22691,7 @@ function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options
   }else if(normalizedSubtab === "seedlings"){
     renderDashboardSeedlingStatus();
   }else{
-    renderDashboardGraphs();
+    renderDashboardResults();
   }
   dashboardRenderedSubtabs.add(normalizedSubtab);
   scheduleDashboardSelectedBuildingButtonReveal(normalizedSubtab);
