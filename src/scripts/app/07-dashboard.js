@@ -1854,8 +1854,8 @@ function renderDashboardRecordCalendar(itemsInPeriod, options = {}){
         data-ui-click="openDashboardDayRecordDetail" data-ui-arg="${dateKey}"
         aria-label="${escapeHtml(`${formatDashboardRecordDayDate(dateKey)}、${metrics.caseTotal}ケース、ロス率${metrics.lossText}、詳細を開く`)}">
         <time class="dashboardRecordCalendarDateNumber" datetime="${dateKey}">${dayNumber}</time>
-        <span class="dashboardRecordCalendarCases">${metrics.caseTotal}ケース</span>
-        <span class="dashboardRecordCalendarLoss${lossIsHigh ? " dashboardLossHigh" : ""}">ロス率 ${escapeHtml(metrics.lossText)}</span>
+        <span class="dashboardRecordCalendarCases">${metrics.caseTotal}</span>
+        <span class="dashboardRecordCalendarLoss${lossIsHigh ? " dashboardLossHigh" : ""}">${escapeHtml(metrics.lossText)}</span>
       </button>
     `;
   }).join("");

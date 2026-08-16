@@ -1438,6 +1438,9 @@
               firstDate: first?.querySelector(".dashboardRecordCalendarDateNumber")?.textContent || "",
               caseText: first?.querySelector(".dashboardRecordCalendarCases")?.textContent || "",
               lossText: first?.querySelector(".dashboardRecordCalendarLoss")?.textContent || "",
+              caseOverflow: first ? getComputedStyle(first.querySelector(".dashboardRecordCalendarCases")).overflowX : "",
+              lossOverflow: first ? getComputedStyle(first.querySelector(".dashboardRecordCalendarLoss")).overflowX : "",
+              caseTextOverflow: first ? getComputedStyle(first.querySelector(".dashboardRecordCalendarCases")).textOverflow : "",
               detailAction: first?.dataset.uiClick || "",
               detailDate: first?.dataset.uiArg || "",
               typeBadgeCount: first.querySelectorAll(".dashboardTypeBadge").length
@@ -1447,7 +1450,12 @@
           assertEqual(allState.calendarDayCount, 31, "8月の日付がカレンダーに揃っていません");
           assertEqual(allState.recordDayCount, 2, "同じ日の記録が一つの日付セルにまとまりません");
           assertEqual(allState.firstDate, "15", "日付セルの日付が一致しません");
-          assertDeepEqual([allState.caseText, allState.lossText], ["15ケース", "ロス率 4%"], "日付の下のケース数とロス率が一致しません");
+          assertDeepEqual([allState.caseText, allState.lossText], ["15", "4%"], "ケース数が数字だけ、ロス率が数字と%だけの表示になっていません");
+          assertDeepEqual(
+            [allState.caseOverflow, allState.lossOverflow, allState.caseTextOverflow],
+            ["visible", "visible", "clip"],
+            "ケース数またはロス率が省略される表示設定になっています"
+          );
           assertEqual(allState.typeBadgeCount, 0, "一覧に通常収穫・苗植えの区分が残っています");
           assertDeepEqual([allState.detailAction, allState.detailDate], ["openDashboardDayRecordDetail", "2026-08-15"], "日ごとの詳細を開けません");
 
