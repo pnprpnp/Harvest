@@ -1370,19 +1370,26 @@
           inputs.middle.value = "34";
           inputs.front.value = "56";
           app.handleCasePlacementInput();
+          const detailsRect = details.getBoundingClientRect();
+          const compactSummaryRect = app.document.getElementById("casePlacementCompactSummary").getBoundingClientRect();
           const compactState = comparable({
             defaultClosed,
             open: details.open,
             summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || "",
             total: app.document.getElementById("casePlacementTotalValue")?.textContent || "",
-            gridVisible: grid.getClientRects().length > 0
+            gridVisible: grid.getClientRects().length > 0,
+            centerOffset: Math.round(
+              (compactSummaryRect.left + compactSummaryRect.width / 2)
+              - (detailsRect.left + detailsRect.width / 2)
+            )
           });
           assertDeepEqual(compactState, {
             defaultClosed: true,
             open: false,
             summary: "奥12・中央34・手前56",
             total: "102",
-            gridVisible: false
+            gridVisible: false,
+            centerOffset: 0
           }, "閉じたケース配分が一行要約になっていません");
 
           details.open = true;
@@ -2941,18 +2948,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "0f26c638", elements: 2058, visible: 626, viewport: "390x844" },
-          cssStates: { hash: "74f13b84", elements: 2126, visible: 685, viewport: "390x844" },
-          cssFocus: { hash: "84742671", elements: 2126, visible: 685, viewport: "390x844" },
-          mobileRecord: { hash: "1394c468", elements: 2059, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "9e710651", elements: 2059, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "26b821f2", elements: 2142, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "724135e0", elements: 2157, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "8724efc9", elements: 2157, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "850110e5", elements: 2157, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "b3cd510b", elements: 2157, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "a2e363db", elements: 2157, visible: 632, viewport: "1024x900" },
-          wideDashboard: { hash: "685d56d6", elements: 2157, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "7f070dc4", elements: 2058, visible: 626, viewport: "390x844" },
+          cssStates: { hash: "31008220", elements: 2126, visible: 685, viewport: "390x844" },
+          cssFocus: { hash: "4cb85efd", elements: 2126, visible: 685, viewport: "390x844" },
+          mobileRecord: { hash: "3b8e7552", elements: 2059, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "82e42d3f", elements: 2059, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "af3438da", elements: 2142, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "540b2ef8", elements: 2157, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "c88f2b4b", elements: 2157, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "66c61017", elements: 2157, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "578e3455", elements: 2157, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "9f846ef7", elements: 2157, visible: 632, viewport: "1024x900" },
+          wideDashboard: { hash: "8e0ce42e", elements: 2157, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
