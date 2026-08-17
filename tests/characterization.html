@@ -1381,6 +1381,50 @@
         }
       });
 
+      await runTest("シミュのクリアと計算ボタンを下部タブ直上に固定する", () => {
+        const previousTab = app.eval("activeAppTab");
+        try{
+          app.setMainTabSelection("forecast");
+          const actionBar = app.document.querySelector(".forecastActionRow");
+          const clearButton = actionBar.querySelector(".forecastClearBtn");
+          const calculateButton = actionBar.querySelector(".casePlacementCalculateBtn");
+          const tabBar = app.document.querySelector(".tabBar");
+          const actionBarRect = actionBar.getBoundingClientRect();
+          const clearRect = clearButton.getBoundingClientRect();
+          const calculateRect = calculateButton.getBoundingClientRect();
+          const tabBarRect = tabBar.getBoundingClientRect();
+          const actionStyle = app.getComputedStyle(actionBar);
+          const clearStyle = app.getComputedStyle(clearButton);
+          const calculateStyle = app.getComputedStyle(calculateButton);
+          const forecastStyle = app.getComputedStyle(app.document.getElementById("forecastTab"));
+          const visibleState = comparable({
+            position: actionStyle.position,
+            touchesTabBar: Math.abs(actionBarRect.bottom - tabBarRect.top) <= 1,
+            belowTabBarLayer: Number(actionStyle.zIndex) < Number(app.getComputedStyle(tabBar).zIndex),
+            equalButtonHeight: Math.abs(clearRect.height - calculateRect.height) <= 1,
+            calculateIsPrimary: calculateRect.width > clearRect.width && calculateStyle.backgroundImage !== "none",
+            clearIsOutlined: parseFloat(clearStyle.borderTopWidth) >= 1 && clearStyle.backgroundColor === "rgb(255, 255, 255)",
+            buttonsStayInsideViewport: clearRect.left >= 12 && calculateRect.right <= app.innerWidth - 12,
+            contentClearsActionBar: parseFloat(forecastStyle.paddingBottom) >= actionBarRect.height + 12
+          });
+          assertDeepEqual(visibleState, {
+            position: "fixed",
+            touchesTabBar: true,
+            belowTabBarLayer: true,
+            equalButtonHeight: true,
+            calculateIsPrimary: true,
+            clearIsOutlined: true,
+            buttonsStayInsideViewport: true,
+            contentClearsActionBar: true
+          }, "クリアと計算ボタンが下部タブ直上の固定バーになっていません");
+
+          app.setMainTabSelection("monitor");
+          assertEqual(actionBar.getClientRects().length, 0, "シミュ以外のタブにも固定操作バーが表示されています");
+        }finally{
+          app.setMainTabSelection(previousTab);
+        }
+      });
+
       await runTest("シミュのケース配分を普段は一行要約で表示する", () => {
         const previousTab = app.eval("activeAppTab");
         const details = app.document.getElementById("casePlacementDetails");
@@ -2995,18 +3039,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "0ca30a5b", elements: 2058, visible: 626, viewport: "390x844" },
-          cssStates: { hash: "8cbe48a5", elements: 2126, visible: 685, viewport: "390x844" },
-          cssFocus: { hash: "cb3cb14c", elements: 2126, visible: 685, viewport: "390x844" },
-          mobileRecord: { hash: "68a2810f", elements: 2059, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "e9dba870", elements: 2059, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a2264855", elements: 2142, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "56a2a943", elements: 2157, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "cabdb1e4", elements: 2157, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "94f057f8", elements: 2157, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "4dffa916", elements: 2157, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "8e81f602", elements: 2157, visible: 632, viewport: "1024x900" },
-          wideDashboard: { hash: "d8047a84", elements: 2157, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "41cd1a9e", elements: 2059, visible: 627, viewport: "390x844" },
+          cssStates: { hash: "a805f372", elements: 2127, visible: 686, viewport: "390x844" },
+          cssFocus: { hash: "ad9a3433", elements: 2127, visible: 686, viewport: "390x844" },
+          mobileRecord: { hash: "6fa7cb25", elements: 2060, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "c1d893c8", elements: 2060, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "63da9f9a", elements: 2143, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "c90ce572", elements: 2158, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "5a7861a5", elements: 2158, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "5c6af5bb", elements: 2158, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "53d9c343", elements: 2158, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "cbfad4de", elements: 2158, visible: 633, viewport: "1024x900" },
+          wideDashboard: { hash: "9dbf71a5", elements: 2158, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
