@@ -1045,6 +1045,12 @@
       await runTest("苗植え実績を次回収穫の理想株数として設定より優先する", () => {
         const originalSettings = comparable(app.eval("settings"));
         try{
+          const yieldSettingsCluster = Array.from(app.document.querySelectorAll("#forecastSettingsWindowBody .settingClusterDetails"))
+            .find(cluster => cluster.querySelector(".clusterTitle")?.textContent.trim() === "収穫時の個数");
+          assert(
+            yieldSettingsCluster?.textContent.includes("苗植え記録に苗株数がある場合、その記録値がこの設定より優先されます"),
+            "収穫時の個数に苗植え記録を優先する説明がありません"
+          );
           app.eval(`settings = {
             ...settings,
             useBedYieldSettings: false,
@@ -1403,6 +1409,7 @@
           const actionStyle = app.getComputedStyle(actionBar);
           const clearStyle = app.getComputedStyle(clearButton);
           const calculateStyle = app.getComputedStyle(calculateButton);
+          const settingsSummaryStyle = app.getComputedStyle(settingsSummary);
           const forecastStyle = app.getComputedStyle(app.document.getElementById("forecastTab"));
           const visibleState = comparable({
             position: actionStyle.position,
@@ -1410,10 +1417,12 @@
             belowTabBarLayer: Number(actionStyle.zIndex) < Number(app.getComputedStyle(tabBar).zIndex),
             settingsLeftOfCalculate: settingsRect.right <= calculateRect.left,
             equalFixedButtonHeight: Math.abs(settingsRect.height - calculateRect.height) <= 1,
-            calculateIsCompactPrimary: calculateRect.width <= 96 && calculateStyle.backgroundImage !== "none",
+            calculateIsLargerPrimary: calculateRect.width > settingsRect.width && calculateStyle.backgroundImage !== "none",
             calculateLabel: calculateButton.textContent.trim(),
             omitsSettingsLabel: !settingsButton.querySelector(".forecastSettingsOpenLabel"),
-            settingsSummaryFits: settingsSummary.scrollWidth <= settingsSummary.clientWidth,
+            settingsSummaryIsLarger: parseFloat(settingsSummaryStyle.fontSize) >= 13,
+            settingsSummaryFits: settingsSummary.scrollWidth <= settingsSummary.clientWidth
+              && settingsSummary.scrollHeight <= settingsSummary.clientHeight,
             clearOutsideFixedBar: !actionBar.contains(clearButton),
             clearAtContentBottom: forecastCard.lastElementChild === clearButton.closest(".forecastBottomClearRow"),
             clearIsOutlined: parseFloat(clearStyle.borderTopWidth) >= 1 && clearStyle.backgroundColor === "rgb(255, 255, 255)",
@@ -1426,9 +1435,10 @@
             belowTabBarLayer: true,
             settingsLeftOfCalculate: true,
             equalFixedButtonHeight: true,
-            calculateIsCompactPrimary: true,
+            calculateIsLargerPrimary: true,
             calculateLabel: "計算",
             omitsSettingsLabel: true,
+            settingsSummaryIsLarger: true,
             settingsSummaryFits: true,
             clearOutsideFixedBar: true,
             clearAtContentBottom: true,
@@ -1442,8 +1452,13 @@
           const narrowSettingsRect = settingsButton.getBoundingClientRect();
           const narrowCalculateRect = calculateButton.getBoundingClientRect();
           assert(
-            settingsSummary.scrollWidth <= settingsSummary.clientWidth,
+            settingsSummary.scrollWidth <= settingsSummary.clientWidth
+              && settingsSummary.scrollHeight <= settingsSummary.clientHeight,
             "320px幅で計算設定の要約が途切れています"
+          );
+          assert(
+            narrowCalculateRect.width > narrowSettingsRect.width,
+            "320px幅で計算ボタンが設定ボタンより大きくなっていません"
           );
           assert(
             narrowSettingsRect.left >= 12 && narrowCalculateRect.right <= app.innerWidth - 12,
@@ -3123,18 +3138,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "099a5f31", elements: 2065, visible: 633, viewport: "390x844" },
-          cssStates: { hash: "a160d7a3", elements: 2133, visible: 692, viewport: "390x844" },
-          cssFocus: { hash: "62006d02", elements: 2133, visible: 692, viewport: "390x844" },
-          mobileRecord: { hash: "30dd4198", elements: 2066, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "7435b911", elements: 2066, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "b46bde81", elements: 2149, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "100ce0dd", elements: 2164, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "771187ea", elements: 2164, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "ad542c6e", elements: 2164, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "5abfcc76", elements: 2164, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "e6253450", elements: 2164, visible: 639, viewport: "1024x900" },
-          wideDashboard: { hash: "99102ddd", elements: 2164, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "45116c96", elements: 2064, visible: 632, viewport: "390x844" },
+          cssStates: { hash: "fc18b4fa", elements: 2132, visible: 691, viewport: "390x844" },
+          cssFocus: { hash: "83c93b33", elements: 2132, visible: 691, viewport: "390x844" },
+          mobileRecord: { hash: "fb6cbda4", elements: 2065, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "185716a9", elements: 2065, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "18c1b1f3", elements: 2148, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "766d62c2", elements: 2163, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "b5e31959", elements: 2163, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "83f798c7", elements: 2163, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "5e5004b1", elements: 2163, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "b0b8393e", elements: 2163, visible: 638, viewport: "1024x900" },
+          wideDashboard: { hash: "129aaee2", elements: 2163, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
