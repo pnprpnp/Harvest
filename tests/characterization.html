@@ -1750,13 +1750,19 @@
             const help = document.getElementById("recordHelpDetails");
             const setting = document.getElementById("dashboardStartDayMenuSetting");
             const input = document.getElementById("dashboardStartDayInput");
+            const combinedSettings = document.getElementById("accessProtectionDetails");
+            const googleSettings = document.getElementById("googleSheetConfigDetails");
             return {
               menuOpen: document.getElementById("appMenuModal")?.classList.contains("show") || false,
               helpInMenu: help?.parentElement === body,
               settingImmediatelyAfterHelp: help?.nextElementSibling === setting,
               inputInMenu: input?.closest("#appMenuWindowBody") === body,
               inputInDashboard: !!document.querySelector("#dashboardTab [data-dashboard-start-day-input]"),
-              optionCount: input?.options.length || 0
+              optionCount: input?.options.length || 0,
+              combinedSettingsInMenu: combinedSettings?.parentElement === body,
+              combinedSettingsTitle: combinedSettings?.querySelector(":scope > summary .clusterTitle")?.textContent.trim() || "",
+              googleSettingsInsideCombined: googleSettings?.closest("#accessProtectionDetails") === combinedSettings,
+              topLevelSettingsPanelCount: body.querySelectorAll(":scope > #accessProtectionDetails, :scope > #googleSheetConfigDetails").length
             };
           })()`));
           assertDeepEqual(menuState, {
@@ -1765,7 +1771,11 @@
             settingImmediatelyAfterHelp: true,
             inputInMenu: true,
             inputInDashboard: false,
-            optionCount: 31
+            optionCount: 31,
+            combinedSettingsInMenu: true,
+            combinedSettingsTitle: "アクセス・Google連携設定",
+            googleSettingsInsideCombined: true,
+            topLevelSettingsPanelCount: 1
           }, "集計の基準日の配置が一致しません");
 
           const input = app.document.getElementById("dashboardStartDayInput");
@@ -3195,18 +3205,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "4ccbe88a", elements: 2065, visible: 632, viewport: "390x844" },
-          cssStates: { hash: "cae4906e", elements: 2133, visible: 691, viewport: "390x844" },
-          cssFocus: { hash: "f7f7c4ab", elements: 2133, visible: 691, viewport: "390x844" },
-          mobileRecord: { hash: "8b75d3be", elements: 2066, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "a2b426f5", elements: 2066, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "360926a5", elements: 2149, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "be159859", elements: 2164, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "de7ec9b4", elements: 2164, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "019da156", elements: 2164, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "968e2152", elements: 2164, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "d5d6e0c7", elements: 2164, visible: 638, viewport: "1024x900" },
-          wideDashboard: { hash: "febc1dd4", elements: 2164, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "1802df77", elements: 2065, visible: 632, viewport: "390x844" },
+          cssStates: { hash: "80ca20c9", elements: 2133, visible: 691, viewport: "390x844" },
+          cssFocus: { hash: "bc1c3b30", elements: 2133, visible: 691, viewport: "390x844" },
+          mobileRecord: { hash: "77620425", elements: 2066, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "c463bd10", elements: 2066, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "fe08000a", elements: 2149, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "5aa15f96", elements: 2164, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "383c35fa", elements: 2164, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "a00d3117", elements: 2164, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "e1e37aff", elements: 2164, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "1b53a084", elements: 2164, visible: 638, viewport: "1024x900" },
+          wideDashboard: { hash: "730a48ff", elements: 2164, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

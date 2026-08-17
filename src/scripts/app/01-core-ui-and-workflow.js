@@ -390,7 +390,15 @@ function syncAccessProtectionDetails(options = {}){
   const details = document.getElementById("accessProtectionDetails");
   if(!details) return;
   const forceClosed = !!options.forceClosed;
-  details.open = forceClosed ? false : !protectedAccessUnlocked;
+  let googleConfigNeedsAttention = false;
+  if(typeof loadGoogleSheetConfig === "function" && typeof validateGoogleSheetConfig === "function"){
+    try{
+      googleConfigNeedsAttention = !validateGoogleSheetConfig(loadGoogleSheetConfig()).ok;
+    }catch(e){
+      googleConfigNeedsAttention = true;
+    }
+  }
+  details.open = forceClosed ? false : (!protectedAccessUnlocked || googleConfigNeedsAttention);
 }
 
 function updateAccessProtectionStatus(){
@@ -617,31 +625,27 @@ function closeDashboardWindow(){
 function moveMenuSettingsToWindow(){
   const body = document.getElementById("appMenuWindowBody");
   const accessDetails = document.getElementById("accessProtectionDetails");
-  const googleDetails = document.getElementById("googleSheetConfigDetails");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
   const dashboardStartDayMenuSetting = document.getElementById("dashboardStartDayMenuSetting");
-  if(!body || !accessDetails || !googleDetails) return;
+  if(!body || !accessDetails) return;
   if(recordHelpDetails && dashboardStartDayMenuSetting){
     dashboardStartDayMenuSetting.before(recordHelpDetails);
   }else if(recordHelpDetails){
     body.appendChild(recordHelpDetails);
   }
   body.appendChild(accessDetails);
-  body.appendChild(googleDetails);
 }
 
 function restoreMenuSettingsToSettingsTab(){
   const restorePoint = document.getElementById("appMenuSettingsRestorePoint");
   const accessDetails = document.getElementById("accessProtectionDetails");
-  const googleDetails = document.getElementById("googleSheetConfigDetails");
   const recordHelpRestorePoint = document.getElementById("recordHelpRestorePoint");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
-  if(!restorePoint || !accessDetails || !googleDetails) return;
+  if(!restorePoint || !accessDetails) return;
   if(recordHelpRestorePoint && recordHelpDetails){
     recordHelpRestorePoint.before(recordHelpDetails);
   }
   restorePoint.before(accessDetails);
-  restorePoint.before(googleDetails);
 }
 
 async function refreshAppRollbackAvailability(){
@@ -699,6 +703,7 @@ function openAppMenuWindow(){
   const modal = document.getElementById("appMenuModal");
   if(!modal) return;
   moveMenuSettingsToWindow();
+  syncAccessProtectionDetails();
   showPageBlockingUi(modal);
   refreshAppRollbackAvailability();
 }

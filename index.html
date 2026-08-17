@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260817-wide-forecast-content">
+<meta name="harvestnavi-version" content="20260817-combined-access-google-settings">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8754,6 +8754,18 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .settingClusterSummary{padding:18px;}
 .settingClusterSummary::after{color:var(--ui-text-tertiary);}
 .settingClusterDetailsBody{padding:0 18px 18px;}
+.combinedSettingsSection + .combinedSettingsSection{
+  margin-top:18px;
+  padding-top:18px;
+  border-top:1px solid var(--ui-line);
+}
+.combinedSettingsSectionTitle{
+  margin-bottom:10px;
+  color:var(--ui-text);
+  font-size:15px;
+  font-weight:750;
+}
+.combinedSettingsSection > .clusterNote{margin-bottom:10px;}
 .accordionGroup{
   border:0;
   border-radius:16px;
@@ -9722,29 +9734,26 @@ requestAnimationFrame(function(){
       <details id="accessProtectionDetails" class="settingCluster settingClusterDetails" open>
         <summary class="settingClusterSummary">
           <div class="clusterHeader">
-            <div class="clusterTitle">簡易アクセス制限</div>
+            <div class="clusterTitle">アクセス・Google連携設定</div>
+            <div class="clusterNote">ロック解除とスプレッドシート連携をまとめて設定します。</div>
           </div>
         </summary>
         <div class="settingClusterDetailsBody">
-          <label>解除用パスワード</label>
-          <input id="accessPasswordInput" type="password" placeholder="あらかじめ設定した固定パスワード">
-          <div id="accessProtectionStatus" class="smallText" style="margin-top:6px;">ロック状態を確認中です。</div>
-        </div>
-      </details>
-
-      <details id="googleSheetConfigDetails" class="settingCluster settingClusterDetails">
-        <summary class="settingClusterSummary">
-          <div class="clusterHeader">
-            <div class="clusterTitle">Google連携設定</div>
+          <section class="combinedSettingsSection" aria-labelledby="accessProtectionSectionTitle">
+            <div id="accessProtectionSectionTitle" class="combinedSettingsSectionTitle">簡易アクセス制限</div>
+            <label>解除用パスワード</label>
+            <input id="accessPasswordInput" type="password" placeholder="あらかじめ設定した固定パスワード">
+            <div id="accessProtectionStatus" class="smallText" style="margin-top:6px;">ロック状態を確認中です。</div>
+          </section>
+          <section id="googleSheetConfigDetails" class="combinedSettingsSection" aria-labelledby="googleSheetConfigSectionTitle">
+            <div id="googleSheetConfigSectionTitle" class="combinedSettingsSectionTitle">Google連携設定</div>
             <div class="clusterNote">Apps Script のURLと連携トークンはどちらも必須です。</div>
-          </div>
-        </summary>
-        <div class="settingClusterDetailsBody">
-          <label>Googleスプレッドシート連携URL</label>
-          <input id="googleSheetUrlInput" type="url" placeholder="Apps ScriptのWebアプリURL" required autocomplete="url">
-          <label>連携トークン（必須）</label>
-          <input id="googleSheetTokenInput" type="password" placeholder="Apps Script側と同じ合言葉" required autocomplete="new-password" spellcheck="false">
-          <button id="googleSheetConfigSaveBtn" class="actionBtn thirdBtn googleSheetSaveBtn" data-ui-click="saveGoogleSheetConfig">Google連携設定を保存</button>
+            <label>Googleスプレッドシート連携URL</label>
+            <input id="googleSheetUrlInput" type="url" placeholder="Apps ScriptのWebアプリURL" required autocomplete="url">
+            <label>連携トークン（必須）</label>
+            <input id="googleSheetTokenInput" type="password" placeholder="Apps Script側と同じ合言葉" required autocomplete="new-password" spellcheck="false">
+            <button id="googleSheetConfigSaveBtn" class="actionBtn thirdBtn googleSheetSaveBtn" data-ui-click="saveGoogleSheetConfig">Google連携設定を保存</button>
+          </section>
         </div>
       </details>
       <div id="appMenuSettingsRestorePoint"></div>
@@ -11159,7 +11168,15 @@ function syncAccessProtectionDetails(options = {}){
   const details = document.getElementById("accessProtectionDetails");
   if(!details) return;
   const forceClosed = !!options.forceClosed;
-  details.open = forceClosed ? false : !protectedAccessUnlocked;
+  let googleConfigNeedsAttention = false;
+  if(typeof loadGoogleSheetConfig === "function" && typeof validateGoogleSheetConfig === "function"){
+    try{
+      googleConfigNeedsAttention = !validateGoogleSheetConfig(loadGoogleSheetConfig()).ok;
+    }catch(e){
+      googleConfigNeedsAttention = true;
+    }
+  }
+  details.open = forceClosed ? false : (!protectedAccessUnlocked || googleConfigNeedsAttention);
 }
 
 function updateAccessProtectionStatus(){
@@ -11386,31 +11403,27 @@ function closeDashboardWindow(){
 function moveMenuSettingsToWindow(){
   const body = document.getElementById("appMenuWindowBody");
   const accessDetails = document.getElementById("accessProtectionDetails");
-  const googleDetails = document.getElementById("googleSheetConfigDetails");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
   const dashboardStartDayMenuSetting = document.getElementById("dashboardStartDayMenuSetting");
-  if(!body || !accessDetails || !googleDetails) return;
+  if(!body || !accessDetails) return;
   if(recordHelpDetails && dashboardStartDayMenuSetting){
     dashboardStartDayMenuSetting.before(recordHelpDetails);
   }else if(recordHelpDetails){
     body.appendChild(recordHelpDetails);
   }
   body.appendChild(accessDetails);
-  body.appendChild(googleDetails);
 }
 
 function restoreMenuSettingsToSettingsTab(){
   const restorePoint = document.getElementById("appMenuSettingsRestorePoint");
   const accessDetails = document.getElementById("accessProtectionDetails");
-  const googleDetails = document.getElementById("googleSheetConfigDetails");
   const recordHelpRestorePoint = document.getElementById("recordHelpRestorePoint");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
-  if(!restorePoint || !accessDetails || !googleDetails) return;
+  if(!restorePoint || !accessDetails) return;
   if(recordHelpRestorePoint && recordHelpDetails){
     recordHelpRestorePoint.before(recordHelpDetails);
   }
   restorePoint.before(accessDetails);
-  restorePoint.before(googleDetails);
 }
 
 async function refreshAppRollbackAvailability(){
@@ -11468,6 +11481,7 @@ function openAppMenuWindow(){
   const modal = document.getElementById("appMenuModal");
   if(!modal) return;
   moveMenuSettingsToWindow();
+  syncAccessProtectionDetails();
   showPageBlockingUi(modal);
   refreshAppRollbackAvailability();
 }
@@ -15617,10 +15631,9 @@ function populateGoogleSheetConfigForm(){
   const validation = validateGoogleSheetConfig(config);
   const urlInput = document.getElementById("googleSheetUrlInput");
   const tokenInput = document.getElementById("googleSheetTokenInput");
-  const details = document.getElementById("googleSheetConfigDetails");
   if(urlInput) urlInput.value = config.url;
   if(tokenInput) tokenInput.value = config.token;
-  if(details) details.open = !validation.ok;
+  syncAccessProtectionDetails();
 }
 
 function readGoogleSheetConfigForm(){
@@ -15635,7 +15648,7 @@ function saveGoogleSheetConfig(){
   const config = readGoogleSheetConfigForm();
   const validation = validateGoogleSheetConfig(config);
   if(!validation.ok){
-    const details = document.getElementById("googleSheetConfigDetails");
+    const details = document.getElementById("accessProtectionDetails");
     if(details) details.open = true;
     showToast(validation.message);
     return;

@@ -288,10 +288,9 @@ function populateGoogleSheetConfigForm(){
   const validation = validateGoogleSheetConfig(config);
   const urlInput = document.getElementById("googleSheetUrlInput");
   const tokenInput = document.getElementById("googleSheetTokenInput");
-  const details = document.getElementById("googleSheetConfigDetails");
   if(urlInput) urlInput.value = config.url;
   if(tokenInput) tokenInput.value = config.token;
-  if(details) details.open = !validation.ok;
+  syncAccessProtectionDetails();
 }
 
 function readGoogleSheetConfigForm(){
@@ -306,7 +305,7 @@ function saveGoogleSheetConfig(){
   const config = readGoogleSheetConfigForm();
   const validation = validateGoogleSheetConfig(config);
   if(!validation.ok){
-    const details = document.getElementById("googleSheetConfigDetails");
+    const details = document.getElementById("accessProtectionDetails");
     if(details) details.open = true;
     showToast(validation.message);
     return;
