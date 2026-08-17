@@ -1540,9 +1540,11 @@
           const inputWrap = app.document.querySelector(".forecastCaseField .forecastCaseUnitWrap");
           const buildingSwitch = app.document.querySelector(".casePlacementBuildingSwitch");
           const divider = app.document.querySelector(".casePlacementDivider");
+          const casePlacementPanel = app.document.querySelector(".casePlacementPanel");
           const labelRect = label.getBoundingClientRect();
           const inputRect = inputWrap.getBoundingClientRect();
           const buildingSwitchRect = buildingSwitch.getBoundingClientRect();
+          const casePlacementPanelRect = casePlacementPanel.getBoundingClientRect();
           const topGap = fieldRect.top - topChromeRect.bottom;
           const inputToBuildingGap = buildingSwitchRect.top - inputRect.bottom;
           const leftOffset = labelRect.left - fieldRect.left;
@@ -1557,6 +1559,20 @@
           );
           assertEqual(app.getComputedStyle(divider).display, "none", "不要な区切り余白が残っています");
           assertEqual(app.getComputedStyle(buildingSwitch).marginBottom, "0px", "号棟選択の下に不要な余白があります");
+          assert(
+            casePlacementPanelRect.left >= 12 && casePlacementPanelRect.left <= 22,
+            `シミュ内容の左余白が適切ではありません（${Math.round(casePlacementPanelRect.left)}px）`
+          );
+          assert(
+            app.innerWidth - casePlacementPanelRect.right >= 12
+              && app.innerWidth - casePlacementPanelRect.right <= 22,
+            `シミュ内容の右余白が適切ではありません（${Math.round(app.innerWidth - casePlacementPanelRect.right)}px）`
+          );
+          assert(
+            Math.abs(fieldRect.left - casePlacementPanelRect.left) <= 1
+              && Math.abs(fieldRect.right - casePlacementPanelRect.right) <= 1,
+            "収穫ケース数と号棟選択の横幅が揃っていません"
+          );
           assert(Math.abs(leftOffset) <= 1, "収穫ケース数の見出しが行の左端まで詰まっていません");
           assert(parseFloat(app.getComputedStyle(label).fontSize) >= 19, "収穫ケース数の見出しが十分に大きくありません");
           assert(centerOffset <= 2, "収穫ケース数の見出しと入力欄の縦位置が揃っていません");
@@ -3179,18 +3195,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "f221b077", elements: 2065, visible: 632, viewport: "390x844" },
-          cssStates: { hash: "3bcb7bc9", elements: 2133, visible: 691, viewport: "390x844" },
-          cssFocus: { hash: "bd6c7630", elements: 2133, visible: 691, viewport: "390x844" },
-          mobileRecord: { hash: "422854fe", elements: 2066, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "ef82ac55", elements: 2066, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "fc5f6667", elements: 2149, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "92d2cd37", elements: 2164, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "18efc554", elements: 2164, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "db33bd76", elements: 2164, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "86cb2062", elements: 2164, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "082f8fed", elements: 2164, visible: 638, viewport: "1024x900" },
-          wideDashboard: { hash: "089ea161", elements: 2164, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "4ccbe88a", elements: 2065, visible: 632, viewport: "390x844" },
+          cssStates: { hash: "cae4906e", elements: 2133, visible: 691, viewport: "390x844" },
+          cssFocus: { hash: "f7f7c4ab", elements: 2133, visible: 691, viewport: "390x844" },
+          mobileRecord: { hash: "8b75d3be", elements: 2066, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "a2b426f5", elements: 2066, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "360926a5", elements: 2149, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "be159859", elements: 2164, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "de7ec9b4", elements: 2164, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "019da156", elements: 2164, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "968e2152", elements: 2164, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "d5d6e0c7", elements: 2164, visible: 638, viewport: "1024x900" },
+          wideDashboard: { hash: "febc1dd4", elements: 2164, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
