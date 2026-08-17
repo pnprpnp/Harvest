@@ -1712,6 +1712,35 @@
         });
       });
 
+      await runTest("モニター・記録・集計の内容をシミュと同じ横余白まで広げる", async () => {
+        const previousFrameWidth = iframe.style.width;
+        try{
+          iframe.style.width = "390px";
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
+          const horizontalPadding = comparable(app.eval(`(() => {
+            const selectors = {
+              forecast: "#forecastSimulationCard",
+              monitor: "#monitorCard",
+              recordSave: "#recordSaveCard",
+              recordList: "#recordTab > .card:not(#recordSaveCard)",
+              dashboardGuide: "#dashboardSubtabGuide > .card",
+              dashboardCalendar: "#dashboardSubtabCalendar > .card",
+              dashboardSeedlings: "#dashboardSubtabSeedlings > .card",
+              dashboardGraph: "#dashboardResultsGraphsView > .dashboardChartCard"
+            };
+            return Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+              const style = getComputedStyle(document.querySelector(selector));
+              return [name, [style.paddingLeft, style.paddingRight]];
+            }));
+          })()`));
+          Object.entries(horizontalPadding).forEach(([name, padding]) => {
+            assertDeepEqual(padding, ["6px", "6px"], `${name}の左右余白がシミュと揃っていません`);
+          });
+        }finally{
+          iframe.style.width = previousFrameWidth;
+        }
+      });
+
       await runTest("ページ背景をグラデーションのない単色にする", () => {
         const pageStyle = comparable(app.eval(`(() => {
           const style = getComputedStyle(document.body);
@@ -2176,7 +2205,9 @@
                 itemCount: list?.children.length || 0,
                 values: getMonitorMemoInputValues(),
                 emptyListHidden: list ? getComputedStyle(list).display === "none" : false,
-                addAction: document.querySelector("#monitorTab .monitorMemoAddBtn")?.dataset.uiClick || ""
+                addAction: document.querySelector("#monitorTab .monitorMemoAddBtn")?.dataset.uiClick || "",
+                addBackground: getComputedStyle(document.querySelector("#monitorTab .monitorMemoAddBtn")).backgroundColor,
+                addColor: getComputedStyle(document.querySelector("#monitorTab .monitorMemoAddBtn")).color
               }
             };
           }finally{
@@ -2194,7 +2225,9 @@
             itemCount: 0,
             values: [],
             emptyListHidden: true,
-            addAction: "addMonitorMemoInput"
+            addAction: "addMonitorMemoInput",
+            addBackground: "rgb(10, 132, 255)",
+            addColor: "rgb(255, 255, 255)"
           }
         }, "最後の表示メモを削除して空の状態にできません");
       });
@@ -3260,18 +3293,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "2cd57b47", elements: 2062, visible: 632, viewport: "390x844" },
-          cssStates: { hash: "606a51d1", elements: 2130, visible: 691, viewport: "390x844" },
-          cssFocus: { hash: "502c1b50", elements: 2130, visible: 691, viewport: "390x844" },
-          mobileRecord: { hash: "92de9a14", elements: 2063, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "90928107", elements: 2063, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "fafb616f", elements: 2146, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "a06c72e0", elements: 2161, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "f7088df8", elements: 2161, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "98fea901", elements: 2161, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "fda63f50", elements: 2161, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "4ceac24c", elements: 2161, visible: 638, viewport: "1024x900" },
-          wideDashboard: { hash: "341b8a3b", elements: 2161, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "43f243af", elements: 2062, visible: 632, viewport: "390x844" },
+          cssStates: { hash: "f6d14fc9", elements: 2130, visible: 691, viewport: "390x844" },
+          cssFocus: { hash: "59d24758", elements: 2130, visible: 691, viewport: "390x844" },
+          mobileRecord: { hash: "280bff33", elements: 2063, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "8dd091f1", elements: 2063, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "3a373fe1", elements: 2146, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "f4c64220", elements: 2161, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "680438fc", elements: 2161, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "7d3d3a57", elements: 2161, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "2ef744a8", elements: 2161, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "4cce8620", elements: 2161, visible: 638, viewport: "1024x900" },
+          wideDashboard: { hash: "d966ebdf", elements: 2161, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
