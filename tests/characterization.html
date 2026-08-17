@@ -1347,7 +1347,9 @@
           };
           return {
             move: read(moveButton),
-            current: read(currentButton)
+            current: read(currentButton),
+            paginationBackgroundColor: getComputedStyle(document.querySelector(".casePlacementBuildingSwitch")).backgroundColor,
+            pageBackgroundColor: getComputedStyle(document.body).backgroundColor
           };
         })()`));
         assert(sizes.move.width >= 52, "号棟移動ボタンの幅が52px未満です");
@@ -1358,6 +1360,11 @@
           sizes.current.backgroundColor,
           app.getComputedStyle(app.document.body).backgroundColor,
           "中央の号棟表示がページ背景と同じ色ではありません"
+        );
+        assertEqual(
+          sizes.paginationBackgroundColor,
+          sizes.pageBackgroundColor,
+          "号棟選択全体がページ背景と同じ色ではありません"
         );
       });
 
@@ -1413,13 +1420,18 @@
           const calculateRect = calculateButton.getBoundingClientRect();
           const tabBarRect = tabBar.getBoundingClientRect();
           const actionStyle = app.getComputedStyle(actionBar);
+          const actionGapStyle = app.getComputedStyle(actionBar, "::after");
           const clearStyle = app.getComputedStyle(clearButton);
           const calculateStyle = app.getComputedStyle(calculateButton);
           const settingsSummaryStyle = app.getComputedStyle(settingsSummary);
           const forecastStyle = app.getComputedStyle(app.document.getElementById("forecastTab"));
           const visibleState = comparable({
             position: actionStyle.position,
-            touchesTabBar: Math.abs(actionBarRect.bottom - tabBarRect.top) <= 1,
+            safeGapFromTabBar: tabBarRect.top - actionBarRect.bottom >= 9
+              && tabBarRect.top - actionBarRect.bottom <= 11,
+            buttonGapFromTabBar: tabBarRect.top - calculateRect.bottom >= 11,
+            gapBlocksMistaps: parseFloat(actionGapStyle.height) >= 9
+              && actionGapStyle.pointerEvents === "auto",
             belowTabBarLayer: Number(actionStyle.zIndex) < Number(app.getComputedStyle(tabBar).zIndex),
             settingsLeftOfCalculate: settingsRect.right <= calculateRect.left,
             equalFixedButtonHeight: Math.abs(settingsRect.height - calculateRect.height) <= 1,
@@ -1436,11 +1448,14 @@
             clearAtContentBottom: forecastCard.lastElementChild === clearButton.closest(".forecastBottomClearRow"),
             clearIsOutlined: parseFloat(clearStyle.borderTopWidth) >= 1 && clearStyle.backgroundColor === "rgb(255, 255, 255)",
             buttonsStayInsideViewport: settingsRect.left >= 12 && calculateRect.right <= app.innerWidth - 12,
-            contentClearsActionBar: parseFloat(forecastStyle.paddingBottom) >= actionBarRect.height + 12
+            contentClearsActionBar: parseFloat(forecastStyle.paddingBottom) >= actionBarRect.height
+              + (tabBarRect.top - actionBarRect.bottom) + 12
           });
           assertDeepEqual(visibleState, {
             position: "fixed",
-            touchesTabBar: true,
+            safeGapFromTabBar: true,
+            buttonGapFromTabBar: true,
+            gapBlocksMistaps: true,
             belowTabBarLayer: true,
             settingsLeftOfCalculate: true,
             equalFixedButtonHeight: true,
@@ -3145,18 +3160,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e4b317c3", elements: 2064, visible: 632, viewport: "390x844" },
-          cssStates: { hash: "f8c430c9", elements: 2132, visible: 691, viewport: "390x844" },
-          cssFocus: { hash: "c9c4865c", elements: 2132, visible: 691, viewport: "390x844" },
-          mobileRecord: { hash: "ec7f64c3", elements: 2065, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "59cfa62c", elements: 2065, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "18d5ce2c", elements: 2148, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "96c4b0d5", elements: 2163, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "0eea6b7c", elements: 2163, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "1a924206", elements: 2163, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "4348225c", elements: 2163, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "36261c5d", elements: 2163, visible: 638, viewport: "1024x900" },
-          wideDashboard: { hash: "0764c879", elements: 2163, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "4e2d9af4", elements: 2064, visible: 632, viewport: "390x844" },
+          cssStates: { hash: "e3abb5fc", elements: 2132, visible: 691, viewport: "390x844" },
+          cssFocus: { hash: "80ec3fc5", elements: 2132, visible: 691, viewport: "390x844" },
+          mobileRecord: { hash: "0888b8dc", elements: 2065, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "8b2c2061", elements: 2065, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f1fb35f5", elements: 2148, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "688536c8", elements: 2163, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "1d60c2c1", elements: 2163, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "e0e8682f", elements: 2163, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "9f792269", elements: 2163, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "5cbae066", elements: 2163, visible: 638, viewport: "1024x900" },
+          wideDashboard: { hash: "5b991c98", elements: 2163, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
