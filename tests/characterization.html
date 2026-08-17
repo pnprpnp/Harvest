@@ -1452,6 +1452,7 @@
             settingsSummaryIsSingleLine: settingsSummaryStyle.whiteSpace === "nowrap",
             settingsSummaryFits: settingsSummary.scrollWidth <= settingsSummary.clientWidth
               && settingsSummary.scrollHeight <= settingsSummary.clientHeight,
+            clearLabel: clearButton.textContent.trim(),
             clearOutsideFixedBar: !actionBar.contains(clearButton),
             clearAtContentBottom: forecastCard.lastElementChild === clearButton.closest(".forecastBottomClearRow"),
             clearIsOutlined: parseFloat(clearStyle.borderTopWidth) >= 1 && clearStyle.backgroundColor === "rgb(255, 255, 255)",
@@ -1475,6 +1476,7 @@
             settingsSummaryIsLarger: true,
             settingsSummaryIsSingleLine: true,
             settingsSummaryFits: true,
+            clearLabel: "計算結果をクリア",
             clearOutsideFixedBar: true,
             clearAtContentBottom: true,
             clearIsOutlined: true,
@@ -2151,6 +2153,50 @@
           allSelectableSelected: { full: true, segments: 6 },
           oneSelectableMissing: { full: false, segments: 6 }
         }, "モニターの簡易パレット連結条件が選択可能パレットと一致しません");
+      });
+
+      await runTest("モニターの表示メモを1件だけでも削除できる", () => {
+        const memoState = comparable(app.eval(`(() => {
+          const previousItems = getMonitorMemoInputValues();
+          const previousDirty = monitorMemoInputsDirty;
+          try{
+            renderMonitorMemoInputs(["一つだけのメモ"]);
+            const list = document.getElementById("monitorMemoInputList");
+            const item = list?.querySelector(".monitorMemoInputItem");
+            const removeButton = item?.querySelector(".monitorMemoRemoveBtn");
+            const before = {
+              itemCount: list?.children.length || 0,
+              removeButtonVisible: removeButton?.style.display !== "none",
+              reservesRemoveButtonSpace: item?.classList.contains("hasRemoveButton") || false
+            };
+            removeButton?.click();
+            return {
+              before,
+              after: {
+                itemCount: list?.children.length || 0,
+                values: getMonitorMemoInputValues(),
+                emptyListHidden: list ? getComputedStyle(list).display === "none" : false,
+                addAction: document.querySelector("#monitorTab .monitorMemoAddBtn")?.dataset.uiClick || ""
+              }
+            };
+          }finally{
+            renderMonitorMemoInputs(previousItems);
+            monitorMemoInputsDirty = previousDirty;
+          }
+        })()`));
+        assertDeepEqual(memoState, {
+          before: {
+            itemCount: 1,
+            removeButtonVisible: true,
+            reservesRemoveButtonSpace: true
+          },
+          after: {
+            itemCount: 0,
+            values: [],
+            emptyListHidden: true,
+            addAction: "addMonitorMemoInput"
+          }
+        }, "最後の表示メモを削除して空の状態にできません");
       });
 
       await runTest("最新版の確認後に現在のバージョン番号を表示する", async () => {
@@ -3214,18 +3260,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "d49aa7d7", elements: 2065, visible: 632, viewport: "390x844" },
-          cssStates: { hash: "289853a9", elements: 2133, visible: 691, viewport: "390x844" },
-          cssFocus: { hash: "e418fe10", elements: 2133, visible: 691, viewport: "390x844" },
-          mobileRecord: { hash: "a6101513", elements: 2066, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "8f2d1950", elements: 2066, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "b54edaec", elements: 2149, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "c3b48542", elements: 2164, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "ed2094fe", elements: 2164, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "fe670ed3", elements: 2164, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "df8f35c9", elements: 2164, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "ec41d3ee", elements: 2164, visible: 638, viewport: "1024x900" },
-          wideDashboard: { hash: "b3ec64ab", elements: 2164, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "2cd57b47", elements: 2062, visible: 632, viewport: "390x844" },
+          cssStates: { hash: "606a51d1", elements: 2130, visible: 691, viewport: "390x844" },
+          cssFocus: { hash: "502c1b50", elements: 2130, visible: 691, viewport: "390x844" },
+          mobileRecord: { hash: "92de9a14", elements: 2063, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "90928107", elements: 2063, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "fafb616f", elements: 2146, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "a06c72e0", elements: 2161, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "f7088df8", elements: 2161, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "98fea901", elements: 2161, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "fda63f50", elements: 2161, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "4ceac24c", elements: 2161, visible: 638, viewport: "1024x900" },
+          wideDashboard: { hash: "341b8a3b", elements: 2161, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260817-dashboard-start-day-title">
+<meta name="harvestnavi-version" content="20260817-clear-label-monitor-memo-delete">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8587,6 +8587,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   color:var(--ui-accent);
 }
 .monitorMemoInputItem{border-radius:15px;background:var(--ui-surface-muted);}
+.monitorMemoInputList:empty{display:none;}
 .monitorMemoRemoveBtn{border-radius:50%;background:rgba(255,59,48,.1);color:var(--ui-red);}
 .monitorSectionTitle{color:var(--ui-accent-dark);}
 
@@ -9452,7 +9453,7 @@ requestAnimationFrame(function(){
 終了パレット: -</div>
       </details>
       <div class="forecastBottomClearRow">
-        <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction">クリア</button>
+        <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction">計算結果をクリア</button>
       </div>
     </div>
 
@@ -26977,7 +26978,7 @@ function renderMemoInputsToList(listId, items = [], options = {}){
   const list = document.getElementById(listId);
   if(!list) return;
   const memoItems = normalizeMonitorMemoItems(items);
-  const values = memoItems.length ? memoItems : [""];
+  const values = memoItems.length || options.allowEmpty ? memoItems : [""];
   list.innerHTML = "";
   values.forEach(value => {
     list.appendChild(createMonitorMemoInputItem(value, options));
@@ -26991,6 +26992,7 @@ function renderMonitorMemoInputs(items = []){
   renderMemoInputsToList("monitorMemoInputList", items, {
     inputClass: "monitorMemoItemInput",
     kind: "main",
+    allowEmpty: true,
     onInput: handleMonitorMemoInput
   });
 }
@@ -27066,7 +27068,7 @@ function updateMonitorMemoRemoveButtons(list = document.getElementById("monitorM
   const items = Array.from(list.querySelectorAll(".monitorMemoInputItem"));
   items.forEach(item => {
     const button = item.querySelector(".monitorMemoRemoveBtn");
-    const showButton = items.length > 1;
+    const showButton = items.length > 1 || list.id === "monitorMemoInputList";
     item.classList.toggle("hasRemoveButton", showButton);
     if(button) button.style.display = showButton ? "" : "none";
   });
@@ -27075,7 +27077,7 @@ function updateMonitorMemoRemoveButtons(list = document.getElementById("monitorM
 function removeMonitorMemoInput(item){
   const list = item?.parentElement;
   const items = Array.from(list?.querySelectorAll(".monitorMemoInputItem") || []);
-  if(items.length <= 1) return;
+  if(items.length <= 1 && list?.id !== "monitorMemoInputList") return;
   const kind = item.dataset.memoInputKind || "main";
   item.remove();
   updateMonitorMemoRemoveButtons(list);

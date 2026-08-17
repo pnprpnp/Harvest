@@ -91,7 +91,7 @@ function renderMemoInputsToList(listId, items = [], options = {}){
   const list = document.getElementById(listId);
   if(!list) return;
   const memoItems = normalizeMonitorMemoItems(items);
-  const values = memoItems.length ? memoItems : [""];
+  const values = memoItems.length || options.allowEmpty ? memoItems : [""];
   list.innerHTML = "";
   values.forEach(value => {
     list.appendChild(createMonitorMemoInputItem(value, options));
@@ -105,6 +105,7 @@ function renderMonitorMemoInputs(items = []){
   renderMemoInputsToList("monitorMemoInputList", items, {
     inputClass: "monitorMemoItemInput",
     kind: "main",
+    allowEmpty: true,
     onInput: handleMonitorMemoInput
   });
 }
@@ -180,7 +181,7 @@ function updateMonitorMemoRemoveButtons(list = document.getElementById("monitorM
   const items = Array.from(list.querySelectorAll(".monitorMemoInputItem"));
   items.forEach(item => {
     const button = item.querySelector(".monitorMemoRemoveBtn");
-    const showButton = items.length > 1;
+    const showButton = items.length > 1 || list.id === "monitorMemoInputList";
     item.classList.toggle("hasRemoveButton", showButton);
     if(button) button.style.display = showButton ? "" : "none";
   });
@@ -189,7 +190,7 @@ function updateMonitorMemoRemoveButtons(list = document.getElementById("monitorM
 function removeMonitorMemoInput(item){
   const list = item?.parentElement;
   const items = Array.from(list?.querySelectorAll(".monitorMemoInputItem") || []);
-  if(items.length <= 1) return;
+  if(items.length <= 1 && list?.id !== "monitorMemoInputList") return;
   const kind = item.dataset.memoInputKind || "main";
   item.remove();
   updateMonitorMemoRemoveButtons(list);
