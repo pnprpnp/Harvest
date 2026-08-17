@@ -871,7 +871,42 @@
           assert(lotHtml.includes(">16植え<"), "二次定植に16植えバッジが表示されません");
           assert(lotHtml.includes(">20植え<"), "二次定植に20植えバッジが表示されません");
           assert(lotHtml.includes(">株数未記録<"), "二次定植に未記録バッジが表示されません");
+          const bedTapSelections = comparable(app.eval(`(() => {
+            dashboardSeedlingStatusBuilding = 3;
+            dashboardSeedlingStatusSelectedBed = "B";
+            dashboardSeedlingStatusSelectedLotIndex = null;
+            dashboardSeedlingStatusModelCache = buildDashboardSeedlingStatusModel(
+              new Date(2026, 7, 10)
+            );
+            renderDashboardSeedlingStatusBeds(dashboardSeedlingStatusModelCache);
+            const selections = [];
+            for(let index = 0; index < 5; index++){
+              setDashboardSeedlingStatusBed("B");
+              const selectedLot = dashboardSeedlingStatusModelCache.bedLots
+                .get("3-B")[dashboardSeedlingStatusSelectedLotIndex];
+              selections.push({
+                index: dashboardSeedlingStatusSelectedLotIndex,
+                plantingCountText: selectedLot.plantingCountText || "未定植",
+                selectedPalletCount: document.querySelectorAll(
+                  ".dashboardSeedlingStatusBed.has-lot-selection .dashboardSeedlingBedMapCell.is-lot-selected"
+                ).length,
+                selectedCardCount: document.querySelectorAll(
+                  ".dashboardSeedlingStatusLot.is-selected"
+                ).length
+              });
+            }
+            return selections;
+          })()`));
+          assertDeepEqual(bedTapSelections, [
+            { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 },
+            { index: 1, plantingCountText: "20植え", selectedPalletCount: 1, selectedCardCount: 1 },
+            { index: 2, plantingCountText: "16植え", selectedPalletCount: 1, selectedCardCount: 1 },
+            { index: 3, plantingCountText: "未定植", selectedPalletCount: 75, selectedCardCount: 1 },
+            { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 }
+          ], "同じベッドの連続タップで詳細カードを順番に切り替えられません");
         }finally{
+          app.eval(`dashboardSeedlingStatusModelCache = null;
+            dashboardSeedlingStatusSelectedLotIndex = null;`);
           replaceAppHistory(app, previousRecords, previousEvents);
         }
       });
@@ -2658,13 +2693,13 @@
           cssFocus: { hash: "9251db5a", elements: 2119, visible: 705, viewport: "390x844" },
           mobileRecord: { hash: "4858251d", elements: 2052, visible: 134, viewport: "390x844" },
           mobileDashboard: { hash: "3c1a76b6", elements: 2052, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "0136f7f7", elements: 2135, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "36b95f7a", elements: 2150, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "54ef057f", elements: 2150, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "acc01777", elements: 2150, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "d910aa09", elements: 2150, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "21c55b99", elements: 2150, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "d2ba1d0e", elements: 2150, visible: 136, viewport: "1024x900" }
+          mobileDashboardRecord: { hash: "04071729", elements: 2135, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "3ac53de0", elements: 2150, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "45698267", elements: 2150, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "a5323b09", elements: 2150, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "a780f5b9", elements: 2150, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "7b5c55e1", elements: 2150, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "0f86b608", elements: 2150, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

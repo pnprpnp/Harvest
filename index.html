@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260816-dashboard-results-views">
+<meta name="harvestnavi-version" content="20260817-seedling-bed-lot-cycle">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -22496,7 +22496,7 @@ function renderDashboardSeedlingStatusDetail(model, building){
       <span class="dashboardSeedlingStatusDetailTitle">${bed}ベッドの詳細</span>
       <span class="dashboardSeedlingStatusDetailSummary">${escapeHtml(ageSummary)}</span>
     </div>
-    <div class="dashboardSeedlingStatusDetailHint">各表示をタップすると、該当するパレット位置を強調します。</div>
+    <div class="dashboardSeedlingStatusDetailHint">各カード、または選択中のベッドを繰り返しタップすると、表示する定植日数を切り替えられます。</div>
     <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
       ${lots.map((lot, index) => getDashboardSeedlingStatusLotHtml(
         lot,
@@ -22531,7 +22531,7 @@ function renderDashboardSeedlingStatusBeds(model){
         data-ui-click="setDashboardSeedlingStatusBed" data-ui-arg="${bed}"
         data-dashboard-seedling-bed="${bed}"
         aria-pressed="${isSelected ? "true" : "false"}"
-        aria-label="${bed}ベッド ${escapeHtml(ageAriaLabel)}。詳細を表示">
+        aria-label="${bed}ベッド ${escapeHtml(ageAriaLabel)}。詳細を表示。選択中に繰り返しタップすると表示を切り替え">
         <div class="bedTitle">
           <span class="dashboardForecastBedName">${bed}</span>
         </div>
@@ -22565,11 +22565,20 @@ function setDashboardSeedlingStatusLot(index){
   applyDashboardSeedlingStatusLotSelection(lots, bed);
 }
 
+function getNextDashboardSeedlingStatusLotIndex(lots){
+  const lotCount = Array.isArray(lots) ? lots.length : 0;
+  if(!lotCount) return null;
+  const currentIndex = dashboardSeedlingStatusSelectedLotIndex;
+  if(!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= lotCount){
+    return 0;
+  }
+  return (currentIndex + 1) % lotCount;
+}
+
 function setDashboardSeedlingStatusBed(bed){
   if(!bedMap.includes(bed)) return;
-  if(dashboardSeedlingStatusSelectedBed !== bed){
-    dashboardSeedlingStatusSelectedLotIndex = null;
-  }
+  const isSameBed = dashboardSeedlingStatusSelectedBed === bed;
+  if(!isSameBed) dashboardSeedlingStatusSelectedLotIndex = null;
   dashboardSeedlingStatusSelectedBed = bed;
   document.querySelectorAll("[data-dashboard-seedling-bed]").forEach(button => {
     const isSelected = button.dataset.dashboardSeedlingBed === bed;
@@ -22580,6 +22589,10 @@ function setDashboardSeedlingStatusBed(bed){
     ? dashboardSeedlingStatusBuilding
     : BUILDINGS[0];
   const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
+  if(isSameBed){
+    const lots = model.bedLots.get(`${building}-${bed}`) || [];
+    dashboardSeedlingStatusSelectedLotIndex = getNextDashboardSeedlingStatusLotIndex(lots);
+  }
   renderDashboardSeedlingStatusDetail(model, building);
 }
 
