@@ -125,7 +125,9 @@ function updateCasePlacementTotal(){
   const middle = clampNumber(document.getElementById("middleCaseInput")?.value || 0, 0, 999999, 0);
   const back = clampNumber(document.getElementById("backCaseInput")?.value || 0, 0, 999999, 0);
   const totalValue = document.getElementById("casePlacementTotalValue");
+  const compactSummary = document.getElementById("casePlacementCompactSummary");
   if(totalValue) totalValue.textContent = String(front + middle + back);
+  if(compactSummary) compactSummary.textContent = `奥${back}・中央${middle}・手前${front}`;
 }
 
 function formatSettingValue(value){

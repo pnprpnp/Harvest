@@ -1349,6 +1349,70 @@
         assert(sizes.current.height >= 52, "中央の号棟表示と移動ボタンの高さが揃っていません");
       });
 
+      await runTest("シミュのケース配分を普段は一行要約で表示する", () => {
+        const previousTab = app.eval("activeAppTab");
+        const details = app.document.getElementById("casePlacementDetails");
+        const grid = details?.querySelector(".casePlacementGrid");
+        const inputs = {
+          back: app.document.getElementById("backCaseInput"),
+          middle: app.document.getElementById("middleCaseInput"),
+          front: app.document.getElementById("frontCaseInput")
+        };
+        const previousValues = Object.fromEntries(
+          Object.entries(inputs).map(([key, input]) => [key, input?.value || ""])
+        );
+        const previousOpen = !!details?.open;
+        try{
+          app.setMainTabSelection("forecast");
+          const defaultClosed = !details.hasAttribute("open");
+          details.open = false;
+          inputs.back.value = "12";
+          inputs.middle.value = "34";
+          inputs.front.value = "56";
+          app.handleCasePlacementInput();
+          const compactState = comparable({
+            defaultClosed,
+            open: details.open,
+            summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || "",
+            total: app.document.getElementById("casePlacementTotalValue")?.textContent || "",
+            gridVisible: grid.getClientRects().length > 0
+          });
+          assertDeepEqual(compactState, {
+            defaultClosed: true,
+            open: false,
+            summary: "奥12・中央34・手前56",
+            total: "102",
+            gridVisible: false
+          }, "閉じたケース配分が一行要約になっていません");
+
+          details.open = true;
+          app.setDefaultCasePlacement();
+          const expandedState = comparable({
+            open: details.open,
+            summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || "",
+            total: app.document.getElementById("casePlacementTotalValue")?.textContent || "",
+            gridVisible: grid.getClientRects().length > 0,
+            standardButtonInDetails: !!details.querySelector(".casePlacementDefaultBtn"),
+            clearButtonInDetails: !!details.querySelector(".casePlacementClearInlineBtn")
+          });
+          assertDeepEqual(expandedState, {
+            open: true,
+            summary: "奥40・中央80・手前0",
+            total: "120",
+            gridVisible: true,
+            standardButtonInDetails: true,
+            clearButtonInDetails: true
+          }, "ケース配分を開いた時に従来の入力操作を表示できません");
+        }finally{
+          inputs.back.value = previousValues.back;
+          inputs.middle.value = previousValues.middle;
+          inputs.front.value = previousValues.front;
+          app.handleCasePlacementInput();
+          details.open = previousOpen;
+          app.setMainTabSelection(previousTab);
+        }
+      });
+
       await runTest("各メインタブの外側カードをページ背景と一体化する", () => {
         const frameStyles = comparable(app.eval(`(() => {
           const selectors = {
@@ -2877,18 +2941,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "f9f760e6", elements: 2051, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "4195d21f", elements: 2119, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "cf91aa36", elements: 2119, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "9f83d8fd", elements: 2052, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "cc9d6f6c", elements: 2052, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "9329e7c1", elements: 2135, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "b4fbd106", elements: 2150, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "aed24783", elements: 2150, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "169a5a73", elements: 2150, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "d2cc0089", elements: 2150, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "7434d4d1", elements: 2150, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "a3be2b64", elements: 2150, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "0f26c638", elements: 2058, visible: 626, viewport: "390x844" },
+          cssStates: { hash: "74f13b84", elements: 2126, visible: 685, viewport: "390x844" },
+          cssFocus: { hash: "84742671", elements: 2126, visible: 685, viewport: "390x844" },
+          mobileRecord: { hash: "1394c468", elements: 2059, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "9e710651", elements: 2059, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "26b821f2", elements: 2142, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "724135e0", elements: 2157, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "8724efc9", elements: 2157, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "850110e5", elements: 2157, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "b3cd510b", elements: 2157, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "a2e363db", elements: 2157, visible: 632, viewport: "1024x900" },
+          wideDashboard: { hash: "685d56d6", elements: 2157, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

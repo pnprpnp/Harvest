@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260817-dashboard-subtab-aligned-underline">
+<meta name="harvestnavi-version" content="20260817-compact-case-placement">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7371,6 +7371,76 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 }
 .buildingStatusValue{color:var(--ui-accent-dark);font-size:16px;font-weight:720;}
 .plantingAgeSummaryButton::after{color:var(--ui-accent);}
+.casePlacementDetails{
+  margin-top:10px;
+  overflow:hidden;
+  border:1px solid var(--ui-line);
+  border-radius:16px;
+  background:var(--ui-surface-muted);
+}
+.casePlacementDetailsSummary{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  min-height:52px;
+  box-sizing:border-box;
+  align-items:center;
+  gap:10px;
+  padding:11px 14px;
+  cursor:pointer;
+  list-style:none;
+}
+.casePlacementDetailsSummary::-webkit-details-marker{display:none;}
+.casePlacementDetailsSummary::marker{content:"";}
+.casePlacementDetailsLabel{
+  color:var(--ui-text);
+  font-size:15px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.casePlacementCompactSummary{
+  min-width:0;
+  overflow:hidden;
+  color:var(--ui-text-secondary);
+  font-size:13px;
+  font-weight:680;
+  text-align:right;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.casePlacementDetailsAction{
+  color:var(--ui-accent);
+  font-size:12px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.casePlacementDetailsActionOpen{display:none;}
+.casePlacementDetails[open] .casePlacementDetailsActionClosed{display:none;}
+.casePlacementDetails[open] .casePlacementDetailsActionOpen{display:inline;}
+.casePlacementDetails[open] .casePlacementDetailsSummary{
+  border-bottom:1px solid var(--ui-line);
+}
+.casePlacementDetails:not([open]) > .casePlacementDetailsBody{display:none;}
+.casePlacementDetails[open] > .casePlacementDetailsBody{
+  display:block;
+  padding:10px 12px 12px;
+}
+.casePlacementDetailsToolbar{
+  display:flex;
+  justify-content:flex-end;
+}
+.casePlacementDetailsToolbar .casePlacementDefaultBtn{
+  padding:8px 12px;
+  border-radius:10px;
+  background:var(--ui-blue);
+  color:#fff;
+  box-shadow:0 2px 7px rgba(10,132,255,.2);
+}
+.casePlacementDetails .casePlacementGrid{
+  margin-top:8px;
+  padding:14px;
+  border-radius:14px;
+  background:#fff;
+}
 .casePlacementGrid{
   gap:10px;
   margin-top:10px;
@@ -9142,43 +9212,54 @@ requestAnimationFrame(function(){
             <div id="remainingCasesSummary" class="buildingStatusValue">残り 0ケース</div>
           </div>
         </div>
-        <div class="casePlacementGrid">
-          <div class="casePlacementItem withTitle">
-            <div class="casePlacementTitleRow">
-              <div class="casePlacementInlineTitle">ケース配置</div>
+        <details id="casePlacementDetails" class="casePlacementDetails">
+          <summary class="casePlacementDetailsSummary">
+            <span class="casePlacementDetailsLabel">ケース配分</span>
+            <span id="casePlacementCompactSummary" class="casePlacementCompactSummary">奥0・中央0・手前0</span>
+            <span class="casePlacementDetailsAction" aria-hidden="true">
+              <span class="casePlacementDetailsActionClosed">変更</span>
+              <span class="casePlacementDetailsActionOpen">閉じる</span>
+            </span>
+          </summary>
+          <div class="casePlacementDetailsBody">
+            <div class="casePlacementDetailsToolbar">
               <button type="button" class="casePlacementDefaultBtn" data-ui-click="setDefaultCasePlacement">標準配置</button>
             </div>
-            <label>奥</label>
-            <span class="inputUnitWrap casePlacementUnitWrap">
-              <input id="backCaseInput" type="number" min="0" value="" inputmode="numeric" data-ui-input="handleCasePlacementInput">
-              <span class="inputUnitSuffix">ケース</span>
-            </span>
-          </div>
-          <div class="casePlacementItem">
-            <label>中央</label>
-            <span class="inputUnitWrap casePlacementUnitWrap">
-              <input id="middleCaseInput" type="number" min="0" value="" inputmode="numeric" data-ui-input="handleCasePlacementInput">
-              <span class="inputUnitSuffix">ケース</span>
-            </span>
-          </div>
-          <div class="casePlacementItem">
-            <label>手前</label>
-            <span class="inputUnitWrap casePlacementUnitWrap">
-              <input id="frontCaseInput" type="number" min="0" value="" inputmode="numeric" data-ui-input="handleCasePlacementInput">
-              <span class="inputUnitSuffix">ケース</span>
-            </span>
-          </div>
-          <div class="casePlacementTotal">
-            <div class="casePlacementTotalLabelWrap">
-              <button type="button" class="casePlacementClearInlineBtn" data-ui-click="clearCasePlacement" aria-label="この号棟のケース配置を消す">消す</button>
-              <div class="casePlacementTotalLabel">合計</div>
+            <div class="casePlacementGrid">
+              <div class="casePlacementItem">
+                <label>奥</label>
+                <span class="inputUnitWrap casePlacementUnitWrap">
+                  <input id="backCaseInput" type="number" min="0" value="" inputmode="numeric" data-ui-input="handleCasePlacementInput">
+                  <span class="inputUnitSuffix">ケース</span>
+                </span>
+              </div>
+              <div class="casePlacementItem">
+                <label>中央</label>
+                <span class="inputUnitWrap casePlacementUnitWrap">
+                  <input id="middleCaseInput" type="number" min="0" value="" inputmode="numeric" data-ui-input="handleCasePlacementInput">
+                  <span class="inputUnitSuffix">ケース</span>
+                </span>
+              </div>
+              <div class="casePlacementItem">
+                <label>手前</label>
+                <span class="inputUnitWrap casePlacementUnitWrap">
+                  <input id="frontCaseInput" type="number" min="0" value="" inputmode="numeric" data-ui-input="handleCasePlacementInput">
+                  <span class="inputUnitSuffix">ケース</span>
+                </span>
+              </div>
+              <div class="casePlacementTotal">
+                <div class="casePlacementTotalLabelWrap">
+                  <button type="button" class="casePlacementClearInlineBtn" data-ui-click="clearCasePlacement" aria-label="この号棟のケース配置を消す">消す</button>
+                  <div class="casePlacementTotalLabel">合計</div>
+                </div>
+                <div class="casePlacementTotalDisplay">
+                  <span id="casePlacementTotalValue" class="casePlacementTotalValue">0</span>
+                  <span class="inputUnitSuffix">ケース</span>
+                </div>
+              </div>
             </div>
-            <div class="casePlacementTotalDisplay">
-              <span id="casePlacementTotalValue" class="casePlacementTotalValue">0</span>
-              <span class="inputUnitSuffix">ケース</span>
-            </div>
           </div>
-        </div>
+        </details>
         <div class="casePlacementBedPanel">
           <div id="beds" class="bedWrap"></div>
         </div>
@@ -19447,7 +19528,9 @@ function updateCasePlacementTotal(){
   const middle = clampNumber(document.getElementById("middleCaseInput")?.value || 0, 0, 999999, 0);
   const back = clampNumber(document.getElementById("backCaseInput")?.value || 0, 0, 999999, 0);
   const totalValue = document.getElementById("casePlacementTotalValue");
+  const compactSummary = document.getElementById("casePlacementCompactSummary");
   if(totalValue) totalValue.textContent = String(front + middle + back);
+  if(compactSummary) compactSummary.textContent = `奥${back}・中央${middle}・手前${front}`;
 }
 
 function formatSettingValue(value){
