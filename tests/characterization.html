@@ -1557,6 +1557,59 @@
         app.setDashboardResultsView("calendar");
       });
 
+      await runTest("集計の選択中サブタブを紫色の文字と下線だけで示す", () => {
+        const previousSubtab = app.eval("dashboardFilter.dashboardSubtab");
+        try{
+          app.setDashboardSubtab("seedlings");
+          const subtabStyles = comparable(app.eval(`(() => {
+            const read = button => {
+              const style = getComputedStyle(button);
+              return {
+                backgroundColor: style.backgroundColor,
+                color: style.color,
+                borderTopWidth: style.borderTopWidth,
+                borderRightWidth: style.borderRightWidth,
+                borderBottomWidth: style.borderBottomWidth,
+                borderLeftWidth: style.borderLeftWidth,
+                borderBottomColor: style.borderBottomColor,
+                borderRadius: style.borderRadius,
+                boxShadow: style.boxShadow
+              };
+            };
+            return {
+              active: read(document.getElementById("dashboardSubtabSeedlingsBtn")),
+              inactive: read(document.getElementById("dashboardSubtabGuideBtn"))
+            };
+          })()`));
+          assertDeepEqual(subtabStyles, {
+            active: {
+              backgroundColor: "rgba(0, 0, 0, 0)",
+              color: "rgb(109, 40, 217)",
+              borderTopWidth: "0px",
+              borderRightWidth: "0px",
+              borderBottomWidth: "3px",
+              borderLeftWidth: "0px",
+              borderBottomColor: "rgb(109, 40, 217)",
+              borderRadius: "0px",
+              boxShadow: "none"
+            },
+            inactive: {
+              backgroundColor: "rgba(0, 0, 0, 0)",
+              color: "rgb(110, 110, 115)",
+              borderTopWidth: "0px",
+              borderRightWidth: "0px",
+              borderBottomWidth: "3px",
+              borderLeftWidth: "0px",
+              borderBottomColor: "rgba(0, 0, 0, 0)",
+              borderRadius: "0px",
+              boxShadow: "none"
+            }
+          }, "集計の選択中サブタブに囲みや背景が残っています");
+        }finally{
+          app.setDashboardSubtab(previousSubtab);
+        }
+      });
+
       await runTest("集計の実績カレンダーは日ごとの収穫値を表示し、詳細で場所を切り替える", () => {
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
@@ -2819,18 +2872,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "fbcd0e8b", elements: 2051, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "e2f30db4", elements: 2119, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "4e43e739", elements: 2119, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "c1b690f0", elements: 2052, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "fb519af1", elements: 2052, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "38c500ba", elements: 2135, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "8d74fe8f", elements: 2150, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "4cfb6778", elements: 2150, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "54576354", elements: 2150, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "10cefa4a", elements: 2150, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "134e9d30", elements: 2150, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "8cea79ff", elements: 2150, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "817ccc06", elements: 2051, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "f719253f", elements: 2119, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "66126f56", elements: 2119, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "8e57bf35", elements: 2052, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "92b010a4", elements: 2052, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "7786e79f", elements: 2135, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "accd677a", elements: 2150, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "26ff7d11", elements: 2150, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "4794d031", elements: 2150, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "97375cd3", elements: 2150, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "3c4f05b7", elements: 2150, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "888b5d2c", elements: 2150, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
