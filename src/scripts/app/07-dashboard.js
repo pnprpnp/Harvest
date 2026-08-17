@@ -3021,17 +3021,14 @@ function renderDashboardSeedlingStatusDetail(model, building){
     || dashboardSeedlingStatusSelectedLotIndex >= lots.length){
     dashboardSeedlingStatusSelectedLotIndex = null;
   }
-  const ageSummary = getDashboardSeedlingBedAgeSummary(lots);
   detail.innerHTML = `
     <div class="dashboardSeedlingStatusDetailHeader">
       <div class="dashboardSeedlingStatusDetailHeading">
         <span id="dashboardSeedlingStatusDetailTitle" class="dashboardSeedlingStatusDetailTitle">${bed}ベッドの詳細</span>
-        <span class="dashboardSeedlingStatusDetailSummary">${escapeHtml(ageSummary)}</span>
       </div>
       <button type="button" class="dashboardSeedlingStatusDetailClose"
         data-ui-click="closeDashboardSeedlingStatusDetail" aria-label="詳細を閉じる">×</button>
     </div>
-    <div class="dashboardSeedlingStatusDetailHint">各カード、または選択中のベッドを繰り返しタップすると、表示する定植日数を切り替えられます。</div>
     <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
       ${lots.map((lot, index) => getDashboardSeedlingStatusLotHtml(
         lot,
