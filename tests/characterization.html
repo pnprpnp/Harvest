@@ -1349,6 +1349,38 @@
         assert(sizes.current.height >= 52, "中央の号棟表示と移動ボタンの高さが揃っていません");
       });
 
+      await runTest("シミュの二つの号棟状況を一本の要約バーにまとめる", () => {
+        const previousTab = app.eval("activeAppTab");
+        try{
+          app.setMainTabSelection("forecast");
+          const bar = app.document.querySelector("#forecastTab .buildingStatusBar");
+          const items = [...bar.querySelectorAll(":scope > .buildingStatusBarItem")];
+          const barRect = bar.getBoundingClientRect();
+          const itemRects = items.map(item => item.getBoundingClientRect());
+          const state = comparable({
+            barCount: app.document.querySelectorAll("#forecastTab .buildingStatusBar").length,
+            itemCount: items.length,
+            legacyCardCount: app.document.querySelectorAll("#forecastTab .buildingStatusCard").length,
+            sameRow: itemRects.length === 2 && itemRects[1].left >= itemRects[0].right - 1,
+            fillsSingleBar: itemRects.every(rect => (
+              Math.abs(rect.top - barRect.top) <= 1
+              && Math.abs(rect.bottom - barRect.bottom) <= 1
+            )),
+            opensPlantingAgeDetail: app.document.getElementById("plantingAgeSummary")?.dataset.uiClick || ""
+          });
+          assertDeepEqual(state, {
+            barCount: 1,
+            itemCount: 2,
+            legacyCardCount: 0,
+            sameRow: true,
+            fillsSingleBar: true,
+            opensPlantingAgeDetail: "openPlantingAgeWindow"
+          }, "号棟状況が一つの要約バーにまとまっていません");
+        }finally{
+          app.setMainTabSelection(previousTab);
+        }
+      });
+
       await runTest("シミュのケース配分を普段は一行要約で表示する", () => {
         const previousTab = app.eval("activeAppTab");
         const details = app.document.getElementById("casePlacementDetails");
@@ -2948,18 +2980,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "7f070dc4", elements: 2058, visible: 626, viewport: "390x844" },
-          cssStates: { hash: "31008220", elements: 2126, visible: 685, viewport: "390x844" },
-          cssFocus: { hash: "4cb85efd", elements: 2126, visible: 685, viewport: "390x844" },
-          mobileRecord: { hash: "3b8e7552", elements: 2059, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "82e42d3f", elements: 2059, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "af3438da", elements: 2142, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "540b2ef8", elements: 2157, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "c88f2b4b", elements: 2157, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "66c61017", elements: 2157, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "578e3455", elements: 2157, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "9f846ef7", elements: 2157, visible: 632, viewport: "1024x900" },
-          wideDashboard: { hash: "8e0ce42e", elements: 2157, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "a37a31a2", elements: 2058, visible: 626, viewport: "390x844" },
+          cssStates: { hash: "dc1f6ae2", elements: 2126, visible: 685, viewport: "390x844" },
+          cssFocus: { hash: "d914255f", elements: 2126, visible: 685, viewport: "390x844" },
+          mobileRecord: { hash: "c5f25e06", elements: 2059, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "ca628a4b", elements: 2059, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "9fa7b102", elements: 2142, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "3c24e1a0", elements: 2157, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "6769f367", elements: 2157, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "6a8ff02b", elements: 2157, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "40531311", elements: 2157, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "1c2301a5", elements: 2157, visible: 632, viewport: "1024x900" },
+          wideDashboard: { hash: "4f1ccfbd", elements: 2157, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
