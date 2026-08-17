@@ -873,6 +873,7 @@
           assert(lotHtml.includes(">株数未記録<"), "二次定植に未記録バッジが表示されません");
           assert(!lotHtml.includes("番号 "), "二次定植の詳細にパレット番号が残っています");
           assert(lotHtml.includes(">1パレット<"), "二次定植の詳細にパレット数が表示されません");
+          assert(!lotHtml.includes(">選択中<"), "二次定植の詳細に選択中ラベルが残っています");
           const ageStyle = comparable(app.eval(`(() => {
             const mount = document.createElement("div");
             mount.className = "dashboardSeedlingStatusPopover";
@@ -934,7 +935,25 @@
               ).getAttribute("aria-expanded"),
               hasCloseButton: !!detail.querySelector(".dashboardSeedlingStatusDetailClose"),
               hasAgeSummary: !!detail.querySelector(".dashboardSeedlingStatusDetailSummary"),
-              hasHint: !!detail.querySelector(".dashboardSeedlingStatusDetailHint")
+              hasHint: !!detail.querySelector(".dashboardSeedlingStatusDetailHint"),
+              selectionAppearance: (() => {
+                const selectedCard = detail.querySelector(".dashboardSeedlingStatusLot.is-selected");
+                const unselectedCard = detail.querySelector(
+                  ".dashboardSeedlingStatusLot:not(.is-selected)"
+                );
+                const selectedStyle = getComputedStyle(selectedCard);
+                const unselectedStyle = getComputedStyle(unselectedCard);
+                return {
+                  listHasSelection: selectedCard.closest(".dashboardSeedlingStatusLots")
+                    .classList.contains("has-selection"),
+                  hasSelectedLabel: !!detail.querySelector(".dashboardSeedlingStatusSelectedLabel"),
+                  selectedOpacity: selectedStyle.opacity,
+                  selectedFilter: selectedStyle.filter,
+                  selectedBorderColor: selectedStyle.borderColor,
+                  selectedBoxShadow: selectedStyle.boxShadow,
+                  unselectedOpacity: unselectedStyle.opacity
+                };
+              })()
             };
             closeDashboardSeedlingStatusDetail({ restoreFocus: false });
             return {
@@ -965,7 +984,16 @@
               selectedBedExpanded: "true",
               hasCloseButton: true,
               hasAgeSummary: false,
-              hasHint: false
+              hasHint: false,
+              selectionAppearance: {
+                listHasSelection: true,
+                hasSelectedLabel: false,
+                selectedOpacity: "1",
+                selectedFilter: "none",
+                selectedBorderColor: "rgb(187, 247, 208)",
+                selectedBoxShadow: "none",
+                unselectedOpacity: "0.38"
+              }
             },
             closedState: {
               hidden: true,

@@ -2853,7 +2853,6 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
         <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
         <span class="dashboardSeedlingStatusLotBadges">
           ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCount${lot.plantingCount === null ? " is-unrecorded" : ""}">${escapeHtml(lot.plantingCountText)}</span>`}
-          <span class="dashboardSeedlingStatusSelectedLabel" aria-hidden="true">選択中</span>
         </span>
       </span>
       ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
@@ -2865,10 +2864,13 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
 }
 
 function clearDashboardSeedlingStatusLotSelectionUi(){
-  document.querySelectorAll(".dashboardSeedlingStatusLot.is-selected").forEach(button => {
-    button.classList.remove("is-selected");
-    button.setAttribute("aria-pressed", "false");
-  });
+  document.querySelectorAll("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusLots.has-selection")
+    .forEach(container => container.classList.remove("has-selection"));
+  document.querySelectorAll("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusLot.is-selected")
+    .forEach(button => {
+      button.classList.remove("is-selected");
+      button.setAttribute("aria-pressed", "false");
+    });
   document.querySelectorAll(".dashboardSeedlingStatusBed.has-lot-selection").forEach(bedButton => {
     bedButton.classList.remove("has-lot-selection");
     bedButton.querySelectorAll(".dashboardSeedlingBedMapCell").forEach(cell => {
@@ -2896,6 +2898,7 @@ function applyDashboardSeedlingStatusLotSelection(lots, bed){
 
   const lotButton = document.querySelector(`[data-dashboard-seedling-lot-index="${selectedIndex}"]`);
   if(lotButton){
+    lotButton.closest(".dashboardSeedlingStatusLots")?.classList.add("has-selection");
     lotButton.classList.add("is-selected");
     lotButton.setAttribute("aria-pressed", "true");
   }
