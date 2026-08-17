@@ -1384,16 +1384,20 @@
         }
       });
 
-      await runTest("シミュのクリアと計算ボタンを下部タブ直上に固定する", () => {
+      await runTest("シミュ下部に設定と計算を固定しクリアを内容末尾へ移す", async () => {
         const previousTab = app.eval("activeAppTab");
+        const previousFrameWidth = iframe.style.width;
         try{
           app.setMainTabSelection("forecast");
           const actionBar = app.document.querySelector(".forecastActionRow");
-          const clearButton = actionBar.querySelector(".forecastClearBtn");
+          const settingsButton = actionBar.querySelector(".forecastSettingsOpenBtn");
+          const settingsSummary = settingsButton.querySelector(".forecastSettingsSummary");
           const calculateButton = actionBar.querySelector(".casePlacementCalculateBtn");
+          const clearButton = app.document.querySelector(".forecastBottomClearRow .forecastClearBtn");
+          const forecastCard = app.document.getElementById("forecastSimulationCard");
           const tabBar = app.document.querySelector(".tabBar");
           const actionBarRect = actionBar.getBoundingClientRect();
-          const clearRect = clearButton.getBoundingClientRect();
+          const settingsRect = settingsButton.getBoundingClientRect();
           const calculateRect = calculateButton.getBoundingClientRect();
           const tabBarRect = tabBar.getBoundingClientRect();
           const actionStyle = app.getComputedStyle(actionBar);
@@ -1404,26 +1408,52 @@
             position: actionStyle.position,
             touchesTabBar: Math.abs(actionBarRect.bottom - tabBarRect.top) <= 1,
             belowTabBarLayer: Number(actionStyle.zIndex) < Number(app.getComputedStyle(tabBar).zIndex),
-            equalButtonHeight: Math.abs(clearRect.height - calculateRect.height) <= 1,
-            calculateIsPrimary: calculateRect.width > clearRect.width && calculateStyle.backgroundImage !== "none",
+            settingsLeftOfCalculate: settingsRect.right <= calculateRect.left,
+            equalFixedButtonHeight: Math.abs(settingsRect.height - calculateRect.height) <= 1,
+            calculateIsCompactPrimary: calculateRect.width <= 96 && calculateStyle.backgroundImage !== "none",
+            calculateLabel: calculateButton.textContent.trim(),
+            omitsSettingsLabel: !settingsButton.querySelector(".forecastSettingsOpenLabel"),
+            settingsSummaryFits: settingsSummary.scrollWidth <= settingsSummary.clientWidth,
+            clearOutsideFixedBar: !actionBar.contains(clearButton),
+            clearAtContentBottom: forecastCard.lastElementChild === clearButton.closest(".forecastBottomClearRow"),
             clearIsOutlined: parseFloat(clearStyle.borderTopWidth) >= 1 && clearStyle.backgroundColor === "rgb(255, 255, 255)",
-            buttonsStayInsideViewport: clearRect.left >= 12 && calculateRect.right <= app.innerWidth - 12,
+            buttonsStayInsideViewport: settingsRect.left >= 12 && calculateRect.right <= app.innerWidth - 12,
             contentClearsActionBar: parseFloat(forecastStyle.paddingBottom) >= actionBarRect.height + 12
           });
           assertDeepEqual(visibleState, {
             position: "fixed",
             touchesTabBar: true,
             belowTabBarLayer: true,
-            equalButtonHeight: true,
-            calculateIsPrimary: true,
+            settingsLeftOfCalculate: true,
+            equalFixedButtonHeight: true,
+            calculateIsCompactPrimary: true,
+            calculateLabel: "計算",
+            omitsSettingsLabel: true,
+            settingsSummaryFits: true,
+            clearOutsideFixedBar: true,
+            clearAtContentBottom: true,
             clearIsOutlined: true,
             buttonsStayInsideViewport: true,
             contentClearsActionBar: true
-          }, "クリアと計算ボタンが下部タブ直上の固定バーになっていません");
+          }, "設定・計算・クリアの配置が指定どおりになっていません");
+
+          iframe.style.width = "320px";
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
+          const narrowSettingsRect = settingsButton.getBoundingClientRect();
+          const narrowCalculateRect = calculateButton.getBoundingClientRect();
+          assert(
+            settingsSummary.scrollWidth <= settingsSummary.clientWidth,
+            "320px幅で計算設定の要約が途切れています"
+          );
+          assert(
+            narrowSettingsRect.left >= 12 && narrowCalculateRect.right <= app.innerWidth - 12,
+            "320px幅で固定ボタンが画面外にはみ出しています"
+          );
 
           app.setMainTabSelection("monitor");
           assertEqual(actionBar.getClientRects().length, 0, "シミュ以外のタブにも固定操作バーが表示されています");
         }finally{
+          iframe.style.width = previousFrameWidth;
           app.setMainTabSelection(previousTab);
         }
       });
@@ -3093,18 +3123,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "d6c280ed", elements: 2059, visible: 627, viewport: "390x844" },
-          cssStates: { hash: "232840a3", elements: 2127, visible: 686, viewport: "390x844" },
-          cssFocus: { hash: "4c2f925e", elements: 2127, visible: 686, viewport: "390x844" },
-          mobileRecord: { hash: "79ba663b", elements: 2060, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "13f3243a", elements: 2060, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "33934f78", elements: 2143, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "076ed4a8", elements: 2158, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "96a14917", elements: 2158, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "84d52bdd", elements: 2158, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "3ad9af75", elements: 2158, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "c2120053", elements: 2158, visible: 633, viewport: "1024x900" },
-          wideDashboard: { hash: "295dfb0c", elements: 2158, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "099a5f31", elements: 2065, visible: 633, viewport: "390x844" },
+          cssStates: { hash: "a160d7a3", elements: 2133, visible: 692, viewport: "390x844" },
+          cssFocus: { hash: "62006d02", elements: 2133, visible: 692, viewport: "390x844" },
+          mobileRecord: { hash: "30dd4198", elements: 2066, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "7435b911", elements: 2066, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "b46bde81", elements: 2149, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "100ce0dd", elements: 2164, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "771187ea", elements: 2164, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "ad542c6e", elements: 2164, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "5abfcc76", elements: 2164, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "e6253450", elements: 2164, visible: 639, viewport: "1024x900" },
+          wideDashboard: { hash: "99102ddd", elements: 2164, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
