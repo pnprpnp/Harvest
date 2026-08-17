@@ -1424,10 +1424,24 @@
             centerOffset: 0
           }, "閉じたケース配分が一行要約になっていません");
 
+          app.clearCasePlacement();
+          const missingState = comparable({
+            needsInput: details.classList.contains("casePlacementNeedsInput"),
+            matchesEmptyInputColor: app.getComputedStyle(details).backgroundColor
+              === app.getComputedStyle(inputs.front.closest(".inputUnitWrap")).backgroundColor,
+            summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || ""
+          });
+          assertDeepEqual(missingState, {
+            needsInput: true,
+            matchesEmptyInputColor: true,
+            summary: "奥0・中央0・手前0"
+          }, "未入力のケース配分が他の未入力欄と同じ色になっていません");
+
           details.open = true;
           app.setDefaultCasePlacement();
           const expandedState = comparable({
             open: details.open,
+            needsInput: details.classList.contains("casePlacementNeedsInput"),
             summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || "",
             total: app.document.getElementById("casePlacementTotalValue")?.textContent || "",
             gridVisible: grid.getClientRects().length > 0,
@@ -1436,6 +1450,7 @@
           });
           assertDeepEqual(expandedState, {
             open: true,
+            needsInput: false,
             summary: "奥40・中央80・手前0",
             total: "120",
             gridVisible: true,
@@ -2980,18 +2995,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "a37a31a2", elements: 2058, visible: 626, viewport: "390x844" },
-          cssStates: { hash: "dc1f6ae2", elements: 2126, visible: 685, viewport: "390x844" },
-          cssFocus: { hash: "d914255f", elements: 2126, visible: 685, viewport: "390x844" },
-          mobileRecord: { hash: "c5f25e06", elements: 2059, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "ca628a4b", elements: 2059, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "9fa7b102", elements: 2142, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "3c24e1a0", elements: 2157, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "6769f367", elements: 2157, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "6a8ff02b", elements: 2157, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "40531311", elements: 2157, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "1c2301a5", elements: 2157, visible: 632, viewport: "1024x900" },
-          wideDashboard: { hash: "4f1ccfbd", elements: 2157, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "0ca30a5b", elements: 2058, visible: 626, viewport: "390x844" },
+          cssStates: { hash: "8cbe48a5", elements: 2126, visible: 685, viewport: "390x844" },
+          cssFocus: { hash: "cb3cb14c", elements: 2126, visible: 685, viewport: "390x844" },
+          mobileRecord: { hash: "68a2810f", elements: 2059, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "e9dba870", elements: 2059, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "a2264855", elements: 2142, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "56a2a943", elements: 2157, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "cabdb1e4", elements: 2157, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "94f057f8", elements: 2157, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "4dffa916", elements: 2157, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "8e81f602", elements: 2157, visible: 632, viewport: "1024x900" },
+          wideDashboard: { hash: "d8047a84", elements: 2157, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -121,13 +121,22 @@ function populateCasePlacementInputs(){
 }
 
 function updateCasePlacementTotal(){
-  const front = clampNumber(document.getElementById("frontCaseInput")?.value || 0, 0, 999999, 0);
-  const middle = clampNumber(document.getElementById("middleCaseInput")?.value || 0, 0, 999999, 0);
-  const back = clampNumber(document.getElementById("backCaseInput")?.value || 0, 0, 999999, 0);
+  const frontInput = document.getElementById("frontCaseInput");
+  const middleInput = document.getElementById("middleCaseInput");
+  const backInput = document.getElementById("backCaseInput");
+  const rawValues = [frontInput?.value, middleInput?.value, backInput?.value];
+  const front = clampNumber(frontInput?.value || 0, 0, 999999, 0);
+  const middle = clampNumber(middleInput?.value || 0, 0, 999999, 0);
+  const back = clampNumber(backInput?.value || 0, 0, 999999, 0);
   const totalValue = document.getElementById("casePlacementTotalValue");
   const compactSummary = document.getElementById("casePlacementCompactSummary");
+  const details = document.getElementById("casePlacementDetails");
   if(totalValue) totalValue.textContent = String(front + middle + back);
   if(compactSummary) compactSummary.textContent = `奥${back}・中央${middle}・手前${front}`;
+  if(details){
+    const needsInput = rawValues.every(value => String(value ?? "").trim() === "");
+    details.classList.toggle("casePlacementNeedsInput", needsInput);
+  }
 }
 
 function formatSettingValue(value){

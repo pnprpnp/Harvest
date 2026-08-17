@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260817-building-summary-bar">
+<meta name="harvestnavi-version" content="20260817-case-placement-empty-color">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7399,6 +7399,17 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   border:1px solid var(--ui-line);
   border-radius:16px;
   background:var(--ui-surface-muted);
+}
+.casePlacementDetails.casePlacementNeedsInput{
+  border-color:#2563eb;
+  background:#eff6ff;
+}
+.casePlacementDetails.casePlacementNeedsInput > .casePlacementDetailsSummary{
+  background:#eff6ff;
+}
+.casePlacementDetails.casePlacementNeedsInput .casePlacementDetailsLabel,
+.casePlacementDetails.casePlacementNeedsInput .casePlacementCompactSummary{
+  color:#1d4ed8;
 }
 .casePlacementDetailsSummary{
   display:grid;
@@ -19547,13 +19558,22 @@ function populateCasePlacementInputs(){
 }
 
 function updateCasePlacementTotal(){
-  const front = clampNumber(document.getElementById("frontCaseInput")?.value || 0, 0, 999999, 0);
-  const middle = clampNumber(document.getElementById("middleCaseInput")?.value || 0, 0, 999999, 0);
-  const back = clampNumber(document.getElementById("backCaseInput")?.value || 0, 0, 999999, 0);
+  const frontInput = document.getElementById("frontCaseInput");
+  const middleInput = document.getElementById("middleCaseInput");
+  const backInput = document.getElementById("backCaseInput");
+  const rawValues = [frontInput?.value, middleInput?.value, backInput?.value];
+  const front = clampNumber(frontInput?.value || 0, 0, 999999, 0);
+  const middle = clampNumber(middleInput?.value || 0, 0, 999999, 0);
+  const back = clampNumber(backInput?.value || 0, 0, 999999, 0);
   const totalValue = document.getElementById("casePlacementTotalValue");
   const compactSummary = document.getElementById("casePlacementCompactSummary");
+  const details = document.getElementById("casePlacementDetails");
   if(totalValue) totalValue.textContent = String(front + middle + back);
   if(compactSummary) compactSummary.textContent = `奥${back}・中央${middle}・手前${front}`;
+  if(details){
+    const needsInput = rawValues.every(value => String(value ?? "").trim() === "");
+    details.classList.toggle("casePlacementNeedsInput", needsInput);
+  }
 }
 
 function formatSettingValue(value){
