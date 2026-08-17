@@ -396,7 +396,16 @@ function normalizeDashboardRecordTypeFilter(value){
 function invalidateDashboardDerivedData(){
   dashboardHarvestForecastModelCache = null;
   dashboardSeedlingStatusModelCache = null;
-  dashboardSeedlingStatusSelectedLotIndex = null;
+  if(typeof closeDashboardSeedlingStatusDetail === "function"){
+    closeDashboardSeedlingStatusDetail({ restoreFocus: false });
+  }else{
+    dashboardSeedlingStatusSelectedLotIndex = null;
+    dashboardSeedlingStatusDetailOpen = false;
+    if(dashboardSeedlingStatusDetailPositionFrame){
+      cancelAnimationFrame(dashboardSeedlingStatusDetailPositionFrame);
+      dashboardSeedlingStatusDetailPositionFrame = 0;
+    }
+  }
   dashboardPastCalendarItemsByDateCache = null;
   dashboardRenderedSubtabs.clear();
   dashboardRenderedDayKey = "";
@@ -584,6 +593,9 @@ function handleDashboardResultsViewKeydown(event){
 
 function setDashboardSubtab(value){
   const nextSubtab = normalizeDashboardSubtab(value);
+  if(nextSubtab !== "seedlings" && dashboardSeedlingStatusDetailOpen){
+    closeDashboardSeedlingStatusDetail({ restoreFocus: false });
+  }
   if(dashboardFilter.dashboardSubtab !== nextSubtab){
     dashboardFilter.dashboardSubtab = nextSubtab;
     saveDashboardFilter();
@@ -2907,6 +2919,99 @@ function applyDashboardSeedlingStatusLotSelection(lots, bed){
   });
 }
 
+function getDashboardSeedlingStatusViewportBottom(){
+  const viewportBottom = window.innerHeight - 12;
+  const tabBar = document.querySelector(".tabBar");
+  if(!tabBar) return viewportBottom;
+  const tabBarRect = tabBar.getBoundingClientRect();
+  if(tabBarRect.height <= 0 || tabBarRect.top <= 0) return viewportBottom;
+  return Math.min(viewportBottom, tabBarRect.top - 8);
+}
+
+function positionDashboardSeedlingStatusDetail(options = {}){
+  if(!dashboardSeedlingStatusDetailOpen) return false;
+  const detail = document.getElementById("dashboardSeedlingStatusDetail");
+  const bedButton = document.querySelector(
+    `[data-dashboard-seedling-bed="${dashboardSeedlingStatusSelectedBed}"]`
+  );
+  if(!detail || detail.hidden || !bedButton) return false;
+
+  const viewportTop = 12;
+  let viewportBottom = getDashboardSeedlingStatusViewportBottom();
+  let bedRect = bedButton.getBoundingClientRect();
+  const desiredHeight = Math.min(detail.scrollHeight, 420);
+  const minimumUsefulHeight = Math.min(desiredHeight, 150);
+  const getSpace = () => ({
+    above: Math.max(0, bedRect.top - viewportTop - 8),
+    below: Math.max(0, viewportBottom - bedRect.bottom - 8)
+  });
+  let space = getSpace();
+  const bedIsFullyVisible = bedRect.top >= viewportTop && bedRect.bottom <= viewportBottom;
+  const hasUsefulSpace = Math.max(space.above, space.below) >= minimumUsefulHeight;
+
+  if(options.ensureBedVisible && (!bedIsFullyVisible || !hasUsefulSpace)){
+    window.scrollBy({ top: bedRect.top - viewportTop, left: 0, behavior: "auto" });
+    viewportBottom = getDashboardSeedlingStatusViewportBottom();
+    bedRect = bedButton.getBoundingClientRect();
+    space = getSpace();
+  }else if(bedRect.bottom <= viewportTop || bedRect.top >= viewportBottom){
+    closeDashboardSeedlingStatusDetail({ restoreFocus: false });
+    return false;
+  }
+
+  const placeBelow = space.below >= minimumUsefulHeight || space.below >= space.above;
+  const availableHeight = Math.max(72, placeBelow ? space.below : space.above);
+  detail.style.maxHeight = `${availableHeight}px`;
+  const renderedHeight = Math.min(detail.scrollHeight, availableHeight);
+  const top = placeBelow
+    ? bedRect.bottom + 8
+    : bedRect.top - 8 - renderedHeight;
+  const width = detail.offsetWidth;
+  const centeredLeft = bedRect.left + (bedRect.width - width) / 2;
+  const left = Math.min(
+    Math.max(12, centeredLeft),
+    Math.max(12, window.innerWidth - width - 12)
+  );
+  detail.style.top = `${Math.max(viewportTop, top)}px`;
+  detail.style.left = `${left}px`;
+  return true;
+}
+
+function scheduleDashboardSeedlingStatusDetailPosition(options = {}){
+  if(dashboardSeedlingStatusDetailPositionFrame){
+    cancelAnimationFrame(dashboardSeedlingStatusDetailPositionFrame);
+  }
+  dashboardSeedlingStatusDetailPositionFrame = requestAnimationFrame(() => {
+    dashboardSeedlingStatusDetailPositionFrame = 0;
+    positionDashboardSeedlingStatusDetail(options);
+  });
+}
+
+function closeDashboardSeedlingStatusDetail(options = {}){
+  const detail = document.getElementById("dashboardSeedlingStatusDetail");
+  const selectedBed = dashboardSeedlingStatusSelectedBed;
+  dashboardSeedlingStatusDetailOpen = false;
+  dashboardSeedlingStatusSelectedLotIndex = null;
+  if(dashboardSeedlingStatusDetailPositionFrame){
+    cancelAnimationFrame(dashboardSeedlingStatusDetailPositionFrame);
+    dashboardSeedlingStatusDetailPositionFrame = 0;
+  }
+  clearDashboardSeedlingStatusLotSelectionUi();
+  document.querySelectorAll("[data-dashboard-seedling-bed]").forEach(button => {
+    button.setAttribute("aria-expanded", "false");
+  });
+  if(detail){
+    detail.hidden = true;
+    detail.style.removeProperty("top");
+    detail.style.removeProperty("left");
+    detail.style.removeProperty("max-height");
+  }
+  if(options.restoreFocus !== false){
+    document.querySelector(`[data-dashboard-seedling-bed="${selectedBed}"]`)
+      ?.focus({ preventScroll: true });
+  }
+}
+
 function renderDashboardSeedlingStatusDetail(model, building){
   const detail = document.getElementById("dashboardSeedlingStatusDetail");
   if(!detail) return;
@@ -2922,8 +3027,12 @@ function renderDashboardSeedlingStatusDetail(model, building){
   const ageSummary = getDashboardSeedlingBedAgeSummary(lots);
   detail.innerHTML = `
     <div class="dashboardSeedlingStatusDetailHeader">
-      <span class="dashboardSeedlingStatusDetailTitle">${bed}ベッドの詳細</span>
-      <span class="dashboardSeedlingStatusDetailSummary">${escapeHtml(ageSummary)}</span>
+      <div class="dashboardSeedlingStatusDetailHeading">
+        <span id="dashboardSeedlingStatusDetailTitle" class="dashboardSeedlingStatusDetailTitle">${bed}ベッドの詳細</span>
+        <span class="dashboardSeedlingStatusDetailSummary">${escapeHtml(ageSummary)}</span>
+      </div>
+      <button type="button" class="dashboardSeedlingStatusDetailClose"
+        data-ui-click="closeDashboardSeedlingStatusDetail" aria-label="詳細を閉じる">×</button>
     </div>
     <div class="dashboardSeedlingStatusDetailHint">各カード、または選択中のベッドを繰り返しタップすると、表示する定植日数を切り替えられます。</div>
     <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
@@ -2934,7 +3043,11 @@ function renderDashboardSeedlingStatusDetail(model, building){
       )).join("")}
     </div>
   `;
+  detail.hidden = !dashboardSeedlingStatusDetailOpen;
   applyDashboardSeedlingStatusLotSelection(lots, bed);
+  if(dashboardSeedlingStatusDetailOpen){
+    scheduleDashboardSeedlingStatusDetailPosition();
+  }
 }
 
 function renderDashboardSeedlingStatusBeds(model){
@@ -2960,6 +3073,8 @@ function renderDashboardSeedlingStatusBeds(model){
         data-ui-click="setDashboardSeedlingStatusBed" data-ui-arg="${bed}"
         data-dashboard-seedling-bed="${bed}"
         aria-pressed="${isSelected ? "true" : "false"}"
+        aria-haspopup="dialog" aria-controls="dashboardSeedlingStatusDetail"
+        aria-expanded="${isSelected && dashboardSeedlingStatusDetailOpen ? "true" : "false"}"
         aria-label="${bed}ベッド ${escapeHtml(ageAriaLabel)}。詳細を表示。選択中に繰り返しタップすると表示を切り替え">
         <div class="bedTitle">
           <span class="dashboardForecastBedName">${bed}</span>
@@ -3009,10 +3124,12 @@ function setDashboardSeedlingStatusBed(bed){
   const isSameBed = dashboardSeedlingStatusSelectedBed === bed;
   if(!isSameBed) dashboardSeedlingStatusSelectedLotIndex = null;
   dashboardSeedlingStatusSelectedBed = bed;
+  dashboardSeedlingStatusDetailOpen = true;
   document.querySelectorAll("[data-dashboard-seedling-bed]").forEach(button => {
     const isSelected = button.dataset.dashboardSeedlingBed === bed;
     button.classList.toggle("is-selected", isSelected);
     button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    button.setAttribute("aria-expanded", isSelected ? "true" : "false");
   });
   const building = BUILDINGS.includes(dashboardSeedlingStatusBuilding)
     ? dashboardSeedlingStatusBuilding
@@ -3023,6 +3140,7 @@ function setDashboardSeedlingStatusBed(bed){
     dashboardSeedlingStatusSelectedLotIndex = getNextDashboardSeedlingStatusLotIndex(lots);
   }
   renderDashboardSeedlingStatusDetail(model, building);
+  scheduleDashboardSeedlingStatusDetailPosition({ ensureBedVisible: true });
 }
 
 function setDashboardSeedlingStatusBuilding(building){
@@ -3030,6 +3148,7 @@ function setDashboardSeedlingStatusBuilding(building){
   if(!BUILDINGS.includes(normalized)) return;
   if(dashboardSeedlingStatusBuilding !== normalized){
     dashboardSeedlingStatusSelectedLotIndex = null;
+    dashboardSeedlingStatusDetailOpen = false;
   }
   dashboardSeedlingStatusBuilding = normalized;
   document.querySelectorAll("[data-dashboard-seedling-building]").forEach(button => {

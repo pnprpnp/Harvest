@@ -871,14 +871,17 @@
           assert(lotHtml.includes(">16植え<"), "二次定植に16植えバッジが表示されません");
           assert(lotHtml.includes(">20植え<"), "二次定植に20植えバッジが表示されません");
           assert(lotHtml.includes(">株数未記録<"), "二次定植に未記録バッジが表示されません");
-          const bedTapSelections = comparable(app.eval(`(() => {
+          const bedTapState = comparable(app.eval(`(() => {
             dashboardSeedlingStatusBuilding = 3;
             dashboardSeedlingStatusSelectedBed = "B";
             dashboardSeedlingStatusSelectedLotIndex = null;
+            dashboardSeedlingStatusDetailOpen = false;
             dashboardSeedlingStatusModelCache = buildDashboardSeedlingStatusModel(
               new Date(2026, 7, 10)
             );
             renderDashboardSeedlingStatusBeds(dashboardSeedlingStatusModelCache);
+            const detail = document.getElementById("dashboardSeedlingStatusDetail");
+            const initialHidden = detail.hidden;
             const selections = [];
             for(let index = 0; index < 5; index++){
               setDashboardSeedlingStatusBed("B");
@@ -895,19 +898,87 @@
                 ).length
               });
             }
-            return selections;
+            const openState = {
+              hidden: detail.hidden,
+              position: getComputedStyle(detail).position,
+              selectedBedExpanded: document.querySelector(
+                '[data-dashboard-seedling-bed="B"]'
+              ).getAttribute("aria-expanded"),
+              hasCloseButton: !!detail.querySelector(".dashboardSeedlingStatusDetailClose")
+            };
+            closeDashboardSeedlingStatusDetail({ restoreFocus: false });
+            return {
+              initialHidden,
+              selections,
+              openState,
+              closedState: {
+                hidden: detail.hidden,
+                selectedBedExpanded: document.querySelector(
+                  '[data-dashboard-seedling-bed="B"]'
+                ).getAttribute("aria-expanded"),
+                selectedLotIndex: dashboardSeedlingStatusSelectedLotIndex
+              }
+            };
           })()`));
-          assertDeepEqual(bedTapSelections, [
-            { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 },
-            { index: 1, plantingCountText: "20植え", selectedPalletCount: 1, selectedCardCount: 1 },
-            { index: 2, plantingCountText: "16植え", selectedPalletCount: 1, selectedCardCount: 1 },
-            { index: 3, plantingCountText: "未定植", selectedPalletCount: 75, selectedCardCount: 1 },
-            { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 }
-          ], "同じベッドの連続タップで詳細カードを順番に切り替えられません");
+          assertDeepEqual(bedTapState, {
+            initialHidden: true,
+            selections: [
+              { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 },
+              { index: 1, plantingCountText: "20植え", selectedPalletCount: 1, selectedCardCount: 1 },
+              { index: 2, plantingCountText: "16植え", selectedPalletCount: 1, selectedCardCount: 1 },
+              { index: 3, plantingCountText: "未定植", selectedPalletCount: 75, selectedCardCount: 1 },
+              { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 }
+            ],
+            openState: {
+              hidden: false,
+              position: "fixed",
+              selectedBedExpanded: "true",
+              hasCloseButton: true
+            },
+            closedState: {
+              hidden: true,
+              selectedBedExpanded: "false",
+              selectedLotIndex: null
+            }
+          }, "同じベッドの連続タップで浮動詳細を順番に切り替えられません");
         }finally{
           app.eval(`dashboardSeedlingStatusModelCache = null;
-            dashboardSeedlingStatusSelectedLotIndex = null;`);
+            dashboardSeedlingStatusSelectedLotIndex = null;
+            dashboardSeedlingStatusDetailOpen = false;`);
           replaceAppHistory(app, previousRecords, previousEvents);
+        }
+      });
+
+      await runTest("二次定植の浮動詳細を選択ベッドと重ねず画面内に表示する", async () => {
+        const visualFrame = await loadVisualAppFrame(390, 844);
+        const visualApp = visualFrame.contentWindow;
+        try{
+          visualApp.eval("protectedAccessUnlocked = true");
+          visualApp.document.getElementById("welcomeScreen")?.remove();
+          visualApp.switchTab("dashboard");
+          visualApp.setDashboardSubtab("seedlings");
+          await settleVisualApp(visualApp);
+          const bed = visualApp.document.querySelector(".dashboardSeedlingStatusBed.is-selected");
+          assert(bed, "選択中の二次定植ベッドがありません");
+          visualApp.setDashboardSeedlingStatusBed(bed.dataset.dashboardSeedlingBed);
+          await settleVisualApp(visualApp);
+          const detail = visualApp.document.getElementById("dashboardSeedlingStatusDetail");
+          const tabBar = visualApp.document.querySelector(".tabBar");
+          const bedRect = bed.getBoundingClientRect();
+          const detailRect = detail.getBoundingClientRect();
+          const tabBarRect = tabBar.getBoundingClientRect();
+          const overlaps = bedRect.left < detailRect.right
+            && bedRect.right > detailRect.left
+            && bedRect.top < detailRect.bottom
+            && bedRect.bottom > detailRect.top;
+          assert(!detail.hidden, "二次定植の浮動詳細が開きません");
+          assert(!overlaps, "浮動詳細が選択中のベッドを隠しています");
+          assert(bedRect.top >= 0 && bedRect.bottom <= tabBarRect.top,
+            "選択中のベッドが画面内に収まっていません");
+          assert(detailRect.top >= 0 && detailRect.bottom <= tabBarRect.top,
+            "浮動詳細が画面内に収まっていません");
+        }finally{
+          visualFrame.remove();
         }
       });
 
@@ -2688,18 +2759,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "50b0ed02", elements: 2051, visible: 646, viewport: "390x844" },
-          cssStates: { hash: "8f1e8e33", elements: 2119, visible: 705, viewport: "390x844" },
-          cssFocus: { hash: "9251db5a", elements: 2119, visible: 705, viewport: "390x844" },
-          mobileRecord: { hash: "4858251d", elements: 2052, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "3c1a76b6", elements: 2052, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "04071729", elements: 2135, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "3ac53de0", elements: 2150, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "45698267", elements: 2150, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "a5323b09", elements: 2150, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "a780f5b9", elements: 2150, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "7b5c55e1", elements: 2150, visible: 652, viewport: "1024x900" },
-          wideDashboard: { hash: "0f86b608", elements: 2150, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "fbcd0e8b", elements: 2051, visible: 646, viewport: "390x844" },
+          cssStates: { hash: "e2f30db4", elements: 2119, visible: 705, viewport: "390x844" },
+          cssFocus: { hash: "4e43e739", elements: 2119, visible: 705, viewport: "390x844" },
+          mobileRecord: { hash: "c1b690f0", elements: 2052, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "fb519af1", elements: 2052, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "38c500ba", elements: 2135, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "8d74fe8f", elements: 2150, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "4cfb6778", elements: 2150, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "54576354", elements: 2150, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "10cefa4a", elements: 2150, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "134e9d30", elements: 2150, visible: 652, viewport: "1024x900" },
+          wideDashboard: { hash: "8cea79ff", elements: 2150, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

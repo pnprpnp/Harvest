@@ -159,6 +159,10 @@ function installStartupImportEvent(){
 
 function handleStartupEscapeKey(event){
   if(event.key !== "Escape") return;
+  if(dashboardSeedlingStatusDetailOpen){
+    closeDashboardSeedlingStatusDetail();
+    return;
+  }
   const syncConflictPanel = document.getElementById("syncConflictPanel");
   if(syncConflictPanel?.classList.contains("show")){
     closeSyncConflictPanel();
@@ -234,6 +238,16 @@ function handleRecordDetailFocusTrap(event){
 
 function installStartupGlobalEvents(){
   document.addEventListener("keydown", handleStartupEscapeKey);
+  window.addEventListener("resize", () => {
+    if(dashboardSeedlingStatusDetailOpen){
+      scheduleDashboardSeedlingStatusDetailPosition({ ensureBedVisible: true });
+    }
+  });
+  window.addEventListener("scroll", () => {
+    if(dashboardSeedlingStatusDetailOpen){
+      scheduleDashboardSeedlingStatusDetailPosition();
+    }
+  }, { passive: true });
   document.addEventListener("pointermove", handlePalletDragMove, { passive:false });
   document.addEventListener("pointerup", finishPalletDrag, { passive:false });
   document.addEventListener("pointercancel", finishPalletDrag, { passive:false });

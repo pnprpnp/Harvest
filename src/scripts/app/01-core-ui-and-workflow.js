@@ -214,6 +214,8 @@ let dashboardHarvestForecastBuilding = null;
 let dashboardSeedlingStatusBuilding = null;
 let dashboardSeedlingStatusSelectedBed = "F";
 let dashboardSeedlingStatusSelectedLotIndex = null;
+let dashboardSeedlingStatusDetailOpen = false;
+let dashboardSeedlingStatusDetailPositionFrame = 0;
 let dashboardSeedlingStatusModelCache = null;
 let dashboardHarvestForecastModelCache = null;
 let dashboardPastCalendarActive = false;
@@ -2151,6 +2153,9 @@ function restoreForecastSelectionState(options = {}){
 }
 
 function closeRecordFloatingUi(){
+  if(typeof closeDashboardSeedlingStatusDetail === "function"){
+    closeDashboardSeedlingStatusDetail({ restoreFocus: false });
+  }
   closeRecordDetailWindow({ restoreFocus: false });
   closePartialHarvestEditWindow({ restoreFocus: false });
   closeBedDetailWindow();
