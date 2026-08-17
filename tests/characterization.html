@@ -1451,6 +1451,29 @@
         }, "収穫ケース数の外側がページ背景と一体化していません");
       });
 
+      await runTest("収穫ケース数の行を上へ詰めて見出しを大きくする", () => {
+        const previousTab = app.eval("activeAppTab");
+        try{
+          app.setMainTabSelection("forecast");
+          const topChromeRect = app.document.querySelector(".appTopChrome").getBoundingClientRect();
+          const fieldRect = app.document.querySelector(".forecastCaseField").getBoundingClientRect();
+          const label = app.document.querySelector(".forecastCaseField label");
+          const inputWrap = app.document.querySelector(".forecastCaseField .forecastCaseUnitWrap");
+          const labelRect = label.getBoundingClientRect();
+          const inputRect = inputWrap.getBoundingClientRect();
+          const topGap = fieldRect.top - topChromeRect.bottom;
+          const centerOffset = Math.abs(
+            (labelRect.top + labelRect.height / 2)
+            - (inputRect.top + inputRect.height / 2)
+          );
+          assert(topGap <= 24, `収穫ケース数の行が上部から離れています（${Math.round(topGap)}px）`);
+          assert(parseFloat(app.getComputedStyle(label).fontSize) >= 19, "収穫ケース数の見出しが十分に大きくありません");
+          assert(centerOffset <= 2, "収穫ケース数の見出しと入力欄の縦位置が揃っていません");
+        }finally{
+          app.setMainTabSelection(previousTab);
+        }
+      });
+
       await runTest("シミュのケース配分を普段は一行要約で表示する", () => {
         const previousTab = app.eval("activeAppTab");
         const details = app.document.getElementById("casePlacementDetails");
@@ -3065,18 +3088,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "06661e30", elements: 2059, visible: 627, viewport: "390x844" },
-          cssStates: { hash: "86b902f0", elements: 2127, visible: 686, viewport: "390x844" },
-          cssFocus: { hash: "e585f559", elements: 2127, visible: 686, viewport: "390x844" },
-          mobileRecord: { hash: "3c9ba42a", elements: 2060, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "1c7fcf7d", elements: 2060, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "cd0cacaf", elements: 2143, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "cb95ce73", elements: 2158, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "363885c4", elements: 2158, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "b098c37e", elements: 2158, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "139474f2", elements: 2158, visible: 90, viewport: "390x844" },
-          wideForecast: { hash: "ebbc417b", elements: 2158, visible: 633, viewport: "1024x900" },
-          wideDashboard: { hash: "a26a83c6", elements: 2158, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "36bf4144", elements: 2059, visible: 627, viewport: "390x844" },
+          cssStates: { hash: "4caaf124", elements: 2127, visible: 686, viewport: "390x844" },
+          cssFocus: { hash: "424c7a1d", elements: 2127, visible: 686, viewport: "390x844" },
+          mobileRecord: { hash: "2a665510", elements: 2060, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "2dc1eed7", elements: 2060, visible: 130, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "93adaf11", elements: 2143, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "272f6055", elements: 2158, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "3eea453e", elements: 2158, visible: 311, viewport: "390x844" },
+          mobileSettings: { hash: "2c321330", elements: 2158, visible: 274, viewport: "390x844" },
+          mobileMonitor: { hash: "4cbf5ce4", elements: 2158, visible: 90, viewport: "390x844" },
+          wideForecast: { hash: "44d423f1", elements: 2158, visible: 633, viewport: "1024x900" },
+          wideDashboard: { hash: "7c8be7bc", elements: 2158, visible: 136, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
