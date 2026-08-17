@@ -2835,12 +2835,10 @@ function getDashboardSeedlingBedAgeSummary(lots){
 
 function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
   const ageText = lot.isUnplanted ? "" : `${lot.ageDays}日経過`;
-  const numberText = formatPalletNumberSideRanges(lot.palletNumbers);
   const ariaLabel = [
     lot.qualityText,
     lot.isUnplanted ? "" : lot.plantingCountText,
     ageText,
-    `番号 ${numberText}`,
     `${lot.palletCount}パレット`,
     "パレット位置を表示"
   ].filter(Boolean).join("、");
@@ -2860,7 +2858,6 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
       </span>
       ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
       <span class="dashboardSeedlingStatusCount">
-        <span>番号 ${escapeHtml(numberText)}</span>
         <span>${lot.palletCount}パレット</span>
       </span>
     </button>

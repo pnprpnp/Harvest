@@ -871,6 +871,34 @@
           assert(lotHtml.includes(">16植え<"), "二次定植に16植えバッジが表示されません");
           assert(lotHtml.includes(">20植え<"), "二次定植に20植えバッジが表示されません");
           assert(lotHtml.includes(">株数未記録<"), "二次定植に未記録バッジが表示されません");
+          assert(!lotHtml.includes("番号 "), "二次定植の詳細にパレット番号が残っています");
+          assert(lotHtml.includes(">1パレット<"), "二次定植の詳細にパレット数が表示されません");
+          const ageStyle = comparable(app.eval(`(() => {
+            const mount = document.createElement("div");
+            mount.className = "dashboardSeedlingStatusPopover";
+            mount.innerHTML = getDashboardSeedlingStatusLotHtml(
+              buildDashboardSeedlingStatusModel(new Date(2026, 7, 10))
+                .bedLots.get("3-B").find(lot => !lot.isUnplanted),
+              0,
+              false
+            );
+            document.body.appendChild(mount);
+            const style = getComputedStyle(mount.querySelector(".dashboardSeedlingStatusAge"));
+            const result = {
+              fontSize: style.fontSize,
+              fontWeight: style.fontWeight,
+              textAlign: style.textAlign,
+              backgroundColor: style.backgroundColor
+            };
+            mount.remove();
+            return result;
+          })()`));
+          assertDeepEqual(ageStyle, {
+            fontSize: "17px",
+            fontWeight: "950",
+            textAlign: "center",
+            backgroundColor: "rgb(220, 252, 231)"
+          }, "二次定植の経過日数が強調表示になっていません");
           const bedTapState = comparable(app.eval(`(() => {
             dashboardSeedlingStatusBuilding = 3;
             dashboardSeedlingStatusSelectedBed = "B";
