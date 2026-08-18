@@ -1129,9 +1129,8 @@
             harvestFillKeys = ["2-A-7", "2-A-8", "2-A-9", "2-A-10", "2-A-11", "2-A-12"];
           `);
           const aheadState = comparable(app.eval(`(() => {
+            renderForecastSummary();
             const info = getHarvestOrderSkipSeedlingInfo();
-            updateHarvestOrderSkipSeedlingNote(info);
-            const note = document.getElementById("harvestOrderSkipSeedlingNote");
             return {
               shouldShow: info.shouldShow,
               normalStartKey: info.normalStartKey,
@@ -1139,8 +1138,8 @@
               skippedPalletCount: info.skippedPalletCount,
               skippedSeedlingTrayCount: info.skippedSeedlingTrayCount,
               skippedPalletKeys: info.skippedPalletKeys,
-              noteHidden: note.hidden,
-              noteText: note.textContent.replace(/\s+/g, " ").trim(),
+              simulationSkipCardExists: !!document.getElementById("harvestOrderSkipSeedlingNote"),
+              simulationSummaryShowsSkip: document.getElementById("instructionSummary").textContent.includes("先取り収穫"),
               monitorSeedling: getCurrentMonitorInstructionFields().seedling
             };
           })()`));
@@ -1151,8 +1150,8 @@
             skippedPalletCount: 6,
             skippedSeedlingTrayCount: 1,
             skippedPalletKeys: ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "2-A-5", "2-A-6"],
-            noteHidden: false,
-            noteText: "先取り収穫：苗を1枚飛ばす（通常順で先にある未収穫パレット 6枚分）",
+            simulationSkipCardExists: false,
+            simulationSummaryShowsSkip: false,
             monitorSeedling: "1枚（先取り収穫: 苗を1枚飛ばす）"
           }, "先取り収穫で飛ばす苗枚数を計算・表示できません");
 
@@ -1162,17 +1161,16 @@
             harvestSelectionMode = "auto";
             harvestFillKeys = ["2-A-7", "2-A-8", "2-A-9", "2-A-10", "2-A-11", "2-A-12"];
             const autoInfo = getHarvestOrderSkipSeedlingInfo();
-            updateHarvestOrderSkipSeedlingNote(autoInfo);
             return {
               manualNormalOrderShows: manualInfo.shouldShow,
               automaticSelectionShows: autoInfo.shouldShow,
-              noteHidden: document.getElementById("harvestOrderSkipSeedlingNote").hidden
+              simulationSkipCardExists: !!document.getElementById("harvestOrderSkipSeedlingNote")
             };
           })()`));
           assertDeepEqual(normalState, {
             manualNormalOrderShows: false,
             automaticSelectionShows: false,
-            noteHidden: true
+            simulationSkipCardExists: false
           }, "通常順または自動計算でも苗飛ばし表示が出ています");
         }finally{
           app.eval(`
@@ -1183,7 +1181,6 @@
           `);
           replaceAppHistory(app, previousRecords, previousEvents);
           app.invalidatePlantingEventStateCache();
-          app.updateHarvestOrderSkipSeedlingNote();
         }
       });
 
@@ -1242,8 +1239,21 @@
               skippedSeedlingTrayCount: info.skippedSeedlingTrayCount,
               skippedStart: info.skippedPalletKeys[0],
               skippedEnd: info.skippedPalletKeys[info.skippedPalletKeys.length - 1],
+              harvestSegments: info.harvestOrderSegments.map(segment => ({
+                type: segment.type,
+                palletCount: segment.palletKeys.length,
+                seedlingTrayCount: segment.seedlingTrayCount
+              })),
               seedlingHouseSkippedCount: plan.skippedCount,
-              seedlingHouseSkippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys)
+              seedlingHouseSkippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys),
+              seedlingHouseSelectedCount: plan.selectedCount,
+              seedlingHouseSelectedRange: formatSeedlingHouseSelectionRange(plan.selectedKeys),
+              seedlingHouseSelectedBreaks: [
+                plan.selectedKeys[0],
+                plan.selectedKeys[15],
+                plan.selectedKeys[16],
+                plan.selectedKeys[31]
+              ]
             };
           })()`));
           assertDeepEqual(result, {
@@ -1254,8 +1264,16 @@
             skippedSeedlingTrayCount: 16,
             skippedStart: "2-F-1",
             skippedEnd: "2-F-78",
+            harvestSegments: [
+              { type: "selected", palletCount: 78, seedlingTrayCount: 16 },
+              { type: "skipped", palletCount: 78, seedlingTrayCount: 16 },
+              { type: "selected", palletCount: 78, seedlingTrayCount: 16 }
+            ],
             seedlingHouseSkippedCount: 16,
-            seedlingHouseSkippedRange: "A-1〜A-16"
+            seedlingHouseSkippedRange: "A-17〜A-32",
+            seedlingHouseSelectedCount: 32,
+            seedlingHouseSelectedRange: "A-1〜A-16、A-33〜A-48",
+            seedlingHouseSelectedBreaks: ["1-A-1", "1-A-16", "1-A-33", "1-A-48"]
           }, "2号棟Fを抜かして3号棟Aを収穫した時の苗飛ばし枚数が一致しません");
         }finally{
           app.eval(`
@@ -1266,7 +1284,6 @@
           `);
           replaceAppHistory(app, previousRecords, previousEvents);
           app.invalidatePlantingEventStateCache();
-          app.updateHarvestOrderSkipSeedlingNote();
         }
       });
 
@@ -3697,18 +3714,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "ef7a11da", elements: 2085, visible: 635, viewport: "390x844" },
-          cssStates: { hash: "e1389b5e", elements: 2153, visible: 694, viewport: "390x844" },
-          cssFocus: { hash: "f183cf3b", elements: 2153, visible: 694, viewport: "390x844" },
-          mobileRecord: { hash: "20161751", elements: 2086, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "0ee43ed6", elements: 2086, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "9384996c", elements: 2169, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "32e3bede", elements: 2184, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "f199d59a", elements: 2184, visible: 310, viewport: "390x844" },
-          mobileSettings: { hash: "63abdf0b", elements: 2184, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "9e4a4203", elements: 2184, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "5fad307c", elements: 2184, visible: 641, viewport: "1024x900" },
-          wideDashboard: { hash: "18b1a364", elements: 2184, visible: 135, viewport: "1024x900" }
+          mobileForecast: { hash: "1e3399f3", elements: 2084, visible: 635, viewport: "390x844" },
+          cssStates: { hash: "9d60fb0d", elements: 2152, visible: 694, viewport: "390x844" },
+          cssFocus: { hash: "fda59620", elements: 2152, visible: 694, viewport: "390x844" },
+          mobileRecord: { hash: "abfe721f", elements: 2085, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "f733e460", elements: 2085, visible: 129, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "13dc6fb2", elements: 2168, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "5cdd2937", elements: 2183, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "3ca64c3d", elements: 2183, visible: 310, viewport: "390x844" },
+          mobileSettings: { hash: "ee4db196", elements: 2183, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "316533a8", elements: 2183, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "14d18bb5", elements: 2183, visible: 641, viewport: "1024x900" },
+          wideDashboard: { hash: "a0bb029f", elements: 2183, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
