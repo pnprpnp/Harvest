@@ -1323,6 +1323,42 @@
               seedlingHousePalletKeys: plan.selectedKeys,
               detailsUnknown: false
             }]);
+            const followUpPlan = allocateSeedlingHousePlan(aheadRecordedUsage, 0, 20);
+            const followUpUsage = getSeedlingHouseUsageState([{
+              eventId: 2,
+              plantingDate: "2026-08-18",
+              actualSeedlingTrayCount: 16,
+              seedlingHousePalletKeys: plan.selectedKeys,
+              detailsUnknown: false
+            }, {
+              eventId: 3,
+              plantingDate: "2026-08-19",
+              actualSeedlingTrayCount: 20,
+              seedlingHousePalletKeys: followUpPlan.selectedKeys,
+              detailsUnknown: false
+            }]);
+            const nearEndKeys = order.slice(0, 460);
+            const nearEndUsage = getSeedlingHouseUsageState([{
+              eventId: 4,
+              plantingDate: "2026-08-20",
+              actualSeedlingTrayCount: nearEndKeys.length,
+              seedlingHousePalletKeys: nearEndKeys,
+              detailsUnknown: false
+            }]);
+            const rolloverPlan = allocateSeedlingHousePlan(nearEndUsage, 0, 16);
+            const rolloverUsage = getSeedlingHouseUsageState([{
+              eventId: 4,
+              plantingDate: "2026-08-20",
+              actualSeedlingTrayCount: nearEndKeys.length,
+              seedlingHousePalletKeys: nearEndKeys,
+              detailsUnknown: false
+            }, {
+              eventId: 5,
+              plantingDate: "2026-08-21",
+              actualSeedlingTrayCount: rolloverPlan.selectedKeys.length,
+              seedlingHousePalletKeys: rolloverPlan.selectedKeys,
+              detailsUnknown: false
+            }]);
             return {
               orderBreaks: [order[0], order[77], order[78], order[155], order[156], order[233], order[234], order[311], order[312], order[389], order[390], order[467]],
               skippedHarvestCount: skippedHarvestBed.length,
@@ -1331,7 +1367,22 @@
               skippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys),
               selectedRange: formatSeedlingHouseSelectionRange(plan.selectedKeys),
               legacyNext: legacyUsage.nextKey,
-              nextAfterAheadTake: aheadRecordedUsage.nextKey
+              nextAfterAheadTake: aheadRecordedUsage.nextKey,
+              followUpBreaks: [
+                followUpPlan.selectedKeys[0],
+                followUpPlan.selectedKeys[15],
+                followUpPlan.selectedKeys[16],
+                followUpPlan.selectedKeys[19]
+              ],
+              nextAfterFollowUp: followUpUsage.nextKey,
+              rolloverBreaks: [
+                rolloverPlan.selectedKeys[0],
+                rolloverPlan.selectedKeys[7],
+                rolloverPlan.selectedKeys[8],
+                rolloverPlan.selectedKeys[15]
+              ],
+              rolloverNext: rolloverUsage.nextKey,
+              rolloverUsedCount: rolloverUsage.usedSet.size
             };
           })()`));
           assertDeepEqual(model, {
@@ -1342,7 +1393,12 @@
             skippedRange: "A-1〜A-16",
             selectedRange: "A-17〜A-32",
             legacyNext: "1-A-3",
-            nextAfterAheadTake: "1-A-1"
+            nextAfterAheadTake: "1-A-1",
+            followUpBreaks: ["1-A-1", "1-A-16", "1-A-33", "1-A-36"],
+            nextAfterFollowUp: "1-A-37",
+            rolloverBreaks: ["1-F-71", "1-F-78", "1-A-1", "1-A-8"],
+            rolloverNext: "1-A-9",
+            rolloverUsedCount: 8
           }, "1号棟の苗取り順・切り上げ・先取り時の飛ばし方が一致しません");
 
           app.eval(`
@@ -1379,6 +1435,31 @@
             legacyCustomPalletCount: 0,
             summary: "苗を16枚飛ばす → 16枚取る"
           }, "1号棟が他の棟と同じ簡易ベッド配置図になっていません");
+          app.eval(`
+            renderSeedlingHouseUi(getSeedlingHousePlanForHarvestKeys([], {
+              takeCount: 0,
+              selectionMode: "auto",
+              sourceRecords: [],
+              sourceEvents: [{
+                eventId: 6,
+                plantingDate: "2026-08-18",
+                actualSeedlingTrayCount: 16,
+                seedlingHousePalletKeys: Array.from({ length: 16 }, (_, index) => getPalletKey(1, "A", index + 17)),
+                detailsUnknown: false
+              }],
+              shouldShowSelection: false
+            }));
+          `);
+          assertDeepEqual({
+            recordedCellCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell.is-recorded").length,
+            hasCompletedCount: [...app.document.querySelectorAll("#seedlingHouseBeds .simulationBedOverviewCounts")]
+              .some(element => element.textContent.includes("済")),
+            summary: app.document.getElementById("seedlingHouseSummary").textContent.trim()
+          }, {
+            recordedCellCount: 0,
+            hasCompletedCount: false,
+            summary: "次回開始 A-1"
+          }, "過去の苗取り場所が苗取り済み表示として残っています");
         }finally{
           app.closeSeedlingHouseWindow({ restoreFocus: false });
           app.eval(`

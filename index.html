@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260818-cross-building-seedling-skip">
+<meta name="harvestnavi-version" content="20260818-seedling-rollover-selection">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -26042,12 +26042,7 @@ function getSeedlingHouseEventKeys(event, usedSet, order){
     );
   }
 
-  let available = order.filter(key => !usedSet.has(key));
-  if(available.length < trayCount){
-    usedSet.clear();
-    available = [...order];
-  }
-  return available.slice(0, trayCount);
+  return order.filter(key => !usedSet.has(key)).slice(0, trayCount);
 }
 
 function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {}){
@@ -26059,10 +26054,29 @@ function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {})
     .sort(comparePlantingEventsAsc);
 
   events.forEach(event => {
-    const storedKeys = normalizeSeedlingHousePalletKeys(event?.seedlingHousePalletKeys);
-    if(storedKeys.some(key => usedSet.has(key))) usedSet.clear();
+    const trayCount = clampNumber(event?.actualSeedlingTrayCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+    if(trayCount <= 0 || event?.detailsUnknown) return;
     const eventKeys = getSeedlingHouseEventKeys(event, usedSet, order);
-    if(!eventKeys.length) return;
+    const repeatedKeys = eventKeys.filter(key => usedSet.has(key));
+
+    if(repeatedKeys.length){
+      // 一つの記録が周回末尾と次の周回先頭をまたぐ場合、次の周回で
+      // 取り始めた場所だけを残す。前周回の末尾を「苗取り済み」として
+      // 新しい周回へ持ち越すと、その場所が次周回で選ばれなくなる。
+      usedSet.clear();
+      repeatedKeys.forEach(key => usedSet.add(key));
+      return;
+    }
+
+    const availableCount = order.length - usedSet.size;
+    if(!normalizeSeedlingHousePalletKeys(event?.seedlingHousePalletKeys).length
+      && trayCount > availableCount){
+      const nextCycleCount = Math.min(order.length, trayCount - availableCount);
+      usedSet.clear();
+      order.slice(0, nextCycleCount).forEach(key => usedSet.add(key));
+      return;
+    }
+
     eventKeys.forEach(key => usedSet.add(key));
   });
 
@@ -27972,7 +27986,6 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
 
   const selectedSet = new Set(selectedKeys);
   const skippedSet = new Set(skippedKeys);
-  const usedSet = plan.usedSet instanceof Set ? plan.usedSet : new Set();
   beds.innerHTML = "";
 
   bedMap.forEach(bedName => {
@@ -27986,24 +27999,19 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
     bed.appendChild(title);
     appendBedOverviewMap(bed, SEEDLING_HOUSE_BUILDING, item.bed, {
       selectedSet,
-      recordedSet: usedSet,
       seedlingSkippedSet: skippedSet,
       seedlingNextSet: !showSelection && plan.nextKey ? new Set([plan.nextKey]) : new Set()
     });
-    const counts = getBedSummaryCounts(SEEDLING_HOUSE_BUILDING, item.bed, {
-      selectedSet,
-      recordedSet: usedSet
-    });
+    const counts = getBedSummaryCounts(SEEDLING_HOUSE_BUILDING, item.bed, { selectedSet });
     const skippedCount = [...skippedSet].filter(key => parsePalletKey(key).bed === item.bed).length;
     const countRow = document.createElement("div");
     countRow.className = "simulationBedOverviewCounts";
     countRow.innerHTML = [
       counts.selected ? `<span class="simulationBedOverviewCountSelected">取る ${counts.selected}</span>` : "",
-      skippedCount ? `<span class="seedlingHouseBedCountSkipped">残す ${skippedCount}</span>` : "",
-      counts.recorded ? `<span class="simulationBedOverviewCountRecorded">済 ${counts.recorded}</span>` : ""
+      skippedCount ? `<span class="seedlingHouseBedCountSkipped">残す ${skippedCount}</span>` : ""
     ].filter(Boolean).join("");
     bed.appendChild(countRow);
-    bed.setAttribute("aria-label", `1号棟 ${item.bed}ベッド。${item.direction < 0 ? "78から1" : "1から78"}の順。今回取る${counts.selected}枚、飛ばして残す${skippedCount}枚、苗取り済み${counts.recorded}枚`);
+    bed.setAttribute("aria-label", `1号棟 ${item.bed}ベッド。${item.direction < 0 ? "78から1" : "1から78"}の順。今回取る${counts.selected}枚、飛ばして残す${skippedCount}枚`);
     beds.appendChild(bed);
   });
 }

@@ -58,7 +58,6 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
 
   const selectedSet = new Set(selectedKeys);
   const skippedSet = new Set(skippedKeys);
-  const usedSet = plan.usedSet instanceof Set ? plan.usedSet : new Set();
   beds.innerHTML = "";
 
   bedMap.forEach(bedName => {
@@ -72,24 +71,19 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
     bed.appendChild(title);
     appendBedOverviewMap(bed, SEEDLING_HOUSE_BUILDING, item.bed, {
       selectedSet,
-      recordedSet: usedSet,
       seedlingSkippedSet: skippedSet,
       seedlingNextSet: !showSelection && plan.nextKey ? new Set([plan.nextKey]) : new Set()
     });
-    const counts = getBedSummaryCounts(SEEDLING_HOUSE_BUILDING, item.bed, {
-      selectedSet,
-      recordedSet: usedSet
-    });
+    const counts = getBedSummaryCounts(SEEDLING_HOUSE_BUILDING, item.bed, { selectedSet });
     const skippedCount = [...skippedSet].filter(key => parsePalletKey(key).bed === item.bed).length;
     const countRow = document.createElement("div");
     countRow.className = "simulationBedOverviewCounts";
     countRow.innerHTML = [
       counts.selected ? `<span class="simulationBedOverviewCountSelected">取る ${counts.selected}</span>` : "",
-      skippedCount ? `<span class="seedlingHouseBedCountSkipped">残す ${skippedCount}</span>` : "",
-      counts.recorded ? `<span class="simulationBedOverviewCountRecorded">済 ${counts.recorded}</span>` : ""
+      skippedCount ? `<span class="seedlingHouseBedCountSkipped">残す ${skippedCount}</span>` : ""
     ].filter(Boolean).join("");
     bed.appendChild(countRow);
-    bed.setAttribute("aria-label", `1号棟 ${item.bed}ベッド。${item.direction < 0 ? "78から1" : "1から78"}の順。今回取る${counts.selected}枚、飛ばして残す${skippedCount}枚、苗取り済み${counts.recorded}枚`);
+    bed.setAttribute("aria-label", `1号棟 ${item.bed}ベッド。${item.direction < 0 ? "78から1" : "1から78"}の順。今回取る${counts.selected}枚、飛ばして残す${skippedCount}枚`);
     beds.appendChild(bed);
   });
 }

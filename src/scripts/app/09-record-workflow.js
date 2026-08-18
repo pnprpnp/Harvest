@@ -563,12 +563,7 @@ function getSeedlingHouseEventKeys(event, usedSet, order){
     );
   }
 
-  let available = order.filter(key => !usedSet.has(key));
-  if(available.length < trayCount){
-    usedSet.clear();
-    available = [...order];
-  }
-  return available.slice(0, trayCount);
+  return order.filter(key => !usedSet.has(key)).slice(0, trayCount);
 }
 
 function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {}){
@@ -580,10 +575,29 @@ function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {})
     .sort(comparePlantingEventsAsc);
 
   events.forEach(event => {
-    const storedKeys = normalizeSeedlingHousePalletKeys(event?.seedlingHousePalletKeys);
-    if(storedKeys.some(key => usedSet.has(key))) usedSet.clear();
+    const trayCount = clampNumber(event?.actualSeedlingTrayCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+    if(trayCount <= 0 || event?.detailsUnknown) return;
     const eventKeys = getSeedlingHouseEventKeys(event, usedSet, order);
-    if(!eventKeys.length) return;
+    const repeatedKeys = eventKeys.filter(key => usedSet.has(key));
+
+    if(repeatedKeys.length){
+      // 一つの記録が周回末尾と次の周回先頭をまたぐ場合、次の周回で
+      // 取り始めた場所だけを残す。前周回の末尾を「苗取り済み」として
+      // 新しい周回へ持ち越すと、その場所が次周回で選ばれなくなる。
+      usedSet.clear();
+      repeatedKeys.forEach(key => usedSet.add(key));
+      return;
+    }
+
+    const availableCount = order.length - usedSet.size;
+    if(!normalizeSeedlingHousePalletKeys(event?.seedlingHousePalletKeys).length
+      && trayCount > availableCount){
+      const nextCycleCount = Math.min(order.length, trayCount - availableCount);
+      usedSet.clear();
+      order.slice(0, nextCycleCount).forEach(key => usedSet.add(key));
+      return;
+    }
+
     eventKeys.forEach(key => usedSet.add(key));
   });
 
