@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260818-seedling-house-one">
+<meta name="harvestnavi-version" content="20260818-seedling-house-simple-map">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7442,44 +7442,11 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   line-height:1.4;
 }
 .seedlingHousePlanNote{color:var(--ui-text-secondary);font-size:13px;font-weight:650;line-height:1.45;}
-.seedlingHouseBeds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
-.seedlingHouseBed{
-  min-width:0;
-  padding:8px;
-  border:1px solid var(--ui-line);
-  border-radius:14px;
-  background:var(--ui-bg);
-}
-.seedlingHouseBedHeader{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:6px;
-  margin-bottom:6px;
-  color:var(--ui-text);
-  font-size:13px;
-  font-weight:800;
-}
-.seedlingHouseBedDirection{color:var(--ui-text-tertiary);font-size:10px;font-weight:700;}
-.seedlingHousePalletGrid{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:2px;}
-.seedlingHousePallet{
-  min-width:0;
-  aspect-ratio:1;
-  display:grid;
-  place-items:center;
-  overflow:hidden;
-  border:1px solid rgba(148,163,184,.28);
-  border-radius:3px;
-  background:#fff;
-  color:var(--ui-text-tertiary);
-  font-size:7px;
-  font-weight:700;
-  line-height:1;
-}
-.seedlingHousePallet.is-used{background:#e5e7eb;color:#9ca3af;opacity:.7;}
-.seedlingHousePallet.is-skipped{border-color:#f59e0b;background:#fffbeb;color:#92400e;opacity:1;}
-.seedlingHousePallet.is-selected{border-color:#16a34a;background:#22c55e;color:#fff;opacity:1;}
-.seedlingHousePallet.is-next{box-shadow:inset 0 0 0 2px #7c3aed;background:#f5f3ff;color:#5b21b6;opacity:1;}
+.seedlingHouseBeds{gap:9px;}
+.seedlingHouseBedOverview{cursor:default;}
+.seedlingHouseBedOverview .simulationBedMapCell.is-seedling-skipped{background:#fbbf24;border-color:#d97706;opacity:1;}
+.seedlingHouseBedOverview .simulationBedMapCell.is-seedling-next{background:#c4b5fd;border-color:#7c3aed;box-shadow:inset 0 0 0 1px #7c3aed;opacity:1;}
+.seedlingHouseBedCountSkipped{color:#b45309;}
 .seedlingHouseLegend{display:flex;flex-wrap:wrap;gap:8px 14px;color:var(--ui-text-secondary);font-size:11px;font-weight:700;}
 .seedlingHouseLegend > span{display:inline-flex;align-items:center;gap:5px;}
 .seedlingHouseLegendSwatch{width:13px;height:13px;display:inline-block;border:1px solid var(--ui-line);border-radius:4px;background:#fff;}
@@ -7488,12 +7455,6 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 .seedlingHouseLegendSwatch.is-skipped{border-color:#f59e0b;background:#fffbeb;}
 .seedlingHouseLegendSwatch.is-used{background:#e5e7eb;opacity:.7;}
 .seedlingHouseOrderNote{margin:0;color:var(--ui-text-tertiary);font-size:11px;font-weight:620;line-height:1.5;}
-@media (max-width:560px){
-  .seedlingHouseBeds{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-  .seedlingHouseBed{padding:6px;}
-  .seedlingHousePalletGrid{gap:1px;}
-  .seedlingHousePallet{font-size:6px;}
-}
 .casePlacementDetails{
   margin-top:10px;
   overflow:hidden;
@@ -10700,7 +10661,7 @@ requestAnimationFrame(function(){
     <div class="recordDetailWindowBody seedlingHouseWindowBody">
       <div id="seedlingHouseSummary" class="seedlingHouseSummary">次回開始 A-1</div>
       <div id="seedlingHousePlanNote" class="seedlingHousePlanNote">計算前は次回の苗取り開始場所だけを表示します。</div>
-      <div id="seedlingHouseBeds" class="seedlingHouseBeds" aria-label="1号棟の苗取り配置図"></div>
+      <div id="seedlingHouseBeds" class="bedWrap seedlingHouseBeds" aria-label="1号棟の苗取り配置図"></div>
       <div class="seedlingHouseLegend" aria-label="1号棟配置図の色分け">
         <span><i class="seedlingHouseLegendSwatch is-next"></i>次回開始</span>
         <span><i class="seedlingHouseLegendSwatch is-selected"></i>今回取る</span>
@@ -23921,6 +23882,12 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
   const selectedSet = options.selectedSet || new Set();
   const recordedSet = options.recordedSet || new Set();
   const progressCompletedSet = options.progressCompletedSet || new Set();
+  const seedlingSkippedSet = options.seedlingSkippedSet instanceof Set
+    ? options.seedlingSkippedSet
+    : new Set();
+  const seedlingNextSet = options.seedlingNextSet instanceof Set
+    ? options.seedlingNextSet
+    : new Set();
   const plantingAllowedSet = options.plantingAllowedSet instanceof Set
     ? options.plantingAllowedSet
     : null;
@@ -23954,6 +23921,14 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     if(selectedSet.has(key)){
       classes.push("is-selected");
       stateText = "選択中";
+    }
+    if(seedlingSkippedSet.has(key)){
+      classes.push("is-seedling-skipped");
+      stateText = "飛ばして残す";
+    }
+    if(seedlingNextSet.has(key)){
+      classes.push("is-seedling-next");
+      stateText = "次回開始";
     }
     if(partialHarvestCount > 0){
       classes.push("is-partial-harvest");
@@ -27956,15 +27931,6 @@ function updateRecordPartialHarvestIncludedNote(){
     : "";
 }
 
-function getSeedlingHouseCapacityForKey(key, orderIndex = null){
-  const order = getSeedlingHouseOrder();
-  const index = orderIndex instanceof Map ? orderIndex.get(key) : order.indexOf(key);
-  const pattern = getSpecialPalletPattern(settings.specialPallet60CountPer3);
-  return Number.isInteger(index) && index >= 0 && pattern.length
-    ? pattern[index % pattern.length]
-    : 0;
-}
-
 function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const nextPosition = formatSeedlingHousePosition(plan.nextKey);
   const openButton = document.getElementById("seedlingHouseOpenBtn");
@@ -28004,44 +27970,37 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const selectedSet = new Set(selectedKeys);
   const skippedSet = new Set(skippedKeys);
   const usedSet = plan.usedSet instanceof Set ? plan.usedSet : new Set();
-  const order = plan.order || getSeedlingHouseOrder();
-  const orderIndex = new Map(order.map((key, index) => [key, index]));
   beds.innerHTML = "";
 
-  SEEDLING_HOUSE_BED_SEQUENCE.forEach(item => {
+  bedMap.forEach(bedName => {
+    const item = SEEDLING_HOUSE_BED_SEQUENCE.find(entry => entry.bed === bedName)
+      || { bed: bedName, direction: 1 };
     const bed = document.createElement("section");
-    bed.className = "seedlingHouseBed";
-    const header = document.createElement("div");
-    header.className = "seedlingHouseBedHeader";
-    header.innerHTML = `<span>${escapeHtml(item.bed)}ベッド</span><span class="seedlingHouseBedDirection">${item.direction < 0 ? "78 → 1" : "1 → 78"}</span>`;
-    bed.appendChild(header);
-
-    const grid = document.createElement("div");
-    grid.className = "seedlingHousePalletGrid";
-    order.filter(key => parsePalletKey(key).bed === item.bed).forEach(key => {
-      const pallet = parsePalletKey(key);
-      const cell = document.createElement("span");
-      const classes = ["seedlingHousePallet"];
-      if(usedSet.has(key)) classes.push("is-used");
-      if(skippedSet.has(key)) classes.push("is-skipped");
-      if(selectedSet.has(key)) classes.push("is-selected");
-      if(!showSelection && key === plan.nextKey) classes.push("is-next");
-      cell.className = classes.join(" ");
-      cell.textContent = String(pallet.number);
-      const capacity = getSeedlingHouseCapacityForKey(key, orderIndex);
-      const state = selectedSet.has(key)
-        ? "今回取る"
-        : skippedSet.has(key)
-          ? "飛ばして残す"
-          : usedSet.has(key)
-            ? "苗取り済み"
-            : key === plan.nextKey
-              ? "次回開始"
-              : "未使用";
-      cell.title = `1号棟 ${item.bed}-${pallet.number}（${capacity}植え・${state}）`;
-      grid.appendChild(cell);
+    bed.className = "bed bedCollapsed simulationBedOverview seedlingHouseBedOverview";
+    const title = document.createElement("div");
+    title.className = "bedTitle";
+    title.innerHTML = `<span class="bedTitleMain">${escapeHtml(item.bed)}</span><span class="bedTitleHint">${item.direction < 0 ? "78 → 1" : "1 → 78"}</span>`;
+    bed.appendChild(title);
+    appendBedOverviewMap(bed, SEEDLING_HOUSE_BUILDING, item.bed, {
+      selectedSet,
+      recordedSet: usedSet,
+      seedlingSkippedSet: skippedSet,
+      seedlingNextSet: !showSelection && plan.nextKey ? new Set([plan.nextKey]) : new Set()
     });
-    bed.appendChild(grid);
+    const counts = getBedSummaryCounts(SEEDLING_HOUSE_BUILDING, item.bed, {
+      selectedSet,
+      recordedSet: usedSet
+    });
+    const skippedCount = [...skippedSet].filter(key => parsePalletKey(key).bed === item.bed).length;
+    const countRow = document.createElement("div");
+    countRow.className = "simulationBedOverviewCounts";
+    countRow.innerHTML = [
+      counts.selected ? `<span class="simulationBedOverviewCountSelected">取る ${counts.selected}</span>` : "",
+      skippedCount ? `<span class="seedlingHouseBedCountSkipped">残す ${skippedCount}</span>` : "",
+      counts.recorded ? `<span class="simulationBedOverviewCountRecorded">済 ${counts.recorded}</span>` : ""
+    ].filter(Boolean).join("");
+    bed.appendChild(countRow);
+    bed.setAttribute("aria-label", `1号棟 ${item.bed}ベッド。${item.direction < 0 ? "78から1" : "1から78"}の順。今回取る${counts.selected}枚、飛ばして残す${skippedCount}枚、苗取り済み${counts.recorded}枚`);
     beds.appendChild(bed);
   });
 }

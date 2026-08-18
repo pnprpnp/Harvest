@@ -1275,19 +1275,27 @@
           const viewState = {
             buttonText: button.textContent.replace(/\s+/g, " ").trim(),
             modalOpen: app.document.getElementById("seedlingHouseModal").classList.contains("show"),
-            palletCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet").length,
-            selectedCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet.is-selected").length,
-            skippedCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet.is-skipped").length,
+            simpleBedCount: app.document.querySelectorAll("#seedlingHouseBeds .bed.bedCollapsed.simulationBedOverview").length,
+            simpleMapCount: app.document.querySelectorAll("#seedlingHouseBeds .dashboardSeedlingBedMap.simulationBedMap").length,
+            bedLayout: [...app.document.querySelectorAll("#seedlingHouseBeds .bedTitleMain")].map(element => element.textContent.trim()),
+            palletCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell").length,
+            selectedCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell.is-selected").length,
+            skippedCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell.is-seedling-skipped").length,
+            legacyCustomPalletCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet").length,
             summary: app.document.getElementById("seedlingHouseSummary").textContent.trim()
           };
           assertDeepEqual(viewState, {
             buttonText: "1号棟 次 A-1",
             modalOpen: true,
+            simpleBedCount: 6,
+            simpleMapCount: 6,
+            bedLayout: ["F", "D", "B", "E", "C", "A"],
             palletCount: 468,
             selectedCount: 16,
             skippedCount: 16,
+            legacyCustomPalletCount: 0,
             summary: "苗を16枚飛ばす → 16枚取る"
-          }, "1号棟ボタンまたは苗取り配置ウィンドウの表示が一致しません");
+          }, "1号棟が他の棟と同じ簡易ベッド配置図になっていません");
         }finally{
           app.closeSeedlingHouseWindow({ restoreFocus: false });
           app.eval(`
@@ -3525,18 +3533,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "2729bac0", elements: 2085, visible: 635, viewport: "390x844" },
-          cssStates: { hash: "e441f9dc", elements: 2153, visible: 694, viewport: "390x844" },
-          cssFocus: { hash: "516ad0e9", elements: 2153, visible: 694, viewport: "390x844" },
-          mobileRecord: { hash: "34cf32a5", elements: 2086, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "8b8eb6ac", elements: 2086, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "535d8f68", elements: 2169, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "d72fbfbe", elements: 2184, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "5620c1ba", elements: 2184, visible: 310, viewport: "390x844" },
-          mobileSettings: { hash: "4bdeaecd", elements: 2184, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "003121e5", elements: 2184, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "d8216820", elements: 2184, visible: 641, viewport: "1024x900" },
-          wideDashboard: { hash: "4b594b28", elements: 2184, visible: 135, viewport: "1024x900" }
+          mobileForecast: { hash: "ef7a11da", elements: 2085, visible: 635, viewport: "390x844" },
+          cssStates: { hash: "e1389b5e", elements: 2153, visible: 694, viewport: "390x844" },
+          cssFocus: { hash: "f183cf3b", elements: 2153, visible: 694, viewport: "390x844" },
+          mobileRecord: { hash: "20161751", elements: 2086, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "0ee43ed6", elements: 2086, visible: 129, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "9384996c", elements: 2169, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "32e3bede", elements: 2184, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "f199d59a", elements: 2184, visible: 310, viewport: "390x844" },
+          mobileSettings: { hash: "63abdf0b", elements: 2184, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "9e4a4203", elements: 2184, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "5fad307c", elements: 2184, visible: 641, viewport: "1024x900" },
+          wideDashboard: { hash: "18b1a364", elements: 2184, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

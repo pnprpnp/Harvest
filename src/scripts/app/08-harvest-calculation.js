@@ -603,6 +603,12 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
   const selectedSet = options.selectedSet || new Set();
   const recordedSet = options.recordedSet || new Set();
   const progressCompletedSet = options.progressCompletedSet || new Set();
+  const seedlingSkippedSet = options.seedlingSkippedSet instanceof Set
+    ? options.seedlingSkippedSet
+    : new Set();
+  const seedlingNextSet = options.seedlingNextSet instanceof Set
+    ? options.seedlingNextSet
+    : new Set();
   const plantingAllowedSet = options.plantingAllowedSet instanceof Set
     ? options.plantingAllowedSet
     : null;
@@ -636,6 +642,14 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     if(selectedSet.has(key)){
       classes.push("is-selected");
       stateText = "選択中";
+    }
+    if(seedlingSkippedSet.has(key)){
+      classes.push("is-seedling-skipped");
+      stateText = "飛ばして残す";
+    }
+    if(seedlingNextSet.has(key)){
+      classes.push("is-seedling-next");
+      stateText = "次回開始";
     }
     if(partialHarvestCount > 0){
       classes.push("is-partial-harvest");
