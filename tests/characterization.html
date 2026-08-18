@@ -1187,6 +1187,89 @@
         }
       });
 
+      await runTest("号棟をまたぐ先取りでも途中の未収穫ベッド分だけ苗を飛ばす", () => {
+        const previousSettings = comparable(app.eval("settings"));
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previousSelection = comparable(app.eval(`({
+          keys: [...harvestFillKeys],
+          mode: harvestSelectionMode,
+          progress: harvestProgressState
+        })`));
+        try{
+          replaceAppHistory(app, [], []);
+          const result = comparable(app.eval(`(() => {
+            settings = {
+              ...settings,
+              useBedPlantSettings: false,
+              defaultPlantingCount: 12,
+              seedlingLossRate: 0,
+              specialPallet60CountPer3: 3
+            };
+            harvestProgressState = null;
+            const recordedKeys = ["A", "B", "C", "D"].flatMap(bed => (
+              Array.from({ length: 78 }, (_, index) => getPalletKey(2, bed, index + 1))
+            ));
+            const selectedKeys = Array.from(
+              { length: 78 },
+              (_, index) => getPalletKey(2, "E", index + 1)
+            ).concat(
+              Array.from({ length: 78 }, (_, index) => getPalletKey(3, "A", index + 1))
+            );
+            const sourceRecords = [{
+              id: 1,
+              type: "harvest",
+              date: "2026-08-17",
+              palletKeys: recordedKeys
+            }];
+            const info = getHarvestOrderSkipSeedlingInfo(selectedKeys, {
+              selectionMode: "manual",
+              sourceRecords,
+              referenceDate: new Date(2026, 7, 18)
+            });
+            const plan = getSeedlingHousePlanForHarvestKeys(selectedKeys, {
+              takeCount: getSeedlingTrayCountNeededForKeys(selectedKeys, { carryoverSeedlings: 0 }),
+              selectionMode: "manual",
+              sourceRecords,
+              sourceEvents: [],
+              referenceDate: new Date(2026, 7, 18)
+            });
+            return {
+              shouldShow: info.shouldShow,
+              normalStartKey: info.normalStartKey,
+              selectedStartKey: info.selectedStartKey,
+              skippedPalletCount: info.skippedPalletCount,
+              skippedSeedlingTrayCount: info.skippedSeedlingTrayCount,
+              skippedStart: info.skippedPalletKeys[0],
+              skippedEnd: info.skippedPalletKeys[info.skippedPalletKeys.length - 1],
+              seedlingHouseSkippedCount: plan.skippedCount,
+              seedlingHouseSkippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys)
+            };
+          })()`));
+          assertDeepEqual(result, {
+            shouldShow: true,
+            normalStartKey: "2-E-1",
+            selectedStartKey: "2-E-1",
+            skippedPalletCount: 78,
+            skippedSeedlingTrayCount: 16,
+            skippedStart: "2-F-1",
+            skippedEnd: "2-F-78",
+            seedlingHouseSkippedCount: 16,
+            seedlingHouseSkippedRange: "A-1〜A-16"
+          }, "2号棟Fを抜かして3号棟Aを収穫した時の苗飛ばし枚数が一致しません");
+        }finally{
+          app.eval(`
+            settings = ${JSON.stringify(previousSettings)};
+            harvestFillKeys = ${JSON.stringify(previousSelection.keys)};
+            harvestSelectionMode = ${JSON.stringify(previousSelection.mode)};
+            harvestProgressState = ${JSON.stringify(previousSelection.progress)};
+          `);
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.invalidatePlantingEventStateCache();
+          app.updateHarvestOrderSkipSeedlingNote();
+        }
+      });
+
       await runTest("1号棟を苗取り順で表示し先取り分を残して苗を選ぶ", () => {
         const previousSettings = comparable(app.eval("settings"));
         const previousRecords = comparable(app.eval("records"));

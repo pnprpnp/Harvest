@@ -727,6 +727,7 @@ function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
 
   const selectedSet = new Set(selectedKeys);
   const skippedPalletKeys = [];
+  const pendingSkippedPalletKeys = [];
   let selectedStartKey = "";
   let current = parsePalletKey(normalStartKey);
   const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
@@ -734,10 +735,12 @@ function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
   for(let index = 0; index < maxLoop; index++){
     const key = getPalletKey(current.building, current.bed, current.number);
     if(selectedSet.has(key)){
-      selectedStartKey = key;
-      break;
+      if(!selectedStartKey) selectedStartKey = key;
+      skippedPalletKeys.push(...pendingSkippedPalletKeys);
+      pendingSkippedPalletKeys.length = 0;
+    }else if(!recordedSet.has(key)){
+      pendingSkippedPalletKeys.push(key);
     }
-    if(!recordedSet.has(key)) skippedPalletKeys.push(key);
     current = getNextPallet(current.building, current.bed, current.number);
   }
 

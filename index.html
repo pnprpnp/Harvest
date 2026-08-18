@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260818-seedling-house-simple-map">
+<meta name="harvestnavi-version" content="20260818-cross-building-seedling-skip">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -26206,6 +26206,7 @@ function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
 
   const selectedSet = new Set(selectedKeys);
   const skippedPalletKeys = [];
+  const pendingSkippedPalletKeys = [];
   let selectedStartKey = "";
   let current = parsePalletKey(normalStartKey);
   const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
@@ -26213,10 +26214,12 @@ function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
   for(let index = 0; index < maxLoop; index++){
     const key = getPalletKey(current.building, current.bed, current.number);
     if(selectedSet.has(key)){
-      selectedStartKey = key;
-      break;
+      if(!selectedStartKey) selectedStartKey = key;
+      skippedPalletKeys.push(...pendingSkippedPalletKeys);
+      pendingSkippedPalletKeys.length = 0;
+    }else if(!recordedSet.has(key)){
+      pendingSkippedPalletKeys.push(key);
     }
-    if(!recordedSet.has(key)) skippedPalletKeys.push(key);
     current = getNextPallet(current.building, current.bed, current.number);
   }
 
