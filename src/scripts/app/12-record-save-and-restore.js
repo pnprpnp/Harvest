@@ -345,7 +345,7 @@ async function savePlantingRecord(){
   const seedlingHousePalletKeys = sameTrayCount && existingSeedlingHouseKeys.length
     ? existingSeedlingHouseKeys
     : seedlingHousePlan.selectedKeys;
-  const event = normalizePlantingEvent({
+  let event = normalizePlantingEvent({
     palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
     eventId: existingEvent?.eventId || getNextPlantingEventId(),
     plantingDate,
@@ -354,6 +354,8 @@ async function savePlantingRecord(){
     plantingCountsByPallet,
     actualSeedlingTrayCount,
     seedlingHousePalletKeys,
+    seedlingHousePrimaryPlantingDate: existingEvent?.seedlingHousePrimaryPlantingDate || plantingDate,
+    seedlingHouseNextStartKey: existingEvent?.seedlingHouseNextStartKey || "",
     actualTakenSeedlingCount: sameTrayCount
       ? existingEvent.actualTakenSeedlingCount
       : getActualTakenSeedlingTotalForTrayCount(actualSeedlingTrayCount),
@@ -373,6 +375,20 @@ async function savePlantingRecord(){
   });
   if(!event){
     showToast("苗植え記録を作成できませんでした。入力内容を確認してください");
+    return;
+  }
+  const initialSeedlingHouseStartKey = !existingEvent
+    && isValidSeedlingHousePalletKey(settings.seedlingHouseInitialStartKey)
+    ? settings.seedlingHouseInitialStartKey
+    : "";
+  if(initialSeedlingHouseStartKey){
+    const nextKey = getSeedlingHouseUsageState([event], {
+      initialStartKey: initialSeedlingHouseStartKey
+    }).nextKey;
+    event = normalizePlantingEvent({ ...event, seedlingHouseNextStartKey: nextKey });
+  }
+  if(!event){
+    showToast("1号棟の開始位置を苗植え記録へ反映できませんでした");
     return;
   }
   const unselectedPreviousLots = getUnselectedPreviousUnplantedPalletLots(
@@ -406,6 +422,10 @@ async function savePlantingRecord(){
   const existingIndex = plantingEvents.findIndex(item => Number(item.eventId) === Number(event.eventId));
   if(existingIndex >= 0) plantingEvents[existingIndex] = event;
   else plantingEvents.push(event);
+  if(initialSeedlingHouseStartKey){
+    settings.seedlingHouseInitialStartKey = "";
+    saveSettingsToStorage();
+  }
   savePlantingEventsToStorage();
   setPlantingEventSyncStatus(event, "edited");
   syncHarvestPlantingPendingFlags();

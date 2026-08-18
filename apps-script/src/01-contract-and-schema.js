@@ -192,6 +192,8 @@ const PLANTING_EVENT_FIELD_KEYS = [
   "plantingCountsByPallet",
   "actualSeedlingTrayCount",
   "seedlingHousePalletKeys",
+  "seedlingHousePrimaryPlantingDate",
+  "seedlingHouseNextStartKey",
   "actualTakenSeedlingCount",
   "actualPlantedSeedlingCount",
   "actualSeedlingCarryoverMode",
@@ -211,6 +213,8 @@ const PLANTING_EVENT_HEADER_LABELS = {
   plantingCountsByPallet: "パレット別植え付け株数JSON",
   actualSeedlingTrayCount: "実苗枚数",
   seedlingHousePalletKeys: "1号棟苗取り場所JSON",
+  seedlingHousePrimaryPlantingDate: "1号棟一次定植日",
+  seedlingHouseNextStartKey: "1号棟次回開始場所",
   actualTakenSeedlingCount: "実取得苗株数",
   actualPlantedSeedlingCount: "実苗植え株数",
   actualSeedlingCarryoverMode: "余り苗区分",
@@ -232,6 +236,7 @@ const PLANTING_EVENT_FORMULA_SAFE_KEYS = new Set([
   "plantingPalletKeys",
   "plantingCountsByPallet",
   "seedlingHousePalletKeys",
+  "seedlingHouseNextStartKey",
   "qualityMemo"
 ]);
 

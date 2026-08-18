@@ -1472,6 +1472,8 @@ function getPlantingEventForGoogleTransfer(event){
     plantingCountsByPallet: { ...normalized.plantingCountsByPallet },
     actualSeedlingTrayCount: normalized.actualSeedlingTrayCount,
     seedlingHousePalletKeys: [...normalized.seedlingHousePalletKeys],
+    seedlingHousePrimaryPlantingDate: normalized.seedlingHousePrimaryPlantingDate,
+    seedlingHouseNextStartKey: normalized.seedlingHouseNextStartKey,
     actualTakenSeedlingCount: normalized.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: normalized.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: normalized.actualSeedlingCarryoverMode,

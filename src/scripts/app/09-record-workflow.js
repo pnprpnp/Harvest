@@ -592,13 +592,24 @@ function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {})
   const excludeEventId = Number(options.excludeEventId || 0);
   const order = getSeedlingHouseOrder();
   const usedSet = new Set();
+  const applyStartKey = key => {
+    const normalizedKey = String(key || "").trim();
+    const startIndex = order.indexOf(normalizedKey);
+    if(startIndex < 0) return;
+    usedSet.clear();
+    order.slice(0, startIndex).forEach(item => usedSet.add(item));
+  };
+  applyStartKey(options.initialStartKey);
   const events = (Array.isArray(sourceEvents) ? sourceEvents : [])
     .filter(event => !excludeEventId || Number(event?.eventId) !== excludeEventId)
     .sort(comparePlantingEventsAsc);
 
   events.forEach(event => {
     const trayCount = clampNumber(event?.actualSeedlingTrayCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
-    if(trayCount <= 0 || event?.detailsUnknown) return;
+    if(trayCount <= 0 || event?.detailsUnknown){
+      applyStartKey(event.seedlingHouseNextStartKey);
+      return;
+    }
     const eventKeys = getSeedlingHouseEventKeys(event, usedSet, order);
     const repeatedKeys = eventKeys.filter(key => usedSet.has(key));
 
@@ -608,6 +619,7 @@ function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {})
       // 新しい周回へ持ち越すと、その場所が次周回で選ばれなくなる。
       usedSet.clear();
       repeatedKeys.forEach(key => usedSet.add(key));
+      applyStartKey(event.seedlingHouseNextStartKey);
       return;
     }
 
@@ -617,10 +629,12 @@ function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {})
       const nextCycleCount = Math.min(order.length, trayCount - availableCount);
       usedSet.clear();
       order.slice(0, nextCycleCount).forEach(key => usedSet.add(key));
+      applyStartKey(event.seedlingHouseNextStartKey);
       return;
     }
 
     eventKeys.forEach(key => usedSet.add(key));
+    applyStartKey(event.seedlingHouseNextStartKey);
   });
 
   if(usedSet.size >= order.length) usedSet.clear();
@@ -702,23 +716,28 @@ function allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationS
   const reservedSet = new Set();
   const skippedKeys = [];
   const selectedKeys = [];
+  const allocatedSegments = [];
   let candidateIndex = 0;
 
   segments.forEach(segment => {
     const target = segment.type === "skipped" ? skippedKeys : selectedKeys;
+    const segmentKeys = [];
     const count = clampNumber(segment.count, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
     for(let added = 0; added < count && candidateIndex < candidateKeys.length;){
       const key = candidateKeys[candidateIndex++];
       if(reservedSet.has(key)) continue;
       reservedSet.add(key);
       target.push(key);
+      segmentKeys.push(key);
       added++;
     }
+    if(segmentKeys.length) allocatedSegments.push({ type: segment.type, keys: segmentKeys });
   });
 
   return {
     skippedKeys,
     selectedKeys,
+    allocatedSegments,
     skippedCount: skippedKeys.length,
     selectedCount: selectedKeys.length
   };
@@ -726,9 +745,14 @@ function allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationS
 
 function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
   const takeCount = clampNumber(options.takeCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+  const hasCustomSourceEvents = Array.isArray(options.sourceEvents);
   const usageState = getSeedlingHouseUsageState(
-    Array.isArray(options.sourceEvents) ? options.sourceEvents : plantingEvents,
-    { excludeEventId: options.excludeEventId }
+    hasCustomSourceEvents ? options.sourceEvents : plantingEvents,
+    {
+      excludeEventId: options.excludeEventId,
+      initialStartKey: options.initialStartKey
+        || (hasCustomSourceEvents ? "" : settings.seedlingHouseInitialStartKey)
+    }
   );
   const skipInfo = getHarvestOrderSkipSeedlingInfo(keys, {
     selectionMode: options.selectionMode ?? "manual",

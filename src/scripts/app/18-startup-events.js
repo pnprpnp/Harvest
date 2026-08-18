@@ -205,6 +205,11 @@ function handleStartupEscapeKey(event){
   }
   const seedlingHouseModal = document.getElementById("seedlingHouseModal");
   if(seedlingHouseModal?.classList.contains("show")){
+    const primaryDetail = document.getElementById("seedlingHousePrimaryDetail");
+    if(primaryDetail && !primaryDetail.hidden){
+      closeSeedlingHousePrimaryDetail();
+      return;
+    }
     closeSeedlingHouseWindow();
     return;
   }
@@ -247,12 +252,14 @@ function installStartupGlobalEvents(){
     if(dashboardSeedlingStatusDetailOpen){
       scheduleDashboardSeedlingStatusDetailPosition({ ensureBedVisible: true });
     }
+    if(seedlingHouseSelectedBed) positionSeedlingHousePrimaryDetail();
   });
   window.addEventListener("scroll", () => {
     if(dashboardSeedlingStatusDetailOpen){
       scheduleDashboardSeedlingStatusDetailPosition();
     }
-  }, { passive: true });
+    if(seedlingHouseSelectedBed) positionSeedlingHousePrimaryDetail();
+  }, { passive: true, capture: true });
   document.addEventListener("pointermove", handlePalletDragMove, { passive:false });
   document.addEventListener("pointerup", finishPalletDrag, { passive:false });
   document.addEventListener("pointercancel", finishPalletDrag, { passive:false });

@@ -192,6 +192,8 @@ const PLANTING_EVENT_FIELD_KEYS = [
   "plantingCountsByPallet",
   "actualSeedlingTrayCount",
   "seedlingHousePalletKeys",
+  "seedlingHousePrimaryPlantingDate",
+  "seedlingHouseNextStartKey",
   "actualTakenSeedlingCount",
   "actualPlantedSeedlingCount",
   "actualSeedlingCarryoverMode",
@@ -211,6 +213,8 @@ const PLANTING_EVENT_HEADER_LABELS = {
   plantingCountsByPallet: "パレット別植え付け株数JSON",
   actualSeedlingTrayCount: "実苗枚数",
   seedlingHousePalletKeys: "1号棟苗取り場所JSON",
+  seedlingHousePrimaryPlantingDate: "1号棟一次定植日",
+  seedlingHouseNextStartKey: "1号棟次回開始場所",
   actualTakenSeedlingCount: "実取得苗株数",
   actualPlantedSeedlingCount: "実苗植え株数",
   actualSeedlingCarryoverMode: "余り苗区分",
@@ -232,6 +236,7 @@ const PLANTING_EVENT_FORMULA_SAFE_KEYS = new Set([
   "plantingPalletKeys",
   "plantingCountsByPallet",
   "seedlingHousePalletKeys",
+  "seedlingHouseNextStartKey",
   "qualityMemo"
 ]);
 
@@ -1481,6 +1486,16 @@ function normalizePlantingEvent(event) {
   if (seedlingHousePalletKeys.length > actualSeedlingTrayCount) {
     throw new Error("1号棟苗取り場所が実苗枚数を超えています");
   }
+  const seedlingHousePrimaryPlantingDate = event.seedlingHousePrimaryPlantingDate
+    ? normalizeRequiredDate(event.seedlingHousePrimaryPlantingDate, "1号棟一次定植日")
+    : (seedlingHousePalletKeys.length ? plantingDate : "");
+  const rawSeedlingHouseNextStartKey = String(event.seedlingHouseNextStartKey || "").trim();
+  const seedlingHouseNextStartKey = rawSeedlingHouseNextStartKey
+    ? normalizeSeedlingHousePalletKeys([rawSeedlingHouseNextStartKey])[0]
+    : "";
+  if (rawSeedlingHouseNextStartKey && !seedlingHouseNextStartKey) {
+    throw new Error("1号棟の次回開始場所が正しくありません");
+  }
   const rawSourceAllocations = normalizePlantingSourceAllocations(event.sourceAllocations, {
     allowEmptyPalletKeys: actualSeedlingTrayCount === 0
   });
@@ -1548,6 +1563,8 @@ function normalizePlantingEvent(event) {
     plantingCountsByPallet,
     actualSeedlingTrayCount,
     seedlingHousePalletKeys,
+    seedlingHousePrimaryPlantingDate,
+    seedlingHouseNextStartKey,
     actualTakenSeedlingCount,
     actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: normalizeOptionalCarryoverMode(event.actualSeedlingCarryoverMode),
@@ -3357,6 +3374,8 @@ function getPlantingEventContentSignature(event) {
     plantingCountsByPallet: event.plantingCountsByPallet,
     actualSeedlingTrayCount: event.actualSeedlingTrayCount,
     seedlingHousePalletKeys: event.seedlingHousePalletKeys,
+    seedlingHousePrimaryPlantingDate: event.seedlingHousePrimaryPlantingDate,
+    seedlingHouseNextStartKey: event.seedlingHouseNextStartKey,
     actualTakenSeedlingCount: event.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: event.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: event.actualSeedlingCarryoverMode,
@@ -6164,6 +6183,7 @@ function applyAddedPlantingEventColumnLayout(sheet, startColumn, keys) {
   const formats = {
     eventId: "0",
     plantingDate: "yyyy-mm-dd",
+    seedlingHousePrimaryPlantingDate: "yyyy-mm-dd",
     actualSeedlingTrayCount: "0",
     actualTakenSeedlingCount: "0",
     actualPlantedSeedlingCount: "0",
@@ -6177,6 +6197,7 @@ function applyAddedPlantingEventColumnLayout(sheet, startColumn, keys) {
     "plantingPalletKeys",
     "plantingCountsByPallet",
     "seedlingHousePalletKeys",
+    "seedlingHouseNextStartKey",
     "palletNumberingVersion"
   ]);
   keys.forEach((key, index) => {
@@ -6204,6 +6225,7 @@ function applyPlantingEventSheetLayout(sheet, headers) {
   const formats = {
     eventId: "0",
     plantingDate: "yyyy-mm-dd",
+    seedlingHousePrimaryPlantingDate: "yyyy-mm-dd",
     actualSeedlingTrayCount: "0",
     actualTakenSeedlingCount: "0",
     actualPlantedSeedlingCount: "0",
@@ -6219,7 +6241,7 @@ function applyPlantingEventSheetLayout(sheet, headers) {
       .setNumberFormat(formats[key]);
   });
   sheet.showColumns(1, Math.max(sheet.getLastColumn(), headers.length));
-  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "seedlingHousePalletKeys", "palletNumberingVersion"].forEach(key => {
+  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "seedlingHousePalletKeys", "seedlingHouseNextStartKey", "palletNumberingVersion"].forEach(key => {
     const column = getPlantingEventHeaderColumn(headers, key);
     if (column > 0) sheet.hideColumns(column);
   });
@@ -6246,6 +6268,8 @@ function buildPlantingEventRow(headers, event) {
     seedlingHousePalletKeys: escapeSpreadsheetFormulaText(
       JSON.stringify(event.seedlingHousePalletKeys || [])
     ),
+    seedlingHousePrimaryPlantingDate: event.seedlingHousePrimaryPlantingDate || "",
+    seedlingHouseNextStartKey: event.seedlingHouseNextStartKey || "",
     actualTakenSeedlingCount: detailsUnknown ? "" : event.actualTakenSeedlingCount ?? "",
     actualPlantedSeedlingCount: detailsUnknown ? "" : event.actualPlantedSeedlingCount ?? "",
     actualSeedlingCarryoverMode: detailsUnknown ? "" : event.actualSeedlingCarryoverMode || "loss",
@@ -6457,6 +6481,8 @@ function rowToPlantingEvent(headers, row) {
     ),
     actualSeedlingTrayCount: item.actualSeedlingTrayCount,
     seedlingHousePalletKeys: parseStoredJsonArray(item.seedlingHousePalletKeys, "1号棟苗取り場所"),
+    seedlingHousePrimaryPlantingDate: formatDateValue(item.seedlingHousePrimaryPlantingDate),
+    seedlingHouseNextStartKey: item.seedlingHouseNextStartKey,
     actualTakenSeedlingCount: item.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: item.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: item.actualSeedlingCarryoverMode,

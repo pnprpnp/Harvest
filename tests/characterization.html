@@ -679,6 +679,8 @@
           plantingCountsByPallet: { "3-B-4": 16, "3-B-5": 20 },
           actualSeedlingTrayCount: 2,
           seedlingHousePalletKeys: ["1-A-1", "1-A-2"],
+          seedlingHousePrimaryPlantingDate: "2026-08-10",
+          seedlingHouseNextStartKey: "1-D-78",
           actualTakenSeedlingCount: 240,
           actualPlantedSeedlingCount: 36,
           actualSeedlingCarryoverMode: "loss",
@@ -698,6 +700,8 @@
           "3-B-5": 20
         }, "パレット別の植え付け株数が変わりました");
         assertDeepEqual(serverEvent.seedlingHousePalletKeys, ["1-A-1", "1-A-2"], "1号棟の苗取り場所が変わりました");
+        assertEqual(serverEvent.seedlingHousePrimaryPlantingDate, "2026-08-10", "1号棟の一次定植日が変わりました");
+        assertEqual(serverEvent.seedlingHouseNextStartKey, "1-D-78", "1号棟の次回開始場所が変わりました");
         assertEqual(serverEvent.actualTakenSeedlingCount, 240, "取得苗株数が変わりました");
         assertEqual(serverEvent.actualPlantedSeedlingCount, 36, "苗植え株数が変わりました");
       });
@@ -1248,6 +1252,9 @@
               seedlingHouseSkippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys),
               seedlingHouseSelectedCount: plan.selectedCount,
               seedlingHouseSelectedRange: formatSeedlingHouseSelectionRange(plan.selectedKeys),
+              seedlingHouseOperationOrder: plan.allocatedSegments.map(segment => (
+                String(segment.keys.length) + (segment.type === "skipped" ? "飛ばす" : "取る")
+              )),
               seedlingHouseSelectedBreaks: [
                 plan.selectedKeys[0],
                 plan.selectedKeys[15],
@@ -1273,6 +1280,7 @@
             seedlingHouseSkippedRange: "A-17〜A-32",
             seedlingHouseSelectedCount: 32,
             seedlingHouseSelectedRange: "A-1〜A-16、A-33〜A-48",
+            seedlingHouseOperationOrder: ["16取る", "16飛ばす", "16取る"],
             seedlingHouseSelectedBreaks: ["1-A-1", "1-A-16", "1-A-33", "1-A-48"]
           }, "2号棟Fを抜かして3号棟Aを収穫した時の苗飛ばし枚数が一致しません");
         }finally{
@@ -1298,6 +1306,10 @@
           progress: harvestProgressState
         })`));
         try{
+          app.eval(`
+            window.__characterizationOriginalQueuePlantingEventSend = queueGoogleSheetPlantingEventSend;
+            queueGoogleSheetPlantingEventSend = () => false;
+          `);
           replaceAppHistory(app, [], []);
           app.eval(`
             settings = {
@@ -1332,6 +1344,28 @@
               actualSeedlingTrayCount: 2,
               seedlingHousePalletKeys: [],
               detailsUnknown: false
+            }]);
+            const correctedEmptyUsage = getSeedlingHouseUsageState([{
+              eventId: 100,
+              plantingDate: "2026-08-17",
+              actualSeedlingTrayCount: 0,
+              seedlingHousePalletKeys: [],
+              seedlingHouseNextStartKey: "1-D-78",
+              detailsUnknown: false
+            }]);
+            const initialCorrectedEvent = {
+              eventId: 101,
+              plantingDate: "2026-08-17",
+              actualSeedlingTrayCount: 2,
+              seedlingHousePalletKeys: ["1-D-78", "1-D-77"],
+              detailsUnknown: false
+            };
+            const initialCorrectedUsage = getSeedlingHouseUsageState([initialCorrectedEvent], {
+              initialStartKey: "1-D-78"
+            });
+            const transferredCorrectedUsage = getSeedlingHouseUsageState([{
+              ...initialCorrectedEvent,
+              seedlingHouseNextStartKey: initialCorrectedUsage.nextKey
             }]);
             const aheadRecordedUsage = getSeedlingHouseUsageState([{
               eventId: 2,
@@ -1384,6 +1418,9 @@
               skippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys),
               selectedRange: formatSeedlingHouseSelectionRange(plan.selectedKeys),
               legacyNext: legacyUsage.nextKey,
+              correctedEmptyNext: correctedEmptyUsage.nextKey,
+              correctedInitialNext: initialCorrectedUsage.nextKey,
+              transferredCorrectedNext: transferredCorrectedUsage.nextKey,
               nextAfterAheadTake: aheadRecordedUsage.nextKey,
               followUpBreaks: [
                 followUpPlan.selectedKeys[0],
@@ -1410,6 +1447,9 @@
             skippedRange: "A-1〜A-16",
             selectedRange: "A-17〜A-32",
             legacyNext: "1-A-3",
+            correctedEmptyNext: "1-D-78",
+            correctedInitialNext: "1-D-76",
+            transferredCorrectedNext: "1-D-76",
             nextAfterAheadTake: "1-A-1",
             followUpBreaks: ["1-A-1", "1-A-16", "1-A-33", "1-A-36"],
             nextAfterFollowUp: "1-A-37",
@@ -1441,7 +1481,7 @@
             summary: app.document.getElementById("seedlingHouseSummary").textContent.trim()
           };
           assertDeepEqual(viewState, {
-            buttonText: "1号棟 次 A-1",
+            buttonText: "1号棟",
             modalOpen: true,
             simpleBedCount: 6,
             simpleMapCount: 6,
@@ -1450,8 +1490,78 @@
             selectedCount: 16,
             skippedCount: 16,
             legacyCustomPalletCount: 0,
-            summary: "苗を16枚飛ばす → 16枚取る"
+            summary: "16枚飛ばす → 16枚取る"
           }, "1号棟が他の棟と同じ簡易ベッド配置図になっていません");
+
+          const primaryDates = comparable(app.eval(`(() => {
+            const today = startOfLocalDay(new Date());
+            const original = new Date(today);
+            const edited = new Date(today);
+            original.setDate(original.getDate() - 8);
+            edited.setDate(edited.getDate() - 6);
+            return { original: formatDateOnlyString(original), edited: formatDateOnlyString(edited) };
+          })()`));
+          const primaryEvent = comparable(app.eval(`normalizePlantingEvent({
+            palletNumberingVersion: 2,
+            eventId: 20000000000901,
+            plantingDate: ${JSON.stringify(primaryDates.original)},
+            seedlingHousePrimaryPlantingDate: ${JSON.stringify(primaryDates.original)},
+            sourceAllocations: [{ harvestRecordId: 20000000000900, palletKeys: ["2-A-1", "2-A-2"] }],
+            plantingPalletKeys: ["2-A-1", "2-A-2"],
+            plantingCountsByPallet: { "2-A-1": 12, "2-A-2": 12 },
+            actualSeedlingTrayCount: 2,
+            seedlingHousePalletKeys: ["1-A-1", "1-A-2"],
+            actualTakenSeedlingCount: 120,
+            actualPlantedSeedlingCount: 24,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "0",
+            qualityMemo: null,
+            detailsUnknown: false
+          })`));
+          replaceAppHistory(app, [], [primaryEvent]);
+          app.eval(`renderSeedlingHouseUi(); setSeedlingHouseBed("A");`);
+          let primaryDetailState = {
+            hidden: app.document.getElementById("seedlingHousePrimaryDetail").hidden,
+            title: app.document.getElementById("seedlingHousePrimaryDetailTitle")?.textContent.trim(),
+            age: app.document.querySelector("#seedlingHousePrimaryDetail .seedlingHousePrimaryAge")?.textContent.trim(),
+            editButtonExists: !!app.document.querySelector("#seedlingHousePrimaryDetail [data-ui-click=\"beginSeedlingHousePrimaryDateEdit\"]")
+          };
+          assertDeepEqual(primaryDetailState, {
+            hidden: false,
+            title: "Aベッドの一次定植",
+            age: "一次定植から8日",
+            editButtonExists: true
+          }, "1号棟ベッドの一次定植日数をポップオーバーで表示できません");
+
+          app.eval(`beginSeedlingHousePrimaryDateEdit(20000000000901);`);
+          app.document.getElementById("seedlingHousePrimaryDateInput").value = primaryDates.edited;
+          app.eval(`saveSeedlingHousePrimaryPlantingDate(20000000000901);`);
+          primaryDetailState = comparable(app.eval(`({
+            savedDate: plantingEvents.find(event => Number(event.eventId) === 20000000000901)?.seedlingHousePrimaryPlantingDate,
+            age: document.querySelector("#seedlingHousePrimaryDetail .seedlingHousePrimaryAge")?.textContent.trim()
+          })`));
+          assertDeepEqual(primaryDetailState, {
+            savedDate: primaryDates.edited,
+            age: "一次定植から6日"
+          }, "1号棟の一次定植日を後から編集できません");
+
+          app.eval(`toggleSeedlingHouseStartEditor();`);
+          app.document.getElementById("seedlingHouseStartBedInput").value = "D";
+          app.document.getElementById("seedlingHouseStartNumberInput").value = "78";
+          app.eval(`saveSeedlingHouseStartCorrection();`);
+          const correctedStartState = comparable(app.eval(`({
+            savedKey: plantingEvents.find(event => Number(event.eventId) === 20000000000901)?.seedlingHouseNextStartKey,
+            nextKey: getCurrentSeedlingHousePlan().nextKey,
+            editorHidden: document.getElementById("seedlingHouseStartEditor").hidden,
+            buttonText: document.getElementById("seedlingHouseOpenBtn").textContent.replace(/\\s+/g, " ").trim()
+          })`));
+          assertDeepEqual(correctedStartState, {
+            savedKey: "1-D-78",
+            nextKey: "1-D-78",
+            editorHidden: true,
+            buttonText: "1号棟"
+          }, "1号棟の開始位置を後から修正できません");
+
           app.eval(`
             renderSeedlingHouseUi(getSeedlingHousePlanForHarvestKeys([], {
               takeCount: 0,
@@ -1480,6 +1590,8 @@
         }finally{
           app.closeSeedlingHouseWindow({ restoreFocus: false });
           app.eval(`
+            queueGoogleSheetPlantingEventSend = window.__characterizationOriginalQueuePlantingEventSend;
+            delete window.__characterizationOriginalQueuePlantingEventSend;
             settings = ${JSON.stringify(previousSettings)};
             harvestFillKeys = ${JSON.stringify(previousSelection.keys)};
             harvestSummary = ${JSON.stringify(previousSelection.summary)};
@@ -3714,18 +3826,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "1e3399f3", elements: 2084, visible: 635, viewport: "390x844" },
-          cssStates: { hash: "9d60fb0d", elements: 2152, visible: 694, viewport: "390x844" },
-          cssFocus: { hash: "fda59620", elements: 2152, visible: 694, viewport: "390x844" },
-          mobileRecord: { hash: "abfe721f", elements: 2085, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "f733e460", elements: 2085, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "13dc6fb2", elements: 2168, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "5cdd2937", elements: 2183, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "3ca64c3d", elements: 2183, visible: 310, viewport: "390x844" },
-          mobileSettings: { hash: "ee4db196", elements: 2183, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "316533a8", elements: 2183, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "14d18bb5", elements: 2183, visible: 641, viewport: "1024x900" },
-          wideDashboard: { hash: "a0bb029f", elements: 2183, visible: 135, viewport: "1024x900" }
+          mobileForecast: { hash: "9c1ad9b3", elements: 2097, visible: 634, viewport: "390x844" },
+          cssStates: { hash: "c0fd8603", elements: 2165, visible: 693, viewport: "390x844" },
+          cssFocus: { hash: "40d1468a", elements: 2165, visible: 693, viewport: "390x844" },
+          mobileRecord: { hash: "1afa366d", elements: 2098, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "8addf69e", elements: 2098, visible: 129, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "8e808952", elements: 2181, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "3316f776", elements: 2196, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "e1987a5c", elements: 2196, visible: 310, viewport: "390x844" },
+          mobileSettings: { hash: "4d0b0d4b", elements: 2196, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "fe992fa7", elements: 2196, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "82b48ce4", elements: 2196, visible: 640, viewport: "1024x900" },
+          wideDashboard: { hash: "a40fb67e", elements: 2196, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

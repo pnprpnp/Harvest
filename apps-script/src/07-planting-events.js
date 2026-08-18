@@ -153,6 +153,8 @@ function getPlantingEventContentSignature(event) {
     plantingCountsByPallet: event.plantingCountsByPallet,
     actualSeedlingTrayCount: event.actualSeedlingTrayCount,
     seedlingHousePalletKeys: event.seedlingHousePalletKeys,
+    seedlingHousePrimaryPlantingDate: event.seedlingHousePrimaryPlantingDate,
+    seedlingHouseNextStartKey: event.seedlingHouseNextStartKey,
     actualTakenSeedlingCount: event.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: event.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: event.actualSeedlingCarryoverMode,

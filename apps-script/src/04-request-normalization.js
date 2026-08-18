@@ -258,6 +258,16 @@ function normalizePlantingEvent(event) {
   if (seedlingHousePalletKeys.length > actualSeedlingTrayCount) {
     throw new Error("1号棟苗取り場所が実苗枚数を超えています");
   }
+  const seedlingHousePrimaryPlantingDate = event.seedlingHousePrimaryPlantingDate
+    ? normalizeRequiredDate(event.seedlingHousePrimaryPlantingDate, "1号棟一次定植日")
+    : (seedlingHousePalletKeys.length ? plantingDate : "");
+  const rawSeedlingHouseNextStartKey = String(event.seedlingHouseNextStartKey || "").trim();
+  const seedlingHouseNextStartKey = rawSeedlingHouseNextStartKey
+    ? normalizeSeedlingHousePalletKeys([rawSeedlingHouseNextStartKey])[0]
+    : "";
+  if (rawSeedlingHouseNextStartKey && !seedlingHouseNextStartKey) {
+    throw new Error("1号棟の次回開始場所が正しくありません");
+  }
   const rawSourceAllocations = normalizePlantingSourceAllocations(event.sourceAllocations, {
     allowEmptyPalletKeys: actualSeedlingTrayCount === 0
   });
@@ -325,6 +335,8 @@ function normalizePlantingEvent(event) {
     plantingCountsByPallet,
     actualSeedlingTrayCount,
     seedlingHousePalletKeys,
+    seedlingHousePrimaryPlantingDate,
+    seedlingHouseNextStartKey,
     actualTakenSeedlingCount,
     actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: normalizeOptionalCarryoverMode(event.actualSeedlingCarryoverMode),

@@ -12,6 +12,9 @@ function loadSettings(){
     merged.useBedPlantSettings = !!parsed.useBedPlantSettings;
     merged.seedlingLossRate = clampNumber(parsed.seedlingLossRate, 0, 100, defaultSettings.seedlingLossRate);
     merged.specialPallet60CountPer3 = clampNumber(parsed.specialPallet60CountPer3, 0, 3, defaultSettings.specialPallet60CountPer3);
+    merged.seedlingHouseInitialStartKey = isValidSeedlingHousePalletKey(parsed.seedlingHouseInitialStartKey)
+      ? String(parsed.seedlingHouseInitialStartKey)
+      : "";
     if(parsed.beds){
       ["A","B","C","D","E","F"].forEach(b => {
         if(parsed.beds[b]){
@@ -680,6 +683,12 @@ function normalizePlantingEvent(value){
   if(Array.isArray(value.seedlingHousePalletKeys)
     && seedlingHousePalletKeys.length !== value.seedlingHousePalletKeys.length) return null;
   if(seedlingHousePalletKeys.length > actualSeedlingTrayCount) return null;
+  const rawPrimaryPlantingDate = String(value.seedlingHousePrimaryPlantingDate || "").trim();
+  if(rawPrimaryPlantingDate && !isStrictDateOnlyString(rawPrimaryPlantingDate)) return null;
+  const seedlingHousePrimaryPlantingDate = rawPrimaryPlantingDate
+    || (seedlingHousePalletKeys.length ? plantingDate : "");
+  const seedlingHouseNextStartKey = String(value.seedlingHouseNextStartKey || "").trim();
+  if(seedlingHouseNextStartKey && !isValidSeedlingHousePalletKey(seedlingHouseNextStartKey)) return null;
   const sourceAllocations = normalizePlantingEventSourceAllocations(value.sourceAllocations, {
     allowEmptyPalletKeys: actualSeedlingTrayCount === 0
   });
@@ -753,6 +762,8 @@ function normalizePlantingEvent(value){
     plantingCountsByPallet,
     actualSeedlingTrayCount,
     seedlingHousePalletKeys,
+    seedlingHousePrimaryPlantingDate,
+    seedlingHouseNextStartKey,
     actualTakenSeedlingCount,
     actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode,

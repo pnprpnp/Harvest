@@ -151,6 +151,7 @@ const defaultSettings = {
   useBedPlantSettings: false,
   seedlingLossRate: 0,
   specialPallet60CountPer3: 2,
+  seedlingHouseInitialStartKey: "",
   beds: {
     A: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
     B: { yield: 20, lossRate: "", plant: 20, yieldUseFrontBack: false, yieldFrontCount: 39, yieldFront: 20, yieldBack: 20, plantUseFrontBack: false, plantFrontCount: 39, plantFront: 20, plantBack: 20 },
@@ -187,6 +188,8 @@ let activeBedDetailContext = null;
 let activeBedDetailBed = null;
 let recordDetailReturnFocus = null;
 let seedlingHouseReturnFocus = null;
+let seedlingHouseSelectedBed = null;
+let seedlingHousePrimaryDateEditingEventId = null;
 let recordDetailLocationModel = null;
 let recordDetailLocationBuilding = null;
 let recordDetailLocationSelectedBed = null;
@@ -756,6 +759,8 @@ function openSeedlingHouseWindow(){
   const modal = document.getElementById("seedlingHouseModal");
   if(!modal) return;
   seedlingHouseReturnFocus = document.activeElement;
+  seedlingHouseSelectedBed = null;
+  seedlingHousePrimaryDateEditingEventId = null;
   showPageBlockingUi(modal);
   renderSeedlingHouseUi();
   document.getElementById("seedlingHouseWindowClose")?.focus();
@@ -765,9 +770,12 @@ function closeSeedlingHouseWindow(options = {}){
   const modal = document.getElementById("seedlingHouseModal");
   const returnFocus = seedlingHouseReturnFocus;
   seedlingHouseReturnFocus = null;
+  closeSeedlingHousePrimaryDetail();
   hidePageBlockingUi(modal);
   const beds = document.getElementById("seedlingHouseBeds");
   if(beds) beds.innerHTML = "";
+  const startEditor = document.getElementById("seedlingHouseStartEditor");
+  if(startEditor) startEditor.hidden = true;
   if(options.restoreFocus !== false && returnFocus && typeof returnFocus.focus === "function"){
     returnFocus.focus();
   }

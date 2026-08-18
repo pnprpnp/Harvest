@@ -23,8 +23,6 @@ function updateRecordPartialHarvestIncludedNote(){
 function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const nextPosition = formatSeedlingHousePosition(plan.nextKey);
   const openButton = document.getElementById("seedlingHouseOpenBtn");
-  const openNext = document.getElementById("seedlingHouseOpenNext");
-  if(openNext) openNext.textContent = `次 ${nextPosition}`;
   if(openButton){
     openButton.setAttribute("aria-label", `1号棟の苗取り場所。次回開始 ${nextPosition}`);
   }
@@ -38,13 +36,15 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const selectedKeys = showSelection ? plan.selectedKeys : [];
   const skippedKeys = showSelection ? plan.skippedKeys : [];
   if(showSelection){
-    const skipText = skippedKeys.length ? `苗を${skippedKeys.length}枚飛ばす → ` : "";
-    summary.textContent = `${skipText}${selectedKeys.length}枚取る`;
-    note.textContent = [
-      `次回開始 ${nextPosition}`,
-      skippedKeys.length ? `飛ばして残す ${formatSeedlingHouseSelectionRange(skippedKeys)}` : "",
-      `今回取る ${formatSeedlingHouseSelectionRange(selectedKeys)}`
-    ].filter(Boolean).join(" ／ ");
+    const allocatedSegments = Array.isArray(plan.allocatedSegments) && plan.allocatedSegments.length
+      ? plan.allocatedSegments
+      : [{ type: "selected", keys: selectedKeys }];
+    summary.textContent = allocatedSegments.map(segment => (
+      `${segment.keys.length}枚${segment.type === "skipped" ? "飛ばす" : "取る"}`
+    )).join(" → ");
+    note.textContent = `開始 ${nextPosition} ／ ` + allocatedSegments.map(segment => (
+      `${segment.type === "skipped" ? "飛ばす" : "取る"} ${formatSeedlingHouseSelectionRange(segment.keys)}`
+    )).join(" → ");
   }else{
     summary.textContent = `次回開始 ${nextPosition}`;
     note.textContent = "計算前は次回の苗取り開始場所だけを表示します。";
@@ -63,8 +63,11 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   bedMap.forEach(bedName => {
     const item = SEEDLING_HOUSE_BED_SEQUENCE.find(entry => entry.bed === bedName)
       || { bed: bedName, direction: 1 };
-    const bed = document.createElement("section");
+    const bed = document.createElement("button");
+    bed.type = "button";
     bed.className = "bed bedCollapsed simulationBedOverview seedlingHouseBedOverview";
+    bed.dataset.uiClick = "setSeedlingHouseBed";
+    bed.dataset.uiArg = item.bed;
     const title = document.createElement("div");
     title.className = "bedTitle";
     title.innerHTML = `<span class="bedTitleMain">${escapeHtml(item.bed)}</span><span class="bedTitleHint">${item.direction < 0 ? "78 → 1" : "1 → 78"}</span>`;
@@ -83,9 +86,212 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
       skippedCount ? `<span class="seedlingHouseBedCountSkipped">残す ${skippedCount}</span>` : ""
     ].filter(Boolean).join("");
     bed.appendChild(countRow);
-    bed.setAttribute("aria-label", `1号棟 ${item.bed}ベッド。${item.direction < 0 ? "78から1" : "1から78"}の順。今回取る${counts.selected}枚、飛ばして残す${skippedCount}枚`);
+    bed.setAttribute("aria-haspopup", "dialog");
+    bed.setAttribute("aria-controls", "seedlingHousePrimaryDetail");
+    bed.setAttribute("aria-expanded", seedlingHouseSelectedBed === item.bed ? "true" : "false");
+    bed.setAttribute("aria-label", `1号棟 ${item.bed}ベッド。${item.direction < 0 ? "78から1" : "1から78"}の順。今回取る${counts.selected}枚、飛ばして残す${skippedCount}枚。一次定植日数を表示`);
     beds.appendChild(bed);
   });
+  renderSeedlingHousePrimaryDetail();
+}
+
+function getSeedlingHousePrimaryLotsForBed(bed, referenceDate = new Date()){
+  if(!bedOrder.includes(bed)) return [];
+  const currentByKey = new Map();
+  [...plantingEvents].sort(comparePlantingEventsAsc).forEach(event => {
+    (event.seedlingHousePalletKeys || []).forEach(key => currentByKey.set(key, event));
+  });
+  const lotsByEvent = new Map();
+  currentByKey.forEach((event, key) => {
+    const pallet = parsePalletKey(key);
+    if(pallet.bed !== bed) return;
+    const eventId = Number(event.eventId);
+    if(!lotsByEvent.has(eventId)){
+      const primaryDateText = event.seedlingHousePrimaryPlantingDate || event.plantingDate || "";
+      const primaryDate = parseDateOnlyString(primaryDateText);
+      lotsByEvent.set(eventId, {
+        event,
+        eventId,
+        primaryDateText,
+        ageDays: primaryDate ? Math.max(0, getLocalDayDiff(primaryDate, startOfLocalDay(referenceDate))) : null,
+        keys: []
+      });
+    }
+    lotsByEvent.get(eventId).keys.push(key);
+  });
+  return [...lotsByEvent.values()].sort((left, right) => (
+    String(right.primaryDateText).localeCompare(String(left.primaryDateText))
+    || right.eventId - left.eventId
+  ));
+}
+
+function renderSeedlingHousePrimaryDetail(){
+  const detail = document.getElementById("seedlingHousePrimaryDetail");
+  if(!detail) return;
+  const bed = bedOrder.includes(seedlingHouseSelectedBed) ? seedlingHouseSelectedBed : "";
+  if(!bed){
+    detail.hidden = true;
+    return;
+  }
+  const lots = getSeedlingHousePrimaryLotsForBed(bed);
+  detail.innerHTML = `
+    <div class="dashboardSeedlingStatusDetailHeader">
+      <div class="dashboardSeedlingStatusDetailHeading">
+        <span id="seedlingHousePrimaryDetailTitle" class="dashboardSeedlingStatusDetailTitle">${escapeHtml(bed)}ベッドの一次定植</span>
+      </div>
+      <button type="button" class="dashboardSeedlingStatusDetailClose" data-ui-click="closeSeedlingHousePrimaryDetail" aria-label="詳細を閉じる">×</button>
+    </div>
+    <div class="seedlingHousePrimaryLots">
+      ${lots.length ? lots.map(lot => {
+        const isEditing = seedlingHousePrimaryDateEditingEventId === lot.eventId;
+        return `<section class="seedlingHousePrimaryLot">
+          <div class="seedlingHousePrimaryAge">${lot.ageDays === null ? "一次定植日未記録" : `一次定植から${lot.ageDays}日`}</div>
+          <div class="seedlingHousePrimaryMeta">${lot.keys.length}枚</div>
+          ${isEditing ? `<div class="seedlingHousePrimaryEditRow">
+            <input id="seedlingHousePrimaryDateInput" type="date" value="${escapeHtml(lot.primaryDateText)}" aria-label="一次定植日">
+            <button type="button" class="thirdBtn" data-ui-click="saveSeedlingHousePrimaryPlantingDate" data-ui-number="${lot.eventId}">保存</button>
+            <button type="button" class="secondaryBtn" data-ui-click="cancelSeedlingHousePrimaryDateEdit">取消</button>
+          </div>` : `<div class="seedlingHousePrimaryDateRow">
+            <span>一次定植日 ${escapeHtml(lot.primaryDateText || "未記録")}</span>
+            <button type="button" class="secondaryBtn" data-ui-click="beginSeedlingHousePrimaryDateEdit" data-ui-number="${lot.eventId}">日付を編集</button>
+          </div>`}
+        </section>`;
+      }).join("") : `<div class="seedlingHousePrimaryEmpty">このベッドの一次定植記録はまだありません</div>`}
+    </div>`;
+  detail.hidden = false;
+  requestAnimationFrame(positionSeedlingHousePrimaryDetail);
+}
+
+function positionSeedlingHousePrimaryDetail(){
+  const detail = document.getElementById("seedlingHousePrimaryDetail");
+  const bed = document.querySelector(`[data-ui-click="setSeedlingHouseBed"][data-ui-arg="${seedlingHouseSelectedBed}"]`);
+  if(!detail || detail.hidden || !bed) return;
+  const rect = bed.getBoundingClientRect();
+  const margin = 12;
+  const availableBelow = window.innerHeight - rect.bottom - margin;
+  const availableAbove = rect.top - margin;
+  detail.style.maxHeight = `${Math.max(140, Math.max(availableBelow, availableAbove) - 8)}px`;
+  const height = Math.min(detail.scrollHeight, parseFloat(detail.style.maxHeight));
+  const top = availableBelow >= Math.min(height, 180)
+    ? rect.bottom + 8
+    : Math.max(margin, rect.top - height - 8);
+  const width = detail.offsetWidth;
+  const left = Math.min(Math.max(margin, rect.left + (rect.width - width) / 2), window.innerWidth - width - margin);
+  detail.style.top = `${top}px`;
+  detail.style.left = `${Math.max(margin, left)}px`;
+}
+
+function setSeedlingHouseBed(bed){
+  if(!bedOrder.includes(bed)) return;
+  seedlingHouseSelectedBed = bed;
+  seedlingHousePrimaryDateEditingEventId = null;
+  renderSeedlingHouseUi();
+}
+
+function closeSeedlingHousePrimaryDetail(){
+  const bed = seedlingHouseSelectedBed;
+  seedlingHouseSelectedBed = null;
+  seedlingHousePrimaryDateEditingEventId = null;
+  const detail = document.getElementById("seedlingHousePrimaryDetail");
+  if(detail){
+    detail.hidden = true;
+    detail.style.removeProperty("top");
+    detail.style.removeProperty("left");
+    detail.style.removeProperty("max-height");
+  }
+  document.querySelector(`[data-ui-click="setSeedlingHouseBed"][data-ui-arg="${bed}"]`)
+    ?.setAttribute("aria-expanded", "false");
+}
+
+function beginSeedlingHousePrimaryDateEdit(eventId){
+  seedlingHousePrimaryDateEditingEventId = Number(eventId);
+  renderSeedlingHousePrimaryDetail();
+}
+
+function cancelSeedlingHousePrimaryDateEdit(){
+  seedlingHousePrimaryDateEditingEventId = null;
+  renderSeedlingHousePrimaryDetail();
+}
+
+function saveSeedlingHousePrimaryPlantingDate(eventId){
+  if(!ensureGoogleSheetLocalMutationAllowed("一次定植日を編集")) return;
+  const value = String(document.getElementById("seedlingHousePrimaryDateInput")?.value || "").trim();
+  if(!isStrictDateOnlyString(value)){
+    showToast("一次定植日を入力してください");
+    return;
+  }
+  const index = plantingEvents.findIndex(event => Number(event.eventId) === Number(eventId));
+  if(index < 0){
+    showToast("編集する苗取り記録が見つかりません");
+    return;
+  }
+  const updatedEvent = normalizePlantingEvent({
+    ...plantingEvents[index],
+    seedlingHousePrimaryPlantingDate: value
+  });
+  if(!updatedEvent){
+    showToast("一次定植日を更新できませんでした");
+    return;
+  }
+  plantingEvents[index] = updatedEvent;
+  savePlantingEventsToStorage();
+  setPlantingEventSyncStatus(updatedEvent, "edited");
+  queueGoogleSheetPlantingEventSend(updatedEvent, {
+    successMessage: "1号棟の一次定植日を更新して送信しました",
+    failureMessage: "一次定植日は端末内に保存済みです。スプレッドシートは未送信です"
+  });
+  seedlingHousePrimaryDateEditingEventId = null;
+  renderSeedlingHouseUi();
+  showToast("一次定植日を更新しました");
+}
+
+function toggleSeedlingHouseStartEditor(){
+  const editor = document.getElementById("seedlingHouseStartEditor");
+  if(!editor) return;
+  editor.hidden = !editor.hidden;
+  if(editor.hidden) return;
+  const nextKey = getCurrentSeedlingHousePlan().nextKey;
+  const pallet = parsePalletKey(nextKey);
+  const bedInput = document.getElementById("seedlingHouseStartBedInput");
+  const numberInput = document.getElementById("seedlingHouseStartNumberInput");
+  if(bedInput) bedInput.value = bedOrder.includes(pallet.bed) ? pallet.bed : "A";
+  if(numberInput) numberInput.value = Number.isInteger(pallet.number) ? String(pallet.number) : "1";
+}
+
+function saveSeedlingHouseStartCorrection(){
+  if(!ensureGoogleSheetLocalMutationAllowed("1号棟の開始位置を修正")) return;
+  const bed = String(document.getElementById("seedlingHouseStartBedInput")?.value || "");
+  const number = Math.trunc(Number(document.getElementById("seedlingHouseStartNumberInput")?.value));
+  const key = getPalletKey(SEEDLING_HOUSE_BUILDING, bed, number);
+  if(!isValidSeedlingHousePalletKey(key)){
+    showToast("開始位置はA〜Fベッドの1〜78で指定してください");
+    return;
+  }
+  const latestEvent = [...plantingEvents].sort(comparePlantingEventsDesc)[0] || null;
+  if(latestEvent){
+    const index = plantingEvents.findIndex(event => Number(event.eventId) === Number(latestEvent.eventId));
+    const updatedEvent = normalizePlantingEvent({ ...latestEvent, seedlingHouseNextStartKey: key });
+    if(index < 0 || !updatedEvent){
+      showToast("開始位置を保存できませんでした");
+      return;
+    }
+    plantingEvents[index] = updatedEvent;
+    settings.seedlingHouseInitialStartKey = "";
+    saveSettingsToStorage();
+    savePlantingEventsToStorage();
+    setPlantingEventSyncStatus(updatedEvent, "edited");
+    queueGoogleSheetPlantingEventSend(updatedEvent, {
+      successMessage: "1号棟の開始位置を修正して送信しました",
+      failureMessage: "開始位置は端末内に保存済みです。スプレッドシートは未送信です"
+    });
+  }else{
+    settings.seedlingHouseInitialStartKey = key;
+    saveSettingsToStorage();
+  }
+  const editor = document.getElementById("seedlingHouseStartEditor");
+  if(editor) editor.hidden = true;
+  renderSeedlingHouseUi();
+  showToast(`1号棟の開始位置を${formatSeedlingHousePosition(key)}に変更しました`);
 }
 
 function renderForecastSummary(){

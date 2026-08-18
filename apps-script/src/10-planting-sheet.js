@@ -275,6 +275,7 @@ function applyAddedPlantingEventColumnLayout(sheet, startColumn, keys) {
   const formats = {
     eventId: "0",
     plantingDate: "yyyy-mm-dd",
+    seedlingHousePrimaryPlantingDate: "yyyy-mm-dd",
     actualSeedlingTrayCount: "0",
     actualTakenSeedlingCount: "0",
     actualPlantedSeedlingCount: "0",
@@ -288,6 +289,7 @@ function applyAddedPlantingEventColumnLayout(sheet, startColumn, keys) {
     "plantingPalletKeys",
     "plantingCountsByPallet",
     "seedlingHousePalletKeys",
+    "seedlingHouseNextStartKey",
     "palletNumberingVersion"
   ]);
   keys.forEach((key, index) => {
@@ -315,6 +317,7 @@ function applyPlantingEventSheetLayout(sheet, headers) {
   const formats = {
     eventId: "0",
     plantingDate: "yyyy-mm-dd",
+    seedlingHousePrimaryPlantingDate: "yyyy-mm-dd",
     actualSeedlingTrayCount: "0",
     actualTakenSeedlingCount: "0",
     actualPlantedSeedlingCount: "0",
@@ -330,7 +333,7 @@ function applyPlantingEventSheetLayout(sheet, headers) {
       .setNumberFormat(formats[key]);
   });
   sheet.showColumns(1, Math.max(sheet.getLastColumn(), headers.length));
-  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "seedlingHousePalletKeys", "palletNumberingVersion"].forEach(key => {
+  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "seedlingHousePalletKeys", "seedlingHouseNextStartKey", "palletNumberingVersion"].forEach(key => {
     const column = getPlantingEventHeaderColumn(headers, key);
     if (column > 0) sheet.hideColumns(column);
   });
@@ -357,6 +360,8 @@ function buildPlantingEventRow(headers, event) {
     seedlingHousePalletKeys: escapeSpreadsheetFormulaText(
       JSON.stringify(event.seedlingHousePalletKeys || [])
     ),
+    seedlingHousePrimaryPlantingDate: event.seedlingHousePrimaryPlantingDate || "",
+    seedlingHouseNextStartKey: event.seedlingHouseNextStartKey || "",
     actualTakenSeedlingCount: detailsUnknown ? "" : event.actualTakenSeedlingCount ?? "",
     actualPlantedSeedlingCount: detailsUnknown ? "" : event.actualPlantedSeedlingCount ?? "",
     actualSeedlingCarryoverMode: detailsUnknown ? "" : event.actualSeedlingCarryoverMode || "loss",
@@ -568,6 +573,8 @@ function rowToPlantingEvent(headers, row) {
     ),
     actualSeedlingTrayCount: item.actualSeedlingTrayCount,
     seedlingHousePalletKeys: parseStoredJsonArray(item.seedlingHousePalletKeys, "1号棟苗取り場所"),
+    seedlingHousePrimaryPlantingDate: formatDateValue(item.seedlingHousePrimaryPlantingDate),
+    seedlingHouseNextStartKey: item.seedlingHouseNextStartKey,
     actualTakenSeedlingCount: item.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: item.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: item.actualSeedlingCarryoverMode,
