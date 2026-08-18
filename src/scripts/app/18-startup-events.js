@@ -203,6 +203,11 @@ function handleStartupEscapeKey(event){
     closePlantingAgeWindow();
     return;
   }
+  const seedlingHouseModal = document.getElementById("seedlingHouseModal");
+  if(seedlingHouseModal?.classList.contains("show")){
+    closeSeedlingHouseWindow();
+    return;
+  }
   const bedDetailModal = document.getElementById("bedDetailModal");
   if(bedDetailModal?.classList.contains("show")){
     closeBedDetailWindow();

@@ -496,15 +496,179 @@ function getSpecialPalletCountForRequiredSeedlings(requiredSeedlings){
   let count = 0;
   let index = 0;
 
-  while(true){
+  while(total < requiredSeedlings){
     const nextCount = pattern[index % pattern.length];
-    if(total + nextCount > requiredSeedlings) break;
     total += nextCount;
     count++;
     index++;
   }
 
   return count;
+}
+
+function getSeedlingHouseOrder(){
+  const keys = [];
+  SEEDLING_HOUSE_BED_SEQUENCE.forEach(item => {
+    if(item.direction < 0){
+      for(let number = PALLETS_PER_BED; number >= 1; number--){
+        keys.push(getPalletKey(SEEDLING_HOUSE_BUILDING, item.bed, number));
+      }
+      return;
+    }
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      keys.push(getPalletKey(SEEDLING_HOUSE_BUILDING, item.bed, number));
+    }
+  });
+  return keys;
+}
+
+function isValidSeedlingHousePalletKey(key){
+  const match = String(key || "").trim().match(/^1-([A-F])-(\d+)$/);
+  if(!match) return false;
+  const number = Number(match[2]);
+  return Number.isInteger(number) && number >= 1 && number <= PALLETS_PER_BED;
+}
+
+function normalizeSeedlingHousePalletKeys(keys){
+  if(!Array.isArray(keys)) return [];
+  const orderIndex = new Map(getSeedlingHouseOrder().map((key, index) => [key, index]));
+  return [...new Set(keys.map(key => String(key || "").trim()).filter(isValidSeedlingHousePalletKey))]
+    .sort((left, right) => orderIndex.get(left) - orderIndex.get(right));
+}
+
+function formatSeedlingHousePosition(key){
+  if(!isValidSeedlingHousePalletKey(key)) return "-";
+  const pallet = parsePalletKey(key);
+  return `${pallet.bed}-${pallet.number}`;
+}
+
+function formatSeedlingHouseSelectionRange(keys){
+  const normalizedKeys = normalizeSeedlingHousePalletKeys(keys);
+  if(!normalizedKeys.length) return "-";
+  const first = formatSeedlingHousePosition(normalizedKeys[0]);
+  const last = formatSeedlingHousePosition(normalizedKeys[normalizedKeys.length - 1]);
+  return normalizedKeys.length === 1 || first === last ? first : `${first}〜${last}`;
+}
+
+function getSeedlingHouseEventKeys(event, usedSet, order){
+  const trayCount = clampNumber(event?.actualSeedlingTrayCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+  if(trayCount <= 0 || event?.detailsUnknown) return [];
+  const storedKeys = normalizeSeedlingHousePalletKeys(event?.seedlingHousePalletKeys);
+  if(storedKeys.length){
+    const storedSet = new Set(storedKeys);
+    return storedKeys.slice(0, trayCount).concat(
+      order
+        .filter(key => !usedSet.has(key) && !storedSet.has(key))
+        .slice(0, Math.max(0, trayCount - storedKeys.length))
+    );
+  }
+
+  let available = order.filter(key => !usedSet.has(key));
+  if(available.length < trayCount){
+    usedSet.clear();
+    available = [...order];
+  }
+  return available.slice(0, trayCount);
+}
+
+function getSeedlingHouseUsageState(sourceEvents = plantingEvents, options = {}){
+  const excludeEventId = Number(options.excludeEventId || 0);
+  const order = getSeedlingHouseOrder();
+  const usedSet = new Set();
+  const events = (Array.isArray(sourceEvents) ? sourceEvents : [])
+    .filter(event => !excludeEventId || Number(event?.eventId) !== excludeEventId)
+    .sort(comparePlantingEventsAsc);
+
+  events.forEach(event => {
+    const storedKeys = normalizeSeedlingHousePalletKeys(event?.seedlingHousePalletKeys);
+    if(storedKeys.some(key => usedSet.has(key))) usedSet.clear();
+    const eventKeys = getSeedlingHouseEventKeys(event, usedSet, order);
+    if(!eventKeys.length) return;
+    eventKeys.forEach(key => usedSet.add(key));
+  });
+
+  if(usedSet.size >= order.length) usedSet.clear();
+  const availableKeys = order.filter(key => !usedSet.has(key));
+  return {
+    order,
+    usedSet,
+    availableKeys,
+    nextKey: availableKeys[0] || order[0] || ""
+  };
+}
+
+function allocateSeedlingHousePlan(usageState, skipCount, takeCount){
+  const order = usageState?.order || getSeedlingHouseOrder();
+  const availableKeys = usageState?.availableKeys?.length
+    ? [...usageState.availableKeys]
+    : [...order];
+  const safeSkipCount = clampNumber(skipCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+  const safeTakeCount = clampNumber(takeCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+  const skippedKeys = availableKeys.slice(0, safeSkipCount);
+  let selectedKeys = availableKeys.slice(safeSkipCount, safeSkipCount + safeTakeCount);
+
+  if(selectedKeys.length < safeTakeCount){
+    const reservedSet = new Set([...skippedKeys, ...selectedKeys]);
+    selectedKeys = selectedKeys.concat(
+      order.filter(key => !reservedSet.has(key)).slice(0, safeTakeCount - selectedKeys.length)
+    );
+  }
+
+  return {
+    skippedKeys,
+    selectedKeys,
+    skippedCount: skippedKeys.length,
+    selectedCount: selectedKeys.length
+  };
+}
+
+function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
+  const takeCount = clampNumber(options.takeCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+  const usageState = getSeedlingHouseUsageState(
+    Array.isArray(options.sourceEvents) ? options.sourceEvents : plantingEvents,
+    { excludeEventId: options.excludeEventId }
+  );
+  const skipInfo = getHarvestOrderSkipSeedlingInfo(keys, {
+    selectionMode: options.selectionMode ?? "manual",
+    referenceDate: options.referenceDate,
+    sourceRecords: Array.isArray(options.sourceRecords) ? options.sourceRecords : records
+  });
+  const allocation = allocateSeedlingHousePlan(
+    usageState,
+    skipInfo.shouldShow ? skipInfo.skippedSeedlingTrayCount : 0,
+    takeCount
+  );
+  return {
+    ...usageState,
+    ...allocation,
+    skipInfo,
+    takeCount,
+    shouldShowSelection: options.shouldShowSelection !== false && takeCount > 0
+  };
+}
+
+function getCurrentSeedlingHousePlan(){
+  const activeRecord = recordSelectionMode === "planting" ? getActivePlantingRecord() : null;
+  const harvestKeys = activeRecord?.palletKeys?.length ? activeRecord.palletKeys : harvestFillKeys;
+  const seedlingCounts = getSeedlingInstructionCounts(harvestKeys);
+  const displayedTakeCount = activeRecord
+    ? (clampNumber(activeRecord.actualSeedlingTrayCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0)
+      || clampNumber(activeRecord.plannedSeedlingTrayCount, 0, SEEDLING_HOUSE_POSITION_COUNT, seedlingCounts.totalCount))
+    : getDisplayedSeedlingCount(seedlingCounts.totalCount);
+  const shouldShowSelection = !!harvestSummary && harvestKeys.length > 0;
+  const referenceDate = activeRecord?.date
+    ? (parseDateOnlyString(activeRecord.date) || new Date())
+    : new Date();
+  const sourceRecords = activeRecord
+    ? records.filter(record => Number(record?.id) !== Number(activeRecord.id))
+    : records;
+  return getSeedlingHousePlanForHarvestKeys(harvestKeys, {
+    takeCount: displayedTakeCount,
+    selectionMode: activeRecord ? "manual" : harvestSelectionMode,
+    referenceDate,
+    sourceRecords,
+    shouldShowSelection
+  });
 }
 
 function getSeedlingTrayCountNeededForKeys(keys, options = {}){

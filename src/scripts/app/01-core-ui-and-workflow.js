@@ -106,6 +106,16 @@ const bedOrder = ["A","B","C","D","E","F"];
 const ROWS = 39;
 const COLS = 2;
 const PALLETS_PER_BED = 78;
+const SEEDLING_HOUSE_BUILDING = 1;
+const SEEDLING_HOUSE_BED_SEQUENCE = Object.freeze([
+  Object.freeze({ bed: "A", direction: 1 }),
+  Object.freeze({ bed: "B", direction: 1 }),
+  Object.freeze({ bed: "D", direction: -1 }),
+  Object.freeze({ bed: "C", direction: -1 }),
+  Object.freeze({ bed: "E", direction: 1 }),
+  Object.freeze({ bed: "F", direction: 1 })
+]);
+const SEEDLING_HOUSE_POSITION_COUNT = bedOrder.length * PALLETS_PER_BED;
 const CURRENT_PALLET_NUMBERING_VERSION = 2;
 const PALLETS_PER_PIN = 4;
 const HARVEST_FORECAST_WEEKDAYS = [0, 2, 3, 4, 6];
@@ -176,6 +186,7 @@ let expandedRecordBed = null;
 let activeBedDetailContext = null;
 let activeBedDetailBed = null;
 let recordDetailReturnFocus = null;
+let seedlingHouseReturnFocus = null;
 let recordDetailLocationModel = null;
 let recordDetailLocationBuilding = null;
 let recordDetailLocationSelectedBed = null;
@@ -463,6 +474,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "dashboardForecastInfoModal",
   "dashboardForecastDaysAllModal",
   "plantingAgeModal",
+  "seedlingHouseModal",
   "bedDetailModal",
   "recordDetailModal",
   "partialHarvestEditModal",
@@ -738,6 +750,27 @@ function openPlantingAgeWindow(){
 function closePlantingAgeWindow(){
   const modal = document.getElementById("plantingAgeModal");
   hidePageBlockingUi(modal);
+}
+
+function openSeedlingHouseWindow(){
+  const modal = document.getElementById("seedlingHouseModal");
+  if(!modal) return;
+  seedlingHouseReturnFocus = document.activeElement;
+  showPageBlockingUi(modal);
+  renderSeedlingHouseUi();
+  document.getElementById("seedlingHouseWindowClose")?.focus();
+}
+
+function closeSeedlingHouseWindow(options = {}){
+  const modal = document.getElementById("seedlingHouseModal");
+  const returnFocus = seedlingHouseReturnFocus;
+  seedlingHouseReturnFocus = null;
+  hidePageBlockingUi(modal);
+  const beds = document.getElementById("seedlingHouseBeds");
+  if(beds) beds.innerHTML = "";
+  if(options.restoreFocus !== false && returnFocus && typeof returnFocus.focus === "function"){
+    returnFocus.focus();
+  }
 }
 
 function openForecastSettingsWindow(){

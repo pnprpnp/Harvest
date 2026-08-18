@@ -678,6 +678,7 @@
           plantingPalletKeys: ["3-B-4", "3-B-5"],
           plantingCountsByPallet: { "3-B-4": 16, "3-B-5": 20 },
           actualSeedlingTrayCount: 2,
+          seedlingHousePalletKeys: ["1-A-1", "1-A-2"],
           actualTakenSeedlingCount: 240,
           actualPlantedSeedlingCount: 36,
           actualSeedlingCarryoverMode: "loss",
@@ -696,6 +697,7 @@
           "3-B-4": 16,
           "3-B-5": 20
         }, "パレット別の植え付け株数が変わりました");
+        assertDeepEqual(serverEvent.seedlingHousePalletKeys, ["1-A-1", "1-A-2"], "1号棟の苗取り場所が変わりました");
         assertEqual(serverEvent.actualTakenSeedlingCount, 240, "取得苗株数が変わりました");
         assertEqual(serverEvent.actualPlantedSeedlingCount, 36, "苗植え株数が変わりました");
       });
@@ -1185,6 +1187,122 @@
         }
       });
 
+      await runTest("1号棟を苗取り順で表示し先取り分を残して苗を選ぶ", () => {
+        const previousSettings = comparable(app.eval("settings"));
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previousSelection = comparable(app.eval(`({
+          keys: [...harvestFillKeys],
+          summary: harvestSummary,
+          mode: harvestSelectionMode,
+          progress: harvestProgressState
+        })`));
+        try{
+          replaceAppHistory(app, [], []);
+          app.eval(`
+            settings = {
+              ...settings,
+              useBedPlantSettings: false,
+              defaultPlantingCount: 12,
+              seedlingLossRate: 0,
+              specialPallet60CountPer3: 3
+            };
+            harvestProgressState = null;
+            harvestSelectionMode = "manual";
+          `);
+          const model = comparable(app.eval(`(() => {
+            const order = getSeedlingHouseOrder();
+            const skippedHarvestBed = Array.from({ length: 78 }, (_, index) => getPalletKey(2, "A", index + 1));
+            const selectedHarvestBed = Array.from({ length: 78 }, (_, index) => getPalletKey(2, "B", index + 1));
+            const skipInfo = getHarvestOrderSkipSeedlingInfo(selectedHarvestBed, {
+              selectionMode: "manual",
+              sourceRecords: [],
+              referenceDate: new Date(2026, 7, 18)
+            });
+            const plan = getSeedlingHousePlanForHarvestKeys(selectedHarvestBed, {
+              takeCount: getSeedlingTrayCountNeededForKeys(selectedHarvestBed, { carryoverSeedlings: 0 }),
+              selectionMode: "manual",
+              sourceRecords: [],
+              sourceEvents: [],
+              referenceDate: new Date(2026, 7, 18)
+            });
+            const legacyUsage = getSeedlingHouseUsageState([{
+              eventId: 1,
+              plantingDate: "2026-08-17",
+              actualSeedlingTrayCount: 2,
+              seedlingHousePalletKeys: [],
+              detailsUnknown: false
+            }]);
+            const aheadRecordedUsage = getSeedlingHouseUsageState([{
+              eventId: 2,
+              plantingDate: "2026-08-18",
+              actualSeedlingTrayCount: 16,
+              seedlingHousePalletKeys: plan.selectedKeys,
+              detailsUnknown: false
+            }]);
+            return {
+              orderBreaks: [order[0], order[77], order[78], order[155], order[156], order[233], order[234], order[311], order[312], order[389], order[390], order[467]],
+              skippedHarvestCount: skippedHarvestBed.length,
+              skippedSeedlingTrayCount: skipInfo.skippedSeedlingTrayCount,
+              takeCount: plan.takeCount,
+              skippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys),
+              selectedRange: formatSeedlingHouseSelectionRange(plan.selectedKeys),
+              legacyNext: legacyUsage.nextKey,
+              nextAfterAheadTake: aheadRecordedUsage.nextKey
+            };
+          })()`));
+          assertDeepEqual(model, {
+            orderBreaks: ["1-A-1", "1-A-78", "1-B-1", "1-B-78", "1-D-78", "1-D-1", "1-C-78", "1-C-1", "1-E-1", "1-E-78", "1-F-1", "1-F-78"],
+            skippedHarvestCount: 78,
+            skippedSeedlingTrayCount: 16,
+            takeCount: 16,
+            skippedRange: "A-1〜A-16",
+            selectedRange: "A-17〜A-32",
+            legacyNext: "1-A-3",
+            nextAfterAheadTake: "1-A-1"
+          }, "1号棟の苗取り順・切り上げ・先取り時の飛ばし方が一致しません");
+
+          app.eval(`
+            harvestFillKeys = Array.from({ length: 78 }, (_, index) => getPalletKey(2, "B", index + 1));
+            harvestSummary = { start: harvestFillKeys[0], end: harvestFillKeys[77], filledCount: 78, totalHarvest: 936, needHeads: 936 };
+            renderForecastSummary();
+          `);
+          const button = app.document.getElementById("seedlingHouseOpenBtn");
+          const buildingSwitch = app.document.querySelector(".casePlacementBuildingSwitch");
+          assert(button.getBoundingClientRect().right <= buildingSwitch.getBoundingClientRect().left,
+            "1号棟ボタンが2〜9号棟の切替と重なっています");
+          app.openSeedlingHouseWindow();
+          const viewState = {
+            buttonText: button.textContent.replace(/\s+/g, " ").trim(),
+            modalOpen: app.document.getElementById("seedlingHouseModal").classList.contains("show"),
+            palletCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet").length,
+            selectedCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet.is-selected").length,
+            skippedCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet.is-skipped").length,
+            summary: app.document.getElementById("seedlingHouseSummary").textContent.trim()
+          };
+          assertDeepEqual(viewState, {
+            buttonText: "1号棟 次 A-1",
+            modalOpen: true,
+            palletCount: 468,
+            selectedCount: 16,
+            skippedCount: 16,
+            summary: "苗を16枚飛ばす → 16枚取る"
+          }, "1号棟ボタンまたは苗取り配置ウィンドウの表示が一致しません");
+        }finally{
+          app.closeSeedlingHouseWindow({ restoreFocus: false });
+          app.eval(`
+            settings = ${JSON.stringify(previousSettings)};
+            harvestFillKeys = ${JSON.stringify(previousSelection.keys)};
+            harvestSummary = ${JSON.stringify(previousSelection.summary)};
+            harvestSelectionMode = ${JSON.stringify(previousSelection.mode)};
+            harvestProgressState = ${JSON.stringify(previousSelection.progress)};
+          `);
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.invalidatePlantingEventStateCache();
+          app.renderForecastSummary();
+        }
+      });
+
       await runTest("同期番号とカーソルをブラウザー・Apps Script間で同じ値として扱う", () => {
         const recordCursor = {
           updatedAt: "2026-08-09T01:02:03.000Z",
@@ -1387,6 +1505,7 @@
           "dashboardForecastInfoModal",
           "dashboardForecastDaysAllModal",
           "plantingAgeModal",
+          "seedlingHouseModal",
           "bedDetailModal",
           "recordDetailModal",
           "partialHarvestEditModal",
@@ -3406,18 +3525,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "db2e2236", elements: 2063, visible: 632, viewport: "390x844" },
-          cssStates: { hash: "ed2d8868", elements: 2131, visible: 691, viewport: "390x844" },
-          cssFocus: { hash: "d5d3a91d", elements: 2131, visible: 691, viewport: "390x844" },
-          mobileRecord: { hash: "8a394cef", elements: 2064, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "029ac284", elements: 2064, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "bbe43f8a", elements: 2147, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "92cdf5d0", elements: 2162, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "54b8464c", elements: 2162, visible: 310, viewport: "390x844" },
-          mobileSettings: { hash: "14ce9c29", elements: 2162, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "ac370855", elements: 2162, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "2c73136b", elements: 2162, visible: 638, viewport: "1024x900" },
-          wideDashboard: { hash: "69d487b6", elements: 2162, visible: 135, viewport: "1024x900" }
+          mobileForecast: { hash: "2729bac0", elements: 2085, visible: 635, viewport: "390x844" },
+          cssStates: { hash: "e441f9dc", elements: 2153, visible: 694, viewport: "390x844" },
+          cssFocus: { hash: "516ad0e9", elements: 2153, visible: 694, viewport: "390x844" },
+          mobileRecord: { hash: "34cf32a5", elements: 2086, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "8b8eb6ac", elements: 2086, visible: 129, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "535d8f68", elements: 2169, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "d72fbfbe", elements: 2184, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "5620c1ba", elements: 2184, visible: 310, viewport: "390x844" },
+          mobileSettings: { hash: "4bdeaecd", elements: 2184, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "003121e5", elements: 2184, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "d8216820", elements: 2184, visible: 641, viewport: "1024x900" },
+          wideDashboard: { hash: "4b594b28", elements: 2184, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

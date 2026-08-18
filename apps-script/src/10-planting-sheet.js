@@ -287,6 +287,7 @@ function applyAddedPlantingEventColumnLayout(sheet, startColumn, keys) {
     "sourceAllocations",
     "plantingPalletKeys",
     "plantingCountsByPallet",
+    "seedlingHousePalletKeys",
     "palletNumberingVersion"
   ]);
   keys.forEach((key, index) => {
@@ -329,7 +330,7 @@ function applyPlantingEventSheetLayout(sheet, headers) {
       .setNumberFormat(formats[key]);
   });
   sheet.showColumns(1, Math.max(sheet.getLastColumn(), headers.length));
-  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "palletNumberingVersion"].forEach(key => {
+  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "seedlingHousePalletKeys", "palletNumberingVersion"].forEach(key => {
     const column = getPlantingEventHeaderColumn(headers, key);
     if (column > 0) sheet.hideColumns(column);
   });
@@ -353,6 +354,9 @@ function buildPlantingEventRow(headers, event) {
       JSON.stringify(event.plantingCountsByPallet || {})
     ),
     actualSeedlingTrayCount: detailsUnknown ? "" : event.actualSeedlingTrayCount ?? "",
+    seedlingHousePalletKeys: escapeSpreadsheetFormulaText(
+      JSON.stringify(event.seedlingHousePalletKeys || [])
+    ),
     actualTakenSeedlingCount: detailsUnknown ? "" : event.actualTakenSeedlingCount ?? "",
     actualPlantedSeedlingCount: detailsUnknown ? "" : event.actualPlantedSeedlingCount ?? "",
     actualSeedlingCarryoverMode: detailsUnknown ? "" : event.actualSeedlingCarryoverMode || "loss",
@@ -563,6 +567,7 @@ function rowToPlantingEvent(headers, row) {
       "パレット別植え付け株数"
     ),
     actualSeedlingTrayCount: item.actualSeedlingTrayCount,
+    seedlingHousePalletKeys: parseStoredJsonArray(item.seedlingHousePalletKeys, "1号棟苗取り場所"),
     actualTakenSeedlingCount: item.actualTakenSeedlingCount,
     actualPlantedSeedlingCount: item.actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: item.actualSeedlingCarryoverMode,

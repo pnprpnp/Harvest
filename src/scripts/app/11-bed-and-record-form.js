@@ -20,6 +20,96 @@ function updateRecordPartialHarvestIncludedNote(){
     : "";
 }
 
+function getSeedlingHouseCapacityForKey(key, orderIndex = null){
+  const order = getSeedlingHouseOrder();
+  const index = orderIndex instanceof Map ? orderIndex.get(key) : order.indexOf(key);
+  const pattern = getSpecialPalletPattern(settings.specialPallet60CountPer3);
+  return Number.isInteger(index) && index >= 0 && pattern.length
+    ? pattern[index % pattern.length]
+    : 0;
+}
+
+function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
+  const nextPosition = formatSeedlingHousePosition(plan.nextKey);
+  const openButton = document.getElementById("seedlingHouseOpenBtn");
+  const openNext = document.getElementById("seedlingHouseOpenNext");
+  if(openNext) openNext.textContent = `次 ${nextPosition}`;
+  if(openButton){
+    openButton.setAttribute("aria-label", `1号棟の苗取り場所。次回開始 ${nextPosition}`);
+  }
+
+  const summary = document.getElementById("seedlingHouseSummary");
+  const note = document.getElementById("seedlingHousePlanNote");
+  const beds = document.getElementById("seedlingHouseBeds");
+  if(!summary || !note || !beds) return;
+
+  const showSelection = !!plan.shouldShowSelection;
+  const selectedKeys = showSelection ? plan.selectedKeys : [];
+  const skippedKeys = showSelection ? plan.skippedKeys : [];
+  if(showSelection){
+    const skipText = skippedKeys.length ? `苗を${skippedKeys.length}枚飛ばす → ` : "";
+    summary.textContent = `${skipText}${selectedKeys.length}枚取る`;
+    note.textContent = [
+      `次回開始 ${nextPosition}`,
+      skippedKeys.length ? `飛ばして残す ${formatSeedlingHouseSelectionRange(skippedKeys)}` : "",
+      `今回取る ${formatSeedlingHouseSelectionRange(selectedKeys)}`
+    ].filter(Boolean).join(" ／ ");
+  }else{
+    summary.textContent = `次回開始 ${nextPosition}`;
+    note.textContent = "計算前は次回の苗取り開始場所だけを表示します。";
+  }
+
+  const modal = document.getElementById("seedlingHouseModal");
+  if(!modal?.classList.contains("show")){
+    beds.innerHTML = "";
+    return;
+  }
+
+  const selectedSet = new Set(selectedKeys);
+  const skippedSet = new Set(skippedKeys);
+  const usedSet = plan.usedSet instanceof Set ? plan.usedSet : new Set();
+  const order = plan.order || getSeedlingHouseOrder();
+  const orderIndex = new Map(order.map((key, index) => [key, index]));
+  beds.innerHTML = "";
+
+  SEEDLING_HOUSE_BED_SEQUENCE.forEach(item => {
+    const bed = document.createElement("section");
+    bed.className = "seedlingHouseBed";
+    const header = document.createElement("div");
+    header.className = "seedlingHouseBedHeader";
+    header.innerHTML = `<span>${escapeHtml(item.bed)}ベッド</span><span class="seedlingHouseBedDirection">${item.direction < 0 ? "78 → 1" : "1 → 78"}</span>`;
+    bed.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "seedlingHousePalletGrid";
+    order.filter(key => parsePalletKey(key).bed === item.bed).forEach(key => {
+      const pallet = parsePalletKey(key);
+      const cell = document.createElement("span");
+      const classes = ["seedlingHousePallet"];
+      if(usedSet.has(key)) classes.push("is-used");
+      if(skippedSet.has(key)) classes.push("is-skipped");
+      if(selectedSet.has(key)) classes.push("is-selected");
+      if(!showSelection && key === plan.nextKey) classes.push("is-next");
+      cell.className = classes.join(" ");
+      cell.textContent = String(pallet.number);
+      const capacity = getSeedlingHouseCapacityForKey(key, orderIndex);
+      const state = selectedSet.has(key)
+        ? "今回取る"
+        : skippedSet.has(key)
+          ? "飛ばして残す"
+          : usedSet.has(key)
+            ? "苗取り済み"
+            : key === plan.nextKey
+              ? "次回開始"
+              : "未使用";
+      cell.title = `1号棟 ${item.bed}-${pallet.number}（${capacity}植え・${state}）`;
+      grid.appendChild(cell);
+    });
+    bed.appendChild(grid);
+    beds.appendChild(bed);
+  });
+}
+
 function updateHarvestOrderSkipSeedlingNote(info = getHarvestOrderSkipSeedlingInfo()){
   const note = document.getElementById("harvestOrderSkipSeedlingNote");
   if(!note) return;
@@ -38,6 +128,7 @@ function renderForecastSummary(){
   const skipSeedlingInfo = getHarvestOrderSkipSeedlingInfo();
   const skipSeedlingText = getHarvestOrderSkipSeedlingText(skipSeedlingInfo);
   updateHarvestOrderSkipSeedlingNote(skipSeedlingInfo);
+  renderSeedlingHouseUi();
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);

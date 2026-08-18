@@ -19,6 +19,50 @@ function comparePalletKeys(left, right) {
     || Number(leftParts[2]) - Number(rightParts[2]);
 }
 
+function getSeedlingHouseOrderIndex(key) {
+  const match = String(key || "").match(/^1-([A-F])-(\d+)$/);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  const bed = match[1];
+  const number = Number(match[2]);
+  const sequence = [
+    { bed: "A", direction: 1 },
+    { bed: "B", direction: 1 },
+    { bed: "D", direction: -1 },
+    { bed: "C", direction: -1 },
+    { bed: "E", direction: 1 },
+    { bed: "F", direction: 1 }
+  ];
+  const bedIndex = sequence.findIndex(item => item.bed === bed);
+  if (bedIndex < 0 || !Number.isInteger(number) || number < 1 || number > PALLETS_PER_BED) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const numberIndex = sequence[bedIndex].direction < 0
+    ? PALLETS_PER_BED - number
+    : number - 1;
+  return bedIndex * PALLETS_PER_BED + numberIndex;
+}
+
+function normalizeSeedlingHousePalletKeys(value) {
+  if (value === null || typeof value === "undefined" || value === "") return [];
+  if (!Array.isArray(value)) throw new Error("1号棟苗取り場所は配列で指定してください");
+  if (value.length > HARVEST_BEDS.length * PALLETS_PER_BED) {
+    throw new Error("1号棟苗取り場所が1号棟の収容数を超えています");
+  }
+  const keys = [];
+  const seen = new Set();
+  value.forEach(item => {
+    if (typeof item !== "string") throw new Error("1号棟苗取り場所の形式が正しくありません");
+    const key = item.trim();
+    if (getSeedlingHouseOrderIndex(key) === Number.MAX_SAFE_INTEGER) {
+      throw new Error("1号棟苗取り場所が範囲外です");
+    }
+    if (seen.has(key)) throw new Error("1号棟苗取り場所が重複しています");
+    seen.add(key);
+    keys.push(key);
+  });
+  return keys.sort((left, right) => getSeedlingHouseOrderIndex(left) - getSeedlingHouseOrderIndex(right));
+}
+
 
 function normalizeHarvestRecord(record) {
   if (!isPlainObject(record)) throw new Error("記録データはオブジェクトで指定してください");
@@ -210,6 +254,10 @@ function normalizePlantingEvent(event) {
     RECORD_SEEDLING_TRAY_LIMIT,
     0
   );
+  const seedlingHousePalletKeys = normalizeSeedlingHousePalletKeys(event.seedlingHousePalletKeys);
+  if (seedlingHousePalletKeys.length > actualSeedlingTrayCount) {
+    throw new Error("1号棟苗取り場所が実苗枚数を超えています");
+  }
   const rawSourceAllocations = normalizePlantingSourceAllocations(event.sourceAllocations, {
     allowEmptyPalletKeys: actualSeedlingTrayCount === 0
   });
@@ -276,6 +324,7 @@ function normalizePlantingEvent(event) {
     plantingPalletKeys,
     plantingCountsByPallet,
     actualSeedlingTrayCount,
+    seedlingHousePalletKeys,
     actualTakenSeedlingCount,
     actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode: normalizeOptionalCarryoverMode(event.actualSeedlingCarryoverMode),

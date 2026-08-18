@@ -333,6 +333,18 @@ async function savePlantingRecord(){
     && normalizedSelectedKeys.every(key => (
       plantingCountsByPallet[key] === existingPlantingCountsByPallet[key]
     ));
+  const existingSeedlingHouseKeys = normalizeSeedlingHousePalletKeys(existingEvent?.seedlingHousePalletKeys || []);
+  const seedlingHousePlan = getSeedlingHousePlanForHarvestKeys(record.palletKeys, {
+    takeCount: actualSeedlingTrayCount,
+    selectionMode: "manual",
+    referenceDate: parseDateOnlyString(record.date) || new Date(),
+    sourceRecords: records.filter(item => Number(item?.id) !== Number(record.id)),
+    excludeEventId: existingEvent?.eventId,
+    shouldShowSelection: true
+  });
+  const seedlingHousePalletKeys = sameTrayCount && existingSeedlingHouseKeys.length
+    ? existingSeedlingHouseKeys
+    : seedlingHousePlan.selectedKeys;
   const event = normalizePlantingEvent({
     palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
     eventId: existingEvent?.eventId || getNextPlantingEventId(),
@@ -341,6 +353,7 @@ async function savePlantingRecord(){
     plantingPalletKeys: normalizedSelectedKeys,
     plantingCountsByPallet,
     actualSeedlingTrayCount,
+    seedlingHousePalletKeys,
     actualTakenSeedlingCount: sameTrayCount
       ? existingEvent.actualTakenSeedlingCount
       : getActualTakenSeedlingTotalForTrayCount(actualSeedlingTrayCount),

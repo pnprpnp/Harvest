@@ -675,6 +675,11 @@ function normalizePlantingEvent(value){
     RECORD_MAX_SEEDLING_TRAYS
   );
   if(actualSeedlingTrayCount === null) return null;
+  if(value.seedlingHousePalletKeys !== undefined && !Array.isArray(value.seedlingHousePalletKeys)) return null;
+  const seedlingHousePalletKeys = normalizeSeedlingHousePalletKeys(value.seedlingHousePalletKeys || []);
+  if(Array.isArray(value.seedlingHousePalletKeys)
+    && seedlingHousePalletKeys.length !== value.seedlingHousePalletKeys.length) return null;
+  if(seedlingHousePalletKeys.length > actualSeedlingTrayCount) return null;
   const sourceAllocations = normalizePlantingEventSourceAllocations(value.sourceAllocations, {
     allowEmptyPalletKeys: actualSeedlingTrayCount === 0
   });
@@ -747,6 +752,7 @@ function normalizePlantingEvent(value){
     plantingPalletKeys,
     plantingCountsByPallet,
     actualSeedlingTrayCount,
+    seedlingHousePalletKeys,
     actualTakenSeedlingCount,
     actualPlantedSeedlingCount,
     actualSeedlingCarryoverMode,
@@ -1327,6 +1333,9 @@ function invalidateRecordDerivedCaches(options = {}){
 function completeRecordDataMutation(options = {}){
   invalidateRecordDerivedCaches(options);
   scheduleWorkflowGuideUpdate();
+  if(typeof renderSeedlingHouseUi === "function" && document.getElementById("seedlingHouseOpenBtn")){
+    renderSeedlingHouseUi();
+  }
 }
 
 function getActiveHarvestTimelineRecords(sourceRecords = records){
