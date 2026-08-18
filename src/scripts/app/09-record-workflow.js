@@ -537,6 +537,72 @@ function getSeedlingInstructionCounts(keys = harvestFillKeys, options = {}){
   };
 }
 
+function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
+  const emptyResult = {
+    shouldShow: false,
+    normalStartKey: "",
+    selectedStartKey: "",
+    skippedPalletKeys: [],
+    skippedPalletCount: 0,
+    skippedSeedlingTrayCount: 0
+  };
+  const selectionMode = options.selectionMode ?? harvestSelectionMode;
+  const selectedKeys = [...new Set(Array.isArray(keys) ? keys : [])]
+    .filter(isValidPalletKeyString);
+  if(selectionMode !== "manual" || !selectedKeys.length || hasAppliedHarvestProgress()){
+    return emptyResult;
+  }
+
+  const referenceDate = startOfLocalDay(options.referenceDate || new Date());
+  const sourceRecords = Array.isArray(options.sourceRecords) ? options.sourceRecords : records;
+  const recentRecords = getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords);
+  const recordedSet = getRecordedPalletSetFromRecords(recentRecords);
+  const startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
+  const normalStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+  if(!normalStartKey) return emptyResult;
+
+  const selectedSet = new Set(selectedKeys);
+  const skippedPalletKeys = [];
+  let selectedStartKey = "";
+  let current = parsePalletKey(normalStartKey);
+  const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
+
+  for(let index = 0; index < maxLoop; index++){
+    const key = getPalletKey(current.building, current.bed, current.number);
+    if(selectedSet.has(key)){
+      selectedStartKey = key;
+      break;
+    }
+    if(!recordedSet.has(key)) skippedPalletKeys.push(key);
+    current = getNextPallet(current.building, current.bed, current.number);
+  }
+
+  if(!selectedStartKey || !skippedPalletKeys.length){
+    return {
+      ...emptyResult,
+      normalStartKey,
+      selectedStartKey
+    };
+  }
+
+  return {
+    shouldShow: true,
+    normalStartKey,
+    selectedStartKey,
+    skippedPalletKeys,
+    skippedPalletCount: skippedPalletKeys.length,
+    skippedSeedlingTrayCount: getSeedlingTrayCountNeededForKeys(skippedPalletKeys, {
+      carryoverSeedlings: 0
+    })
+  };
+}
+
+function getHarvestOrderSkipSeedlingText(info = getHarvestOrderSkipSeedlingInfo()){
+  return info?.shouldShow
+    ? `先取り収穫: 苗を${info.skippedSeedlingTrayCount}枚飛ばす`
+    : "";
+}
+
 function normalizeManualSeedlingCount(value){
   if(value === null || value === "" || typeof value === "undefined") return null;
   if(!Number.isFinite(Number(value))) return null;

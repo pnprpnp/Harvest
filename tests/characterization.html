@@ -1103,6 +1103,88 @@
         }
       });
 
+      await runTest("通常順より先を収穫する時に飛ばす苗枚数を表示する", () => {
+        const previousSettings = comparable(app.eval("settings"));
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previousSelection = comparable(app.eval(`({
+          keys: [...harvestFillKeys],
+          mode: harvestSelectionMode,
+          progress: harvestProgressState
+        })`));
+        try{
+          replaceAppHistory(app, [], []);
+          app.eval(`
+            settings = {
+              ...settings,
+              useBedPlantSettings: false,
+              defaultPlantingCount: 20,
+              seedlingLossRate: 0,
+              specialPallet60CountPer3: 0
+            };
+            harvestProgressState = null;
+            harvestSelectionMode = "manual";
+            harvestFillKeys = ["2-A-7", "2-A-8", "2-A-9", "2-A-10", "2-A-11", "2-A-12"];
+          `);
+          const aheadState = comparable(app.eval(`(() => {
+            const info = getHarvestOrderSkipSeedlingInfo();
+            updateHarvestOrderSkipSeedlingNote(info);
+            const note = document.getElementById("harvestOrderSkipSeedlingNote");
+            return {
+              shouldShow: info.shouldShow,
+              normalStartKey: info.normalStartKey,
+              selectedStartKey: info.selectedStartKey,
+              skippedPalletCount: info.skippedPalletCount,
+              skippedSeedlingTrayCount: info.skippedSeedlingTrayCount,
+              skippedPalletKeys: info.skippedPalletKeys,
+              noteHidden: note.hidden,
+              noteText: note.textContent.replace(/\s+/g, " ").trim(),
+              monitorSeedling: getCurrentMonitorInstructionFields().seedling
+            };
+          })()`));
+          assertDeepEqual(aheadState, {
+            shouldShow: true,
+            normalStartKey: "2-A-1",
+            selectedStartKey: "2-A-7",
+            skippedPalletCount: 6,
+            skippedSeedlingTrayCount: 1,
+            skippedPalletKeys: ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "2-A-5", "2-A-6"],
+            noteHidden: false,
+            noteText: "先取り収穫：苗を1枚飛ばす（通常順で先にある未収穫パレット 6枚分）",
+            monitorSeedling: "1枚（先取り収穫: 苗を1枚飛ばす）"
+          }, "先取り収穫で飛ばす苗枚数を計算・表示できません");
+
+          const normalState = comparable(app.eval(`(() => {
+            harvestFillKeys = ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "2-A-5", "2-A-6"];
+            const manualInfo = getHarvestOrderSkipSeedlingInfo();
+            harvestSelectionMode = "auto";
+            harvestFillKeys = ["2-A-7", "2-A-8", "2-A-9", "2-A-10", "2-A-11", "2-A-12"];
+            const autoInfo = getHarvestOrderSkipSeedlingInfo();
+            updateHarvestOrderSkipSeedlingNote(autoInfo);
+            return {
+              manualNormalOrderShows: manualInfo.shouldShow,
+              automaticSelectionShows: autoInfo.shouldShow,
+              noteHidden: document.getElementById("harvestOrderSkipSeedlingNote").hidden
+            };
+          })()`));
+          assertDeepEqual(normalState, {
+            manualNormalOrderShows: false,
+            automaticSelectionShows: false,
+            noteHidden: true
+          }, "通常順または自動計算でも苗飛ばし表示が出ています");
+        }finally{
+          app.eval(`
+            settings = ${JSON.stringify(previousSettings)};
+            harvestFillKeys = ${JSON.stringify(previousSelection.keys)};
+            harvestSelectionMode = ${JSON.stringify(previousSelection.mode)};
+            harvestProgressState = ${JSON.stringify(previousSelection.progress)};
+          `);
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.invalidatePlantingEventStateCache();
+          app.updateHarvestOrderSkipSeedlingNote();
+        }
+      });
+
       await runTest("同期番号とカーソルをブラウザー・Apps Script間で同じ値として扱う", () => {
         const recordCursor = {
           updatedAt: "2026-08-09T01:02:03.000Z",
@@ -1677,7 +1759,7 @@
             recordSave: "#recordSaveCard",
             recordList: "#recordTab > .card:not(#recordSaveCard)",
             dashboardGuide: "#dashboardSubtabGuide > .card",
-            dashboardCalendar: "#dashboardSubtabCalendar > .card",
+            dashboardHarvestStart: "#dashboardResultsHarvestStartView > .card",
             dashboardSeedlings: "#dashboardSubtabSeedlings > .card",
             dashboardGraph: "#dashboardResultsGraphsView > .dashboardChartCard"
           };
@@ -1724,7 +1806,7 @@
               recordSave: "#recordSaveCard",
               recordList: "#recordTab > .card:not(#recordSaveCard)",
               dashboardGuide: "#dashboardSubtabGuide > .card",
-              dashboardCalendar: "#dashboardSubtabCalendar > .card",
+              dashboardHarvestStart: "#dashboardResultsHarvestStartView > .card",
               dashboardSeedlings: "#dashboardSubtabSeedlings > .card",
               dashboardGraph: "#dashboardResultsGraphsView > .dashboardChartCard"
             };
@@ -1832,21 +1914,28 @@
         }
       });
 
-      await runTest("集計の実績タブで記録カレンダーとグラフを切り替える", () => {
-        const harvestStartButton = app.document.getElementById("dashboardSubtabCalendarBtn");
+      await runTest("集計の実績タブで収穫開始・記録カレンダー・グラフを切り替える", () => {
+        const harvestStartButton = app.document.getElementById("dashboardResultsHarvestStartViewBtn");
         const subtabButton = app.document.getElementById("dashboardSubtabGraphsBtn");
         const panel = app.document.getElementById("dashboardSubtabGraphs");
         const viewSwitch = panel?.querySelector(".dashboardResultsViewSwitch");
+        const harvestStartPanel = app.document.getElementById("dashboardResultsHarvestStartView");
         const calendarPanel = app.document.getElementById("dashboardResultsCalendarView");
         const graphsPanel = app.document.getElementById("dashboardResultsGraphsView");
         const calendarCard = app.document.getElementById("dashboardRecordCalendarCard");
         const table = app.document.getElementById("dashboardRecordTable");
         assertDeepEqual(
-          [harvestStartButton?.textContent.trim(), subtabButton?.textContent.trim()],
-          ["収穫開始", "実績"],
-          "集計サブタブの名前が目的別に整理されていません"
+          [
+            app.document.querySelectorAll("[data-dashboard-subtab]").length,
+            app.document.getElementById("dashboardSubtabCalendarBtn"),
+            harvestStartButton?.textContent.trim(),
+            subtabButton?.textContent.trim()
+          ],
+          [3, null, "収穫開始", "実績"],
+          "収穫開始が実績内の表示切り替えへ移動していません"
         );
-        assert(panel?.firstElementChild === viewSwitch, "カレンダーとグラフの切り替えが実績タブの一番上にありません");
+        assert(panel?.firstElementChild === viewSwitch, "収穫開始・カレンダー・グラフの切り替えが実績タブの一番上にありません");
+        assert(app.document.getElementById("dashboardHarvestStartTimeline")?.closest("#dashboardResultsHarvestStartView") === harvestStartPanel, "収穫開始の内容が実績内へ移動していません");
         assert(calendarPanel?.firstElementChild === calendarCard, "記録カレンダーがカレンダー表示の先頭にありません");
         assert(table?.closest("#dashboardResultsCalendarView") === calendarPanel, "記録カレンダーが実績タブのカレンダー表示内にありません");
         assert(!app.document.getElementById("dashboardRecordListOpenBtn"), "記録一覧を開くボタンが残っています");
@@ -1861,6 +1950,7 @@
             text: button.textContent.trim(),
             selected: button.getAttribute("aria-selected")
           })),
+          harvestStartHidden: document.getElementById("dashboardResultsHarvestStartView")?.hidden || false,
           calendarHidden: document.getElementById("dashboardResultsCalendarView")?.hidden || false,
           graphsHidden: document.getElementById("dashboardResultsGraphsView")?.hidden || false,
           loadedMonth: document.getElementById("dashboardRecordTable")?.dataset.loadedMonth || "",
@@ -1869,15 +1959,38 @@
         })`));
         assertDeepEqual(inlineState, {
           viewButtons: [
+            { text: "収穫開始", selected: "false" },
             { text: "カレンダー", selected: "true" },
             { text: "グラフ", selected: "false" }
           ],
+          harvestStartHidden: true,
           calendarHidden: false,
           graphsHidden: true,
           loadedMonth: currentMonth,
           filterOpen: false,
           filtersInCalendar: true
         }, "実績タブを表示した時に当月のカレンダーが直接表示されません");
+
+        app.setDashboardResultsView("harvestStart");
+        const harvestStartState = comparable(app.eval(`({
+          selectedView: dashboardFilter.resultsView,
+          savedView: harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, {}).resultsView,
+          harvestStartHidden: document.getElementById("dashboardResultsHarvestStartView")?.hidden || false,
+          calendarHidden: document.getElementById("dashboardResultsCalendarView")?.hidden || false,
+          timelineInResults: document.getElementById("dashboardHarvestStartTimeline")?.closest("#dashboardSubtabGraphs") === document.getElementById("dashboardSubtabGraphs"),
+          legacySubtabMigration: normalizeDashboardSubtab("calendar"),
+          migratedResultsView: normalizeDashboardResultsView("harvestStart")
+        })`));
+        assertDeepEqual(harvestStartState, {
+          selectedView: "harvestStart",
+          savedView: "harvestStart",
+          harvestStartHidden: false,
+          calendarHidden: true,
+          timelineInResults: true,
+          legacySubtabMigration: "graphs",
+          migratedResultsView: "harvestStart"
+        }, "実績内で収穫開始へ切り替えられません");
+        app.setDashboardResultsView("calendar");
 
         app.shiftDashboardRecordCalendarMonth(-1);
         const previousMonthState = comparable(app.eval(`({
@@ -3293,18 +3406,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "43f243af", elements: 2062, visible: 632, viewport: "390x844" },
-          cssStates: { hash: "f6d14fc9", elements: 2130, visible: 691, viewport: "390x844" },
-          cssFocus: { hash: "59d24758", elements: 2130, visible: 691, viewport: "390x844" },
-          mobileRecord: { hash: "280bff33", elements: 2063, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "8dd091f1", elements: 2063, visible: 130, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "3a373fe1", elements: 2146, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "f4c64220", elements: 2161, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "680438fc", elements: 2161, visible: 311, viewport: "390x844" },
-          mobileSettings: { hash: "7d3d3a57", elements: 2161, visible: 274, viewport: "390x844" },
-          mobileMonitor: { hash: "2ef744a8", elements: 2161, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "4cce8620", elements: 2161, visible: 638, viewport: "1024x900" },
-          wideDashboard: { hash: "d966ebdf", elements: 2161, visible: 136, viewport: "1024x900" }
+          mobileForecast: { hash: "db2e2236", elements: 2063, visible: 632, viewport: "390x844" },
+          cssStates: { hash: "ed2d8868", elements: 2131, visible: 691, viewport: "390x844" },
+          cssFocus: { hash: "d5d3a91d", elements: 2131, visible: 691, viewport: "390x844" },
+          mobileRecord: { hash: "8a394cef", elements: 2064, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "029ac284", elements: 2064, visible: 129, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "bbe43f8a", elements: 2147, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "92cdf5d0", elements: 2162, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "54b8464c", elements: 2162, visible: 310, viewport: "390x844" },
+          mobileSettings: { hash: "14ce9c29", elements: 2162, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "ac370855", elements: 2162, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "2c73136b", elements: 2162, visible: 638, viewport: "1024x900" },
+          wideDashboard: { hash: "69d487b6", elements: 2162, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

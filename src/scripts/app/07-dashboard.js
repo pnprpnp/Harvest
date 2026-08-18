@@ -382,11 +382,12 @@ function getDefaultDashboardStartDay(){
 
 function normalizeDashboardSubtab(value){
   if(value === "cards") return "graphs";
-  return ["guide", "calendar", "seedlings", "graphs"].includes(value) ? value : "guide";
+  if(value === "calendar") return "graphs";
+  return ["guide", "seedlings", "graphs"].includes(value) ? value : "guide";
 }
 
 function normalizeDashboardResultsView(value){
-  return value === "graphs" ? "graphs" : "calendar";
+  return ["harvestStart", "calendar", "graphs"].includes(value) ? value : "calendar";
 }
 
 function normalizeDashboardRecordTypeFilter(value){
@@ -441,7 +442,9 @@ function loadDashboardFilter(){
         ? parsed.harvestForecastView
         : "beds",
       dashboardSubtab: normalizeDashboardSubtab(parsed?.dashboardSubtab),
-      resultsView: normalizeDashboardResultsView(parsed?.resultsView),
+      resultsView: normalizeDashboardResultsView(
+        parsed?.dashboardSubtab === "calendar" ? "harvestStart" : parsed?.resultsView
+      ),
       recordType: normalizeDashboardRecordTypeFilter(parsed?.recordType),
       recordSearch: String(parsed?.recordSearch || "").trim(),
       recordStartDate: parseDateOnlyString(parsed?.recordStartDate || "") ? String(parsed.recordStartDate) : "",
@@ -568,7 +571,9 @@ function setDashboardResultsView(value){
     saveDashboardFilter();
   }
   syncDashboardResultsViewUi();
-  if(nextView === "graphs"){
+  if(nextView === "harvestStart"){
+    renderDashboardHarvestStartTimeline();
+  }else if(nextView === "graphs"){
     renderDashboardGraphs();
   }else{
     renderDashboardRecordResults();
@@ -3228,7 +3233,10 @@ function renderDashboardGraphs(){
 
 function renderDashboardResults(){
   syncDashboardResultsViewUi();
-  if(normalizeDashboardResultsView(dashboardFilter.resultsView) === "graphs"){
+  const activeView = normalizeDashboardResultsView(dashboardFilter.resultsView);
+  if(activeView === "harvestStart"){
+    renderDashboardHarvestStartTimeline();
+  }else if(activeView === "graphs"){
     renderDashboardGraphs();
   }else{
     renderDashboardRecordResults();
@@ -3244,8 +3252,6 @@ function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options
 
   if(normalizedSubtab === "guide"){
     renderDashboardHarvestForecast();
-  }else if(normalizedSubtab === "calendar"){
-    renderDashboardHarvestStartTimeline();
   }else if(normalizedSubtab === "seedlings"){
     renderDashboardSeedlingStatus();
   }else{

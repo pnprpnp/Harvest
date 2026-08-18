@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260817-wide-main-tabs-blue-memo-add">
+<meta name="harvestnavi-version" content="20260818-harvest-start-view-seedling-skip">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4466,7 +4466,7 @@ button.monitorSaveBtn:active{
 .mainTabLoadingIcon svg{display:block;width:100%;height:100%;}
 .dashboardSubtabBar{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:4px;
   width:100%;
   max-width:1044px;
@@ -4500,7 +4500,7 @@ button.monitorSaveBtn:active{
 }
 .dashboardResultsViewSwitch{
   display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
+  grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:4px;
   width:min(100%, 420px);
   box-sizing:border-box;
@@ -7257,6 +7257,20 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 /* Simulation */
 #forecastSimulationCard{padding-top:0;padding-right:6px;padding-left:6px;}
 .forecastControlRow{margin-bottom:0;}
+.harvestOrderSkipSeedlingNote{
+  margin:10px 0 4px;
+  padding:10px 12px;
+  border:1px solid rgba(245,158,11,.3);
+  border-radius:13px;
+  background:#fff7ed;
+  color:#9a3412;
+  font-size:14px;
+  font-weight:700;
+  line-height:1.45;
+  text-align:left;
+}
+.harvestOrderSkipSeedlingNote[hidden]{display:none;}
+.harvestOrderSkipSeedlingNote strong{font-size:18px;font-weight:800;}
 .forecastCaseField{
   grid-template-columns:minmax(0,1fr) minmax(100px,140px);
   align-items:center;
@@ -9351,6 +9365,7 @@ requestAnimationFrame(function(){
             <div id="remainingCasesSummary" class="buildingStatusValue">残り 0ケース</div>
           </div>
         </div>
+        <div id="harvestOrderSkipSeedlingNote" class="harvestOrderSkipSeedlingNote" role="status" aria-live="polite" hidden></div>
         <details id="casePlacementDetails" class="casePlacementDetails">
           <summary class="casePlacementDetailsSummary">
             <span class="casePlacementDetailsLabel">ケース配分</span>
@@ -10215,7 +10230,6 @@ requestAnimationFrame(function(){
     <div class="dashboardSubtabNav">
       <div class="dashboardSubtabBar" role="tablist" aria-label="集計の表示内容" data-ui-keydown="handleDashboardSubtabKeydown" data-ui-event-first="true">
         <button id="dashboardSubtabGuideBtn" type="button" class="dashboardSubtabBtn active" role="tab" aria-selected="true" aria-controls="dashboardSubtabGuide" data-dashboard-subtab="guide" data-ui-click="setDashboardSubtab" data-ui-arg="guide">目安</button>
-        <button id="dashboardSubtabCalendarBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabCalendar" data-dashboard-subtab="calendar" data-ui-click="setDashboardSubtab" data-ui-arg="calendar">収穫開始</button>
         <button id="dashboardSubtabSeedlingsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabSeedlings" data-dashboard-subtab="seedlings" data-ui-click="setDashboardSubtab" data-ui-arg="seedlings">二次定植</button>
         <button id="dashboardSubtabGraphsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGraphs" data-dashboard-subtab="graphs" data-ui-click="setDashboardSubtab" data-ui-arg="graphs">実績</button>
       </div>
@@ -10272,25 +10286,6 @@ requestAnimationFrame(function(){
       </div>
     </div>
 
-    <div id="dashboardSubtabCalendar" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabCalendarBtn" data-dashboard-subtab-panel="calendar" hidden>
-      <div class="card dashboardHarvestStartCard">
-        <div class="dashboardHarvestStartTitleRow">
-          <div class="sectionTitle">収穫開始</div>
-          <button id="dashboardCalendarInfoBtn" type="button" class="dashboardForecastInfoBtn" data-ui-click="openDashboardCalendarInfoWindow" aria-label="収穫開始の見方" aria-haspopup="dialog" aria-controls="dashboardCalendarInfoModal">i</button>
-          <button id="dashboardCalendarPastBtn" type="button" class="dashboardCalendarPastBtn" data-ui-click="toggleDashboardPastCalendar" aria-pressed="false" aria-expanded="false" aria-controls="dashboardCalendarHistoryControls">年月を選択</button>
-        </div>
-        <div id="dashboardCalendarHistoryControls" class="dashboardCalendarHistoryControls" hidden>
-          <button type="button" class="dashboardCalendarMonthNavBtn" data-ui-click="shiftDashboardPastCalendarMonth" data-ui-number="-1" aria-label="前の月を表示">‹</button>
-          <label class="dashboardCalendarMonthField">
-            <span>表示開始</span>
-            <input id="dashboardCalendarMonthInput" class="dashboardCalendarMonthInput" type="month" data-ui-change="setDashboardPastCalendarMonth" data-ui-value-argument="true" aria-label="表示を始める年月">
-          </label>
-          <button type="button" class="dashboardCalendarMonthNavBtn" data-ui-click="shiftDashboardPastCalendarMonth" data-ui-number="1" aria-label="次の月を表示">›</button>
-        </div>
-        <div id="dashboardHarvestStartTimeline" class="dashboardHarvestStartMonthColumns"></div>
-      </div>
-    </div>
-
     <div id="dashboardSubtabSeedlings" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabSeedlingsBtn" data-dashboard-subtab-panel="seedlings" hidden>
       <div class="card dashboardSeedlingStatusCard">
         <div class="dashboardSeedlingStatusHead">
@@ -10325,12 +10320,34 @@ requestAnimationFrame(function(){
 
     <div id="dashboardSubtabGraphs" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabGraphsBtn" data-dashboard-subtab-panel="graphs" hidden>
       <div class="dashboardResultsViewSwitch" role="tablist" aria-label="実績の表示方法" data-ui-keydown="handleDashboardResultsViewKeydown" data-ui-event-first="true">
+        <button id="dashboardResultsHarvestStartViewBtn" type="button" class="dashboardResultsViewBtn"
+          role="tab" aria-selected="false" aria-controls="dashboardResultsHarvestStartView"
+          data-dashboard-results-view="harvestStart" data-ui-click="setDashboardResultsView" data-ui-arg="harvestStart">収穫開始</button>
         <button id="dashboardResultsCalendarViewBtn" type="button" class="dashboardResultsViewBtn active"
           role="tab" aria-selected="true" aria-controls="dashboardResultsCalendarView"
           data-dashboard-results-view="calendar" data-ui-click="setDashboardResultsView" data-ui-arg="calendar">カレンダー</button>
         <button id="dashboardResultsGraphsViewBtn" type="button" class="dashboardResultsViewBtn"
           role="tab" aria-selected="false" aria-controls="dashboardResultsGraphsView"
           data-dashboard-results-view="graphs" data-ui-click="setDashboardResultsView" data-ui-arg="graphs">グラフ</button>
+      </div>
+
+      <div id="dashboardResultsHarvestStartView" role="tabpanel" aria-labelledby="dashboardResultsHarvestStartViewBtn" data-dashboard-results-view-panel="harvestStart" hidden>
+        <div class="card dashboardHarvestStartCard">
+          <div class="dashboardHarvestStartTitleRow">
+            <div class="sectionTitle">収穫開始</div>
+            <button id="dashboardCalendarInfoBtn" type="button" class="dashboardForecastInfoBtn" data-ui-click="openDashboardCalendarInfoWindow" aria-label="収穫開始の見方" aria-haspopup="dialog" aria-controls="dashboardCalendarInfoModal">i</button>
+            <button id="dashboardCalendarPastBtn" type="button" class="dashboardCalendarPastBtn" data-ui-click="toggleDashboardPastCalendar" aria-pressed="false" aria-expanded="false" aria-controls="dashboardCalendarHistoryControls">年月を選択</button>
+          </div>
+          <div id="dashboardCalendarHistoryControls" class="dashboardCalendarHistoryControls" hidden>
+            <button type="button" class="dashboardCalendarMonthNavBtn" data-ui-click="shiftDashboardPastCalendarMonth" data-ui-number="-1" aria-label="前の月を表示">‹</button>
+            <label class="dashboardCalendarMonthField">
+              <span>表示開始</span>
+              <input id="dashboardCalendarMonthInput" class="dashboardCalendarMonthInput" type="month" data-ui-change="setDashboardPastCalendarMonth" data-ui-value-argument="true" aria-label="表示を始める年月">
+            </label>
+            <button type="button" class="dashboardCalendarMonthNavBtn" data-ui-click="shiftDashboardPastCalendarMonth" data-ui-number="1" aria-label="次の月を表示">›</button>
+          </div>
+          <div id="dashboardHarvestStartTimeline" class="dashboardHarvestStartMonthColumns"></div>
+        </div>
       </div>
 
       <div id="dashboardResultsCalendarView" role="tabpanel" aria-labelledby="dashboardResultsCalendarViewBtn" data-dashboard-results-view-panel="calendar">
@@ -17657,8 +17674,11 @@ function getCurrentMonitorInstructionFields(){
   const casesText = hasAppliedHarvestProgress()
     ? `${formatHarvestProgressCases(getHarvestProgressRemainingTargetCases())}ケース\n目標 ${formatHarvestProgressCases(casePlan.totalCases)}ケース / 収穫済み ${formatHarvestProgressCases(completedCases)}ケース`
     : String(casePlan.totalCases);
+  const skipSeedlingText = getHarvestOrderSkipSeedlingText();
+  const seedlingText = getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount).replace(/^苗:\s*/, "")
+    + (skipSeedlingText ? `（${skipSeedlingText}）` : "");
   return {
-    seedling: getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount).replace(/^苗:\s*/, ""),
+    seedling: seedlingText,
     cases: casesText,
     harvestLocation: formatHarvestLocationInstruction(remainingKeys).replace(/^収穫場所:\s*/, ""),
     remainingCases: getCasePlacementSummaryText()
@@ -20244,11 +20264,12 @@ function getDefaultDashboardStartDay(){
 
 function normalizeDashboardSubtab(value){
   if(value === "cards") return "graphs";
-  return ["guide", "calendar", "seedlings", "graphs"].includes(value) ? value : "guide";
+  if(value === "calendar") return "graphs";
+  return ["guide", "seedlings", "graphs"].includes(value) ? value : "guide";
 }
 
 function normalizeDashboardResultsView(value){
-  return value === "graphs" ? "graphs" : "calendar";
+  return ["harvestStart", "calendar", "graphs"].includes(value) ? value : "calendar";
 }
 
 function normalizeDashboardRecordTypeFilter(value){
@@ -20303,7 +20324,9 @@ function loadDashboardFilter(){
         ? parsed.harvestForecastView
         : "beds",
       dashboardSubtab: normalizeDashboardSubtab(parsed?.dashboardSubtab),
-      resultsView: normalizeDashboardResultsView(parsed?.resultsView),
+      resultsView: normalizeDashboardResultsView(
+        parsed?.dashboardSubtab === "calendar" ? "harvestStart" : parsed?.resultsView
+      ),
       recordType: normalizeDashboardRecordTypeFilter(parsed?.recordType),
       recordSearch: String(parsed?.recordSearch || "").trim(),
       recordStartDate: parseDateOnlyString(parsed?.recordStartDate || "") ? String(parsed.recordStartDate) : "",
@@ -20430,7 +20453,9 @@ function setDashboardResultsView(value){
     saveDashboardFilter();
   }
   syncDashboardResultsViewUi();
-  if(nextView === "graphs"){
+  if(nextView === "harvestStart"){
+    renderDashboardHarvestStartTimeline();
+  }else if(nextView === "graphs"){
     renderDashboardGraphs();
   }else{
     renderDashboardRecordResults();
@@ -23090,7 +23115,10 @@ function renderDashboardGraphs(){
 
 function renderDashboardResults(){
   syncDashboardResultsViewUi();
-  if(normalizeDashboardResultsView(dashboardFilter.resultsView) === "graphs"){
+  const activeView = normalizeDashboardResultsView(dashboardFilter.resultsView);
+  if(activeView === "harvestStart"){
+    renderDashboardHarvestStartTimeline();
+  }else if(activeView === "graphs"){
     renderDashboardGraphs();
   }else{
     renderDashboardRecordResults();
@@ -23106,8 +23134,6 @@ function renderDashboardSubtab(subtab = dashboardFilter.dashboardSubtab, options
 
   if(normalizedSubtab === "guide"){
     renderDashboardHarvestForecast();
-  }else if(normalizedSubtab === "calendar"){
-    renderDashboardHarvestStartTimeline();
   }else if(normalizedSubtab === "seedlings"){
     renderDashboardSeedlingStatus();
   }else{
@@ -25863,6 +25889,72 @@ function getSeedlingInstructionCounts(keys = harvestFillKeys, options = {}){
   };
 }
 
+function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
+  const emptyResult = {
+    shouldShow: false,
+    normalStartKey: "",
+    selectedStartKey: "",
+    skippedPalletKeys: [],
+    skippedPalletCount: 0,
+    skippedSeedlingTrayCount: 0
+  };
+  const selectionMode = options.selectionMode ?? harvestSelectionMode;
+  const selectedKeys = [...new Set(Array.isArray(keys) ? keys : [])]
+    .filter(isValidPalletKeyString);
+  if(selectionMode !== "manual" || !selectedKeys.length || hasAppliedHarvestProgress()){
+    return emptyResult;
+  }
+
+  const referenceDate = startOfLocalDay(options.referenceDate || new Date());
+  const sourceRecords = Array.isArray(options.sourceRecords) ? options.sourceRecords : records;
+  const recentRecords = getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords);
+  const recordedSet = getRecordedPalletSetFromRecords(recentRecords);
+  const startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
+  const normalStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+  if(!normalStartKey) return emptyResult;
+
+  const selectedSet = new Set(selectedKeys);
+  const skippedPalletKeys = [];
+  let selectedStartKey = "";
+  let current = parsePalletKey(normalStartKey);
+  const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
+
+  for(let index = 0; index < maxLoop; index++){
+    const key = getPalletKey(current.building, current.bed, current.number);
+    if(selectedSet.has(key)){
+      selectedStartKey = key;
+      break;
+    }
+    if(!recordedSet.has(key)) skippedPalletKeys.push(key);
+    current = getNextPallet(current.building, current.bed, current.number);
+  }
+
+  if(!selectedStartKey || !skippedPalletKeys.length){
+    return {
+      ...emptyResult,
+      normalStartKey,
+      selectedStartKey
+    };
+  }
+
+  return {
+    shouldShow: true,
+    normalStartKey,
+    selectedStartKey,
+    skippedPalletKeys,
+    skippedPalletCount: skippedPalletKeys.length,
+    skippedSeedlingTrayCount: getSeedlingTrayCountNeededForKeys(skippedPalletKeys, {
+      carryoverSeedlings: 0
+    })
+  };
+}
+
+function getHarvestOrderSkipSeedlingText(info = getHarvestOrderSkipSeedlingInfo()){
+  return info?.shouldShow
+    ? `先取り収穫: 苗を${info.skippedSeedlingTrayCount}枚飛ばす`
+    : "";
+}
+
 function normalizeManualSeedlingCount(value){
   if(value === null || value === "" || typeof value === "undefined") return null;
   if(!Number.isFinite(Number(value))) return null;
@@ -26943,6 +27035,9 @@ function buildInstructionSummaryText(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
   const seedlingCounts = getSeedlingInstructionCounts();
+  const skipSeedlingText = getHarvestOrderSkipSeedlingText();
+  const seedlingLine = getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount, seedlingCounts.carryoverSeedlings)
+    + (skipSeedlingText ? `（${skipSeedlingText}）` : "");
   const caseLine = "収穫ケース数: " + cases;
   const additionalCaseLines = casePlan.partialCases > 0
     ? "各パレット部分収穫: " + casePlan.partialCases + "ケース\n" +
@@ -26950,7 +27045,7 @@ function buildInstructionSummaryText(){
     : "";
 
   return (
-    getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount, seedlingCounts.carryoverSeedlings) + " / " + caseLine + "\n" +
+    seedlingLine + " / " + caseLine + "\n" +
     (additionalCaseLines ? additionalCaseLines + "\n" : "") +
     formatHarvestLocationInstruction() + "\n" +
     "残すケース: " + getCasePlacementSummaryText().replace(/\n/g, "\n")
@@ -27545,12 +27640,24 @@ function updateRecordPartialHarvestIncludedNote(){
     : "";
 }
 
+function updateHarvestOrderSkipSeedlingNote(info = getHarvestOrderSkipSeedlingInfo()){
+  const note = document.getElementById("harvestOrderSkipSeedlingNote");
+  if(!note) return;
+  note.hidden = !info.shouldShow;
+  note.innerHTML = info.shouldShow
+    ? `先取り収穫：苗を<strong>${escapeHtml(String(info.skippedSeedlingTrayCount))}枚</strong>飛ばす<br><span>（通常順で先にある未収穫パレット ${escapeHtml(String(info.skippedPalletCount))}枚分）</span>`
+    : "";
+}
+
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
   updatePartialHarvestDeductionNote(casePlan);
   updateRecordPartialHarvestIncludedNote();
   const seedlingCounts = getSeedlingInstructionCounts();
+  const skipSeedlingInfo = getHarvestOrderSkipSeedlingInfo();
+  const skipSeedlingText = getHarvestOrderSkipSeedlingText(skipSeedlingInfo);
+  updateHarvestOrderSkipSeedlingNote(skipSeedlingInfo);
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
@@ -27583,8 +27690,11 @@ function renderForecastSummary(){
       : `収穫ケース数: <span class="instructionEmphasis">${escapeHtml(String(cases))}ケース</span>`;
     const harvestLocationLine = formatHarvestLocationInstruction(getHarvestProgressRemainingSelectionKeys());
     const remainingCasesLine = "残すケース: " + getCasePlacementSummaryText();
+    const skipSeedlingHtml = skipSeedlingText
+      ? `<span class="instructionAutoNote">（${escapeHtml(skipSeedlingText)}）</span>`
+      : "";
     instructionBox.innerHTML = [
-      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount, seedlingCounts.carryoverSeedlings)} / ${caseLineHtml}</div>`,
+      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount, seedlingCounts.carryoverSeedlings)}${skipSeedlingHtml} / ${caseLineHtml}</div>`,
       formatInstructionDisplayHtml(harvestLocationLine),
       formatInstructionDisplayHtml(remainingCasesLine)
     ].join("");

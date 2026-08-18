@@ -46,6 +46,9 @@ function buildInstructionSummaryText(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
   const seedlingCounts = getSeedlingInstructionCounts();
+  const skipSeedlingText = getHarvestOrderSkipSeedlingText();
+  const seedlingLine = getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount, seedlingCounts.carryoverSeedlings)
+    + (skipSeedlingText ? `（${skipSeedlingText}）` : "");
   const caseLine = "収穫ケース数: " + cases;
   const additionalCaseLines = casePlan.partialCases > 0
     ? "各パレット部分収穫: " + casePlan.partialCases + "ケース\n" +
@@ -53,7 +56,7 @@ function buildInstructionSummaryText(){
     : "";
 
   return (
-    getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount, seedlingCounts.carryoverSeedlings) + " / " + caseLine + "\n" +
+    seedlingLine + " / " + caseLine + "\n" +
     (additionalCaseLines ? additionalCaseLines + "\n" : "") +
     formatHarvestLocationInstruction() + "\n" +
     "残すケース: " + getCasePlacementSummaryText().replace(/\n/g, "\n")

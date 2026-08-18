@@ -554,8 +554,11 @@ function getCurrentMonitorInstructionFields(){
   const casesText = hasAppliedHarvestProgress()
     ? `${formatHarvestProgressCases(getHarvestProgressRemainingTargetCases())}ケース\n目標 ${formatHarvestProgressCases(casePlan.totalCases)}ケース / 収穫済み ${formatHarvestProgressCases(completedCases)}ケース`
     : String(casePlan.totalCases);
+  const skipSeedlingText = getHarvestOrderSkipSeedlingText();
+  const seedlingText = getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount).replace(/^苗:\s*/, "")
+    + (skipSeedlingText ? `（${skipSeedlingText}）` : "");
   return {
-    seedling: getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount).replace(/^苗:\s*/, ""),
+    seedling: seedlingText,
     cases: casesText,
     harvestLocation: formatHarvestLocationInstruction(remainingKeys).replace(/^収穫場所:\s*/, ""),
     remainingCases: getCasePlacementSummaryText()

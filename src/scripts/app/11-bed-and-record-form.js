@@ -20,12 +20,24 @@ function updateRecordPartialHarvestIncludedNote(){
     : "";
 }
 
+function updateHarvestOrderSkipSeedlingNote(info = getHarvestOrderSkipSeedlingInfo()){
+  const note = document.getElementById("harvestOrderSkipSeedlingNote");
+  if(!note) return;
+  note.hidden = !info.shouldShow;
+  note.innerHTML = info.shouldShow
+    ? `先取り収穫：苗を<strong>${escapeHtml(String(info.skippedSeedlingTrayCount))}枚</strong>飛ばす<br><span>（通常順で先にある未収穫パレット ${escapeHtml(String(info.skippedPalletCount))}枚分）</span>`
+    : "";
+}
+
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
   updatePartialHarvestDeductionNote(casePlan);
   updateRecordPartialHarvestIncludedNote();
   const seedlingCounts = getSeedlingInstructionCounts();
+  const skipSeedlingInfo = getHarvestOrderSkipSeedlingInfo();
+  const skipSeedlingText = getHarvestOrderSkipSeedlingText(skipSeedlingInfo);
+  updateHarvestOrderSkipSeedlingNote(skipSeedlingInfo);
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
@@ -58,8 +70,11 @@ function renderForecastSummary(){
       : `収穫ケース数: <span class="instructionEmphasis">${escapeHtml(String(cases))}ケース</span>`;
     const harvestLocationLine = formatHarvestLocationInstruction(getHarvestProgressRemainingSelectionKeys());
     const remainingCasesLine = "残すケース: " + getCasePlacementSummaryText();
+    const skipSeedlingHtml = skipSeedlingText
+      ? `<span class="instructionAutoNote">（${escapeHtml(skipSeedlingText)}）</span>`
+      : "";
     instructionBox.innerHTML = [
-      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount, seedlingCounts.carryoverSeedlings)} / ${caseLineHtml}</div>`,
+      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount, seedlingCounts.carryoverSeedlings)}${skipSeedlingHtml} / ${caseLineHtml}</div>`,
       formatInstructionDisplayHtml(harvestLocationLine),
       formatInstructionDisplayHtml(remainingCasesLine)
     ].join("");
