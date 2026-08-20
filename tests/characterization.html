@@ -1910,6 +1910,70 @@
         }
       });
 
+      await runTest("シミュの定植日数詳細を簡易パレット配置図で表示する", () => {
+        const mapState = comparable(app.eval(`(() => {
+          const dateInput = document.getElementById("recordDateInput");
+          const detail = document.getElementById("plantingAgeDetail");
+          const previous = {
+            building: currentBuilding,
+            keys: [...harvestFillKeys],
+            events: plantingEvents,
+            date: dateInput?.value || ""
+          };
+          try{
+            currentBuilding = 2;
+            harvestFillKeys = ["2-A-1", "2-A-3", "2-A-4", "2-B-4"];
+            plantingEvents = [{
+              eventId: 20000000000101,
+              plantingDate: "2026-07-21",
+              plantingPalletKeys: ["2-A-1"]
+            }, {
+              eventId: 20000000000102,
+              plantingDate: "2026-08-01",
+              plantingPalletKeys: ["2-A-3", "2-B-4"]
+            }];
+            if(dateInput) dateInput.value = "2026-08-21";
+            invalidatePlantingEventStateCache();
+            renderPlantingAgeInfo({ renderDetail: true });
+            return {
+              heading: detail.querySelector(".plantingAgeMapHeading")?.textContent.trim() || "",
+              bedNames: [...detail.querySelectorAll(".plantingAgeMapBed .bedTitleMain")]
+                .map(element => element.textContent.trim()),
+              mapCount: detail.querySelectorAll(".plantingAgeMapBed .simulationBedMap").length,
+              cellCount: detail.querySelectorAll(".plantingAgeMapBed .simulationBedMapCell").length,
+              knownAgeCellCount: detail.querySelectorAll(".simulationBedMapCell.is-planting-age:not(.is-planting-age-unknown)").length,
+              unknownAgeCellCount: detail.querySelectorAll(".simulationBedMapCell.is-planting-age-unknown").length,
+              legend: [...detail.querySelectorAll(".plantingAgeMapLegendItem")]
+                .map(element => element.textContent.trim()),
+              summaries: [...detail.querySelectorAll(".plantingAgeMapBedSummary")]
+                .map(element => element.textContent.replace(/\\s+/g, " ").trim()),
+              titles: [...detail.querySelectorAll(".simulationBedMapCell.is-planting-age")]
+                .map(element => element.title)
+                .sort()
+            };
+          }finally{
+            currentBuilding = previous.building;
+            harvestFillKeys = previous.keys;
+            plantingEvents = previous.events;
+            if(dateInput) dateInput.value = previous.date;
+            invalidatePlantingEventStateCache();
+            detail.textContent = "収穫場所を選択してください";
+            renderPlantingAgeInfo();
+          }
+        })()`));
+        assertDeepEqual(mapState, {
+          heading: "2号棟の選択場所",
+          bedNames: ["B", "A"],
+          mapCount: 2,
+          cellCount: 156,
+          knownAgeCellCount: 3,
+          unknownAgeCellCount: 1,
+          legend: ["20日目", "31日目", "定植記録なし"],
+          summaries: ["20日目・1枚", "31日目・1枚 20日目・1枚 定植記録なし・1枚"],
+          titles: ["1番 定植から31日目", "3番 定植から20日目", "4番 定植から20日目", "4番 定植記録なし"]
+        }, "定植日数の詳細が選択場所の簡易配置図になっていません");
+      });
+
       await runTest("シミュ下部に設定と計算を固定しクリアを内容末尾へ移す", async () => {
         const previousTab = app.eval("activeAppTab");
         const previousFrameWidth = iframe.style.width;
@@ -3831,13 +3895,13 @@
           cssFocus: { hash: "40d1468a", elements: 2165, visible: 693, viewport: "390x844" },
           mobileRecord: { hash: "1afa366d", elements: 2098, visible: 134, viewport: "390x844" },
           mobileDashboard: { hash: "8addf69e", elements: 2098, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "8e808952", elements: 2181, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "3316f776", elements: 2196, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "e1987a5c", elements: 2196, visible: 310, viewport: "390x844" },
-          mobileSettings: { hash: "4d0b0d4b", elements: 2196, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "fe992fa7", elements: 2196, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "82b48ce4", elements: 2196, visible: 640, viewport: "1024x900" },
-          wideDashboard: { hash: "a40fb67e", elements: 2196, visible: 135, viewport: "1024x900" }
+          mobileDashboardRecord: { hash: "5ec64304", elements: 2181, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "4195ce1c", elements: 2196, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "cf9cc35a", elements: 2196, visible: 310, viewport: "390x844" },
+          mobileSettings: { hash: "bfe4340d", elements: 2196, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "d62680a1", elements: 2196, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "a1db1034", elements: 2196, visible: 640, viewport: "1024x900" },
+          wideDashboard: { hash: "7882cf96", elements: 2196, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

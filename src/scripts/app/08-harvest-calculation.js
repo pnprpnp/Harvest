@@ -128,6 +128,122 @@ function formatPlantingAgeDetailText(items){
   return formatPlantingAgeDetailRows(items, "text");
 }
 
+function getPlantingAgeMapGroupLabel(ageDays){
+  return Number.isFinite(ageDays) ? `${ageDays}日目` : "定植記録なし";
+}
+
+function getPlantingAgeMapGroupCssVariables(groupIndex){
+  const safeIndex = Math.max(0, Math.trunc(Number(groupIndex) || 0));
+  const hue = Math.round((142 + safeIndex * 137.508) % 360);
+  const lightness = 43 + (Math.floor(safeIndex / 3) % 3) * 6;
+  return `--planting-age-color:hsl(${hue},68%,${lightness}%);--planting-age-border:hsl(${hue},72%,34%)`;
+}
+
+function buildPlantingAgeMapModel(items){
+  const sourceItems = Array.isArray(items) ? items : [];
+  const finiteAges = [...new Set(sourceItems
+    .map(item => item.ageDays)
+    .filter(ageDays => Number.isFinite(ageDays)))]
+    .sort((left, right) => left - right);
+  const groups = finiteAges.map((ageDays, index) => ({
+    key: String(ageDays),
+    ageDays,
+    index
+  }));
+  if(sourceItems.some(item => !Number.isFinite(item.ageDays))){
+    groups.push({ key: "unknown", ageDays: null, index: null });
+  }
+  const groupByAgeKey = new Map(groups.map(group => [group.key, group]));
+  const groupByPalletKey = new Map();
+  const itemsByBed = new Map();
+
+  sourceItems.forEach(item => {
+    const ageKey = Number.isFinite(item.ageDays) ? String(item.ageDays) : "unknown";
+    const group = groupByAgeKey.get(ageKey);
+    if(!group) return;
+    groupByPalletKey.set(item.key, group);
+    if(!itemsByBed.has(item.bed)) itemsByBed.set(item.bed, []);
+    itemsByBed.get(item.bed).push(item);
+  });
+
+  return { groups, groupByPalletKey, itemsByBed };
+}
+
+function getPlantingAgeMapGroupSwatchHtml(group){
+  const unknownClass = Number.isFinite(group?.ageDays) ? "" : " is-unknown";
+  const style = Number.isInteger(group?.index)
+    ? ` style="${getPlantingAgeMapGroupCssVariables(group.index)}"`
+    : "";
+  return `<span class="plantingAgeMapSwatch${unknownClass}"${style}></span>`;
+}
+
+function renderPlantingAgeDetailMap(container, items, building = currentBuilding){
+  if(!container) return;
+  container.innerHTML = "";
+  if(!Array.isArray(items) || !items.length){
+    container.innerHTML = '<div class="plantingAgeMapEmpty">この号棟の収穫場所を選択してください</div>';
+    return;
+  }
+
+  const model = buildPlantingAgeMapModel(items);
+  const heading = document.createElement("div");
+  heading.className = "plantingAgeMapHeading";
+  heading.textContent = `${building}号棟の選択場所`;
+  container.appendChild(heading);
+
+  const legend = document.createElement("div");
+  legend.className = "plantingAgeMapLegend";
+  legend.setAttribute("aria-label", "定植日数の色分け");
+  legend.innerHTML = model.groups.map(group => `
+    <span class="plantingAgeMapLegendItem">
+      ${getPlantingAgeMapGroupSwatchHtml(group)}
+      ${getPlantingAgeMapGroupLabel(group.ageDays)}
+    </span>
+  `).join("");
+  container.appendChild(legend);
+
+  const beds = document.createElement("div");
+  beds.className = "plantingAgeMapBeds";
+  bedMap.forEach(bedName => {
+    const bedItems = model.itemsByBed.get(bedName) || [];
+    if(!bedItems.length) return;
+    const bed = document.createElement("section");
+    bed.className = "bed bedCollapsed simulationBedOverview plantingAgeMapBed";
+
+    const title = document.createElement("div");
+    title.className = "bedTitle";
+    title.innerHTML = `<span class="bedTitleMain">${escapeHtml(bedName)}</span>`;
+    bed.appendChild(title);
+
+    appendBedOverviewMap(bed, building, bedName, {
+      selectedSet: new Set(bedItems.map(item => item.key)),
+      plantingAgeGroupByKey: model.groupByPalletKey
+    });
+
+    const bedGroups = new Map();
+    bedItems.forEach(item => {
+      const group = model.groupByPalletKey.get(item.key);
+      if(!group) return;
+      if(!bedGroups.has(group.key)) bedGroups.set(group.key, { group, count: 0 });
+      bedGroups.get(group.key).count++;
+    });
+    const summary = document.createElement("div");
+    summary.className = "plantingAgeMapBedSummary";
+    summary.innerHTML = [...bedGroups.values()].map(({ group, count }) => `
+      <span class="plantingAgeMapBedSummaryItem">
+        ${getPlantingAgeMapGroupSwatchHtml(group)}
+        ${getPlantingAgeMapGroupLabel(group.ageDays)}・${count}枚
+      </span>
+    `).join("");
+    bed.appendChild(summary);
+    bed.setAttribute("aria-label", `${building}号棟 ${bedName}ベッド。` + [...bedGroups.values()]
+      .map(({ group, count }) => `${getPlantingAgeMapGroupLabel(group.ageDays)} ${count}枚`)
+      .join("、"));
+    beds.appendChild(bed);
+  });
+  container.appendChild(beds);
+}
+
 function formatPlantingAgeDetailRows(items, format){
   const rows = [];
   bedOrder.forEach(bed => {
@@ -295,10 +411,9 @@ function formatPlantingAgeForRecordDetailDisplay(record){
     .join("\n");
 }
 
-function renderPlantingAgeInfo(){
+function renderPlantingAgeInfo(options = {}){
   const items = getSelectedPlantingAgeItemsForBuilding(currentBuilding);
   const mainText = formatPlantingAgeMainText(items);
-  const detailHtml = formatPlantingAgeDetailHtml(items);
 
   const mainInfo = document.getElementById("plantingAgeSummary");
   const recordInfo = document.getElementById("recordBuildingLastHarvestInfo");
@@ -307,8 +422,8 @@ function renderPlantingAgeInfo(){
 
   if(mainInfo) mainInfo.textContent = mainText;
   if(recordInfo) recordInfo.textContent = mainText;
-  if(detail) detail.innerHTML = detailHtml;
-  if(recordDetail) recordDetail.innerHTML = detailHtml;
+  if(detail && options.renderDetail) renderPlantingAgeDetailMap(detail, items, currentBuilding);
+  if(recordDetail) recordDetail.innerHTML = formatPlantingAgeDetailHtml(items);
 }
 
 function getRecentHarvestRecordsByCount(referenceDate = new Date(), limit = RECORDED_LOOKBACK_COUNT, sourceRecords = records){
@@ -612,6 +727,9 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
   const plantingAllowedSet = options.plantingAllowedSet instanceof Set
     ? options.plantingAllowedSet
     : null;
+  const plantingAgeGroup = options.plantingAgeGroupByKey instanceof Map
+    ? options.plantingAgeGroupByKey.get(key)
+    : null;
   const partialHarvestCount = options.hasPartialHarvestRecords
     ? getPartialHarvestCountForPallet(
         building,
@@ -624,6 +742,7 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     : 0;
   const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell"];
   let stateText = "未選択";
+  let styleText = "";
 
   if(plantingAllowedSet){
     if(!plantingAllowedSet.has(key)){
@@ -642,6 +761,16 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     if(selectedSet.has(key)){
       classes.push("is-selected");
       stateText = "選択中";
+      if(plantingAgeGroup){
+        classes.push("is-planting-age");
+        if(Number.isFinite(plantingAgeGroup.ageDays)){
+          styleText = getPlantingAgeMapGroupCssVariables(plantingAgeGroup.index);
+          stateText = `定植から${plantingAgeGroup.ageDays}日目`;
+        }else{
+          classes.push("is-planting-age-unknown");
+          stateText = "定植記録なし";
+        }
+      }
     }
     if(seedlingSkippedSet.has(key)){
       classes.push("is-seedling-skipped");
@@ -666,7 +795,7 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
   }
   if(sectionStart) classes.push("is-section-start");
 
-  return `<span class="${classes.join(" ")}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
+  return `<span class="${classes.join(" ")}"${styleText ? ` style="${styleText}"` : ""} title="${number}番 ${escapeHtml(stateText)}"></span>`;
 }
 
 function appendBedOverviewMap(bedElement, building, bed, options = {}){

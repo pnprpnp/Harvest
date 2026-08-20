@@ -746,7 +746,7 @@ function saveAppMenuSettingsAndClose(){
 function openPlantingAgeWindow(){
   const modal = document.getElementById("plantingAgeModal");
   if(!modal) return;
-  renderPlantingAgeInfo();
+  renderPlantingAgeInfo({ renderDetail: true });
   showPageBlockingUi(modal);
 }
 
