@@ -1907,7 +1907,9 @@
             belowPagination: statusRect.top >= headerRect.bottom,
             sharedCard: remaining.parentElement === statusCard
               && app.document.getElementById("forecastPlantingAgeResult")?.parentElement === statusCard,
-            remainingUsesFullCardBeforeCalculation: remainingRect.width >= statusRect.width - 2,
+            remainingUsesFullCardBeforeCalculation: Math.abs(remainingRect.width - statusRect.width) <= 2
+              && remainingRect.top >= statusRect.top
+              && remainingRect.bottom <= statusRect.bottom,
             greenValue: app.getComputedStyle(value).color === "rgb(23, 102, 55)",
             labelIsSmallAndFaint: parseFloat(app.getComputedStyle(remaining.querySelector(".casePlacementRemainingLabel")).fontSize) <= 10,
             label: remaining.querySelector(".casePlacementRemainingLabel")?.textContent.trim() || "",
@@ -1970,13 +1972,22 @@
             harvestSelectionMode = "auto";
             renderForecastPlantingAgeResult();
             openPlantingAgeWindow();
+            const visibleStatusRect = statusCard.getBoundingClientRect();
+            const visibleRemainingRect = remaining.getBoundingClientRect();
+            const visibleResultRect = result.getBoundingClientRect();
             const visibleState = {
               hiddenBeforeCalculation,
+              visibleBeforeCalculation: !hiddenBeforeCalculation,
               visibleAfterCalculation: !result.hidden,
               belowPagination: statusCard.previousElementSibling === header,
               sharedStatusCard: result.parentElement === statusCard
                 && remaining.parentElement === statusCard,
               splitAfterCalculation: statusCard.classList.contains("hasPlantingAgeDetail"),
+              sameRowAfterCalculation: visibleRemainingRect.top >= visibleStatusRect.top
+                && visibleRemainingRect.bottom <= visibleStatusRect.bottom
+                && visibleResultRect.top >= visibleStatusRect.top
+                && visibleResultRect.bottom <= visibleStatusRect.bottom
+                && Math.abs(visibleRemainingRect.top - visibleResultRect.top) <= 2,
               detailTitle: document.getElementById("forecastPlantingAgeResultTitle")?.textContent.trim() || "",
               rangeText: range?.textContent.trim() || "",
               infoButton: !!infoButton,
@@ -2014,10 +2025,12 @@
         })()`));
         assertDeepEqual(mapState, {
           hiddenBeforeCalculation: true,
+          visibleBeforeCalculation: false,
           visibleAfterCalculation: true,
           belowPagination: true,
           sharedStatusCard: true,
           splitAfterCalculation: true,
+          sameRowAfterCalculation: true,
           detailTitle: "定植日数の詳細",
           rangeText: "20日〜31日",
           infoButton: true,
