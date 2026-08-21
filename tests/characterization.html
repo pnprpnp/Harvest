@@ -2072,9 +2072,9 @@
           const forecastStyle = app.getComputedStyle(app.document.getElementById("forecastTab"));
           const visibleState = comparable({
             position: actionStyle.position,
-            safeGapFromTabBar: tabBarRect.top - actionBarRect.bottom >= 5
-              && tabBarRect.top - actionBarRect.bottom <= 7,
-            buttonGapFromTabBar: tabBarRect.top - calculateRect.bottom >= 7,
+            safeGapFromTabBar: Math.abs(tabBarRect.top - actionBarRect.bottom) <= 1,
+            buttonGapFromTabBar: tabBarRect.top - calculateRect.bottom >= 3
+              && tabBarRect.top - calculateRect.bottom <= 5,
             gapBlocksMistaps: actionGapStyle.content !== "none"
               && actionGapStyle.display !== "none",
             belowTabBarLayer: Number(actionStyle.zIndex) < Number(app.getComputedStyle(tabBar).zIndex),
@@ -2149,6 +2149,43 @@
           iframe.style.width = previousFrameWidth;
           app.setMainTabSelection(previousTab);
         }
+      });
+
+      await runTest("シミュの簡易ベッド表示は選択可能枚数を表示する", () => {
+        const counts = comparable(app.eval(`(() => {
+          const previous = {
+            building: currentBuilding,
+            keys: [...harvestFillKeys],
+            getRecorded: getRecordedPalletSet
+          };
+          try{
+            currentBuilding = 2;
+            harvestFillKeys = [];
+            getRecordedPalletSet = () => new Set(
+              Array.from({ length: 5 }, (_, index) => getPalletKey(2, "F", index + 1))
+            );
+            drawBeds();
+            const firstBed = document.querySelector("#beds .simulationBedOverview");
+            const countText = firstBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
+            return {
+              countText,
+              hasSelectable: countText.includes("選択可 73"),
+              hidesRecordedCount: !countText.includes("記録済"),
+              label: firstBed?.getAttribute("aria-label") || ""
+            };
+          }finally{
+            currentBuilding = previous.building;
+            harvestFillKeys = previous.keys;
+            getRecordedPalletSet = previous.getRecorded;
+            drawBeds();
+          }
+        })()`));
+        assertDeepEqual(counts, {
+          countText: "選択 0 選択可 73",
+          hasSelectable: true,
+          hidesRecordedCount: true,
+          label: "2号棟 Fベッド。選択 0パレット、選択可能 73パレット。長押しで拡大してパレットを選択"
+        }, "シミュの簡易ベッド表示が選択可能枚数になっていません");
       });
 
       await runTest("収穫ケース数を独立した入力カードとして強調する", () => {
@@ -4135,18 +4172,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "d834b429", elements: 2144, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "b6c41906", elements: 2212, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "02bcddb3", elements: 2212, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "8e2a26e3", elements: 2145, visible: 118, viewport: "390x844" },
-          mobileDashboard: { hash: "b22bacaf", elements: 2145, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "abe94fc0", elements: 2228, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "980d78fd", elements: 2243, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "597f9211", elements: 2243, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "ba28ee3b", elements: 2243, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "43df4e26", elements: 2243, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "44217e95", elements: 2243, visible: 610, viewport: "1024x900" },
-          wideDashboard: { hash: "8ee178f2", elements: 2243, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "87c8492b", elements: 2144, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "a3b278b0", elements: 2212, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "4383c4ed", elements: 2212, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "33be7a3d", elements: 2145, visible: 118, viewport: "390x844" },
+          mobileDashboard: { hash: "47fb3d49", elements: 2145, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "a7121b36", elements: 2228, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "6cff7a2b", elements: 2243, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "00aa06c7", elements: 2243, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "90d2c9d5", elements: 2243, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "a230cd34", elements: 2243, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "a131b5e5", elements: 2243, visible: 610, viewport: "1024x900" },
+          wideDashboard: { hash: "6d6825b8", elements: 2243, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

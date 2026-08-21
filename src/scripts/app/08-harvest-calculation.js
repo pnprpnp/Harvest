@@ -677,6 +677,7 @@ function getBedSummaryCounts(building, bed, options = {}){
   const allowedSet = options.allowedSet || null;
   let selected = 0;
   let recorded = 0;
+  let selectable = 0;
   let allowed = 0;
   let unavailable = 0;
 
@@ -684,13 +685,14 @@ function getBedSummaryCounts(building, bed, options = {}){
     const key = getPalletKey(building, bed, number);
     if(selectedSet.has(key)) selected++;
     if(recordedSet.has(key)) recorded++;
+    else selectable++;
     if(allowedSet){
       if(allowedSet.has(key)) allowed++;
       else unavailable++;
     }
   }
 
-  return { selected, recorded, allowed, unavailable };
+  return { selected, recorded, selectable, allowed, unavailable };
 }
 
 function getSelectedNumbersForBed(building, bed, selectedSet = new Set(harvestFillKeys || [])){

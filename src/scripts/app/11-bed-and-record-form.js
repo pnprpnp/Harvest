@@ -404,13 +404,13 @@ function drawBeds(){
     counts.className = "simulationBedOverviewCounts";
     counts.innerHTML = `
       <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-      <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
+      <span class="simulationBedOverviewCountSelectable">選択可 ${summaryCounts.selectable}</span>
     `;
     bed.appendChild(counts);
     attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
     bed.setAttribute(
       "aria-label",
-      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。長押しで拡大してパレットを選択`
+      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${summaryCounts.selectable}パレット。長押しで拡大してパレットを選択`
     );
     container.appendChild(bed);
   });
