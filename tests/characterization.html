@@ -2585,7 +2585,13 @@
             themeColor: document.querySelector('meta[name="theme-color"]')?.content || "",
             pageBackground: getComputedStyle(document.body).backgroundColor,
             pageText: getComputedStyle(document.body).color,
-            menuBackground: getComputedStyle(document.querySelector(".appMenuWindow")).backgroundColor
+            menuBackground: getComputedStyle(document.querySelector(".appMenuWindow")).backgroundColor,
+            caseInputPanelHasBorder: parseFloat(getComputedStyle(document.querySelector(".forecastCaseInputPanel")).borderTopWidth) >= 1,
+            caseInputUnitHasNoFrame: (() => {
+              const style = getComputedStyle(document.querySelector(".forecastCaseUnitWrap"));
+              return parseFloat(style.borderTopWidth) === 0 && style.boxShadow === "none";
+            })(),
+            caseInputUnitIsTransparent: getComputedStyle(document.querySelector(".forecastCaseUnitWrap")).backgroundColor === "rgba(0, 0, 0, 0)"
           }))()`));
           assertDeepEqual(darkState, {
             preference: "dark",
@@ -2595,7 +2601,10 @@
             themeColor: "#0d1117",
             pageBackground: "rgb(13, 17, 23)",
             pageText: "rgb(242, 244, 247)",
-            menuBackground: "rgb(24, 29, 37)"
+            menuBackground: "rgb(24, 29, 37)",
+            caseInputPanelHasBorder: true,
+            caseInputUnitHasNoFrame: true,
+            caseInputUnitIsTransparent: true
           }, "ダークテーマが画面全体へ反映されません");
 
           reloadFrame = await loadVisualAppFrame(390, 844, `../index.html?theme-reload-test=${Date.now()}`);
