@@ -319,6 +319,7 @@
     async function collectVisualFingerprints(){
       localStorage.clear();
       sessionStorage.clear();
+      localStorage.setItem("harvestnaviThemePreference_v1", "light");
       localStorage.setItem("harvestnaviWorkflowTitleHintShown_v1", "1");
       const visualFrame = await loadVisualAppFrame(390, 844);
       const app = visualFrame.contentWindow;
@@ -2121,29 +2122,44 @@
         const fieldStyle = app.getComputedStyle(field);
         const inputPanelStyle = app.getComputedStyle(inputPanel);
         const bodyStyle = app.getComputedStyle(app.document.body);
+        const frameRadii = [
+          ".casePlacementDetails",
+          ".casePlacementDetails .casePlacementGrid",
+          ".forecastSettingsOpenBtn",
+          ".casePlacementCalculateBtn",
+          ".forecastPlantingAgeResult",
+          ".forecastBottomClearRow .forecastClearBtn",
+          ".harvestProgressPanel"
+        ].map(selector => parseFloat(app.getComputedStyle(app.document.querySelector(selector)).borderRadius));
         assertDeepEqual(comparable({
           hasCardBorder: parseFloat(fieldStyle.borderTopWidth) >= 1
             && parseFloat(fieldStyle.borderRightWidth) >= 1
             && parseFloat(fieldStyle.borderBottomWidth) >= 1
             && parseFloat(fieldStyle.borderLeftWidth) >= 1,
-          hasRoundedCorners: parseFloat(fieldStyle.borderRadius) >= 16,
+          hasModerateRoundedCorners: parseFloat(fieldStyle.borderRadius) >= 12
+            && parseFloat(fieldStyle.borderRadius) <= 14,
           differsFromPageBackground: fieldStyle.backgroundColor !== bodyStyle.backgroundColor,
           hasComfortableHeight: field.getBoundingClientRect().height >= 68,
           keepsGreenInputBoundary: parseFloat(inputPanelStyle.borderTopWidth) >= 1
             && inputPanelStyle.borderTopColor === "rgba(36, 138, 75, 0.68)",
           hasNoHelp: !app.document.querySelector(".forecastCaseHelp"),
-          hasExamplePlaceholder: input.getAttribute("placeholder") === "例 32",
+          hasNoExamplePlaceholder: !input.hasAttribute("placeholder"),
+          hasCompactInput: inputPanel.getBoundingClientRect().width <= 160
+            && inputPanel.getBoundingClientRect().height <= 44,
+          keepsSimulationFramesLessRounded: frameRadii.every(radius => radius >= 7 && radius <= 14),
           hasNoStepper: !app.document.querySelector(".forecastCaseStepper")
             && !app.document.querySelector(".forecastCaseStepBtn"),
           hasNoCalculatorIcon: !app.document.querySelector(".forecastCaseCalculatorIcon")
         }), {
           hasCardBorder: true,
-          hasRoundedCorners: true,
+          hasModerateRoundedCorners: true,
           differsFromPageBackground: true,
           hasComfortableHeight: true,
           keepsGreenInputBoundary: true,
           hasNoHelp: true,
-          hasExamplePlaceholder: true,
+          hasNoExamplePlaceholder: true,
+          hasCompactInput: true,
+          keepsSimulationFramesLessRounded: true,
           hasNoStepper: true,
           hasNoCalculatorIcon: true
         }, "収穫ケース数が参考画像どおりの入力カードになっていません");
@@ -4033,24 +4049,25 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "f2226ec0", elements: 2123, visible: 609, viewport: "390x844" },
-          cssStates: { hash: "45e65de0", elements: 2191, visible: 668, viewport: "390x844" },
-          cssFocus: { hash: "eb6073f1", elements: 2191, visible: 668, viewport: "390x844" },
-          mobileRecord: { hash: "e547242c", elements: 2124, visible: 109, viewport: "390x844" },
-          mobileDashboard: { hash: "c61eb568", elements: 2124, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "3b922f7b", elements: 2207, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "9e54b2ed", elements: 2222, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "1817814b", elements: 2222, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "b9a80c61", elements: 2222, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "16c5caac", elements: 2222, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "ffe0fcce", elements: 2222, visible: 609, viewport: "1024x900" },
-          wideDashboard: { hash: "6e576cb1", elements: 2222, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "b1ae0613", elements: 2123, visible: 609, viewport: "390x844" },
+          cssStates: { hash: "5c72c673", elements: 2191, visible: 668, viewport: "390x844" },
+          cssFocus: { hash: "13d6488e", elements: 2191, visible: 668, viewport: "390x844" },
+          mobileRecord: { hash: "206d3098", elements: 2124, visible: 109, viewport: "390x844" },
+          mobileDashboard: { hash: "b449add0", elements: 2124, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "882745c3", elements: 2207, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "2a3164c1", elements: 2222, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "7699fee9", elements: 2222, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "ccea4cc1", elements: 2222, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "ca2e9ecc", elements: 2222, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "66317d32", elements: 2222, visible: 609, viewport: "1024x900" },
+          wideDashboard: { hash: "ce098167", elements: 2222, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
 
     localStorage.clear();
     sessionStorage.clear();
+    localStorage.setItem("harvestnaviThemePreference_v1", "light");
 
     const iframe = document.createElement("iframe");
     let appsScriptIframe = null;
