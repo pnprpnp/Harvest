@@ -427,6 +427,28 @@ function renderPlantingAgeInfo(options = {}){
   if(recordDetail) recordDetail.innerHTML = formatPlantingAgeDetailHtml(items);
 }
 
+function renderForecastPlantingAgeResult(){
+  const result = document.getElementById("forecastPlantingAgeResult");
+  const detail = document.getElementById("forecastPlantingAgeDetail");
+  if(!result || !detail) return;
+
+  const shouldShow = harvestSelectionMode === "auto"
+    && !!harvestSummary
+    && Array.isArray(harvestFillKeys)
+    && harvestFillKeys.length > 0;
+  result.hidden = !shouldShow;
+  if(!shouldShow){
+    detail.innerHTML = "";
+    return;
+  }
+
+  renderPlantingAgeDetailMap(
+    detail,
+    getSelectedPlantingAgeItemsForBuilding(currentBuilding),
+    currentBuilding
+  );
+}
+
 function getRecentHarvestRecordsByCount(referenceDate = new Date(), limit = RECORDED_LOOKBACK_COUNT, sourceRecords = records){
   const referenceDay = startOfLocalDay(referenceDate);
   const safeLimit = clampNumber(limit, 1, 1000, RECORDED_LOOKBACK_COUNT);

@@ -1890,50 +1890,54 @@
         assertEqual(sizes.current.boxShadow, "none", "中央の号棟表示に枠の影が残っています");
       });
 
-      await runTest("シミュの二つの号棟状況を一枚の要約カードにまとめる", () => {
+      await runTest("残りケース数を号棟選択と同じ行の左側に小さく表示する", () => {
         const previousTab = app.eval("activeAppTab");
         try{
           app.setMainTabSelection("forecast");
-          const bar = app.document.querySelector("#forecastTab .buildingStatusBar");
-          const items = [...bar.querySelectorAll(":scope > .buildingStatusBarItem")];
-          const barRect = bar.getBoundingClientRect();
-          const itemRects = items.map(item => item.getBoundingClientRect());
+          const header = app.document.querySelector("#forecastTab .casePlacementHeader");
+          const remaining = app.document.getElementById("remainingCasesSummaryCard");
+          const value = app.document.getElementById("remainingCasesSummary");
+          const pagination = app.document.querySelector("#forecastTab .casePlacementBuildingSwitch");
+          const headerRect = header.getBoundingClientRect();
+          const remainingRect = remaining.getBoundingClientRect();
+          const paginationRect = pagination.getBoundingClientRect();
           const state = comparable({
-            barCount: app.document.querySelectorAll("#forecastTab .buildingStatusBar").length,
-            itemCount: items.length,
-            legacyCardCount: app.document.querySelectorAll("#forecastTab .buildingStatusCard").length,
-            differsFromPageBackground: app.getComputedStyle(bar).backgroundColor
-              !== app.getComputedStyle(app.document.body).backgroundColor,
-            sameRow: itemRects.length === 2 && itemRects[1].left >= itemRects[0].right - 1,
-            fillsSingleBar: itemRects.every(rect => (
-              Math.abs(rect.top - barRect.top) <= 1
-              && Math.abs(rect.bottom - barRect.bottom) <= 1
-            )),
-            opensPlantingAgeDetail: app.document.getElementById("plantingAgeSummary")?.dataset.uiClick || "",
-            labels: items.map(item => item.querySelector(".buildingStatusLabel")?.textContent.trim() || "")
+            noStatusBar: !app.document.querySelector("#forecastTab .buildingStatusBar"),
+            sameRow: remainingRect.top >= headerRect.top
+              && remainingRect.bottom <= headerRect.bottom
+              && paginationRect.top >= headerRect.top
+              && paginationRect.bottom <= headerRect.bottom,
+            leftOfPagination: remainingRect.right <= paginationRect.left,
+            compact: remainingRect.width <= 76
+              && parseFloat(app.getComputedStyle(value).fontSize) <= 13,
+            label: remaining.querySelector(".casePlacementRemainingLabel")?.textContent.trim() || "",
+            hasCaseValue: /^\d+(?:\.\d+)?ケース$/.test(value.textContent.trim()),
+            noAlwaysVisiblePlantingAge: !app.document.getElementById("plantingAgeSummary")
           });
           assertDeepEqual(state, {
-            barCount: 1,
-            itemCount: 2,
-            legacyCardCount: 0,
-            differsFromPageBackground: true,
+            noStatusBar: true,
             sameRow: true,
-            fillsSingleBar: true,
-            opensPlantingAgeDetail: "openPlantingAgeWindow",
-            labels: ["開始位置", "残り"]
-          }, "号棟状況が一枚の要約カードにまとまっていません");
+            leftOfPagination: true,
+            compact: true,
+            label: "残り",
+            hasCaseValue: true,
+            noAlwaysVisiblePlantingAge: true
+          }, "残りケース数が号棟選択の左側へ小さく配置されていません");
         }finally{
           app.setMainTabSelection(previousTab);
         }
       });
 
-      await runTest("シミュの定植日数詳細を簡易パレット配置図で表示する", () => {
+      await runTest("定植日数詳細を計算後だけクリアボタンの上へ表示する", () => {
         const mapState = comparable(app.eval(`(() => {
           const dateInput = document.getElementById("recordDateInput");
-          const detail = document.getElementById("plantingAgeDetail");
+          const result = document.getElementById("forecastPlantingAgeResult");
+          const detail = document.getElementById("forecastPlantingAgeDetail");
           const previous = {
             building: currentBuilding,
             keys: [...harvestFillKeys],
+            summary: harvestSummary,
+            selectionMode: harvestSelectionMode,
             events: plantingEvents,
             date: dateInput?.value || ""
           };
@@ -1951,9 +1955,16 @@
             }];
             if(dateInput) dateInput.value = "2026-08-21";
             invalidatePlantingEventStateCache();
-            renderPlantingAgeInfo({ renderDetail: true });
-            return {
-              startPosition: document.getElementById("plantingAgeSummary")?.textContent.trim() || "",
+            harvestSummary = { start:"2-A-1", end:"2-B-4", filledCount:4, totalHarvest:48, needHeads:48 };
+            harvestSelectionMode = "manual";
+            renderForecastPlantingAgeResult();
+            const hiddenBeforeCalculation = result.hidden;
+            harvestSelectionMode = "auto";
+            renderForecastPlantingAgeResult();
+            const visibleState = {
+              hiddenBeforeCalculation,
+              visibleAfterCalculation: !result.hidden,
+              immediatelyAboveClear: result.nextElementSibling?.classList.contains("forecastBottomClearRow") || false,
               heading: detail.querySelector(".plantingAgeMapHeading")?.textContent.trim() || "",
               bedNames: [...detail.querySelectorAll(".plantingAgeMapBed .bedTitleMain")]
                 .map(element => element.textContent.trim()),
@@ -1969,18 +1980,25 @@
                 .map(element => element.title)
                 .sort()
             };
+            harvestSummary = null;
+            renderForecastPlantingAgeResult();
+            visibleState.hiddenAfterClear = result.hidden;
+            return visibleState;
           }finally{
             currentBuilding = previous.building;
             harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.selectionMode;
             plantingEvents = previous.events;
             if(dateInput) dateInput.value = previous.date;
             invalidatePlantingEventStateCache();
-            detail.textContent = "収穫場所を選択してください";
-            renderPlantingAgeInfo();
+            renderForecastPlantingAgeResult();
           }
         })()`));
         assertDeepEqual(mapState, {
-          startPosition: "A-1",
+          hiddenBeforeCalculation: true,
+          visibleAfterCalculation: true,
+          immediatelyAboveClear: true,
           heading: "2号棟の選択場所",
           bedNames: ["B", "A"],
           mapCount: 2,
@@ -1989,8 +2007,9 @@
           unknownAgeCellCount: 1,
           legend: ["20日目", "31日目", "定植記録なし"],
           summaries: ["20日目・1枚", "31日目・1枚 20日目・1枚 定植記録なし・1枚"],
-          titles: ["1番 定植から31日目", "3番 定植から20日目", "4番 定植から20日目", "4番 定植記録なし"]
-        }, "定植日数の詳細が選択場所の簡易配置図になっていません");
+          titles: ["1番 定植から31日目", "3番 定植から20日目", "4番 定植から20日目", "4番 定植記録なし"],
+          hiddenAfterClear: true
+        }, "定植日数の詳細が計算後だけクリアボタンの上へ表示されていません");
       });
 
       await runTest("シミュ下部に設定と計算を固定しクリアを内容末尾へ移す", async () => {
@@ -2099,7 +2118,6 @@
         const field = app.document.querySelector(".forecastCaseField");
         const input = app.document.getElementById("casesInput");
         const inputPanel = app.document.querySelector(".forecastCaseInputPanel");
-        const calculatorIcon = app.document.querySelector(".forecastCaseCalculatorIcon");
         const fieldStyle = app.getComputedStyle(field);
         const inputPanelStyle = app.getComputedStyle(inputPanel);
         const bodyStyle = app.getComputedStyle(app.document.body);
@@ -2117,7 +2135,7 @@
           hasExamplePlaceholder: input.getAttribute("placeholder") === "例 32",
           hasNoStepper: !app.document.querySelector(".forecastCaseStepper")
             && !app.document.querySelector(".forecastCaseStepBtn"),
-          hasCalculatorIcon: !!calculatorIcon?.querySelector("svg")
+          hasNoCalculatorIcon: !app.document.querySelector(".forecastCaseCalculatorIcon")
         }), {
           hasCardBorder: true,
           hasRoundedCorners: true,
@@ -2127,7 +2145,7 @@
           hasNoHelp: true,
           hasExamplePlaceholder: true,
           hasNoStepper: true,
-          hasCalculatorIcon: true
+          hasNoCalculatorIcon: true
         }, "収穫ケース数が参考画像どおりの入力カードになっていません");
       });
 
@@ -4015,18 +4033,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "b524cb42", elements: 2129, visible: 618, viewport: "390x844" },
-          cssStates: { hash: "a81de89e", elements: 2197, visible: 677, viewport: "390x844" },
-          cssFocus: { hash: "f513eaf7", elements: 2197, visible: 677, viewport: "390x844" },
-          mobileRecord: { hash: "4cdbf45c", elements: 2130, visible: 109, viewport: "390x844" },
-          mobileDashboard: { hash: "8dfb4bd4", elements: 2130, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "377d9752", elements: 2213, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "b6adc87d", elements: 2228, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "9d931411", elements: 2228, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "81d79509", elements: 2228, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "e5634cb2", elements: 2228, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "ccf9b52b", elements: 2228, visible: 618, viewport: "1024x900" },
-          wideDashboard: { hash: "9020d41b", elements: 2228, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "f2226ec0", elements: 2123, visible: 609, viewport: "390x844" },
+          cssStates: { hash: "45e65de0", elements: 2191, visible: 668, viewport: "390x844" },
+          cssFocus: { hash: "eb6073f1", elements: 2191, visible: 668, viewport: "390x844" },
+          mobileRecord: { hash: "e547242c", elements: 2124, visible: 109, viewport: "390x844" },
+          mobileDashboard: { hash: "c61eb568", elements: 2124, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "3b922f7b", elements: 2207, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "9e54b2ed", elements: 2222, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "1817814b", elements: 2222, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "b9a80c61", elements: 2222, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "16c5caac", elements: 2222, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "ffe0fcce", elements: 2222, visible: 609, viewport: "1024x900" },
+          wideDashboard: { hash: "6e576cb1", elements: 2222, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -349,6 +349,7 @@ function renderForecastSummary(){
   if(remainingCard){
     remainingCard.classList.remove("warning", "danger");
   }
+  renderForecastPlantingAgeResult();
 
   updateBuildingLastHarvestInfo();
   renderCasePlacementSummary();
