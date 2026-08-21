@@ -718,6 +718,7 @@ function openAppMenuWindow(){
   const modal = document.getElementById("appMenuModal");
   if(!modal) return;
   moveMenuSettingsToWindow();
+  syncThemePreferenceControls();
   syncAccessProtectionDetails();
   showPageBlockingUi(modal);
   refreshAppRollbackAvailability();

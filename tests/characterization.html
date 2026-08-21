@@ -2348,12 +2348,15 @@
             const setting = document.getElementById("dashboardStartDayMenuSetting");
             const input = document.getElementById("dashboardStartDayInput");
             const label = setting?.querySelector("label");
+            const themeSetting = document.getElementById("themeMenuSetting");
             const combinedSettings = document.getElementById("accessProtectionDetails");
             const googleSettings = document.getElementById("googleSheetConfigDetails");
             return {
               menuOpen: document.getElementById("appMenuModal")?.classList.contains("show") || false,
               helpInMenu: help?.parentElement === body,
               settingImmediatelyAfterHelp: help?.nextElementSibling === setting,
+              themeImmediatelyAfterStartDay: setting?.nextElementSibling === themeSetting,
+              themeChoiceCount: themeSetting?.querySelectorAll('input[name="themePreference"]').length || 0,
               inputInMenu: input?.closest("#appMenuWindowBody") === body,
               inputInDashboard: !!document.querySelector("#dashboardTab [data-dashboard-start-day-input]"),
               optionCount: input?.options.length || 0,
@@ -2371,6 +2374,8 @@
             menuOpen: true,
             helpInMenu: true,
             settingImmediatelyAfterHelp: true,
+            themeImmediatelyAfterStartDay: true,
+            themeChoiceCount: 3,
             inputInMenu: true,
             inputInDashboard: false,
             optionCount: 31,
@@ -2394,6 +2399,70 @@
           assertDeepEqual(savedState, { current: 7, saved: 7 }, "メニューで変更した基準日が集計へ保存されません");
         }finally{
           app.eval(`dashboardFilter = ${JSON.stringify(previousFilter)}; saveDashboardFilter(); syncDashboardStartDayInputs();`);
+          app.closeAppMenuWindow();
+        }
+      });
+
+      await runTest("表示テーマを端末・ライト・ダークから選び、端末内へ保存できる", async () => {
+        const previousPreference = app.eval("themePreference");
+        let reloadFrame = null;
+        try{
+          app.openAppMenuWindow();
+          const darkInput = app.document.querySelector('input[name="themePreference"][value="dark"]');
+          assert(darkInput, "ダークテーマの選択肢がありません");
+          darkInput.checked = true;
+          darkInput.dispatchEvent(new app.Event("change", { bubbles: true }));
+
+          const darkState = comparable(app.eval(`(() => ({
+            preference: themePreference,
+            resolved: document.documentElement.dataset.theme,
+            saved: harvestnaviLocalStorage.getItem(THEME_PREFERENCE_KEY),
+            checked: document.querySelector('input[name="themePreference"]:checked')?.value || "",
+            themeColor: document.querySelector('meta[name="theme-color"]')?.content || "",
+            pageBackground: getComputedStyle(document.body).backgroundColor,
+            pageText: getComputedStyle(document.body).color,
+            menuBackground: getComputedStyle(document.querySelector(".appMenuWindow")).backgroundColor
+          }))()`));
+          assertDeepEqual(darkState, {
+            preference: "dark",
+            resolved: "dark",
+            saved: "dark",
+            checked: "dark",
+            themeColor: "#0d1117",
+            pageBackground: "rgb(13, 17, 23)",
+            pageText: "rgb(242, 244, 247)",
+            menuBackground: "rgb(24, 29, 37)"
+          }, "ダークテーマが画面全体へ反映されません");
+
+          reloadFrame = await loadVisualAppFrame(390, 844, `../index.html?theme-reload-test=${Date.now()}`);
+          assertDeepEqual(comparable(reloadFrame.contentWindow.eval(`({
+            preference: document.documentElement.dataset.themePreference,
+            resolved: document.documentElement.dataset.theme,
+            pageBackground: getComputedStyle(document.body).backgroundColor
+          })`)), {
+            preference: "dark",
+            resolved: "dark",
+            pageBackground: "rgb(13, 17, 23)"
+          }, "再読み込み後に保存したダークテーマが復元されません");
+
+          app.setThemePreference("light");
+          const lightState = comparable(app.eval(`({
+            preference: themePreference,
+            resolved: document.documentElement.dataset.theme,
+            saved: harvestnaviLocalStorage.getItem(THEME_PREFERENCE_KEY),
+            pageBackground: getComputedStyle(document.body).backgroundColor,
+            themeColor: document.querySelector('meta[name="theme-color"]')?.content || ""
+          })`));
+          assertDeepEqual(lightState, {
+            preference: "light",
+            resolved: "light",
+            saved: "light",
+            pageBackground: "rgb(245, 245, 247)",
+            themeColor: "#f5f5f7"
+          }, "ライトテーマへ戻せません");
+        }finally{
+          reloadFrame?.remove();
+          app.setThemePreference(previousPreference);
           app.closeAppMenuWindow();
         }
       });
@@ -3890,18 +3959,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "9c1ad9b3", elements: 2097, visible: 634, viewport: "390x844" },
-          cssStates: { hash: "c0fd8603", elements: 2165, visible: 693, viewport: "390x844" },
-          cssFocus: { hash: "40d1468a", elements: 2165, visible: 693, viewport: "390x844" },
-          mobileRecord: { hash: "1afa366d", elements: 2098, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "8addf69e", elements: 2098, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "5ec64304", elements: 2181, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "4195ce1c", elements: 2196, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "cf9cc35a", elements: 2196, visible: 310, viewport: "390x844" },
-          mobileSettings: { hash: "bfe4340d", elements: 2196, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "d62680a1", elements: 2196, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "a1db1034", elements: 2196, visible: 640, viewport: "1024x900" },
-          wideDashboard: { hash: "7882cf96", elements: 2196, visible: 135, viewport: "1024x900" }
+          mobileForecast: { hash: "e9648fe3", elements: 2110, visible: 634, viewport: "390x844" },
+          cssStates: { hash: "6d33406d", elements: 2178, visible: 693, viewport: "390x844" },
+          cssFocus: { hash: "4312d89c", elements: 2178, visible: 693, viewport: "390x844" },
+          mobileRecord: { hash: "46e81b47", elements: 2111, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "626a0838", elements: 2111, visible: 129, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "d665bf74", elements: 2194, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "2d3c407a", elements: 2209, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "1824dceb", elements: 2209, visible: 323, viewport: "390x844" },
+          mobileSettings: { hash: "fe4dd9f3", elements: 2209, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "67a2f72f", elements: 2209, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "e0243ee0", elements: 2209, visible: 640, viewport: "1024x900" },
+          wideDashboard: { hash: "3c48b946", elements: 2209, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
