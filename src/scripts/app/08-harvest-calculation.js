@@ -430,6 +430,7 @@ function renderPlantingAgeInfo(options = {}){
 function renderForecastPlantingAgeResult(){
   const result = document.getElementById("forecastPlantingAgeResult");
   const detail = document.getElementById("forecastPlantingAgeDetail");
+  const statusCard = document.getElementById("forecastPlacementStatusCard");
   if(!result || !detail) return;
 
   const shouldShow = harvestSelectionMode === "auto"
@@ -437,6 +438,7 @@ function renderForecastPlantingAgeResult(){
     && Array.isArray(harvestFillKeys)
     && harvestFillKeys.length > 0;
   result.hidden = !shouldShow;
+  if(statusCard) statusCard.classList.toggle("hasPlantingAgeDetail", shouldShow);
   if(!shouldShow){
     detail.innerHTML = "";
     return;

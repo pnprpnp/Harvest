@@ -1891,49 +1891,53 @@
         assertEqual(sizes.current.boxShadow, "none", "中央の号棟表示に枠の影が残っています");
       });
 
-      await runTest("残りケース数を号棟選択と同じ行の左側に小さく表示する", () => {
+      await runTest("残りケース数と定植日数詳細をページネーション下のカードへまとめる", () => {
         const previousTab = app.eval("activeAppTab");
         try{
           app.setMainTabSelection("forecast");
           const header = app.document.querySelector("#forecastTab .casePlacementHeader");
+          const statusCard = app.document.getElementById("forecastPlacementStatusCard");
           const remaining = app.document.getElementById("remainingCasesSummaryCard");
           const value = app.document.getElementById("remainingCasesSummary");
-          const pagination = app.document.querySelector("#forecastTab .casePlacementBuildingSwitch");
           const headerRect = header.getBoundingClientRect();
           const remainingRect = remaining.getBoundingClientRect();
-          const paginationRect = pagination.getBoundingClientRect();
+          const statusRect = statusCard.getBoundingClientRect();
           const state = comparable({
             noStatusBar: !app.document.querySelector("#forecastTab .buildingStatusBar"),
-            sameRow: remainingRect.top >= headerRect.top
-              && remainingRect.bottom <= headerRect.bottom
-              && paginationRect.top >= headerRect.top
-              && paginationRect.bottom <= headerRect.bottom,
-            leftOfPagination: remainingRect.right <= paginationRect.left,
-            compact: remainingRect.width <= 76
-              && parseFloat(app.getComputedStyle(value).fontSize) <= 13,
+            belowPagination: statusRect.top >= headerRect.bottom,
+            sharedCard: remaining.parentElement === statusCard
+              && app.document.getElementById("forecastPlantingAgeResult")?.parentElement === statusCard,
+            remainingUsesFullCardBeforeCalculation: remainingRect.width >= statusRect.width - 2,
+            greenValue: app.getComputedStyle(value).color === "rgb(23, 102, 55)",
+            labelIsSmallAndFaint: parseFloat(app.getComputedStyle(remaining.querySelector(".casePlacementRemainingLabel")).fontSize) <= 10,
             label: remaining.querySelector(".casePlacementRemainingLabel")?.textContent.trim() || "",
             hasCaseValue: /^\d+(?:\.\d+)?ケース$/.test(value.textContent.trim()),
             noAlwaysVisiblePlantingAge: !app.document.getElementById("plantingAgeSummary")
           });
           assertDeepEqual(state, {
             noStatusBar: true,
-            sameRow: true,
-            leftOfPagination: true,
-            compact: true,
+            belowPagination: true,
+            sharedCard: true,
+            remainingUsesFullCardBeforeCalculation: true,
+            greenValue: true,
+            labelIsSmallAndFaint: true,
             label: "残り",
             hasCaseValue: true,
             noAlwaysVisiblePlantingAge: true
-          }, "残りケース数が号棟選択の左側へ小さく配置されていません");
+          }, "残りケース数と定植日数詳細の共有カードがページネーション下にありません");
         }finally{
           app.setMainTabSelection(previousTab);
         }
       });
 
-      await runTest("定植日数詳細を計算後だけクリアボタンの上へ表示する", () => {
+      await runTest("定植日数詳細を計算後にページネーション下の共有カードへ表示する", () => {
         const mapState = comparable(app.eval(`(() => {
           const dateInput = document.getElementById("recordDateInput");
           const result = document.getElementById("forecastPlantingAgeResult");
           const detail = document.getElementById("forecastPlantingAgeDetail");
+          const statusCard = document.getElementById("forecastPlacementStatusCard");
+          const header = document.querySelector("#forecastTab .casePlacementHeader");
+          const remaining = document.getElementById("remainingCasesSummaryCard");
           const previous = {
             building: currentBuilding,
             keys: [...harvestFillKeys],
@@ -1965,7 +1969,11 @@
             const visibleState = {
               hiddenBeforeCalculation,
               visibleAfterCalculation: !result.hidden,
-              immediatelyAboveClear: result.nextElementSibling?.classList.contains("forecastBottomClearRow") || false,
+              belowPagination: statusCard.previousElementSibling === header,
+              sharedStatusCard: result.parentElement === statusCard
+                && remaining.parentElement === statusCard,
+              splitAfterCalculation: statusCard.classList.contains("hasPlantingAgeDetail"),
+              detailTitle: document.getElementById("forecastPlantingAgeResultTitle")?.textContent.trim() || "",
               heading: detail.querySelector(".plantingAgeMapHeading")?.textContent.trim() || "",
               bedNames: [...detail.querySelectorAll(".plantingAgeMapBed .bedTitleMain")]
                 .map(element => element.textContent.trim()),
@@ -1999,7 +2007,10 @@
         assertDeepEqual(mapState, {
           hiddenBeforeCalculation: true,
           visibleAfterCalculation: true,
-          immediatelyAboveClear: true,
+          belowPagination: true,
+          sharedStatusCard: true,
+          splitAfterCalculation: true,
+          detailTitle: "定植日数の詳細",
           heading: "2号棟の選択場所",
           bedNames: ["B", "A"],
           mapCount: 2,
@@ -2010,7 +2021,7 @@
           summaries: ["20日目・1枚", "31日目・1枚 20日目・1枚 定植記録なし・1枚"],
           titles: ["1番 定植から31日目", "3番 定植から20日目", "4番 定植から20日目", "4番 定植記録なし"],
           hiddenAfterClear: true
-        }, "定植日数の詳細が計算後だけクリアボタンの上へ表示されていません");
+        }, "定植日数の詳細が計算後にページネーション下の共有カードへ表示されていません");
       });
 
       await runTest("シミュ下部に設定と計算を固定しクリアを内容末尾へ移す", async () => {
@@ -2127,7 +2138,7 @@
           ".casePlacementDetails .casePlacementGrid",
           ".forecastSettingsOpenBtn",
           ".casePlacementCalculateBtn",
-          ".forecastPlantingAgeResult",
+          ".forecastPlacementStatusCard",
           ".forecastBottomClearRow .forecastClearBtn",
           ".harvestProgressPanel"
         ].map(selector => parseFloat(app.getComputedStyle(app.document.querySelector(selector)).borderRadius));
@@ -4050,18 +4061,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "5f60c44b", elements: 2123, visible: 609, viewport: "390x844" },
-          cssStates: { hash: "474f477b", elements: 2191, visible: 668, viewport: "390x844" },
-          cssFocus: { hash: "46e899a6", elements: 2191, visible: 668, viewport: "390x844" },
-          mobileRecord: { hash: "97fbe6ee", elements: 2124, visible: 109, viewport: "390x844" },
-          mobileDashboard: { hash: "38110492", elements: 2124, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "543803bd", elements: 2207, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "9c39017b", elements: 2222, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "e6e0e577", elements: 2222, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "217e0ef3", elements: 2222, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "0e4103fa", elements: 2222, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "76d63e02", elements: 2222, visible: 609, viewport: "1024x900" },
-          wideDashboard: { hash: "8c5528ca", elements: 2222, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "d282b738", elements: 2124, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "99f673a5", elements: 2192, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "7cc0842c", elements: 2192, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "8f665ead", elements: 2125, visible: 109, viewport: "390x844" },
+          mobileDashboard: { hash: "0f143249", elements: 2125, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "b08ff034", elements: 2208, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "d1ad7463", elements: 2223, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "6533e157", elements: 2223, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "2dedc0dd", elements: 2223, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "0f81b6f4", elements: 2223, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "d9e21764", elements: 2223, visible: 610, viewport: "1024x900" },
+          wideDashboard: { hash: "2682d74e", elements: 2223, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
