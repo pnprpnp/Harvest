@@ -343,7 +343,7 @@ function renderForecastSummary(){
 
   const remainingBox = document.getElementById("remainingCasesSummary");
   if(remainingBox){
-    remainingBox.textContent = "残り " + remainingCases + "ケース";
+    remainingBox.textContent = remainingCases + "ケース";
   }
   const remainingCard = document.getElementById("remainingCasesSummaryCard");
   if(remainingCard){

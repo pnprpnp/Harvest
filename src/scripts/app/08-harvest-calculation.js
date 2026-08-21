@@ -101,7 +101,7 @@ function getSelectedPlantingAgeItemsForBuilding(building){
 }
 
 function formatPlantingAgeMainText(items){
-  if(!items.length) return "収穫場所未選択";
+  if(!items.length) return "未選択";
 
   const ages = items
     .map(item => item.ageDays)
