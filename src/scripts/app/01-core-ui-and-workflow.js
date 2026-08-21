@@ -2178,6 +2178,17 @@ function handleHarvestCasesInputChange(){
   updateHarvestProgressUi();
 }
 
+function stepHarvestCasesInput(amount){
+  const casesInput = document.getElementById("casesInput");
+  if(!casesInput) return;
+  const step = Number(amount) < 0 ? -1 : 1;
+  const currentValue = Number(casesInput.value);
+  const nextValue = Math.max(0, (Number.isFinite(currentValue) ? currentValue : 0) + step);
+  casesInput.value = String(nextValue);
+  casesInput.dispatchEvent(new Event("input", { bubbles:true }));
+  casesInput.focus({ preventScroll:true });
+}
+
 function captureForecastSelectionState(){
   forecastSelectionState = {
     keys: [...harvestFillKeys],
