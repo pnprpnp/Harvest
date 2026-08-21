@@ -3152,6 +3152,55 @@
         }, "記録タブの縦型パレット配置図がシミュと一致しません");
       });
 
+      await runTest("収穫記録で計算対象外の号棟を追加表示して選択できる", () => {
+        const state = comparable(app.eval(`(() => {
+          const recordTab = document.getElementById("recordTab");
+          const previous = {
+            display: recordTab.style.display,
+            mode: recordSelectionMode,
+            keys: [...harvestFillKeys],
+            additional: [...recordAdditionalBuildings],
+            getRecorded: getRecordTabRecordedPalletSet
+          };
+          try{
+            recordTab.style.display = "block";
+            recordSelectionMode = "harvest";
+            harvestFillKeys = ["2-A-1", "2-A-2"];
+            recordAdditionalBuildings = [];
+            getRecordTabRecordedPalletSet = () => new Set();
+            drawRecordBeds();
+            const select = document.getElementById("recordBuildingAddSelect");
+            const beforeOptions = [...select.options].map(option => option.textContent.trim());
+            select.value = "3";
+            addRecordBuildingDisplay();
+            toggleRecordPallet(3, "A", 1);
+            drawRecordBeds();
+            return {
+              controlsVisible: !document.getElementById("recordBuildingDisplayControls").hidden,
+              hasBuildingOption: beforeOptions.includes("3号棟"),
+              headings: [...document.querySelectorAll("#recordBeds .recordBuildingMapTitle")]
+                .map(element => element.textContent.trim()),
+              selectedExtraBuilding: harvestFillKeys.includes("3-A-1"),
+              selectedCount: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length
+            };
+          }finally{
+            recordTab.style.display = previous.display;
+            recordSelectionMode = previous.mode;
+            harvestFillKeys = previous.keys;
+            recordAdditionalBuildings = previous.additional;
+            getRecordTabRecordedPalletSet = previous.getRecorded;
+            cancelPendingHarvestStateSave();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          controlsVisible: true,
+          hasBuildingOption: true,
+          headings: ["2号棟", "3号棟"],
+          selectedExtraBuilding: true,
+          selectedCount: 3
+        }, "計算対象外の号棟を収穫記録へ追加できません");
+      });
+
       await runTest("苗植えパレットへ12・16・20植えを混在して設定できる", () => {
         const presetState = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");
@@ -4086,18 +4135,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "7000a7e0", elements: 2126, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "ff17b729", elements: 2194, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "956d067c", elements: 2194, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "33ab174c", elements: 2127, visible: 109, viewport: "390x844" },
-          mobileDashboard: { hash: "c8e9c72e", elements: 2127, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a5e619b3", elements: 2210, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "81f987da", elements: 2225, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "08922c9a", elements: 2225, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "83482160", elements: 2225, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "dd75a14f", elements: 2225, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "17f3df82", elements: 2225, visible: 610, viewport: "1024x900" },
-          wideDashboard: { hash: "93ace155", elements: 2225, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "d834b429", elements: 2144, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "b6c41906", elements: 2212, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "02bcddb3", elements: 2212, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "8e2a26e3", elements: 2145, visible: 118, viewport: "390x844" },
+          mobileDashboard: { hash: "b22bacaf", elements: 2145, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "abe94fc0", elements: 2228, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "980d78fd", elements: 2243, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "597f9211", elements: 2243, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "ba28ee3b", elements: 2243, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "43df4e26", elements: 2243, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "44217e95", elements: 2243, visible: 610, viewport: "1024x900" },
+          wideDashboard: { hash: "8ee178f2", elements: 2243, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

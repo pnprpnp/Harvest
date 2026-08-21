@@ -32,6 +32,7 @@ function initializeStartupSettingsAndStorage(){
 function resetInvalidStartupPlantingState(){
   editingPlantingEventId = null;
   recordSelectionMode = "harvest";
+  recordAdditionalBuildings = [];
   activePlantingRecordId = null;
   plantingRecordDraft = null;
   recordPlantingCountPreset = 20;
@@ -56,6 +57,9 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   monitorMemoInputsDirty = !!savedHarvestState.monitorMemoInputsDirty;
   recordCasesEdited = !!savedHarvestState.recordCasesEdited;
   recordPlantingSummaryEdited = !!savedHarvestState.recordPlantingSummaryEdited;
+  recordAdditionalBuildings = Array.isArray(savedHarvestState.recordAdditionalBuildings)
+    ? [...new Set(savedHarvestState.recordAdditionalBuildings.filter(building => BUILDINGS.includes(Number(building))).map(Number))]
+    : [];
   recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
   recordPlantingCountPreset = normalizePlantingCountPreset(savedHarvestState.recordPlantingCountPreset);
   recordPlantingCountsByPallet = normalizePlantingCountsByPallet(

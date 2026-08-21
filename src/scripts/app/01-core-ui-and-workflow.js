@@ -250,6 +250,7 @@ const tabScrollPositions = {
   dashboard: 0
 };
 let recordBaseFillKeys = [];
+let recordAdditionalBuildings = [];
 let recordSelectionMode = "harvest";
 let recordPlantingCountPreset = 20;
 let recordPlantingCountsByPallet = {};
@@ -984,6 +985,7 @@ function saveHarvestStateToStorage(options = {}){
     qualityMemo: getSelectedQualityMemo(),
     recordCasesEdited,
     recordPlantingSummaryEdited,
+    recordAdditionalBuildings: [...recordAdditionalBuildings],
     recordSelectionMode,
     recordPlantingCountPreset,
     recordPlantingCountsByPallet,
@@ -1111,6 +1113,9 @@ function loadHarvestStateFromStorage(){
       qualityMemo: normalizeQualityMemo(parsed.qualityMemo || null),
       recordCasesEdited: !!parsed.recordCasesEdited,
       recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
+      recordAdditionalBuildings: Array.isArray(parsed.recordAdditionalBuildings)
+        ? [...new Set(parsed.recordAdditionalBuildings.map(value => Number(value)).filter(building => BUILDINGS.includes(building)))]
+        : [],
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
       recordPlantingCountPreset: normalizePlantingCountPreset(parsed.recordPlantingCountPreset),
       recordPlantingCountsByPallet: normalizePlantingCountsByPallet(parsed.recordPlantingCountsByPallet, parsed.harvestFillKeys),

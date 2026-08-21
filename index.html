@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260821-action-bar-no-guard">
+<meta name="harvestnavi-version" content="20260821-record-add-building">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8933,6 +8933,24 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   box-shadow:0 3px 10px rgba(37,99,235,.12);
 }
 .recordPlantingCountSummary{min-height:16px;color:var(--ui-text-secondary);font-size:11px;font-weight:700;text-align:center;}
+.recordBuildingDisplayControls{
+  display:grid;
+  gap:8px;
+  margin:0 0 14px;
+  padding:10px 12px;
+  border:1px solid var(--ui-line);
+  border-radius:12px;
+  background:var(--ui-surface-solid);
+}
+.recordBuildingDisplayControls[hidden]{display:none;}
+.recordBuildingDisplayHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.recordBuildingDisplayTitle{color:var(--ui-text);font-size:13px;font-weight:760;}
+.recordBuildingDisplayHint{margin-top:2px;color:var(--ui-text-tertiary);font-size:10px;line-height:1.35;}
+.recordBuildingDisplaySummary{flex:none;color:var(--ui-accent-dark);font-size:10px;font-weight:700;text-align:right;white-space:nowrap;}
+.recordBuildingDisplayRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;}
+.recordBuildingDisplayRow select{min-width:0;min-height:38px;padding:6px 9px;border:1px solid var(--ui-line-strong);border-radius:9px;background:var(--ui-surface-solid);color:var(--ui-text);font-size:13px;font-weight:650;}
+.recordBuildingAddBtn{min-height:38px;padding:6px 10px;border:0;border-radius:9px;background:var(--ui-accent);color:#fff;font-size:12px;font-weight:750;white-space:nowrap;}
+.recordBuildingAddBtn:disabled{opacity:.45;}
 .recordSeedlingCarryoverOption{
   border:0;
   border-radius:13px;
@@ -11001,6 +11019,21 @@ requestAnimationFrame(function(){
           </div>
           <div id="recordPlantingCountSummary" class="recordPlantingCountSummary">パレットを選択してください</div>
         </div>
+        <div id="recordBuildingDisplayControls" class="recordBuildingDisplayControls" hidden>
+          <div class="recordBuildingDisplayHeader">
+            <div>
+              <div class="recordBuildingDisplayTitle">収穫する号棟を追加</div>
+              <div class="recordBuildingDisplayHint">計算で選択していない号棟も、ここから表示して選べます</div>
+            </div>
+            <div id="recordBuildingDisplaySummary" class="recordBuildingDisplaySummary">表示中の号棟はありません</div>
+          </div>
+          <div class="recordBuildingDisplayRow">
+            <select id="recordBuildingAddSelect" aria-label="追加する号棟">
+              <option value="">号棟を選択</option>
+            </select>
+            <button id="recordBuildingAddBtn" class="recordBuildingAddBtn" type="button" data-ui-click="addRecordBuildingDisplay">号棟を追加</button>
+          </div>
+        </div>
         <div id="recordBeds" class="recordBuildingMapList"></div>
         <div id="recordHarvestMapLegend" class="simulationBedMapLegend" aria-label="収穫場所配置図の色分け">
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
@@ -12196,6 +12229,7 @@ const tabScrollPositions = {
   dashboard: 0
 };
 let recordBaseFillKeys = [];
+let recordAdditionalBuildings = [];
 let recordSelectionMode = "harvest";
 let recordPlantingCountPreset = 20;
 let recordPlantingCountsByPallet = {};
@@ -12930,6 +12964,7 @@ function saveHarvestStateToStorage(options = {}){
     qualityMemo: getSelectedQualityMemo(),
     recordCasesEdited,
     recordPlantingSummaryEdited,
+    recordAdditionalBuildings: [...recordAdditionalBuildings],
     recordSelectionMode,
     recordPlantingCountPreset,
     recordPlantingCountsByPallet,
@@ -13057,6 +13092,9 @@ function loadHarvestStateFromStorage(){
       qualityMemo: normalizeQualityMemo(parsed.qualityMemo || null),
       recordCasesEdited: !!parsed.recordCasesEdited,
       recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
+      recordAdditionalBuildings: Array.isArray(parsed.recordAdditionalBuildings)
+        ? [...new Set(parsed.recordAdditionalBuildings.map(value => Number(value)).filter(building => BUILDINGS.includes(building)))]
+        : [],
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
       recordPlantingCountPreset: normalizePlantingCountPreset(parsed.recordPlantingCountPreset),
       recordPlantingCountsByPallet: normalizePlantingCountsByPallet(parsed.recordPlantingCountsByPallet, parsed.harvestFillKeys),
@@ -28159,6 +28197,7 @@ function isPlantingSelectionAllowed(key, options = {}){
 
 function enterHarvestRecordMode(){
   recordSelectionMode = "harvest";
+  recordAdditionalBuildings = [];
   activePlantingRecordId = null;
   workflowPlantingSessionActive = false;
   editingPlantingEventId = null;
@@ -28251,6 +28290,7 @@ function refreshRecordModeUi(){
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();
+  renderRecordBuildingDisplayControls();
   if(discardEditButton) discardEditButton.hidden = !isEditing;
   if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
 
@@ -29797,13 +29837,58 @@ function getRecordMapBuildings(allowedSet = null){
     ...(harvestFillKeys || []),
     ...(allowedSet instanceof Set ? allowedSet : [])
   ];
-  const buildings = [...new Set(sourceKeys.map(key => parsePalletKey(key).building))]
+  const buildings = new Set(sourceKeys.map(key => parsePalletKey(key).building));
+  if(recordSelectionMode !== "planting"){
+    recordAdditionalBuildings.forEach(building => buildings.add(Number(building)));
+  }
+  const sortedBuildings = [...buildings]
     .filter(building => BUILDINGS.includes(building))
     .sort((a, b) => a - b);
-  if(buildings.includes(2) && buildings.includes(9)){
-    return [9, ...buildings.filter(building => building !== 9)];
+  if(sortedBuildings.includes(2) && sortedBuildings.includes(9)){
+    return [9, ...sortedBuildings.filter(building => building !== 9)];
   }
-  return buildings;
+  return sortedBuildings;
+}
+
+function renderRecordBuildingDisplayControls(){
+  const controls = document.getElementById("recordBuildingDisplayControls");
+  const select = document.getElementById("recordBuildingAddSelect");
+  const summary = document.getElementById("recordBuildingDisplaySummary");
+  if(!controls || !select) return;
+
+  const isHarvestMode = recordSelectionMode !== "planting";
+  controls.hidden = !isHarvestMode;
+  if(!isHarvestMode) return;
+
+  const displayedBuildings = getRecordMapBuildings();
+  const availableBuildings = BUILDINGS.filter(building => !displayedBuildings.includes(building));
+  select.innerHTML = [
+    '<option value="">号棟を選択</option>',
+    ...availableBuildings.map(building => `<option value="${building}">${building}号棟</option>`)
+  ].join("");
+  select.disabled = availableBuildings.length === 0;
+  const addButton = document.getElementById("recordBuildingAddBtn");
+  if(addButton) addButton.disabled = availableBuildings.length === 0;
+  if(summary){
+    summary.textContent = displayedBuildings.length
+      ? `表示中: ${displayedBuildings.map(building => `${building}号棟`).join("・")}`
+      : "表示中の号棟はありません";
+  }
+}
+
+function addRecordBuildingDisplay(){
+  if(recordSelectionMode === "planting") return;
+  const select = document.getElementById("recordBuildingAddSelect");
+  const building = Number(select?.value);
+  if(!BUILDINGS.includes(building)){
+    showToast("追加する号棟を選択してください");
+    return;
+  }
+  if(!recordAdditionalBuildings.includes(building)) recordAdditionalBuildings.push(building);
+  recordAdditionalBuildings.sort((a, b) => a - b);
+  renderRecordBuildingDisplayControls();
+  drawRecordBeds();
+  scheduleHarvestStateSave();
 }
 
 function handleRecordBuildingBedClick(building, bed){
@@ -29823,6 +29908,7 @@ function drawRecordBeds(){
   const container = document.getElementById("recordBeds");
   if(!container) return;
   container.innerHTML = "";
+  renderRecordBuildingDisplayControls();
   const recordedSet = getRecordTabRecordedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
@@ -34366,6 +34452,7 @@ function initializeStartupSettingsAndStorage(){
 function resetInvalidStartupPlantingState(){
   editingPlantingEventId = null;
   recordSelectionMode = "harvest";
+  recordAdditionalBuildings = [];
   activePlantingRecordId = null;
   plantingRecordDraft = null;
   recordPlantingCountPreset = 20;
@@ -34390,6 +34477,9 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   monitorMemoInputsDirty = !!savedHarvestState.monitorMemoInputsDirty;
   recordCasesEdited = !!savedHarvestState.recordCasesEdited;
   recordPlantingSummaryEdited = !!savedHarvestState.recordPlantingSummaryEdited;
+  recordAdditionalBuildings = Array.isArray(savedHarvestState.recordAdditionalBuildings)
+    ? [...new Set(savedHarvestState.recordAdditionalBuildings.filter(building => BUILDINGS.includes(Number(building))).map(Number))]
+    : [];
   recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
   recordPlantingCountPreset = normalizePlantingCountPreset(savedHarvestState.recordPlantingCountPreset);
   recordPlantingCountsByPallet = normalizePlantingCountsByPallet(

@@ -1432,6 +1432,7 @@ function isPlantingSelectionAllowed(key, options = {}){
 
 function enterHarvestRecordMode(){
   recordSelectionMode = "harvest";
+  recordAdditionalBuildings = [];
   activePlantingRecordId = null;
   workflowPlantingSessionActive = false;
   editingPlantingEventId = null;
@@ -1524,6 +1525,7 @@ function refreshRecordModeUi(){
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();
+  renderRecordBuildingDisplayControls();
   if(discardEditButton) discardEditButton.hidden = !isEditing;
   if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
 

@@ -487,13 +487,58 @@ function getRecordMapBuildings(allowedSet = null){
     ...(harvestFillKeys || []),
     ...(allowedSet instanceof Set ? allowedSet : [])
   ];
-  const buildings = [...new Set(sourceKeys.map(key => parsePalletKey(key).building))]
+  const buildings = new Set(sourceKeys.map(key => parsePalletKey(key).building));
+  if(recordSelectionMode !== "planting"){
+    recordAdditionalBuildings.forEach(building => buildings.add(Number(building)));
+  }
+  const sortedBuildings = [...buildings]
     .filter(building => BUILDINGS.includes(building))
     .sort((a, b) => a - b);
-  if(buildings.includes(2) && buildings.includes(9)){
-    return [9, ...buildings.filter(building => building !== 9)];
+  if(sortedBuildings.includes(2) && sortedBuildings.includes(9)){
+    return [9, ...sortedBuildings.filter(building => building !== 9)];
   }
-  return buildings;
+  return sortedBuildings;
+}
+
+function renderRecordBuildingDisplayControls(){
+  const controls = document.getElementById("recordBuildingDisplayControls");
+  const select = document.getElementById("recordBuildingAddSelect");
+  const summary = document.getElementById("recordBuildingDisplaySummary");
+  if(!controls || !select) return;
+
+  const isHarvestMode = recordSelectionMode !== "planting";
+  controls.hidden = !isHarvestMode;
+  if(!isHarvestMode) return;
+
+  const displayedBuildings = getRecordMapBuildings();
+  const availableBuildings = BUILDINGS.filter(building => !displayedBuildings.includes(building));
+  select.innerHTML = [
+    '<option value="">号棟を選択</option>',
+    ...availableBuildings.map(building => `<option value="${building}">${building}号棟</option>`)
+  ].join("");
+  select.disabled = availableBuildings.length === 0;
+  const addButton = document.getElementById("recordBuildingAddBtn");
+  if(addButton) addButton.disabled = availableBuildings.length === 0;
+  if(summary){
+    summary.textContent = displayedBuildings.length
+      ? `表示中: ${displayedBuildings.map(building => `${building}号棟`).join("・")}`
+      : "表示中の号棟はありません";
+  }
+}
+
+function addRecordBuildingDisplay(){
+  if(recordSelectionMode === "planting") return;
+  const select = document.getElementById("recordBuildingAddSelect");
+  const building = Number(select?.value);
+  if(!BUILDINGS.includes(building)){
+    showToast("追加する号棟を選択してください");
+    return;
+  }
+  if(!recordAdditionalBuildings.includes(building)) recordAdditionalBuildings.push(building);
+  recordAdditionalBuildings.sort((a, b) => a - b);
+  renderRecordBuildingDisplayControls();
+  drawRecordBeds();
+  scheduleHarvestStateSave();
 }
 
 function handleRecordBuildingBedClick(building, bed){
@@ -513,6 +558,7 @@ function drawRecordBeds(){
   const container = document.getElementById("recordBeds");
   if(!container) return;
   container.innerHTML = "";
+  renderRecordBuildingDisplayControls();
   const recordedSet = getRecordTabRecordedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
