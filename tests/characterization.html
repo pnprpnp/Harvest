@@ -2099,9 +2099,7 @@
         const field = app.document.querySelector(".forecastCaseField");
         const input = app.document.getElementById("casesInput");
         const inputPanel = app.document.querySelector(".forecastCaseInputPanel");
-        const stepButtons = [...app.document.querySelectorAll(".forecastCaseStepBtn")];
         const calculatorIcon = app.document.querySelector(".forecastCaseCalculatorIcon");
-        const help = app.document.querySelector(".forecastCaseHelp");
         const fieldStyle = app.getComputedStyle(field);
         const inputPanelStyle = app.getComputedStyle(inputPanel);
         const bodyStyle = app.getComputedStyle(app.document.body);
@@ -2112,13 +2110,13 @@
             && parseFloat(fieldStyle.borderLeftWidth) >= 1,
           hasRoundedCorners: parseFloat(fieldStyle.borderRadius) >= 16,
           differsFromPageBackground: fieldStyle.backgroundColor !== bodyStyle.backgroundColor,
-          hasComfortableHeight: field.getBoundingClientRect().height >= 94,
+          hasComfortableHeight: field.getBoundingClientRect().height >= 68,
           keepsGreenInputBoundary: parseFloat(inputPanelStyle.borderTopWidth) >= 1
             && inputPanelStyle.borderTopColor === "rgba(36, 138, 75, 0.68)",
-          hasExactHelp: help?.textContent.trim() === "収穫したいケース数を入力してください",
+          hasNoHelp: !app.document.querySelector(".forecastCaseHelp"),
           hasExamplePlaceholder: input.getAttribute("placeholder") === "例 32",
-          hasMinusAndPlus: stepButtons.length === 2
-            && stepButtons.map(button => button.textContent.trim()).join("") === "−＋",
+          hasNoStepper: !app.document.querySelector(".forecastCaseStepper")
+            && !app.document.querySelector(".forecastCaseStepBtn"),
           hasCalculatorIcon: !!calculatorIcon?.querySelector("svg")
         }), {
           hasCardBorder: true,
@@ -2126,30 +2124,11 @@
           differsFromPageBackground: true,
           hasComfortableHeight: true,
           keepsGreenInputBoundary: true,
-          hasExactHelp: true,
+          hasNoHelp: true,
           hasExamplePlaceholder: true,
-          hasMinusAndPlus: true,
+          hasNoStepper: true,
           hasCalculatorIcon: true
         }, "収穫ケース数が参考画像どおりの入力カードになっていません");
-      });
-
-      await runTest("収穫ケース数をマイナス・プラスボタンで増減できる", () => {
-        const input = app.document.getElementById("casesInput");
-        const buttons = [...app.document.querySelectorAll(".forecastCaseStepBtn")];
-        const previousValue = input.value;
-        try{
-          input.value = "";
-          buttons[1].click();
-          assertEqual(input.value, "1", "プラスボタンでケース数が増えません");
-          buttons[0].click();
-          assertEqual(input.value, "0", "マイナスボタンでケース数が減りません");
-          buttons[0].click();
-          assertEqual(input.value, "0", "ケース数が0未満になっています");
-        }finally{
-          input.value = previousValue;
-          input.dispatchEvent(new app.Event("input", { bubbles:true }));
-          input.blur();
-        }
       });
 
       await runTest("収穫ケース数の入力エリアを320px幅でも画面内に収める", () => {
@@ -4036,18 +4015,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "aef9f079", elements: 2133, visible: 622, viewport: "390x844" },
-          cssStates: { hash: "96ce4aa0", elements: 2201, visible: 681, viewport: "390x844" },
-          cssFocus: { hash: "d0783f8d", elements: 2201, visible: 681, viewport: "390x844" },
-          mobileRecord: { hash: "eeb9488a", elements: 2134, visible: 109, viewport: "390x844" },
-          mobileDashboard: { hash: "91ed9a34", elements: 2134, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "e7ae07f8", elements: 2217, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "af126531", elements: 2232, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "3b34da67", elements: 2232, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "090be283", elements: 2232, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "05316f26", elements: 2232, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "f6e8222a", elements: 2232, visible: 622, viewport: "1024x900" },
-          wideDashboard: { hash: "81405899", elements: 2232, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "b524cb42", elements: 2129, visible: 618, viewport: "390x844" },
+          cssStates: { hash: "a81de89e", elements: 2197, visible: 677, viewport: "390x844" },
+          cssFocus: { hash: "f513eaf7", elements: 2197, visible: 677, viewport: "390x844" },
+          mobileRecord: { hash: "4cdbf45c", elements: 2130, visible: 109, viewport: "390x844" },
+          mobileDashboard: { hash: "8dfb4bd4", elements: 2130, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "377d9752", elements: 2213, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "b6adc87d", elements: 2228, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "9d931411", elements: 2228, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "81d79509", elements: 2228, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "e5634cb2", elements: 2228, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "ccf9b52b", elements: 2228, visible: 618, viewport: "1024x900" },
+          wideDashboard: { hash: "9020d41b", elements: 2228, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
