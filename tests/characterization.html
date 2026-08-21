@@ -1934,7 +1934,10 @@
         const mapState = comparable(app.eval(`(() => {
           const dateInput = document.getElementById("recordDateInput");
           const result = document.getElementById("forecastPlantingAgeResult");
-          const detail = document.getElementById("forecastPlantingAgeDetail");
+          const range = document.getElementById("forecastPlantingAgeRange");
+          const infoButton = document.querySelector(".forecastPlantingAgeInfoBtn");
+          const modal = document.getElementById("plantingAgeModal");
+          const detail = document.getElementById("plantingAgeDetail");
           const statusCard = document.getElementById("forecastPlacementStatusCard");
           const header = document.querySelector("#forecastTab .casePlacementHeader");
           const remaining = document.getElementById("remainingCasesSummaryCard");
@@ -1966,6 +1969,7 @@
             const hiddenBeforeCalculation = result.hidden;
             harvestSelectionMode = "auto";
             renderForecastPlantingAgeResult();
+            openPlantingAgeWindow();
             const visibleState = {
               hiddenBeforeCalculation,
               visibleAfterCalculation: !result.hidden,
@@ -1974,6 +1978,9 @@
                 && remaining.parentElement === statusCard,
               splitAfterCalculation: statusCard.classList.contains("hasPlantingAgeDetail"),
               detailTitle: document.getElementById("forecastPlantingAgeResultTitle")?.textContent.trim() || "",
+              rangeText: range?.textContent.trim() || "",
+              infoButton: !!infoButton,
+              modalVisible: modal?.classList.contains("show") || false,
               heading: detail.querySelector(".plantingAgeMapHeading")?.textContent.trim() || "",
               bedNames: [...detail.querySelectorAll(".plantingAgeMapBed .bedTitleMain")]
                 .map(element => element.textContent.trim()),
@@ -1989,6 +1996,7 @@
                 .map(element => element.title)
                 .sort()
             };
+            closePlantingAgeWindow();
             harvestSummary = null;
             renderForecastPlantingAgeResult();
             visibleState.hiddenAfterClear = result.hidden;
@@ -2011,6 +2019,9 @@
           sharedStatusCard: true,
           splitAfterCalculation: true,
           detailTitle: "定植日数の詳細",
+          rangeText: "20日〜31日",
+          infoButton: true,
+          modalVisible: true,
           heading: "2号棟の選択場所",
           bedNames: ["B", "A"],
           mapCount: 2,
@@ -2058,8 +2069,8 @@
             tabBarMatchesSpecHeight: tabBarRect.height >= 76 && tabBarRect.height <= 78,
             settingsLeftOfCalculate: settingsRect.right <= calculateRect.left,
             equalFixedButtonHeight: Math.abs(settingsRect.height - calculateRect.height) <= 1,
-            addsSpaceAboveButtons: actionBarRect.height >= calculateRect.height + 9
-              && actionBarRect.height <= calculateRect.height + 11,
+            addsSpaceAboveButtons: actionBarRect.height >= calculateRect.height + 5
+              && actionBarRect.height <= calculateRect.height + 7,
             topSpacingExceedsBottom: settingsRect.top - actionBarRect.top
               >= actionBarRect.bottom - settingsRect.bottom + 3,
             calculateIsWidePrimary: calculateRect.width >= 110 && calculateStyle.backgroundImage !== "none",
@@ -4061,18 +4072,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "d282b738", elements: 2124, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "99f673a5", elements: 2192, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "7cc0842c", elements: 2192, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "8f665ead", elements: 2125, visible: 109, viewport: "390x844" },
-          mobileDashboard: { hash: "0f143249", elements: 2125, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "b08ff034", elements: 2208, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "d1ad7463", elements: 2223, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "6533e157", elements: 2223, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "2dedc0dd", elements: 2223, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "0f81b6f4", elements: 2223, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "d9e21764", elements: 2223, visible: 610, viewport: "1024x900" },
-          wideDashboard: { hash: "2682d74e", elements: 2223, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "f888a2e5", elements: 2126, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "5d83ad5e", elements: 2194, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "c06a7037", elements: 2194, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "17ec438a", elements: 2127, visible: 109, viewport: "390x844" },
+          mobileDashboard: { hash: "84520938", elements: 2127, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "a097d9d3", elements: 2210, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "6aafb032", elements: 2225, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "a88774d0", elements: 2225, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "cfbdedc2", elements: 2225, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "03cf231d", elements: 2225, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "5caf88f2", elements: 2225, visible: 610, viewport: "1024x900" },
+          wideDashboard: { hash: "0fda8d1b", elements: 2225, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -427,11 +427,23 @@ function renderPlantingAgeInfo(options = {}){
   if(recordDetail) recordDetail.innerHTML = formatPlantingAgeDetailHtml(items);
 }
 
+function formatForecastPlantingAgeRange(items){
+  const sourceItems = Array.isArray(items) ? items : [];
+  if(!sourceItems.length) return "未選択";
+  const ages = sourceItems
+    .map(item => item.ageDays)
+    .filter(ageDays => Number.isFinite(ageDays));
+  if(!ages.length) return "未記録";
+  const minAge = Math.min(...ages);
+  const maxAge = Math.max(...ages);
+  return `${minAge}日〜${maxAge}日`;
+}
+
 function renderForecastPlantingAgeResult(){
   const result = document.getElementById("forecastPlantingAgeResult");
-  const detail = document.getElementById("forecastPlantingAgeDetail");
+  const range = document.getElementById("forecastPlantingAgeRange");
   const statusCard = document.getElementById("forecastPlacementStatusCard");
-  if(!result || !detail) return;
+  if(!result || !range) return;
 
   const shouldShow = harvestSelectionMode === "auto"
     && !!harvestSummary
@@ -440,14 +452,12 @@ function renderForecastPlantingAgeResult(){
   result.hidden = !shouldShow;
   if(statusCard) statusCard.classList.toggle("hasPlantingAgeDetail", shouldShow);
   if(!shouldShow){
-    detail.innerHTML = "";
+    range.textContent = "未選択";
     return;
   }
 
-  renderPlantingAgeDetailMap(
-    detail,
-    getSelectedPlantingAgeItemsForBuilding(currentBuilding),
-    currentBuilding
+  range.textContent = formatForecastPlantingAgeRange(
+    getSelectedPlantingAgeItemsForBuilding(currentBuilding)
   );
 }
 
