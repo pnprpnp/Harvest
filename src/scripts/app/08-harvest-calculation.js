@@ -414,13 +414,14 @@ function formatPlantingAgeForRecordDetailDisplay(record){
 function renderPlantingAgeInfo(options = {}){
   const items = getSelectedPlantingAgeItemsForBuilding(currentBuilding);
   const mainText = formatPlantingAgeMainText(items);
+  const startPositionText = items.length ? `${items[0].bed}-${items[0].number}` : "未選択";
 
   const mainInfo = document.getElementById("plantingAgeSummary");
   const recordInfo = document.getElementById("recordBuildingLastHarvestInfo");
   const detail = document.getElementById("plantingAgeDetail");
   const recordDetail = document.getElementById("recordPlantingAgeDetail");
 
-  if(mainInfo) mainInfo.textContent = mainText;
+  if(mainInfo) mainInfo.textContent = startPositionText;
   if(recordInfo) recordInfo.textContent = mainText;
   if(detail && options.renderDetail) renderPlantingAgeDetailMap(detail, items, currentBuilding);
   if(recordDetail) recordDetail.innerHTML = formatPlantingAgeDetailHtml(items);

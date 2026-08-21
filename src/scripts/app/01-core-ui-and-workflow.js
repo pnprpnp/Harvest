@@ -1280,7 +1280,7 @@ function getForecastSettingsSummaryText(){
   const lossMark = document.getElementById("useBedLossSettings")?.checked ? "*" : "";
   const yieldMark = document.getElementById("useBedYieldSettings")?.checked ? "*" : "";
   const plantMark = document.getElementById("useBedPlantSettings")?.checked ? "*" : "";
-  return `ロス ${loss}%${lossMark}・${yieldValue}${yieldMark}/${plantValue}${plantMark}/60(${special60}/3)`;
+  return `ロス ${loss}%${lossMark}・${yieldValue}${yieldMark} / ${plantValue}${plantMark} / 60(${special60}/3)`;
 }
 
 function updateForecastSettingsSummary(){

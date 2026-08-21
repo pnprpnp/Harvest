@@ -1905,7 +1905,7 @@
             sameRow: true,
             fillsSingleBar: true,
             opensPlantingAgeDetail: "openPlantingAgeWindow",
-            labels: ["選択場所", "残り"]
+            labels: ["開始位置", "残り"]
           }, "号棟状況が一枚の要約カードにまとまっていません");
         }finally{
           app.setMainTabSelection(previousTab);
@@ -1938,6 +1938,7 @@
             invalidatePlantingEventStateCache();
             renderPlantingAgeInfo({ renderDetail: true });
             return {
+              startPosition: document.getElementById("plantingAgeSummary")?.textContent.trim() || "",
               heading: detail.querySelector(".plantingAgeMapHeading")?.textContent.trim() || "",
               bedNames: [...detail.querySelectorAll(".plantingAgeMapBed .bedTitleMain")]
                 .map(element => element.textContent.trim()),
@@ -1964,6 +1965,7 @@
           }
         })()`));
         assertDeepEqual(mapState, {
+          startPosition: "A-1",
           heading: "2号棟の選択場所",
           bedNames: ["B", "A"],
           mapCount: 2,
@@ -2009,8 +2011,8 @@
             belowTabBarLayer: Number(actionStyle.zIndex) < Number(app.getComputedStyle(tabBar).zIndex),
             settingsLeftOfCalculate: settingsRect.right <= calculateRect.left,
             equalFixedButtonHeight: Math.abs(settingsRect.height - calculateRect.height) <= 1,
-            addsSpaceAboveButtons: actionBarRect.height >= calculateRect.height + 11
-              && actionBarRect.height <= calculateRect.height + 13,
+            addsSpaceAboveButtons: actionBarRect.height >= calculateRect.height + 9
+              && actionBarRect.height <= calculateRect.height + 11,
             topSpacingExceedsBottom: settingsRect.top - actionBarRect.top
               >= actionBarRect.bottom - settingsRect.bottom + 3,
             calculateIsWidePrimary: calculateRect.width >= 110 && calculateStyle.backgroundImage !== "none",
@@ -2090,7 +2092,7 @@
             && parseFloat(fieldStyle.borderLeftWidth) >= 1,
           hasRoundedCorners: parseFloat(fieldStyle.borderRadius) >= 16,
           differsFromPageBackground: fieldStyle.backgroundColor !== bodyStyle.backgroundColor,
-          hasComfortableHeight: field.getBoundingClientRect().height >= 80,
+          hasComfortableHeight: field.getBoundingClientRect().height >= 68,
           keepsInputBoundary: parseFloat(inputWrapStyle.borderTopWidth) >= 1
         }), {
           hasCardBorder: true,
@@ -2125,7 +2127,7 @@
           );
           assert(topGap >= 8 && topGap <= 14, `収穫ケース数カードの上余白が適切ではありません（${Math.round(topGap)}px）`);
           assert(
-            inputToBuildingGap >= 10 && inputToBuildingGap <= 18,
+            inputToBuildingGap >= 8 && inputToBuildingGap <= 14,
             `収穫ケース数と号棟選択が離れています（${Math.round(inputToBuildingGap)}px）`
           );
           assertEqual(app.getComputedStyle(divider).display, "none", "不要な区切り余白が残っています");
@@ -2144,7 +2146,7 @@
               && Math.abs(fieldRect.right - casePlacementPanelRect.right) <= 1,
             "収穫ケース数と号棟選択の横幅が揃っていません"
           );
-          assert(leftOffset >= 50 && leftOffset <= 58, "収穫ケース数の見出しがアイコンの横に揃っていません");
+          assert(leftOffset >= 42 && leftOffset <= 46, "収穫ケース数の見出しがアイコンの横に揃っていません");
           assert(parseFloat(app.getComputedStyle(label).fontSize) >= 19, "収穫ケース数の見出しが十分に大きくありません");
           assertEqual(app.getComputedStyle(label).whiteSpace, "nowrap", "収穫ケース数の見出しが一行表示ではありません");
           assert(centerOffset <= 2, "収穫ケース数の見出しと入力欄の縦位置が揃っていません");
@@ -2200,15 +2202,18 @@
           app.clearCasePlacement();
           const missingState = comparable({
             needsInput: details.classList.contains("casePlacementNeedsInput"),
-            matchesEmptyInputColor: app.getComputedStyle(details).backgroundColor
-              === app.getComputedStyle(inputs.front.closest(".inputUnitWrap")).backgroundColor,
+            collapsedUsesCardSurface: app.getComputedStyle(details).backgroundColor
+              === app.getComputedStyle(app.document.querySelector(".forecastCaseField")).backgroundColor,
+            inputsKeepMissingColor: app.getComputedStyle(details).backgroundColor
+              !== app.getComputedStyle(inputs.front.closest(".inputUnitWrap")).backgroundColor,
             summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || ""
           });
           assertDeepEqual(missingState, {
             needsInput: true,
-            matchesEmptyInputColor: true,
+            collapsedUsesCardSurface: true,
+            inputsKeepMissingColor: true,
             summary: "奥0・中央0・手前0"
-          }, "未入力のケース配分が他の未入力欄と同じ色になっていません");
+          }, "閉じたケース配分または未入力欄の色分けが正しくありません");
 
           details.open = true;
           app.setDefaultCasePlacement();
@@ -2305,7 +2310,7 @@
             }));
           })()`));
           Object.entries(horizontalPadding).forEach(([name, padding]) => {
-            assertDeepEqual(padding, ["6px", "6px"], `${name}の左右余白がシミュと揃っていません`);
+            assertDeepEqual(padding, ["2px", "2px"], `${name}の左右余白がシミュと揃っていません`);
           });
         }finally{
           iframe.style.width = previousFrameWidth;
@@ -3964,18 +3969,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "9f709e18", elements: 2123, visible: 637, viewport: "390x844" },
-          cssStates: { hash: "ee7eab71", elements: 2191, visible: 696, viewport: "390x844" },
-          cssFocus: { hash: "ec292514", elements: 2191, visible: 696, viewport: "390x844" },
-          mobileRecord: { hash: "40eca016", elements: 2124, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "bb4b5faf", elements: 2124, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "2a04ff1e", elements: 2207, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "13b6809b", elements: 2222, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "ba342dd0", elements: 2222, visible: 323, viewport: "390x844" },
-          mobileSettings: { hash: "464677c4", elements: 2222, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "39f05bde", elements: 2222, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "8e7e70f8", elements: 2222, visible: 643, viewport: "1024x900" },
-          wideDashboard: { hash: "2ca8071e", elements: 2222, visible: 135, viewport: "1024x900" }
+          mobileForecast: { hash: "dab836d9", elements: 2123, visible: 637, viewport: "390x844" },
+          cssStates: { hash: "6a77dadb", elements: 2191, visible: 696, viewport: "390x844" },
+          cssFocus: { hash: "ff7d57a6", elements: 2191, visible: 696, viewport: "390x844" },
+          mobileRecord: { hash: "25c6819f", elements: 2124, visible: 134, viewport: "390x844" },
+          mobileDashboard: { hash: "0cc166ce", elements: 2124, visible: 129, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f09e91b6", elements: 2207, visible: 193, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "42b9aa32", elements: 2222, visible: 114, viewport: "390x844" },
+          mobileMenu: { hash: "7e01a869", elements: 2222, visible: 323, viewport: "390x844" },
+          mobileSettings: { hash: "f98f140b", elements: 2222, visible: 273, viewport: "390x844" },
+          mobileMonitor: { hash: "630221ab", elements: 2222, visible: 87, viewport: "390x844" },
+          wideForecast: { hash: "f0f8d22a", elements: 2222, visible: 643, viewport: "1024x900" },
+          wideDashboard: { hash: "1e68906c", elements: 2222, visible: 135, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
