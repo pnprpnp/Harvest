@@ -13,7 +13,6 @@ function finalizeHarvestnaviStartup(){
       : "アプリを最新版に更新しました");
   }
   hideWelcomeScreen();
-  scheduleWorkflowTitleHintOnce(appVersionNotice ? 3800 : 1800);
   scheduleDashboardPreloadDuringIdle();
 }
 

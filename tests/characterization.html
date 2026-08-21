@@ -1837,6 +1837,21 @@
         assertEqual(app.normalizeMainTabName("unknown"), "", "不明なタブを受け入れています");
       });
 
+      await runTest("工程ナビを初期状態では閉じ、タイトルから開閉できる", () => {
+        const bar = app.document.getElementById("workflowBar");
+        const button = app.document.getElementById("workflowVisibilityBtn");
+        assertEqual(bar.hidden, true, "仕様画像にない工程ナビが初期表示されています");
+        assertEqual(button.getAttribute("aria-expanded"), "false", "閉じた状態が支援機能へ伝わっていません");
+        assert(button.classList.contains("is-collapsed"), "タイトルの矢印が閉じた向きではありません");
+
+        app.toggleWorkflowBarVisibility();
+        assertEqual(bar.hidden, false, "タイトルから工程ナビを開けません");
+        assertEqual(button.getAttribute("aria-expanded"), "true", "開いた状態が支援機能へ伝わっていません");
+
+        app.toggleWorkflowBarVisibility();
+        assertEqual(bar.hidden, true, "タイトルから工程ナビを閉じられません");
+      });
+
       await runTest("シミュタブの号棟移動ボタンを押しやすい大きさにする", () => {
         const sizes = comparable(app.eval(`(() => {
           const moveButton = document.querySelector(".casePlacementBuildingSwitch .buildingBtn:not(.active)");
@@ -2009,6 +2024,7 @@
               && parseFloat(actionGapStyle.height) <= 7
               && actionGapStyle.pointerEvents === "auto",
             belowTabBarLayer: Number(actionStyle.zIndex) < Number(app.getComputedStyle(tabBar).zIndex),
+            tabBarMatchesSpecHeight: tabBarRect.height >= 76 && tabBarRect.height <= 78,
             settingsLeftOfCalculate: settingsRect.right <= calculateRect.left,
             equalFixedButtonHeight: Math.abs(settingsRect.height - calculateRect.height) <= 1,
             addsSpaceAboveButtons: actionBarRect.height >= calculateRect.height + 9
@@ -2037,6 +2053,7 @@
             buttonGapFromTabBar: true,
             gapBlocksMistaps: true,
             belowTabBarLayer: true,
+            tabBarMatchesSpecHeight: true,
             settingsLeftOfCalculate: true,
             equalFixedButtonHeight: true,
             addsSpaceAboveButtons: true,
@@ -3969,18 +3986,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "dab836d9", elements: 2123, visible: 637, viewport: "390x844" },
-          cssStates: { hash: "6a77dadb", elements: 2191, visible: 696, viewport: "390x844" },
-          cssFocus: { hash: "ff7d57a6", elements: 2191, visible: 696, viewport: "390x844" },
-          mobileRecord: { hash: "25c6819f", elements: 2124, visible: 134, viewport: "390x844" },
-          mobileDashboard: { hash: "0cc166ce", elements: 2124, visible: 129, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f09e91b6", elements: 2207, visible: 193, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "42b9aa32", elements: 2222, visible: 114, viewport: "390x844" },
-          mobileMenu: { hash: "7e01a869", elements: 2222, visible: 323, viewport: "390x844" },
-          mobileSettings: { hash: "f98f140b", elements: 2222, visible: 273, viewport: "390x844" },
-          mobileMonitor: { hash: "630221ab", elements: 2222, visible: 87, viewport: "390x844" },
-          wideForecast: { hash: "f0f8d22a", elements: 2222, visible: 643, viewport: "1024x900" },
-          wideDashboard: { hash: "1e68906c", elements: 2222, visible: 135, viewport: "1024x900" }
+          mobileForecast: { hash: "ccfdfe61", elements: 2123, visible: 612, viewport: "390x844" },
+          cssStates: { hash: "f6f318f3", elements: 2191, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "e5aab66e", elements: 2191, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "55d3cd6f", elements: 2124, visible: 109, viewport: "390x844" },
+          mobileDashboard: { hash: "fdb7db75", elements: 2124, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "394801a6", elements: 2207, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "f542717a", elements: 2222, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "859fe414", elements: 2222, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "49cd5290", elements: 2222, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "c8a20a4f", elements: 2222, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "8aed92c5", elements: 2222, visible: 612, viewport: "1024x900" },
+          wideDashboard: { hash: "0a4bcfbe", elements: 2222, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

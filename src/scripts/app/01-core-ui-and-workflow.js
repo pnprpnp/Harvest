@@ -25,7 +25,7 @@ const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
 const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
-const WORKFLOW_BAR_VISIBILITY_KEY = "harvestForecastWorkflowBarVisible_v1";
+const WORKFLOW_BAR_VISIBILITY_KEY = "harvestForecastWorkflowBarVisible_v2";
 const WORKFLOW_TITLE_HINT_SHOWN_KEY = "harvestnaviWorkflowTitleHintShown_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
@@ -2834,11 +2834,11 @@ function scheduleWorkflowTitleHintOnce(delayMs = 1800){
 }
 
 function restoreWorkflowBarVisibility(){
-  let visible = true;
+  let visible = false;
   try{
-    visible = harvestnaviLocalStorage.getItem(WORKFLOW_BAR_VISIBILITY_KEY) !== "0";
+    visible = harvestnaviLocalStorage.getItem(WORKFLOW_BAR_VISIBILITY_KEY) === "1";
   }catch(e){
-    visible = true;
+    visible = false;
   }
   setWorkflowBarVisibility(visible, { persist:false });
 }
