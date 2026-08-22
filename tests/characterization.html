@@ -2032,7 +2032,7 @@
         assertEqual(sizes.current.boxShadow, "none", "中央の号棟表示に枠の影が残っています");
       });
 
-      await runTest("定植日数・ケース配置・収穫可能をページネーション下で三分割する", () => {
+      await runTest("定植日数・収穫可能・ケース配置をページネーション下で三分割する", () => {
         const previousTab = app.eval("activeAppTab");
         try{
           app.setMainTabSelection("forecast");
@@ -2053,13 +2053,17 @@
               && app.document.getElementById("forecastPlantingAgeResult")?.parentElement === statusCard
               && caseSummary.parentElement === statusCard
               && caseDetails.previousElementSibling === statusCard,
-            casePlacementUsesMiddleThird: Math.abs(caseSummaryRect.width - (statusRect.width / 3)) <= 2
-              && Math.abs((caseSummaryRect.left + (caseSummaryRect.width / 2))
-                - (statusRect.left + (statusRect.width / 2))) <= 2,
-            remainingUsesRightThirdBeforeCalculation: Math.abs(remainingRect.width - (statusRect.width / 3)) <= 2
-              && Math.abs(remainingRect.right - statusRect.right) <= 2
+            casePlacementUsesRightThird: Math.abs(caseSummaryRect.width - (statusRect.width / 3)) <= 2
+              && Math.abs(caseSummaryRect.right - statusRect.right) <= 2,
+            remainingUsesMiddleThirdBeforeCalculation: Math.abs(remainingRect.width - (statusRect.width / 3)) <= 2
+              && Math.abs((remainingRect.left + (remainingRect.width / 2))
+                - (statusRect.left + (statusRect.width / 2))) <= 2
               && remainingRect.top >= statusRect.top
               && remainingRect.bottom <= statusRect.bottom,
+            casePlacementHasChevron: app.getComputedStyle(caseSummary, "::after").content.includes("›"),
+            onlyCasePlacementHasTint: app.getComputedStyle(caseSummary).backgroundColor
+                !== app.getComputedStyle(remaining).backgroundColor
+              && app.getComputedStyle(caseSummary).backgroundColor !== "rgba(0, 0, 0, 0)",
             greenValue: app.getComputedStyle(value).color === "rgb(23, 102, 55)",
             labelIsSmallAndFaint: parseFloat(app.getComputedStyle(remaining.querySelector(".casePlacementRemainingLabel")).fontSize) <= 10,
             label: remaining.querySelector(".casePlacementRemainingLabel")?.textContent.trim() || "",
@@ -2070,14 +2074,16 @@
             noStatusBar: true,
             belowPagination: true,
             sharedCard: true,
-            casePlacementUsesMiddleThird: true,
-            remainingUsesRightThirdBeforeCalculation: true,
+            casePlacementUsesRightThird: true,
+            remainingUsesMiddleThirdBeforeCalculation: true,
+            casePlacementHasChevron: true,
+            onlyCasePlacementHasTint: true,
             greenValue: true,
             labelIsSmallAndFaint: true,
             label: "収穫可能",
             hasCaseValue: true,
             noAlwaysVisiblePlantingAge: true
-          }, "定植日数・ケース配置・収穫可能の三分割カードになっていません");
+          }, "定植日数・収穫可能・ケース配置の識別可能な三分割カードになっていません");
         }finally{
           app.setMainTabSelection(previousTab);
         }
@@ -2137,7 +2143,8 @@
               splitAfterCalculation: statusCard.classList.contains("hasPlantingAgeDetail"),
               remainingPositionDoesNotMove: Math.abs(hiddenRemainingRect.left - visibleRemainingRect.left) <= 2
                 && Math.abs(hiddenRemainingRect.width - visibleRemainingRect.width) <= 2
-                && Math.abs(visibleRemainingRect.right - visibleStatusRect.right) <= 2,
+                && Math.abs((visibleRemainingRect.left + (visibleRemainingRect.width / 2))
+                  - (visibleStatusRect.left + (visibleStatusRect.width / 2))) <= 2,
               sameRowAfterCalculation: visibleRemainingRect.top >= visibleStatusRect.top
                 && visibleRemainingRect.bottom <= visibleStatusRect.bottom
                 && visibleResultRect.top >= visibleStatusRect.top
@@ -2567,10 +2574,11 @@
             gridVisible: grid.getClientRects().length > 0,
             summaryIsVisuallyCentered: (() => {
               const offset = (compactSummaryRect.left + compactSummaryRect.width / 2)
-                - (statusRect.left + statusRect.width / 2);
+                - (statusRect.left + statusRect.width * 5 / 6);
               return offset >= -3 && offset <= 3;
             })(),
-            summaryUsesMiddleThird: Math.abs(detailsSummaryRect.width - (statusRect.width / 3)) <= 2
+            summaryUsesRightThird: Math.abs(detailsSummaryRect.width - (statusRect.width / 3)) <= 2
+              && Math.abs(detailsSummaryRect.right - statusRect.right) <= 2
           });
           assertDeepEqual(compactState, {
             defaultClosed: true,
@@ -2580,13 +2588,13 @@
             total: "102",
             gridVisible: false,
             summaryIsVisuallyCentered: true,
-            summaryUsesMiddleThird: true
+            summaryUsesRightThird: true
           }, "閉じたケース配分が一行要約になっていません");
 
           app.clearCasePlacement();
           const missingState = comparable({
             needsInput: details.classList.contains("casePlacementNeedsInput"),
-            collapsedUsesCardSurface: app.getComputedStyle(detailsSummary).backgroundColor === "rgba(0, 0, 0, 0)"
+            collapsedUsesCardSurface: app.getComputedStyle(detailsSummary).backgroundColor !== "rgba(0, 0, 0, 0)"
               && app.getComputedStyle(detailsSummary.parentElement).backgroundColor
                 === app.getComputedStyle(app.document.querySelector(".forecastCaseField")).backgroundColor,
             inputsKeepMissingColor: app.getComputedStyle(details).backgroundColor
@@ -4715,18 +4723,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "6140b0e5", elements: 2145, visible: 602, viewport: "390x844" },
-          cssStates: { hash: "c0d72bcc", elements: 2213, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "6a960fa1", elements: 2213, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "2028a986", elements: 2146, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "2568c0d1", elements: 2146, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "b94ec194", elements: 2229, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "738febc4", elements: 2244, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "49f3a56c", elements: 2244, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "efb71d06", elements: 2244, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "f7ffa4b3", elements: 2244, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "0bfa0afb", elements: 2244, visible: 602, viewport: "1024x900" },
-          wideDashboard: { hash: "977c9aec", elements: 2244, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "186abd37", elements: 2145, visible: 602, viewport: "390x844" },
+          cssStates: { hash: "45c98176", elements: 2213, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "0edea903", elements: 2213, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "97150313", elements: 2146, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "3b7898b0", elements: 2146, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "379740a9", elements: 2229, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "8ed4e993", elements: 2244, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "23e93359", elements: 2244, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "d67384ad", elements: 2244, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "e5d28076", elements: 2244, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "9be5f3f4", elements: 2244, visible: 602, viewport: "1024x900" },
+          wideDashboard: { hash: "2b4291b3", elements: 2244, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
