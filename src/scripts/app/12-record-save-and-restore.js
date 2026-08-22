@@ -408,7 +408,10 @@ async function savePlantingRecord(){
   const unselectedPreviousLots = getUnselectedPreviousUnplantedPalletLots(
     sourceAllocations,
     record,
-    { excludeEventId: existingEvent?.eventId }
+    {
+      excludeEventId: existingEvent?.eventId,
+      plantingDate
+    }
   );
   const needsPreviousUnplantedWarning = unselectedPreviousLots.length > 0;
   if(needsPreviousUnplantedWarning){

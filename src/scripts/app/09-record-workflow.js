@@ -1236,16 +1236,18 @@ function getActivePlantingRecord(){
   return getRecordById(activePlantingRecordId);
 }
 
-function getPlantingCandidateRecordIdSet(){
+function getPlantingCandidateRecordIdSet(options = {}){
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
-  const editingDate = parseDateOnlyString(String(editingEvent?.plantingDate || "").trim());
+  const referenceDate = parseDateOnlyString(String(
+    options.referenceDate || editingEvent?.plantingDate || ""
+  ).trim());
   const candidateIds = new Set(
     [...records]
       .filter(record => record?.type === "fullHarvest")
       .filter(record => {
-        if(!editingDate) return true;
+        if(!referenceDate) return true;
         const recordDate = parseDateOnlyString(String(record?.date || "").trim());
-        return !!recordDate && recordDate.getTime() <= editingDate.getTime();
+        return !!recordDate && recordDate.getTime() <= referenceDate.getTime();
       })
       .sort(compareRecordsByDateDesc)
       .slice(0, PLANTING_CANDIDATE_RECORD_LIMIT)
@@ -1327,10 +1329,20 @@ function getUnplantedPalletSet(options = {}){
 
 function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecord, options = {}){
   if(!activeRecord || activeRecord.type !== "fullHarvest") return [];
-  const activeRecordId = Number(activeRecord.id);
+  const plantingDate = parseDateOnlyString(String(options.plantingDate || "").trim());
+  if(!plantingDate) return [];
   const state = options.excludeEventId
     ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
     : getPlantingEventStateIndex();
+  const noPlantingCompletedHarvestIds = new Set(state.noPlantingCompletedHarvestIds);
+  const excludedEvent = options.excludeEventId
+    ? getPlantingEventById(options.excludeEventId)
+    : null;
+  if(isNoPlantingEvent(excludedEvent)){
+    excludedEvent.sourceAllocations.forEach(allocation => {
+      noPlantingCompletedHarvestIds.add(Number(allocation.harvestRecordId));
+    });
+  }
   const selectedLotKeys = new Set(
     (Array.isArray(sourceAllocations) ? sourceAllocations : []).flatMap(allocation => (
       (Array.isArray(allocation?.palletKeys) ? allocation.palletKeys : []).map(palletKey => (
@@ -1340,13 +1352,15 @@ function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecor
   );
   const missingLots = [];
 
-  getPlantingCandidateRecordIdSet().forEach(harvestRecordId => {
+  getPlantingCandidateRecordIdSet({ referenceDate: options.plantingDate }).forEach(harvestRecordId => {
     const safeHarvestRecordId = Number(harvestRecordId);
-    // 0枚の苗植え記録は「この収穫分は意図的に未定植で完了」と確定した記録です。
-    // そのパレットを後日の苗植え編集で、未処理の未定植として再度警告しないようにします。
     if(!Number.isFinite(safeHarvestRecordId)
-      || safeHarvestRecordId === activeRecordId
-      || state.noPlantingCompletedHarvestIds.has(safeHarvestRecordId)) return;
+      || noPlantingCompletedHarvestIds.has(safeHarvestRecordId)) return;
+    const harvestRecord = state.harvestById.get(safeHarvestRecordId)?.record;
+    const harvestDate = parseDateOnlyString(String(harvestRecord?.date || "").trim());
+    // 「以前」は収穫元の並び順ではなく日付で判定する。
+    // 苗植え日と同じ日に収穫した未定植場所は警告対象にしない。
+    if(!harvestDate || harvestDate.getTime() >= plantingDate.getTime()) return;
     (state.pendingByHarvestId.get(safeHarvestRecordId) || new Set()).forEach(palletKey => {
       if(selectedLotKeys.has(getPlantingLotKey(safeHarvestRecordId, palletKey))) return;
       missingLots.push({ harvestRecordId: safeHarvestRecordId, palletKey });
