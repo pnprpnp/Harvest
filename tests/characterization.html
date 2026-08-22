@@ -2096,7 +2096,7 @@
         assertEqual(sizes.current.boxShadow, "none", "中央の号棟表示に枠の影が残っています");
       });
 
-      await runTest("シミュの号棟を矢印・ドット・スワイプで切り替える", () => {
+      await runTest("シミュの号棟を矢印とスワイプで切り替える", () => {
         const state = comparable(app.eval(`(() => {
           const previous = {
             currentBuilding,
@@ -2104,9 +2104,12 @@
             casePlacementByBuilding: deepClone(casePlacementByBuilding)
           };
           const pager = document.getElementById("casePlacementBuildingPager");
-          const dots = [...document.querySelectorAll("[data-case-placement-building]")];
+          const previousButton = document.querySelector('.casePlacementBuildingSwitch [aria-label="前の号棟"]');
           const nextButton = document.querySelector('.casePlacementBuildingSwitch [aria-label="次の号棟"]');
-          const readActive = () => Number(document.querySelector(".casePlacementBuildingDot.active")?.dataset.casePlacementBuilding);
+          const readState = () => ({
+            building:casePlacementBuilding,
+            title:document.getElementById("casePlacementBuildingBtn").textContent
+          });
           const dispatchSwipe = (startX, endX) => {
             pager.dispatchEvent(new PointerEvent("pointerdown", {
               bubbles:true,
@@ -2127,29 +2130,21 @@
             casePlacementBuilding = 2;
             currentBuilding = 2;
             updateCasePlacementBuildingLabel();
-            const sequence = [readActive()];
+            const sequence = [readState()];
 
-            dots.find(dot => Number(dot.dataset.casePlacementBuilding) === 6).click();
-            sequence.push(readActive());
             nextButton.click();
-            sequence.push(readActive());
+            sequence.push(readState());
             dispatchSwipe(180, 100);
-            sequence.push(readActive());
+            sequence.push(readState());
             dispatchSwipe(100, 180);
-            sequence.push(readActive());
+            sequence.push(readState());
             casePlacementBuildingSwipeSuppressClickUntil = 0;
-            dots.find(dot => Number(dot.dataset.casePlacementBuilding) === 9).click();
-            sequence.push(readActive());
+            previousButton.click();
+            sequence.push(readState());
 
-            const dotStyle = getComputedStyle(dots[0]);
-            const dotVisualStyle = getComputedStyle(dots[0], "::before");
             return {
-              buildings:dots.map(dot => Number(dot.dataset.casePlacementBuilding)),
               sequence,
-              title:document.getElementById("casePlacementBuildingBtn").textContent,
-              currentCount:dots.filter(dot => dot.getAttribute("aria-current") === "page").length,
-              dotTarget:{ width:parseFloat(dotStyle.width), height:parseFloat(dotStyle.height) },
-              dotVisual:{ width:parseFloat(dotVisualStyle.width), height:parseFloat(dotVisualStyle.height) },
+              dotCount:document.querySelectorAll(".casePlacementBuildingDot, #casePlacementBuildingDots").length,
               touchAction:getComputedStyle(pager).touchAction,
               swipeInstalled:casePlacementBuildingSwipeInstalled
             };
@@ -2166,25 +2161,21 @@
             renderForecastSummary();
           }
         })()`));
-        assertDeepEqual(state.buildings, [2, 3, 4, 5, 6, 7, 8, 9], "2〜9号棟のドットが順番どおりではありません");
-        assertDeepEqual(state.sequence, [2, 6, 7, 8, 7, 9], "ドット・矢印・スワイプで号棟表示とドットが同期しません");
-        assertEqual(state.title, "9号棟", "棟名が選択した号棟へ切り替わりません");
-        assertEqual(state.currentCount, 1, "現在の号棟を示すドットが一つではありません");
-        assert(state.dotTarget.width >= 24 && state.dotTarget.height >= 24, "ドットのタップ領域が小さすぎます");
-        assert(state.dotVisual.width <= 6 && state.dotVisual.height <= 6, "ドット表示が大きすぎます");
+        assertDeepEqual(state.sequence, [
+          { building:2, title:"2号棟" },
+          { building:3, title:"3号棟" },
+          { building:4, title:"4号棟" },
+          { building:3, title:"3号棟" },
+          { building:2, title:"2号棟" }
+        ], "矢印・スワイプで号棟と棟名が同期しません");
+        assertEqual(state.dotCount, 0, "号棟切り替えにドットが残っています");
         assertEqual(state.touchAction, "pan-y", "縦スクロールを妨げず横スワイプできる設定ではありません");
         assertEqual(state.swipeInstalled, true, "号棟スワイプ操作が登録されていません");
         const previousFrameWidth = iframe.style.width;
         try{
           iframe.style.width = "320px";
           const pagerRect = app.document.querySelector(".casePlacementBuildingSwitch").getBoundingClientRect();
-          const titleRect = app.document.getElementById("casePlacementBuildingBtn").getBoundingClientRect();
-          const dotsRect = app.document.getElementById("casePlacementBuildingDots").getBoundingClientRect();
           assert(pagerRect.left >= 8 && pagerRect.right <= app.innerWidth - 8, "320px幅で号棟切り替えが画面からはみ出します");
-          assert(
-            dotsRect.top + dotsRect.height / 2 > titleRect.top + titleRect.height / 2,
-            "ドットが棟名の下に配置されていません"
-          );
         }finally{
           iframe.style.width = previousFrameWidth;
         }
@@ -4982,18 +4973,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "502a0fcd", elements: 2160, visible: 608, viewport: "390x844" },
-          cssStates: { hash: "a9930714", elements: 2228, visible: 667, viewport: "390x844" },
-          cssFocus: { hash: "35ddf361", elements: 2228, visible: 667, viewport: "390x844" },
-          mobileRecord: { hash: "71e605c2", elements: 2161, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "85d4b8fd", elements: 2161, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "61858b0a", elements: 2244, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "47728a34", elements: 2259, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "706004fa", elements: 2259, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "ebd143c8", elements: 2259, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "634675d3", elements: 2259, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "dd0910da", elements: 2259, visible: 608, viewport: "1024x900" },
-          wideDashboard: { hash: "d0475a80", elements: 2259, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "8681aacd", elements: 2151, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "7d46ef85", elements: 2219, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "88c5ffec", elements: 2219, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "93775d44", elements: 2152, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "49bfb6d9", elements: 2152, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "cb8b4faf", elements: 2235, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "79a897c8", elements: 2250, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "bf50e696", elements: 2250, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "83cf03a2", elements: 2250, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "ebeb379f", elements: 2250, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "65e6b92b", elements: 2250, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "8f37fea7", elements: 2250, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -295,12 +295,6 @@ function updateCasePlacementBuildingLabel(){
   const pager = document.getElementById("casePlacementBuildingPager");
   if(caseBtn) caseBtn.textContent = casePlacementBuilding + "号棟";
   if(pager) pager.setAttribute("aria-label", `${casePlacementBuilding}号棟を表示中。左右にスワイプできます`);
-  document.querySelectorAll("[data-case-placement-building]").forEach(dot => {
-    const isActive = Number(dot.dataset.casePlacementBuilding) === Number(casePlacementBuilding);
-    dot.classList.toggle("active", isActive);
-    if(isActive) dot.setAttribute("aria-current", "page");
-    else dot.removeAttribute("aria-current");
-  });
 }
 
 function syncCurrentBuildingToCasePlacement(options = {}){
