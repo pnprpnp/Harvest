@@ -9,6 +9,70 @@ function installStartupViewportEvents(){
   });
 }
 
+let casePlacementBuildingSwipeInstalled = false;
+let casePlacementBuildingSwipeState = null;
+let casePlacementBuildingSwipeSuppressClickUntil = 0;
+const CASE_PLACEMENT_BUILDING_SWIPE_THRESHOLD_PX = 32;
+const CASE_PLACEMENT_BUILDING_SWIPE_DIRECTION_RATIO = 1.15;
+
+function installCasePlacementBuildingSwipe(){
+  if(casePlacementBuildingSwipeInstalled) return;
+  const pager = document.getElementById("casePlacementBuildingPager");
+  if(!pager) return;
+  casePlacementBuildingSwipeInstalled = true;
+
+  const clearSwipeState = pointerId => {
+    const state = casePlacementBuildingSwipeState;
+    if(!state || (pointerId !== undefined && state.pointerId !== pointerId)) return null;
+    casePlacementBuildingSwipeState = null;
+    try{
+      if(pager.hasPointerCapture?.(state.pointerId)) pager.releasePointerCapture(state.pointerId);
+    }catch(_error){
+      // Pointer capture may already be released after a browser-handled vertical scroll.
+    }
+    return state;
+  };
+
+  pager.addEventListener("pointerdown", event => {
+    if(event.pointerType === "mouse" && event.button !== 0) return;
+    casePlacementBuildingSwipeState = {
+      pointerId:event.pointerId,
+      startX:event.clientX,
+      startY:event.clientY
+    };
+    try{
+      pager.setPointerCapture?.(event.pointerId);
+    }catch(_error){
+      // Swiping still works when pointer capture is unavailable.
+    }
+  });
+
+  pager.addEventListener("pointerup", event => {
+    const state = clearSwipeState(event.pointerId);
+    if(!state) return;
+    const deltaX = event.clientX - state.startX;
+    const deltaY = event.clientY - state.startY;
+    const horizontalDistance = Math.abs(deltaX);
+    if(horizontalDistance < CASE_PLACEMENT_BUILDING_SWIPE_THRESHOLD_PX
+      || horizontalDistance <= Math.abs(deltaY) * CASE_PLACEMENT_BUILDING_SWIPE_DIRECTION_RATIO){
+      return;
+    }
+    casePlacementBuildingSwipeSuppressClickUntil = performance.now() + 450;
+    event.preventDefault();
+    shiftCasePlacementBuilding(deltaX < 0 ? 1 : -1);
+  });
+
+  pager.addEventListener("pointercancel", event => {
+    clearSwipeState(event.pointerId);
+  });
+
+  pager.addEventListener("click", event => {
+    if(performance.now() > casePlacementBuildingSwipeSuppressClickUntil) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+}
+
 function installStartupRecordFormEvents(){
   const recordDateInput = document.getElementById("recordDateInput");
   if(recordDateInput){

@@ -40,6 +40,7 @@ function initializeHarvestnaviApp(){
     restoreWorkflowBarVisibility();
     installAppTopChromeLayoutSync();
     installStaticUiEventHandlers();
+    installCasePlacementBuildingSwipe();
     installStartupViewportEvents();
     installMainTabViewportScrollLock();
     initializeStartupSettingsAndStorage();

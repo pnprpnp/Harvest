@@ -329,13 +329,24 @@ function prevBuilding(){
 }
 
 function shiftCasePlacementBuilding(direction){
+  return setCasePlacementBuilding(getAdjacentBuilding(casePlacementBuilding, direction));
+}
+
+function setCasePlacementBuilding(building){
+  const nextBuildingValue = Number(building);
+  if(!BUILDINGS.includes(nextBuildingValue)) return false;
+  if(nextBuildingValue === casePlacementBuilding){
+    updateCasePlacementBuildingLabel();
+    return false;
+  }
   syncCurrentCasePlacementFromInputs();
-  casePlacementBuilding = getAdjacentBuilding(casePlacementBuilding, direction);
+  casePlacementBuilding = nextBuildingValue;
   updateCasePlacementBuildingLabel();
   populateCasePlacementInputs();
   syncCurrentBuildingToCasePlacement({ skipSummary: true });
   renderForecastSummary();
   saveHarvestStateToStorage();
+  return true;
 }
 
 function nextCasePlacementBuilding(){
