@@ -506,11 +506,11 @@ function getRecordMapBuildings(allowedSet = null){
 
 function renderRecordBuildingDisplayControls(){
   const controls = document.getElementById("recordBuildingDisplayControls");
-  const select = document.getElementById("recordBuildingAddSelect");
+  const options = document.getElementById("recordBuildingAddOptions");
   const summary = document.getElementById("recordBuildingDisplaySummary");
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
-  if(!controls || !select) return;
+  if(!controls || !options) return;
 
   const isHarvestMode = recordSelectionMode !== "planting";
   controls.hidden = !isHarvestMode;
@@ -522,19 +522,14 @@ function renderRecordBuildingDisplayControls(){
 
   const displayedBuildings = getRecordMapBuildings();
   const availableBuildings = BUILDINGS.filter(building => !displayedBuildings.includes(building));
-  const selectedBuilding = Number(select.value);
-  select.innerHTML = [
-    '<option value="">号棟を選択</option>',
-    ...availableBuildings.map(building => `<option value="${building}">${building}号棟</option>`)
-  ].join("");
-  if(availableBuildings.includes(selectedBuilding)) select.value = String(selectedBuilding);
-  select.disabled = availableBuildings.length === 0;
+  options.innerHTML = availableBuildings.map(building => (
+    `<button type="button" data-ui-click="addRecordBuildingDisplay" data-ui-number="${building}">${building}号棟</button>`
+  )).join("");
   if(openButton) openButton.disabled = availableBuildings.length === 0;
   if(!availableBuildings.length && chooser){
     chooser.hidden = true;
     if(openButton) openButton.setAttribute("aria-expanded", "false");
   }
-  updateRecordBuildingAddButton();
   if(summary){
     summary.textContent = displayedBuildings.length
       ? `表示中: ${displayedBuildings.map(building => `${building}号棟`).join("・")}`
@@ -546,29 +541,18 @@ function toggleRecordBuildingAddChooser(){
   if(recordSelectionMode === "planting") return;
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
-  const select = document.getElementById("recordBuildingAddSelect");
   if(!chooser || openButton?.disabled) return;
   chooser.hidden = !chooser.hidden;
   if(openButton) openButton.setAttribute("aria-expanded", String(!chooser.hidden));
-  if(!chooser.hidden) select?.focus();
+  if(!chooser.hidden) chooser.querySelector("button")?.focus();
 }
 
-function updateRecordBuildingAddButton(){
-  const select = document.getElementById("recordBuildingAddSelect");
-  const addButton = document.getElementById("recordBuildingAddBtn");
-  if(!addButton) return;
-  addButton.disabled = select?.disabled || !BUILDINGS.includes(Number(select?.value));
-}
-
-function addRecordBuildingDisplay(){
+function addRecordBuildingDisplay(building){
   if(recordSelectionMode === "planting") return;
-  const select = document.getElementById("recordBuildingAddSelect");
-  const building = Number(select?.value);
-  if(!BUILDINGS.includes(building)){
-    showToast("追加する号棟を選択してください");
-    return;
-  }
-  if(!recordAdditionalBuildings.includes(building)) recordAdditionalBuildings.push(building);
+  const normalizedBuilding = Number(building);
+  if(!BUILDINGS.includes(normalizedBuilding)) return;
+  if(getRecordMapBuildings().includes(normalizedBuilding)) return;
+  recordAdditionalBuildings.push(normalizedBuilding);
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
   if(chooser) chooser.hidden = true;
@@ -576,6 +560,28 @@ function addRecordBuildingDisplay(){
   renderRecordBuildingDisplayControls();
   drawRecordBeds();
   scheduleHarvestStateSave();
+}
+
+function removeRecordBuildingDisplay(building){
+  if(recordSelectionMode === "planting") return;
+  const normalizedBuilding = Number(building);
+  if(!recordAdditionalBuildings.includes(normalizedBuilding)) return;
+
+  recordAdditionalBuildings = recordAdditionalBuildings.filter(item => Number(item) !== normalizedBuilding);
+  const previousKeyCount = harvestFillKeys.length;
+  harvestFillKeys = harvestFillKeys.filter(key => parsePalletKey(key).building !== normalizedBuilding);
+  const removedSelectionCount = previousKeyCount - harvestFillKeys.length;
+
+  if(removedSelectionCount > 0){
+    refreshAfterHarvestSelectionChanged();
+    if(activeAppTab !== "record") drawRecordBeds();
+  }else{
+    drawRecordBeds();
+    scheduleHarvestStateSave();
+  }
+  showToast(removedSelectionCount > 0
+    ? `${normalizedBuilding}号棟と選択中の${removedSelectionCount}枚を削除しました`
+    : `${normalizedBuilding}号棟を削除しました`);
 }
 
 function handleRecordBuildingBedClick(building, bed){
@@ -623,8 +629,23 @@ function drawRecordBeds(){
     section.className = "recordBuildingMapSection";
 
     const buildingTitle = document.createElement("div");
-    buildingTitle.className = "recordBuildingMapTitle";
-    buildingTitle.textContent = building + "号棟";
+    const isAdditionalBuilding = recordSelectionMode !== "planting"
+      && recordAdditionalBuildings.includes(building);
+    buildingTitle.className = "recordBuildingMapTitle" + (isAdditionalBuilding ? " hasRemoveAction" : "");
+    const buildingTitleText = document.createElement("span");
+    buildingTitleText.className = "recordBuildingMapTitleText";
+    buildingTitleText.textContent = building + "号棟";
+    buildingTitle.appendChild(buildingTitleText);
+    if(isAdditionalBuilding){
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "recordBuildingMapRemoveBtn";
+      removeButton.textContent = "削除";
+      removeButton.dataset.uiClick = "removeRecordBuildingDisplay";
+      removeButton.dataset.uiNumber = String(building);
+      removeButton.setAttribute("aria-label", `${building}号棟の追加表示を削除`);
+      buildingTitle.appendChild(removeButton);
+    }
     section.appendChild(buildingTitle);
 
     const beds = document.createElement("div");

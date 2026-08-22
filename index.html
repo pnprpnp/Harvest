@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260822-confirm-planting-reselection">
+<meta name="harvestnavi-version" content="20260822-direct-record-building-add">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8958,10 +8958,32 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .recordBuildingAddOpenBtn:disabled{opacity:.45;}
 .recordBuildingAddChooser{display:grid;gap:5px;padding-top:2px;}
 .recordBuildingAddChooser[hidden]{display:none;}
-.recordBuildingDisplayRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;}
-.recordBuildingDisplayRow select{min-width:0;min-height:38px;padding:6px 9px;border:1px solid var(--ui-line-strong);border-radius:9px;background:var(--ui-surface-solid);color:var(--ui-text);font-size:13px;font-weight:650;}
-.recordBuildingAddBtn{min-height:38px;padding:6px 10px;border:0;border-radius:9px;background:var(--ui-accent);color:#fff;font-size:12px;font-weight:750;white-space:nowrap;}
-.recordBuildingAddBtn:disabled{opacity:.45;}
+.recordBuildingAddOptions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;}
+.recordBuildingAddOptions button{
+  min-width:0;
+  min-height:40px;
+  padding:6px 4px;
+  border:1px solid var(--ui-line-strong);
+  border-radius:9px;
+  background:var(--ui-surface-muted);
+  color:var(--ui-accent-dark);
+  font-size:12px;
+  font-weight:750;
+}
+.recordBuildingMapTitle.hasRemoveAction{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;}
+.recordBuildingMapTitle.hasRemoveAction .recordBuildingMapTitleText{grid-column:2;}
+.recordBuildingMapRemoveBtn{
+  grid-column:3;
+  justify-self:end;
+  min-height:30px;
+  padding:4px 8px;
+  border:1px solid var(--ui-line-strong);
+  border-radius:7px;
+  background:var(--ui-surface-solid);
+  color:#b91c1c;
+  font-size:10px;
+  font-weight:700;
+}
 .recordSeedlingCarryoverOption{
   border:0;
   border-radius:13px;
@@ -11489,15 +11511,8 @@ requestAnimationFrame(function(){
             <div id="recordBuildingDisplaySummary" class="recordBuildingDisplaySummary">表示中の号棟はありません</div>
           </div>
           <div id="recordBuildingAddChooser" class="recordBuildingAddChooser" hidden>
-            <div class="recordBuildingDisplayHint">追加する号棟を選択してください</div>
-            <div class="recordBuildingDisplayRow">
-              <select id="recordBuildingAddSelect" aria-label="追加する号棟"
-                data-ui-change="updateRecordBuildingAddButton">
-                <option value="">号棟を選択</option>
-              </select>
-              <button id="recordBuildingAddBtn" class="recordBuildingAddBtn" type="button"
-                data-ui-click="addRecordBuildingDisplay" disabled>追加</button>
-            </div>
+            <div class="recordBuildingDisplayHint">追加する号棟を押してください</div>
+            <div id="recordBuildingAddOptions" class="recordBuildingAddOptions" role="group" aria-label="追加する号棟"></div>
           </div>
         </div>
         <div id="recordHarvestMapLegend" class="simulationBedMapLegend" aria-label="収穫場所配置図の色分け">
@@ -30449,11 +30464,11 @@ function getRecordMapBuildings(allowedSet = null){
 
 function renderRecordBuildingDisplayControls(){
   const controls = document.getElementById("recordBuildingDisplayControls");
-  const select = document.getElementById("recordBuildingAddSelect");
+  const options = document.getElementById("recordBuildingAddOptions");
   const summary = document.getElementById("recordBuildingDisplaySummary");
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
-  if(!controls || !select) return;
+  if(!controls || !options) return;
 
   const isHarvestMode = recordSelectionMode !== "planting";
   controls.hidden = !isHarvestMode;
@@ -30465,19 +30480,14 @@ function renderRecordBuildingDisplayControls(){
 
   const displayedBuildings = getRecordMapBuildings();
   const availableBuildings = BUILDINGS.filter(building => !displayedBuildings.includes(building));
-  const selectedBuilding = Number(select.value);
-  select.innerHTML = [
-    '<option value="">号棟を選択</option>',
-    ...availableBuildings.map(building => `<option value="${building}">${building}号棟</option>`)
-  ].join("");
-  if(availableBuildings.includes(selectedBuilding)) select.value = String(selectedBuilding);
-  select.disabled = availableBuildings.length === 0;
+  options.innerHTML = availableBuildings.map(building => (
+    `<button type="button" data-ui-click="addRecordBuildingDisplay" data-ui-number="${building}">${building}号棟</button>`
+  )).join("");
   if(openButton) openButton.disabled = availableBuildings.length === 0;
   if(!availableBuildings.length && chooser){
     chooser.hidden = true;
     if(openButton) openButton.setAttribute("aria-expanded", "false");
   }
-  updateRecordBuildingAddButton();
   if(summary){
     summary.textContent = displayedBuildings.length
       ? `表示中: ${displayedBuildings.map(building => `${building}号棟`).join("・")}`
@@ -30489,29 +30499,18 @@ function toggleRecordBuildingAddChooser(){
   if(recordSelectionMode === "planting") return;
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
-  const select = document.getElementById("recordBuildingAddSelect");
   if(!chooser || openButton?.disabled) return;
   chooser.hidden = !chooser.hidden;
   if(openButton) openButton.setAttribute("aria-expanded", String(!chooser.hidden));
-  if(!chooser.hidden) select?.focus();
+  if(!chooser.hidden) chooser.querySelector("button")?.focus();
 }
 
-function updateRecordBuildingAddButton(){
-  const select = document.getElementById("recordBuildingAddSelect");
-  const addButton = document.getElementById("recordBuildingAddBtn");
-  if(!addButton) return;
-  addButton.disabled = select?.disabled || !BUILDINGS.includes(Number(select?.value));
-}
-
-function addRecordBuildingDisplay(){
+function addRecordBuildingDisplay(building){
   if(recordSelectionMode === "planting") return;
-  const select = document.getElementById("recordBuildingAddSelect");
-  const building = Number(select?.value);
-  if(!BUILDINGS.includes(building)){
-    showToast("追加する号棟を選択してください");
-    return;
-  }
-  if(!recordAdditionalBuildings.includes(building)) recordAdditionalBuildings.push(building);
+  const normalizedBuilding = Number(building);
+  if(!BUILDINGS.includes(normalizedBuilding)) return;
+  if(getRecordMapBuildings().includes(normalizedBuilding)) return;
+  recordAdditionalBuildings.push(normalizedBuilding);
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
   if(chooser) chooser.hidden = true;
@@ -30519,6 +30518,28 @@ function addRecordBuildingDisplay(){
   renderRecordBuildingDisplayControls();
   drawRecordBeds();
   scheduleHarvestStateSave();
+}
+
+function removeRecordBuildingDisplay(building){
+  if(recordSelectionMode === "planting") return;
+  const normalizedBuilding = Number(building);
+  if(!recordAdditionalBuildings.includes(normalizedBuilding)) return;
+
+  recordAdditionalBuildings = recordAdditionalBuildings.filter(item => Number(item) !== normalizedBuilding);
+  const previousKeyCount = harvestFillKeys.length;
+  harvestFillKeys = harvestFillKeys.filter(key => parsePalletKey(key).building !== normalizedBuilding);
+  const removedSelectionCount = previousKeyCount - harvestFillKeys.length;
+
+  if(removedSelectionCount > 0){
+    refreshAfterHarvestSelectionChanged();
+    if(activeAppTab !== "record") drawRecordBeds();
+  }else{
+    drawRecordBeds();
+    scheduleHarvestStateSave();
+  }
+  showToast(removedSelectionCount > 0
+    ? `${normalizedBuilding}号棟と選択中の${removedSelectionCount}枚を削除しました`
+    : `${normalizedBuilding}号棟を削除しました`);
 }
 
 function handleRecordBuildingBedClick(building, bed){
@@ -30566,8 +30587,23 @@ function drawRecordBeds(){
     section.className = "recordBuildingMapSection";
 
     const buildingTitle = document.createElement("div");
-    buildingTitle.className = "recordBuildingMapTitle";
-    buildingTitle.textContent = building + "号棟";
+    const isAdditionalBuilding = recordSelectionMode !== "planting"
+      && recordAdditionalBuildings.includes(building);
+    buildingTitle.className = "recordBuildingMapTitle" + (isAdditionalBuilding ? " hasRemoveAction" : "");
+    const buildingTitleText = document.createElement("span");
+    buildingTitleText.className = "recordBuildingMapTitleText";
+    buildingTitleText.textContent = building + "号棟";
+    buildingTitle.appendChild(buildingTitleText);
+    if(isAdditionalBuilding){
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "recordBuildingMapRemoveBtn";
+      removeButton.textContent = "削除";
+      removeButton.dataset.uiClick = "removeRecordBuildingDisplay";
+      removeButton.dataset.uiNumber = String(building);
+      removeButton.setAttribute("aria-label", `${building}号棟の追加表示を削除`);
+      buildingTitle.appendChild(removeButton);
+    }
     section.appendChild(buildingTitle);
 
     const beds = document.createElement("div");
