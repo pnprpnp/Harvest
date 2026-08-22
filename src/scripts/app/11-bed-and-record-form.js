@@ -402,10 +402,12 @@ function drawBeds(){
     });
     const counts = document.createElement("div");
     counts.className = "simulationBedOverviewCounts";
-    counts.innerHTML = `
-      ${summaryCounts.selectable > 0 ? `<span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>` : ""}
-      <span class="simulationBedOverviewCountSelectable">選択可 ${summaryCounts.selectable}</span>
-    `;
+    counts.innerHTML = summaryCounts.selectable > 0
+      ? `
+        <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+        <span class="simulationBedOverviewCountSelectable">選択可 ${summaryCounts.selectable}</span>
+      `
+      : "";
     bed.appendChild(counts);
     attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
     bed.setAttribute(

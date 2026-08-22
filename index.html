@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260822-location-quality-detail-edit">
+<meta name="harvestnavi-version" content="20260822-simulation-display-labels">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7660,7 +7660,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 .casePlacementCompactSummary{
   min-width:0;
   overflow:hidden;
-  color:var(--ui-text-secondary);
+  color:var(--ui-accent-dark);
   font-size:13px;
   font-weight:680;
   text-align:center;
@@ -9898,7 +9898,7 @@ html[data-theme="dark"] .casePlacementDetails.casePlacementNeedsInput > .casePla
 }
 html[data-theme="dark"] .casePlacementDetails.casePlacementNeedsInput .casePlacementDetailsLabel,
 html[data-theme="dark"] .casePlacementDetails.casePlacementNeedsInput .casePlacementCompactSummary{
-  color:inherit;
+  color:var(--ui-accent-dark);
 }
 html[data-theme="dark"] .forecastCaseUnitWrap:has(> input.emptyInputField){
   border-color:var(--ui-accent);
@@ -10890,9 +10890,9 @@ requestAnimationFrame(function(){
             <button type="button" class="buildingBtn" data-ui-click="nextCasePlacementBuilding" aria-label="次の号棟">›</button>
           </div>
         </div>
-        <div id="forecastPlacementStatusCard" class="forecastPlacementStatusCard" aria-label="号棟の定植日数と残りケース数">
-          <div id="remainingCasesSummaryCard" class="casePlacementRemainingSummary" aria-label="選択中の号棟の残りケース数">
-            <span class="casePlacementRemainingLabel">残り</span>
+        <div id="forecastPlacementStatusCard" class="forecastPlacementStatusCard" aria-label="号棟の定植日数と収穫可能ケース数">
+          <div id="remainingCasesSummaryCard" class="casePlacementRemainingSummary" aria-label="選択中の号棟の収穫可能ケース数">
+            <span class="casePlacementRemainingLabel">収穫可能</span>
             <span id="remainingCasesSummary" class="casePlacementRemainingValue">0ケース</span>
           </div>
           <section id="forecastPlantingAgeResult" class="forecastPlantingAgeResult" aria-labelledby="forecastPlantingAgeResultTitle" hidden>
@@ -10914,7 +10914,7 @@ requestAnimationFrame(function(){
               </span>
               <span class="casePlacementDetailsLabel">ケース配置</span>
             </span>
-            <span id="casePlacementCompactSummary" class="casePlacementCompactSummary">0</span>
+            <span id="casePlacementCompactSummary" class="casePlacementCompactSummary">0ケース</span>
             <span class="casePlacementDetailsAction" aria-hidden="true">
               <span class="casePlacementDetailsActionClosed">変更</span>
               <span class="casePlacementDetailsActionOpen">閉じる</span>
@@ -21483,7 +21483,7 @@ function updateCasePlacementTotal(){
   const compactSummary = document.getElementById("casePlacementCompactSummary");
   const details = document.getElementById("casePlacementDetails");
   if(totalValue) totalValue.textContent = String(front + middle + back);
-  if(compactSummary) compactSummary.textContent = String(front + middle + back);
+  if(compactSummary) compactSummary.textContent = String(front + middle + back) + "ケース";
   if(details){
     const needsInput = rawValues.every(value => String(value ?? "").trim() === "");
     details.classList.toggle("casePlacementNeedsInput", needsInput);
@@ -30298,10 +30298,12 @@ function drawBeds(){
     });
     const counts = document.createElement("div");
     counts.className = "simulationBedOverviewCounts";
-    counts.innerHTML = `
-      ${summaryCounts.selectable > 0 ? `<span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>` : ""}
-      <span class="simulationBedOverviewCountSelectable">選択可 ${summaryCounts.selectable}</span>
-    `;
+    counts.innerHTML = summaryCounts.selectable > 0
+      ? `
+        <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+        <span class="simulationBedOverviewCountSelectable">選択可 ${summaryCounts.selectable}</span>
+      `
+      : "";
     bed.appendChild(counts);
     attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
     bed.setAttribute(
