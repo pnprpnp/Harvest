@@ -3707,12 +3707,34 @@
         });
       });
 
-      await runTest("メニューボタンに枠と影を表示しない", () => {
+      await runTest("ヘッダーの操作ボタンを背景と一体化しタイトルのタップ色を変えない", () => {
         const menuButton = app.document.getElementById("headerMenuBtn");
-        assert(menuButton, "メニューボタンがありません");
-        const style = app.getComputedStyle(menuButton);
-        assertEqual(style.borderTopWidth, "0px", "メニューボタンに枠があります");
-        assertEqual(style.boxShadow, "none", "メニューボタンに影があります");
+        const updateButton = app.document.getElementById("headerRecordSyncBtn");
+        const titleButton = app.document.getElementById("workflowVisibilityBtn");
+        const title = titleButton?.querySelector(".appTitle");
+        assert(menuButton && updateButton && titleButton && title, "ヘッダーの確認対象がありません");
+        const previousTheme = app.document.documentElement.getAttribute("data-theme");
+        const wasExpanded = titleButton.getAttribute("aria-expanded");
+        try{
+          ["light", "dark"].forEach(theme => {
+            app.document.documentElement.setAttribute("data-theme", theme);
+            [menuButton, updateButton].forEach(button => {
+              const style = app.getComputedStyle(button);
+              assertEqual(style.borderTopWidth, "0px", `${theme}で${button.id}に枠があります`);
+              assertEqual(style.boxShadow, "none", `${theme}で${button.id}に影があります`);
+              assertEqual(style.backgroundColor, "rgba(0, 0, 0, 0)", `${theme}で${button.id}がヘッダー背景と一体化していません`);
+            });
+            const beforeColor = app.getComputedStyle(title).color;
+            titleButton.click();
+            assertEqual(app.getComputedStyle(title).color, beforeColor, `${theme}でHarvestnaviのタップ後に文字色が変わりました`);
+            assertEqual(app.getComputedStyle(titleButton).backgroundColor, "rgba(0, 0, 0, 0)", `${theme}でHarvestnaviのタップ後に背景色が変わりました`);
+            titleButton.click();
+          });
+        }finally{
+          if(titleButton.getAttribute("aria-expanded") !== wasExpanded) titleButton.click();
+          if(previousTheme === null) app.document.documentElement.removeAttribute("data-theme");
+          else app.document.documentElement.setAttribute("data-theme", previousTheme);
+        }
       });
 
       await runTest("表示中のメインタブを押すとそのタブの先頭へ戻る", () => {
@@ -5093,18 +5115,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "29bfde27", elements: 2170, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "7cd8bd2e", elements: 2238, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "ba19a167", elements: 2238, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "a5802c54", elements: 2171, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "0e148c99", elements: 2171, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "52a6bc7b", elements: 2254, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "b1e34ed2", elements: 2269, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "7373176c", elements: 2269, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "853da29e", elements: 2269, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "f114b22d", elements: 2269, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "5533f26f", elements: 2269, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "d8bde2c3", elements: 2269, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "8ebc2a0d", elements: 2170, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "7436418c", elements: 2238, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "6bb06ccd", elements: 2238, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "3a171932", elements: 2171, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "603acc5f", elements: 2171, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "81595895", elements: 2254, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "afdf28c0", elements: 2269, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "eb4d30a6", elements: 2269, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "d2e17d2c", elements: 2269, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "c3cb88db", elements: 2269, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "4073558b", elements: 2269, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "d66f4d5f", elements: 2269, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
