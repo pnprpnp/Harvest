@@ -1606,9 +1606,32 @@
             renderForecastSummary();
           `);
           const button = app.document.getElementById("seedlingHouseOpenBtn");
-          const bedPanel = app.document.querySelector("#forecastTab .casePlacementBedPanel");
-          assert(button.getBoundingClientRect().top >= bedPanel.getBoundingClientRect().bottom,
-            "1号棟ボタンがベッド配置図の下に移動していません");
+          const header = app.document.querySelector("#forecastTab .casePlacementHeader");
+          const currentBuildingButton = app.document.getElementById("casePlacementBuildingBtn");
+          const buttonRect = button.getBoundingClientRect();
+          const headerRect = header.getBoundingClientRect();
+          const currentBuildingRect = currentBuildingButton.getBoundingClientRect();
+          const headerState = comparable({
+            inHeader: button.parentElement === header
+              && buttonRect.top >= headerRect.top
+              && buttonRect.bottom <= headerRect.bottom,
+            leftOfPagination: buttonRect.right < currentBuildingRect.left,
+            paginationStaysCentered: Math.abs(
+              (currentBuildingRect.left + currentBuildingRect.width / 2)
+              - (headerRect.left + headerRect.width / 2)
+            ) <= 2,
+            compact: buttonRect.width <= 56 && buttonRect.height <= 32,
+            hasSeedlingIcon: !!button.querySelector(".seedlingHouseOpenIcon svg"),
+            accessibleLabelIncludesPurpose: (button.getAttribute("aria-label") || "").startsWith("1号棟の苗取り場所")
+          });
+          assertDeepEqual(headerState, {
+            inHeader: true,
+            leftOfPagination: true,
+            paginationStaysCentered: true,
+            compact: true,
+            hasSeedlingIcon: true,
+            accessibleLabelIncludesPurpose: true
+          }, "1号棟ボタンが号棟選択行の左側へ小さく配置されていません");
           app.openSeedlingHouseWindow();
           const viewState = {
             buttonText: button.textContent.replace(/\s+/g, " ").trim(),
@@ -2346,8 +2369,10 @@
             bedsStayInsidePanel: bedRects.every(rect => (
               rect.top >= bedPanelRect.top - 1 && rect.bottom <= bedPanelRect.bottom + 1
             )),
-            compactBedHeight: bedRects.every(rect => rect.height >= 120 && rect.height <= 230),
+            compactBedHeight: bedRects.every(rect => rect.height >= 120 && rect.height <= 250),
             readableMapHeight: mapRects.every(rect => rect.height >= 80),
+            seedlingButtonStaysInHeader: seedlingButtonRect.top >= visualApp.document.querySelector("#forecastTab .casePlacementHeader").getBoundingClientRect().top
+              && seedlingButtonRect.bottom <= visualApp.document.querySelector("#forecastTab .casePlacementHeader").getBoundingClientRect().bottom,
             panelUsesAvailableHeight: actionRect.top - panelRect.bottom >= -1
               && actionRect.top - panelRect.bottom <= 2
           };
@@ -2365,6 +2390,7 @@
             bedsStayInsidePanel: true,
             compactBedHeight: true,
             readableMapHeight: true,
+            seedlingButtonStaysInHeader: true,
             panelUsesAvailableHeight: true
           }, "通常状態のシミュ主要操作が画面内に収まっていません");
           assert(expandedBedHeight >= 200, "ケース配置を開いた時にスクロール用の通常サイズへ戻りません");
@@ -4723,18 +4749,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "186abd37", elements: 2145, visible: 602, viewport: "390x844" },
-          cssStates: { hash: "45c98176", elements: 2213, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "0edea903", elements: 2213, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "97150313", elements: 2146, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "3b7898b0", elements: 2146, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "379740a9", elements: 2229, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "8ed4e993", elements: 2244, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "23e93359", elements: 2244, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "d67384ad", elements: 2244, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "e5d28076", elements: 2244, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "9be5f3f4", elements: 2244, visible: 602, viewport: "1024x900" },
-          wideDashboard: { hash: "2b4291b3", elements: 2244, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "90e1b198", elements: 2150, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "2ce14f05", elements: 2218, visible: 665, viewport: "390x844" },
+          cssFocus: { hash: "68b3241c", elements: 2218, visible: 665, viewport: "390x844" },
+          mobileRecord: { hash: "dd6638a5", elements: 2151, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "4dc37f40", elements: 2151, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "45c119d2", elements: 2234, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "1368b1df", elements: 2249, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "8a92eba1", elements: 2249, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "ca765517", elements: 2249, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "131b0e36", elements: 2249, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "3817fff1", elements: 2249, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "bdff419f", elements: 2249, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

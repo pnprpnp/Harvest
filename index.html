@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-distinct-case-placement-summary">
+<meta name="harvestnavi-version" content="20260823-seedling-house-header-button">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7440,6 +7440,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 .casePlacementDivider{display:none;}
 .casePlacementPanel{margin-top:0;}
 .casePlacementHeader{
+  position:relative;
   min-height:60px;
   box-sizing:border-box;
   display:grid;
@@ -7449,25 +7450,30 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   margin-bottom:0;
   padding:4px 0;
 }
-.seedlingHouseOpenBtn{
-  position:static;
-  z-index:1;
-  min-width:56px;
-  min-height:32px;
-  display:inline-grid;
-  place-content:center;
-  gap:1px;
-  transform:none;
-  margin:8px 0 0 8px;
-  padding:4px 6px;
+.casePlacementHeader .seedlingHouseOpenBtn{
+  position:absolute;
+  left:0;
+  top:50%;
+  z-index:2;
+  min-width:0;
+  min-height:28px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:2px;
+  transform:translateY(-50%);
+  margin:0;
+  padding:2px 4px;
   border:1px solid var(--ui-line);
-  border-radius:8px;
+  border-radius:7px;
   background:var(--ui-surface-solid);
   color:var(--ui-text-secondary);
-  box-shadow:var(--ui-shadow-sm);
+  box-shadow:none;
   line-height:1.1;
 }
-.seedlingHouseOpenBuilding{font-size:12px;font-weight:650;}
+.seedlingHouseOpenIcon{width:11px;height:11px;flex:0 0 11px;color:var(--ui-text-tertiary);}
+.seedlingHouseOpenIcon svg{display:block;width:100%;height:100%;}
+.seedlingHouseOpenBuilding{color:var(--ui-text-tertiary);font-size:10px;font-weight:600;white-space:nowrap;}
 .casePlacementRemainingSummary{
   min-width:0;
   max-width:none;
@@ -8450,9 +8456,8 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
     font-size:10px;
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])):not(:has(#harvestProgressPanel[open])) .seedlingHouseOpenBtn{
-    min-height:30px;
-    flex:0 0 auto;
-    margin-top:4px;
+    min-height:28px;
+    margin:0;
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])):not(:has(#harvestProgressPanel[open])) .harvestProgressPanel:not([hidden]){
     flex:0 0 auto;
@@ -11019,6 +11024,16 @@ requestAnimationFrame(function(){
 
       <div class="casePlacementPanel">
         <div class="casePlacementHeader">
+          <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-label="苗取り場所の1号棟を開く" aria-haspopup="dialog" aria-controls="seedlingHouseModal">
+            <span class="seedlingHouseOpenIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="M12 21V10"></path>
+                <path d="M12 14c-4.5 0-7-2.2-7-6 4.5 0 7 2.2 7 6Z"></path>
+                <path d="M12 10c0-4 2.4-6 7-6 0 4-2.4 6-7 6Z"></path>
+              </svg>
+            </span>
+            <span class="seedlingHouseOpenBuilding">1号棟</span>
+          </button>
           <div class="buildingSwitch casePlacementBuildingSwitch">
             <button type="button" class="buildingBtn" data-ui-click="prevCasePlacementBuilding" aria-label="前の号棟">‹</button>
             <button id="casePlacementBuildingBtn" class="buildingBtn active">2号棟</button>
@@ -11101,9 +11116,6 @@ requestAnimationFrame(function(){
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-partial-harvest"></span>部分収穫</span>
         </div>
         <div class="bedDetailOpenHint">ベッドを長押しすると拡大し、パレットを選択できます</div>
-        <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-haspopup="dialog" aria-controls="seedlingHouseModal">
-          <span class="seedlingHouseOpenBuilding">1号棟</span>
-        </button>
         <div class="forecastActionRow" role="group" aria-label="シミュレーション操作">
           <div class="forecastActionBarInner">
             <button type="button" class="forecastSettingsOpenBtn" data-ui-click="openForecastSettingsWindow" aria-label="計算設定を開く">
