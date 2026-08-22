@@ -3404,22 +3404,40 @@
           try{
             recordTab.style.display = "block";
             recordSelectionMode = "harvest";
-            harvestFillKeys = ["2-A-1", "2-A-2"];
+            harvestFillKeys = ["8-A-1", "8-A-2"];
             recordAdditionalBuildings = [];
             getRecordTabRecordedPalletSet = () => new Set();
             drawRecordBeds();
+            const recordBeds = document.getElementById("recordBeds");
+            const controls = document.getElementById("recordBuildingDisplayControls");
+            const openButton = document.getElementById("recordBuildingAddOpenBtn");
+            const chooser = document.getElementById("recordBuildingAddChooser");
             const select = document.getElementById("recordBuildingAddSelect");
+            const addButton = document.getElementById("recordBuildingAddBtn");
+            const chooserHiddenBeforeOpen = chooser.hidden;
+            toggleRecordBuildingAddChooser();
+            const chooserVisibleAfterOpen = !chooser.hidden;
             const beforeOptions = [...select.options].map(option => option.textContent.trim());
-            select.value = "3";
+            select.value = "2";
+            updateRecordBuildingAddButton();
+            const addEnabledAfterSelection = !addButton.disabled;
             addRecordBuildingDisplay();
-            toggleRecordPallet(3, "A", 1);
+            const chooserHiddenAfterAdd = chooser.hidden;
+            toggleRecordPallet(2, "A", 1);
             drawRecordBeds();
             return {
-              controlsVisible: !document.getElementById("recordBuildingDisplayControls").hidden,
-              hasBuildingOption: beforeOptions.includes("3号棟"),
+              controlsVisible: !controls.hidden,
+              controlsAfterMaps: controls.previousElementSibling === recordBeds,
+              openButtonText: openButton.textContent.trim(),
+              chooserHiddenBeforeOpen,
+              chooserVisibleAfterOpen,
+              hasBuildingOption: beforeOptions.includes("2号棟"),
+              addButtonText: addButton.textContent.trim(),
+              addEnabledAfterSelection,
+              chooserHiddenAfterAdd,
               headings: [...document.querySelectorAll("#recordBeds .recordBuildingMapTitle")]
                 .map(element => element.textContent.trim()),
-              selectedExtraBuilding: harvestFillKeys.includes("3-A-1"),
+              selectedExtraBuilding: harvestFillKeys.includes("2-A-1"),
               selectedCount: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length
             };
           }finally{
@@ -3433,11 +3451,18 @@
         })()`));
         assertDeepEqual(state, {
           controlsVisible: true,
+          controlsAfterMaps: true,
+          openButtonText: "＋ 号棟を追加",
+          chooserHiddenBeforeOpen: true,
+          chooserVisibleAfterOpen: true,
           hasBuildingOption: true,
-          headings: ["2号棟", "3号棟"],
+          addButtonText: "追加",
+          addEnabledAfterSelection: true,
+          chooserHiddenAfterAdd: true,
+          headings: ["8号棟", "2号棟"],
           selectedExtraBuilding: true,
           selectedCount: 3
-        }, "計算対象外の号棟を収穫記録へ追加できません");
+        }, "計算対象外の号棟を既存配置図の下へ追加できません");
       });
 
       await runTest("苗植えパレットへ12・16・20植えを混在して設定できる", () => {
@@ -4445,18 +4470,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "22151b36", elements: 2144, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "bf67cf43", elements: 2212, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "c86c4f42", elements: 2212, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "fc696c55", elements: 2145, visible: 118, viewport: "390x844" },
-          mobileDashboard: { hash: "cfed4621", elements: 2145, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "52a3e90e", elements: 2228, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "461e4bb3", elements: 2243, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "d26c92e5", elements: 2243, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "697d3dbb", elements: 2243, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "23e1d2f2", elements: 2243, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "0329b46a", elements: 2243, visible: 610, viewport: "1024x900" },
-          wideDashboard: { hash: "94ad5842", elements: 2243, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "0232d64a", elements: 2144, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "9007923f", elements: 2212, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "ec1108ce", elements: 2212, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "a26fd3f4", elements: 2145, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "33ead265", elements: 2145, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c6f56cc2", elements: 2228, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "793274cf", elements: 2243, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "58e583c3", elements: 2243, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "018a00bf", elements: 2243, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "014e33de", elements: 2243, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "02597576", elements: 2243, visible: 610, viewport: "1024x900" },
+          wideDashboard: { hash: "3f705c82", elements: 2243, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

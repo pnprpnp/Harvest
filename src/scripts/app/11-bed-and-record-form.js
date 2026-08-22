@@ -489,43 +489,75 @@ function getRecordMapBuildings(allowedSet = null){
     ...(harvestFillKeys || []),
     ...(allowedSet instanceof Set ? allowedSet : [])
   ];
-  const buildings = new Set(sourceKeys.map(key => parsePalletKey(key).building));
-  if(recordSelectionMode !== "planting"){
-    recordAdditionalBuildings.forEach(building => buildings.add(Number(building)));
-  }
-  const sortedBuildings = [...buildings]
+  const additionalBuildings = recordSelectionMode === "planting"
+    ? []
+    : [...new Set(recordAdditionalBuildings.map(Number).filter(building => BUILDINGS.includes(building)))];
+  const additionalBuildingSet = new Set(additionalBuildings);
+  const sortedBuildings = [...new Set(sourceKeys.map(key => parsePalletKey(key).building))]
     .filter(building => BUILDINGS.includes(building))
+    .filter(building => !additionalBuildingSet.has(building))
     .sort((a, b) => a - b);
   if(sortedBuildings.includes(2) && sortedBuildings.includes(9)){
-    return [9, ...sortedBuildings.filter(building => building !== 9)];
+    sortedBuildings.splice(sortedBuildings.indexOf(9), 1);
+    sortedBuildings.unshift(9);
   }
-  return sortedBuildings;
+  return [...sortedBuildings, ...additionalBuildings];
 }
 
 function renderRecordBuildingDisplayControls(){
   const controls = document.getElementById("recordBuildingDisplayControls");
   const select = document.getElementById("recordBuildingAddSelect");
   const summary = document.getElementById("recordBuildingDisplaySummary");
+  const chooser = document.getElementById("recordBuildingAddChooser");
+  const openButton = document.getElementById("recordBuildingAddOpenBtn");
   if(!controls || !select) return;
 
   const isHarvestMode = recordSelectionMode !== "planting";
   controls.hidden = !isHarvestMode;
-  if(!isHarvestMode) return;
+  if(!isHarvestMode){
+    if(chooser) chooser.hidden = true;
+    if(openButton) openButton.setAttribute("aria-expanded", "false");
+    return;
+  }
 
   const displayedBuildings = getRecordMapBuildings();
   const availableBuildings = BUILDINGS.filter(building => !displayedBuildings.includes(building));
+  const selectedBuilding = Number(select.value);
   select.innerHTML = [
     '<option value="">号棟を選択</option>',
     ...availableBuildings.map(building => `<option value="${building}">${building}号棟</option>`)
   ].join("");
+  if(availableBuildings.includes(selectedBuilding)) select.value = String(selectedBuilding);
   select.disabled = availableBuildings.length === 0;
-  const addButton = document.getElementById("recordBuildingAddBtn");
-  if(addButton) addButton.disabled = availableBuildings.length === 0;
+  if(openButton) openButton.disabled = availableBuildings.length === 0;
+  if(!availableBuildings.length && chooser){
+    chooser.hidden = true;
+    if(openButton) openButton.setAttribute("aria-expanded", "false");
+  }
+  updateRecordBuildingAddButton();
   if(summary){
     summary.textContent = displayedBuildings.length
       ? `表示中: ${displayedBuildings.map(building => `${building}号棟`).join("・")}`
       : "表示中の号棟はありません";
   }
+}
+
+function toggleRecordBuildingAddChooser(){
+  if(recordSelectionMode === "planting") return;
+  const chooser = document.getElementById("recordBuildingAddChooser");
+  const openButton = document.getElementById("recordBuildingAddOpenBtn");
+  const select = document.getElementById("recordBuildingAddSelect");
+  if(!chooser || openButton?.disabled) return;
+  chooser.hidden = !chooser.hidden;
+  if(openButton) openButton.setAttribute("aria-expanded", String(!chooser.hidden));
+  if(!chooser.hidden) select?.focus();
+}
+
+function updateRecordBuildingAddButton(){
+  const select = document.getElementById("recordBuildingAddSelect");
+  const addButton = document.getElementById("recordBuildingAddBtn");
+  if(!addButton) return;
+  addButton.disabled = select?.disabled || !BUILDINGS.includes(Number(select?.value));
 }
 
 function addRecordBuildingDisplay(){
@@ -537,7 +569,10 @@ function addRecordBuildingDisplay(){
     return;
   }
   if(!recordAdditionalBuildings.includes(building)) recordAdditionalBuildings.push(building);
-  recordAdditionalBuildings.sort((a, b) => a - b);
+  const chooser = document.getElementById("recordBuildingAddChooser");
+  const openButton = document.getElementById("recordBuildingAddOpenBtn");
+  if(chooser) chooser.hidden = true;
+  if(openButton) openButton.setAttribute("aria-expanded", "false");
   renderRecordBuildingDisplayControls();
   drawRecordBeds();
   scheduleHarvestStateSave();
