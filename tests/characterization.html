@@ -2238,6 +2238,65 @@
         }
       });
 
+      await runTest("ケース配置と収穫可能の数値位置を揃える", () => {
+        const readAlignment = () => {
+          const caseCard = app.document.getElementById("casePlacementSummaryButton");
+          const remainingCard = app.document.getElementById("remainingCasesSummaryCard");
+          const caseLabel = caseCard.querySelector(".casePlacementDetailsLabel");
+          const remainingLabel = remainingCard.querySelector(".casePlacementRemainingLabel");
+          const caseValue = app.document.getElementById("casePlacementCompactSummary");
+          const remainingValue = app.document.getElementById("remainingCasesSummary");
+          const center = rect => ({ x:rect.left + rect.width / 2, y:rect.top + rect.height / 2 });
+          const caseCardCenter = center(caseCard.getBoundingClientRect());
+          const remainingCardCenter = center(remainingCard.getBoundingClientRect());
+          const caseLabelCenter = center(caseLabel.getBoundingClientRect());
+          const remainingLabelCenter = center(remainingLabel.getBoundingClientRect());
+          const caseValueCenter = center(caseValue.getBoundingClientRect());
+          const remainingValueCenter = center(remainingValue.getBoundingClientRect());
+          return {
+            labelFontSizes:[
+              app.getComputedStyle(caseLabel).fontSize,
+              app.getComputedStyle(remainingLabel).fontSize
+            ],
+            valueFontSizes:[
+              app.getComputedStyle(caseValue).fontSize,
+              app.getComputedStyle(remainingValue).fontSize
+            ],
+            gaps:[
+              app.getComputedStyle(caseCard).gap,
+              app.getComputedStyle(remainingCard).gap
+            ],
+            labelCenterDifference:Math.abs(
+              (caseLabelCenter.y - caseCardCenter.y)
+              - (remainingLabelCenter.y - remainingCardCenter.y)
+            ),
+            valueCenterDifference:Math.abs(
+              (caseValueCenter.y - caseCardCenter.y)
+              - (remainingValueCenter.y - remainingCardCenter.y)
+            ),
+            caseValueHorizontalOffset:Math.abs(caseValueCenter.x - caseCardCenter.x),
+            remainingValueHorizontalOffset:Math.abs(remainingValueCenter.x - remainingCardCenter.x)
+          };
+        };
+        const previousFrameWidth = iframe.style.width;
+        try{
+          const regular = readAlignment();
+          iframe.style.width = "320px";
+          const narrow = readAlignment();
+          [regular, narrow].forEach(alignment => {
+            assertEqual(alignment.labelFontSizes[0], alignment.labelFontSizes[1], "見出しの文字サイズが揃っていません");
+            assertEqual(alignment.valueFontSizes[0], alignment.valueFontSizes[1], "数値の文字サイズが揃っていません");
+            assertEqual(alignment.gaps[0], alignment.gaps[1], "見出しと数値の間隔が揃っていません");
+            assert(alignment.labelCenterDifference <= 1, "見出しの縦位置が揃っていません");
+            assert(alignment.valueCenterDifference <= 1, "数値の縦位置が揃っていません");
+            assert(alignment.caseValueHorizontalOffset <= 1, "ケース配置の数値が中央からずれています");
+            assert(alignment.remainingValueHorizontalOffset <= 1, "収穫可能の数値が中央からずれています");
+          });
+        }finally{
+          iframe.style.width = previousFrameWidth;
+        }
+      });
+
       await runTest("定植日数詳細を計算後にページネーション下の共有カードへ表示する", () => {
         const mapState = comparable(app.eval(`(() => {
           const dateInput = document.getElementById("recordDateInput");
@@ -4973,18 +5032,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "8681aacd", elements: 2151, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "7d46ef85", elements: 2219, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "88c5ffec", elements: 2219, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "93775d44", elements: 2152, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "49bfb6d9", elements: 2152, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "cb8b4faf", elements: 2235, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "79a897c8", elements: 2250, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "bf50e696", elements: 2250, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "83cf03a2", elements: 2250, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "ebeb379f", elements: 2250, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "65e6b92b", elements: 2250, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "8f37fea7", elements: 2250, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "591be121", elements: 2151, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "eeba6129", elements: 2219, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "d59c44f0", elements: 2219, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "7d147c9f", elements: 2152, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "e10775d6", elements: 2152, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "7e003b26", elements: 2235, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "875aa35b", elements: 2250, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "b8f0b071", elements: 2250, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "877356df", elements: 2250, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "cd43b234", elements: 2250, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "adb3c572", elements: 2250, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "074931b6", elements: 2250, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
