@@ -1236,6 +1236,67 @@
         }
       });
 
+      await runTest("計算設定に各値を表示し無効なベッド別設定を隠す", () => {
+        const findCluster = title => Array.from(app.document.querySelectorAll("#forecastSettingsWindowBody .settingClusterDetails"))
+          .find(cluster => cluster.querySelector(".clusterTitle")?.textContent.trim() === title);
+        const readItems = title => Array.from(findCluster(title)?.querySelectorAll(".settingClusterValueItem") || [])
+          .map(item => [
+            item.querySelector(".settingClusterValueLabel")?.textContent || "",
+            item.querySelector(".settingClusterValueText")?.textContent || ""
+          ]);
+        const useBedLoss = app.document.getElementById("useBedLossSettings");
+        const useBedYield = app.document.getElementById("useBedYieldSettings");
+        const useBedPlant = app.document.getElementById("useBedPlantSettings");
+        try{
+          useBedLoss.checked = false;
+          useBedYield.checked = false;
+          useBedPlant.checked = false;
+          app.document.getElementById("defaultLossRateInput").value = "12.5";
+          app.document.getElementById("defaultYieldInput").value = "16";
+          app.document.getElementById("defaultPlantingCountInput").value = "12";
+          app.document.getElementById("seedlingLossRateInput").value = "7.5";
+          app.document.getElementById("specialPallet60CountInput").value = "2";
+          app.refreshOverrideControls();
+          app.openForecastSettingsWindow();
+
+          assertDeepEqual(readItems("収穫ロス率"), [["全体", "12.5%"]],
+            "無効な収穫ロス率のベッド別設定が要約に表示されています");
+          assertDeepEqual(readItems("収穫時の個数"), [["全体", "16個"]],
+            "無効な収穫時個数のベッド別設定が要約に表示されています");
+          assertDeepEqual(readItems("苗の個数"), [["全体", "12個"]],
+            "無効な苗個数のベッド別設定が要約に表示されています");
+          assertDeepEqual(readItems("苗取り補足"), [["苗ロス", "7.5%"], ["60個用", "2/3枚"]],
+            "苗取り補足の設定値が要約に表示されていません");
+          ["bedLossAccordion", "bedYieldAccordion", "bedPlantAccordion"].forEach(id => {
+            const accordion = app.document.getElementById(id);
+            assert(accordion.hidden, `${id}が無効時に非表示になっていません`);
+            assertEqual(app.getComputedStyle(accordion).display, "none", `${id}の非表示スタイルが効いていません`);
+          });
+
+          useBedLoss.checked = true;
+          useBedYield.checked = true;
+          useBedPlant.checked = true;
+          app.document.getElementById("loss_A").value = "8";
+          app.document.getElementById("yield_A").value = "20";
+          app.document.getElementById("plant_A").value = "16";
+          app.refreshOverrideControls();
+          app.refreshBedTabSummaries();
+
+          assertEqual(readItems("収穫ロス率").length, 7, "有効な収穫ロス率のベッド別6値が表示されていません");
+          assertDeepEqual(readItems("収穫ロス率")[1], ["A", "8%"], "Aベッドの収穫ロス率が違います");
+          assertEqual(readItems("収穫時の個数").length, 7, "有効な収穫時個数のベッド別6値が表示されていません");
+          assertDeepEqual(readItems("収穫時の個数")[1], ["A", "20個"], "Aベッドの収穫時個数が違います");
+          assertEqual(readItems("苗の個数").length, 7, "有効な苗個数のベッド別6値が表示されていません");
+          assertDeepEqual(readItems("苗の個数")[1], ["A", "16個"], "Aベッドの苗個数が違います");
+          ["bedLossAccordion", "bedYieldAccordion", "bedPlantAccordion"].forEach(id => {
+            assert(!app.document.getElementById(id).hidden, `${id}が有効時に表示されません`);
+          });
+        }finally{
+          app.populateSettingsForm();
+          app.closeForecastSettingsWindow();
+        }
+      });
+
       await runTest("苗植え実績を次回収穫の理想株数として設定より優先する", () => {
         const originalSettings = comparable(app.eval("settings"));
         try{
@@ -5032,18 +5093,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "591be121", elements: 2151, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "eeba6129", elements: 2219, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "d59c44f0", elements: 2219, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "7d147c9f", elements: 2152, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "e10775d6", elements: 2152, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "7e003b26", elements: 2235, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "875aa35b", elements: 2250, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "b8f0b071", elements: 2250, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "877356df", elements: 2250, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "cd43b234", elements: 2250, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "adb3c572", elements: 2250, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "074931b6", elements: 2250, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "29bfde27", elements: 2170, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "7cd8bd2e", elements: 2238, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "ba19a167", elements: 2238, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "a5802c54", elements: 2171, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "0e148c99", elements: 2171, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "52a6bc7b", elements: 2254, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "b1e34ed2", elements: 2269, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "7373176c", elements: 2269, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "853da29e", elements: 2269, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "f114b22d", elements: 2269, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "5533f26f", elements: 2269, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "d8bde2c3", elements: 2269, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

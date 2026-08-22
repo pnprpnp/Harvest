@@ -788,6 +788,7 @@ function closeSeedlingHouseWindow(options = {}){
 function openForecastSettingsWindow(){
   const modal = document.getElementById("forecastSettingsModal");
   if(!modal) return;
+  refreshBedTabSummaries();
   showPageBlockingUi(modal);
 }
 
@@ -1299,6 +1300,70 @@ function updateForecastSettingsSummary(){
   if(el) el.textContent = getForecastSettingsSummaryText();
 }
 
+function getCalculationSettingValue(inputId, fallback = "-"){
+  const value = String(document.getElementById(inputId)?.value ?? "").trim();
+  return value === "" ? fallback : value;
+}
+
+function getCalculationSettingsClusterValues(title){
+  const values = [];
+  if(title === "収穫ロス率"){
+    values.push(["全体", `${getCalculationSettingValue("defaultLossRateInput", "0")}%`]);
+    if(document.getElementById("useBedLossSettings")?.checked){
+      bedOrder.forEach(bedName => {
+        values.push([bedName, getBedTabSummaryText("loss", bedName)]);
+      });
+    }
+  }else if(title === "収穫時の個数"){
+    values.push(["全体", `${getCalculationSettingValue("defaultYieldInput")}個`]);
+    if(document.getElementById("useBedYieldSettings")?.checked){
+      bedOrder.forEach(bedName => {
+        values.push([bedName, getBedTabSummaryText("yield", bedName)]);
+      });
+    }
+  }else if(title === "苗の個数"){
+    values.push(["全体", `${getCalculationSettingValue("defaultPlantingCountInput")}個`]);
+    if(document.getElementById("useBedPlantSettings")?.checked){
+      bedOrder.forEach(bedName => {
+        values.push([bedName, getBedTabSummaryText("plant", bedName)]);
+      });
+    }
+  }else if(title === "苗取り補足"){
+    values.push(["苗ロス", `${getCalculationSettingValue("seedlingLossRateInput", "0")}%`]);
+    values.push(["60個用", `${getCalculationSettingValue("specialPallet60CountInput", "0")}/3枚`]);
+  }
+  return values;
+}
+
+function refreshCalculationSettingsClusterValues(){
+  document.querySelectorAll("#forecastSettingsWindowBody .settingClusterDetails").forEach(details => {
+    const header = details.querySelector(":scope > .settingClusterSummary .clusterHeader");
+    const title = header?.querySelector(".clusterTitle")?.textContent?.trim() || "";
+    if(!header || !title) return;
+
+    let valuesWrap = header.querySelector(":scope > .settingClusterValues");
+    if(!valuesWrap){
+      valuesWrap = document.createElement("div");
+      valuesWrap.className = "settingClusterValues";
+      header.appendChild(valuesWrap);
+    }
+    valuesWrap.replaceChildren();
+
+    getCalculationSettingsClusterValues(title).forEach(([label, value]) => {
+      const item = document.createElement("span");
+      item.className = "settingClusterValueItem";
+      const labelEl = document.createElement("span");
+      labelEl.className = "settingClusterValueLabel";
+      labelEl.textContent = label;
+      const valueEl = document.createElement("span");
+      valueEl.className = "settingClusterValueText";
+      valueEl.textContent = value;
+      item.append(labelEl, valueEl);
+      valuesWrap.appendChild(item);
+    });
+  });
+}
+
 function refreshYieldFrontBackVisibility(){
   bedOrder.forEach(bedName => {
     const wrap = document.getElementById(`yieldSplitBox_${bedName}`);
@@ -1345,6 +1410,12 @@ function refreshOverrideControls(){
   setDisabledState("bedLossAccordion", !useBedLoss);
   setDisabledState("bedYieldAccordion", !useBedYield);
   setDisabledState("bedPlantAccordion", !useBedPlant);
+  const bedLossAccordion = document.getElementById("bedLossAccordion");
+  const bedYieldAccordion = document.getElementById("bedYieldAccordion");
+  const bedPlantAccordion = document.getElementById("bedPlantAccordion");
+  if(bedLossAccordion) bedLossAccordion.hidden = !useBedLoss;
+  if(bedYieldAccordion) bedYieldAccordion.hidden = !useBedYield;
+  if(bedPlantAccordion) bedPlantAccordion.hidden = !useBedPlant;
 
   syncAccordionOpenState("bedLossAccordion", useBedLoss);
   syncAccordionOpenState("bedYieldAccordion", useBedYield);
@@ -1365,6 +1436,7 @@ function refreshBedTabSummaries(){
     });
   });
   updateForecastSettingsSummary();
+  refreshCalculationSettingsClusterValues();
 }
 
 function makeSettingClusterCollapsible(cluster){
