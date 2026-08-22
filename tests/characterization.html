@@ -2298,6 +2298,65 @@
         }
       });
 
+      await runTest("シミュの主要操作をヘッダーと計算バーの間へ収める", async () => {
+        const visualFrame = await loadVisualAppFrame(390, 844);
+        const visualApp = visualFrame.contentWindow;
+        try{
+          visualApp.eval("protectedAccessUnlocked = true");
+          visualApp.document.getElementById("welcomeScreen")?.remove();
+          visualApp.switchTab("forecast");
+          const details = visualApp.document.getElementById("casePlacementDetails");
+          if(details) details.open = false;
+          await settleVisualApp(visualApp);
+
+          const topChromeRect = visualApp.document.querySelector(".appTopChrome").getBoundingClientRect();
+          const caseFieldRect = visualApp.document.querySelector(".forecastCaseField").getBoundingClientRect();
+          const panel = visualApp.document.querySelector("#forecastTab .casePlacementPanel");
+          const panelRect = panel.getBoundingClientRect();
+          const bedPanelRect = visualApp.document.querySelector("#forecastTab .casePlacementBedPanel").getBoundingClientRect();
+          const actionRect = visualApp.document.querySelector(".forecastActionRow").getBoundingClientRect();
+          const seedlingButtonRect = visualApp.document.getElementById("seedlingHouseOpenBtn").getBoundingClientRect();
+          const bedRects = [...visualApp.document.querySelectorAll("#beds .simulationBedOverview")]
+            .map(element => element.getBoundingClientRect());
+          const mapRects = [...visualApp.document.querySelectorAll("#beds .dashboardSeedlingBedMapGrid")]
+            .map(element => element.getBoundingClientRect());
+          const rowTops = [...new Set(bedRects.map(rect => Math.round(rect.top)))];
+          const normalState = {
+            startsBelowHeader: caseFieldRect.top >= topChromeRect.bottom,
+            panelEndsBeforeActionBar: panelRect.bottom <= actionRect.top + 1,
+            seedlingButtonEndsBeforeActionBar: seedlingButtonRect.bottom <= actionRect.top + 1,
+            sixBeds: bedRects.length === 6,
+            twoBedRows: rowTops.length === 2,
+            bedsStayInsidePanel: bedRects.every(rect => (
+              rect.top >= bedPanelRect.top - 1 && rect.bottom <= bedPanelRect.bottom + 1
+            )),
+            compactBedHeight: bedRects.every(rect => rect.height >= 120 && rect.height < 206),
+            readableMapHeight: mapRects.every(rect => rect.height >= 80 && rect.height <= 150),
+            panelUsesAvailableHeight: actionRect.top - panelRect.bottom >= -1
+              && actionRect.top - panelRect.bottom <= 2
+          };
+
+          if(details) details.open = true;
+          await settleVisualApp(visualApp);
+          const expandedBedHeight = visualApp.document.querySelector("#beds .simulationBedOverview")
+            ?.getBoundingClientRect().height || 0;
+          assertDeepEqual(normalState, {
+            startsBelowHeader: true,
+            panelEndsBeforeActionBar: true,
+            seedlingButtonEndsBeforeActionBar: true,
+            sixBeds: true,
+            twoBedRows: true,
+            bedsStayInsidePanel: true,
+            compactBedHeight: true,
+            readableMapHeight: true,
+            panelUsesAvailableHeight: true
+          }, "通常状態のシミュ主要操作が画面内に収まっていません");
+          assert(expandedBedHeight >= 200, "ケース配置を開いた時にスクロール用の通常サイズへ戻りません");
+        }finally{
+          visualFrame.remove();
+        }
+      });
+
       await runTest("シミュの簡易ベッド表示は選択可能枚数を表示する", () => {
         const counts = comparable(app.eval(`(() => {
           const previous = {
@@ -4633,16 +4692,16 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "6d06b474", elements: 2148, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "6b1c694f", elements: 2216, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "ae689f6e", elements: 2216, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "874abfa4", elements: 2149, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "d7bb3a29", elements: 2149, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "bc33df12", elements: 2232, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "4b6278e7", elements: 2247, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "a00a9ba7", elements: 2247, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "c3ec8179", elements: 2247, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "f0eaa8d8", elements: 2247, visible: 62, viewport: "390x844" },
+          mobileForecast: { hash: "922d9cc8", elements: 2148, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "5ba2587b", elements: 2216, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "440cc4aa", elements: 2216, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "12f175b7", elements: 2149, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "5a0655ce", elements: 2149, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "1b24b29f", elements: 2232, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "bfacfd8c", elements: 2247, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "61b335d0", elements: 2247, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "94f13d40", elements: 2247, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "141c7287", elements: 2247, visible: 62, viewport: "390x844" },
           wideForecast: { hash: "9d0f6ca2", elements: 2247, visible: 610, viewport: "1024x900" },
           wideDashboard: { hash: "70fed99e", elements: 2247, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
