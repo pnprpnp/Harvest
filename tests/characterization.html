@@ -2378,7 +2378,7 @@
         }
       });
 
-      await runTest("シミュの主要操作をヘッダーと計算バーの間へ収める", async () => {
+      await runTest("画面内に収まる計算前シミュとモニターのスクロールを止める", async () => {
         const visualFrame = await loadVisualAppFrame(390, 844);
         const visualApp = visualFrame.contentWindow;
         try{
@@ -2403,6 +2403,8 @@
             .map(element => element.getBoundingClientRect());
           const rowTops = [...new Set(bedRects.map(rect => Math.round(rect.top)))];
           const normalState = {
+            viewportScrollLocked: visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            overflowHidden: visualApp.getComputedStyle(visualApp.document.documentElement).overflowY === "hidden",
             startsBelowHeader: caseFieldRect.top >= topChromeRect.bottom,
             panelEndsBeforeActionBar: panelRect.bottom <= actionRect.top + 1,
             resultActionsHiddenBeforeCalculation: resultActions.hidden
@@ -2420,9 +2422,13 @@
 
           if(details) details.open = true;
           await settleVisualApp(visualApp);
+          visualApp.applyMainTabViewportScrollLock();
           const expandedBedHeight = visualApp.document.querySelector("#beds .simulationBedOverview")
             ?.getBoundingClientRect().height || 0;
+          const detailsUnlockScrolling = !visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked");
           assertDeepEqual(normalState, {
+            viewportScrollLocked: true,
+            overflowHidden: true,
             startsBelowHeader: true,
             panelEndsBeforeActionBar: true,
             resultActionsHiddenBeforeCalculation: true,
@@ -2434,6 +2440,31 @@
             panelUsesAvailableHeight: true
           }, "通常状態のシミュ主要操作が画面内に収まっていません");
           assert(expandedBedHeight >= 200, "ケース配置を開いた時にスクロール用の通常サイズへ戻りません");
+          assert(detailsUnlockScrolling, "ケース配置を開いてもスクロール固定が解除されません");
+
+          if(details) details.open = false;
+          visualApp.eval(`
+            harvestFillKeys=[getPalletKey(2,"A",1)];
+            harvestSummary={start:harvestFillKeys[0],end:harvestFillKeys[0],filledCount:1,totalHarvest:12,needHeads:12};
+            harvestSelectionMode="auto";
+            renderForecastSummary();
+          `);
+          visualApp.applyMainTabViewportScrollLock();
+          assert(!visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            "計算後もシミュのスクロールが固定されています");
+
+          visualApp.eval(`harvestFillKeys=[]; harvestSummary=null; harvestSelectionMode="none"; renderForecastSummary();`);
+          visualApp.switchTab("monitor");
+          await settleVisualApp(visualApp);
+          visualApp.applyMainTabViewportScrollLock();
+          const monitorCard = visualApp.document.getElementById("monitorCard");
+          assert(visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            "画面内に収まるモニタータブのスクロールが固定されていません");
+          monitorCard.style.height = "900px";
+          visualApp.applyMainTabViewportScrollLock();
+          assert(!visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            "モニター内容が画面を超えてもスクロール固定が解除されません");
+          monitorCard.style.height = "";
         }finally{
           visualFrame.remove();
         }

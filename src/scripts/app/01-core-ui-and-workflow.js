@@ -2344,6 +2344,67 @@ function restoreTabScrollPosition(tabName){
   });
 }
 
+function doesForecastTabFitWithoutScrolling(){
+  if(activeAppTab !== "forecast" || window.innerWidth > 759 || window.innerHeight < 760) return false;
+  if(harvestSummary && Array.isArray(harvestFillKeys) && harvestFillKeys.length > 0) return false;
+  if(document.getElementById("casePlacementDetails")?.open) return false;
+  if(document.getElementById("harvestProgressPanel")?.open) return false;
+  const panel = document.querySelector("#forecastTab .casePlacementPanel");
+  const actionBar = document.querySelector("#forecastTab .forecastActionRow");
+  if(!panel || !actionBar) return false;
+  const scrollTop = window.pageYOffset || 0;
+  const panelBottomAtPageTop = panel.getBoundingClientRect().bottom + scrollTop;
+  return panelBottomAtPageTop <= actionBar.getBoundingClientRect().top + 1;
+}
+
+function doesMonitorTabFitWithoutScrolling(){
+  if(activeAppTab !== "monitor" || window.innerWidth > 759) return false;
+  const card = document.getElementById("monitorCard");
+  const tabBar = document.querySelector(".tabBar");
+  if(!card || !tabBar || card.getClientRects().length === 0) return false;
+  const scrollTop = window.pageYOffset || 0;
+  const cardBottomAtPageTop = card.getBoundingClientRect().bottom + scrollTop;
+  return cardBottomAtPageTop <= tabBar.getBoundingClientRect().top + 1;
+}
+
+function applyMainTabViewportScrollLock(){
+  const shouldLock = doesForecastTabFitWithoutScrolling() || doesMonitorTabFitWithoutScrolling();
+  document.documentElement.classList.toggle("mainTabViewportScrollLocked", shouldLock);
+  if(shouldLock){
+    tabScrollPositions[activeAppTab] = 0;
+    if(window.pageYOffset) window.scrollTo({ top:0, behavior:"auto" });
+  }
+  return shouldLock;
+}
+
+function scheduleMainTabViewportScrollLock(){
+  if(scheduleMainTabViewportScrollLock.frameId){
+    cancelAnimationFrame(scheduleMainTabViewportScrollLock.frameId);
+  }
+  scheduleMainTabViewportScrollLock.frameId = requestAnimationFrame(() => {
+    scheduleMainTabViewportScrollLock.frameId = requestAnimationFrame(() => {
+      scheduleMainTabViewportScrollLock.frameId = 0;
+      applyMainTabViewportScrollLock();
+    });
+  });
+}
+
+function installMainTabViewportScrollLock(){
+  if(document.documentElement.dataset.mainTabViewportScrollLockInstalled === "1") return;
+  document.documentElement.dataset.mainTabViewportScrollLockInstalled = "1";
+  if(typeof ResizeObserver === "function"){
+    const observer = new ResizeObserver(scheduleMainTabViewportScrollLock);
+    ["forecastSimulationCard", "monitorCard"].forEach(id => {
+      const element = document.getElementById(id);
+      if(element) observer.observe(element);
+    });
+    installMainTabViewportScrollLock.observer = observer;
+  }
+  window.addEventListener("resize", scheduleMainTabViewportScrollLock, { passive:true });
+  window.visualViewport?.addEventListener("resize", scheduleMainTabViewportScrollLock, { passive:true });
+  scheduleMainTabViewportScrollLock();
+}
+
 function handleMainTabPress(tabName){
   tabName = normalizeMainTabName(tabName);
   if(!tabName) return false;
@@ -2366,6 +2427,7 @@ function setMainTabSelection(tabName){
   });
   const settingsTab = document.getElementById("settingsTab");
   if(settingsTab) settingsTab.style.display = "none";
+  scheduleMainTabViewportScrollLock();
 }
 
 function setMainTabLoadingState(tabName, isLoading){
@@ -2407,12 +2469,14 @@ function finishRecordMainTabSelection(){ drawRecordBeds(); }
 function finishForecastMainTabSelection(){
   drawBeds();
   renderForecastSummary();
+  scheduleMainTabViewportScrollLock();
 }
 
 function finishMonitorMainTabSelection(){
   renderForecastSummary();
   resizeAllMonitorMemoInputs();
   refreshMonitorMemoInputsOnTabOpen();
+  scheduleMainTabViewportScrollLock();
 }
 
 function scheduleMainTabPostSelectionWork(tabName){
@@ -2511,6 +2575,7 @@ function switchTab(tabName){
   deferPendingHarvestStateSaveUntilUiSettles();
   scheduleWorkflowGuideUpdate();
   restoreTabScrollPosition(tabName);
+  scheduleMainTabViewportScrollLock();
   return true;
 }
 

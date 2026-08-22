@@ -41,6 +41,7 @@ function initializeHarvestnaviApp(){
     installAppTopChromeLayoutSync();
     installStaticUiEventHandlers();
     installStartupViewportEvents();
+    installMainTabViewportScrollLock();
     initializeStartupSettingsAndStorage();
 
     const savedHarvestState = loadHarvestStateFromStorage();

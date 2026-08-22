@@ -362,6 +362,7 @@ function renderForecastSummary(){
   }
   updateHarvestProgressUi();
   scheduleWorkflowGuideUpdate();
+  scheduleMainTabViewportScrollLock();
 }
 
 function drawBeds(){
