@@ -2048,7 +2048,8 @@
             belowPagination: statusRect.top >= headerRect.bottom,
             sharedCard: remaining.parentElement === statusCard
               && app.document.getElementById("forecastPlantingAgeResult")?.parentElement === statusCard,
-            remainingUsesFullCardBeforeCalculation: Math.abs(remainingRect.width - statusRect.width) <= 2
+            remainingUsesRightHalfBeforeCalculation: Math.abs(remainingRect.width - (statusRect.width / 2)) <= 2
+              && Math.abs(remainingRect.right - statusRect.right) <= 2
               && remainingRect.top >= statusRect.top
               && remainingRect.bottom <= statusRect.bottom,
             greenValue: app.getComputedStyle(value).color === "rgb(23, 102, 55)",
@@ -2061,7 +2062,7 @@
             noStatusBar: true,
             belowPagination: true,
             sharedCard: true,
-            remainingUsesFullCardBeforeCalculation: true,
+            remainingUsesRightHalfBeforeCalculation: true,
             greenValue: true,
             labelIsSmallAndFaint: true,
             label: "収穫可能",
@@ -2110,6 +2111,7 @@
             harvestSelectionMode = "manual";
             renderForecastPlantingAgeResult();
             const hiddenBeforeCalculation = result.hidden;
+            const hiddenRemainingRect = remaining.getBoundingClientRect();
             harvestSelectionMode = "auto";
             renderForecastPlantingAgeResult();
             openPlantingAgeWindow();
@@ -2124,6 +2126,9 @@
               sharedStatusCard: result.parentElement === statusCard
                 && remaining.parentElement === statusCard,
               splitAfterCalculation: statusCard.classList.contains("hasPlantingAgeDetail"),
+              remainingPositionDoesNotMove: Math.abs(hiddenRemainingRect.left - visibleRemainingRect.left) <= 2
+                && Math.abs(hiddenRemainingRect.width - visibleRemainingRect.width) <= 2
+                && Math.abs(visibleRemainingRect.right - visibleStatusRect.right) <= 2,
               sameRowAfterCalculation: visibleRemainingRect.top >= visibleStatusRect.top
                 && visibleRemainingRect.bottom <= visibleStatusRect.bottom
                 && visibleResultRect.top >= visibleStatusRect.top
@@ -2171,6 +2176,7 @@
           belowPagination: true,
           sharedStatusCard: true,
           splitAfterCalculation: true,
+          remainingPositionDoesNotMove: true,
           sameRowAfterCalculation: true,
           detailTitle: "定植日数の詳細",
           rangeText: "20日〜31日",
@@ -4439,18 +4445,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e6106dc0", elements: 2144, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "096e228d", elements: 2212, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "c910e324", elements: 2212, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "2e31535b", elements: 2145, visible: 118, viewport: "390x844" },
-          mobileDashboard: { hash: "c3058c07", elements: 2145, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "70043ada", elements: 2228, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "10cd9a17", elements: 2243, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "b9e2c453", elements: 2243, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "1f9a39cd", elements: 2243, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "4f231a30", elements: 2243, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "0c332795", elements: 2243, visible: 610, viewport: "1024x900" },
-          wideDashboard: { hash: "f421660c", elements: 2243, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "22151b36", elements: 2144, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "bf67cf43", elements: 2212, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "c86c4f42", elements: 2212, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "fc696c55", elements: 2145, visible: 118, viewport: "390x844" },
+          mobileDashboard: { hash: "cfed4621", elements: 2145, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "52a3e90e", elements: 2228, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "461e4bb3", elements: 2243, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "d26c92e5", elements: 2243, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "697d3dbb", elements: 2243, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "23e1d2f2", elements: 2243, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "0329b46a", elements: 2243, visible: 610, viewport: "1024x900" },
+          wideDashboard: { hash: "94ad5842", elements: 2243, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
