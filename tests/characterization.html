@@ -3296,6 +3296,40 @@
         }
       });
 
+      await runTest("苗植え記録の編集時は今回の指示を表示しない", () => {
+        const state = comparable(app.eval(`(() => {
+          const card = document.querySelector("#recordPlantingStageSection .plantingActionCard");
+          const previous = {
+            mode: recordSelectionMode,
+            editingHarvestId: editingHarvestRecordId,
+            editingPlantingId: editingPlantingEventId
+          };
+          try{
+            recordSelectionMode = "planting";
+            editingHarvestRecordId = null;
+            editingPlantingEventId = 999999999999;
+            refreshRecordModeUi();
+            const hiddenWhileEditing = !!card?.hidden;
+
+            editingPlantingEventId = null;
+            refreshRecordModeUi();
+            return {
+              hiddenWhileEditing,
+              shownForNewRecord: card?.hidden === false
+            };
+          }finally{
+            recordSelectionMode = previous.mode;
+            editingHarvestRecordId = previous.editingHarvestId;
+            editingPlantingEventId = previous.editingPlantingId;
+            refreshRecordModeUi();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          hiddenWhileEditing: true,
+          shownForNewRecord: true
+        }, "編集時の今回の指示の表示状態が正しくありません");
+      });
+
       await runTest("記録タブもシミュと同じ縦型パレット配置図を使う", () => {
         const mapState = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");

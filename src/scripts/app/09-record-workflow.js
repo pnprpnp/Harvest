@@ -1499,6 +1499,7 @@ function refreshRecordModeUi(){
   const plantingInput = document.getElementById("recordPlantingSummaryInput");
   const harvestStageSection = document.getElementById("recordHarvestStageSection");
   const plantingStageSection = document.getElementById("recordPlantingStageSection");
+  const plantingActionCard = document.querySelector("#recordPlantingStageSection .plantingActionCard");
   const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
   const qualityMemoLabel = document.getElementById("recordQualityMemoLabel");
   const qualityMemoMediumChoice = document.getElementById("qualityMemoMediumChoice");
@@ -1546,6 +1547,7 @@ function refreshRecordModeUi(){
   renderRecordBuildingDisplayControls();
   if(discardEditButton) discardEditButton.hidden = !isEditing;
   if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
+  if(plantingActionCard) plantingActionCard.hidden = !!editingPlantingEventId;
 
   if(isPlantingMode){
     if(notice) notice.textContent = editingPlantingEventId
