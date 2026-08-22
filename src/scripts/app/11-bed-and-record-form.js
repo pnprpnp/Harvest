@@ -294,6 +294,13 @@ function saveSeedlingHouseStartCorrection(){
   showToast(`1号棟の開始位置を${formatSeedlingHousePosition(key)}に変更しました`);
 }
 
+function formatMonitorTabDetailValueHtml(value){
+  return String(value || "")
+    .split("\n")
+    .map(line => formatInstructionLineHtml(line || " "))
+    .join("<br>");
+}
+
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   const cases = casePlan.totalCases;
@@ -332,18 +339,34 @@ function renderForecastSummary(){
   const instructionBox = document.getElementById("instructionSummary");
   if(instructionBox){
     const completedCases = getHarvestProgressActualCases() + casePlan.partialCases;
-    const caseLineHtml = hasAppliedHarvestProgress()
-      ? `収穫ケース数: <span class="instructionEmphasis">残り ${escapeHtml(formatHarvestProgressCases(getHarvestProgressRemainingTargetCases()))}ケース</span><span class="instructionAutoNote">（目標 ${escapeHtml(String(cases))} / 収穫済み ${escapeHtml(formatHarvestProgressCases(completedCases))}）</span>`
-      : `収穫ケース数: <span class="instructionEmphasis">${escapeHtml(String(cases))}ケース</span>`;
+    const caseValueHtml = hasAppliedHarvestProgress()
+      ? `<span class="instructionEmphasis">残り ${escapeHtml(formatHarvestProgressCases(getHarvestProgressRemainingTargetCases()))}ケース</span><span class="instructionAutoNote">（目標 ${escapeHtml(String(cases))} / 収穫済み ${escapeHtml(formatHarvestProgressCases(completedCases))}）</span>`
+      : `<span class="instructionEmphasis">${escapeHtml(String(cases))}ケース</span>`;
     const harvestLocationLine = formatHarvestLocationInstruction(getHarvestProgressRemainingSelectionKeys());
-    const remainingCasesLine = "残すケース: " + getCasePlacementSummaryText();
-    instructionBox.innerHTML = [
-      `<div class="monitorLine">${getSeedlingInstructionEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount, seedlingCounts.carryoverSeedlings)} / ${caseLineHtml}</div>`,
-      formatInstructionDisplayHtml(harvestLocationLine),
-      formatInstructionDisplayHtml(remainingCasesLine)
-    ].join("");
+    const harvestLocationValue = harvestLocationLine.replace(/^収穫場所:\s*/, "") || "-";
+    const remainingCasesValue = getCasePlacementSummaryText() || "なし";
+    instructionBox.innerHTML = `
+      <div class="monitorSendMetricGrid">
+        <div class="monitorSendMetricItem">
+          <span class="monitorSendSummaryLabel">苗枚数</span>
+          <div class="monitorSendSummaryValue">${getSeedlingInstructionValueEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount, seedlingCounts.carryoverSeedlings)}</div>
+        </div>
+        <div class="monitorSendMetricItem">
+          <span class="monitorSendSummaryLabel">収穫ケース数</span>
+          <div class="monitorSendSummaryValue">${caseValueHtml}</div>
+        </div>
+      </div>
+      <div class="monitorSendDetailItem">
+        <span class="monitorSendSummaryLabel">収穫場所</span>
+        <div class="monitorSendDetailValue">${formatMonitorTabDetailValueHtml(harvestLocationValue)}</div>
+      </div>
+      <div class="monitorSendDetailItem">
+        <span class="monitorSendSummaryLabel">残すケース</span>
+        <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(remainingCasesValue)}</div>
+      </div>`;
     bindSeedlingInlineInput();
   }
+  renderMonitorTabControls();
 
   const remainingBox = document.getElementById("remainingCasesSummary");
   if(remainingBox){

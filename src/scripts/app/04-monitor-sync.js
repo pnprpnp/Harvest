@@ -379,6 +379,7 @@ async function fetchMonitorRemoteContent(options = {}){
     monitorRemoteFetchedContent = nextContent;
     monitorRemoteFetchedAt = Date.now();
     monitorRemoteContent = nextContent && nextContent.enabled ? nextContent : null;
+    renderMonitorTabControls();
 
     if(changed && isMonitorModeOpen){
       renderMonitorMode();
@@ -625,7 +626,7 @@ function fillMonitorRemoteEditorFromCurrentState(){
 function setCurrentMonitorSaveLoading(isLoading, message = "モニターへ送信中…"){
   const button = document.getElementById("monitorSaveBtn");
   const label = document.getElementById("monitorSaveBtnLabel");
-  const defaultMessage = "送信してモニターに表示する";
+  const defaultMessage = "プレビューして送信";
   if(button){
     button.disabled = !!isLoading;
     button.classList.toggle("is-loading", !!isLoading);
@@ -657,6 +658,7 @@ async function saveCurrentMonitorRemoteContent(){
       monitorMemoInputsDirty = false;
       workflowMonitorCheckpointSignature = workflowPlanWasReady ? workflowSignature : "";
       workflowHarvestRecordingActive = workflowPlanWasReady;
+      renderMonitorTabControls();
       saveHarvestStateToStorage();
       updateWorkflowGuide();
       switchToRecordSaveCard({ focus: true });

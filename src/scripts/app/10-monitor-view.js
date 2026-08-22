@@ -63,6 +63,57 @@ function buildInstructionSummaryText(){
   );
 }
 
+function renderMonitorTabControls(){
+  const badge = document.getElementById("monitorSendStatusBadge");
+  const lastSent = document.getElementById("monitorLastSentAt");
+  const planStatus = getWorkflowPlanStatus();
+  const currentSignature = planStatus.ready ? getWorkflowPlanFingerprint() : "";
+  const isSent = !!currentSignature
+    && workflowHarvestRecordingActive
+    && workflowMonitorCheckpointSignature === currentSignature;
+
+  if(badge){
+    badge.classList.remove("is-unready", "is-waiting", "is-sent");
+    if(isSent){
+      badge.textContent = "送信済み";
+      badge.classList.add("is-sent");
+    }else if(planStatus.ready){
+      badge.textContent = "送信待ち";
+      badge.classList.add("is-waiting");
+    }else{
+      badge.textContent = "計算前";
+      badge.classList.add("is-unready");
+    }
+  }
+
+  if(lastSent){
+    const remote = monitorRemoteContent || monitorRemoteFetchedContent;
+    const display = getMonitorUpdatedAtDisplay(remote?.updatedAt);
+    lastSent.textContent = `最終送信 ${display || "--"}`;
+  }
+}
+
+function setMonitorMemoPanelOpen(isOpen){
+  const panel = document.getElementById("monitorMemoInputPanel");
+  const toggle = document.getElementById("monitorMemoToggleBtn");
+  if(panel) panel.hidden = !isOpen;
+  if(toggle) toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  scheduleMainTabViewportScrollLock();
+}
+
+function toggleMonitorMemoPanel(){
+  const panel = document.getElementById("monitorMemoInputPanel");
+  setMonitorMemoPanelOpen(!!panel?.hidden);
+}
+
+function refreshMonitorMemoPanelSummary(){
+  const count = getMonitorMemoInputValues()
+    .filter(value => String(value || "").trim() !== "")
+    .length;
+  const countElement = document.getElementById("monitorMemoCount");
+  if(countElement) countElement.textContent = `${count}件`;
+}
+
 function getMonitorMemoInputValues(){
   const inputs = Array.from(document.querySelectorAll(".monitorMemoItemInput"));
   return inputs.map(input => String(input.value || ""));
@@ -105,12 +156,16 @@ function renderMemoInputsToList(listId, items = [], options = {}){
 }
 
 function renderMonitorMemoInputs(items = []){
+  const hasMemo = normalizeMonitorMemoItems(items)
+    .some(item => String(item || "").trim() !== "");
   renderMemoInputsToList("monitorMemoInputList", items, {
     inputClass: "monitorMemoItemInput",
     kind: "main",
     allowEmpty: true,
     onInput: handleMonitorMemoInput
   });
+  refreshMonitorMemoPanelSummary();
+  setMonitorMemoPanelOpen(hasMemo);
 }
 
 function renderMonitorRemoteMemoInputs(items = []){
@@ -133,11 +188,13 @@ function addMemoInputToList(listId, value = "", options = {}){
 }
 
 function addMonitorMemoInput(value = ""){
+  setMonitorMemoPanelOpen(true);
   addMemoInputToList("monitorMemoInputList", value, {
     inputClass: "monitorMemoItemInput",
     kind: "main",
     onInput: handleMonitorMemoInput
   });
+  refreshMonitorMemoPanelSummary();
   handleMonitorMemoInput();
 }
 
@@ -202,12 +259,15 @@ function removeMonitorMemoInput(item){
     handleMonitorRemoteMemoInput();
   }else{
     handleMonitorMemoInput();
+    if(!list?.children.length) setMonitorMemoPanelOpen(false);
   }
 }
 
 function handleMonitorMemoInput(){
   monitorMemoInputsDirty = true;
   invalidateWorkflowMonitorCheckpoint();
+  refreshMonitorMemoPanelSummary();
+  renderMonitorTabControls();
   scheduleHarvestStateSave();
   if(isMonitorModeOpen){
     renderMonitorMode();

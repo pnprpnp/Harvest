@@ -961,7 +961,7 @@ function getSeedlingInstructionTextForMonitor(autoCount, carryoverSeedlings = 0)
   return "苗: " + getDisplayedSeedlingCount(autoCount) + "枚" + getSeedlingCarryoverNote(carryoverSeedlings);
 }
 
-function getSeedlingInstructionEditorHtml(autoCount, additionalCount = 0, carryoverSeedlings = 0){
+function getSeedlingInstructionValueEditorHtml(autoCount, additionalCount = 0, carryoverSeedlings = 0){
   const displayedCount = getDisplayedSeedlingCount(autoCount);
   const autoNote = hasManualSeedlingCount()
     ? `<span class="instructionAutoNote">（自動: ${autoCount}枚）</span>`
@@ -974,7 +974,11 @@ function getSeedlingInstructionEditorHtml(autoCount, additionalCount = 0, carryo
   const carryoverHtml = carryoverNote
     ? `<span class="instructionAutoNote">${escapeHtml(carryoverNote)}</span>`
     : "";
-  return `苗: <span class="seedlingInlineWrap"><input id="seedlingInlineInput" class="seedlingInlineInput" type="number" min="0" inputmode="numeric" value="${escapeHtml(String(displayedCount))}" placeholder="${escapeHtml(String(autoCount))}" aria-label="苗枚数"><span class="seedlingInlineSuffix">枚</span></span>${autoNote}${additionalHtml}${carryoverHtml}`;
+  return `<span class="seedlingInlineWrap"><input id="seedlingInlineInput" class="seedlingInlineInput" type="number" min="0" inputmode="numeric" value="${escapeHtml(String(displayedCount))}" placeholder="${escapeHtml(String(autoCount))}" aria-label="苗枚数"><span class="seedlingInlineSuffix">枚</span></span>${autoNote}${additionalHtml}${carryoverHtml}`;
+}
+
+function getSeedlingInstructionEditorHtml(autoCount, additionalCount = 0, carryoverSeedlings = 0){
+  return `苗: ${getSeedlingInstructionValueEditorHtml(autoCount, additionalCount, carryoverSeedlings)}`;
 }
 
 function handleSeedlingInlineCommit(rawValue){

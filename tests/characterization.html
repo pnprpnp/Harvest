@@ -3084,7 +3084,7 @@
           forecast: !!document.getElementById("forecastSectionTitle"),
           monitor: !!document.getElementById("monitorSectionTitle"),
           record: !!document.getElementById("recordSaveSectionTitleText"),
-          monitorActions: document.querySelectorAll("#monitorCard .sectionTitleActions button").length,
+          monitorActions: document.querySelectorAll('#monitorCard [data-ui-click="openMonitorMode"], #monitorCard [data-ui-click="openMonitorEditorWindow"]').length,
           recordStatusExists: !!document.getElementById("recordTodayRecordedStatus")
         }))()`));
         assertDeepEqual(headings, {
@@ -3615,6 +3615,99 @@
           allSelectableSelected: { full: true, segments: 6 },
           oneSelectableMissing: { full: false, segments: 6 }
         }, "モニターの簡易パレット連結条件が選択可能パレットと一致しません");
+      });
+
+      await runTest("モニタータブで送信内容・送信状態・主操作をまとめて確認できる", () => {
+        const monitorTabState = comparable(app.eval(`(() => {
+          const previousGetPlanStatus = getWorkflowPlanStatus;
+          const previousGetFingerprint = getWorkflowPlanFingerprint;
+          const previousCheckpoint = workflowMonitorCheckpointSignature;
+          const previousRecordingActive = workflowHarvestRecordingActive;
+          const previousRemoteContent = monitorRemoteContent;
+          const previousRemoteFetchedContent = monitorRemoteFetchedContent;
+          const previousMemoItems = getMonitorMemoInputValues();
+          const previousMemoDirty = monitorMemoInputsDirty;
+          const readStatus = () => ({
+            text: document.getElementById("monitorSendStatusBadge")?.textContent || "",
+            className: document.getElementById("monitorSendStatusBadge")?.className || "",
+            lastSent: document.getElementById("monitorLastSentAt")?.textContent || ""
+          });
+          try{
+            getWorkflowPlanStatus = () => ({ ready:false });
+            getWorkflowPlanFingerprint = () => "test-plan";
+            workflowMonitorCheckpointSignature = "";
+            workflowHarvestRecordingActive = false;
+            monitorRemoteContent = null;
+            monitorRemoteFetchedContent = null;
+            renderMonitorTabControls();
+            const beforeCalculation = readStatus();
+
+            getWorkflowPlanStatus = () => ({ ready:true });
+            renderMonitorTabControls();
+            const waiting = readStatus();
+
+            workflowMonitorCheckpointSignature = "test-plan";
+            workflowHarvestRecordingActive = true;
+            monitorRemoteContent = {
+              enabled:true,
+              updatedAt:"2026-08-23 17:14:00"
+            };
+            renderMonitorTabControls();
+            const sent = readStatus();
+
+            renderMonitorMemoInputs([]);
+            const memoClosed = {
+              hidden: document.getElementById("monitorMemoInputPanel")?.hidden || false,
+              count: document.getElementById("monitorMemoCount")?.textContent || "",
+              expanded: document.getElementById("monitorMemoToggleBtn")?.getAttribute("aria-expanded") || ""
+            };
+            addMonitorMemoInput("");
+            const memoAfterAdd = {
+              hidden: document.getElementById("monitorMemoInputPanel")?.hidden || false,
+              itemCount: document.querySelectorAll("#monitorMemoInputList .monitorMemoInputItem").length,
+              expanded: document.getElementById("monitorMemoToggleBtn")?.getAttribute("aria-expanded") || ""
+            };
+            const actionBar = document.querySelector("#monitorCard .monitorSendActionBar");
+            return {
+              beforeCalculation,
+              waiting,
+              sent,
+              summaryTitle: document.getElementById("monitorSendContentTitle")?.textContent || "",
+              summaryLabels: [...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel")].map(item => item.textContent),
+              memoClosed,
+              memoAfterAdd,
+              openAction: document.querySelector("#monitorCard .monitorOpenBtn")?.dataset.uiClick || "",
+              editAction: document.querySelector("#monitorCard .monitorRemoteEditBtn")?.dataset.uiClick || "",
+              saveAction: document.getElementById("monitorSaveBtn")?.dataset.uiClick || "",
+              saveLabel: document.getElementById("monitorSaveBtnLabel")?.textContent || "",
+              actionBarPosition: actionBar ? getComputedStyle(actionBar).position : ""
+            };
+          }finally{
+            getWorkflowPlanStatus = previousGetPlanStatus;
+            getWorkflowPlanFingerprint = previousGetFingerprint;
+            workflowMonitorCheckpointSignature = previousCheckpoint;
+            workflowHarvestRecordingActive = previousRecordingActive;
+            monitorRemoteContent = previousRemoteContent;
+            monitorRemoteFetchedContent = previousRemoteFetchedContent;
+            renderMonitorMemoInputs(previousMemoItems);
+            monitorMemoInputsDirty = previousMemoDirty;
+            renderMonitorTabControls();
+          }
+        })()`));
+        assertDeepEqual(monitorTabState, {
+          beforeCalculation: { text:"計算前", className:"monitorSendStatusBadge is-unready", lastSent:"最終送信 --" },
+          waiting: { text:"送信待ち", className:"monitorSendStatusBadge is-waiting", lastSent:"最終送信 --" },
+          sent: { text:"送信済み", className:"monitorSendStatusBadge is-sent", lastSent:"最終送信 2026/8/23 17:14" },
+          summaryTitle:"今回送る内容",
+          summaryLabels:["苗枚数", "収穫ケース数", "収穫場所", "残すケース"],
+          memoClosed:{ hidden:true, count:"0件", expanded:"false" },
+          memoAfterAdd:{ hidden:false, itemCount:1, expanded:"true" },
+          openAction:"openMonitorMode",
+          editAction:"openMonitorEditorWindow",
+          saveAction:"saveCurrentMonitorRemoteContent",
+          saveLabel:"プレビューして送信",
+          actionBarPosition:"fixed"
+        }, "モニタータブの確認・メモ・送信操作が推奨配置になっていません");
       });
 
       await runTest("モニターの表示メモを1件だけでも削除できる", () => {
@@ -5115,18 +5208,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "8ebc2a0d", elements: 2170, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "7436418c", elements: 2238, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "6bb06ccd", elements: 2238, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "3a171932", elements: 2171, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "603acc5f", elements: 2171, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "81595895", elements: 2254, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "afdf28c0", elements: 2269, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "eb4d30a6", elements: 2269, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "d2e17d2c", elements: 2269, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "c3cb88db", elements: 2269, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "4073558b", elements: 2269, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "d66f4d5f", elements: 2269, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "37c46a08", elements: 2185, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "6b81a01f", elements: 2253, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "0f13488e", elements: 2253, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "258d443f", elements: 2186, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "a3c3c040", elements: 2186, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "179879f3", elements: 2269, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "6937d3ff", elements: 2284, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "1ae762cb", elements: 2284, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "cfd1c7a1", elements: 2284, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "a6bd6ca9", elements: 2284, visible: 76, viewport: "390x844" },
+          wideForecast: { hash: "d747825f", elements: 2284, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "bafa24ad", elements: 2284, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
