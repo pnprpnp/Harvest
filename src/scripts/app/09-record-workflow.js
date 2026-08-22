@@ -1342,7 +1342,11 @@ function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecor
 
   getPlantingCandidateRecordIdSet().forEach(harvestRecordId => {
     const safeHarvestRecordId = Number(harvestRecordId);
-    if(!Number.isFinite(safeHarvestRecordId) || safeHarvestRecordId === activeRecordId) return;
+    // 0枚の苗植え記録は「この収穫分は意図的に未定植で完了」と確定した記録です。
+    // そのパレットを後日の苗植え編集で、未処理の未定植として再度警告しないようにします。
+    if(!Number.isFinite(safeHarvestRecordId)
+      || safeHarvestRecordId === activeRecordId
+      || state.noPlantingCompletedHarvestIds.has(safeHarvestRecordId)) return;
     (state.pendingByHarvestId.get(safeHarvestRecordId) || new Set()).forEach(palletKey => {
       if(selectedLotKeys.has(getPlantingLotKey(safeHarvestRecordId, palletKey))) return;
       missingLots.push({ harvestRecordId: safeHarvestRecordId, palletKey });
