@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260822-fit-simulation-viewport">
+<meta name="harvestnavi-version" content="20260823-three-column-simulation-summary">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7489,7 +7489,8 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   min-height:48px;
   box-sizing:border-box;
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-auto-rows:minmax(48px,auto);
   margin:0 0 6px;
   overflow:hidden;
   border:1px solid var(--ui-line);
@@ -7498,13 +7499,15 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   box-shadow:var(--ui-shadow-sm);
 }
 .forecastPlacementStatusCard > .casePlacementRemainingSummary{
-  grid-column:2;
+  grid-column:3;
   grid-row:1;
+  z-index:1;
 }
 .forecastPlacementStatusCard > .forecastPlantingAgeResult{
   min-width:0;
   grid-column:1;
   grid-row:1;
+  z-index:1;
   border-right:1px solid var(--ui-line);
 }
 .casePlacementRemainingLabel{color:var(--ui-text-tertiary);font-size:9px;font-weight:650;line-height:1;}
@@ -7617,7 +7620,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   margin-top:0;
   overflow:hidden;
   border:1px solid var(--ui-line);
-  border-radius:12px;
+  border-radius:8px;
   background:var(--ui-surface-solid);
   box-shadow:var(--ui-shadow-sm);
 }
@@ -7625,47 +7628,50 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   border-color:var(--ui-line);
   background:var(--ui-surface-solid);
 }
-.casePlacementDetails.casePlacementNeedsInput > .casePlacementDetailsSummary{
-  background:var(--ui-surface-solid);
-}
-.casePlacementDetails.casePlacementNeedsInput .casePlacementDetailsLabel,
-.casePlacementDetails.casePlacementNeedsInput .casePlacementCompactSummary{
-  color:inherit;
-}
+.casePlacementNativeSummary{display:none;}
 .casePlacementDetailsSummary{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  width:100%;
+  min-width:0;
+  display:flex;
+  grid-column:2;
+  grid-row:1;
+  flex-direction:column;
+  justify-content:center;
   min-height:46px;
   box-sizing:border-box;
   align-items:center;
-  gap:10px;
-  padding:7px 12px;
+  gap:2px;
+  padding:4px 3px;
+  border:0;
+  border-right:1px solid var(--ui-line);
+  border-radius:0;
+  background:transparent;
+  color:inherit;
   cursor:pointer;
-  list-style:none;
 }
-.casePlacementDetailsHeading{min-width:0;display:flex;align-items:center;gap:9px;}
-.casePlacementDetailsIcon{width:22px;height:22px;flex:0 0 22px;color:var(--ui-accent);}
+.casePlacementDetailsHeading{min-width:0;display:block;}
+.casePlacementDetailsIcon{display:none;}
 .casePlacementDetailsIcon svg{display:block;width:100%;height:100%;}
-.casePlacementDetailsSummary::-webkit-details-marker{display:none;}
-.casePlacementDetailsSummary::marker{content:"";}
 .casePlacementDetailsLabel{
-  color:var(--ui-text);
-  font-size:15px;
-  font-weight:800;
+  color:var(--ui-text-tertiary);
+  font-size:9px;
+  font-weight:650;
+  line-height:1;
   white-space:nowrap;
 }
 .casePlacementCompactSummary{
   min-width:0;
   overflow:hidden;
   color:var(--ui-accent-dark);
-  font-size:13px;
-  font-weight:680;
+  font-size:15px;
+  font-weight:820;
+  line-height:1.2;
   text-align:center;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
 .casePlacementDetailsAction{
-  display:inline-flex;
+  display:none;
   align-items:center;
   gap:6px;
   justify-self:end;
@@ -7675,13 +7681,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   white-space:nowrap;
 }
 .casePlacementDetailsChevron{font-size:20px;font-weight:500;line-height:1;transition:transform .18s ease;}
-.casePlacementDetails[open] .casePlacementDetailsChevron{transform:rotate(90deg);}
-.casePlacementDetailsActionOpen{display:none;}
-.casePlacementDetails[open] .casePlacementDetailsActionClosed{display:none;}
-.casePlacementDetails[open] .casePlacementDetailsActionOpen{display:inline;}
-.casePlacementDetails[open] .casePlacementDetailsSummary{
-  border-bottom:1px solid var(--ui-line);
-}
+.casePlacementDetails:not([open]){display:none;}
 .casePlacementDetails:not([open]) > .casePlacementDetailsBody{display:none;}
 .casePlacementDetails[open] > .casePlacementDetailsBody{
   display:block;
@@ -8394,9 +8394,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])):not(:has(#harvestProgressPanel[open])) .forecastPlacementStatusCard{
     flex:0 0 auto;
     margin-bottom:4px;
-  }
-  #forecastSimulationCard:not(:has(#casePlacementDetails[open])):not(:has(#harvestProgressPanel[open])) .casePlacementDetails{
-    flex:0 0 auto;
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])):not(:has(#harvestProgressPanel[open])) .casePlacementDetailsSummary{
     min-height:42px;
@@ -11010,11 +11007,7 @@ requestAnimationFrame(function(){
             <button type="button" class="buildingBtn" data-ui-click="nextCasePlacementBuilding" aria-label="次の号棟">›</button>
           </div>
         </div>
-        <div id="forecastPlacementStatusCard" class="forecastPlacementStatusCard" aria-label="号棟の定植日数と収穫可能ケース数">
-          <div id="remainingCasesSummaryCard" class="casePlacementRemainingSummary" aria-label="選択中の号棟の収穫可能ケース数">
-            <span class="casePlacementRemainingLabel">収穫可能</span>
-            <span id="remainingCasesSummary" class="casePlacementRemainingValue">0ケース</span>
-          </div>
+        <div id="forecastPlacementStatusCard" class="forecastPlacementStatusCard" aria-label="号棟の定植日数、ケース配置、収穫可能ケース数">
           <section id="forecastPlantingAgeResult" class="forecastPlantingAgeResult" aria-labelledby="forecastPlantingAgeResultTitle" hidden>
             <div id="forecastPlantingAgeResultTitle" class="forecastPlantingAgeResultTitle">定植日数の詳細</div>
             <div class="forecastPlantingAgeValueRow">
@@ -11022,9 +11015,7 @@ requestAnimationFrame(function(){
               <button type="button" class="forecastPlantingAgeInfoBtn" data-ui-click="openPlantingAgeWindow" aria-label="定植日数の詳細を開く">ⓘ</button>
             </div>
           </section>
-        </div>
-        <details id="casePlacementDetails" class="casePlacementDetails">
-          <summary class="casePlacementDetailsSummary">
+          <button id="casePlacementSummaryButton" type="button" class="casePlacementDetailsSummary" data-ui-click="toggleCasePlacementDetails" aria-expanded="false" aria-controls="casePlacementDetails">
             <span class="casePlacementDetailsHeading">
               <span class="casePlacementDetailsIcon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" focusable="false">
@@ -11035,12 +11026,14 @@ requestAnimationFrame(function(){
               <span class="casePlacementDetailsLabel">ケース配置</span>
             </span>
             <span id="casePlacementCompactSummary" class="casePlacementCompactSummary">0ケース</span>
-            <span class="casePlacementDetailsAction" aria-hidden="true">
-              <span class="casePlacementDetailsActionClosed">変更</span>
-              <span class="casePlacementDetailsActionOpen">閉じる</span>
-              <span class="casePlacementDetailsChevron">›</span>
-            </span>
-          </summary>
+          </button>
+          <div id="remainingCasesSummaryCard" class="casePlacementRemainingSummary" aria-label="選択中の号棟の収穫可能ケース数">
+            <span class="casePlacementRemainingLabel">収穫可能</span>
+            <span id="remainingCasesSummary" class="casePlacementRemainingValue">0ケース</span>
+          </div>
+        </div>
+        <details id="casePlacementDetails" class="casePlacementDetails" data-ui-toggle="syncCasePlacementDetailsToggle">
+          <summary class="casePlacementNativeSummary">ケース配置の入力欄</summary>
           <div class="casePlacementDetailsBody">
             <div class="casePlacementDetailsToolbar">
               <button type="button" class="casePlacementDefaultBtn" data-ui-click="setDefaultCasePlacement">標準配置</button>
@@ -21618,6 +21611,20 @@ function updateCasePlacementTotal(){
     const needsInput = rawValues.every(value => String(value ?? "").trim() === "");
     details.classList.toggle("casePlacementNeedsInput", needsInput);
   }
+}
+
+function syncCasePlacementDetailsToggle(){
+  const details = document.getElementById("casePlacementDetails");
+  const button = document.getElementById("casePlacementSummaryButton");
+  if(!details || !button) return;
+  button.setAttribute("aria-expanded", details.open ? "true" : "false");
+}
+
+function toggleCasePlacementDetails(){
+  const details = document.getElementById("casePlacementDetails");
+  if(!details) return;
+  details.open = !details.open;
+  syncCasePlacementDetailsToggle();
 }
 
 function formatSettingValue(value){

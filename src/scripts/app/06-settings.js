@@ -139,6 +139,20 @@ function updateCasePlacementTotal(){
   }
 }
 
+function syncCasePlacementDetailsToggle(){
+  const details = document.getElementById("casePlacementDetails");
+  const button = document.getElementById("casePlacementSummaryButton");
+  if(!details || !button) return;
+  button.setAttribute("aria-expanded", details.open ? "true" : "false");
+}
+
+function toggleCasePlacementDetails(){
+  const details = document.getElementById("casePlacementDetails");
+  if(!details) return;
+  details.open = !details.open;
+  syncCasePlacementDetailsToggle();
+}
+
 function formatSettingValue(value){
   if(typeof value === "boolean") return value ? "有効" : "無効";
   if(value === "" || value === null || typeof value === "undefined") return "未入力";

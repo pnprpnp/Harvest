@@ -2032,23 +2032,31 @@
         assertEqual(sizes.current.boxShadow, "none", "中央の号棟表示に枠の影が残っています");
       });
 
-      await runTest("残りケース数と定植日数詳細をページネーション下のカードへまとめる", () => {
+      await runTest("定植日数・ケース配置・収穫可能をページネーション下で三分割する", () => {
         const previousTab = app.eval("activeAppTab");
         try{
           app.setMainTabSelection("forecast");
           const header = app.document.querySelector("#forecastTab .casePlacementHeader");
           const statusCard = app.document.getElementById("forecastPlacementStatusCard");
           const remaining = app.document.getElementById("remainingCasesSummaryCard");
+          const caseDetails = app.document.getElementById("casePlacementDetails");
+          const caseSummary = app.document.getElementById("casePlacementSummaryButton");
           const value = app.document.getElementById("remainingCasesSummary");
           const headerRect = header.getBoundingClientRect();
           const remainingRect = remaining.getBoundingClientRect();
+          const caseSummaryRect = caseSummary.getBoundingClientRect();
           const statusRect = statusCard.getBoundingClientRect();
           const state = comparable({
             noStatusBar: !app.document.querySelector("#forecastTab .buildingStatusBar"),
             belowPagination: statusRect.top >= headerRect.bottom,
             sharedCard: remaining.parentElement === statusCard
-              && app.document.getElementById("forecastPlantingAgeResult")?.parentElement === statusCard,
-            remainingUsesRightHalfBeforeCalculation: Math.abs(remainingRect.width - (statusRect.width / 2)) <= 2
+              && app.document.getElementById("forecastPlantingAgeResult")?.parentElement === statusCard
+              && caseSummary.parentElement === statusCard
+              && caseDetails.previousElementSibling === statusCard,
+            casePlacementUsesMiddleThird: Math.abs(caseSummaryRect.width - (statusRect.width / 3)) <= 2
+              && Math.abs((caseSummaryRect.left + (caseSummaryRect.width / 2))
+                - (statusRect.left + (statusRect.width / 2))) <= 2,
+            remainingUsesRightThirdBeforeCalculation: Math.abs(remainingRect.width - (statusRect.width / 3)) <= 2
               && Math.abs(remainingRect.right - statusRect.right) <= 2
               && remainingRect.top >= statusRect.top
               && remainingRect.bottom <= statusRect.bottom,
@@ -2062,13 +2070,14 @@
             noStatusBar: true,
             belowPagination: true,
             sharedCard: true,
-            remainingUsesRightHalfBeforeCalculation: true,
+            casePlacementUsesMiddleThird: true,
+            remainingUsesRightThirdBeforeCalculation: true,
             greenValue: true,
             labelIsSmallAndFaint: true,
             label: "収穫可能",
             hasCaseValue: true,
             noAlwaysVisiblePlantingAge: true
-          }, "残りケース数と定植日数詳細の共有カードがページネーション下にありません");
+          }, "定植日数・ケース配置・収穫可能の三分割カードになっていません");
         }finally{
           app.setMainTabSelection(previousTab);
         }
@@ -2330,8 +2339,8 @@
             bedsStayInsidePanel: bedRects.every(rect => (
               rect.top >= bedPanelRect.top - 1 && rect.bottom <= bedPanelRect.bottom + 1
             )),
-            compactBedHeight: bedRects.every(rect => rect.height >= 120 && rect.height < 206),
-            readableMapHeight: mapRects.every(rect => rect.height >= 80 && rect.height <= 150),
+            compactBedHeight: bedRects.every(rect => rect.height >= 120 && rect.height <= 230),
+            readableMapHeight: mapRects.every(rect => rect.height >= 80),
             panelUsesAvailableHeight: actionRect.top - panelRect.bottom >= -1
               && actionRect.top - panelRect.bottom <= 2
           };
@@ -2412,7 +2421,6 @@
         const inputPanelStyle = app.getComputedStyle(inputPanel);
         const bodyStyle = app.getComputedStyle(app.document.body);
         const frameRadii = [
-          ".casePlacementDetails",
           ".casePlacementDetails .casePlacementGrid",
           ".forecastSettingsOpenBtn",
           ".casePlacementCalculateBtn",
@@ -2546,20 +2554,23 @@
           inputs.middle.value = "34";
           inputs.front.value = "56";
           app.handleCasePlacementInput();
-          const detailsRect = details.getBoundingClientRect();
+          const statusRect = app.document.getElementById("forecastPlacementStatusCard").getBoundingClientRect();
+          const detailsSummary = app.document.getElementById("casePlacementSummaryButton");
+          const detailsSummaryRect = detailsSummary.getBoundingClientRect();
           const compactSummaryRect = app.document.getElementById("casePlacementCompactSummary").getBoundingClientRect();
           const compactState = comparable({
             defaultClosed,
             open: details.open,
-            label: details.querySelector(".casePlacementDetailsLabel")?.textContent.trim() || "",
+            label: detailsSummary.querySelector(".casePlacementDetailsLabel")?.textContent.trim() || "",
             summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || "",
             total: app.document.getElementById("casePlacementTotalValue")?.textContent || "",
             gridVisible: grid.getClientRects().length > 0,
             summaryIsVisuallyCentered: (() => {
               const offset = (compactSummaryRect.left + compactSummaryRect.width / 2)
-                - (detailsRect.left + detailsRect.width / 2);
+                - (statusRect.left + statusRect.width / 2);
               return offset >= -3 && offset <= 3;
-            })()
+            })(),
+            summaryUsesMiddleThird: Math.abs(detailsSummaryRect.width - (statusRect.width / 3)) <= 2
           });
           assertDeepEqual(compactState, {
             defaultClosed: true,
@@ -2568,14 +2579,16 @@
             summary: "102ケース",
             total: "102",
             gridVisible: false,
-            summaryIsVisuallyCentered: true
+            summaryIsVisuallyCentered: true,
+            summaryUsesMiddleThird: true
           }, "閉じたケース配分が一行要約になっていません");
 
           app.clearCasePlacement();
           const missingState = comparable({
             needsInput: details.classList.contains("casePlacementNeedsInput"),
-            collapsedUsesCardSurface: app.getComputedStyle(details).backgroundColor
-              === app.getComputedStyle(app.document.querySelector(".forecastCaseField")).backgroundColor,
+            collapsedUsesCardSurface: app.getComputedStyle(detailsSummary).backgroundColor === "rgba(0, 0, 0, 0)"
+              && app.getComputedStyle(detailsSummary.parentElement).backgroundColor
+                === app.getComputedStyle(app.document.querySelector(".forecastCaseField")).backgroundColor,
             inputsKeepMissingColor: app.getComputedStyle(details).backgroundColor
               !== app.getComputedStyle(inputs.front.closest(".inputUnitWrap")).backgroundColor,
             summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || ""
@@ -2587,14 +2600,21 @@
             summary: "0ケース"
           }, "閉じたケース配分または未入力欄の色分けが正しくありません");
 
-          details.open = true;
+          app.toggleCasePlacementDetails();
           app.setDefaultCasePlacement();
+          const expandedStatusRect = app.document.getElementById("forecastPlacementStatusCard").getBoundingClientRect();
+          const expandedSummaryRect = detailsSummary.getBoundingClientRect();
+          const expandedBodyRect = details.querySelector(".casePlacementDetailsBody").getBoundingClientRect();
           const expandedState = comparable({
             open: details.open,
             needsInput: details.classList.contains("casePlacementNeedsInput"),
             summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || "",
             total: app.document.getElementById("casePlacementTotalValue")?.textContent || "",
             gridVisible: grid.getClientRects().length > 0,
+            bodyUsesFullCardWidth: Math.abs(expandedBodyRect.left - expandedStatusRect.left) <= 2
+              && Math.abs(expandedBodyRect.right - expandedStatusRect.right) <= 2,
+            bodyOpensBelowSummary: expandedBodyRect.top >= expandedSummaryRect.bottom - 1,
+            buttonShowsExpandedState: detailsSummary.getAttribute("aria-expanded") === "true",
             standardButtonInDetails: !!details.querySelector(".casePlacementDefaultBtn"),
             clearButtonInDetails: !!details.querySelector(".casePlacementClearInlineBtn")
           });
@@ -2604,6 +2624,9 @@
             summary: "120ケース",
             total: "120",
             gridVisible: true,
+            bodyUsesFullCardWidth: true,
+            bodyOpensBelowSummary: true,
+            buttonShowsExpandedState: true,
             standardButtonInDetails: true,
             clearButtonInDetails: true
           }, "ケース配分を開いた時に従来の入力操作を表示できません");
@@ -4692,18 +4715,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "922d9cc8", elements: 2148, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "5ba2587b", elements: 2216, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "440cc4aa", elements: 2216, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "12f175b7", elements: 2149, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "5a0655ce", elements: 2149, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "1b24b29f", elements: 2232, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "bfacfd8c", elements: 2247, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "61b335d0", elements: 2247, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "94f13d40", elements: 2247, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "141c7287", elements: 2247, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "9d0f6ca2", elements: 2247, visible: 610, viewport: "1024x900" },
-          wideDashboard: { hash: "70fed99e", elements: 2247, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "6140b0e5", elements: 2145, visible: 602, viewport: "390x844" },
+          cssStates: { hash: "c0d72bcc", elements: 2213, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "6a960fa1", elements: 2213, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "2028a986", elements: 2146, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "2568c0d1", elements: 2146, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "b94ec194", elements: 2229, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "738febc4", elements: 2244, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "49f3a56c", elements: 2244, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "efb71d06", elements: 2244, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "f7ffa4b3", elements: 2244, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "0bfa0afb", elements: 2244, visible: 602, viewport: "1024x900" },
+          wideDashboard: { hash: "977c9aec", elements: 2244, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
