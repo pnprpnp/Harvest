@@ -301,6 +301,10 @@ function renderForecastSummary(){
   updateRecordPartialHarvestIncludedNote();
   const seedlingCounts = getSeedlingInstructionCounts();
   renderSeedlingHouseUi();
+  const resultActions = document.getElementById("forecastResultActions");
+  if(resultActions){
+    resultActions.hidden = !(harvestSummary && Array.isArray(harvestFillKeys) && harvestFillKeys.length > 0);
+  }
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);

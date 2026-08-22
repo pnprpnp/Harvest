@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-seedling-house-header-button">
+<meta name="harvestnavi-version" content="20260823-conditional-result-actions">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7450,18 +7450,15 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   margin-bottom:0;
   padding:4px 0;
 }
-.casePlacementHeader .seedlingHouseOpenBtn{
-  position:absolute;
-  left:0;
-  top:50%;
-  z-index:2;
+.forecastResultActions .seedlingHouseOpenBtn{
+  position:static;
   min-width:0;
-  min-height:28px;
+  min-height:34px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
   gap:2px;
-  transform:translateY(-50%);
+  transform:none;
   margin:0;
   padding:2px 4px;
   border:1px solid var(--ui-line);
@@ -7929,23 +7926,27 @@ button.forecastClearBtn{border-radius:10px;}
 .forecastPlantingAgeRange{overflow:hidden;color:var(--ui-accent-dark);font-size:15px;font-weight:820;line-height:1.2;text-overflow:ellipsis;white-space:nowrap;}
 .forecastPlantingAgeInfoBtn{width:22px;height:22px;flex:0 0 22px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:var(--ui-accent-soft);color:var(--ui-accent);font-size:14px;font-weight:800;line-height:1;}
 .forecastBottomClearRow{
-  display:flex;
-  justify-content:center;
-  width:100%;
-  max-width:760px;
-  margin:44px auto 0;
-  padding:0 0 8px;
+  width:min(100%,266px);
+  max-width:none;
+  display:grid;
+  grid-template-columns:72px minmax(0,1fr);
+  align-items:center;
+  flex:0 0 auto;
+  gap:8px;
+  margin:6px auto 0;
+  padding:0;
 }
+.forecastBottomClearRow[hidden]{display:none;}
 .forecastBottomClearRow button.forecastClearBtn{
-  width:min(100%,140px);
-  min-height:42px;
+  width:100%;
+  min-height:34px;
   margin:0;
-  padding:10px 12px;
+  padding:6px 10px;
   border-radius:10px;
   border:1px solid rgba(255,59,48,.28);
   background:#fff;
   color:#c62821;
-  font-size:14px;
+  font-size:12px;
   font-weight:720;
   box-shadow:0 2px 8px rgba(0,0,0,.06);
 }
@@ -8456,7 +8457,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
     font-size:10px;
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])):not(:has(#harvestProgressPanel[open])) .seedlingHouseOpenBtn{
-    min-height:28px;
+    min-height:34px;
     margin:0;
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])):not(:has(#harvestProgressPanel[open])) .harvestProgressPanel:not([hidden]){
@@ -11024,16 +11025,6 @@ requestAnimationFrame(function(){
 
       <div class="casePlacementPanel">
         <div class="casePlacementHeader">
-          <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-label="苗取り場所の1号棟を開く" aria-haspopup="dialog" aria-controls="seedlingHouseModal">
-            <span class="seedlingHouseOpenIcon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
-                <path d="M12 21V10"></path>
-                <path d="M12 14c-4.5 0-7-2.2-7-6 4.5 0 7 2.2 7 6Z"></path>
-                <path d="M12 10c0-4 2.4-6 7-6 0 4-2.4 6-7 6Z"></path>
-              </svg>
-            </span>
-            <span class="seedlingHouseOpenBuilding">1号棟</span>
-          </button>
           <div class="buildingSwitch casePlacementBuildingSwitch">
             <button type="button" class="buildingBtn" data-ui-click="prevCasePlacementBuilding" aria-label="前の号棟">‹</button>
             <button id="casePlacementBuildingBtn" class="buildingBtn active">2号棟</button>
@@ -11109,6 +11100,19 @@ requestAnimationFrame(function(){
         <div class="casePlacementBedPanel">
           <div id="beds" class="bedWrap"></div>
         </div>
+        <div id="forecastResultActions" class="forecastResultActions forecastBottomClearRow" hidden>
+          <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-label="苗取り場所の1号棟を開く" aria-haspopup="dialog" aria-controls="seedlingHouseModal">
+            <span class="seedlingHouseOpenIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="M12 21V10"></path>
+                <path d="M12 14c-4.5 0-7-2.2-7-6 4.5 0 7 2.2 7 6Z"></path>
+                <path d="M12 10c0-4 2.4-6 7-6 0 4-2.4 6-7 6Z"></path>
+              </svg>
+            </span>
+            <span class="seedlingHouseOpenBuilding">1号棟</span>
+          </button>
+          <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction">計算結果をクリア</button>
+        </div>
         <div class="simulationBedMapLegend" aria-label="ベッド配置図の色分け">
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>記録済み</span>
@@ -11169,9 +11173,6 @@ requestAnimationFrame(function(){
 選択枚数: 0
 終了パレット: -</div>
       </details>
-      <div class="forecastBottomClearRow">
-        <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction">計算結果をクリア</button>
-      </div>
     </div>
 
   </div>
@@ -30384,6 +30385,10 @@ function renderForecastSummary(){
   updateRecordPartialHarvestIncludedNote();
   const seedlingCounts = getSeedlingInstructionCounts();
   renderSeedlingHouseUi();
+  const resultActions = document.getElementById("forecastResultActions");
+  if(resultActions){
+    resultActions.hidden = !(harvestSummary && Array.isArray(harvestFillKeys) && harvestFillKeys.length > 0);
+  }
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);

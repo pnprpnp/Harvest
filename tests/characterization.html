@@ -1606,32 +1606,30 @@
             renderForecastSummary();
           `);
           const button = app.document.getElementById("seedlingHouseOpenBtn");
-          const header = app.document.querySelector("#forecastTab .casePlacementHeader");
-          const currentBuildingButton = app.document.getElementById("casePlacementBuildingBtn");
+          const resultActions = app.document.getElementById("forecastResultActions");
+          const clearButton = resultActions.querySelector(".forecastClearBtn");
+          const bedPanel = app.document.querySelector("#forecastTab .casePlacementBedPanel");
           const buttonRect = button.getBoundingClientRect();
-          const headerRect = header.getBoundingClientRect();
-          const currentBuildingRect = currentBuildingButton.getBoundingClientRect();
-          const headerState = comparable({
-            inHeader: button.parentElement === header
-              && buttonRect.top >= headerRect.top
-              && buttonRect.bottom <= headerRect.bottom,
-            leftOfPagination: buttonRect.right < currentBuildingRect.left,
-            paginationStaysCentered: Math.abs(
-              (currentBuildingRect.left + currentBuildingRect.width / 2)
-              - (headerRect.left + headerRect.width / 2)
-            ) <= 2,
-            compact: buttonRect.width <= 56 && buttonRect.height <= 32,
+          const clearButtonRect = clearButton.getBoundingClientRect();
+          const resultActionState = comparable({
+            visibleAfterCalculation: !resultActions.hidden && resultActions.getClientRects().length > 0,
+            directlyBelowBeds: resultActions.previousElementSibling === bedPanel,
+            buttonsShareRow: Math.abs(buttonRect.top - clearButtonRect.top) <= 1
+              && Math.abs(buttonRect.bottom - clearButtonRect.bottom) <= 1,
+            compact: buttonRect.width <= 78 && buttonRect.height <= 36,
             hasSeedlingIcon: !!button.querySelector(".seedlingHouseOpenIcon svg"),
-            accessibleLabelIncludesPurpose: (button.getAttribute("aria-label") || "").startsWith("1号棟の苗取り場所")
+            accessibleLabelIncludesPurpose: (button.getAttribute("aria-label") || "").startsWith("1号棟の苗取り場所"),
+            clearLabel: clearButton.textContent.trim()
           });
-          assertDeepEqual(headerState, {
-            inHeader: true,
-            leftOfPagination: true,
-            paginationStaysCentered: true,
+          assertDeepEqual(resultActionState, {
+            visibleAfterCalculation: true,
+            directlyBelowBeds: true,
+            buttonsShareRow: true,
             compact: true,
             hasSeedlingIcon: true,
-            accessibleLabelIncludesPurpose: true
-          }, "1号棟ボタンが号棟選択行の左側へ小さく配置されていません");
+            accessibleLabelIncludesPurpose: true,
+            clearLabel: "計算結果をクリア"
+          }, "計算後の1号棟ボタンとクリアボタンが配置図直下の同じ行にありません");
           app.openSeedlingHouseWindow();
           const viewState = {
             buttonText: button.textContent.replace(/\s+/g, " ").trim(),
@@ -2234,9 +2232,14 @@
         }, "定植日数の詳細が計算後にページネーション下の共有カードへ表示されていません");
       });
 
-      await runTest("シミュ下部に設定と計算を固定しクリアを内容末尾へ移す", async () => {
+      await runTest("計算後だけ1号棟とクリアを配置図直下の同じ行に表示する", async () => {
         const previousTab = app.eval("activeAppTab");
         const previousFrameWidth = iframe.style.width;
+        const previousSelectionState = app.eval(`JSON.stringify({
+          keys:[...harvestFillKeys],
+          summary:harvestSummary,
+          mode:harvestSelectionMode
+        })`);
         try{
           app.setMainTabSelection("forecast");
           const actionBar = app.document.querySelector(".forecastActionRow");
@@ -2244,12 +2247,26 @@
           const settingsSummary = settingsButton.querySelector(".forecastSettingsSummary");
           const calculateButton = actionBar.querySelector(".casePlacementCalculateBtn");
           const clearButton = app.document.querySelector(".forecastBottomClearRow .forecastClearBtn");
-          const forecastCard = app.document.getElementById("forecastSimulationCard");
+          const resultActions = app.document.getElementById("forecastResultActions");
+          const seedlingButton = app.document.getElementById("seedlingHouseOpenBtn");
+          const bedPanel = app.document.querySelector("#forecastTab .casePlacementBedPanel");
           const tabBar = app.document.querySelector(".tabBar");
+          app.eval(`harvestFillKeys=[]; harvestSummary=null; harvestSelectionMode="none"; renderForecastSummary();`);
+          const resultActionsHiddenBeforeCalculation = resultActions.hidden
+            && resultActions.getClientRects().length === 0;
+          app.eval(`
+            harvestFillKeys=[getPalletKey(2,"A",1)];
+            harvestSummary={start:harvestFillKeys[0],end:harvestFillKeys[0],filledCount:1,totalHarvest:12,needHeads:12};
+            harvestSelectionMode="auto";
+            renderForecastSummary();
+          `);
           const actionBarRect = actionBar.getBoundingClientRect();
           const settingsRect = settingsButton.getBoundingClientRect();
           const calculateRect = calculateButton.getBoundingClientRect();
           const tabBarRect = tabBar.getBoundingClientRect();
+          const resultActionsRect = resultActions.getBoundingClientRect();
+          const seedlingButtonRect = seedlingButton.getBoundingClientRect();
+          const clearRect = clearButton.getBoundingClientRect();
           const actionStyle = app.getComputedStyle(actionBar);
           const actionGapStyle = app.getComputedStyle(actionBar, "::after");
           const clearStyle = app.getComputedStyle(clearButton);
@@ -2281,9 +2298,14 @@
             settingsSummaryIsSingleLine: settingsSummaryStyle.whiteSpace === "nowrap",
             settingsSummaryFits: settingsSummary.scrollWidth <= settingsSummary.clientWidth
               && settingsSummary.scrollHeight <= settingsSummary.clientHeight,
+            resultActionsHiddenBeforeCalculation,
+            resultActionsVisibleAfterCalculation: !resultActions.hidden
+              && resultActionsRect.height > 0,
+            resultActionsAfterBeds: resultActions.previousElementSibling === bedPanel,
+            clearSharesRowWithSeedling: Math.abs(seedlingButtonRect.top - clearRect.top) <= 1
+              && Math.abs(seedlingButtonRect.bottom - clearRect.bottom) <= 1,
             clearLabel: clearButton.textContent.trim(),
             clearOutsideFixedBar: !actionBar.contains(clearButton),
-            clearAtContentBottom: forecastCard.lastElementChild === clearButton.closest(".forecastBottomClearRow"),
             clearIsOutlined: parseFloat(clearStyle.borderTopWidth) >= 1 && clearStyle.backgroundColor === "rgb(255, 255, 255)",
             buttonsStayInsideViewport: settingsRect.left >= 12 && calculateRect.right <= app.innerWidth - 12,
             contentClearsActionBar: parseFloat(forecastStyle.paddingBottom) >= actionBarRect.height
@@ -2307,9 +2329,12 @@
             settingsSummaryIsLarger: true,
             settingsSummaryIsSingleLine: true,
             settingsSummaryFits: true,
+            resultActionsHiddenBeforeCalculation: true,
+            resultActionsVisibleAfterCalculation: true,
+            resultActionsAfterBeds: true,
+            clearSharesRowWithSeedling: true,
             clearLabel: "計算結果をクリア",
             clearOutsideFixedBar: true,
-            clearAtContentBottom: true,
             clearIsOutlined: true,
             buttonsStayInsideViewport: true,
             contentClearsActionBar: true
@@ -2328,10 +2353,26 @@
             narrowSettingsRect.left >= 12 && narrowCalculateRect.right <= app.innerWidth - 12,
             "320px幅で固定ボタンが画面外にはみ出しています"
           );
+          assert(
+            resultActions.getBoundingClientRect().left >= 12
+              && resultActions.getBoundingClientRect().right <= app.innerWidth - 12,
+            "320px幅で計算結果の操作行が画面外にはみ出しています"
+          );
+
+          app.clearHarvestPrediction();
+          assert(resultActions.hidden && resultActions.getClientRects().length === 0,
+            "計算結果をクリアした後も結果操作が表示されています");
 
           app.setMainTabSelection("monitor");
           assertEqual(actionBar.getClientRects().length, 0, "シミュ以外のタブにも固定操作バーが表示されています");
         }finally{
+          app.eval(`(() => {
+            const state=JSON.parse(${JSON.stringify(previousSelectionState)});
+            harvestFillKeys=state.keys;
+            harvestSummary=state.summary;
+            harvestSelectionMode=state.mode;
+            renderForecastSummary();
+          })()`);
           iframe.style.width = previousFrameWidth;
           app.setMainTabSelection(previousTab);
         }
@@ -2355,6 +2396,7 @@
           const bedPanelRect = visualApp.document.querySelector("#forecastTab .casePlacementBedPanel").getBoundingClientRect();
           const actionRect = visualApp.document.querySelector(".forecastActionRow").getBoundingClientRect();
           const seedlingButtonRect = visualApp.document.getElementById("seedlingHouseOpenBtn").getBoundingClientRect();
+          const resultActions = visualApp.document.getElementById("forecastResultActions");
           const bedRects = [...visualApp.document.querySelectorAll("#beds .simulationBedOverview")]
             .map(element => element.getBoundingClientRect());
           const mapRects = [...visualApp.document.querySelectorAll("#beds .dashboardSeedlingBedMapGrid")]
@@ -2363,7 +2405,8 @@
           const normalState = {
             startsBelowHeader: caseFieldRect.top >= topChromeRect.bottom,
             panelEndsBeforeActionBar: panelRect.bottom <= actionRect.top + 1,
-            seedlingButtonEndsBeforeActionBar: seedlingButtonRect.bottom <= actionRect.top + 1,
+            resultActionsHiddenBeforeCalculation: resultActions.hidden
+              && seedlingButtonRect.width === 0 && seedlingButtonRect.height === 0,
             sixBeds: bedRects.length === 6,
             twoBedRows: rowTops.length === 2,
             bedsStayInsidePanel: bedRects.every(rect => (
@@ -2371,8 +2414,6 @@
             )),
             compactBedHeight: bedRects.every(rect => rect.height >= 120 && rect.height <= 250),
             readableMapHeight: mapRects.every(rect => rect.height >= 80),
-            seedlingButtonStaysInHeader: seedlingButtonRect.top >= visualApp.document.querySelector("#forecastTab .casePlacementHeader").getBoundingClientRect().top
-              && seedlingButtonRect.bottom <= visualApp.document.querySelector("#forecastTab .casePlacementHeader").getBoundingClientRect().bottom,
             panelUsesAvailableHeight: actionRect.top - panelRect.bottom >= -1
               && actionRect.top - panelRect.bottom <= 2
           };
@@ -2384,13 +2425,12 @@
           assertDeepEqual(normalState, {
             startsBelowHeader: true,
             panelEndsBeforeActionBar: true,
-            seedlingButtonEndsBeforeActionBar: true,
+            resultActionsHiddenBeforeCalculation: true,
             sixBeds: true,
             twoBedRows: true,
             bedsStayInsidePanel: true,
             compactBedHeight: true,
             readableMapHeight: true,
-            seedlingButtonStaysInHeader: true,
             panelUsesAvailableHeight: true
           }, "通常状態のシミュ主要操作が画面内に収まっていません");
           assert(expandedBedHeight >= 200, "ケース配置を開いた時にスクロール用の通常サイズへ戻りません");
@@ -4749,18 +4789,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "90e1b198", elements: 2150, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "2ce14f05", elements: 2218, visible: 665, viewport: "390x844" },
-          cssFocus: { hash: "68b3241c", elements: 2218, visible: 665, viewport: "390x844" },
-          mobileRecord: { hash: "dd6638a5", elements: 2151, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "4dc37f40", elements: 2151, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "45c119d2", elements: 2234, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "1368b1df", elements: 2249, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "8a92eba1", elements: 2249, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "ca765517", elements: 2249, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "131b0e36", elements: 2249, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "3817fff1", elements: 2249, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "bdff419f", elements: 2249, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "a14e4c2c", elements: 2150, visible: 598, viewport: "390x844" },
+          cssStates: { hash: "19b3fcd1", elements: 2218, visible: 657, viewport: "390x844" },
+          cssFocus: { hash: "3b3f4688", elements: 2218, visible: 657, viewport: "390x844" },
+          mobileRecord: { hash: "05e10882", elements: 2151, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "c891d90b", elements: 2151, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "b1d34477", elements: 2234, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "1c9dea8c", elements: 2249, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "c698ea86", elements: 2249, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "991f9316", elements: 2249, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "857996d5", elements: 2249, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "23149c0f", elements: 2249, visible: 598, viewport: "1024x900" },
+          wideDashboard: { hash: "4ff81e32", elements: 2249, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
