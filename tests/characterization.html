@@ -1160,6 +1160,49 @@
         }
       });
 
+      await runTest("二次定植の苗サイズを同系色の明暗で表示する", () => {
+        const colors = comparable(app.eval(`(() => {
+          const previousTheme = document.documentElement.getAttribute("data-theme");
+          const fixture = document.createElement("div");
+          fixture.innerHTML = [
+            '<span class="dashboardSeedlingStatusMapGuideSwatch is-small"></span>',
+            '<span class="dashboardSeedlingStatusMapGuideSwatch"></span>',
+            '<span class="dashboardSeedlingStatusMapGuideSwatch is-large"></span>',
+            '<span class="dashboardSeedlingStatusQuality is-small"></span>',
+            '<span class="dashboardSeedlingStatusQuality"></span>',
+            '<span class="dashboardSeedlingStatusQuality is-large"></span>'
+          ].join("");
+          document.body.appendChild(fixture);
+          const readColors = () => ({
+            fills: [...fixture.querySelectorAll(".dashboardSeedlingStatusMapGuideSwatch")]
+              .map(item => getComputedStyle(item).backgroundColor),
+            texts: [...fixture.querySelectorAll(".dashboardSeedlingStatusQuality")]
+              .map(item => getComputedStyle(item).color)
+          });
+          try{
+            document.documentElement.setAttribute("data-theme", "light");
+            const light = readColors();
+            document.documentElement.setAttribute("data-theme", "dark");
+            const dark = readColors();
+            return { light, dark };
+          }finally{
+            fixture.remove();
+            if(previousTheme === null) document.documentElement.removeAttribute("data-theme");
+            else document.documentElement.setAttribute("data-theme", previousTheme);
+          }
+        })()`));
+        assertDeepEqual(colors, {
+          light: {
+            fills: ["rgb(187, 247, 208)", "rgb(74, 222, 128)", "rgb(21, 128, 61)"],
+            texts: ["rgb(63, 143, 91)", "rgb(22, 101, 52)", "rgb(20, 83, 45)"]
+          },
+          dark: {
+            fills: ["rgb(134, 239, 172)", "rgb(34, 197, 94)", "rgb(21, 128, 61)"],
+            texts: ["rgb(187, 247, 208)", "rgb(134, 239, 172)", "rgb(74, 222, 128)"]
+          }
+        }, "二次定植の小・中・大が同系色の明暗になっていません");
+      });
+
       await runTest("二次定植の浮動詳細を選択ベッドと重ねず画面内に表示する", async () => {
         const visualFrame = await loadVisualAppFrame(390, 844);
         const visualApp = visualFrame.contentWindow;
@@ -4845,18 +4888,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "4ea0f11d", elements: 2150, visible: 598, viewport: "390x844" },
-          cssStates: { hash: "20971ab2", elements: 2218, visible: 657, viewport: "390x844" },
-          cssFocus: { hash: "186857ff", elements: 2218, visible: 657, viewport: "390x844" },
-          mobileRecord: { hash: "7efe05db", elements: 2151, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "a52d641e", elements: 2151, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "178ece74", elements: 2234, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "88e4291d", elements: 2249, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "b84d995b", elements: 2249, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "7547213d", elements: 2249, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "0a23df4e", elements: 2249, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "c2387146", elements: 2249, visible: 598, viewport: "1024x900" },
-          wideDashboard: { hash: "6ee0ccc1", elements: 2249, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "ff2a1253", elements: 2150, visible: 598, viewport: "390x844" },
+          cssStates: { hash: "328e7230", elements: 2218, visible: 657, viewport: "390x844" },
+          cssFocus: { hash: "dc73d8ed", elements: 2218, visible: 657, viewport: "390x844" },
+          mobileRecord: { hash: "7f69332d", elements: 2151, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "0406e262", elements: 2151, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "e4417e36", elements: 2234, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "346bcb97", elements: 2249, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "2890fb19", elements: 2249, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "cbf7a367", elements: 2249, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "1f3f5348", elements: 2249, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "a9f1bc2e", elements: 2249, visible: 598, viewport: "1024x900" },
+          wideDashboard: { hash: "278add8f", elements: 2249, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
