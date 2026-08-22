@@ -194,6 +194,7 @@ let recordDetailLocationModel = null;
 let recordDetailLocationBuilding = null;
 let recordDetailLocationSelectedBed = null;
 let recordDetailLocationSelectedGroupClass = null;
+let recordDetailLocationSelectedPalletKeys = new Set();
 let recordDetailDayContext = null;
 let recordDetailDayLocationView = "harvest";
 let recordDetailLoadToken = 0;
@@ -983,6 +984,9 @@ function saveHarvestStateToStorage(options = {}){
     recordPlantingSummaryInput: document.getElementById("recordPlantingSummaryInput")?.value || "",
     recordMemoInput: document.getElementById("recordMemoInput")?.value || "",
     qualityMemo: getSelectedQualityMemo(),
+    qualityMemoByPallet: recordSelectionMode === "planting"
+      ? normalizeQualityMemoByPallet(plantingRecordDraft?.qualityMemoByPallet, harvestFillKeys)
+      : {},
     recordCasesEdited,
     recordPlantingSummaryEdited,
     recordAdditionalBuildings: [...recordAdditionalBuildings],
@@ -1111,6 +1115,7 @@ function loadHarvestStateFromStorage(){
       recordPlantingSummaryInput: parsed.recordPlantingSummaryInput ?? "",
       recordMemoInput: parsed.recordMemoInput ?? "",
       qualityMemo: normalizeQualityMemo(parsed.qualityMemo || null),
+      qualityMemoByPallet: normalizeQualityMemoByPallet(parsed.qualityMemoByPallet, parsed.harvestFillKeys),
       recordCasesEdited: !!parsed.recordCasesEdited,
       recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
       recordAdditionalBuildings: Array.isArray(parsed.recordAdditionalBuildings)
@@ -1597,7 +1602,8 @@ function normalizePlantingRecordDraft(value){
     actualSeedlingUserEdited: !!value.actualSeedlingUserEdited,
     plantingSummaryInput: String(value.plantingSummaryInput || ""),
     recordPlantingSummaryEdited: !!value.recordPlantingSummaryEdited,
-    qualityMemo: normalizeOptionalQualityMemo(value.qualityMemo)
+    qualityMemo: normalizeOptionalQualityMemo(value.qualityMemo),
+    qualityMemoByPallet: normalizeQualityMemoByPallet(value.qualityMemoByPallet, value.keys)
   };
 }
 
@@ -1621,7 +1627,11 @@ function capturePlantingRecordDraft(){
     actualSeedlingUserEdited: document.getElementById("recordActualSeedlingTrayCountInput")?.dataset.userEdited === "1",
     plantingSummaryInput: document.getElementById("recordPlantingSummaryInput")?.value || "",
     recordPlantingSummaryEdited,
-    qualityMemo: normalizeOptionalQualityMemo(getSelectedQualityMemo())
+    qualityMemo: normalizeOptionalQualityMemo(getSelectedQualityMemo()),
+    qualityMemoByPallet: normalizeQualityMemoByPallet(
+      getActivePlantingRecord()?.qualityMemoByPallet,
+      harvestFillKeys
+    )
   };
 }
 

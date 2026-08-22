@@ -348,6 +348,10 @@ function normalizePlantingEvent(event) {
       ""
     ),
     qualityMemo: normalizePlantingQualityMemoInput(event.qualityMemo),
+    qualityMemoByPallet: normalizePlantingQualityMemoByPalletInput(
+      event.qualityMemoByPallet,
+      new Set(plantingPalletKeys)
+    ),
     detailsUnknown: normalizePlantingEventDetailsUnknown(event.detailsUnknown),
     createdAt: normalizeOptionalTimestamp(event.createdAt, "作成日時"),
     updatedAt: normalizeOptionalTimestamp(event.updatedAt, "更新日時")
@@ -552,6 +556,21 @@ function normalizePlantingQualityMemoInput(value) {
   }
   const qualityMemo = normalizeQualityMemoInput(value);
   return qualityMemo && (qualityMemo.tags.length || qualityMemo.other) ? qualityMemo : null;
+}
+
+function normalizePlantingQualityMemoByPalletInput(value, plantingKeySet) {
+  if (value === null || typeof value === "undefined" || value === "") return {};
+  if (!isPlainObject(value)) throw new Error("パレット別苗品質はオブジェクトで指定してください");
+  const normalized = {};
+  Object.keys(value).forEach(key => {
+    if (!plantingKeySet.has(key)) {
+      throw new Error("パレット別苗品質に苗植え場所ではないパレットがあります");
+    }
+    const memo = value[key] === null ? { tags: [], other: "" } : value[key];
+    const normalizedMemo = normalizeQualityMemoInput(memo);
+    normalized[key] = normalizedMemo || { tags: [], other: "" };
+  });
+  return normalized;
 }
 
 function normalizeQualityTagInput(value) {

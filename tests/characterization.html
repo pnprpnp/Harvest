@@ -3680,6 +3680,77 @@
         assertEqual(locationState.twenty.activeButtonBackground, locationState.twelve.activeButtonBackground, "20植えボタンだけ別の選択色になっています");
       });
 
+      await runTest("苗植え詳細から場所別品質と植え付け数を変更できる", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            plantingEvents,
+            model: recordDetailLocationModel,
+            building: recordDetailLocationBuilding,
+            bed: recordDetailLocationSelectedBed,
+            groupClass: recordDetailLocationSelectedGroupClass,
+            selected: recordDetailLocationSelectedPalletKeys,
+            protectedAccessUnlocked
+          };
+          const event = normalizePlantingEvent({
+            palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+            eventId: 20999999999992,
+            plantingDate: "2026-08-14",
+            sourceAllocations: [{ harvestRecordId: 20999999999993, palletKeys: ["2-A-1", "2-A-2"] }],
+            plantingPalletKeys: ["2-A-1", "2-A-2"],
+            plantingCountsByPallet: { "2-A-1": 12, "2-A-2": 20 },
+            actualSeedlingTrayCount: 1,
+            actualTakenSeedlingCount: 120,
+            actualPlantedSeedlingCount: 32,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "0",
+            qualityMemo: { tags: ["large"], other: "" },
+            qualityMemoByPallet: {
+              "2-A-1": { tags: ["large"], other: "" },
+              "2-A-2": { tags: ["small"], other: "" }
+            },
+            detailsUnknown: false
+          });
+          const mount = document.createElement("div");
+          mount.id = "recordDetailLocationMount";
+          document.body.appendChild(mount);
+          try{
+            protectedAccessUnlocked = true;
+            plantingEvents = [event];
+            recordDetailLocationModel = buildRecordDetailLocationModel("planting", event);
+            recordDetailLocationBuilding = 2;
+            recordDetailLocationSelectedBed = "A";
+            recordDetailLocationSelectedGroupClass = "is-planting-count-all";
+            recordDetailLocationSelectedPalletKeys = new Set(["2-A-1"]);
+            renderRecordDetailLocationDisplay();
+            const controls = [...mount.querySelectorAll(".recordDetailPlantingEditBtn")].map(button => button.textContent.trim());
+            applyRecordDetailLocationPlantingCount(16);
+            recordDetailLocationSelectedPalletKeys = new Set(["2-A-1"]);
+            applyRecordDetailLocationQuality("small");
+            const updated = plantingEvents[0];
+            return {
+              controls,
+              count: updated.plantingCountsByPallet["2-A-1"],
+              quality: formatPlantingQualityMemo(getPlantingQualityMemoForPallet(updated, "2-A-1")),
+              otherQuality: formatPlantingQualityMemo(getPlantingQualityMemoForPallet(updated, "2-A-2"))
+            };
+          }finally{
+            mount.remove();
+            plantingEvents = previous.plantingEvents;
+            recordDetailLocationModel = previous.model;
+            recordDetailLocationBuilding = previous.building;
+            recordDetailLocationSelectedBed = previous.bed;
+            recordDetailLocationSelectedGroupClass = previous.groupClass;
+            recordDetailLocationSelectedPalletKeys = previous.selected;
+            protectedAccessUnlocked = previous.protectedAccessUnlocked;
+          }
+        })()`));
+        assert(state.controls.includes("12植え") && state.controls.includes("16植え") && state.controls.includes("20植え"), "詳細表示に植え付け数の変更ボタンがありません");
+        assert(state.controls.includes("大きい") && state.controls.includes("小さい"), "詳細表示に品質変更ボタンがありません");
+        assertEqual(state.count, 16, "詳細表示から植え付け数を変更できません");
+        assertEqual(state.quality, "小さい", "詳細表示から場所別品質を変更できません");
+        assertEqual(state.otherQuality, "小さい", "別パレットの品質が意図せず変わりました");
+      });
+
       await runTest("12植えと16植えの色を入れ替えて統一する", () => {
         const colors = comparable(app.eval(`(() => {
           const host = document.createElement("div");

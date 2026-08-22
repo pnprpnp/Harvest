@@ -199,6 +199,7 @@ const PLANTING_EVENT_FIELD_KEYS = [
   "actualSeedlingCarryoverMode",
   "actualSeedlingLossRate",
   "qualityMemo",
+  "qualityMemoByPallet",
   "createdAt",
   "updatedAt",
   "detailsUnknown",
@@ -220,6 +221,7 @@ const PLANTING_EVENT_HEADER_LABELS = {
   actualSeedlingCarryoverMode: "余り苗区分",
   actualSeedlingLossRate: "実苗ロス率",
   qualityMemo: "苗の品質メモ",
+  qualityMemoByPallet: "パレット別苗品質JSON",
   detailsUnknown: "苗数量情報",
   createdAt: "作成日時",
   updatedAt: "更新日時",
@@ -237,7 +239,8 @@ const PLANTING_EVENT_FORMULA_SAFE_KEYS = new Set([
   "plantingCountsByPallet",
   "seedlingHousePalletKeys",
   "seedlingHouseNextStartKey",
-  "qualityMemo"
+  "qualityMemo",
+  "qualityMemoByPallet"
 ]);
 
 let requestScopedSpreadsheet = null;

@@ -964,7 +964,7 @@ function getDashboardRecordSearchText(record, harvestCaseTotalsByDate = null){
           event.plantingDate || "",
           formatPlantingSummaryForKeys(allocation?.palletKeys || []),
           event.detailsUnknown ? "苗情報 不明" : `${event.actualSeedlingTrayCount}枚`,
-          formatPlantingQualityMemo(event.qualityMemo)
+          formatPlantingQualityMemo(getPlantingQualityMemoSummary(event))
         ].join("\n");
       }).join("\n");
   return [
@@ -994,7 +994,7 @@ function getDashboardPlantingEventSearchText(event){
     formatPlantingSummaryForKeys(event?.plantingPalletKeys || []) || "苗植えなし",
     metrics.seedlingTrayText,
     metrics.lossRateText,
-    formatPlantingQualityMemo(event?.qualityMemo),
+    formatPlantingQualityMemo(getPlantingQualityMemoSummary(event)),
     sourceText
   ].join("\n").toLowerCase();
 }
@@ -2711,7 +2711,8 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
       || !Number.isFinite(pallet.number)) return;
     const bedKey = `${pallet.building}-${pallet.bed}`;
     if(!bedLotMaps.has(bedKey)) bedLotMaps.set(bedKey, new Map());
-    const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
+    const qualityMemo = getPlantingQualityMemoForPallet(status.event, palletKey);
+    const qualityText = formatPlantingQualityMemo(qualityMemo);
     const plantingDateText = formatDateOnlyString(status.plantingDate);
     const plantingCount = Number(status.event?.plantingCountsByPallet?.[palletKey]);
     const normalizedPlantingCount = ALLOWED_YIELDS.includes(plantingCount) ? plantingCount : null;
@@ -2726,7 +2727,7 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
         plantingCount: normalizedPlantingCount,
         plantingCountText,
         qualityText,
-        qualityClass: getDashboardSeedlingQualityClass(status.event?.qualityMemo),
+        qualityClass: getDashboardSeedlingQualityClass(qualityMemo),
         palletCount: 0,
         firstPalletNumber: pallet.number,
         palletNumbers: []
@@ -2791,8 +2792,9 @@ function getDashboardSeedlingBedMapCellHtml(model, building, bed, number, sectio
     return `<span class="dashboardSeedlingBedMapCell is-unplanted${sectionStart ? " is-section-start" : ""}" data-dashboard-seedling-pallet-number="${number}" title="${escapeHtml(label)}"></span>`;
   }
 
-  const qualityText = formatPlantingQualityMemo(status.event?.qualityMemo);
-  const qualityClass = getDashboardSeedlingQualityClass(status.event?.qualityMemo);
+  const qualityMemo = getPlantingQualityMemoForPallet(status.event, getPalletKey(building, bed, number));
+  const qualityText = formatPlantingQualityMemo(qualityMemo);
+  const qualityClass = getDashboardSeedlingQualityClass(qualityMemo);
   const plantingCount = Number(status.event?.plantingCountsByPallet?.[getPalletKey(building, bed, number)]);
   const plantingCountText = ALLOWED_YIELDS.includes(plantingCount) ? `${plantingCount}植え` : "株数未記録";
   const ageDays = Math.max(0, getLocalDayDiff(status.plantingDate, model.referenceDate));

@@ -288,6 +288,7 @@ function applyAddedPlantingEventColumnLayout(sheet, startColumn, keys) {
     "sourceAllocations",
     "plantingPalletKeys",
     "plantingCountsByPallet",
+    "qualityMemoByPallet",
     "seedlingHousePalletKeys",
     "seedlingHouseNextStartKey",
     "palletNumberingVersion"
@@ -333,7 +334,7 @@ function applyPlantingEventSheetLayout(sheet, headers) {
       .setNumberFormat(formats[key]);
   });
   sheet.showColumns(1, Math.max(sheet.getLastColumn(), headers.length));
-  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "seedlingHousePalletKeys", "seedlingHouseNextStartKey", "palletNumberingVersion"].forEach(key => {
+  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "qualityMemoByPallet", "seedlingHousePalletKeys", "seedlingHouseNextStartKey", "palletNumberingVersion"].forEach(key => {
     const column = getPlantingEventHeaderColumn(headers, key);
     if (column > 0) sheet.hideColumns(column);
   });
@@ -355,6 +356,9 @@ function buildPlantingEventRow(headers, event) {
     ),
     plantingCountsByPallet: escapeSpreadsheetFormulaText(
       JSON.stringify(event.plantingCountsByPallet || {})
+    ),
+    qualityMemoByPallet: escapeSpreadsheetFormulaText(
+      JSON.stringify(event.qualityMemoByPallet || {})
     ),
     actualSeedlingTrayCount: detailsUnknown ? "" : event.actualSeedlingTrayCount ?? "",
     seedlingHousePalletKeys: escapeSpreadsheetFormulaText(
@@ -571,6 +575,10 @@ function rowToPlantingEvent(headers, row) {
       item.plantingCountsByPallet,
       "パレット別植え付け株数"
     ),
+    qualityMemoByPallet: parseStoredJsonObject(
+      item.qualityMemoByPallet,
+      "パレット別苗品質"
+    ),
     actualSeedlingTrayCount: item.actualSeedlingTrayCount,
     seedlingHousePalletKeys: parseStoredJsonArray(item.seedlingHousePalletKeys, "1号棟苗取り場所"),
     seedlingHousePrimaryPlantingDate: formatDateValue(item.seedlingHousePrimaryPlantingDate),
@@ -751,8 +759,14 @@ function validatePlantingEventTrashSheetHeaders(sheet) {
 
 function migratePlantingEventTrashSheetPlantingCountsColumn(sheet) {
   if (!sheet || sheet.getLastRow() === 0) return false;
+  const missingKeys = ["plantingCountsByPallet", "qualityMemoByPallet"]
+    .filter(key => getPlantingEventHeaderColumn(
+      getPlantingEventHeaderValues(sheet),
+      key
+    ) <= 0);
+  if (!missingKeys.length) return false;
   const legacyHeaders = PLANTING_EVENT_FIELD_KEYS
-    .filter(key => key !== "plantingCountsByPallet")
+    .filter(key => !missingKeys.includes(key))
     .map(key => PLANTING_EVENT_HEADER_LABELS[key])
     .concat(["削除日時", "復元期限"]);
   if (sheet.getLastColumn() < legacyHeaders.length) return false;
@@ -762,11 +776,15 @@ function migratePlantingEventTrashSheetPlantingCountsColumn(sheet) {
     .map(value => String(value || "").trim());
   if (!legacyHeaders.every((header, index) => currentHeaders[index] === header)) return false;
 
-  const insertColumn = PLANTING_EVENT_FIELD_KEYS.indexOf("plantingCountsByPallet") + 1;
-  sheet.insertColumnBefore(insertColumn);
-  sheet
-    .getRange(1, insertColumn)
-    .setValue(PLANTING_EVENT_HEADER_LABELS.plantingCountsByPallet);
+  [...missingKeys]
+    .sort((left, right) => (
+      PLANTING_EVENT_FIELD_KEYS.indexOf(left) - PLANTING_EVENT_FIELD_KEYS.indexOf(right)
+    ))
+    .forEach(key => {
+      const insertColumn = PLANTING_EVENT_FIELD_KEYS.indexOf(key) + 1;
+      sheet.insertColumnBefore(insertColumn);
+      sheet.getRange(1, insertColumn).setValue(PLANTING_EVENT_HEADER_LABELS[key]);
+    });
   return true;
 }
 
@@ -818,7 +836,7 @@ function applyPlantingEventTrashSheetLayout(sheet) {
   if (lossRateColumn > 0) {
     sheet.getRange(2, lossRateColumn, rowCount, 1).setNumberFormat("0.0");
   }
-  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "palletNumberingVersion"].forEach(key => {
+  ["eventId", "sourceAllocations", "plantingPalletKeys", "plantingCountsByPallet", "qualityMemoByPallet", "palletNumberingVersion"].forEach(key => {
     const column = PLANTING_EVENT_HEADERS.indexOf(PLANTING_EVENT_HEADER_LABELS[key]) + 1;
     if (column > 0) sheet.hideColumns(column);
   });

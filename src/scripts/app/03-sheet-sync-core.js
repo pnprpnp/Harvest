@@ -777,7 +777,8 @@ function getSyncConflictComparisonRows(entry){
       ["植えた苗株数", local ? String(local.actualPlantedSeedlingCount ?? 0) : "削除済み", remote ? String(remote.actualPlantedSeedlingCount ?? 0) : "削除済み"],
       ["パレット別の植え付け数", formatSyncConflictPlantingCounts(local), formatSyncConflictPlantingCounts(remote)],
       ["苗ロス率", local ? String(local.actualSeedlingLossRate || "未入力") : "削除済み", remote ? String(remote.actualSeedlingLossRate || "未入力") : "削除済み"],
-      ["品質メモ", local ? formatSyncConflictQualityMemo(local.qualityMemo) : "削除済み", remote ? formatSyncConflictQualityMemo(remote.qualityMemo) : "削除済み"],
+      ["品質メモ", local ? formatSyncConflictQualityMemo(getPlantingQualityMemoSummary(local)) : "削除済み", remote ? formatSyncConflictQualityMemo(getPlantingQualityMemoSummary(remote)) : "削除済み"],
+      ["場所別品質", local ? formatPlantingQualityDistribution(local.plantingPalletKeys, Object.fromEntries((local.plantingPalletKeys || []).map(key => [key, getPlantingQualityMemoForPallet(local, key)]))) || "なし" : "削除済み", remote ? formatPlantingQualityDistribution(remote.plantingPalletKeys, Object.fromEntries((remote.plantingPalletKeys || []).map(key => [key, getPlantingQualityMemoForPallet(remote, key)]))) || "なし" : "削除済み"],
       ["更新日時", local?.updatedAt || "なし", remote?.updatedAt || "なし"]
     ];
   }
@@ -1480,6 +1481,7 @@ function getPlantingEventForGoogleTransfer(event){
     actualSeedlingLossRate: normalized.actualSeedlingLossRate,
     // Apps Script の既存形式とも同期できるよう、「中」は品質メモ本文として送る。
     qualityMemo: getPlantingQualityMemoForGoogleTransfer(normalized.qualityMemo),
+    qualityMemoByPallet: getPlantingQualityMemoByPalletForGoogleTransfer(normalized.qualityMemoByPallet),
     detailsUnknown: normalized.detailsUnknown,
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt

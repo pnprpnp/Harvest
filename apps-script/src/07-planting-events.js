@@ -160,6 +160,7 @@ function getPlantingEventContentSignature(event) {
     actualSeedlingCarryoverMode: event.actualSeedlingCarryoverMode,
     actualSeedlingLossRate: event.actualSeedlingLossRate,
     qualityMemo: event.qualityMemo,
+    qualityMemoByPallet: event.qualityMemoByPallet,
     detailsUnknown: event.detailsUnknown
   });
 }

@@ -352,6 +352,79 @@ function normalizeOptionalQualityMemo(value){
   return qualityMemo.tags.length || qualityMemo.other ? qualityMemo : null;
 }
 
+// 苗植え記録の品質は、通常は記録全体の qualityMemo を使い、
+// 場所ごとに違う場合だけパレット別の上書きを保存する。
+function normalizeQualityMemoByPallet(value, allowedKeys = null){
+  if(!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const allowedSet = Array.isArray(allowedKeys)
+    ? new Set(allowedKeys.map(key => String(key || "")))
+    : null;
+  const normalized = {};
+  Object.entries(value).forEach(([rawKey, rawMemo]) => {
+    const key = String(rawKey || "");
+    if(!isValidPalletKeyString(key) || (allowedSet && !allowedSet.has(key))) return;
+    // 空のメモも「この場所だけ品質不明」という明示的な上書きとして保持する。
+    normalized[key] = normalizeQualityMemo(rawMemo);
+  });
+  return normalized;
+}
+
+function getPlantingQualityMemoForPallet(event, palletKey){
+  const key = String(palletKey || "");
+  const keys = Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : [];
+  const byPallet = normalizeQualityMemoByPallet(event?.qualityMemoByPallet, keys);
+  if(Object.prototype.hasOwnProperty.call(byPallet, key)){
+    return normalizeOptionalQualityMemo(byPallet[key]);
+  }
+  return normalizeOptionalQualityMemo(event?.qualityMemo);
+}
+
+function getPlantingQualityMemoSummary(event){
+  const keys = [...new Set(
+    (Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : [])
+      .filter(isValidPalletKeyString)
+  )];
+  const byPallet = normalizeQualityMemoByPallet(event?.qualityMemoByPallet, keys);
+  if(!keys.length || !Object.keys(byPallet).length){
+    return normalizeOptionalQualityMemo(event?.qualityMemo);
+  }
+  const signatures = keys.map(key => JSON.stringify(
+    getPlantingQualityMemoForPallet({
+      ...event,
+      qualityMemoByPallet: byPallet
+    }, key) || { tags: [], other: "" }
+  ));
+  const first = signatures[0] || "";
+  if(signatures.every(signature => signature === first)){
+    return getPlantingQualityMemoForPallet({
+      ...event,
+      qualityMemoByPallet: byPallet
+    }, keys[0]);
+  }
+  return { tags: [], other: "複数品質" };
+}
+
+function getPlantingQualityMemoByPalletForGoogleTransfer(value){
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const normalized = {};
+  Object.entries(source).forEach(([key, memo]) => {
+    if(!isValidPalletKeyString(key)) return;
+    normalized[key] = getPlantingQualityMemoForGoogleTransfer(memo);
+  });
+  return normalized;
+}
+
+function formatPlantingQualityDistribution(keys, qualityByPallet = {}){
+  const source = qualityByPallet && typeof qualityByPallet === "object" ? qualityByPallet : {};
+  const counts = new Map();
+  (Array.isArray(keys) ? keys : []).forEach(key => {
+    const memo = normalizeOptionalQualityMemo(source[key]);
+    const label = formatPlantingQualityMemo(memo);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  return [...counts.entries()].map(([label, count]) => `${label} ${count}枚`).join("・");
+}
+
 function formatPlantingQualityMemo(value){
   return formatQualityMemo(normalizeOptionalQualityMemo(value)) || "不明";
 }
@@ -745,6 +818,10 @@ function normalizePlantingEvent(value){
   const detailsUnknown = value.detailsUnknown === true
     || ["true", "1", "不明"].includes(String(value.detailsUnknown || "").trim().toLowerCase());
   const qualityMemo = normalizeOptionalQualityMemo(value.qualityMemo);
+  const qualityMemoByPallet = normalizeQualityMemoByPallet(
+    value.qualityMemoByPallet,
+    plantingPalletKeys
+  );
   const hasOpeningCarryover = value.openingCarryoverBefore !== undefined
     && value.openingCarryoverBefore !== null
     && String(value.openingCarryoverBefore).trim() !== "";
@@ -769,6 +846,7 @@ function normalizePlantingEvent(value){
     actualSeedlingCarryoverMode,
     actualSeedlingLossRate: rawLossRate,
     qualityMemo,
+    qualityMemoByPallet,
     detailsUnknown,
     openingCarryoverBefore,
     createdAt: String(value.createdAt || "").slice(0, 64),

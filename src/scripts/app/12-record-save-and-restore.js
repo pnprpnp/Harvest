@@ -333,6 +333,19 @@ async function savePlantingRecord(){
     && normalizedSelectedKeys.every(key => (
       plantingCountsByPallet[key] === existingPlantingCountsByPallet[key]
     ));
+  const existingQualityMemoByPallet = existingEvent && samePlantingKeys
+    ? normalizeQualityMemoByPallet(existingEvent.qualityMemoByPallet, existingEvent.plantingPalletKeys)
+    : {};
+  const qualityMemoByPallet = Object.keys(existingQualityMemoByPallet).length
+    ? normalizeQualityMemoByPallet(existingQualityMemoByPallet, normalizedSelectedKeys)
+    : (qualityMemo
+      ? Object.fromEntries(normalizedSelectedKeys.map(key => [key, qualityMemo]))
+      : {});
+  const plantingQualityMemo = getPlantingQualityMemoSummary({
+    plantingPalletKeys: normalizedSelectedKeys,
+    qualityMemo,
+    qualityMemoByPallet
+  });
   const existingSeedlingHouseKeys = normalizeSeedlingHousePalletKeys(existingEvent?.seedlingHousePalletKeys || []);
   const seedlingHousePlan = getSeedlingHousePlanForHarvestKeys(record.palletKeys, {
     takeCount: actualSeedlingTrayCount,
@@ -367,7 +380,8 @@ async function savePlantingRecord(){
       && existingEvent.actualSeedlingCarryoverMode === actualSeedlingCarryoverMode
       ? existingEvent.actualSeedlingLossRate
       : actualSeedlingLossRate,
-    qualityMemo,
+    qualityMemo: plantingQualityMemo,
+    qualityMemoByPallet,
     createdAt: existingEvent?.createdAt || "",
     updatedAt: existingEvent?.updatedAt || "",
     openingCarryoverBefore: existingEvent?.openingCarryoverBefore ?? null,
@@ -517,7 +531,11 @@ function editPlantingEvent(eventId){
     actualSeedlingUserEdited: true,
     plantingSummaryInput: formatPlantingSummaryForKeys(event.plantingPalletKeys),
     recordPlantingSummaryEdited: false,
-    qualityMemo: event.qualityMemo
+    qualityMemo: getPlantingQualityMemoSummary(event),
+    qualityMemoByPallet: normalizeQualityMemoByPallet(
+      event.qualityMemoByPallet,
+      event.plantingPalletKeys
+    )
   };
   invalidatePlantingAllowedPalletSetCache();
   enterPlantingRecordMode(record);
