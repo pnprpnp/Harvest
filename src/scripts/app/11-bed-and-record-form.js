@@ -1001,6 +1001,88 @@ function updateRecordActualSeedlingDisplays(){
   }
 }
 
+function askRecordSeedlingReselectConfirm(previousCount, nextCount){
+  const panel = document.getElementById("recordSeedlingReselectConfirmPanel");
+  const message = document.getElementById("recordSeedlingReselectConfirmMessage");
+  const yesButton = document.getElementById("recordSeedlingReselectConfirmYes");
+  const noButton = document.getElementById("recordSeedlingReselectConfirmNo");
+  const noticeText = [
+    `実際に取った苗を${previousCount}枚から${nextCount}枚へ変更しました。`,
+    "新しい枚数に合わせて苗植え場所を自動で選択し直しますか？",
+    "「選択し直さない」を選ぶと、現在の場所を保ったまま苗ロス率だけ更新します。"
+  ].join("\n");
+
+  if(!panel){
+    return Promise.resolve(window.confirm(noticeText));
+  }
+  if(recordSeedlingReselectConfirmResolver){
+    resolveRecordSeedlingReselectConfirm(false);
+  }
+
+  if(message) message.textContent = noticeText;
+  if(yesButton) yesButton.disabled = false;
+  if(noButton) noButton.disabled = false;
+  panel.classList.add("show");
+  requestAnimationFrame(() => noButton?.focus());
+
+  return new Promise(resolve => {
+    recordSeedlingReselectConfirmResolver = resolve;
+  });
+}
+
+function resolveRecordSeedlingReselectConfirm(shouldReselect){
+  const panel = document.getElementById("recordSeedlingReselectConfirmPanel");
+  const message = document.getElementById("recordSeedlingReselectConfirmMessage");
+  const yesButton = document.getElementById("recordSeedlingReselectConfirmYes");
+  const noButton = document.getElementById("recordSeedlingReselectConfirmNo");
+  if(panel) panel.classList.remove("show");
+  if(yesButton) yesButton.disabled = true;
+  if(noButton) noButton.disabled = true;
+  if(message) message.textContent = "";
+
+  if(recordSeedlingReselectConfirmResolver){
+    recordSeedlingReselectConfirmResolver(!!shouldReselect);
+    recordSeedlingReselectConfirmResolver = null;
+  }
+}
+
+async function handleRecordActualSeedlingTrayCountBlur(input){
+  if(!input) return;
+  const value = input.value;
+  const previousCount = clampNumber(input.dataset.previousValue, 0, 999999, 0);
+  const nextCount = getRecordActualSeedlingTrayCount();
+  const enteredSinceFocus = input.dataset.enteredSinceFocus === "1";
+  const actualCountChanged = enteredSinceFocus && previousCount !== nextCount;
+  const restorePrevious = input.dataset.clearedOnFocus === "1"
+    && !enteredSinceFocus
+    && String(value || "").trim() === "";
+  if(restorePrevious){
+    input.value = input.dataset.previousValue || "";
+    delete input.dataset.userEdited;
+  }
+  delete input.dataset.previousValue;
+  delete input.dataset.clearedOnFocus;
+  delete input.dataset.enteredSinceFocus;
+
+  if(actualCountChanged && recordSelectionMode === "planting" && !editingPlantingEventId){
+    const shouldReselect = await askRecordSeedlingReselectConfirm(previousCount, nextCount);
+    if(shouldReselect){
+      const record = getActivePlantingRecord();
+      const candidateKeys = [
+        ...getUnplantedPalletKeysForHarvest(record?.id),
+        ...harvestFillKeys
+      ];
+      harvestFillKeys = getSequentialPlantingPalletKeysWithinCapacity(candidateKeys, record);
+      refreshAfterHarvestSelectionChanged();
+      return;
+    }
+  }
+
+  updateRecordActualSeedlingDisplays();
+  updateRecordSeedlingDiffDisplay();
+  saveHarvestStateToStorage();
+}
+
 function bindRecordActualSeedlingTrayCountInput(){
   const input = document.getElementById("recordActualSeedlingTrayCountInput");
   if(!input || input.dataset.bound === "1") return;
@@ -1030,31 +1112,7 @@ function bindRecordActualSeedlingTrayCountInput(){
   });
 
   input.addEventListener("blur", () => {
-    const value = input.value;
-    const actualCountChanged = input.dataset.enteredSinceFocus === "1";
-    const restorePrevious = input.dataset.clearedOnFocus === "1"
-      && input.dataset.enteredSinceFocus !== "1"
-      && String(value || "").trim() === "";
-    if(restorePrevious){
-      input.value = input.dataset.previousValue || "";
-      delete input.dataset.userEdited;
-    }
-    delete input.dataset.previousValue;
-    delete input.dataset.clearedOnFocus;
-    delete input.dataset.enteredSinceFocus;
-    if(actualCountChanged && recordSelectionMode === "planting" && !editingPlantingEventId){
-      const record = getActivePlantingRecord();
-      const candidateKeys = [
-        ...getUnplantedPalletKeysForHarvest(record?.id),
-        ...harvestFillKeys
-      ];
-      harvestFillKeys = getSequentialPlantingPalletKeysWithinCapacity(candidateKeys, record);
-      refreshAfterHarvestSelectionChanged();
-      return;
-    }
-    updateRecordActualSeedlingDisplays();
-    updateRecordSeedlingDiffDisplay();
-    saveHarvestStateToStorage();
+    void handleRecordActualSeedlingTrayCountBlur(input);
   });
 
   input.dataset.bound = "1";

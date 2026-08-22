@@ -173,6 +173,11 @@ function handleStartupEscapeKey(event){
     resolvePlantingUnselectedWarning(false);
     return;
   }
+  const recordSeedlingReselectConfirmPanel = document.getElementById("recordSeedlingReselectConfirmPanel");
+  if(recordSeedlingReselectConfirmPanel?.classList.contains("show")){
+    resolveRecordSeedlingReselectConfirm(false);
+    return;
+  }
   const appUpdateConfirmPanel = document.getElementById("appUpdateConfirmPanel");
   if(appUpdateConfirmPanel?.classList.contains("show")){
     resolveAppUpdateConfirm(false);

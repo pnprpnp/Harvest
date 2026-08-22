@@ -282,6 +282,7 @@ let settingsDirty = false;
 let casePlacementByBuilding = {};
 let appUpdateConfirmResolver = null;
 let plantingUnselectedWarningResolver = null;
+let recordSeedlingReselectConfirmResolver = null;
 let recordAvailabilityCheckLastStartedAt = 0;
 let availabilityCheckPromise = null;
 let googleSheetConfirmResolver = null;

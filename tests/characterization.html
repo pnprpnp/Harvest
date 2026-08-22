@@ -3465,6 +3465,144 @@
         }, "計算対象外の号棟を既存配置図の下へ追加できません");
       });
 
+      await runTest("実際に取った苗の変更時に場所を再選択するか確認する", async () => {
+        const state = comparable(await app.eval(`(async () => {
+          const input = document.getElementById("recordActualSeedlingTrayCountInput");
+          const panel = document.getElementById("recordSeedlingReselectConfirmPanel");
+          const previous = {
+            mode: recordSelectionMode,
+            editingEventId: editingPlantingEventId,
+            keys: [...harvestFillKeys],
+            counts: { ...recordPlantingCountsByPallet },
+            value: input.value,
+            dataset: { ...input.dataset },
+            carryoverMode: getRecordSeedlingCarryoverMode(),
+            ask: askRecordSeedlingReselectConfirm,
+            activeRecord: getActivePlantingRecord,
+            unplanted: getUnplantedPalletKeysForHarvest,
+            sequential: getSequentialPlantingPalletKeysWithinCapacity,
+            refresh: refreshAfterHarvestSelectionChanged,
+            save: saveHarvestStateToStorage,
+            diff: updateRecordSeedlingDiffDisplay,
+            taken: getActualTakenSeedlingTotal,
+            planted: getActualPlantedSeedlingTotal,
+            carryover: getCarryoverSeedlingStockBeforeRecord
+          };
+          try{
+            recordSelectionMode = "planting";
+            editingPlantingEventId = null;
+            harvestFillKeys = ["2-A-1", "2-A-2"];
+            recordPlantingCountsByPallet = { "2-A-1":20, "2-A-2":20 };
+            setRecordSeedlingCarryoverMode("loss", { silent:true });
+            getActivePlantingRecord = () => ({ id:999001, type:"fullHarvest", palletKeys:["2-A-1", "2-A-2"] });
+            getActualTakenSeedlingTotal = () => Number(input.value || 0) * 100;
+            getActualPlantedSeedlingTotal = () => 40;
+            getCarryoverSeedlingStockBeforeRecord = () => 0;
+
+            const modalPromise = askRecordSeedlingReselectConfirm(2, 3);
+            const modalState = {
+              visible: panel.classList.contains("show"),
+              title: document.getElementById("recordSeedlingReselectConfirmTitle")?.textContent.trim() || "",
+              message: document.getElementById("recordSeedlingReselectConfirmMessage")?.textContent || "",
+              noLabel: document.getElementById("recordSeedlingReselectConfirmNo")?.textContent.trim() || "",
+              yesLabel: document.getElementById("recordSeedlingReselectConfirmYes")?.textContent.trim() || ""
+            };
+            resolveRecordSeedlingReselectConfirm(false);
+            modalState.decision = await modalPromise;
+            modalState.hiddenAfterDecision = !panel.classList.contains("show");
+
+            const promptCounts = [];
+            let shouldReselect = false;
+            let refreshCount = 0;
+            let saveCount = 0;
+            askRecordSeedlingReselectConfirm = async (before, after) => {
+              promptCounts.push([before, after]);
+              return shouldReselect;
+            };
+            getUnplantedPalletKeysForHarvest = () => ["2-B-1"];
+            getSequentialPlantingPalletKeysWithinCapacity = () => ["2-B-1"];
+            refreshAfterHarvestSelectionChanged = () => { refreshCount++; };
+            saveHarvestStateToStorage = () => { saveCount++; };
+            updateRecordSeedlingDiffDisplay = () => {};
+
+            input.value = "2";
+            const lossBefore = getActualSeedlingLossRateValue();
+            input.value = "3";
+            input.dataset.previousValue = "2";
+            input.dataset.clearedOnFocus = "1";
+            input.dataset.enteredSinceFocus = "1";
+            input.dataset.userEdited = "1";
+            await handleRecordActualSeedlingTrayCountBlur(input);
+            const noReselectState = {
+              keys: [...harvestFillKeys],
+              lossBefore,
+              lossAfter: getActualSeedlingLossRateValue(),
+              refreshCount,
+              saveCount
+            };
+
+            shouldReselect = true;
+            input.value = "4";
+            input.dataset.previousValue = "3";
+            input.dataset.clearedOnFocus = "1";
+            input.dataset.enteredSinceFocus = "1";
+            input.dataset.userEdited = "1";
+            await handleRecordActualSeedlingTrayCountBlur(input);
+            const reselectState = {
+              keys: [...harvestFillKeys],
+              refreshCount,
+              saveCount
+            };
+            return { modalState, promptCounts, noReselectState, reselectState };
+          }finally{
+            if(recordSeedlingReselectConfirmResolver) resolveRecordSeedlingReselectConfirm(false);
+            recordSelectionMode = previous.mode;
+            editingPlantingEventId = previous.editingEventId;
+            harvestFillKeys = previous.keys;
+            recordPlantingCountsByPallet = previous.counts;
+            input.value = previous.value;
+            Object.keys(input.dataset).forEach(key => delete input.dataset[key]);
+            Object.entries(previous.dataset).forEach(([key, value]) => { input.dataset[key] = value; });
+            setRecordSeedlingCarryoverMode(previous.carryoverMode, { silent:true });
+            askRecordSeedlingReselectConfirm = previous.ask;
+            getActivePlantingRecord = previous.activeRecord;
+            getUnplantedPalletKeysForHarvest = previous.unplanted;
+            getSequentialPlantingPalletKeysWithinCapacity = previous.sequential;
+            refreshAfterHarvestSelectionChanged = previous.refresh;
+            saveHarvestStateToStorage = previous.save;
+            updateRecordSeedlingDiffDisplay = previous.diff;
+            getActualTakenSeedlingTotal = previous.taken;
+            getActualPlantedSeedlingTotal = previous.planted;
+            getCarryoverSeedlingStockBeforeRecord = previous.carryover;
+            updateRecordActualSeedlingDisplays();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          modalState: {
+            visible: true,
+            title: "苗植え場所の再選択",
+            message: "実際に取った苗を2枚から3枚へ変更しました。\n新しい枚数に合わせて苗植え場所を自動で選択し直しますか？\n「選択し直さない」を選ぶと、現在の場所を保ったまま苗ロス率だけ更新します。",
+            noLabel: "選択し直さない",
+            yesLabel: "選択し直す",
+            decision: false,
+            hiddenAfterDecision: true
+          },
+          promptCounts: [[2, 3], [3, 4]],
+          noReselectState: {
+            keys: ["2-A-1", "2-A-2"],
+            lossBefore: "80.0",
+            lossAfter: "86.7",
+            refreshCount: 0,
+            saveCount: 1
+          },
+          reselectState: {
+            keys: ["2-B-1"],
+            refreshCount: 1,
+            saveCount: 1
+          }
+        }, "苗枚数変更時の再選択確認または選択保持が正しく動きません");
+      });
+
       await runTest("苗植えパレットへ12・16・20植えを混在して設定できる", () => {
         const presetState = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");
@@ -4470,18 +4608,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "0232d64a", elements: 2144, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "9007923f", elements: 2212, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "ec1108ce", elements: 2212, visible: 669, viewport: "390x844" },
-          mobileRecord: { hash: "a26fd3f4", elements: 2145, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "33ead265", elements: 2145, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "c6f56cc2", elements: 2228, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "793274cf", elements: 2243, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "58e583c3", elements: 2243, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "018a00bf", elements: 2243, visible: 248, viewport: "390x844" },
-          mobileMonitor: { hash: "014e33de", elements: 2243, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "02597576", elements: 2243, visible: 610, viewport: "1024x900" },
-          wideDashboard: { hash: "3f705c82", elements: 2243, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "6a9943da", elements: 2151, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "788c1168", elements: 2219, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "98a38afd", elements: 2219, visible: 669, viewport: "390x844" },
+          mobileRecord: { hash: "c832923e", elements: 2152, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "05776a7d", elements: 2152, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "fdd2d4db", elements: 2235, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "db0f34f8", elements: 2250, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "4571bde4", elements: 2250, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "1707d488", elements: 2250, visible: 248, viewport: "390x844" },
+          mobileMonitor: { hash: "b70b6d5f", elements: 2250, visible: 62, viewport: "390x844" },
+          wideForecast: { hash: "aac5e1cd", elements: 2250, visible: 610, viewport: "1024x900" },
+          wideDashboard: { hash: "c52292a1", elements: 2250, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
