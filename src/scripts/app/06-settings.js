@@ -132,7 +132,7 @@ function updateCasePlacementTotal(){
   const compactSummary = document.getElementById("casePlacementCompactSummary");
   const details = document.getElementById("casePlacementDetails");
   if(totalValue) totalValue.textContent = String(front + middle + back);
-  if(compactSummary) compactSummary.textContent = `合計 ${front + middle + back}`;
+  if(compactSummary) compactSummary.textContent = String(front + middle + back);
   if(details){
     const needsInput = rawValues.every(value => String(value ?? "").trim() === "");
     details.classList.toggle("casePlacementNeedsInput", needsInput);

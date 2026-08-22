@@ -403,7 +403,7 @@ function drawBeds(){
     const counts = document.createElement("div");
     counts.className = "simulationBedOverviewCounts";
     counts.innerHTML = `
-      <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+      ${summaryCounts.selectable > 0 ? `<span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>` : ""}
       <span class="simulationBedOverviewCountSelectable">選択可 ${summaryCounts.selectable}</span>
     `;
     bed.appendChild(counts);

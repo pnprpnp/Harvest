@@ -2167,10 +2167,18 @@
             drawBeds();
             const firstBed = document.querySelector("#beds .simulationBedOverview");
             const countText = firstBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
+            getRecordedPalletSet = () => new Set(
+              Array.from({ length: 78 }, (_, index) => getPalletKey(2, "F", index + 1))
+            );
+            drawBeds();
+            const unavailableBed = document.querySelector("#beds .simulationBedOverview");
+            const unavailableCountText = unavailableBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
             return {
               countText,
               hasSelectable: countText.includes("選択可 73"),
               hidesRecordedCount: !countText.includes("記録済"),
+              unavailableCountText,
+              hidesSelectedWhenUnavailable: !unavailableBed?.querySelector(".simulationBedOverviewCountSelected"),
               label: firstBed?.getAttribute("aria-label") || ""
             };
           }finally{
@@ -2184,6 +2192,8 @@
           countText: "選択 0 選択可 73",
           hasSelectable: true,
           hidesRecordedCount: true,
+          unavailableCountText: "選択可 0",
+          hidesSelectedWhenUnavailable: true,
           label: "2号棟 Fベッド。選択 0パレット、選択可能 73パレット。長押しで拡大してパレットを選択"
         }, "シミュの簡易ベッド表示が選択可能枚数になっていません");
       });
@@ -2349,7 +2359,7 @@
             defaultClosed: true,
             open: false,
             label: "ケース配置",
-            summary: "合計 102",
+            summary: "102",
             total: "102",
             gridVisible: false,
             summaryIsVisuallyCentered: true
@@ -2368,7 +2378,7 @@
             needsInput: true,
             collapsedUsesCardSurface: true,
             inputsKeepMissingColor: true,
-            summary: "合計 0"
+            summary: "0"
           }, "閉じたケース配分または未入力欄の色分けが正しくありません");
 
           details.open = true;
@@ -2385,7 +2395,7 @@
           assertDeepEqual(expandedState, {
             open: true,
             needsInput: false,
-            summary: "合計 120",
+            summary: "120",
             total: "120",
             gridVisible: true,
             standardButtonInDetails: true,
@@ -4183,9 +4193,9 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e757b301", elements: 2144, visible: 610, viewport: "390x844" },
-          cssStates: { hash: "91d3851e", elements: 2212, visible: 669, viewport: "390x844" },
-          cssFocus: { hash: "e179869b", elements: 2212, visible: 669, viewport: "390x844" },
+          mobileForecast: { hash: "9122fc7a", elements: 2144, visible: 610, viewport: "390x844" },
+          cssStates: { hash: "9f64294f", elements: 2212, visible: 669, viewport: "390x844" },
+          cssFocus: { hash: "06d02e9e", elements: 2212, visible: 669, viewport: "390x844" },
           mobileRecord: { hash: "2e31535b", elements: 2145, visible: 118, viewport: "390x844" },
           mobileDashboard: { hash: "c3058c07", elements: 2145, visible: 104, viewport: "390x844" },
           mobileDashboardRecord: { hash: "70043ada", elements: 2228, visible: 168, viewport: "390x844" },
@@ -4193,7 +4203,7 @@
           mobileMenu: { hash: "b9e2c453", elements: 2243, visible: 298, viewport: "390x844" },
           mobileSettings: { hash: "1f9a39cd", elements: 2243, visible: 248, viewport: "390x844" },
           mobileMonitor: { hash: "4f231a30", elements: 2243, visible: 62, viewport: "390x844" },
-          wideForecast: { hash: "ba8de78c", elements: 2243, visible: 610, viewport: "1024x900" },
+          wideForecast: { hash: "5b007079", elements: 2243, visible: 610, viewport: "1024x900" },
           wideDashboard: { hash: "f421660c", elements: 2243, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
