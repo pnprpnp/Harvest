@@ -4044,7 +4044,7 @@
           host.style.cssText = "position:fixed;left:-2000px;top:0;width:1200px;height:300px;";
           host.innerHTML = buildMonitorDashboardHtml({
             enabled:true,
-            instructionText:"苗: 9枚（未定植分 3枚）\\n収穫ケース数: 42\\n収穫場所: -\\n残すケース: 2号棟 手前: 6ケース",
+            instructionText:"苗: 9枚（未定植分 3枚）\\n収穫ケース数: 42\\n収穫場所: -\\n残すケース: 2号棟 前側: 6ケース\\n2号棟 中央: 20ケース\\n2号棟 後ろ: 30ケース",
             harvestFillKeys:[],
             memoItems:[]
           });
@@ -4057,25 +4057,35 @@
               allUseOneRow:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
                 const label = card.querySelector(".monitorMetricLabel");
-                const value = card.querySelector(".monitorMetricValue, .monitorRemainingList");
+                const value = card.querySelector(".monitorMetricValue, .monitorRemainingCount");
                 return !!line && label?.parentElement === line && !!value && line.contains(value) &&
                   getComputedStyle(line).display === "flex" && getComputedStyle(line).flexWrap === "nowrap";
               }),
-              allTextSizesMatch:cards.every(card => {
+              mainTextIsLarge:cards.every(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize) >= 24),
+              labelsAndNumbersMatch:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
                 const label = card.querySelector(".monitorMetricLabel");
-                const value = card.querySelector(".monitorMetricValue, .monitorRemainingList");
-                const unit = card.querySelector(".monitorMetricUnit");
+                const value = card.querySelector(".monitorMetricValue, .monitorRemainingCount");
                 const lineSize = parseFloat(getComputedStyle(line).fontSize);
-                const sizes = [label, value, unit].filter(Boolean)
+                const sizes = [label, value].filter(Boolean)
                   .map(element => parseFloat(getComputedStyle(element).fontSize));
                 return sizes.every(size => Math.abs(size - lineSize) < 0.1);
+              }),
+              allUnitsAreSmaller:[...host.querySelectorAll(".monitorMetricUnit, .monitorMetricSmallUnit")].every(unit => {
+                const lineSize = parseFloat(getComputedStyle(unit.closest(".monitorMetricLine")).fontSize);
+                return parseFloat(getComputedStyle(unit).fontSize) < lineSize;
               }),
               allIconSizesMatch:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
                 const icon = card.querySelector(".monitorMetricLabelIcon");
                 return Math.abs(icon.getBoundingClientRect().width - parseFloat(getComputedStyle(line).fontSize)) < 0.1;
-              })
+              }),
+              remainingLines:[...host.querySelectorAll(".monitorRemainingLine")].map(line => line.textContent.trim().replace(/\\s+/g, "")),
+              remainingLocationsAligned:(() => {
+                const locations = [...host.querySelectorAll(".monitorRemainingLocation")];
+                const lefts = locations.map(location => Math.round(location.getBoundingClientRect().left * 10) / 10);
+                return locations.length === 3 && lefts.every(left => left === lefts[0]);
+              })()
             };
           }finally{
             host.remove();
@@ -4085,8 +4095,12 @@
           labels:["苗：", "収穫：", "残し："],
           unplantedVisible:false,
           allUseOneRow:true,
-          allTextSizesMatch:true,
-          allIconSizesMatch:true
+          mainTextIsLarge:true,
+          labelsAndNumbersMatch:true,
+          allUnitsAreSmaller:true,
+          allIconSizesMatch:true,
+          remainingLines:["2-前：6ケース残す", "2-中：20ケース残す", "2-奥：30ケース残す"],
+          remainingLocationsAligned:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");
       });
 

@@ -544,8 +544,37 @@ function getMonitorRemainingCasesHtml(value){
     .filter(Boolean);
   const safeLines = lines.length ? lines : ["なし"];
   return safeLines.map(line => {
+    const locationMatch = line.match(/^(\d+)号棟\s*(手前|前側|前|中央|中側|中|後ろ|後側|奥側|奥)\s*[:：]\s*([\d,.]+)\s*ケース\s*(残す|不足)?$/);
+    if(locationMatch){
+      const locationLabels = {
+        "手前":"前",
+        "前側":"前",
+        "前":"前",
+        "中央":"中",
+        "中側":"中",
+        "中":"中",
+        "後ろ":"奥",
+        "後側":"奥",
+        "奥側":"奥",
+        "奥":"奥"
+      };
+      const suffix = locationMatch[4] === "不足" ? "不足" : "残す";
+      const shortageClass = suffix === "不足" ? " is-shortage" : "";
+      return `
+        <div class="monitorRemainingLine is-location${shortageClass}">
+          <span class="monitorRemainingBuilding">${escapeHtml(locationMatch[1])}</span>
+          <span class="monitorRemainingHyphen">-</span>
+          <span class="monitorRemainingLocation">${locationLabels[locationMatch[2]]}</span>
+          <span class="monitorRemainingColon">：</span>
+          <span class="monitorRemainingCount">${escapeHtml(locationMatch[3])}</span>
+          <span class="monitorMetricSmallUnit">ケース</span>
+          <span class="monitorRemainingSuffix">${suffix}</span>
+        </div>
+      `;
+    }
     const shortageClass = line.includes("不足") ? " is-shortage" : "";
-    return `<div class="monitorRemainingLine${shortageClass}">${escapeHtml(line)}</div>`;
+    const lineHtml = escapeHtml(line).replace(/([\d,.]+)\s*ケース/g, '$1<span class="monitorMetricSmallUnit">ケース</span>');
+    return `<div class="monitorRemainingLine is-freeform${shortageClass}">${lineHtml}</div>`;
   }).join("");
 }
 
