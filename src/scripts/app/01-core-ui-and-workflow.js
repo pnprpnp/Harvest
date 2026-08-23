@@ -482,6 +482,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "dashboardForecastInfoModal",
   "dashboardForecastDaysAllModal",
   "plantingAgeModal",
+  "harvestProgressModal",
   "seedlingHouseModal",
   "bedDetailModal",
   "recordDetailModal",
@@ -2069,16 +2070,17 @@ function getHarvestProgressResultModel(){
 
 function updateHarvestProgressVisibility(){
   const panel = document.getElementById("harvestProgressPanel");
+  const modal = document.getElementById("harvestProgressModal");
   const openButton = document.getElementById("harvestProgressOpenBtn");
   if(!panel) return false;
   const shouldShow = harvestProgressAvailable
     && harvestFillKeys.length > 0
     && getHarvestCasePlan().totalCases > 0;
   panel.hidden = !shouldShow;
-  if(!shouldShow) panel.open = false;
+  if(!shouldShow) hidePageBlockingUi(modal);
   if(openButton){
     openButton.disabled = !shouldShow;
-    openButton.setAttribute("aria-expanded", String(shouldShow && panel.open));
+    openButton.setAttribute("aria-expanded", String(shouldShow && !!modal?.classList.contains("show")));
   }
   return shouldShow;
 }
@@ -2101,14 +2103,6 @@ function updateHarvestProgressUi(){
         ? "新たに完了したベッドを選択してください"
         : "完了したベッドを選択してください");
   }
-  const summary = document.getElementById("harvestProgressSummaryStatus");
-  if(summary){
-    summary.textContent = hasUnappliedHarvestProgressChanges()
-      ? "変更未反映"
-      : (hasAppliedHarvestProgress()
-        ? `${state.appliedSelectedBeds.length}ベッド・${formatHarvestProgressCases(state.appliedActualCases)}ケース反映済み`
-        : (state?.selectedBeds.length ? `${state.selectedBeds.length}ベッド選択中` : "収穫中に使えます"));
-  }
   const result = document.getElementById("harvestProgressResult");
   if(result){
     const model = getHarvestProgressResultModel();
@@ -2122,11 +2116,11 @@ function updateHarvestProgressUi(){
   renderHarvestProgressBeds();
 }
 
-function handleHarvestProgressPanelToggle(){
-  const panel = document.getElementById("harvestProgressPanel");
+function syncHarvestProgressModalState(){
+  const modal = document.getElementById("harvestProgressModal");
   document.getElementById("harvestProgressOpenBtn")
-    ?.setAttribute("aria-expanded", String(!!panel?.open && !panel.hidden));
-  if(panel?.open){
+    ?.setAttribute("aria-expanded", String(!!modal?.classList.contains("show")));
+  if(modal?.classList.contains("show")){
     if(!harvestProgressState && harvestFillKeys.length){
       harvestProgressBuilding = currentBuilding;
     }
@@ -2134,15 +2128,33 @@ function handleHarvestProgressPanelToggle(){
   }
 }
 
-function toggleHarvestProgressInput(){
-  const panel = document.getElementById("harvestProgressPanel");
-  if(!panel || !updateHarvestProgressVisibility()){
+function openHarvestProgressWindow(){
+  const modal = document.getElementById("harvestProgressModal");
+  if(!modal || !updateHarvestProgressVisibility()){
     showToast("先に収穫場所を計算してください");
     return;
   }
-  panel.open = !panel.open;
-  handleHarvestProgressPanelToggle();
-  scheduleMainTabViewportScrollLock();
+  if(!harvestProgressState && harvestFillKeys.length){
+    harvestProgressBuilding = currentBuilding;
+  }
+  showPageBlockingUi(modal);
+  syncHarvestProgressModalState();
+  document.getElementById("harvestProgressWindowClose")?.focus();
+}
+
+function closeHarvestProgressWindow(options = {}){
+  const modal = document.getElementById("harvestProgressModal");
+  hidePageBlockingUi(modal);
+  syncHarvestProgressModalState();
+  if(options.restoreFocus !== false){
+    document.getElementById("harvestProgressOpenBtn")?.focus();
+  }
+}
+
+function toggleHarvestProgressInput(){
+  const modal = document.getElementById("harvestProgressModal");
+  if(modal?.classList.contains("show")) closeHarvestProgressWindow();
+  else openHarvestProgressWindow();
 }
 
 function shiftHarvestProgressBuilding(direction){

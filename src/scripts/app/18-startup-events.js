@@ -287,6 +287,11 @@ function handleStartupEscapeKey(event){
     closePlantingAgeWindow();
     return;
   }
+  const harvestProgressModal = document.getElementById("harvestProgressModal");
+  if(harvestProgressModal?.classList.contains("show")){
+    closeHarvestProgressWindow();
+    return;
+  }
   const seedlingHouseModal = document.getElementById("seedlingHouseModal");
   if(seedlingHouseModal?.classList.contains("show")){
     const primaryDetail = document.getElementById("seedlingHousePrimaryDetail");

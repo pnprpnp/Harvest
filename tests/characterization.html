@@ -1713,7 +1713,6 @@
           const resultActions = app.document.getElementById("forecastResultActions");
           const clearButton = resultActions.querySelector(".forecastClearBtn");
           const progressButton = app.document.getElementById("harvestProgressOpenBtn");
-          const progressPanel = app.document.getElementById("harvestProgressPanel");
           const casePlacementPanel = app.document.querySelector("#forecastTab .casePlacementPanel");
           const buttonRect = button.getBoundingClientRect();
           const progressButtonRect = progressButton.getBoundingClientRect();
@@ -1721,8 +1720,7 @@
           const resultActionState = comparable({
             visibleAfterCalculation: !resultActions.hidden && resultActions.getClientRects().length > 0,
             belowCasesAndAbovePagination: resultActions.previousElementSibling?.classList.contains("casePlacementDivider")
-              && resultActions.nextElementSibling === progressPanel
-              && progressPanel.nextElementSibling === casePlacementPanel,
+              && resultActions.nextElementSibling === casePlacementPanel,
             buttonsShareRow: Math.abs(buttonRect.top - progressButtonRect.top) <= 1
               && Math.abs(buttonRect.top - clearButtonRect.top) <= 1
               && Math.abs(buttonRect.bottom - clearButtonRect.bottom) <= 1,
@@ -2081,6 +2079,7 @@
           "dashboardForecastInfoModal",
           "dashboardForecastDaysAllModal",
           "plantingAgeModal",
+          "harvestProgressModal",
           "seedlingHouseModal",
           "bedDetailModal",
           "recordDetailModal",
@@ -2418,7 +2417,6 @@
           const dateInput = document.getElementById("recordDateInput");
           const result = document.getElementById("forecastPlantingAgeResult");
           const range = document.getElementById("forecastPlantingAgeRange");
-          const infoButton = document.querySelector(".forecastPlantingAgeInfoBtn");
           const modal = document.getElementById("plantingAgeModal");
           const detail = document.getElementById("plantingAgeDetail");
           const statusCard = document.getElementById("forecastPlacementStatusCard");
@@ -2454,7 +2452,7 @@
             const hiddenRemainingRect = remaining.getBoundingClientRect();
             harvestSelectionMode = "auto";
             renderForecastPlantingAgeResult();
-            openPlantingAgeWindow();
+            result.click();
             const visibleStatusRect = statusCard.getBoundingClientRect();
             const visibleRemainingRect = remaining.getBoundingClientRect();
             const visibleResultRect = result.getBoundingClientRect();
@@ -2517,7 +2515,12 @@
               rangeText: range?.textContent.trim() || "",
               rangeFullyVisible: range.scrollWidth <= range.clientWidth
                 && getComputedStyle(range).textOverflow !== "ellipsis",
-              infoButton: !!infoButton,
+              wholeAreaIsButton: result.tagName === "BUTTON"
+                && result.getAttribute("aria-controls") === "plantingAgeModal",
+              oldInfoButtonRemoved: !document.querySelector(".forecastPlantingAgeInfoBtn"),
+              matchesCasePlacementAppearance:
+                getComputedStyle(result).backgroundColor === getComputedStyle(caseSummary).backgroundColor,
+              hasChevron: getComputedStyle(result, "::after").content.includes("›"),
               modalVisible: modal?.classList.contains("show") || false,
               heading: detail.querySelector(".plantingAgeMapHeading")?.textContent.trim() || "",
               bedNames: [...detail.querySelectorAll(".plantingAgeMapBed .bedTitleMain")]
@@ -2576,7 +2579,10 @@
           detailTitle: "定植日数の詳細",
           rangeText: "20〜31日",
           rangeFullyVisible: true,
-          infoButton: true,
+          wholeAreaIsButton: true,
+          oldInfoButtonRemoved: true,
+          matchesCasePlacementAppearance: true,
+          hasChevron: true,
           modalVisible: true,
           heading: "2号棟",
           bedNames: ["F", "D", "B", "E", "C", "A"],
@@ -2622,6 +2628,7 @@
           const seedlingButtonIcon = seedlingButton.querySelector(".seedlingHouseOpenIcon");
           const progressButton = app.document.getElementById("harvestProgressOpenBtn");
           const progressPanel = app.document.getElementById("harvestProgressPanel");
+          const progressModal = app.document.getElementById("harvestProgressModal");
           const placementPanel = app.document.querySelector("#forecastTab .casePlacementPanel");
           const placementHeader = app.document.querySelector("#forecastTab .casePlacementHeader");
           const tabBar = app.document.querySelector(".tabBar");
@@ -2693,8 +2700,7 @@
             progressExplanationAbsent: !progressPanel.querySelector(".harvestProgressLead"),
             resultActionsBelowCasesAndAbovePagination:
               resultActions.previousElementSibling?.classList.contains("casePlacementDivider")
-              && resultActions.nextElementSibling === progressPanel
-              && progressPanel.nextElementSibling === placementPanel
+              && resultActions.nextElementSibling === placementPanel
               && resultActionsRect.bottom <= placementHeader.getBoundingClientRect().top,
             usesSixEqualColumns: (resultActionsStyle.gridTemplateColumns.match(/px/g) || []).length === 6
               && [app.getComputedStyle(progressButton).gridColumnStart, app.getComputedStyle(progressButton).gridColumnEnd].includes("span 4"),
@@ -2761,9 +2767,11 @@
           const progressBuildingLabelCenterY = progressBuildingLabel.getBoundingClientRect().top
             + progressBuildingLabel.getBoundingClientRect().height / 2;
           assertDeepEqual(comparable({
-            panelOpen: progressPanel.open,
+            modalOpen: progressModal.classList.contains("show"),
             buttonExpanded: progressButton.getAttribute("aria-expanded"),
-            panelAbovePagination: progressPanel.nextElementSibling === placementPanel,
+            panelInsideModal: progressModal.contains(progressPanel),
+            modalTitle: app.document.getElementById("harvestProgressWindowTitle")?.textContent.trim() || "",
+            backgroundScrollLocked: app.document.body.style.overflow === "hidden",
             selectionAboveBuilding: progressSelection.nextElementSibling === progressSwitch,
             usesSharedPagination: progressSwitch.classList.contains("simulationBuildingPagination")
               && progressPager.classList.contains("simulationBuildingPager"),
@@ -2782,9 +2790,11 @@
             defaultExplanationHidden: progressResult.hidden && progressResult.textContent.trim() === "",
             swipeInstalled: app.eval("harvestProgressBuildingSwipeInstalled")
           }), {
-            panelOpen: true,
+            modalOpen: true,
             buttonExpanded: "true",
-            panelAbovePagination: true,
+            panelInsideModal: true,
+            modalTitle: "途中経過を入力",
+            backgroundScrollLocked: true,
             selectionAboveBuilding: true,
             usesSharedPagination: true,
             samePaginationSize: true,
@@ -2793,7 +2803,7 @@
             fieldLabel: "選択場所で収穫したケース数",
             defaultExplanationHidden: true,
             swipeInstalled: true
-          }, "途中経過入力がページネーションの上で開きません");
+          }, "途中経過入力がモーダルで開きません");
           const progressBuildingBeforeSwipe = app.eval("harvestProgressBuilding");
           progressPager.dispatchEvent(new app.PointerEvent("pointerdown", {
             bubbles:true,
@@ -2845,7 +2855,7 @@
           app.clearHarvestPrediction();
           assert(resultActions.hidden && resultActions.getClientRects().length === 0,
             "計算結果をクリアした後も結果操作が表示されています");
-          assert(progressPanel.hidden && !progressPanel.open,
+          assert(progressPanel.hidden && !progressModal.classList.contains("show"),
             "計算結果をクリアした後も途中経過入力が表示されています");
 
           app.setMainTabSelection("monitor");
@@ -3136,7 +3146,7 @@
           ".casePlacementCalculateBtn",
           ".forecastPlacementStatusCard",
           ".forecastBottomClearRow .forecastClearBtn",
-          ".harvestProgressPanel"
+          ".harvestProgressOpenBtn"
         ].map(selector => parseFloat(app.getComputedStyle(app.document.querySelector(selector)).borderRadius));
         assertDeepEqual(comparable({
           hasCardBorder: parseFloat(fieldStyle.borderTopWidth) >= 1
@@ -5801,18 +5811,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "d59e3eb8", elements: 2207, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "6f3b8e1e", elements: 2275, visible: 665, viewport: "390x844" },
-          cssFocus: { hash: "f1d1d2e3", elements: 2275, visible: 665, viewport: "390x844" },
-          mobileRecord: { hash: "d8f452a7", elements: 2208, visible: 104, viewport: "390x844" },
-          mobileDashboard: { hash: "aa3c6851", elements: 2208, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "e81889fd", elements: 2291, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "1f6de8b2", elements: 2306, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "f4f29016", elements: 2306, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "c8ccb148", elements: 2306, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "834132dc", elements: 2306, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "d411358d", elements: 2306, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "a6752fe9", elements: 2306, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "e0af881c", elements: 2208, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "0406698b", elements: 2276, visible: 665, viewport: "390x844" },
+          cssFocus: { hash: "a5cba306", elements: 2276, visible: 665, viewport: "390x844" },
+          mobileRecord: { hash: "55802de8", elements: 2209, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "50c8d4fe", elements: 2209, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "68ebb3b6", elements: 2292, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "4233f9de", elements: 2307, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "431a6dfc", elements: 2307, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "66dc5c78", elements: 2307, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "5e43db44", elements: 2307, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "0e61be56", elements: 2307, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "3ef50ae2", elements: 2307, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
