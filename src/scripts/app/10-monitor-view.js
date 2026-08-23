@@ -637,7 +637,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
                 <span class="monitorRemainingLocation">${location.label}</span><span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
               </span>
             `).join("")}
-            <span class="monitorRemainingSuffixInline">ケース残す</span>
+            ${displayVariant === "preview2" ? "" : `<span class="monitorRemainingSuffixInline">ケース残す</span>`}
           </div>
         </div>
       `;
@@ -925,7 +925,8 @@ function getMonitorPreview2IconHtml(kind){
 }
 
 function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){
-  const parts = getMonitorMetricParts(value, fallbackUnit);
+  const displayValue = kind === "seedling" ? removeMonitorUnplantedSeedlingNote(value) : value;
+  const parts = getMonitorMetricParts(displayValue, fallbackUnit);
   return `
     <section class="monitorPanel monitorV2MetricCard monitorV2MetricCard-${escapeHtml(kind)}">
       <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>

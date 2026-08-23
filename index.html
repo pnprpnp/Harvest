@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-preview2-condensed-numbers">
+<meta name="harvestnavi-version" content="20260823-monitor-preview2-clean-metrics">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -31481,7 +31481,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
                 <span class="monitorRemainingLocation">${location.label}</span><span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
               </span>
             `).join("")}
-            <span class="monitorRemainingSuffixInline">ケース残す</span>
+            ${displayVariant === "preview2" ? "" : `<span class="monitorRemainingSuffixInline">ケース残す</span>`}
           </div>
         </div>
       `;
@@ -31769,7 +31769,8 @@ function getMonitorPreview2IconHtml(kind){
 }
 
 function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){
-  const parts = getMonitorMetricParts(value, fallbackUnit);
+  const displayValue = kind === "seedling" ? removeMonitorUnplantedSeedlingNote(value) : value;
+  const parts = getMonitorMetricParts(displayValue, fallbackUnit);
   return `
     <section class="monitorPanel monitorV2MetricCard monitorV2MetricCard-${escapeHtml(kind)}">
       <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
