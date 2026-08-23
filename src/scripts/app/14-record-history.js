@@ -381,7 +381,8 @@ function getRecordHistoryCache(){
 function formatRecordHistoryDateLabel(value){
   const date = parseDateOnlyString(String(value || "").trim());
   if(!date) return "日付なしの記録";
-  return `${date.getMonth() + 1}/${date.getDate()}の記録`;
+  const weekday = ["日", "月", "火", "水", "木", "金", "土"][date.getDay()];
+  return `${date.getMonth() + 1}/${date.getDate()}（${weekday}）の記録`;
 }
 
 function renderRecordList(){
