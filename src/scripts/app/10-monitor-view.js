@@ -711,7 +711,7 @@ function getMonitorHarvestLocationDisplayText(value, keys = []){
 
   const order = getMonitorBuildingDisplayOrder(grouped);
   const orderIndexes = new Map(order.map((building, index) => [building, index]));
-  return lines
+  const orderedLines = lines
     .map((line, index) => {
       const building = Number(line.match(/^(\d+)号棟/)?.[1]);
       return {
@@ -721,8 +721,22 @@ function getMonitorHarvestLocationDisplayText(value, keys = []){
       };
     })
     .sort((left, right) => left.order - right.order || left.index - right.index)
-    .map(item => item.line)
-    .join("\n");
+    .map(item => item.line);
+  const abbreviatedLines = orderedLines.map(line => {
+    const match = line.match(/^(\d+号棟)\s*(.*)$/);
+    if(!match) return line;
+    const buildingLabel = match[1];
+    const details = String(match[2] || "").trim();
+    if(!details || details === "全部") return buildingLabel;
+    const remainingDetails = details
+      .split("、")
+      .map(detail => detail.trim())
+      .filter(detail => detail && !/全部$/.test(detail));
+    return remainingDetails.length
+      ? `${buildingLabel} ${remainingDetails.join("、")}`
+      : buildingLabel;
+  });
+  return "（略）" + abbreviatedLines.join("\n");
 }
 
 function getMonitorHarvestLocationInlineHtml(value, keys = []){
@@ -820,6 +834,14 @@ function buildMonitorDashboardHtml(content){
     ? normalized.memoItems
     : String(normalized.memoText || "");
   const monitorHarvestKeys = normalized.harvestFillKeys || [];
+  const harvestLocationLineCount = String(fields.harvestLocation || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .length;
+  const harvestPanelClass = harvestLocationLineCount <= 1
+    ? " has-single-location-line"
+    : "";
   const harvestMapClass = getMonitorSelectionBuildingCount(monitorHarvestKeys) === 3
     ? " has-three-buildings"
     : "";
@@ -848,7 +870,7 @@ function buildMonitorDashboardHtml(content){
           </div>
         </section>
       </div>
-      <section class="monitorPanel monitorHarvestPanel">
+      <section class="monitorPanel monitorHarvestPanel${harvestPanelClass}">
         <div class="monitorPanelHeader">
           <div class="monitorHarvestTitleGroup">
             <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>

@@ -3995,7 +3995,7 @@
             threeDashboardHost.style.cssText = "position:fixed;left:-4000px;top:0;";
             threeDashboardHost.innerHTML = buildMonitorDashboardHtml({
               enabled:true,
-              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 8号棟 A-1 / 9号棟 A-1 / 2号棟 A-1\\n残すケース:\\n8号棟 配置: 48ケース\\n9号棟 配置: 48ケース\\n2号棟 配置: 48ケース",
+              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 8号棟 A全部\\n9号棟 A全部\\n2号棟 A全部\\n残すケース:\\n8号棟 配置: 48ケース\\n9号棟 配置: 48ケース\\n2号棟 配置: 48ケース",
               harvestFillKeys:threeBuildingKeys,
               memoItems:[]
             });
@@ -4054,6 +4054,10 @@
                 "2号棟 A全部\\n9号棟 F全部",
                 [getPalletKey(2, "A", 1), getPalletKey(9, "F", 1)]
               ),
+              mixedAbbreviatedLocationText:getMonitorHarvestLocationDisplayText(
+                "2号棟 A,B全部、C 前2ピンとる\\n3号棟全部",
+                [getPalletKey(2, "C", 1), getPalletKey(3, "A", 1)]
+              ),
               harvestPanelTitle:dashboardHost.querySelector(".monitorHarvestPanel .monitorSectionTitle")?.textContent.trim() || "",
               legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim()),
               legendFontSize:getComputedStyle(dashboardHost.querySelector(".monitorMapLegend")).fontSize,
@@ -4062,7 +4066,20 @@
                 const style = getComputedStyle(chip);
                 return [style.width, style.height];
               })(),
+              singleLineLayoutEnabled:dashboardHost.querySelector(".monitorHarvestPanel").classList.contains("has-single-location-line"),
+              singleLineHeaderMinHeight:getComputedStyle(
+                dashboardHost.querySelector(".monitorHarvestPanel > .monitorPanelHeader")
+              ).minHeight,
+              singleLineBuildingTitleFontSize:getComputedStyle(
+                dashboardHost.querySelector(".monitorBuildingTitle")
+              ).fontSize,
+              singleLineBuildingTitleGap:getComputedStyle(
+                dashboardHost.querySelector(".monitorBuildingTitle")
+              ).gap,
               singleBuildingUsesRegularLayout:!dashboardHost.querySelector(".monitorHarvestMap").classList.contains("has-three-buildings"),
+              multiLineLayoutKeepsDefaultHeight:!threeDashboardHost.querySelector(".monitorHarvestPanel").classList.contains("has-single-location-line")
+                && getComputedStyle(threeDashboardHost.querySelector(".monitorHarvestPanel > .monitorPanelHeader")).minHeight === "100px",
+              multiLineLocationText:threeDashboardHost.querySelector(".monitorHarvestLocationText")?.textContent.trim() || "",
               threeBuildingLayoutEnabled:threeBuildingMap.classList.contains("has-three-buildings"),
               threeBuildingColumnCount:getComputedStyle(threeBuildingMap).gridTemplateColumns.trim().split(/\\s+/).length,
               threeBuildingCount:threeBuildingBlocks.length,
@@ -4103,12 +4120,19 @@
           emphasizedPalletCount:0,
           directionCount:0,
           wrappedOrders:[["8号棟", "9号棟", "2号棟"], ["9号棟", "2号棟", "3号棟"]],
-          wrappedLocationText:"9号棟 F全部\n2号棟 A全部",
+          wrappedLocationText:"（略）9号棟\n2号棟",
+          mixedAbbreviatedLocationText:"（略）2号棟 C 前2ピンとる\n3号棟",
           harvestPanelTitle:"収穫場所と配置コンテナ数",
           legend:["今回収穫", "収穫済み"],
           legendFontSize:"13px",
           legendChipSize:["18px", "12px"],
+          singleLineLayoutEnabled:true,
+          singleLineHeaderMinHeight:"84px",
+          singleLineBuildingTitleFontSize:"25px",
+          singleLineBuildingTitleGap:"20px",
           singleBuildingUsesRegularLayout:true,
+          multiLineLayoutKeepsDefaultHeight:true,
+          multiLineLocationText:"（略）8号棟 / 9号棟 / 2号棟",
           threeBuildingLayoutEnabled:true,
           threeBuildingColumnCount:3,
           threeBuildingCount:3,
