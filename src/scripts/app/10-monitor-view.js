@@ -578,12 +578,75 @@ function getMonitorRemainingCasesHtml(value){
   }).join("");
 }
 
-function getMonitorHarvestLocationInlineHtml(value){
-  const text = String(value || "").trim();
+function getMonitorHarvestLocationDisplayText(value, keys = []){
+  const lines = String(value || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+  if(lines.length < 2) return lines.join("\n");
+
+  const grouped = {};
+  (Array.isArray(keys) ? keys : []).forEach(key => {
+    const parsed = parsePalletKey(String(key || ""));
+    if(BUILDINGS.includes(parsed.building)) grouped[String(parsed.building)] = true;
+  });
+  lines.forEach(line => {
+    const match = line.match(/^(\d+)号棟/);
+    const building = Number(match?.[1]);
+    if(BUILDINGS.includes(building)) grouped[String(building)] = true;
+  });
+
+  const order = getMonitorBuildingDisplayOrder(grouped);
+  const orderIndexes = new Map(order.map((building, index) => [building, index]));
+  return lines
+    .map((line, index) => {
+      const building = Number(line.match(/^(\d+)号棟/)?.[1]);
+      return {
+        line,
+        index,
+        order:orderIndexes.has(building) ? orderIndexes.get(building) : Number.MAX_SAFE_INTEGER
+      };
+    })
+    .sort((left, right) => left.order - right.order || left.index - right.index)
+    .map(item => item.line)
+    .join("\n");
+}
+
+function getMonitorHarvestLocationInlineHtml(value, keys = []){
+  const text = getMonitorHarvestLocationDisplayText(value, keys).trim();
   if(!text || text === "-") return "未選択";
   return escapeHtml(text)
     .replace(/\n+/g, " / ")
     .replace(/(後ろ|前|\d+\s*ピン|とる|取る|残す)/g, '<span class="monitorLocationHighlight">$1</span>');
+}
+
+function fitMonitorPrimaryMetricText(root = document){
+  const lines = Array.from(root.querySelectorAll?.(
+    ".monitorSummaryGrid .monitorMetricCard:nth-child(-n+2) .monitorMetricLine"
+  ) || []);
+  lines.forEach(line => {
+    if(line.clientWidth <= 0 || line.clientHeight <= 0) return;
+    const minimumSize = 34;
+    const maximumSize = 54;
+    const fitsAtSize = size => {
+      line.style.fontSize = size + "px";
+      return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;
+    };
+    if(fitsAtSize(maximumSize)) return;
+
+    let lower = minimumSize;
+    let upper = maximumSize;
+    fitsAtSize(lower);
+    for(let index = 0; index < 8; index++){
+      const middle = (lower + upper) / 2;
+      if(fitsAtSize(middle)){
+        lower = middle;
+      }else{
+        upper = middle;
+      }
+    }
+    line.style.fontSize = lower.toFixed(2) + "px";
+  });
 }
 
 function fitMonitorRemainingCasesText(root = document){
@@ -665,7 +728,7 @@ function buildMonitorDashboardHtml(content){
         <div>
           <time class="monitorTodayDate" data-monitor-today datetime="${escapeHtml(today.dateTime)}">${escapeHtml(today.text)}</time>
         </div>
-        ${updatedAt ? `<div class="monitorUpdatedAt"><span>最終更新</span><span class="monitorUpdatedAtValue">${escapeHtml(updatedAt)}</span></div>` : ""}
+        <div class="monitorUpdatedAt"><span>最終更新</span><span class="monitorUpdatedAtValue">${escapeHtml(updatedAt || "--")}</span></div>
       </div>
       <div class="monitorSummaryGrid">
         ${getMonitorMetricCardHtml("苗", fields.seedling, "枚")}
@@ -688,7 +751,7 @@ function buildMonitorDashboardHtml(content){
         <div class="monitorPanelHeader">
           <div class="monitorHarvestTitleGroup">
             <div class="monitorSectionTitle">収穫場所</div>
-            <div class="monitorHarvestLocationText">${getMonitorHarvestLocationInlineHtml(fields.harvestLocation)}</div>
+            <div class="monitorHarvestLocationText">${getMonitorHarvestLocationInlineHtml(fields.harvestLocation, normalized.harvestFillKeys || [])}</div>
           </div>
           <div class="monitorMapLegend" aria-label="収穫場所の凡例">
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
@@ -722,6 +785,7 @@ function renderMonitorMode(){
   body.innerHTML = buildMonitorDashboardHtml(content);
   updateMonitorTodayDisplays();
   requestAnimationFrame(() => {
+    fitMonitorPrimaryMetricText(body);
     fitMonitorRemainingCasesText(body);
     fitMonitorHarvestLocationText(body);
   });

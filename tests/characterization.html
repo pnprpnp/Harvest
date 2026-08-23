@@ -4010,6 +4010,10 @@
               emphasizedPalletCount:host.querySelectorAll(".is-monitor-start, .is-monitor-end").length,
               directionCount:host.querySelectorAll(".monitorBuildingDirection").length,
               wrappedOrders:[readBuildingOrder([8, 9, 2]), readBuildingOrder([9, 2, 3])],
+              wrappedLocationText:getMonitorHarvestLocationDisplayText(
+                "2号棟 A全部\\n9号棟 F全部",
+                [getPalletKey(2, "A", 1), getPalletKey(9, "F", 1)]
+              ),
               legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim())
             };
           }finally{
@@ -4034,6 +4038,7 @@
           emphasizedPalletCount:0,
           directionCount:0,
           wrappedOrders:[["8号棟", "9号棟", "2号棟"], ["9号棟", "2号棟", "3号棟"]],
+          wrappedLocationText:"9号棟 F全部\n2号棟 A全部",
           legend:["今回収穫", "収穫済み"]
         }, "モニターの収穫場所が2列39段の配置図になっていません");
       });
@@ -4044,12 +4049,14 @@
           host.style.cssText = "position:fixed;left:-2000px;top:0;width:1200px;height:300px;";
           host.innerHTML = buildMonitorDashboardHtml({
             enabled:true,
+            updatedAt:"2026-08-23 17:14:00",
             instructionText:"苗: 9枚（未定植分 3枚）\\n収穫ケース数: 42\\n収穫場所: -\\n残すケース: 2号棟 前側: 6ケース\\n2号棟 中央: 20ケース\\n2号棟 後ろ: 30ケース",
             harvestFillKeys:[],
             memoItems:[]
           });
           document.body.appendChild(host);
           try{
+            fitMonitorPrimaryMetricText(host);
             const cards = [...host.querySelectorAll(".monitorMetricCard")];
             return {
               labels:cards.map(card => card.querySelector(".monitorMetricLabel")?.textContent.trim() || ""),
@@ -4064,8 +4071,12 @@
               mainTextIsLarge:cards.every(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize) >= 24),
               primaryTextIsLarger:(() => {
                 const sizes = cards.map(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize));
-                return sizes[0] >= 30 && sizes[1] >= 30 && sizes[0] > sizes[2] && sizes[1] > sizes[2];
+                return sizes[0] >= 34 && sizes[1] >= 34 && sizes[0] > sizes[2] && sizes[1] > sizes[2];
               })(),
+              primaryTextFits:cards.slice(0, 2).every(card => {
+                const line = card.querySelector(".monitorMetricLine");
+                return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;
+              }),
               labelsAndNumbersMatch:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
                 const label = card.querySelector(".monitorMetricLabel");
@@ -4089,7 +4100,9 @@
                 const locations = [...host.querySelectorAll(".monitorRemainingLocation")];
                 const lefts = locations.map(location => Math.round(location.getBoundingClientRect().left * 10) / 10);
                 return locations.length === 3 && lefts.every(left => left === lefts[0]);
-              })()
+              })(),
+              updatedAtText:host.querySelector(".monitorUpdatedAt")?.textContent.replace(/\\s+/g, " ").trim() || "",
+              updatedAtIsRightItem:host.querySelector(".monitorTodayBar")?.lastElementChild?.classList.contains("monitorUpdatedAt") || false
             };
           }finally{
             host.remove();
@@ -4101,11 +4114,14 @@
           allUseOneRow:true,
           mainTextIsLarge:true,
           primaryTextIsLarger:true,
+          primaryTextFits:true,
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
           allIconSizesMatch:true,
           remainingLines:["2-前：6ケース残す", "2-中：20ケース残す", "2-奥：30ケース残す"],
-          remainingLocationsAligned:true
+          remainingLocationsAligned:true,
+          updatedAtText:"最終更新2026/8/23 17:14",
+          updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");
       });
 
