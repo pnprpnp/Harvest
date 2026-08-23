@@ -683,8 +683,8 @@ function fitMonitorPrimaryMetricText(root = document){
   ) || []);
   lines.forEach(line => {
     if(line.clientWidth <= 0 || line.clientHeight <= 0) return;
-    const minimumSize = 32;
-    const maximumSize = 48;
+    const minimumSize = 24;
+    const maximumSize = 42;
     const fitsAtSize = size => {
       line.style.fontSize = size + "px";
       return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;

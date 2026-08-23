@@ -4077,11 +4077,16 @@
               caseTextIsReadable:cards.slice(2).every(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize) >= 12),
               primaryTextIsLarger:(() => {
                 const sizes = cards.map(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize));
-                return sizes[0] >= 32 && sizes[1] >= 32 && sizes[0] > sizes[2] && sizes[1] > sizes[3];
+                return sizes[0] >= 24 && sizes[1] >= 24 && sizes[0] > sizes[2] && sizes[1] > sizes[3];
               })(),
               primaryTextFits:cards.slice(0, 2).every(card => {
                 const line = card.querySelector(".monitorMetricLine");
                 return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;
+              }),
+              primaryValuesDoNotOverlapUnits:cards.slice(0, 2).every(card => {
+                const value = card.querySelector(".monitorMetricValue");
+                const unit = card.querySelector(".monitorMetricUnit");
+                return value && unit && value.getBoundingClientRect().right <= unit.getBoundingClientRect().left;
               }),
               primaryLabelsUseSameColor:(() => {
                 const labels = cards.slice(0, 2).map(card => card.querySelector(".monitorMetricLabel"));
@@ -4127,6 +4132,7 @@
           caseTextIsReadable:true,
           primaryTextIsLarger:true,
           primaryTextFits:true,
+          primaryValuesDoNotOverlapUnits:true,
           primaryLabelsUseSameColor:true,
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
