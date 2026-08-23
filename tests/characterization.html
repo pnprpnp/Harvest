@@ -3983,22 +3983,47 @@
           };
           const preview1Host = document.createElement("div");
           const preview2Host = document.createElement("div");
+          const longLocationHost = document.createElement("div");
           preview1Host.className = "monitorModeBody";
           preview2Host.className = "monitorModeBody";
+          longLocationHost.className = "monitorModeBody";
           preview1Host.style.cssText = "position:fixed;left:-3000px;top:0;";
           preview2Host.style.cssText = "position:fixed;left:-5000px;top:0;";
+          longLocationHost.style.cssText = "position:fixed;left:-7000px;top:0;";
           try{
             preview1Host.innerHTML = buildMonitorDashboardHtml(content, { previewLayout:"preview1" });
             preview2Host.innerHTML = buildMonitorDashboardHtml(content, { previewLayout:"preview2" });
+            longLocationHost.innerHTML = buildMonitorDashboardHtml({
+              enabled:true,
+              instructionText:[
+                "苗: 0枚 / 収穫ケース数: 0ケース",
+                "収穫場所: 8号棟全部",
+                "9号棟 A 個別選択、B 個別選択、C 個別選択",
+                "2号棟 A 個別選択、B 個別選択",
+                "残すケース: なし"
+              ].join("\\n"),
+              harvestFillKeys:[
+                getPalletKey(8, "A", 1),
+                getPalletKey(9, "A", 1),
+                getPalletKey(2, "A", 1)
+              ],
+              memoItems:[]
+            }, { previewLayout:"preview2" });
             document.body.appendChild(preview1Host);
             document.body.appendChild(preview2Host);
+            document.body.appendChild(longLocationHost);
             fitMonitorHarvestLocationText(preview2Host);
+            fitMonitorHarvestLocationText(longLocationHost);
             fitMonitorPreview2CaseText(preview2Host);
             const firstMetricRect = preview2Host.querySelector(".monitorV2MetricCard")?.getBoundingClientRect();
             const locationRect = preview2Host.querySelector(".monitorV2LocationCard")?.getBoundingClientRect();
             const mapRect = preview2Host.querySelector(".monitorV2MapPanel")?.getBoundingClientRect();
             const memoRect = preview2Host.querySelector(".monitorV2MemoPanel")?.getBoundingClientRect();
             const dashboard = preview2Host.querySelector(".monitorV2Dashboard");
+            const preview2Header = preview2Host.querySelector(".monitorV2Header");
+            const longLocationValue = longLocationHost.querySelector(".monitorV2LocationValue");
+            const longLocationStyle = longLocationValue ? getComputedStyle(longLocationValue) : null;
+            const longLocationLineHeight = parseFloat(longLocationStyle?.lineHeight || "0");
             const selectedContent = withMonitorPreviewLayout(content, "preview2");
             const savePayload = buildGoogleSheetMonitorSavePayload({ token:"test" }, selectedContent);
             monitorPreviewLayoutPreference = "preview1";
@@ -4029,10 +4054,24 @@
                 locationLabel:preview2Host.querySelector(".monitorV2LocationLabel")?.textContent.trim() || "",
                 mapTitle:preview2Host.querySelector(".monitorV2MapPanel .monitorV2PanelTitle")?.textContent.trim() || "",
                 memoTitle:preview2Host.querySelector(".monitorV2MemoPanel .monitorV2PanelTitle")?.textContent.trim() || "",
+                brandAndDashboardTitleRemoved:!preview2Host.querySelector(".monitorV2Brand, .monitorV2HeaderTitle")
+                  && !preview2Host.textContent.includes("Harvestnavi")
+                  && !preview2Host.textContent.includes("モニターダッシュボード"),
+                headerOnlyShowsMeta:preview2Header?.children.length === 1 && !!preview2Header.querySelector(".monitorV2HeaderMeta"),
                 leftRightLayout:!!firstMetricRect && !!locationRect && !!mapRect && firstMetricRect.left < mapRect.left && locationRect.left < mapRect.left,
                 mapAboveMemo:!!mapRect && !!memoRect && mapRect.bottom <= memoRect.top + 1,
                 fitsDesignFrame:!!dashboard && dashboard.scrollWidth <= dashboard.clientWidth + 1 && dashboard.scrollHeight <= dashboard.clientHeight + 1,
-                caseTextFits:[...preview2Host.querySelectorAll(".monitorV2CaseValue")].every(value => value.scrollWidth <= value.clientWidth + 1 && value.scrollHeight <= value.clientHeight + 1)
+                caseTextFits:[...preview2Host.querySelectorAll(".monitorV2CaseValue")].every(value => value.scrollWidth <= value.clientWidth + 1 && value.scrollHeight <= value.clientHeight + 1),
+                longLocationKeepsFullText:!!longLocationValue
+                  && longLocationValue.textContent.includes("8号棟全部")
+                  && longLocationValue.textContent.includes("9号棟 A 個別選択、B 個別選択、C 個別選択")
+                  && longLocationValue.textContent.includes("2号棟 A 個別選択、B 個別選択")
+                  && !longLocationValue.textContent.includes("（略）"),
+                longLocationUsesTwoLineFit:longLocationValue?.style.whiteSpace === "normal"
+                  && longLocationValue.scrollWidth <= longLocationValue.clientWidth + 1
+                  && longLocationValue.scrollHeight <= longLocationValue.clientHeight + 1
+                  && longLocationLineHeight > 0
+                  && Math.round(longLocationValue.clientHeight / longLocationLineHeight) <= 2
               },
               mapIsReused:preview1Host.querySelector(".monitorHarvestMap")?.innerHTML === preview2Host.querySelector(".monitorHarvestMap")?.innerHTML,
               preview2MapCount:preview2Host.querySelectorAll(".monitorBedPalletMap").length,
@@ -4052,6 +4091,7 @@
           }finally{
             preview1Host.remove();
             preview2Host.remove();
+            longLocationHost.remove();
             monitorPreviewContent = previousPreviewContent;
             monitorPreviewSelectedLayout = previousPreviewLayout;
             monitorPreviewLayoutPreference = previousLayoutPreference;
@@ -4073,10 +4113,14 @@
             locationLabel:"収穫場所",
             mapTitle:"収穫場所（配置図）",
             memoTitle:"メモ",
+            brandAndDashboardTitleRemoved:true,
+            headerOnlyShowsMeta:true,
             leftRightLayout:true,
             mapAboveMemo:true,
             fitsDesignFrame:true,
-            caseTextFits:true
+            caseTextFits:true,
+            longLocationKeepsFullText:true,
+            longLocationUsesTwoLineFit:true
           },
           mapIsReused:true,
           preview2MapCount:6,

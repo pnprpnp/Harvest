@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-preview-layouts">
+<meta name="harvestnavi-version" content="20260823-monitor-preview2-location-wrap">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9125,7 +9125,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   grid-column:1 / -1;
   grid-row:1 / -1;
   display:grid;
-  grid-template-rows:64px minmax(0,1fr);
+  grid-template-rows:52px minmax(0,1fr);
   overflow:hidden;
   border:1px solid var(--ui-line);
   border-radius:18px;
@@ -9134,32 +9134,13 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorV2Header{
   min-width:0;
-  display:grid;
-  grid-template-columns:minmax(220px,1fr) auto minmax(360px,1fr);
+  display:flex;
   align-items:center;
-  gap:24px;
+  justify-content:flex-end;
   padding:0 22px;
   border-bottom:1px solid var(--ui-line);
   background:var(--ui-surface-solid);
 }
-.monitorV2Brand{
-  min-width:0;
-  display:flex;
-  align-items:center;
-  gap:10px;
-  color:var(--ui-accent-dark);
-  font-size:25px;
-  line-height:1;
-  font-weight:780;
-  letter-spacing:-.025em;
-  white-space:nowrap;
-}
-.monitorV2BrandIcon{
-  width:32px;
-  height:32px;
-  flex:0 0 32px;
-}
-.monitorV2BrandIcon svg,
 .monitorV2MetricIcon svg,
 .monitorV2LocationIcon svg,
 .monitorV2PanelIcon svg{
@@ -9171,17 +9152,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   stroke-width:2;
   stroke-linecap:round;
   stroke-linejoin:round;
-}
-.monitorV2HeaderTitle{
-  align-self:stretch;
-  display:flex;
-  align-items:center;
-  padding:0 18px;
-  border-bottom:3px solid var(--ui-accent);
-  color:var(--ui-text);
-  font-size:15px;
-  font-weight:730;
-  white-space:nowrap;
 }
 .monitorV2HeaderMeta{
   min-width:0;
@@ -9317,9 +9287,13 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorV2LocationContent{min-width:0;overflow:hidden;}
 .monitorV2LocationValue.monitorHarvestLocationText{
+  max-height:2.24em;
+  overflow:hidden;
   color:var(--ui-accent-dark);
   font-size:34px;
+  line-height:1.12;
   font-weight:760;
+  white-space:normal;
 }
 .monitorV2LocationValue .monitorLocationHighlight{
   padding:0;
@@ -31658,10 +31632,31 @@ function fitMonitorHarvestLocationText(root = document){
     const panel = location.closest(".monitorHarvestPanel");
     location.style.transform = "none";
     const isPreview2Location = location.classList.contains("monitorV2LocationValue");
-    const minimumSize = isPreview2Location ? 16 : 12;
+    const minimumSize = isPreview2Location ? 10 : 12;
     const maximumSize = isPreview2Location ? 36 : 28;
     location.innerHTML = getMonitorHarvestLocationInlineHtmlFromText(fullText);
     location.style.fontSize = maximumSize + "px";
+    if(isPreview2Location){
+      location.style.whiteSpace = "nowrap";
+      if(location.scrollWidth <= location.clientWidth + 1) return;
+      location.style.whiteSpace = "normal";
+      const fitsPreview2AtSize = size => {
+        location.style.fontSize = size + "px";
+        return location.scrollWidth <= location.clientWidth + 1
+          && location.scrollHeight <= location.clientHeight + 1;
+      };
+      if(fitsPreview2AtSize(maximumSize)) return;
+      let lower = minimumSize;
+      let upper = maximumSize;
+      fitsPreview2AtSize(lower);
+      for(let index = 0; index < 8; index++){
+        const middle = (lower + upper) / 2;
+        if(fitsPreview2AtSize(middle)) lower = middle;
+        else upper = middle;
+      }
+      location.style.fontSize = Math.max(minimumSize, lower - .25).toFixed(2) + "px";
+      return;
+    }
     const fullTextFitsOneLine = location.scrollWidth <= location.clientWidth + 1;
     const useAbbreviatedText = !fullTextFitsOneLine && abbreviatedText !== fullText;
     if(useAbbreviatedText){
@@ -31775,11 +31770,6 @@ function buildMonitorPreview2DashboardHtml(normalized, fields){
   return `
     <div class="monitorV2Dashboard">
       <header class="monitorV2Header">
-        <div class="monitorV2Brand">
-          <span class="monitorV2BrandIcon">${getMonitorPreview2IconHtml("seedling")}</span>
-          <span>Harvestnavi</span>
-        </div>
-        <div class="monitorV2HeaderTitle">モニターダッシュボード</div>
         <div class="monitorV2HeaderMeta">
           <time data-monitor-today datetime="${escapeHtml(today.dateTime)}">${escapeHtml(today.text)}</time>
           <span class="monitorV2HeaderDivider" aria-hidden="true"></span>

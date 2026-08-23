@@ -830,10 +830,31 @@ function fitMonitorHarvestLocationText(root = document){
     const panel = location.closest(".monitorHarvestPanel");
     location.style.transform = "none";
     const isPreview2Location = location.classList.contains("monitorV2LocationValue");
-    const minimumSize = isPreview2Location ? 16 : 12;
+    const minimumSize = isPreview2Location ? 10 : 12;
     const maximumSize = isPreview2Location ? 36 : 28;
     location.innerHTML = getMonitorHarvestLocationInlineHtmlFromText(fullText);
     location.style.fontSize = maximumSize + "px";
+    if(isPreview2Location){
+      location.style.whiteSpace = "nowrap";
+      if(location.scrollWidth <= location.clientWidth + 1) return;
+      location.style.whiteSpace = "normal";
+      const fitsPreview2AtSize = size => {
+        location.style.fontSize = size + "px";
+        return location.scrollWidth <= location.clientWidth + 1
+          && location.scrollHeight <= location.clientHeight + 1;
+      };
+      if(fitsPreview2AtSize(maximumSize)) return;
+      let lower = minimumSize;
+      let upper = maximumSize;
+      fitsPreview2AtSize(lower);
+      for(let index = 0; index < 8; index++){
+        const middle = (lower + upper) / 2;
+        if(fitsPreview2AtSize(middle)) lower = middle;
+        else upper = middle;
+      }
+      location.style.fontSize = Math.max(minimumSize, lower - .25).toFixed(2) + "px";
+      return;
+    }
     const fullTextFitsOneLine = location.scrollWidth <= location.clientWidth + 1;
     const useAbbreviatedText = !fullTextFitsOneLine && abbreviatedText !== fullText;
     if(useAbbreviatedText){
@@ -947,11 +968,6 @@ function buildMonitorPreview2DashboardHtml(normalized, fields){
   return `
     <div class="monitorV2Dashboard">
       <header class="monitorV2Header">
-        <div class="monitorV2Brand">
-          <span class="monitorV2BrandIcon">${getMonitorPreview2IconHtml("seedling")}</span>
-          <span>Harvestnavi</span>
-        </div>
-        <div class="monitorV2HeaderTitle">モニターダッシュボード</div>
         <div class="monitorV2HeaderMeta">
           <time data-monitor-today datetime="${escapeHtml(today.dateTime)}">${escapeHtml(today.text)}</time>
           <span class="monitorV2HeaderDivider" aria-hidden="true"></span>
