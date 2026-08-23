@@ -570,7 +570,7 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
   `;
 }
 
-function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
+function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displayVariant = "default"){
   const lines = String(value || "")
     .split("\n")
     .map(line => line.trim())
@@ -652,6 +652,9 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
   }
   const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
+    const buildingName = displayVariant === "preview2" && mode === "placement"
+      ? `${building}-`
+      : `${building}号棟`;
     const showPlacement = mode !== "remaining" && !!summary.placement;
     const showRemaining = mode !== "placement" && summary.locations.length > 0;
     if(!showPlacement && !showRemaining) return "";
@@ -670,7 +673,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
     return `
       <div class="monitorCaseBuildingSummary is-${escapeHtml(mode)}">
         <div class="monitorCaseBuildingLine">
-          <span class="monitorCaseBuildingName">${building}号棟</span>
+          <span class="monitorCaseBuildingName">${buildingName}</span>
           ${showPlacement ? `
             <span class="monitorCasePlacement">
               <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span><span class="monitorCasePlacementSuffix">配置</span>
@@ -891,8 +894,8 @@ function fitMonitorPreview2CaseText(root = document){
   const values = Array.from(root.querySelectorAll?.(".monitorV2CaseValue") || []);
   values.forEach(value => {
     if(value.clientWidth <= 0 || value.clientHeight <= 0) return;
-    const minimumSize = 13;
-    const maximumSize = 23;
+    const minimumSize = 16;
+    const maximumSize = 60;
     const fitsAtSize = size => {
       value.style.fontSize = size + "px";
       return value.scrollWidth <= value.clientWidth + 1 && value.scrollHeight <= value.clientHeight + 1;
@@ -946,7 +949,7 @@ function getMonitorPreview2CaseCardHtml(label, value, mode, kind){
       <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
       <div class="monitorV2MetricContent">
         <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
-        <div class="monitorV2CaseValue">${getMonitorRemainingCasesHtml(value, [], mode)}</div>
+        <div class="monitorV2CaseValue">${getMonitorRemainingCasesHtml(value, [], mode, "preview2")}</div>
       </div>
     </section>
   `;

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-preview2-row-balance">
+<meta name="harvestnavi-version" content="20260823-monitor-preview2-large-metrics">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9238,7 +9238,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorV2MetricValue{
   min-width:0;
   color:var(--ui-text);
-  font-size:48px;
+  font-size:60px;
   line-height:.95;
   font-weight:720;
   letter-spacing:-.045em;
@@ -9260,19 +9260,53 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorV2MetricCard-seedling .monitorV2MetricValue,
 .monitorV2MetricCard-placement .monitorV2CaseValue{color:var(--ui-accent-dark);}
+.monitorV2CaseCard{
+  position:relative;
+  display:block;
+  padding:14px;
+}
+.monitorV2CaseCard .monitorV2MetricIcon{
+  position:absolute;
+  top:14px;
+  left:14px;
+  width:42px;
+  height:42px;
+  padding:10px;
+}
+.monitorV2CaseCard .monitorV2MetricContent{
+  height:100%;
+  display:grid;
+  grid-template-rows:42px minmax(0,1fr);
+}
+.monitorV2CaseCard .monitorV2MetricLabel{
+  display:flex;
+  align-items:center;
+  margin:0;
+  padding-left:52px;
+}
 .monitorV2CaseValue{
   min-width:0;
-  max-height:80px;
+  min-height:0;
   overflow:hidden;
+  display:grid;
+  place-items:center;
   color:var(--ui-text);
-  font-size:23px;
-  line-height:1.18;
+  font-size:60px;
+  line-height:1.02;
   font-weight:740;
 }
+.monitorV2CaseValue .monitorCaseBuildingSummary{width:100%;}
 .monitorV2CaseValue .monitorCaseBuildingLine,
-.monitorV2CaseValue .monitorCaseRemainingLine{justify-content:flex-start;}
+.monitorV2CaseValue .monitorCaseRemainingLine{
+  justify-content:center;
+  gap:0;
+}
+.monitorV2MetricCard-placement .monitorCaseBuildingName{margin-right:0;}
+.monitorV2MetricCard-remaining .monitorCaseRemainingLine{flex-wrap:wrap;}
+.monitorV2MetricCard-remaining .monitorRemainingLocation{font-size:20px;}
+.monitorV2MetricCard-remaining .monitorRemainingSuffixInline{font-size:16px;}
 .monitorV2CaseValue .monitorCasePlacementSuffix{display:none;}
-.monitorV2CaseValue .monitorMetricSmallUnit{font-size:.62em;}
+.monitorV2CaseValue .monitorMetricSmallUnit{font-size:13px;}
 .monitorV2LocationCard{
   min-width:0;
   min-height:0;
@@ -31372,7 +31406,7 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
   `;
 }
 
-function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
+function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displayVariant = "default"){
   const lines = String(value || "")
     .split("\n")
     .map(line => line.trim())
@@ -31454,6 +31488,9 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
   }
   const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
+    const buildingName = displayVariant === "preview2" && mode === "placement"
+      ? `${building}-`
+      : `${building}号棟`;
     const showPlacement = mode !== "remaining" && !!summary.placement;
     const showRemaining = mode !== "placement" && summary.locations.length > 0;
     if(!showPlacement && !showRemaining) return "";
@@ -31472,7 +31509,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
     return `
       <div class="monitorCaseBuildingSummary is-${escapeHtml(mode)}">
         <div class="monitorCaseBuildingLine">
-          <span class="monitorCaseBuildingName">${building}号棟</span>
+          <span class="monitorCaseBuildingName">${buildingName}</span>
           ${showPlacement ? `
             <span class="monitorCasePlacement">
               <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span><span class="monitorCasePlacementSuffix">配置</span>
@@ -31693,8 +31730,8 @@ function fitMonitorPreview2CaseText(root = document){
   const values = Array.from(root.querySelectorAll?.(".monitorV2CaseValue") || []);
   values.forEach(value => {
     if(value.clientWidth <= 0 || value.clientHeight <= 0) return;
-    const minimumSize = 13;
-    const maximumSize = 23;
+    const minimumSize = 16;
+    const maximumSize = 60;
     const fitsAtSize = size => {
       value.style.fontSize = size + "px";
       return value.scrollWidth <= value.clientWidth + 1 && value.scrollHeight <= value.clientHeight + 1;
@@ -31748,7 +31785,7 @@ function getMonitorPreview2CaseCardHtml(label, value, mode, kind){
       <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
       <div class="monitorV2MetricContent">
         <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
-        <div class="monitorV2CaseValue">${getMonitorRemainingCasesHtml(value, [], mode)}</div>
+        <div class="monitorV2CaseValue">${getMonitorRemainingCasesHtml(value, [], mode, "preview2")}</div>
       </div>
     </section>
   `;
