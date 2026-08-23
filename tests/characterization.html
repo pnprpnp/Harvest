@@ -4076,19 +4076,27 @@
             harvestFillKeys:[],
             memoItems:[]
           });
+          const equalWidthReference = host.cloneNode(true);
+          equalWidthReference.style.top = "320px";
+          equalWidthReference.querySelector(".monitorSummaryGrid").style.gridTemplateColumns = "repeat(3,minmax(0,1fr))";
           document.body.appendChild(host);
+          document.body.appendChild(equalWidthReference);
           try{
+            fitMonitorSummaryMetricText(equalWidthReference);
+            const equalWidthFontSize = parseFloat(getComputedStyle(
+              equalWidthReference.querySelector(".monitorMetricLine")
+            ).fontSize);
             fitMonitorSummaryMetricText(host);
             const cards = [...host.querySelectorAll(".monitorMetricCard")];
+            const cardWidths = cards.map(card => card.getBoundingClientRect().width);
             return {
               labels:cards.map(card => card.querySelector(".monitorMetricLabel")?.textContent.trim() || ""),
               labelsUseHalfWidthSpace:cards.slice(0, 2).every(card =>
                 card.querySelector(".monitorMetricLabelText")?.textContent.endsWith("： ")
               ),
               summaryColumns:getComputedStyle(host.querySelector(".monitorSummaryGrid")).gridTemplateColumns.trim().split(/\\s+/g).length,
-              summaryCardsUseEqualWidths:cards.every(card =>
-                Math.abs(card.getBoundingClientRect().width - cards[0].getBoundingClientRect().width) < 0.1
-              ),
+              summaryCardsFollowContentWidths:Math.abs((cardWidths[0] / cardWidths[1]) - .7) <= .02
+                && Math.abs((cardWidths[2] / cardWidths[1]) - 1.3) <= .02,
               unplantedVisible:host.textContent.includes("未定植分"),
               allUseOneRow:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
@@ -4102,6 +4110,9 @@
                 const sizes = cards.map(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize));
                 return sizes[0] >= 18 && sizes.every(size => Math.abs(size - sizes[0]) < 0.1);
               })(),
+              summaryTextKeepsEqualWidthSize:Math.abs(
+                parseFloat(getComputedStyle(cards[0].querySelector(".monitorMetricLine")).fontSize) - equalWidthFontSize
+              ) < 0.1,
               summaryTextFits:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
                 return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;
@@ -4144,17 +4155,19 @@
             };
           }finally{
             host.remove();
+            equalWidthReference.remove();
           }
         })()`));
         assertDeepEqual(summaryState, {
           labels:["苗：", "収穫：", ""],
           labelsUseHalfWidthSpace:true,
           summaryColumns:3,
-          summaryCardsUseEqualWidths:true,
+          summaryCardsFollowContentWidths:true,
           unplantedVisible:false,
           allUseOneRow:true,
           caseTextIsReadable:true,
           summaryTextSizesMatch:true,
+          summaryTextKeepsEqualWidthSize:true,
           summaryTextFits:true,
           primaryValuesDoNotOverlapUnits:true,
           primaryLabelsUseSameColor:true,

@@ -729,6 +729,14 @@ function fitMonitorSummaryMetricText(root = document){
   ) || []);
   const visibleLines = lines.filter(line => line.clientWidth > 0 && line.clientHeight > 0);
   if(!visibleLines.length) return;
+  const cards = visibleLines.map(line => line.closest(".monitorMetricCard"));
+  const equalCardWidth = cards.reduce((total, card) => total + card.clientWidth, 0) / cards.length;
+  const originalWidths = visibleLines.map(line => line.style.width);
+  visibleLines.forEach((line, index) => {
+    const card = cards[index];
+    const horizontalInset = Math.max(0, card.clientWidth - line.clientWidth);
+    line.style.width = Math.max(1, equalCardWidth - horizontalInset) + "px";
+  });
   const minimumSize = 18;
   const maximumSize = 42;
   const fitsAtSize = size => {
@@ -739,21 +747,24 @@ function fitMonitorSummaryMetricText(root = document){
       return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;
     });
   };
-  if(fitsAtSize(maximumSize)) return;
-
-  let lower = minimumSize;
-  let upper = maximumSize;
-  fitsAtSize(lower);
-  for(let index = 0; index < 8; index++){
-    const middle = (lower + upper) / 2;
-    if(fitsAtSize(middle)){
-      lower = middle;
-    }else{
-      upper = middle;
+  let finalSize = maximumSize;
+  if(!fitsAtSize(maximumSize)){
+    let lower = minimumSize;
+    let upper = maximumSize;
+    fitsAtSize(lower);
+    for(let index = 0; index < 8; index++){
+      const middle = (lower + upper) / 2;
+      if(fitsAtSize(middle)){
+        lower = middle;
+      }else{
+        upper = middle;
+      }
     }
+    finalSize = lower;
   }
-  visibleLines.forEach(line => {
-    line.style.fontSize = lower.toFixed(2) + "px";
+  visibleLines.forEach((line, index) => {
+    line.style.width = originalWidths[index];
+    line.style.fontSize = finalSize.toFixed(2) + "px";
   });
 }
 
