@@ -293,7 +293,9 @@ function updateBuildingLabel(){
 function updateCasePlacementBuildingLabel(){
   const caseBtn = document.getElementById("casePlacementBuildingBtn");
   const pager = document.getElementById("casePlacementBuildingPager");
-  if(caseBtn) caseBtn.textContent = casePlacementBuilding + "号棟";
+  const caseLabel = caseBtn?.querySelector(".buildingPaginationLabel");
+  if(caseLabel) caseLabel.textContent = casePlacementBuilding + "号棟";
+  else if(caseBtn) caseBtn.textContent = casePlacementBuilding + "号棟";
   if(pager) pager.setAttribute("aria-label", `${casePlacementBuilding}号棟を表示中。左右にスワイプできます`);
 }
 

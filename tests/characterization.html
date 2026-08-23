@@ -2424,6 +2424,7 @@
           const statusCard = document.getElementById("forecastPlacementStatusCard");
           const header = document.querySelector("#forecastTab .casePlacementHeader");
           const remaining = document.getElementById("remainingCasesSummaryCard");
+          const caseSummary = document.getElementById("casePlacementSummaryButton");
           const previous = {
             building: currentBuilding,
             keys: [...harvestFillKeys],
@@ -2457,6 +2458,30 @@
             const visibleStatusRect = statusCard.getBoundingClientRect();
             const visibleRemainingRect = remaining.getBoundingClientRect();
             const visibleResultRect = result.getBoundingClientRect();
+            const caseSummaryRect = caseSummary.getBoundingClientRect();
+            const center = element => {
+              const rect = element.getBoundingClientRect();
+              return { x:rect.left + rect.width / 2, y:rect.top + rect.height / 2 };
+            };
+            const plantingLabel = document.getElementById("forecastPlantingAgeResultTitle");
+            const caseLabel = caseSummary.querySelector(".casePlacementDetailsLabel");
+            const remainingLabel = remaining.querySelector(".casePlacementRemainingLabel");
+            const caseValue = document.getElementById("casePlacementCompactSummary");
+            const remainingValue = document.getElementById("remainingCasesSummary");
+            const statusCenters = [
+              [result, plantingLabel, range],
+              [caseSummary, caseLabel, caseValue],
+              [remaining, remainingLabel, remainingValue]
+            ].map(([card, label, value]) => ({
+              card:center(card),
+              label:center(label),
+              value:center(value)
+            }));
+            const mapBeds = [...detail.querySelectorAll(".plantingAgeMapBed")];
+            const mapBedRects = mapBeds.map(bed => bed.getBoundingClientRect());
+            const mapBedsContainer = detail.querySelector(".plantingAgeMapBeds");
+            const mapBedsRect = mapBedsContainer.getBoundingClientRect();
+            const modalWindow = modal.querySelector(".plantingAgeWindow");
             const visibleState = {
               hiddenBeforeCalculation,
               visibleBeforeCalculation: !hiddenBeforeCalculation,
@@ -2474,8 +2499,24 @@
                 && visibleResultRect.top >= visibleStatusRect.top
                 && visibleResultRect.bottom <= visibleStatusRect.bottom
                 && Math.abs(visibleRemainingRect.top - visibleResultRect.top) <= 2,
+              allStatusRowsSameHeight: Math.abs(visibleResultRect.height - caseSummaryRect.height) <= 1
+                && Math.abs(visibleResultRect.height - visibleRemainingRect.height) <= 1,
+              statusLabelLineHeights: [plantingLabel, caseLabel, remainingLabel]
+                .map(element => getComputedStyle(element).lineHeight),
+              statusValueLineHeights: [range, caseValue, remainingValue]
+                .map(element => getComputedStyle(element).lineHeight),
+              statusGaps: [result, caseSummary, remaining]
+                .map(element => getComputedStyle(element).gap),
+              statusLabelsAligned: statusCenters.every(item => Math.abs(
+                (item.label.y - item.card.y) - (statusCenters[0].label.y - statusCenters[0].card.y)
+              ) <= 1),
+              statusValuesAligned: statusCenters.every(item => Math.abs(
+                (item.value.y - item.card.y) - (statusCenters[0].value.y - statusCenters[0].card.y)
+              ) <= 1),
               detailTitle: document.getElementById("forecastPlantingAgeResultTitle")?.textContent.trim() || "",
               rangeText: range?.textContent.trim() || "",
+              rangeFullyVisible: range.scrollWidth <= range.clientWidth
+                && getComputedStyle(range).textOverflow !== "ellipsis",
               infoButton: !!infoButton,
               modalVisible: modal?.classList.contains("show") || false,
               heading: detail.querySelector(".plantingAgeMapHeading")?.textContent.trim() || "",
@@ -2483,6 +2524,13 @@
                 .map(element => element.textContent.trim()),
               mapCount: detail.querySelectorAll(".plantingAgeMapBed .simulationBedMap").length,
               cellCount: detail.querySelectorAll(".plantingAgeMapBed .simulationBedMapCell").length,
+              mapColumns: getComputedStyle(mapBedsContainer).gridTemplateColumns.trim().split(/\\s+/).length,
+              mapGap: getComputedStyle(mapBedsContainer).columnGap,
+              mapOrderIsThreeByTwo: mapBedRects.slice(0, 3).every(rect => Math.abs(rect.top - mapBedRects[0].top) <= 1)
+                && mapBedRects.slice(3).every(rect => Math.abs(rect.top - mapBedRects[3].top) <= 1)
+                && mapBedRects[3].top > mapBedRects[0].top,
+              mapFitsWidth: mapBedRects.every(rect => rect.left >= mapBedsRect.left - 1 && rect.right <= mapBedsRect.right + 1),
+              mapFitsWindowWithoutScroll: modalWindow.scrollHeight <= modalWindow.clientHeight,
               knownAgeCellCount: detail.querySelectorAll(".simulationBedMapCell.is-planting-age:not(.is-planting-age-unknown)").length,
               unknownAgeCellCount: detail.querySelectorAll(".simulationBedMapCell.is-planting-age-unknown").length,
               legend: [...detail.querySelectorAll(".plantingAgeMapLegendItem")]
@@ -2519,14 +2567,26 @@
           splitAfterCalculation: true,
           remainingPositionDoesNotMove: true,
           sameRowAfterCalculation: true,
+          allStatusRowsSameHeight: true,
+          statusLabelLineHeights: ["9px", "9px", "9px"],
+          statusValueLineHeights: ["18px", "18px", "18px"],
+          statusGaps: ["2px", "2px", "2px"],
+          statusLabelsAligned: true,
+          statusValuesAligned: true,
           detailTitle: "定植日数の詳細",
-          rangeText: "20日〜31日",
+          rangeText: "20〜31日",
+          rangeFullyVisible: true,
           infoButton: true,
           modalVisible: true,
-          heading: "2号棟の全ベッド",
+          heading: "2号棟",
           bedNames: ["F", "D", "B", "E", "C", "A"],
           mapCount: 6,
           cellCount: 468,
+          mapColumns: 3,
+          mapGap: "6px",
+          mapOrderIsThreeByTwo: true,
+          mapFitsWidth: true,
+          mapFitsWindowWithoutScroll: true,
           knownAgeCellCount: 3,
           unknownAgeCellCount: 1,
           legend: ["20日目", "31日目", "定植記録なし"],
@@ -2697,6 +2757,9 @@
           const progressPager = app.document.getElementById("harvestProgressBuildingPager");
           const mainSwitch = app.document.querySelector(".casePlacementBuildingSwitch");
           const progressResult = app.document.getElementById("harvestProgressResult");
+          const progressBuildingLabel = progressPager.querySelector(".buildingPaginationLabel");
+          const progressBuildingLabelCenterY = progressBuildingLabel.getBoundingClientRect().top
+            + progressBuildingLabel.getBoundingClientRect().height / 2;
           assertDeepEqual(comparable({
             panelOpen: progressPanel.open,
             buttonExpanded: progressButton.getAttribute("aria-expanded"),
@@ -2711,6 +2774,10 @@
               - (progressPanel.querySelector(".harvestProgressBody").getBoundingClientRect().left
                 + progressPanel.querySelector(".harvestProgressBody").getBoundingClientRect().right) / 2
             ) <= 1,
+            paginationAxisAligned: [...progressSwitch.querySelectorAll(".buildingPaginationChevron")].every(chevron => {
+              const rect = chevron.getBoundingClientRect();
+              return Math.abs(rect.top + rect.height / 2 - progressBuildingLabelCenterY) <= 1;
+            }),
             fieldLabel: progressPanel.querySelector(".harvestProgressCaseField label")?.textContent.trim() || "",
             defaultExplanationHidden: progressResult.hidden && progressResult.textContent.trim() === "",
             swipeInstalled: app.eval("harvestProgressBuildingSwipeInstalled")
@@ -2722,6 +2789,7 @@
             usesSharedPagination: true,
             samePaginationSize: true,
             paginationCentered: true,
+            paginationAxisAligned: true,
             fieldLabel: "選択場所で収穫したケース数",
             defaultExplanationHidden: true,
             swipeInstalled: true
@@ -5733,18 +5801,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "5c9ae467", elements: 2193, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "2f496118", elements: 2261, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "f59bd3c9", elements: 2261, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "cc03f67f", elements: 2194, visible: 104, viewport: "390x844" },
-          mobileDashboard: { hash: "78c296c5", elements: 2194, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "35187b19", elements: 2277, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "ef12cd9a", elements: 2292, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "1d21ef54", elements: 2292, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "4a616572", elements: 2292, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "c2abad1a", elements: 2292, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "f2557620", elements: 2292, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "e4cf1a43", elements: 2292, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "d59e3eb8", elements: 2207, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "6f3b8e1e", elements: 2275, visible: 665, viewport: "390x844" },
+          cssFocus: { hash: "f1d1d2e3", elements: 2275, visible: 665, viewport: "390x844" },
+          mobileRecord: { hash: "d8f452a7", elements: 2208, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "aa3c6851", elements: 2208, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "e81889fd", elements: 2291, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "1f6de8b2", elements: 2306, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "f4f29016", elements: 2306, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "c8ccb148", elements: 2306, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "834132dc", elements: 2306, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "d411358d", elements: 2306, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "a6752fe9", elements: 2306, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -188,7 +188,7 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
   const model = buildPlantingAgeMapModel(items);
   const heading = document.createElement("div");
   heading.className = "plantingAgeMapHeading";
-  heading.textContent = `${building}号棟の全ベッド`;
+  heading.textContent = `${building}号棟`;
   container.appendChild(heading);
 
   const legend = document.createElement("div");
@@ -443,7 +443,7 @@ function formatForecastPlantingAgeRange(items){
   if(!ages.length) return "未記録";
   const minAge = Math.min(...ages);
   const maxAge = Math.max(...ages);
-  return `${minAge}日〜${maxAge}日`;
+  return minAge === maxAge ? `${minAge}日` : `${minAge}〜${maxAge}日`;
 }
 
 function renderForecastPlantingAgeResult(){

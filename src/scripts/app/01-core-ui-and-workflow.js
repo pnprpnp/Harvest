@@ -1963,7 +1963,9 @@ function renderHarvestProgressBeds(){
   const container = document.getElementById("harvestProgressBeds");
   const buildingButton = document.getElementById("harvestProgressBuildingBtn");
   const buildingPager = document.getElementById("harvestProgressBuildingPager");
-  if(buildingButton) buildingButton.textContent = harvestProgressBuilding + "号棟";
+  const buildingLabel = buildingButton?.querySelector(".buildingPaginationLabel");
+  if(buildingLabel) buildingLabel.textContent = harvestProgressBuilding + "号棟";
+  else if(buildingButton) buildingButton.textContent = harvestProgressBuilding + "号棟";
   if(buildingPager){
     buildingPager.setAttribute("aria-label", `途中経過の${harvestProgressBuilding}号棟を表示中。左右にスワイプできます`);
   }
