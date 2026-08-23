@@ -5343,6 +5343,80 @@
         }, "記録工程とヘッダーの間に余白が残っています");
       });
 
+      await runTest("記録一覧は同じ日の収穫・苗植え・部分収穫を日ごとにまとめる", () => {
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previousDate = app.document.getElementById("recordDateInput")?.value || "";
+        try{
+          replaceAppHistory(app, [{
+            palletNumberingVersion: 2,
+            id: 20000000000070,
+            recordUuid: "70707070-7070-4070-8070-707070707070",
+            type: "fullHarvest",
+            date: "2026-08-23",
+            cases: 12,
+            palletRanges: ["2-A-1-2"],
+            plantingRanges: ["2-A-1-2"],
+            plannedSeedlingTrayCount: 2,
+            actualLoss: "3",
+            plantingPending: false
+          }, {
+            palletNumberingVersion: 2,
+            id: 20000000000071,
+            recordUuid: "71717171-7171-4171-8171-717171717171",
+            type: "partialHarvest",
+            date: "2026-08-23",
+            cases: 2,
+            targets: [{ building: 2, bed: "A", start: 3, end: 3, plantsPerPallet: 12 }]
+          }], [{
+            palletNumberingVersion: 2,
+            eventId: 20000000000072,
+            plantingDate: "2026-08-23",
+            sourceAllocations: [{
+              harvestRecordId: 20000000000070,
+              palletKeys: ["2-A-1", "2-A-2"]
+            }],
+            plantingPalletKeys: ["2-A-1", "2-A-2"],
+            plantingCountsByPallet: { "2-A-1": 12, "2-A-2": 12 },
+            actualSeedlingTrayCount: 2,
+            actualTakenSeedlingCount: 240,
+            actualPlantedSeedlingCount: 24,
+            actualSeedlingCarryoverMode: "loss",
+            actualSeedlingLossRate: "2",
+            qualityMemo: null,
+            detailsUnknown: false
+          }]);
+          app.document.getElementById("recordDateInput").value = "2026-08-23";
+          app.renderRecordList();
+          const state = comparable(app.eval(`(() => {
+            const group = document.querySelector('#recordList [data-record-history-date="2026-08-23"]');
+            return {
+              groupCount:document.querySelectorAll("#recordList .recordDateGroup").length,
+              heading:group?.querySelector(".recordDateGroupTitle")?.textContent.trim() || "",
+              types:[...group.querySelectorAll(".recordDateGroupType")].map(item => item.textContent.trim()),
+              itemTitles:[...group.querySelectorAll(".recordItem .recordTitle")].map(item => item.textContent.trim()),
+              repeatedDates:[...group.querySelectorAll(".recordItem .recordTitle")]
+                .filter(item => item.textContent.includes("2026-08-23")).length,
+              editButtonCount:group.querySelectorAll('.recordActions [data-ui-click^="edit"]').length,
+              deleteButtonCount:group.querySelectorAll(".recordListDeleteBtn").length
+            };
+          })()`));
+          assertDeepEqual(state, {
+            groupCount:1,
+            heading:"8/23の記録",
+            types:["収穫", "苗植え", "部分"],
+            itemTitles:["収穫", "苗植え", "部分"],
+            repeatedDates:0,
+            editButtonCount:3,
+            deleteButtonCount:3
+          }, "同日の記録が日付見出しの下へ種類順にまとまっていません");
+        }finally{
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.document.getElementById("recordDateInput").value = previousDate;
+          app.renderRecordList();
+        }
+      });
+
       await runTest("記録タブもシミュと同じ縦型パレット配置図を使う", () => {
         const mapState = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");

@@ -378,6 +378,12 @@ function getRecordHistoryCache(){
   return recordHistoryCache;
 }
 
+function formatRecordHistoryDateLabel(value){
+  const date = parseDateOnlyString(String(value || "").trim());
+  if(!date) return "日付なしの記録";
+  return `${date.getMonth() + 1}/${date.getDate()}の記録`;
+}
+
 function renderRecordList(){
   const box = document.getElementById("recordList");
   updateTodayHarvestRecordedStatus();
@@ -422,16 +428,30 @@ function renderRecordList(){
     const groups = new Map();
     items.forEach(item => {
       const dateKey = String(item.date || "");
-      if(!groups.has(dateKey)) groups.set(dateKey, { harvest: [], planting: [] });
-      groups.get(dateKey)[item.kind].push(item);
+      if(!groups.has(dateKey)){
+        groups.set(dateKey, { dateKey, harvest: [], planting: [], partial: [] });
+      }
+      const group = groups.get(dateKey);
+      if(item.kind === "planting") group.planting.push(item);
+      else if(item.value?.type === "partialHarvest") group.partial.push(item);
+      else group.harvest.push(item);
     });
     return [...groups.values()].map(group => {
       const harvestHtml = group.harvest.map(renderHistoryItem).join("");
       const plantingHtml = group.planting.map(renderHistoryItem).join("");
-      return `<div class="recordDateGroup">
-        ${harvestHtml ? `<div class="recordDateColumn recordDateHarvestColumn">${harvestHtml}</div>` : ""}
-        ${plantingHtml ? `<div class="recordDateColumn recordDatePlantingColumn">${plantingHtml}</div>` : ""}
-      </div>`;
+      const partialHtml = group.partial.map(renderHistoryItem).join("");
+      const typeBadges = [
+        harvestHtml ? '<span class="recordDateGroupType is-harvest">収穫</span>' : "",
+        plantingHtml ? '<span class="recordDateGroupType is-planting">苗植え</span>' : "",
+        partialHtml ? '<span class="recordDateGroupType is-partial">部分</span>' : ""
+      ].join("");
+      return `<section class="recordDateGroup" data-record-history-date="${escapeHtml(group.dateKey)}">
+        <div class="recordDateGroupHeader">
+          <div class="recordDateGroupTitle">${escapeHtml(formatRecordHistoryDateLabel(group.dateKey))}</div>
+          <div class="recordDateGroupTypes" aria-label="この日の記録">${typeBadges}</div>
+        </div>
+        <div class="recordDateGroupItems">${harvestHtml}${plantingHtml}${partialHtml}</div>
+      </section>`;
     }).join("");
   };
   const visibleHtml = renderHistoryGroups(visibleItems);
@@ -1658,7 +1678,6 @@ function renderRecordItemConsistencyHtml(kind, entity, issue){
 
 function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssue = null){
   const safeRecordId = getSafePositiveRecordId(r?.id) ?? 0;
-  const safeDate = escapeHtml(String(r?.date || "日付なし"));
   const safeCases = escapeHtml(getHarvestRecordCaseDisplayText(r, harvestCaseTotalsByDate));
   const syncConflict = getSyncConflictForEntity("record", r);
   const conflictHtml = renderRecordItemSyncConflictHtml("record", r);
@@ -1676,7 +1695,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
   if(r.type === "partialHarvest"){
     return `
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">部分収穫</span></div>
+      <div class="recordTitle"><span class="recordTitleHarvest">部分</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}${escapeHtml(syncWarningText)}</div>
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${conflictHtml}
@@ -1702,7 +1721,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
 
   return `
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle">${safeDate} <span class="recordTitleHarvest">収穫</span></div>
+      <div class="recordTitle"><span class="recordTitleHarvest">収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}
 ロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
 収穫場所: ${escapeHtml(harvestBuildingText)}
@@ -1734,7 +1753,7 @@ function renderPlantingEventItemHtml(event, consistencyIssue = null){
   ).size;
   return `
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle">${escapeHtml(event.plantingDate || "日付なし")} <span class="recordTitlePlanting">苗植え</span></div>
+      <div class="recordTitle"><span class="recordTitlePlanting">苗植え</span></div>
       <div class="recordMeta">苗枚数: ${escapeHtml(metrics.seedlingTrayText)}
 苗ロス率: ${escapeHtml(metrics.lossRateText)}
 苗の品質: ${escapeHtml(formatPlantingQualityMemo(getPlantingQualityMemoSummary(event)))}
