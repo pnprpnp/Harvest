@@ -4050,7 +4050,7 @@
           host.innerHTML = buildMonitorDashboardHtml({
             enabled:true,
             updatedAt:"2026-08-23 17:14:00",
-            instructionText:"苗: 9枚（未定植分 3枚）\\n収穫ケース数: 42\\n収穫場所: -\\n残すケース: 2号棟 前側: 6ケース\\n2号棟 中央: 20ケース\\n2号棟 後ろ: 30ケース",
+            instructionText:"苗: 9枚（未定植分 3枚）\\n収穫ケース数: 42\\n収穫場所: -\\n残すケース: 2号棟 配置: 48ケース\\n2号棟 前側: 6ケース\\n2号棟 中央: 20ケース\\n2号棟 後ろ: 30ケース",
             harvestFillKeys:[],
             memoItems:[]
           });
@@ -4100,6 +4100,8 @@
                 return Math.abs(icon.getBoundingClientRect().width - parseFloat(getComputedStyle(line).fontSize)) < 0.1;
               }),
               remainingLines:[...host.querySelectorAll(".monitorRemainingLine")].map(line => line.textContent.trim().replace(/\\s+/g, "")),
+              buildingSummaries:[...host.querySelectorAll(".monitorCaseBuildingSummary")]
+                .map(summary => summary.textContent.trim().replace(/\\s+/g, "")),
               remainingLocationsAligned:(() => {
                 const locations = [...host.querySelectorAll(".monitorRemainingLocation")];
                 const lefts = locations.map(location => Math.round(location.getBoundingClientRect().left * 10) / 10);
@@ -4113,7 +4115,7 @@
           }
         })()`));
         assertDeepEqual(summaryState, {
-          labels:["苗：", "収穫：", "残し："],
+          labels:["苗：", "収穫：", ""],
           unplantedVisible:false,
           allUseOneRow:true,
           mainTextIsLarge:true,
@@ -4123,11 +4125,43 @@
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
           allIconSizesMatch:true,
-          remainingLines:["2-前：6ケース残す", "2-中：20ケース残す", "2-奥：30ケース残す"],
+          remainingLines:["前：6ケース残す", "中：20ケース残す", "奥：30ケース残す"],
+          buildingSummaries:["2号棟48ケース配置前：6ケース残す中：20ケース残す奥：30ケース残す"],
           remainingLocationsAligned:true,
           updatedAtText:"最終更新2026/8/23 17:14",
           updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");
+      });
+
+      await runTest("モニターへ棟別ケース配置合計と残し数を収穫順で送る", () => {
+        const placementSummary = app.eval(`(() => {
+          const previousGetSummary = getCasePlacementSummaryText;
+          const previousGetOrder = getCasePlacementProcessingOrder;
+          const previousGetPlacement = getCasePlacementForBuilding;
+          try{
+            getCasePlacementSummaryText = () => "9号棟 前側: 6ケース\\n2号棟 中央: 4ケース";
+            getCasePlacementProcessingOrder = () => [9, 2, 3, 4, 5, 6, 7, 8];
+            getCasePlacementForBuilding = building => {
+              if(building === 9) return { front:20, middle:20, back:8 };
+              if(building === 2) return { front:12, middle:12, back:12 };
+              return { front:0, middle:0, back:0 };
+            };
+            return getMonitorCasePlacementSummaryText([
+              getPalletKey(9, "A", 1),
+              getPalletKey(2, "A", 1)
+            ]);
+          }finally{
+            getCasePlacementSummaryText = previousGetSummary;
+            getCasePlacementProcessingOrder = previousGetOrder;
+            getCasePlacementForBuilding = previousGetPlacement;
+          }
+        })()`);
+        assertEqual(placementSummary, [
+          "9号棟 配置: 48ケース",
+          "9号棟 前側: 6ケース",
+          "2号棟 配置: 36ケース",
+          "2号棟 中央: 4ケース"
+        ].join("\n"), "棟別ケース配置合計と残し数を収穫順で送れません");
       });
 
       await runTest("モニターへ送る苗枚数に未定植分の枚数を表示する", () => {

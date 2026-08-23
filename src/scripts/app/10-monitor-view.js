@@ -537,13 +537,22 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
   `;
 }
 
-function getMonitorRemainingCasesHtml(value){
+function getMonitorRemainingCasesHtml(value, keys = []){
   const lines = String(value || "")
     .split("\n")
     .map(line => line.trim())
     .filter(Boolean);
   const safeLines = lines.length ? lines : ["なし"];
-  return safeLines.map(line => {
+  const summaries = {};
+  const freeLines = [];
+  safeLines.forEach(line => {
+    const placementMatch = line.match(/^(\d+)号棟\s*配置\s*[:：]\s*([\d,.]+)\s*ケース$/);
+    if(placementMatch){
+      const building = Number(placementMatch[1]);
+      if(!summaries[String(building)]) summaries[String(building)] = { placement:"", locations:[] };
+      summaries[String(building)].placement = placementMatch[2];
+      return;
+    }
     const locationMatch = line.match(/^(\d+)号棟\s*(手前|前側|前|中央|中側|中|後ろ|後側|奥側|奥)\s*[:：]\s*([\d,.]+)\s*ケース\s*(残す|不足)?$/);
     if(locationMatch){
       const locationLabels = {
@@ -559,23 +568,65 @@ function getMonitorRemainingCasesHtml(value){
         "奥":"奥"
       };
       const suffix = locationMatch[4] === "不足" ? "不足" : "残す";
-      const shortageClass = suffix === "不足" ? " is-shortage" : "";
-      return `
-        <div class="monitorRemainingLine is-location${shortageClass}">
-          <span class="monitorRemainingBuilding">${escapeHtml(locationMatch[1])}</span>
-          <span class="monitorRemainingHyphen">-</span>
-          <span class="monitorRemainingLocation">${locationLabels[locationMatch[2]]}</span>
-          <span class="monitorRemainingColon">：</span>
-          <span class="monitorRemainingCount">${escapeHtml(locationMatch[3])}</span>
-          <span class="monitorMetricSmallUnit">ケース</span>
-          <span class="monitorRemainingSuffix">${suffix}</span>
-        </div>
-      `;
+      const building = Number(locationMatch[1]);
+      if(!summaries[String(building)]) summaries[String(building)] = { placement:"", locations:[] };
+      summaries[String(building)].locations.push({
+        label:locationLabels[locationMatch[2]],
+        count:locationMatch[3],
+        suffix
+      });
+      return;
     }
+    freeLines.push(line);
+  });
+
+  const grouped = {};
+  Object.keys(summaries).forEach(building => {
+    grouped[building] = true;
+  });
+  (Array.isArray(keys) ? keys : []).forEach(key => {
+    const parsed = parsePalletKey(String(key || ""));
+    if(BUILDINGS.includes(parsed.building) && summaries[String(parsed.building)]){
+      grouped[String(parsed.building)] = true;
+    }
+  });
+  const summaryHtml = getMonitorBuildingDisplayOrder(grouped).map(building => {
+    const summary = summaries[String(building)];
+    return `
+      <div class="monitorCaseBuildingSummary">
+        <div class="monitorCaseBuildingTotal">
+          <span class="monitorCaseBuildingName">${building}号棟</span>
+          ${summary.placement ? `
+            <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span>
+            <span class="monitorMetricSmallUnit">ケース</span>
+            <span class="monitorCasePlacementSuffix">配置</span>
+          ` : ""}
+        </div>
+        ${summary.locations.length ? `
+          <div class="monitorCaseRemainingRows">
+            ${summary.locations.map(location => {
+              const shortageClass = location.suffix === "不足" ? " is-shortage" : "";
+              return `
+                <div class="monitorRemainingLine is-location${shortageClass}">
+                  <span class="monitorRemainingLocation">${location.label}</span>
+                  <span class="monitorRemainingColon">：</span>
+                  <span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
+                  <span class="monitorMetricSmallUnit">ケース</span>
+                  <span class="monitorRemainingSuffix">${location.suffix}</span>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }).join("");
+  const freeHtml = freeLines.map(line => {
     const shortageClass = line.includes("不足") ? " is-shortage" : "";
     const lineHtml = escapeHtml(line).replace(/([\d,.]+)\s*ケース/g, '$1<span class="monitorMetricSmallUnit">ケース</span>');
     return `<div class="monitorRemainingLine is-freeform${shortageClass}">${lineHtml}</div>`;
   }).join("");
+  return summaryHtml + freeHtml;
 }
 
 function getMonitorHarvestLocationDisplayText(value, keys = []){
@@ -734,16 +785,15 @@ function buildMonitorDashboardHtml(content){
         ${getMonitorMetricCardHtml("苗", fields.seedling, "枚")}
         ${getMonitorMetricCardHtml("収穫", fields.cases, "ケース")}
         <section class="monitorPanel monitorMetricCard monitorRemainingCard">
-          <div class="monitorMetricLine">
-            <div class="monitorMetricLabel">
+          <div class="monitorMetricLine monitorCaseSummaryLine">
+            <div class="monitorMetricLabel monitorCaseSummaryIcon" aria-label="ケース配置">
               <svg class="monitorMetricLabelIcon is-remaining-case" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
                 <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
                 <path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>
               </svg>
-              <span>残し：</span>
             </div>
-            <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases)}</div>
+            <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases, normalized.harvestFillKeys || [])}</div>
           </div>
         </section>
       </div>

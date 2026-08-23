@@ -550,6 +550,42 @@ function removeSeedlingAutoNote(value){
     .trim();
 }
 
+function getMonitorCasePlacementSummaryText(keys = []){
+  const remainingLines = String(getCasePlacementSummaryText() || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+  const remainingByBuilding = {};
+  const otherLines = [];
+  remainingLines.forEach(line => {
+    const building = Number(line.match(/^(\d+)号棟/)?.[1]);
+    if(BUILDINGS.includes(building)){
+      if(!remainingByBuilding[String(building)]) remainingByBuilding[String(building)] = [];
+      remainingByBuilding[String(building)].push(line);
+    }else if(line !== "なし"){
+      otherLines.push(line);
+    }
+  });
+
+  const selectedBuildings = new Set();
+  (Array.isArray(keys) ? keys : []).forEach(key => {
+    const parsed = parsePalletKey(String(key || ""));
+    if(BUILDINGS.includes(parsed.building)) selectedBuildings.add(parsed.building);
+  });
+  const processingOrder = getCasePlacementProcessingOrder();
+  const lines = [];
+  processingOrder.forEach(building => {
+    const placement = getCasePlacementForBuilding(building);
+    const total = placement.front + placement.middle + placement.back;
+    const buildingRemainingLines = remainingByBuilding[String(building)] || [];
+    if(total <= 0 && !selectedBuildings.has(building) && !buildingRemainingLines.length) return;
+    lines.push(`${building}号棟 配置: ${total}ケース`);
+    lines.push(...buildingRemainingLines);
+  });
+  lines.push(...otherLines);
+  return lines.length ? lines.join("\n") : "なし";
+}
+
 function getCurrentMonitorInstructionFields(){
   const casePlan = getHarvestCasePlan();
   const seedlingCounts = getSeedlingInstructionCounts();
@@ -570,7 +606,7 @@ function getCurrentMonitorInstructionFields(){
     seedling: seedlingText,
     cases: casesText,
     harvestLocation: formatHarvestLocationInstruction(remainingKeys).replace(/^収穫場所:\s*/, ""),
-    remainingCases: getCasePlacementSummaryText()
+    remainingCases: getMonitorCasePlacementSummaryText(remainingKeys)
   };
 }
 
