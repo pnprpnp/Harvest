@@ -10,21 +10,20 @@ function installStartupViewportEvents(){
 }
 
 let casePlacementBuildingSwipeInstalled = false;
-let casePlacementBuildingSwipeState = null;
-let casePlacementBuildingSwipeSuppressClickUntil = 0;
+let harvestProgressBuildingSwipeInstalled = false;
 const CASE_PLACEMENT_BUILDING_SWIPE_THRESHOLD_PX = 32;
 const CASE_PLACEMENT_BUILDING_SWIPE_DIRECTION_RATIO = 1.15;
 
-function installCasePlacementBuildingSwipe(){
-  if(casePlacementBuildingSwipeInstalled) return;
-  const pager = document.getElementById("casePlacementBuildingPager");
-  if(!pager) return;
-  casePlacementBuildingSwipeInstalled = true;
+function installSimulationBuildingPagerSwipe(pagerId, shiftBuilding){
+  const pager = document.getElementById(pagerId);
+  if(!pager || typeof shiftBuilding !== "function") return false;
+  let swipeState = null;
+  let suppressClickUntil = 0;
 
   const clearSwipeState = pointerId => {
-    const state = casePlacementBuildingSwipeState;
+    const state = swipeState;
     if(!state || (pointerId !== undefined && state.pointerId !== pointerId)) return null;
-    casePlacementBuildingSwipeState = null;
+    swipeState = null;
     try{
       if(pager.hasPointerCapture?.(state.pointerId)) pager.releasePointerCapture(state.pointerId);
     }catch(_error){
@@ -35,7 +34,7 @@ function installCasePlacementBuildingSwipe(){
 
   pager.addEventListener("pointerdown", event => {
     if(event.pointerType === "mouse" && event.button !== 0) return;
-    casePlacementBuildingSwipeState = {
+    swipeState = {
       pointerId:event.pointerId,
       startX:event.clientX,
       startY:event.clientY
@@ -57,9 +56,9 @@ function installCasePlacementBuildingSwipe(){
       || horizontalDistance <= Math.abs(deltaY) * CASE_PLACEMENT_BUILDING_SWIPE_DIRECTION_RATIO){
       return;
     }
-    casePlacementBuildingSwipeSuppressClickUntil = performance.now() + 450;
+    suppressClickUntil = performance.now() + 450;
     event.preventDefault();
-    shiftCasePlacementBuilding(deltaX < 0 ? 1 : -1);
+    shiftBuilding(deltaX < 0 ? 1 : -1);
   });
 
   pager.addEventListener("pointercancel", event => {
@@ -67,10 +66,26 @@ function installCasePlacementBuildingSwipe(){
   });
 
   pager.addEventListener("click", event => {
-    if(performance.now() > casePlacementBuildingSwipeSuppressClickUntil) return;
+    if(performance.now() > suppressClickUntil) return;
     event.preventDefault();
     event.stopImmediatePropagation();
   }, true);
+  return true;
+}
+
+function installCasePlacementBuildingSwipe(){
+  if(!casePlacementBuildingSwipeInstalled){
+    casePlacementBuildingSwipeInstalled = installSimulationBuildingPagerSwipe(
+      "casePlacementBuildingPager",
+      direction => shiftCasePlacementBuilding(direction)
+    );
+  }
+  if(!harvestProgressBuildingSwipeInstalled){
+    harvestProgressBuildingSwipeInstalled = installSimulationBuildingPagerSwipe(
+      "harvestProgressBuildingPager",
+      direction => shiftHarvestProgressBuilding(direction)
+    );
+  }
 }
 
 function installStartupRecordFormEvents(){

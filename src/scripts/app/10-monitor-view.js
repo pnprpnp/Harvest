@@ -265,7 +265,7 @@ function handleMonitorMemoInput(){
 }
 
 function handleMonitorRemoteMemoInput(){
-  setMonitorRemoteEditorStatus("メモ欄を編集中です。保存するとモニターへ配信されます。");
+  setMonitorRemoteEditorStatus("");
 }
 
 function getMonitorMemoHtml(memoItemsOverride){

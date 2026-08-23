@@ -439,7 +439,10 @@ function stopMonitorRemoteUpdates(options = {}){
 
 function setMonitorRemoteEditorStatus(message){
   const status = document.getElementById("monitorRemoteEditorStatus");
-  if(status) status.textContent = message;
+  if(status){
+    status.textContent = String(message || "");
+    status.hidden = !status.textContent;
+  }
 }
 
 function renderMonitorEditHistoryList(history){
@@ -648,7 +651,7 @@ function buildCurrentMonitorRemoteContent(){
 function fillMonitorRemoteEditorFromCurrentState(){
   const content = buildCurrentMonitorRemoteContent();
   populateMonitorRemoteEditor(content);
-  setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
+  setMonitorRemoteEditorStatus("");
 }
 
 function discardMonitorCurrentEditor(){

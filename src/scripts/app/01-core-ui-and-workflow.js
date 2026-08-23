@@ -521,7 +521,7 @@ function openMonitorEditorWindow(){
   const tabBar = document.querySelector(".tabBar");
   if(!modal || !body || !content) return;
   populateMonitorRemoteEditor(buildCurrentMonitorRemoteContent());
-  setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
+  setMonitorRemoteEditorStatus("");
   body.innerHTML = "";
   body.appendChild(content);
   showPageBlockingUi(modal);
@@ -1962,7 +1962,11 @@ function formatHarvestProgressBedSelection(bedKeys){
 function renderHarvestProgressBeds(){
   const container = document.getElementById("harvestProgressBeds");
   const buildingButton = document.getElementById("harvestProgressBuildingBtn");
+  const buildingPager = document.getElementById("harvestProgressBuildingPager");
   if(buildingButton) buildingButton.textContent = harvestProgressBuilding + "号棟";
+  if(buildingPager){
+    buildingPager.setAttribute("aria-label", `途中経過の${harvestProgressBuilding}号棟を表示中。左右にスワイプできます`);
+  }
   if(!container) return;
 
   container.innerHTML = "";
@@ -2024,7 +2028,7 @@ function getHarvestProgressResultModel(){
     const selectedCount = state?.selectedBeds.length || 0;
     return selectedCount > 0
       ? { text: `${selectedCount}ベッドを選択中です。今回取れたケース数を入力して追加してください。`, className: "" }
-      : { text: "完了したベッドを選び、今回取れたケース数を入力すると残りを再計算します。", className: "" };
+      : { text: "", className: "" };
   }
   if(hasUnappliedHarvestProgressChanges()){
     return { text: "今回の完了ベッドまたはケース数はまだ反映されていません。「追加して再計算する」を押してください。", className: "needs-selection" };
@@ -2107,6 +2111,7 @@ function updateHarvestProgressUi(){
   if(result){
     const model = getHarvestProgressResultModel();
     result.textContent = model.text;
+    result.hidden = !model.text;
     result.classList.toggle("needs-selection", model.className === "needs-selection");
     result.classList.toggle("is-complete", model.className === "is-complete");
   }

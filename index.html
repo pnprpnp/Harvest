@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-clean-record-header">
+<meta name="harvestnavi-version" content="20260823-progress-pagination">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7545,11 +7545,15 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   text-overflow:ellipsis;
 }
 .casePlacementBuildingSwitch{
+  grid-column:1;
+  justify-self:center;
+}
+.simulationBuildingPagination{
   position:static;
   left:auto;
   top:auto;
-  grid-column:1;
-  justify-self:center;
+  display:inline-flex;
+  align-items:center;
   gap:4px;
   margin:0;
   padding:4px;
@@ -7557,8 +7561,8 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   background:var(--ui-bg);
   transform:none;
 }
-.casePlacementBuildingSwitch .buildingBtn,
-.casePlacementBuildingSwitch .buildingBtn:not(.active){
+.simulationBuildingPagination .buildingBtn,
+.simulationBuildingPagination .buildingBtn:not(.active){
   width:56px;
   min-width:56px;
   height:52px;
@@ -7567,8 +7571,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   color:var(--ui-accent);
   font-size:30px;
 }
-.casePlacementBuildingSwitch .buildingBtn.active,
-#casePlacementBuildingBtn{
+.simulationBuildingPagination .buildingBtn.active{
   min-width:96px;
   height:52px;
   padding:0 12px;
@@ -7578,7 +7581,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   border-radius:11px;
   box-shadow:none;
 }
-.casePlacementBuildingPager{
+.simulationBuildingPager{
   position:relative;
   width:96px;
   height:52px;
@@ -7588,7 +7591,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   touch-action:pan-y;
   -webkit-tap-highlight-color:transparent;
 }
-.casePlacementBuildingPager #casePlacementBuildingBtn{
+.simulationBuildingPager .buildingBtn.active{
   width:100%;
   min-width:0;
   height:52px;
@@ -7598,6 +7601,10 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   justify-content:center;
   padding:0 12px;
   line-height:1;
+}
+#forecastTab .simulationBuildingPager .buildingBtn.active{
+  background:var(--ui-bg);
+  color:var(--ui-text);
 }
 .casePlacementDefaultBtn{
   padding:9px 12px;
@@ -8078,27 +8085,10 @@ button.forecastClearBtn{border-radius:10px;}
   border-top:0;
 }
 .harvestProgressBuildingSwitch{
+  width:max-content;
+  display:flex;
   justify-content:center;
-  margin:0 0 12px;
-}
-.harvestProgressBuildingSwitch .buildingBtn{
-  width:42px;
-  min-width:42px;
-  height:40px;
-  border:0;
-  border-radius:9px;
-  background:var(--ui-surface-muted);
-  color:var(--ui-accent);
-  font-size:23px;
-}
-.harvestProgressBuildingSwitch .buildingBtn.active{
-  width:auto;
-  min-width:76px;
-  padding:0 12px;
-  background:var(--ui-surface-tint);
-  color:var(--ui-text);
-  font-size:16px;
-  font-weight:750;
+  margin:0 auto 12px;
 }
 .harvestProgressBeds{gap:8px;}
 /* State colors are ordered here once so class combinations do not need priority flags. */
@@ -8253,7 +8243,7 @@ button.harvestProgressBed.is-applied{
 }
 .harvestProgressSelectionText{
   min-height:22px;
-  margin:11px 2px 8px;
+  margin:0 2px 8px;
   color:#0f766e;
   font-size:13px;
   font-weight:750;
@@ -9088,13 +9078,24 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorSendContentTitle{
   display:flex;
   align-items:center;
-  justify-content:flex-start;
+  justify-content:space-between;
   gap:12px;
   padding:11px 13px 9px;
   border-bottom:1px solid var(--ui-line);
   color:var(--ui-text);
   font-size:14px;
   font-weight:760;
+}
+.monitorContentEditBtn{
+  min-width:52px;
+  min-height:32px;
+  padding:5px 12px;
+  border:1px solid var(--ui-line);
+  border-radius:10px;
+  background:var(--ui-surface-muted);
+  color:var(--ui-accent-dark);
+  font-size:12px;
+  font-weight:720;
 }
 #instructionSummary.monitorSendSummary,
 #instructionSummary.instructionBox{
@@ -9278,12 +9279,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorMemoInputItem{border-radius:15px;background:var(--ui-surface-muted);}
 .monitorMemoInputList:empty{display:none;}
 .monitorMemoRemoveBtn{border-radius:50%;background:rgba(255,59,48,.1);color:var(--ui-red);}
-.monitorContentEditorIntro{
-  margin:2px 0 12px;
-  color:var(--ui-text-secondary);
-  font-size:12px;
-  line-height:1.55;
-}
 #monitorRemoteEditorContent > label{
   display:block;
   margin-top:12px;
@@ -9291,6 +9286,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-size:14px;
   font-weight:720;
 }
+#monitorRemoteEditorContent > label:first-of-type{margin-top:0;}
 #monitorRemoteEditorContent > label::before{content:none;display:none;}
 #monitorRemoteEditorContent > textarea{
   min-height:46px;
@@ -10059,11 +10055,11 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   .forecastCaseInputPanel{grid-template-columns:minmax(0,1fr);column-gap:0;padding-right:4px;padding-left:4px;}
   .casePlacementHeader{grid-template-columns:1fr;gap:4px;}
   .seedlingHouseOpenBtn{min-width:52px;margin-top:6px;margin-left:6px;padding-right:5px;padding-left:5px;}
-  .casePlacementHeader .casePlacementBuildingSwitch{gap:2px;padding:2px;}
-  .casePlacementHeader .casePlacementBuildingSwitch .buildingBtn,
-  .casePlacementHeader .casePlacementBuildingSwitch .buildingBtn:not(.active){width:38px;min-width:38px;height:48px;}
-  .casePlacementHeader .casePlacementBuildingPager{width:68px;height:48px;flex-basis:68px;}
-  #forecastTab .casePlacementBuildingPager #casePlacementBuildingBtn{min-width:0;height:48px;padding:0 5px;font-size:19px;}
+  .simulationBuildingPagination{gap:2px;padding:2px;}
+  .simulationBuildingPagination .buildingBtn,
+  .simulationBuildingPagination .buildingBtn:not(.active){width:38px;min-width:38px;height:48px;}
+  .simulationBuildingPager{width:68px;height:48px;flex-basis:68px;}
+  #forecastTab .simulationBuildingPager .buildingBtn.active{min-width:0;height:48px;padding:0 5px;font-size:19px;}
   .casePlacementRemainingSummary{min-width:0;max-width:none;padding-right:8px;padding-left:8px;}
   .casePlacementRemainingValue{font-size:15px;}
   .dashboardForecastInfoBtn{flex-basis:18px;width:18px;height:18px;font-size:11px;}
@@ -10086,11 +10082,11 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   .tabIcon{width:21px;height:21px;}
   .workflowBarInner{padding-left:calc(8px + env(safe-area-inset-left, 0px));padding-right:calc(8px + env(safe-area-inset-right, 0px));gap:6px;}
   .workflowNextActionBtn{min-width:78px;padding-left:7px;padding-right:7px;font-size:10px;}
-  .casePlacementBuildingSwitch .buildingBtn,
-  .casePlacementBuildingSwitch .buildingBtn:not(.active){width:52px;min-width:52px;}
-  .casePlacementBuildingSwitch .buildingBtn.active,#casePlacementBuildingBtn{min-width:84px;padding:0 8px;}
-  .casePlacementBuildingPager{width:84px;flex-basis:84px;}
-  .casePlacementBuildingPager #casePlacementBuildingBtn{min-width:0;padding:0 8px;}
+  .simulationBuildingPagination .buildingBtn,
+  .simulationBuildingPagination .buildingBtn:not(.active){width:52px;min-width:52px;}
+  .simulationBuildingPagination .buildingBtn.active{min-width:84px;padding:0 8px;}
+  .simulationBuildingPager{width:84px;flex-basis:84px;}
+  .simulationBuildingPager .buildingBtn.active{min-width:0;padding:0 8px;}
   .buildingStatusCards{grid-template-columns:1fr;}
 }
 @media (prefers-reduced-motion:reduce){
@@ -11425,6 +11421,7 @@ requestAnimationFrame(function(){
       <section class="monitorSendContentCard" aria-labelledby="monitorSendContentTitle">
         <div class="monitorSendContentTitle">
           <span id="monitorSendContentTitle">今回送る内容</span>
+          <button type="button" class="monitorContentEditBtn" data-ui-click="openMonitorEditorWindow">編集</button>
         </div>
         <div id="instructionSummary" class="resultBox instructionBox">苗: 0枚
 収穫ケース数: 0
@@ -11502,21 +11499,23 @@ requestAnimationFrame(function(){
           <span id="harvestProgressSummaryStatus" class="harvestProgressSummaryStatus">収穫中に使えます</span>
         </summary>
         <div class="harvestProgressBody">
-          <div class="buildingSwitch harvestProgressBuildingSwitch">
+          <div id="harvestProgressSelectionText" class="harvestProgressSelectionText">完了したベッドを選択してください</div>
+          <div class="buildingSwitch simulationBuildingPagination harvestProgressBuildingSwitch">
             <button type="button" class="buildingBtn" data-ui-click="shiftHarvestProgressBuilding" data-ui-number="-1" aria-label="前の号棟">‹</button>
-            <button id="harvestProgressBuildingBtn" type="button" class="buildingBtn active">2号棟</button>
+            <div id="harvestProgressBuildingPager" class="simulationBuildingPager" role="group" aria-label="途中経過の号棟切り替え。左右にスワイプできます">
+              <button id="harvestProgressBuildingBtn" type="button" class="buildingBtn active" aria-live="polite" tabindex="-1">2号棟</button>
+            </div>
             <button type="button" class="buildingBtn" data-ui-click="shiftHarvestProgressBuilding" data-ui-number="1" aria-label="次の号棟">›</button>
           </div>
           <div id="harvestProgressBeds" class="bedWrap harvestProgressBeds"></div>
-          <div id="harvestProgressSelectionText" class="harvestProgressSelectionText">完了したベッドを選択してください</div>
           <div class="harvestProgressCaseField">
-            <label for="harvestProgressCasesInput">今回追加するケース数</label>
+            <label for="harvestProgressCasesInput">選択場所で収穫したケース数</label>
             <span class="inputUnitWrap">
               <input id="harvestProgressCasesInput" type="number" min="0" step="1" inputmode="numeric" data-ui-input="handleHarvestProgressCasesInput">
               <span class="inputUnitSuffix">ケース</span>
             </span>
           </div>
-          <div id="harvestProgressResult" class="harvestProgressResult">先に通常の収穫場所を計算または選択してください。</div>
+          <div id="harvestProgressResult" class="harvestProgressResult" hidden></div>
           <div class="harvestProgressActions">
             <button type="button" class="actionBtn" data-ui-click="recalculateFromHarvestProgress">追加して再計算する</button>
             <button id="harvestProgressResetBtn" type="button" class="actionBtn secondaryBtn harvestProgressResetBtn" data-ui-click="resetHarvestProgress" hidden>取り消す</button>
@@ -11526,9 +11525,9 @@ requestAnimationFrame(function(){
 
       <div class="casePlacementPanel">
         <div class="casePlacementHeader">
-          <div class="buildingSwitch casePlacementBuildingSwitch">
+          <div class="buildingSwitch simulationBuildingPagination casePlacementBuildingSwitch">
             <button type="button" class="buildingBtn" data-ui-click="prevCasePlacementBuilding" aria-label="前の号棟">‹</button>
-            <div id="casePlacementBuildingPager" class="casePlacementBuildingPager" role="group" aria-label="号棟切り替え。左右にスワイプできます">
+            <div id="casePlacementBuildingPager" class="simulationBuildingPager casePlacementBuildingPager" role="group" aria-label="号棟切り替え。左右にスワイプできます">
               <button id="casePlacementBuildingBtn" type="button" class="buildingBtn active" aria-live="polite" tabindex="-1">2号棟</button>
             </div>
             <button type="button" class="buildingBtn" data-ui-click="nextCasePlacementBuilding" aria-label="次の号棟">›</button>
@@ -12918,7 +12917,6 @@ requestAnimationFrame(function(){
 </div>
 <div id="monitorEditorStorage" style="display:none;">
   <div id="monitorRemoteEditorContent" class="settingClusterDetailsBody">
-    <p class="monitorContentEditorIntro">モニターへ送る文字を項目ごとに自由に書き換えられます。変更後は確認画面へ戻ります。</p>
     <label for="monitorRemoteSeedlingValueInput">苗枚数</label>
     <textarea id="monitorRemoteSeedlingValueInput" rows="2" placeholder="例: 3枚"></textarea>
     <label for="monitorRemoteCasesValueInput">収穫ケース数</label>
@@ -12932,7 +12930,7 @@ requestAnimationFrame(function(){
       <button type="button" class="monitorMemoAddBtn" data-ui-click="addMonitorRemoteMemoInput">＋追加</button>
     </div>
     <div id="monitorRemoteMemoInputList" class="monitorMemoInputList"></div>
-    <div id="monitorRemoteEditorStatus" class="smallText monitorContentEditorStatus">変更はまだ送信されません。</div>
+    <div id="monitorRemoteEditorStatus" class="smallText monitorContentEditorStatus" hidden></div>
     <div class="monitorContentEditorActions">
       <button class="actionBtn secondaryBtn monitorContentEditorDiscardBtn" data-ui-click="discardMonitorCurrentEditor">編集を破棄</button>
       <button class="actionBtn thirdBtn monitorContentEditorApplyBtn" data-ui-click="applyMonitorCurrentEditor">変更を反映</button>
@@ -13548,7 +13546,7 @@ function openMonitorEditorWindow(){
   const tabBar = document.querySelector(".tabBar");
   if(!modal || !body || !content) return;
   populateMonitorRemoteEditor(buildCurrentMonitorRemoteContent());
-  setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
+  setMonitorRemoteEditorStatus("");
   body.innerHTML = "";
   body.appendChild(content);
   showPageBlockingUi(modal);
@@ -14989,7 +14987,11 @@ function formatHarvestProgressBedSelection(bedKeys){
 function renderHarvestProgressBeds(){
   const container = document.getElementById("harvestProgressBeds");
   const buildingButton = document.getElementById("harvestProgressBuildingBtn");
+  const buildingPager = document.getElementById("harvestProgressBuildingPager");
   if(buildingButton) buildingButton.textContent = harvestProgressBuilding + "号棟";
+  if(buildingPager){
+    buildingPager.setAttribute("aria-label", `途中経過の${harvestProgressBuilding}号棟を表示中。左右にスワイプできます`);
+  }
   if(!container) return;
 
   container.innerHTML = "";
@@ -15051,7 +15053,7 @@ function getHarvestProgressResultModel(){
     const selectedCount = state?.selectedBeds.length || 0;
     return selectedCount > 0
       ? { text: `${selectedCount}ベッドを選択中です。今回取れたケース数を入力して追加してください。`, className: "" }
-      : { text: "完了したベッドを選び、今回取れたケース数を入力すると残りを再計算します。", className: "" };
+      : { text: "", className: "" };
   }
   if(hasUnappliedHarvestProgressChanges()){
     return { text: "今回の完了ベッドまたはケース数はまだ反映されていません。「追加して再計算する」を押してください。", className: "needs-selection" };
@@ -15134,6 +15136,7 @@ function updateHarvestProgressUi(){
   if(result){
     const model = getHarvestProgressResultModel();
     result.textContent = model.text;
+    result.hidden = !model.text;
     result.classList.toggle("needs-selection", model.className === "needs-selection");
     result.classList.toggle("is-complete", model.className === "is-complete");
   }
@@ -20110,7 +20113,10 @@ function stopMonitorRemoteUpdates(options = {}){
 
 function setMonitorRemoteEditorStatus(message){
   const status = document.getElementById("monitorRemoteEditorStatus");
-  if(status) status.textContent = message;
+  if(status){
+    status.textContent = String(message || "");
+    status.hidden = !status.textContent;
+  }
 }
 
 function renderMonitorEditHistoryList(history){
@@ -20319,7 +20325,7 @@ function buildCurrentMonitorRemoteContent(){
 function fillMonitorRemoteEditorFromCurrentState(){
   const content = buildCurrentMonitorRemoteContent();
   populateMonitorRemoteEditor(content);
-  setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
+  setMonitorRemoteEditorStatus("");
 }
 
 function discardMonitorCurrentEditor(){
@@ -30423,7 +30429,7 @@ function handleMonitorMemoInput(){
 }
 
 function handleMonitorRemoteMemoInput(){
-  setMonitorRemoteEditorStatus("メモ欄を編集中です。保存するとモニターへ配信されます。");
+  setMonitorRemoteEditorStatus("");
 }
 
 function getMonitorMemoHtml(memoItemsOverride){
@@ -36492,21 +36498,20 @@ function installStartupViewportEvents(){
 }
 
 let casePlacementBuildingSwipeInstalled = false;
-let casePlacementBuildingSwipeState = null;
-let casePlacementBuildingSwipeSuppressClickUntil = 0;
+let harvestProgressBuildingSwipeInstalled = false;
 const CASE_PLACEMENT_BUILDING_SWIPE_THRESHOLD_PX = 32;
 const CASE_PLACEMENT_BUILDING_SWIPE_DIRECTION_RATIO = 1.15;
 
-function installCasePlacementBuildingSwipe(){
-  if(casePlacementBuildingSwipeInstalled) return;
-  const pager = document.getElementById("casePlacementBuildingPager");
-  if(!pager) return;
-  casePlacementBuildingSwipeInstalled = true;
+function installSimulationBuildingPagerSwipe(pagerId, shiftBuilding){
+  const pager = document.getElementById(pagerId);
+  if(!pager || typeof shiftBuilding !== "function") return false;
+  let swipeState = null;
+  let suppressClickUntil = 0;
 
   const clearSwipeState = pointerId => {
-    const state = casePlacementBuildingSwipeState;
+    const state = swipeState;
     if(!state || (pointerId !== undefined && state.pointerId !== pointerId)) return null;
-    casePlacementBuildingSwipeState = null;
+    swipeState = null;
     try{
       if(pager.hasPointerCapture?.(state.pointerId)) pager.releasePointerCapture(state.pointerId);
     }catch(_error){
@@ -36517,7 +36522,7 @@ function installCasePlacementBuildingSwipe(){
 
   pager.addEventListener("pointerdown", event => {
     if(event.pointerType === "mouse" && event.button !== 0) return;
-    casePlacementBuildingSwipeState = {
+    swipeState = {
       pointerId:event.pointerId,
       startX:event.clientX,
       startY:event.clientY
@@ -36539,9 +36544,9 @@ function installCasePlacementBuildingSwipe(){
       || horizontalDistance <= Math.abs(deltaY) * CASE_PLACEMENT_BUILDING_SWIPE_DIRECTION_RATIO){
       return;
     }
-    casePlacementBuildingSwipeSuppressClickUntil = performance.now() + 450;
+    suppressClickUntil = performance.now() + 450;
     event.preventDefault();
-    shiftCasePlacementBuilding(deltaX < 0 ? 1 : -1);
+    shiftBuilding(deltaX < 0 ? 1 : -1);
   });
 
   pager.addEventListener("pointercancel", event => {
@@ -36549,10 +36554,26 @@ function installCasePlacementBuildingSwipe(){
   });
 
   pager.addEventListener("click", event => {
-    if(performance.now() > casePlacementBuildingSwipeSuppressClickUntil) return;
+    if(performance.now() > suppressClickUntil) return;
     event.preventDefault();
     event.stopImmediatePropagation();
   }, true);
+  return true;
+}
+
+function installCasePlacementBuildingSwipe(){
+  if(!casePlacementBuildingSwipeInstalled){
+    casePlacementBuildingSwipeInstalled = installSimulationBuildingPagerSwipe(
+      "casePlacementBuildingPager",
+      direction => shiftCasePlacementBuilding(direction)
+    );
+  }
+  if(!harvestProgressBuildingSwipeInstalled){
+    harvestProgressBuildingSwipeInstalled = installSimulationBuildingPagerSwipe(
+      "harvestProgressBuildingPager",
+      direction => shiftHarvestProgressBuilding(direction)
+    );
+  }
 }
 
 function installStartupRecordFormEvents(){

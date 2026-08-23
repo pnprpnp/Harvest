@@ -2257,7 +2257,6 @@
             sequence.push(readState());
             dispatchSwipe(100, 180);
             sequence.push(readState());
-            casePlacementBuildingSwipeSuppressClickUntil = 0;
             previousButton.click();
             sequence.push(readState());
 
@@ -2268,8 +2267,6 @@
               swipeInstalled:casePlacementBuildingSwipeInstalled
             };
           }finally{
-            casePlacementBuildingSwipeSuppressClickUntil = 0;
-            casePlacementBuildingSwipeState = null;
             currentBuilding = previous.currentBuilding;
             casePlacementBuilding = previous.casePlacementBuilding;
             casePlacementByBuilding = previous.casePlacementByBuilding;
@@ -2695,15 +2692,61 @@
 
           app.toggleHarvestProgressInput();
           await new Promise(resolve => app.requestAnimationFrame(resolve));
+          const progressSelection = app.document.getElementById("harvestProgressSelectionText");
+          const progressSwitch = app.document.querySelector(".harvestProgressBuildingSwitch");
+          const progressPager = app.document.getElementById("harvestProgressBuildingPager");
+          const mainSwitch = app.document.querySelector(".casePlacementBuildingSwitch");
+          const progressResult = app.document.getElementById("harvestProgressResult");
           assertDeepEqual(comparable({
             panelOpen: progressPanel.open,
             buttonExpanded: progressButton.getAttribute("aria-expanded"),
-            panelAbovePagination: progressPanel.nextElementSibling === placementPanel
+            panelAbovePagination: progressPanel.nextElementSibling === placementPanel,
+            selectionAboveBuilding: progressSelection.nextElementSibling === progressSwitch,
+            usesSharedPagination: progressSwitch.classList.contains("simulationBuildingPagination")
+              && progressPager.classList.contains("simulationBuildingPager"),
+            samePaginationSize: progressSwitch.getBoundingClientRect().width === mainSwitch.getBoundingClientRect().width
+              && progressSwitch.getBoundingClientRect().height === mainSwitch.getBoundingClientRect().height,
+            paginationCentered: Math.abs(
+              (progressSwitch.getBoundingClientRect().left + progressSwitch.getBoundingClientRect().right) / 2
+              - (progressPanel.querySelector(".harvestProgressBody").getBoundingClientRect().left
+                + progressPanel.querySelector(".harvestProgressBody").getBoundingClientRect().right) / 2
+            ) <= 1,
+            fieldLabel: progressPanel.querySelector(".harvestProgressCaseField label")?.textContent.trim() || "",
+            defaultExplanationHidden: progressResult.hidden && progressResult.textContent.trim() === "",
+            swipeInstalled: app.eval("harvestProgressBuildingSwipeInstalled")
           }), {
             panelOpen: true,
             buttonExpanded: "true",
-            panelAbovePagination: true
+            panelAbovePagination: true,
+            selectionAboveBuilding: true,
+            usesSharedPagination: true,
+            samePaginationSize: true,
+            paginationCentered: true,
+            fieldLabel: "選択場所で収穫したケース数",
+            defaultExplanationHidden: true,
+            swipeInstalled: true
           }, "途中経過入力がページネーションの上で開きません");
+          const progressBuildingBeforeSwipe = app.eval("harvestProgressBuilding");
+          progressPager.dispatchEvent(new app.PointerEvent("pointerdown", {
+            bubbles:true,
+            pointerId:92,
+            pointerType:"touch",
+            clientX:180,
+            clientY:20
+          }));
+          progressPager.dispatchEvent(new app.PointerEvent("pointerup", {
+            bubbles:true,
+            pointerId:92,
+            pointerType:"touch",
+            clientX:100,
+            clientY:22
+          }));
+          assertEqual(
+            app.eval("harvestProgressBuilding"),
+            app.getAdjacentBuilding(progressBuildingBeforeSwipe, 1),
+            "途中経過の号棟を横スワイプで切り替えられません"
+          );
+          app.shiftHarvestProgressBuilding(-1);
           app.toggleHarvestProgressInput();
 
           iframe.style.width = "320px";
@@ -2868,7 +2911,7 @@
             selectionText:"新たに完了したベッドを選択してください"
           },
           migratedOldStateInput:"",
-          fieldLabel:"今回追加するケース数",
+          fieldLabel:"選択場所で収穫したケース数",
           applyLabel:"追加して再計算する"
         }, "途中経過を70ケースと75ケースに分けて追加できません");
       });
@@ -3341,7 +3384,7 @@
           forecast: false,
           monitor: false,
           record: false,
-          monitorActions: 1,
+          monitorActions: 2,
           recordStatusExists: true,
           recordDateIsFirst: true,
           recordStepIndicatorExists: false,
@@ -4019,13 +4062,16 @@
               memoInputExists: !!sendContentCard?.querySelector("textarea, input"),
               memoAddExists: !!sendContentCard?.querySelector(".monitorMemoAddBtn"),
               memoText: document.getElementById("monitorMemoReadOnlyValue")?.textContent || "",
-              editExists: !!document.querySelector("#monitorCard .monitorContentEditBtn")
+              editLabel: document.querySelector("#monitorCard .monitorContentEditBtn")?.textContent || "",
+              editAction: document.querySelector("#monitorCard .monitorContentEditBtn")?.dataset.uiClick || ""
             };
 
             openMonitorEditorWindow();
             const editorState = {
               open: document.getElementById("monitorEditorModal")?.classList.contains("show") || false,
               title: document.getElementById("monitorEditorWindowTitle")?.textContent || "",
+              introExists: !!document.querySelector("#monitorRemoteEditorContent .monitorContentEditorIntro"),
+              statusExplanationHidden: document.getElementById("monitorRemoteEditorStatus")?.hidden || false,
               discardAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorDiscardBtn")?.dataset.uiClick || "",
               applyAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorApplyBtn")?.dataset.uiClick || "",
               allFieldsAreMultiline: [...document.querySelectorAll("#monitorRemoteEditorContent > textarea")].length === 4,
@@ -4115,10 +4161,19 @@
           interItemDividersAreInset:true,
           iconsUseAccentColor:true,
           unplantedNoteFontSize:11,
-          readOnlyState:{ seedlingInputExists:false, memoInputExists:false, memoAddExists:false, memoText:"なし", editExists:false },
+          readOnlyState:{
+            seedlingInputExists:false,
+            memoInputExists:false,
+            memoAddExists:false,
+            memoText:"なし",
+            editLabel:"編集",
+            editAction:"openMonitorEditorWindow"
+          },
           editorState:{
             open:true,
             title:"今回送る内容を編集",
+            introExists:false,
+            statusExplanationHidden:true,
             discardAction:"discardMonitorCurrentEditor",
             applyAction:"applyMonitorCurrentEditor",
             allFieldsAreMultiline:true,
@@ -5678,18 +5733,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "fb7de911", elements: 2192, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "01b7ab40", elements: 2260, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "57786895", elements: 2260, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "1a0798fe", elements: 2193, visible: 104, viewport: "390x844" },
-          mobileDashboard: { hash: "26d581a6", elements: 2193, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "ebe294b8", elements: 2276, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "959ffef6", elements: 2291, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "66994ea6", elements: 2291, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "2789a728", elements: 2291, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "8365e436", elements: 2291, visible: 93, viewport: "390x844" },
-          wideForecast: { hash: "c5c00691", elements: 2291, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "8538b9fa", elements: 2291, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "5c9ae467", elements: 2193, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "2f496118", elements: 2261, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "f59bd3c9", elements: 2261, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "cc03f67f", elements: 2194, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "78c296c5", elements: 2194, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "35187b19", elements: 2277, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "ef12cd9a", elements: 2292, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "1d21ef54", elements: 2292, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "4a616572", elements: 2292, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "c2abad1a", elements: 2292, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "f2557620", elements: 2292, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "e4cf1a43", elements: 2292, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
