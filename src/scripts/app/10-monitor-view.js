@@ -362,12 +362,23 @@ function getMonitorBuildingDisplayOrder(grouped){
   ).filter(building => availableSet.has(building));
 }
 
-function getMonitorSelectionMapHtml(keysOverride){
+function getMonitorCasePlacementCounts(value){
+  const counts = {};
+  String(value || "").split("\n").forEach(line => {
+    const match = line.trim().match(/^(\d+)号棟\s*配置\s*[:：]\s*([\d,.]+)\s*ケース$/);
+    const building = Number(match?.[1]);
+    if(BUILDINGS.includes(building)) counts[String(building)] = match[2];
+  });
+  return counts;
+}
+
+function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
   const sourceKeys = Array.isArray(keysOverride) ? keysOverride : harvestFillKeys;
   if(!sourceKeys.length){
     return `<div class="monitorEmpty">収穫場所が未選択です。</div>`;
   }
   const recordedSet = getRecordedPalletSet();
+  const casePlacementCounts = getMonitorCasePlacementCounts(casePlacementValue);
 
   const grouped = {};
   const validKeys = [];
@@ -390,9 +401,17 @@ function getMonitorSelectionMapHtml(keysOverride){
   return getMonitorBuildingDisplayOrder(grouped)
     .map(building => {
       const beds = grouped[String(building)];
+      const casePlacementCount = casePlacementCounts[String(building)] || "";
       return `
         <div class="monitorBuildingBlock" role="img" aria-label="${building}号棟の収穫場所">
-          <div class="monitorBuildingTitle">${building}号棟</div>
+          <div class="monitorBuildingTitle">
+            <span class="monitorBuildingName">${building}号棟</span>
+            ${casePlacementCount ? `
+              <span class="monitorBuildingCasePlacement">
+                <span class="monitorBuildingCaseCount">${escapeHtml(casePlacementCount)}</span><span class="monitorBuildingCaseUnit">ケース</span><span>配置</span>
+              </span>
+            ` : ""}
+          </div>
           <div class="monitorBedGrid">
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
@@ -591,23 +610,6 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
     }
   });
   const buildingOrder = getMonitorBuildingDisplayOrder(grouped);
-  if(mode === "placement"){
-    const placementHtml = buildingOrder.map(building => {
-      const summary = summaries[String(building)];
-      if(!summary.placement) return "";
-      return `
-        <div class="monitorCaseBuildingSummary is-placement">
-          <div class="monitorCasePlacementRow">
-            <span class="monitorCaseBuildingCircle" aria-label="${building}号棟">${building}</span>
-            <span class="monitorCasePlacementValue">
-              <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span>
-            </span>
-          </div>
-        </div>
-      `;
-    }).join("");
-    return placementHtml || `<div class="monitorRemainingLine is-freeform">なし</div>`;
-  }
   if(mode === "remaining"){
     let hasRemainingLocations = false;
     const remainingHtml = buildingOrder.map(building => {
@@ -839,18 +841,6 @@ function buildMonitorDashboardHtml(content){
       <div class="monitorSummaryGrid">
         ${getMonitorMetricCardHtml("苗", fields.seedling, "枚")}
         ${getMonitorMetricCardHtml("収穫", fields.cases, "ケース")}
-        <section class="monitorPanel monitorMetricCard monitorCasePlacementCard">
-          <div class="monitorMetricLine monitorCaseSummaryLine">
-            <div class="monitorMetricLabel monitorCaseSummaryIcon" aria-label="配置">
-              <svg class="monitorMetricLabelIcon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
-                <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
-              </svg>
-              <span class="monitorMetricLabelText">配置： </span>
-            </div>
-            <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases, normalized.harvestFillKeys || [], "placement")}</div>
-          </div>
-        </section>
         <section class="monitorPanel monitorMetricCard monitorRemainingCard">
           <div class="monitorMetricLine monitorCaseSummaryLine">
             <div class="monitorMetricLabel monitorCaseSummaryIcon" aria-label="残すケース">
@@ -875,7 +865,7 @@ function buildMonitorDashboardHtml(content){
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
           </div>
         </div>
-        <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [])}</div>
+        <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [], fields.remainingCases)}</div>
       </section>
     </main>
     <aside class="monitorPanel monitorMemoPanel">

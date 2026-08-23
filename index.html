@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-case-suffix">
+<meta name="harvestnavi-version" content="20260823-monitor-building-case-heading">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8631,7 +8631,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   grid-column:1 / -1;
   grid-row:2;
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:0;
   overflow:hidden;
   border:1px solid var(--ui-line);
@@ -8750,7 +8750,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorRemainingCard{
   justify-content:flex-start;
 }
-.monitorCasePlacementCard,
 .monitorRemainingCard{
   padding-inline:8px;
 }
@@ -8763,11 +8762,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorCaseSummaryLine{justify-content:center;}
 .monitorCaseSummaryIcon{align-self:center;}
-.monitorCasePlacementCard .monitorCaseSummaryLine .monitorRemainingList{
-  flex:0 1 auto;
-  justify-items:start;
-  text-align:left;
-}
 .monitorCaseSummaryLine .monitorRemainingList{
   justify-items:center;
   text-align:center;
@@ -8793,33 +8787,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   display:inline-flex;
   align-items:baseline;
 }
-.monitorCasePlacementRow{
-  display:flex;
-  align-items:center;
-  gap:.18em;
-  white-space:nowrap;
-}
-.monitorCasePlacementValue{
-  display:inline-flex;
-  align-items:baseline;
-  gap:.08em;
-}
-.monitorCaseBuildingCircle{
-  box-sizing:border-box;
-  width:1.18em;
-  height:1.18em;
-  display:inline-grid;
-  place-items:center;
-  flex:0 0 auto;
-  margin-right:.12em;
-  border:.08em solid currentColor;
-  border-radius:50%;
-  color:#147a39;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  font-size:.82em;
-  line-height:1;
-  font-weight:850;
-}
 .monitorCaseRemainingRow{
   display:grid;
   grid-template-columns:2ch 1em max-content;
@@ -8843,7 +8810,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-weight:700;
 }
 .monitorCasePlacementCount{font-variant-numeric:tabular-nums;}
-.monitorCasePlacementCard .monitorCasePlacementCount{color:#147a39;}
 .monitorRemainingCard .monitorRemainingCount{color:#a94300;}
 .monitorCaseDivider{margin:0 .08em;color:var(--ui-line-strong);font-weight:500;}
 .monitorCaseLocationSeparator{margin:0 .02em;color:var(--ui-text-secondary);}
@@ -8968,6 +8934,10 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorHarvestMap > .monitorEmpty{grid-column:1 / -1;}
 .monitorBuildingTitle{
+  display:flex;
+  align-items:baseline;
+  justify-content:center;
+  gap:.55em;
   margin-bottom:3px;
   color:var(--ui-text);
   font-size:23px;
@@ -8975,6 +8945,18 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-weight:780;
   text-align:center;
 }
+.monitorBuildingName{white-space:nowrap;}
+.monitorBuildingCasePlacement{
+  display:inline-flex;
+  align-items:baseline;
+  gap:.08em;
+  color:var(--ui-accent-dark);
+  font-size:.74em;
+  font-weight:760;
+  white-space:nowrap;
+}
+.monitorBuildingCaseCount{font-variant-numeric:tabular-nums;}
+.monitorBuildingCaseUnit{font-size:.72em;}
 .monitorBedGrid{gap:5px;}
 .monitorBedCard{
   border-width:1px;
@@ -11353,9 +11335,6 @@ html[data-theme="dark"] .monitorSummaryGrid .monitorMetricCard:nth-child(2) .mon
 html[data-theme="dark"] .monitorMetricLabelIcon.is-remaining-case,
 html[data-theme="dark"] .monitorRemainingCard .monitorRemainingList{
   color:var(--ui-text-secondary);
-}
-html[data-theme="dark"] .monitorCasePlacementCard .monitorCasePlacementCount{
-  color:var(--ui-accent-dark);
 }
 html[data-theme="dark"] .monitorRemainingCard .monitorRemainingCount{
   color:var(--ui-text-secondary);
@@ -30704,12 +30683,23 @@ function getMonitorBuildingDisplayOrder(grouped){
   ).filter(building => availableSet.has(building));
 }
 
-function getMonitorSelectionMapHtml(keysOverride){
+function getMonitorCasePlacementCounts(value){
+  const counts = {};
+  String(value || "").split("\n").forEach(line => {
+    const match = line.trim().match(/^(\d+)号棟\s*配置\s*[:：]\s*([\d,.]+)\s*ケース$/);
+    const building = Number(match?.[1]);
+    if(BUILDINGS.includes(building)) counts[String(building)] = match[2];
+  });
+  return counts;
+}
+
+function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
   const sourceKeys = Array.isArray(keysOverride) ? keysOverride : harvestFillKeys;
   if(!sourceKeys.length){
     return `<div class="monitorEmpty">収穫場所が未選択です。</div>`;
   }
   const recordedSet = getRecordedPalletSet();
+  const casePlacementCounts = getMonitorCasePlacementCounts(casePlacementValue);
 
   const grouped = {};
   const validKeys = [];
@@ -30732,9 +30722,17 @@ function getMonitorSelectionMapHtml(keysOverride){
   return getMonitorBuildingDisplayOrder(grouped)
     .map(building => {
       const beds = grouped[String(building)];
+      const casePlacementCount = casePlacementCounts[String(building)] || "";
       return `
         <div class="monitorBuildingBlock" role="img" aria-label="${building}号棟の収穫場所">
-          <div class="monitorBuildingTitle">${building}号棟</div>
+          <div class="monitorBuildingTitle">
+            <span class="monitorBuildingName">${building}号棟</span>
+            ${casePlacementCount ? `
+              <span class="monitorBuildingCasePlacement">
+                <span class="monitorBuildingCaseCount">${escapeHtml(casePlacementCount)}</span><span class="monitorBuildingCaseUnit">ケース</span><span>配置</span>
+              </span>
+            ` : ""}
+          </div>
           <div class="monitorBedGrid">
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
@@ -30933,23 +30931,6 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
     }
   });
   const buildingOrder = getMonitorBuildingDisplayOrder(grouped);
-  if(mode === "placement"){
-    const placementHtml = buildingOrder.map(building => {
-      const summary = summaries[String(building)];
-      if(!summary.placement) return "";
-      return `
-        <div class="monitorCaseBuildingSummary is-placement">
-          <div class="monitorCasePlacementRow">
-            <span class="monitorCaseBuildingCircle" aria-label="${building}号棟">${building}</span>
-            <span class="monitorCasePlacementValue">
-              <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span>
-            </span>
-          </div>
-        </div>
-      `;
-    }).join("");
-    return placementHtml || `<div class="monitorRemainingLine is-freeform">なし</div>`;
-  }
   if(mode === "remaining"){
     let hasRemainingLocations = false;
     const remainingHtml = buildingOrder.map(building => {
@@ -31181,18 +31162,6 @@ function buildMonitorDashboardHtml(content){
       <div class="monitorSummaryGrid">
         ${getMonitorMetricCardHtml("苗", fields.seedling, "枚")}
         ${getMonitorMetricCardHtml("収穫", fields.cases, "ケース")}
-        <section class="monitorPanel monitorMetricCard monitorCasePlacementCard">
-          <div class="monitorMetricLine monitorCaseSummaryLine">
-            <div class="monitorMetricLabel monitorCaseSummaryIcon" aria-label="配置">
-              <svg class="monitorMetricLabelIcon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
-                <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
-              </svg>
-              <span class="monitorMetricLabelText">配置： </span>
-            </div>
-            <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases, normalized.harvestFillKeys || [], "placement")}</div>
-          </div>
-        </section>
         <section class="monitorPanel monitorMetricCard monitorRemainingCard">
           <div class="monitorMetricLine monitorCaseSummaryLine">
             <div class="monitorMetricLabel monitorCaseSummaryIcon" aria-label="残すケース">
@@ -31217,7 +31186,7 @@ function buildMonitorDashboardHtml(content){
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
           </div>
         </div>
-        <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [])}</div>
+        <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [], fields.remainingCases)}</div>
       </section>
     </main>
     <aside class="monitorPanel monitorMemoPanel">

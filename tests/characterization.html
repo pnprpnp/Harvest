@@ -3971,11 +3971,11 @@
           const dashboardHost = document.createElement("div");
           try{
             getRecordedPalletSet = () => recordedSet;
-            host.innerHTML = getMonitorSelectionMapHtml(selectedKeys);
+            host.innerHTML = getMonitorSelectionMapHtml(selectedKeys, "2号棟 配置: 48ケース");
             document.body.appendChild(host);
             dashboardHost.innerHTML = buildMonitorDashboardHtml({
               enabled:true,
-              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 2号棟 F-1〜2、D-78\\n残すケース:\\nなし",
+              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 2号棟 F-1〜2、D-78\\n残すケース:\\n2号棟 配置: 48ケース",
               harvestFillKeys:selectedKeys,
               memoItems:[]
             });
@@ -3992,7 +3992,12 @@
                 .map(title => title.textContent.trim());
             };
             return {
-              buildingTitle:host.querySelector(".monitorBuildingTitle")?.textContent.trim() || "",
+              buildingTitle:host.querySelector(".monitorBuildingTitle")?.textContent.trim().replace(/\\s+/g, " ") || "",
+              buildingName:host.querySelector(".monitorBuildingName")?.textContent.trim() || "",
+              buildingCasePlacement:host.querySelector(".monitorBuildingCasePlacement")?.textContent.trim().replace(/\\s+/g, "") || "",
+              buildingCasePlacementBesideName:host.querySelector(".monitorBuildingName")?.parentElement === host.querySelector(".monitorBuildingCasePlacement")?.parentElement &&
+                getComputedStyle(host.querySelector(".monitorBuildingTitle")).display === "flex",
+              dashboardBuildingCasePlacement:dashboardHost.querySelector(".monitorBuildingCasePlacement")?.textContent.trim().replace(/\\s+/g, "") || "",
               bedNames:cards.map(card => card.querySelector(".monitorBedName")?.textContent.trim() || ""),
               counts:cards.map(card => card.querySelector(".monitorBedCount")?.textContent.trim() || ""),
               mapCount:host.querySelectorAll(".monitorBedPalletMap").length,
@@ -4024,7 +4029,11 @@
           }
         })()`));
         assertDeepEqual(monitorState, {
-          buildingTitle:"2号棟",
+          buildingTitle:"2号棟 48ケース配置",
+          buildingName:"2号棟",
+          buildingCasePlacement:"48ケース配置",
+          buildingCasePlacementBesideName:true,
+          dashboardBuildingCasePlacement:"48ケース配置",
           bedNames:["F", "D", "B", "E", "C", "A"],
           counts:["2枚", "1枚", "", "", "", ""],
           mapCount:6,
@@ -4064,11 +4073,13 @@
             const cards = [...host.querySelectorAll(".monitorMetricCard")];
             return {
               labels:cards.map(card => card.querySelector(".monitorMetricLabel")?.textContent.trim() || ""),
-              labelsUseHalfWidthSpace:cards.slice(0, 3).every(card =>
+              labelsUseHalfWidthSpace:cards.slice(0, 2).every(card =>
                 card.querySelector(".monitorMetricLabelText")?.textContent.endsWith("： ")
               ),
               summaryColumns:getComputedStyle(host.querySelector(".monitorSummaryGrid")).gridTemplateColumns.trim().split(/\\s+/g).length,
-              caseCardsUseEqualWidths:Math.abs(cards[2].getBoundingClientRect().width - cards[3].getBoundingClientRect().width) < 0.1,
+              summaryCardsUseEqualWidths:cards.every(card =>
+                Math.abs(card.getBoundingClientRect().width - cards[0].getBoundingClientRect().width) < 0.1
+              ),
               unplantedVisible:host.textContent.includes("未定植分"),
               allUseOneRow:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
@@ -4080,7 +4091,7 @@
               caseTextIsReadable:cards.slice(2).every(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize) >= 12),
               primaryTextIsLarger:(() => {
                 const sizes = cards.map(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize));
-                return sizes[0] >= 24 && sizes[1] >= 24 && sizes[0] > sizes[2] && sizes[1] > sizes[3];
+                return sizes[0] >= 24 && sizes[1] >= 24 && sizes[0] > sizes[2] && sizes[1] > sizes[2];
               })(),
               primaryTextFits:cards.slice(0, 2).every(card => {
                 const line = card.querySelector(".monitorMetricLine");
@@ -4113,16 +4124,6 @@
                 const icon = card.querySelector(".monitorMetricLabelIcon");
                 return Math.abs(icon.getBoundingClientRect().width - parseFloat(getComputedStyle(line).fontSize)) < 0.1;
               }),
-              placementRows:[...host.querySelectorAll(".monitorCasePlacementRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
-              placementBuildingDigits:[...host.querySelectorAll(".monitorCaseBuildingCircle")].map(circle => circle.textContent.trim()),
-              placementBuildingDigitsAreReadable:[...host.querySelectorAll(".monitorCaseBuildingCircle")].every(circle =>
-                parseFloat(getComputedStyle(circle).fontWeight) >= 700 && getComputedStyle(circle).borderRadius === "50%"
-              ),
-              placementBuildingAndValueAreAligned:[...host.querySelectorAll(".monitorCasePlacementRow")].every(row => {
-                const circleRect = row.querySelector(".monitorCaseBuildingCircle").getBoundingClientRect();
-                const valueRect = row.querySelector(".monitorCasePlacementValue").getBoundingClientRect();
-                return Math.abs((circleRect.top + circleRect.bottom) / 2 - (valueRect.top + valueRect.bottom) / 2) < 1;
-              }),
               remainingRows:[...host.querySelectorAll(".monitorCaseRemainingRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
               remainingSuffix:host.querySelector(".monitorRemainingSuffixInline")?.textContent.trim() || "",
               remainingSuffixFollowsNumbers:host.querySelector(".monitorRemainingRows")?.nextElementSibling?.classList.contains("monitorRemainingSuffixInline") || false,
@@ -4137,10 +4138,10 @@
           }
         })()`));
         assertDeepEqual(summaryState, {
-          labels:["苗：", "収穫：", "配置：", ""],
+          labels:["苗：", "収穫：", ""],
           labelsUseHalfWidthSpace:true,
-          summaryColumns:4,
-          caseCardsUseEqualWidths:true,
+          summaryColumns:3,
+          summaryCardsUseEqualWidths:true,
           unplantedVisible:false,
           allUseOneRow:true,
           caseTextIsReadable:true,
@@ -4151,15 +4152,11 @@
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
           allIconSizesMatch:true,
-          placementRows:["248ケース"],
-          placementBuildingDigits:["2"],
-          placementBuildingDigitsAreReadable:true,
-          placementBuildingAndValueAreAligned:true,
           remainingRows:["2-前6", "中20", "奥30"],
           remainingSuffix:"ケース残す",
           remainingSuffixFollowsNumbers:true,
           remainingFooterAbsent:true,
-          buildingSummaries:["248ケース", "2-前6中20奥30"],
+          buildingSummaries:["2-前6中20奥30"],
           updatedAtText:"最終更新2026/8/23 17:14",
           updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");
