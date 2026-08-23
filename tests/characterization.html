@@ -3730,6 +3730,25 @@
                 rowStyle.alignItems === "center" &&
                 rowStyle.paddingTop === rowStyle.paddingBottom;
             });
+            const metricItems = [...document.querySelectorAll("#monitorCard .monitorSendMetricItem")];
+            const detailItems = [...document.querySelectorAll("#monitorCard .monitorSendDetailItem")];
+            const insetDividerRows = [
+              metricItems[1],
+              ...detailItems,
+              document.querySelector("#monitorCard .monitorMemoReadOnlyRow")
+            ].filter(Boolean);
+            const interItemDividersAreInset =
+              parseFloat(getComputedStyle(document.querySelector("#monitorCard .monitorSendContentTitle")).borderBottomWidth) === 1 &&
+              parseFloat(getComputedStyle(document.querySelector("#monitorCard .monitorSendMetricGrid")).borderBottomWidth) === 0 &&
+              getComputedStyle(metricItems[0], "::before").content === "none" &&
+              insetDividerRows.length === 4 && insetDividerRows.every(row => {
+                const dividerStyle = getComputedStyle(row, "::before");
+                return dividerStyle.content !== "none" &&
+                  parseFloat(dividerStyle.left) === 18 &&
+                  parseFloat(dividerStyle.right) === 18 &&
+                  parseFloat(dividerStyle.height) === 1 &&
+                  parseFloat(getComputedStyle(row).borderTopWidth) === 0;
+              });
             const accentProbe = document.createElement("span");
             accentProbe.style.color = "var(--ui-accent)";
             document.body.appendChild(accentProbe);
@@ -3801,6 +3820,7 @@
               rowsHaveLeadingInset,
               labelsHaveWideColumn,
               nonMemoRowsUseUnifiedHeight,
+              interItemDividersAreInset,
               iconsUseAccentColor,
               unplantedNoteFontSize,
               readOnlyState,
@@ -3842,6 +3862,7 @@
           rowsHaveLeadingInset:true,
           labelsHaveWideColumn:true,
           nonMemoRowsUseUnifiedHeight:true,
+          interItemDividersAreInset:true,
           iconsUseAccentColor:true,
           unplantedNoteFontSize:11,
           readOnlyState:{ seedlingInputExists:false, memoInputExists:false, memoAddExists:false, memoText:"なし", editLabel:"編集" },
@@ -5408,18 +5429,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "a7fd1715", elements: 2205, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "f9bd3037", elements: 2273, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "84df551e", elements: 2273, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "c3cb6f4b", elements: 2206, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "611bb3c2", elements: 2206, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "d26df585", elements: 2289, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "b9599d1b", elements: 2304, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "19e06eb7", elements: 2304, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "c83eb8a5", elements: 2304, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "c949a4f0", elements: 2304, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "dd0d5581", elements: 2304, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "33da7b15", elements: 2304, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "dec8f525", elements: 2205, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "7a1eb7a7", elements: 2273, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "e314138e", elements: 2273, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "9d0a2e1b", elements: 2206, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "532d595a", elements: 2206, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "2ebe7d0d", elements: 2289, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "8f881963", elements: 2304, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "efca28af", elements: 2304, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "948b93dd", elements: 2304, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "b1a70ce1", elements: 2304, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "10c761c1", elements: 2304, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "108cbb05", elements: 2304, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
