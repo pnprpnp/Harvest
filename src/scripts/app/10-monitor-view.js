@@ -915,14 +915,14 @@ function fitMonitorPreview2CaseText(root = document){
 function getMonitorPreview2IconHtml(kind){
   const paths = {
     seedling:'<path d="M16 27V13"></path><path d="M16 16C9.5 16 6 12.5 6 6c6.5 0 10 3.5 10 10Z"></path><path d="M16 20c6 0 9.5-3.2 10-9.2-6-.3-9.5 2.9-10 9.2Z"></path><path d="M9 27h14"></path>',
-    harvest:'<path d="M5 12h22l-2 14H7L5 12Z"></path><path d="M3 12h26M10 12l2-6h8l2 6M11 16v6M16 16v6M21 16v6"></path>',
-    placement:'<path d="M5 12h22l-2 14H7L5 12Z"></path><path d="M3 12h26M9 17h14M10 22h12M11 12V8h10v4"></path>',
-    remaining:'<path d="M5 12h22l-2 14H7L5 12Z"></path><path d="M3 12h26M10 12l2-6h8l2 6"></path><path d="M16 16v6"></path>',
+    harvest:'<path d="M3 9.5 11 3.5l18 4.2-8.2 6.8L3 9.5Z" fill="currentColor" fill-opacity=".14"></path><path d="m8 9.6 4.1-3 12 2.8-4.3 3.5L8 9.6Z"></path><path d="M3 9.5v11.8l17.8 6.2v-13M29 7.7v11.8l-8.2 8"></path><path d="M7.3 10.8v11.9M12 12.2v12.2M16.6 13.5v12.4"></path><path d="m3.4 15 17.4 5.5M3.4 19.2l17.4 5.6M21 19l7.7-6.7M21 23.4l7.7-6.7"></path>',
+    placement:'<path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path><path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path><path d="M8 6h16M11 3h10v3"></path>',
+    remaining:'<path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path><path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path><path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>',
     location:'<path d="M24 13c0 6-8 14-8 14S8 19 8 13a8 8 0 1 1 16 0Z"></path><circle cx="16" cy="13" r="2.5"></circle>',
     map:'<path d="m4 7 7-3 10 4 7-3v20l-7 3-10-4-7 3Z"></path><path d="M11 4v20M21 8v20"></path>',
     memo:'<path d="M7 25 9 18 21 6a3.5 3.5 0 0 1 5 5L14 23l-7 2Z"></path><path d="m18.5 8.5 5 5M9 18l5 5"></path>'
   };
-  return `<svg viewBox="0 0 32 32" aria-hidden="true">${paths[kind] || paths.harvest}</svg>`;
+  return `<svg viewBox="0 0 32 32" data-monitor-v2-icon="${escapeHtml(kind)}" aria-hidden="true">${paths[kind] || paths.harvest}</svg>`;
 }
 
 function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){

@@ -4038,6 +4038,12 @@
             const remainingBuilding = preview2Host.querySelector(".monitorV2MetricCard-remaining .monitorCaseRemainingBuilding");
             const remainingLocations = [...preview2Host.querySelectorAll(".monitorV2MetricCard-remaining .monitorCaseRemainingLocation")];
             const remainingLocationRects = remainingLocations.map(location => location.getBoundingClientRect());
+            const getIconPathData = svg => [...(svg?.querySelectorAll("path") || [])].map(path => path.getAttribute("d"));
+            const preview1HarvestIconPaths = getIconPathData(preview1Host.querySelector(".monitorMetricLabelIcon.is-harvest-case"));
+            const preview1RemainingIconPaths = getIconPathData(preview1Host.querySelector(".monitorMetricLabelIcon.is-remaining-case"));
+            const preview2HarvestIconPaths = getIconPathData(preview2Host.querySelector('[data-monitor-v2-icon="harvest"]'));
+            const preview2PlacementIconPaths = getIconPathData(preview2Host.querySelector('[data-monitor-v2-icon="placement"]'));
+            const preview2RemainingIconPaths = getIconPathData(preview2Host.querySelector('[data-monitor-v2-icon="remaining"]'));
             const longLocationValue = longLocationHost.querySelector(".monitorV2LocationValue");
             const longLocationStyle = longLocationValue ? getComputedStyle(longLocationValue) : null;
             const longLocationLineHeight = parseFloat(longLocationStyle?.lineHeight || "0");
@@ -4115,6 +4121,12 @@
                   && remainingLocationRects[0].top < remainingLocationRects[1].top,
                 remainingLocationLabelSizes:[...preview2Host.querySelectorAll(".monitorV2MetricCard-remaining .monitorRemainingLocation")]
                   .map(value => getComputedStyle(value).fontSize),
+                preview1BasedContainerIcons:JSON.stringify(preview2HarvestIconPaths) === JSON.stringify(preview1HarvestIconPaths)
+                  && JSON.stringify(preview2RemainingIconPaths) === JSON.stringify(preview1RemainingIconPaths)
+                  && JSON.stringify(preview2PlacementIconPaths.slice(0, 2)) === JSON.stringify(preview1RemainingIconPaths.slice(0, 2))
+                  && preview2PlacementIconPaths[2] !== preview1RemainingIconPaths[2],
+                containerIconKinds:[...preview2Host.querySelectorAll(".monitorV2MetricCard-harvest [data-monitor-v2-icon], .monitorV2MetricCard-placement [data-monitor-v2-icon], .monitorV2MetricCard-remaining [data-monitor-v2-icon]")]
+                  .map(icon => icon.dataset.monitorV2Icon),
                 seedlingNoteRemoved:!preview2Host.querySelector(".monitorV2MetricCard-seedling .monitorV2MetricNote")
                   && !preview2Host.querySelector(".monitorV2MetricCard-seedling")?.textContent.includes("未定植"),
                 remainingSuffixRemoved:!preview2Host.querySelector(".monitorV2MetricCard-remaining")?.textContent.includes("ケース残す"),
@@ -4192,6 +4204,8 @@
             remainingCaseNumberSizes:["60px", "60px", "60px"],
             remainingCaseUsesAlignedRows:true,
             remainingLocationLabelSizes:["24px", "24px"],
+            preview1BasedContainerIcons:true,
+            containerIconKinds:["harvest", "placement", "remaining"],
             seedlingNoteRemoved:true,
             remainingSuffixRemoved:true,
             numericWidthTransforms:[
