@@ -4064,6 +4064,9 @@
             const cards = [...host.querySelectorAll(".monitorMetricCard")];
             return {
               labels:cards.map(card => card.querySelector(".monitorMetricLabel")?.textContent.trim() || ""),
+              labelsUseHalfWidthSpace:cards.slice(0, 3).every(card =>
+                card.querySelector(".monitorMetricLabelText")?.textContent.endsWith("： ")
+              ),
               summaryColumns:getComputedStyle(host.querySelector(".monitorSummaryGrid")).gridTemplateColumns.trim().split(/\\s+/g).length,
               caseCardsUseEqualWidths:Math.abs(cards[2].getBoundingClientRect().width - cards[3].getBoundingClientRect().width) < 0.1,
               unplantedVisible:host.textContent.includes("未定植分"),
@@ -4110,12 +4113,12 @@
                 const icon = card.querySelector(".monitorMetricLabelIcon");
                 return Math.abs(icon.getBoundingClientRect().width - parseFloat(getComputedStyle(line).fontSize)) < 0.1;
               }),
-              remainingLines:[...host.querySelectorAll(".monitorRemainingLine")].map(line => line.textContent.trim().replace(/\\s+/g, "")),
+              placementRows:[...host.querySelectorAll(".monitorCasePlacementRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
+              remainingRows:[...host.querySelectorAll(".monitorCaseRemainingRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
+              remainingFooter:host.querySelector(".monitorRemainingFooter")?.textContent.trim() || "",
+              remainingFooterCentered:getComputedStyle(host.querySelector(".monitorRemainingFooter")).textAlign === "center",
               buildingSummaries:[...host.querySelectorAll(".monitorCaseBuildingSummary")]
                 .map(summary => summary.textContent.trim().replace(/\\s+/g, "")),
-              compactCaseLines:[...host.querySelectorAll(".monitorCaseBuildingLine")].every(line =>
-                getComputedStyle(line).justifyContent === "center"
-              ),
               updatedAtText:host.querySelector(".monitorUpdatedAt")?.textContent.replace(/\\s+/g, " ").trim() || "",
               updatedAtIsRightItem:host.querySelector(".monitorTodayBar")?.lastElementChild?.classList.contains("monitorUpdatedAt") || false
             };
@@ -4124,7 +4127,8 @@
           }
         })()`));
         assertDeepEqual(summaryState, {
-          labels:["苗：", "収穫：", "", ""],
+          labels:["苗：", "収穫：", "配置：", ""],
+          labelsUseHalfWidthSpace:true,
           summaryColumns:4,
           caseCardsUseEqualWidths:true,
           unplantedVisible:false,
@@ -4137,9 +4141,11 @@
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
           allIconSizesMatch:true,
-          remainingLines:["前6・中20・奥30ケース残す"],
-          buildingSummaries:["2号棟48ケース配置", "2号棟前6・中20・奥30ケース残す"],
-          compactCaseLines:true,
+          placementRows:["②48ケース"],
+          remainingRows:["2-前6", "中20", "奥30"],
+          remainingFooter:"ケース残す",
+          remainingFooterCentered:true,
+          buildingSummaries:["②48ケース", "2-前6中20奥30"],
           updatedAtText:"最終更新2026/8/23 17:14",
           updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");

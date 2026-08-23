@@ -526,7 +526,7 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
   return `
     <section class="monitorPanel monitorMetricCard">
       <div class="monitorMetricLine">
-        <div class="monitorMetricLabel">${labelIcon}<span>${escapeHtml(label)}：</span></div>
+        <div class="monitorMetricLabel">${labelIcon}<span class="monitorMetricLabelText">${escapeHtml(label)}： </span></div>
         <div class="monitorMetricValueGroup">
           <strong class="monitorMetricValue">${escapeHtml(parts.value)}</strong>
           ${parts.unit ? `<span class="monitorMetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
@@ -590,7 +590,50 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
       grouped[String(parsed.building)] = true;
     }
   });
-  const summaryHtml = getMonitorBuildingDisplayOrder(grouped).map(building => {
+  const buildingOrder = getMonitorBuildingDisplayOrder(grouped);
+  if(mode === "placement"){
+    const placementHtml = buildingOrder.map(building => {
+      const summary = summaries[String(building)];
+      if(!summary.placement) return "";
+      const circledBuilding = String.fromCodePoint(0x2460 + building - 1);
+      return `
+        <div class="monitorCaseBuildingSummary is-placement">
+          <div class="monitorCasePlacementRow">
+            <span class="monitorCaseBuildingCircle">${circledBuilding}</span>
+            <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+    return placementHtml || `<div class="monitorRemainingLine is-freeform">なし</div>`;
+  }
+  if(mode === "remaining"){
+    let hasRemainingLocations = false;
+    const remainingHtml = buildingOrder.map(building => {
+      const summary = summaries[String(building)];
+      if(!summary.locations.length) return "";
+      hasRemainingLocations = true;
+      return `
+        <div class="monitorCaseBuildingSummary is-remaining">
+          ${summary.locations.map((location, index) => `
+            <div class="monitorCaseRemainingRow${location.suffix === "不足" ? " is-shortage" : ""}">
+              <span class="monitorCaseRemainingBuilding">${index === 0 ? `${building}-` : ""}</span>
+              <span class="monitorRemainingLocation">${location.label}</span>
+              <span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }).join("");
+    const freeHtml = freeLines.map(line => {
+      const shortageClass = line.includes("不足") ? " is-shortage" : "";
+      const lineHtml = escapeHtml(line).replace(/([\d,.]+)\s*ケース/g, '$1<span class="monitorMetricSmallUnit">ケース</span>');
+      return `<div class="monitorRemainingLine is-freeform${shortageClass}">${lineHtml}</div>`;
+    }).join("");
+    if(!hasRemainingLocations && !freeHtml) return `<div class="monitorRemainingLine is-freeform">なし</div>`;
+    return `${remainingHtml}${hasRemainingLocations ? `<div class="monitorRemainingFooter">ケース残す</div>` : ""}${freeHtml}`;
+  }
+  const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
     const showPlacement = mode !== "remaining" && !!summary.placement;
     const showRemaining = mode !== "placement" && summary.locations.length > 0;
@@ -792,11 +835,12 @@ function buildMonitorDashboardHtml(content){
         ${getMonitorMetricCardHtml("収穫", fields.cases, "ケース")}
         <section class="monitorPanel monitorMetricCard monitorCasePlacementCard">
           <div class="monitorMetricLine monitorCaseSummaryLine">
-            <div class="monitorMetricLabel monitorCaseSummaryIcon" aria-label="ケース配置">
+            <div class="monitorMetricLabel monitorCaseSummaryIcon" aria-label="配置">
               <svg class="monitorMetricLabelIcon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
                 <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
               </svg>
+              <span class="monitorMetricLabelText">配置： </span>
             </div>
             <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases, normalized.harvestFillKeys || [], "placement")}</div>
           </div>
