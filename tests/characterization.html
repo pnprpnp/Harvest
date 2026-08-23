@@ -3702,7 +3702,7 @@
             itemNamesAreLarger = [
               ...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel"),
               document.querySelector("#monitorCard .monitorMemoReadOnlyRow .monitorSendSummaryLabel")
-            ].filter(Boolean).every(label => parseFloat(getComputedStyle(label).fontSize) >= 13);
+            ].filter(Boolean).every(label => parseFloat(getComputedStyle(label).fontSize) >= 14);
             const summaryLabels = [
               ...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel"),
               document.querySelector("#monitorCard .monitorMemoReadOnlyRow .monitorSendSummaryLabel")
@@ -3719,6 +3719,13 @@
               document.querySelector("#monitorCard .monitorMemoReadOnlyRow")
             ].filter(Boolean);
             const rowsHaveLeadingInset = summaryRows.every(row => parseFloat(getComputedStyle(row).paddingLeft) >= 18);
+            const labelsHaveWideColumn = summaryRows.every(row => parseFloat(getComputedStyle(row).gridTemplateColumns) >= 124);
+            const accentProbe = document.createElement("span");
+            accentProbe.style.color = "var(--ui-accent)";
+            document.body.appendChild(accentProbe);
+            const accentColor = getComputedStyle(accentProbe).color;
+            accentProbe.remove();
+            const iconsUseAccentColor = summaryLabels.every(label => getComputedStyle(label.querySelector(".monitorSendSummaryIcon")).stroke === accentColor);
             const noteFixture = document.createElement("div");
             noteFixture.className = "monitorSendSummaryValue";
             noteFixture.style.cssText = "position:fixed;left:-1000px;top:0;";
@@ -3782,6 +3789,8 @@
               labelStyleMatchesTitle,
               summaryIconCount,
               rowsHaveLeadingInset,
+              labelsHaveWideColumn,
+              iconsUseAccentColor,
               unplantedNoteFontSize,
               readOnlyState,
               editorState,
@@ -3820,6 +3829,8 @@
           labelStyleMatchesTitle:true,
           summaryIconCount:5,
           rowsHaveLeadingInset:true,
+          labelsHaveWideColumn:true,
+          iconsUseAccentColor:true,
           unplantedNoteFontSize:11,
           readOnlyState:{ seedlingInputExists:false, memoInputExists:false, memoAddExists:false, memoText:"なし", editLabel:"編集" },
           editorState:{
@@ -5385,18 +5396,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "61f35207", elements: 2205, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "0df5a7e1", elements: 2273, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "e137ad88", elements: 2273, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "a53189f9", elements: 2206, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "d379d2ec", elements: 2206, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "682cb6a7", elements: 2289, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "87e81741", elements: 2304, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "eeaaf131", elements: 2304, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "b2061763", elements: 2304, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "0019ebea", elements: 2304, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "71302fb3", elements: 2304, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "b6ac0feb", elements: 2304, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "af0adc5d", elements: 2205, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "d8897f9f", elements: 2273, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "5fa49d96", elements: 2273, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "79dd8d0f", elements: 2206, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "64d3230e", elements: 2206, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "5ef59bcd", elements: 2289, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "4779e573", elements: 2304, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "8eccc3c3", elements: 2304, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "2c9ae109", elements: 2304, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "993ff1c7", elements: 2304, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "8f9b4c99", elements: 2304, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "6fd2ddbd", elements: 2304, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
