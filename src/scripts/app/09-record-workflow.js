@@ -1513,6 +1513,8 @@ function refreshRecordModeUi(){
   const plantingStep = document.getElementById("recordStepPlanting");
   const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
+  const modeStatus = document.getElementById("recordModeStatus");
+  const modeStatusText = document.getElementById("recordModeStatusText");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
@@ -1545,6 +1547,11 @@ function refreshRecordModeUi(){
 
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
+  if(modeStatus){
+    modeStatus.classList.toggle("is-harvest", !isPlantingMode);
+    modeStatus.classList.toggle("is-planting", isPlantingMode);
+  }
+  if(modeStatusText) modeStatusText.textContent = isPlantingMode ? "苗植え記録中" : "収穫記録中";
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();

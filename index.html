@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-preview2-larger-units">
+<meta name="harvestnavi-version" content="20260823-record-mode-status">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9909,6 +9909,31 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 
 /* Record workflow */
 #recordSaveCard > .recordDateField{margin-top:0;}
+.recordModeStatus{
+  min-height:38px;
+  margin:0 0 10px;
+  padding:7px 12px;
+  box-sizing:border-box;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  border-radius:10px;
+  background:var(--ui-surface-muted);
+  color:var(--ui-accent-dark);
+  font-size:16px;
+  font-weight:800;
+  line-height:1.2;
+  letter-spacing:.02em;
+}
+.recordModeStatus.is-planting{color:var(--ui-blue);}
+.recordModeStatusDot{
+  width:8px;
+  height:8px;
+  flex:none;
+  border-radius:50%;
+  background:currentColor;
+}
 .recordSeedlingDiffBox,
 .recordHarvestAdjustBox{
   padding:16px;
@@ -12520,6 +12545,10 @@ requestAnimationFrame(function(){
 
   <div id="recordTab" style="display:none;">
     <div id="recordSaveCard" class="card workflowFocusHeading" aria-label="記録入力">
+      <div id="recordModeStatus" class="recordModeStatus is-harvest" role="status" aria-live="polite">
+        <span class="recordModeStatusDot" aria-hidden="true"></span>
+        <span id="recordModeStatusText">収穫記録中</span>
+      </div>
       <div class="recordDateField">
         <label class="fieldAccentLabel">日付</label>
         <div class="recordDateInputRow">
@@ -30494,6 +30523,8 @@ function refreshRecordModeUi(){
   const plantingStep = document.getElementById("recordStepPlanting");
   const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
+  const modeStatus = document.getElementById("recordModeStatus");
+  const modeStatusText = document.getElementById("recordModeStatusText");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
@@ -30526,6 +30557,11 @@ function refreshRecordModeUi(){
 
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
+  if(modeStatus){
+    modeStatus.classList.toggle("is-harvest", !isPlantingMode);
+    modeStatus.classList.toggle("is-planting", isPlantingMode);
+  }
+  if(modeStatusText) modeStatusText.textContent = isPlantingMode ? "苗植え記録中" : "収穫記録中";
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();
