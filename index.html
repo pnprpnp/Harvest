@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-filled-unavailable-beds">
+<meta name="harvestnavi-version" content="20260823-monitor-solid-full-bed-maps">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9088,8 +9088,22 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell,
 .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-selected,
 .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-recorded{
-  border-bottom-color:transparent;
+  border:0;
   background:var(--ui-text-tertiary);
+}
+.monitorBedCard.is-all-remaining-selected{
+  border-color:var(--ui-accent-dark);
+  background:var(--ui-accent-soft);
+}
+.monitorBedCard.is-all-remaining-selected .monitorBedPalletMapGrid{
+  border-color:var(--ui-accent-dark);
+  background:var(--ui-accent-bright);
+}
+.monitorBedCard.is-all-remaining-selected .monitorBedPalletMap .monitorBedMapCell,
+.monitorBedCard.is-all-remaining-selected .monitorBedPalletMap .monitorBedMapCell.is-selected,
+.monitorBedCard.is-all-remaining-selected .monitorBedPalletMap .monitorBedMapCell.is-recorded{
+  border:0;
+  background:var(--ui-accent-bright);
 }
 .monitorMemoPanel{
   min-width:0;
@@ -11108,8 +11122,19 @@ html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .
 html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-selected,
 html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-recorded{
   border-color:var(--ui-text-secondary);
-  border-bottom-color:transparent;
+  border-width:0;
   background:var(--ui-text-tertiary);
+}
+html[data-theme="dark"] .monitorBedCard.is-all-remaining-selected .monitorBedPalletMapGrid,
+html[data-theme="dark"] .monitorBedCard.is-all-remaining-selected .monitorBedPalletMap .monitorBedMapCell,
+html[data-theme="dark"] .monitorBedCard.is-all-remaining-selected .monitorBedPalletMap .monitorBedMapCell.is-selected,
+html[data-theme="dark"] .monitorBedCard.is-all-remaining-selected .monitorBedPalletMap .monitorBedMapCell.is-recorded{
+  border-color:var(--ui-accent-dark);
+  border-width:0;
+  background:var(--ui-accent-bright);
+}
+html[data-theme="dark"] .monitorBedCard.is-all-remaining-selected .monitorBedPalletMapGrid{
+  border-width:1px;
 }
 
 html[data-theme="dark"] .recordTitleHarvest{color:#71dc92;}
@@ -31350,13 +31375,19 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
               const selectedCount = new Set(numbers).size;
               let recordedCount = 0;
+              let selectedHarvestableCount = 0;
               for(let number = 1; number <= PALLETS_PER_BED; number++){
-                if(recordedSet.has(getPalletKey(building, bed, number))) recordedCount++;
+                const key = getPalletKey(building, bed, number);
+                if(recordedSet.has(key)) recordedCount++;
+                else if(selectedSet.has(key)) selectedHarvestableCount++;
               }
               const harvestableCount = Math.max(0, PALLETS_PER_BED - recordedCount);
               const cardClasses = ["monitorBedCard"];
               if(!numbers.length && !recordedCount) cardClasses.push("inactive");
               if(harvestableCount === 0) cardClasses.push("is-no-harvestable");
+              if(harvestableCount > 0 && selectedHarvestableCount === harvestableCount){
+                cardClasses.push("is-all-remaining-selected");
+              }
               return `
                 <div class="${cardClasses.join(" ")}" data-harvestable-count="${harvestableCount}">
                   <div class="monitorBedHead">

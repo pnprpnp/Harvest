@@ -4270,6 +4270,9 @@
           for(let number = 1; number <= PALLETS_PER_BED; number++){
             recordedSet.add(getPalletKey(2, "B", number));
           }
+          for(let number = 1; number < PALLETS_PER_BED; number++){
+            recordedSet.add(getPalletKey(2, "D", number));
+          }
           const host = document.createElement("div");
           const dashboardHost = document.createElement("div");
           const threeDashboardHost = document.createElement("div");
@@ -4346,8 +4349,21 @@
                   && bedCard.dataset.harvestableCount === "0"
                   && cells.length === PALLETS_PER_BED
                   && cells.every(cell => getComputedStyle(cell).backgroundColor === getComputedStyle(grid).backgroundColor)
-                  && cells.every(cell => getComputedStyle(cell).borderBottomColor === "rgba(0, 0, 0, 0)")
+                  && cells.every(cell => ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"]
+                    .every(property => getComputedStyle(cell)[property] === "0px"))
                   && dashboardHost.querySelector('.monitorBedCard.is-no-harvestable[data-harvestable-count="0"] .monitorBedName')?.textContent.trim() === "B";
+              })(),
+              allRemainingBedFilled:(() => {
+                const bedCard = cards.find(card => card.querySelector(".monitorBedName")?.textContent.trim() === "D");
+                const grid = bedCard?.querySelector(".monitorBedPalletMapGrid");
+                const cells = [...(bedCard?.querySelectorAll(".monitorBedMapCell") || [])];
+                return bedCard?.classList.contains("is-all-remaining-selected")
+                  && bedCard.dataset.harvestableCount === "1"
+                  && cells.length === PALLETS_PER_BED
+                  && cells.every(cell => getComputedStyle(cell).backgroundColor === getComputedStyle(grid).backgroundColor)
+                  && cells.every(cell => ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"]
+                    .every(property => getComputedStyle(cell)[property] === "0px"))
+                  && dashboardHost.querySelector('.monitorBedCard.is-all-remaining-selected[data-harvestable-count="1"] .monitorBedName')?.textContent.trim() === "D";
               })(),
               partialHarvestCount:host.querySelectorAll(".monitorBedMapCell.is-partial-harvest").length,
               oldSegmentCount:host.querySelectorAll(".monitorBedSegment").length,
@@ -4429,8 +4445,9 @@
           mapCount:6,
           cellCount:468,
           selectedCount:3,
-          recordedCount:80,
+          recordedCount:157,
           zeroHarvestableBedFilled:true,
+          allRemainingBedFilled:true,
           partialHarvestCount:0,
           oldSegmentCount:0,
           columns:2,
