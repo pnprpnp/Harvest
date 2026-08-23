@@ -690,10 +690,16 @@ function fillMonitorRemoteEditorFromCurrentState(){
   setMonitorRemoteEditorStatus("");
 }
 
-function discardMonitorCurrentEditor(){
-  populateMonitorRemoteEditor(buildCurrentMonitorRemoteContent());
+function restoreMonitorCurrentEditorToCalculatedValues(){
+  const calculatedContent = buildCalculatedMonitorRemoteContent();
+  monitorContentDraftOverride = null;
+  monitorContentDraftBaseSignature = "";
+  populateMonitorRemoteEditor(calculatedContent);
+  invalidateWorkflowMonitorCheckpoint();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
   closeMonitorEditorWindow();
-  showToast("入力途中の編集を破棄しました");
+  showToast("自動計算値に戻しました");
 }
 
 function applyMonitorCurrentEditor(){

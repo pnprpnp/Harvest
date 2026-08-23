@@ -4387,19 +4387,30 @@
               title: document.getElementById("monitorEditorWindowTitle")?.textContent || "",
               introExists: !!document.querySelector("#monitorRemoteEditorContent .monitorContentEditorIntro"),
               statusExplanationHidden: document.getElementById("monitorRemoteEditorStatus")?.hidden || false,
-              discardAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorDiscardBtn")?.dataset.uiClick || "",
+              restoreLabel: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorRestoreBtn")?.textContent || "",
+              restoreAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorRestoreBtn")?.dataset.uiClick || "",
               applyAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorApplyBtn")?.dataset.uiClick || "",
               allFieldsAreMultiline: [...document.querySelectorAll("#monitorRemoteEditorContent > textarea")].length === 4,
               memoAddAction: document.querySelector("#monitorRemoteEditorContent .monitorMemoAddBtn")?.dataset.uiClick || ""
             };
-            const contentBeforeDiscard = JSON.stringify(buildCurrentMonitorRemoteContent());
-            document.getElementById("monitorRemoteSeedlingValueInput").value = "破棄する内容";
-            renderMonitorRemoteMemoInputs(["破棄するメモ"]);
-            discardMonitorCurrentEditor();
-            const discardState = {
+            const calculatedContentBeforeManualEdit = buildCalculatedMonitorRemoteContent();
+            document.getElementById("monitorRemoteSeedlingValueInput").value = "手動編集した苗枚数";
+            applyMonitorCurrentEditor();
+            const manualValueWasApplied = parseMonitorInstructionFields(
+              buildCurrentMonitorRemoteContent().instructionText
+            ).seedling === "手動編集した苗枚数";
+            openMonitorEditorWindow();
+            document.getElementById("monitorRemoteSeedlingValueInput").value = "入力途中の内容";
+            restoreMonitorCurrentEditorToCalculatedValues();
+            const savedAfterRestore = loadHarvestStateFromStorage();
+            const restoreState = {
               editorClosed: !document.getElementById("monitorEditorModal")?.classList.contains("show"),
-              contentUnchanged: JSON.stringify(buildCurrentMonitorRemoteContent()) === contentBeforeDiscard,
-              memoStillEmpty: getMonitorMemoInputValues().length === 0
+              manualValueWasApplied,
+              contentRestored: buildCurrentMonitorRemoteContent().instructionText === calculatedContentBeforeManualEdit.instructionText,
+              draftCleared: monitorContentDraftOverride === null && monitorContentDraftBaseSignature === "",
+              savedDraftCleared: savedAfterRestore?.monitorContentDraftOverride === null
+                && savedAfterRestore?.monitorContentDraftBaseSignature === "",
+              memoStillDisplaysEmpty: document.getElementById("monitorMemoReadOnlyValue")?.textContent === "なし"
             };
             openMonitorEditorWindow();
             document.getElementById("monitorRemoteSeedlingValueInput").value = "7枚\\n予備 1枚";
@@ -4444,7 +4455,7 @@
               unplantedNoteFontSize,
               readOnlyState,
               editorState,
-              discardState,
+              restoreState,
               appliedState,
               openAction: document.querySelector("#monitorCard .monitorOpenBtn")?.dataset.uiClick || "",
               saveAction: document.getElementById("monitorSaveBtn")?.dataset.uiClick || "",
@@ -4501,12 +4512,20 @@
             title:"今回送る内容を編集",
             introExists:false,
             statusExplanationHidden:true,
-            discardAction:"discardMonitorCurrentEditor",
+            restoreLabel:"自動計算値に戻す",
+            restoreAction:"restoreMonitorCurrentEditorToCalculatedValues",
             applyAction:"applyMonitorCurrentEditor",
             allFieldsAreMultiline:true,
             memoAddAction:"addMonitorRemoteMemoInput"
           },
-          discardState:{ editorClosed:true, contentUnchanged:true, memoStillEmpty:true },
+          restoreState:{
+            editorClosed:true,
+            manualValueWasApplied:true,
+            contentRestored:true,
+            draftCleared:true,
+            savedDraftCleared:true,
+            memoStillDisplaysEmpty:true
+          },
           appliedState:{
             editorClosed:true,
             fields:{ seedling:"7枚\n予備 1枚", cases:"42ケース", harvestLocation:"3号棟 A-1〜A-4", remainingCases:"手前 2ケース" },
@@ -6060,18 +6079,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "1934a940", elements: 2216, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "2af81afa", elements: 2285, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "f07b9dcb", elements: 2285, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "331f9085", elements: 2217, visible: 104, viewport: "390x844" },
-          mobileDashboard: { hash: "9d520ac9", elements: 2217, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "75193bc4", elements: 2300, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "5fb2e955", elements: 2315, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "8d127c2b", elements: 2315, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "0a05c809", elements: 2315, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "c03073e1", elements: 2315, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "c7dc2cb3", elements: 2315, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "ef5cd3f7", elements: 2315, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "0f73b78c", elements: 2216, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "8f5056f6", elements: 2285, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "d8902007", elements: 2285, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "77c76629", elements: 2217, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "ad8e7a8d", elements: 2217, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c0ea8880", elements: 2300, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "d35931d9", elements: 2315, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "1d3e6163", elements: 2315, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "aff134cd", elements: 2315, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "4fd93545", elements: 2315, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "4e9835a7", elements: 2315, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "4ce3121b", elements: 2315, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

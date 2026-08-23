@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-case-summary-split">
+<meta name="harvestnavi-version" content="20260823-monitor-auto-restore">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9396,7 +9396,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   min-height:46px;
   margin:0;
 }
-.monitorContentEditorDiscardBtn{color:var(--ui-text-secondary);}
+.monitorContentEditorRestoreBtn{color:var(--ui-text-secondary);}
 .monitorSendActionBar{
   position:fixed;
   right:0;
@@ -13035,7 +13035,7 @@ requestAnimationFrame(function(){
     <div id="monitorRemoteMemoInputList" class="monitorMemoInputList"></div>
     <div id="monitorRemoteEditorStatus" class="smallText monitorContentEditorStatus" hidden></div>
     <div class="monitorContentEditorActions">
-      <button class="actionBtn secondaryBtn monitorContentEditorDiscardBtn" data-ui-click="discardMonitorCurrentEditor">編集を破棄</button>
+      <button class="actionBtn secondaryBtn monitorContentEditorRestoreBtn" data-ui-click="restoreMonitorCurrentEditorToCalculatedValues">自動計算値に戻す</button>
       <button class="actionBtn thirdBtn monitorContentEditorApplyBtn" data-ui-click="applyMonitorCurrentEditor">変更を反映</button>
     </div>
   </div>
@@ -20481,10 +20481,16 @@ function fillMonitorRemoteEditorFromCurrentState(){
   setMonitorRemoteEditorStatus("");
 }
 
-function discardMonitorCurrentEditor(){
-  populateMonitorRemoteEditor(buildCurrentMonitorRemoteContent());
+function restoreMonitorCurrentEditorToCalculatedValues(){
+  const calculatedContent = buildCalculatedMonitorRemoteContent();
+  monitorContentDraftOverride = null;
+  monitorContentDraftBaseSignature = "";
+  populateMonitorRemoteEditor(calculatedContent);
+  invalidateWorkflowMonitorCheckpoint();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
   closeMonitorEditorWindow();
-  showToast("入力途中の編集を破棄しました");
+  showToast("自動計算値に戻しました");
 }
 
 function applyMonitorCurrentEditor(){
