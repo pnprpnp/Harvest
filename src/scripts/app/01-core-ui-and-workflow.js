@@ -851,8 +851,7 @@ function renderMonitorPreviewContent(content){
   const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
   body.innerHTML = buildMonitorDashboardHtml(normalized);
   requestAnimationFrame(() => {
-    fitMonitorPrimaryMetricText(body);
-    fitMonitorRemainingCasesText(body);
+    fitMonitorSummaryMetricText(body);
     fitMonitorHarvestLocationText(body);
     updateMonitorPreviewScale();
   });

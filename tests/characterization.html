@@ -3997,6 +3997,15 @@
               buildingCasePlacement:host.querySelector(".monitorBuildingCasePlacement")?.textContent.trim().replace(/\\s+/g, "") || "",
               buildingCasePlacementBesideName:host.querySelector(".monitorBuildingName")?.parentElement === host.querySelector(".monitorBuildingCasePlacement")?.parentElement &&
                 getComputedStyle(host.querySelector(".monitorBuildingTitle")).display === "flex",
+              buildingCaseTextMatchesName:(() => {
+                const elements = [
+                  host.querySelector(".monitorBuildingName"),
+                  host.querySelector(".monitorBuildingCaseCount"),
+                  host.querySelector(".monitorBuildingCaseUnit")
+                ];
+                const sizes = elements.map(element => parseFloat(getComputedStyle(element).fontSize));
+                return elements.every(Boolean) && sizes.every(size => Math.abs(size - sizes[0]) < 0.1);
+              })(),
               dashboardBuildingCasePlacement:dashboardHost.querySelector(".monitorBuildingCasePlacement")?.textContent.trim().replace(/\\s+/g, "") || "",
               bedNames:cards.map(card => card.querySelector(".monitorBedName")?.textContent.trim() || ""),
               counts:cards.map(card => card.querySelector(".monitorBedCount")?.textContent.trim() || ""),
@@ -4029,11 +4038,12 @@
           }
         })()`));
         assertDeepEqual(monitorState, {
-          buildingTitle:"2号棟 48ケース配置",
+          buildingTitle:"2号棟 48ケース",
           buildingName:"2号棟",
-          buildingCasePlacement:"48ケース配置",
+          buildingCasePlacement:"48ケース",
           buildingCasePlacementBesideName:true,
-          dashboardBuildingCasePlacement:"48ケース配置",
+          buildingCaseTextMatchesName:true,
+          dashboardBuildingCasePlacement:"48ケース",
           bedNames:["F", "D", "B", "E", "C", "A"],
           counts:["2枚", "1枚", "", "", "", ""],
           mapCount:6,
@@ -4068,8 +4078,7 @@
           });
           document.body.appendChild(host);
           try{
-            fitMonitorPrimaryMetricText(host);
-            fitMonitorRemainingCasesText(host);
+            fitMonitorSummaryMetricText(host);
             const cards = [...host.querySelectorAll(".monitorMetricCard")];
             return {
               labels:cards.map(card => card.querySelector(".monitorMetricLabel")?.textContent.trim() || ""),
@@ -4088,12 +4097,12 @@
                 return !!line && label?.parentElement === line && !!value && line.contains(value) &&
                   getComputedStyle(line).display === "flex" && getComputedStyle(line).flexWrap === "nowrap";
               }),
-              caseTextIsReadable:cards.slice(2).every(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize) >= 12),
-              primaryTextIsLarger:(() => {
+              caseTextIsReadable:cards.slice(2).every(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize) >= 18),
+              summaryTextSizesMatch:(() => {
                 const sizes = cards.map(card => parseFloat(getComputedStyle(card.querySelector(".monitorMetricLine")).fontSize));
-                return sizes[0] >= 24 && sizes[1] >= 24 && sizes[0] > sizes[2] && sizes[1] > sizes[2];
+                return sizes[0] >= 18 && sizes.every(size => Math.abs(size - sizes[0]) < 0.1);
               })(),
-              primaryTextFits:cards.slice(0, 2).every(card => {
+              summaryTextFits:cards.every(card => {
                 const line = card.querySelector(".monitorMetricLine");
                 return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;
               }),
@@ -4124,9 +4133,9 @@
                 const icon = card.querySelector(".monitorMetricLabelIcon");
                 return Math.abs(icon.getBoundingClientRect().width - parseFloat(getComputedStyle(line).fontSize)) < 0.1;
               }),
-              remainingRows:[...host.querySelectorAll(".monitorCaseRemainingRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
+              remainingRows:[...host.querySelectorAll(".monitorCaseRemainingLine")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
               remainingSuffix:host.querySelector(".monitorRemainingSuffixInline")?.textContent.trim() || "",
-              remainingSuffixFollowsNumbers:host.querySelector(".monitorRemainingRows")?.nextElementSibling?.classList.contains("monitorRemainingSuffixInline") || false,
+              remainingSuffixFollowsNumbers:host.querySelector(".monitorCaseRemainingLine")?.lastElementChild?.classList.contains("monitorRemainingSuffixInline") || false,
               remainingFooterAbsent:!host.querySelector(".monitorRemainingFooter"),
               buildingSummaries:[...host.querySelectorAll(".monitorCaseBuildingSummary")]
                 .map(summary => summary.textContent.trim().replace(/\\s+/g, "")),
@@ -4145,18 +4154,18 @@
           unplantedVisible:false,
           allUseOneRow:true,
           caseTextIsReadable:true,
-          primaryTextIsLarger:true,
-          primaryTextFits:true,
+          summaryTextSizesMatch:true,
+          summaryTextFits:true,
           primaryValuesDoNotOverlapUnits:true,
           primaryLabelsUseSameColor:true,
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
           allIconSizesMatch:true,
-          remainingRows:["2-前6", "中20", "奥30"],
+          remainingRows:["2-前6中20奥30ケース残す"],
           remainingSuffix:"ケース残す",
           remainingSuffixFollowsNumbers:true,
           remainingFooterAbsent:true,
-          buildingSummaries:["2-前6中20奥30"],
+          buildingSummaries:["2-前6中20奥30ケース残す"],
           updatedAtText:"最終更新2026/8/23 17:14",
           updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");

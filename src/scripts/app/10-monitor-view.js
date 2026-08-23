@@ -408,7 +408,7 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
             <span class="monitorBuildingName">${building}号棟</span>
             ${casePlacementCount ? `
               <span class="monitorBuildingCasePlacement">
-                <span class="monitorBuildingCaseCount">${escapeHtml(casePlacementCount)}</span><span class="monitorBuildingCaseUnit">ケース</span><span>配置</span>
+                <span class="monitorBuildingCaseCount">${escapeHtml(casePlacementCount)}</span><span class="monitorBuildingCaseUnit">ケース</span>
               </span>
             ` : ""}
           </div>
@@ -611,20 +611,20 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
   });
   const buildingOrder = getMonitorBuildingDisplayOrder(grouped);
   if(mode === "remaining"){
-    let hasRemainingLocations = false;
     const remainingHtml = buildingOrder.map(building => {
       const summary = summaries[String(building)];
       if(!summary.locations.length) return "";
-      hasRemainingLocations = true;
       return `
         <div class="monitorCaseBuildingSummary is-remaining">
-          ${summary.locations.map((location, index) => `
-            <div class="monitorCaseRemainingRow${location.suffix === "不足" ? " is-shortage" : ""}">
-              <span class="monitorCaseRemainingBuilding">${index === 0 ? `${building}-` : ""}</span>
-              <span class="monitorRemainingLocation">${location.label}</span>
-              <span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
-            </div>
-          `).join("")}
+          <div class="monitorCaseRemainingLine">
+            <span class="monitorCaseRemainingBuilding">${building}-</span>
+            ${summary.locations.map(location => `
+              <span class="monitorCaseRemainingLocation${location.suffix === "不足" ? " is-shortage" : ""}">
+                <span class="monitorRemainingLocation">${location.label}</span><span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
+              </span>
+            `).join("")}
+            <span class="monitorRemainingSuffixInline">ケース残す</span>
+          </div>
         </div>
       `;
     }).join("");
@@ -633,13 +633,8 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
       const lineHtml = escapeHtml(line).replace(/([\d,.]+)\s*ケース/g, '$1<span class="monitorMetricSmallUnit">ケース</span>');
       return `<div class="monitorRemainingLine is-freeform${shortageClass}">${lineHtml}</div>`;
     }).join("");
-    if(!hasRemainingLocations && !freeHtml) return `<div class="monitorRemainingLine is-freeform">なし</div>`;
-    return `
-      <div class="monitorRemainingInlineContent">
-        <div class="monitorRemainingRows">${remainingHtml}${freeHtml}</div>
-        ${hasRemainingLocations ? `<span class="monitorRemainingSuffixInline">ケース残す</span>` : ""}
-      </div>
-    `;
+    if(!remainingHtml && !freeHtml) return `<div class="monitorRemainingLine is-freeform">なし</div>`;
+    return remainingHtml + freeHtml;
   }
   const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
@@ -728,63 +723,37 @@ function getMonitorHarvestLocationInlineHtml(value, keys = []){
     .replace(/(後ろ|前|\d+\s*ピン|とる|取る|残す)/g, '<span class="monitorLocationHighlight">$1</span>');
 }
 
-function fitMonitorPrimaryMetricText(root = document){
+function fitMonitorSummaryMetricText(root = document){
   const lines = Array.from(root.querySelectorAll?.(
-    ".monitorSummaryGrid .monitorMetricCard:nth-child(-n+2) .monitorMetricLine"
+    ".monitorSummaryGrid .monitorMetricCard .monitorMetricLine"
   ) || []);
-  lines.forEach(line => {
-    if(line.clientWidth <= 0 || line.clientHeight <= 0) return;
-    const minimumSize = 24;
-    const maximumSize = 42;
-    const fitsAtSize = size => {
+  const visibleLines = lines.filter(line => line.clientWidth > 0 && line.clientHeight > 0);
+  if(!visibleLines.length) return;
+  const minimumSize = 18;
+  const maximumSize = 42;
+  const fitsAtSize = size => {
+    visibleLines.forEach(line => {
       line.style.fontSize = size + "px";
+    });
+    return visibleLines.every(line => {
       return line.scrollWidth <= line.clientWidth + 1 && line.scrollHeight <= line.clientHeight + 1;
-    };
-    if(fitsAtSize(maximumSize)) return;
+    });
+  };
+  if(fitsAtSize(maximumSize)) return;
 
-    let lower = minimumSize;
-    let upper = maximumSize;
-    fitsAtSize(lower);
-    for(let index = 0; index < 8; index++){
-      const middle = (lower + upper) / 2;
-      if(fitsAtSize(middle)){
-        lower = middle;
-      }else{
-        upper = middle;
-      }
+  let lower = minimumSize;
+  let upper = maximumSize;
+  fitsAtSize(lower);
+  for(let index = 0; index < 8; index++){
+    const middle = (lower + upper) / 2;
+    if(fitsAtSize(middle)){
+      lower = middle;
+    }else{
+      upper = middle;
     }
+  }
+  visibleLines.forEach(line => {
     line.style.fontSize = lower.toFixed(2) + "px";
-  });
-}
-
-function fitMonitorRemainingCasesText(root = document){
-  const lists = Array.from(root.querySelectorAll?.(".monitorRemainingList") || []);
-  lists.forEach(list => {
-    if(list.clientWidth <= 0 || list.clientHeight <= 0) return;
-    const metricLine = list.closest(".monitorMetricLine");
-    const sizeTarget = metricLine || list;
-    list.style.fontSize = "";
-    const minimumSize = 12;
-    const maximumSize = 30;
-    const fitsAtSize = size => {
-      sizeTarget.style.fontSize = size + "px";
-      return list.scrollHeight <= list.clientHeight + 1 && list.scrollWidth <= list.clientWidth + 1;
-    };
-
-    if(fitsAtSize(maximumSize)) return;
-
-    let lower = minimumSize;
-    let upper = maximumSize;
-    fitsAtSize(lower);
-    for(let index = 0; index < 8; index++){
-      const middle = (lower + upper) / 2;
-      if(fitsAtSize(middle)){
-        lower = middle;
-      }else{
-        upper = middle;
-      }
-    }
-    sizeTarget.style.fontSize = lower.toFixed(2) + "px";
   });
 }
 
@@ -892,8 +861,7 @@ function renderMonitorMode(){
   body.innerHTML = buildMonitorDashboardHtml(content);
   updateMonitorTodayDisplays();
   requestAnimationFrame(() => {
-    fitMonitorPrimaryMetricText(body);
-    fitMonitorRemainingCasesText(body);
+    fitMonitorSummaryMetricText(body);
     fitMonitorHarvestLocationText(body);
   });
 }
