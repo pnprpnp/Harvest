@@ -3976,6 +3976,7 @@
               "苗: 9枚（未定植分 3枚） / 収穫ケース数: 42ケース",
               "収穫場所: 2号棟 A-1〜2、B-1",
               "残すケース: 2号棟 配置: 120ケース",
+              "3号棟 配置: 80ケース",
               "3号棟 前側: 20ケース",
               "3号棟 後ろ: 20ケース"
             ].join("\\n"),
@@ -4038,6 +4039,8 @@
             const remainingBuilding = preview2Host.querySelector(".monitorV2MetricCard-remaining .monitorCaseRemainingBuilding");
             const remainingLocations = [...preview2Host.querySelectorAll(".monitorV2MetricCard-remaining .monitorCaseRemainingLocation")];
             const remainingLocationRects = remainingLocations.map(location => location.getBoundingClientRect());
+            const placementCaseRows = [...preview2Host.querySelectorAll(".monitorV2MetricCard-placement .monitorCaseBuildingSummary")];
+            const placementCaseRowRects = placementCaseRows.map(row => row.getBoundingClientRect());
             const getIconPathData = svg => [...(svg?.querySelectorAll("path") || [])].map(path => path.getAttribute("d"));
             const preview1HarvestIconPaths = getIconPathData(preview1Host.querySelector(".monitorMetricLabelIcon.is-harvest-case"));
             const preview1RemainingIconPaths = getIconPathData(preview1Host.querySelector(".monitorMetricLabelIcon.is-remaining-case"));
@@ -4121,6 +4124,12 @@
                   && remainingLocationRects[0].top < remainingLocationRects[1].top,
                 remainingLocationLabelSizes:[...preview2Host.querySelectorAll(".monitorV2MetricCard-remaining .monitorRemainingLocation")]
                   .map(value => getComputedStyle(value).fontSize),
+                twoLineCaseRowsHaveEqualHeight:placementCaseRowRects.length === 2
+                  && remainingLocationRects.length === 2
+                  && [...placementCaseRowRects, ...remainingLocationRects]
+                    .every(rect => Math.abs(rect.height - placementCaseRowRects[0].height) <= 1)
+                  && Math.abs((placementCaseRowRects[1].top - placementCaseRowRects[0].top) - placementCaseRowRects[0].height) <= 1
+                  && Math.abs((remainingLocationRects[1].top - remainingLocationRects[0].top) - remainingLocationRects[0].height) <= 1,
                 preview1BasedContainerIcons:JSON.stringify(preview2HarvestIconPaths) === JSON.stringify(preview1HarvestIconPaths)
                   && JSON.stringify(preview2RemainingIconPaths) === JSON.stringify(preview1RemainingIconPaths)
                   && JSON.stringify(preview2PlacementIconPaths.slice(0, 2)) === JSON.stringify(preview1RemainingIconPaths.slice(0, 2))
@@ -4208,11 +4217,14 @@
             remainingCaseNumberSizes:["60px", "60px", "60px"],
             remainingCaseUsesAlignedRows:true,
             remainingLocationLabelSizes:["24px", "24px"],
+            twoLineCaseRowsHaveEqualHeight:true,
             preview1BasedContainerIcons:true,
             containerIconKinds:["harvest", "placement", "remaining"],
             seedlingNoteRemoved:true,
             remainingSuffixRemoved:true,
             numericWidthTransforms:[
+              "matrix(0.7, 0, 0, 1, 0, 0)",
+              "matrix(0.7, 0, 0, 1, 0, 0)",
               "matrix(0.7, 0, 0, 1, 0, 0)",
               "matrix(0.7, 0, 0, 1, 0, 0)",
               "matrix(0.7, 0, 0, 1, 0, 0)",
