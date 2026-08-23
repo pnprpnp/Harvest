@@ -3980,8 +3980,15 @@
               memoItems:[]
             });
             const cards = [...host.querySelectorAll(".monitorBedCard")];
-            const cardByBed = bed => cards.find(card => card.querySelector(".monitorBedName")?.textContent === bed);
             const firstGrid = host.querySelector(".monitorBedPalletMapGrid");
+            const readBuildingOrder = buildings => {
+              const orderHost = document.createElement("div");
+              orderHost.innerHTML = getMonitorSelectionMapHtml(
+                buildings.map(building => getPalletKey(building, "A", 1))
+              );
+              return [...orderHost.querySelectorAll(".monitorBuildingTitle")]
+                .map(title => title.textContent.trim());
+            };
             return {
               buildingTitle:host.querySelector(".monitorBuildingTitle")?.textContent.trim() || "",
               bedNames:cards.map(card => card.querySelector(".monitorBedName")?.textContent.trim() || ""),
@@ -3994,8 +4001,10 @@
               oldSegmentCount:host.querySelectorAll(".monitorBedSegment").length,
               columns:getComputedStyle(firstGrid).gridTemplateColumns.trim().split(/\\s+/).length,
               rows:getComputedStyle(firstGrid).gridTemplateRows.trim().split(/\\s+/).length,
-              startMarker:cardByBed("F")?.querySelector(".monitorBedRangeMarker.is-start")?.textContent.trim() || "",
-              endMarker:cardByBed("D")?.querySelector(".monitorBedRangeMarker.is-end")?.textContent.trim() || "",
+              rangeMarkerCount:host.querySelectorAll(".monitorBedRangeMarker").length,
+              emphasizedPalletCount:host.querySelectorAll(".is-monitor-start, .is-monitor-end").length,
+              directionCount:host.querySelectorAll(".monitorBuildingDirection").length,
+              wrappedOrders:[readBuildingOrder([8, 9, 2]), readBuildingOrder([9, 2, 3])],
               legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim())
             };
           }finally{
@@ -4015,8 +4024,10 @@
           oldSegmentCount:0,
           columns:2,
           rows:39,
-          startMarker:"開始 1",
-          endMarker:"終了 78",
+          rangeMarkerCount:0,
+          emphasizedPalletCount:0,
+          directionCount:0,
+          wrappedOrders:[["8号棟", "9号棟", "2号棟"], ["9号棟", "2号棟", "3号棟"]],
           legend:["今回収穫", "収穫済み"]
         }, "モニターの収穫場所が2列39段の配置図になっていません");
       });

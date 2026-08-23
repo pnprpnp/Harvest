@@ -318,7 +318,7 @@ function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCou
   });
 }
 
-function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey){
+function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet){
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
@@ -331,8 +331,6 @@ function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, sta
       const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell", "monitorBedMapCell"];
       if(selected) classes.push("is-selected");
       if(recorded) classes.push("is-recorded");
-      if(selected && key === startKey) classes.push("is-monitor-start");
-      if(selected && key === endKey) classes.push("is-monitor-end");
       if(sectionStart) classes.push("is-section-start");
       const state = selected ? "今回収穫" : (recorded ? "収穫済み" : "未選択");
       cells.push(`<span class="${classes.join(" ")}" title="${number}番 ${state}"></span>`);
@@ -345,21 +343,23 @@ function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, sta
   `;
 }
 
-function getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey){
-  const start = parsePalletKey(startKey || "");
-  const end = parsePalletKey(endKey || "");
-  const hasStart = start.building === building && start.bed === bed && Number.isFinite(start.number);
-  const hasEnd = end.building === building && end.bed === bed && Number.isFinite(end.number);
-  if(!hasStart && !hasEnd) return '<div class="monitorBedRangeMarkers" aria-hidden="true"></div>';
-  if(hasStart && hasEnd && start.number === end.number){
-    return `<div class="monitorBedRangeMarkers"><span class="monitorBedRangeMarker is-both">開始・終了 ${start.number}</span></div>`;
+function getMonitorBuildingDisplayOrder(grouped){
+  const available = BUILDINGS.filter(building => grouped[String(building)]);
+  const availableSet = new Set(available);
+  const firstBuilding = BUILDINGS[0];
+  const lastBuilding = BUILDINGS[BUILDINGS.length - 1];
+  if(!availableSet.has(firstBuilding) || !availableSet.has(lastBuilding)) return available;
+
+  let startIndex = BUILDINGS.length - 1;
+  if(available.length < BUILDINGS.length){
+    while(startIndex > 0 && availableSet.has(BUILDINGS[startIndex - 1])){
+      startIndex--;
+    }
   }
-  return `
-    <div class="monitorBedRangeMarkers">
-      ${hasStart ? `<span class="monitorBedRangeMarker is-start">開始 ${start.number}</span>` : ""}
-      ${hasEnd ? `<span class="monitorBedRangeMarker is-end">終了 ${end.number}</span>` : ""}
-    </div>
-  `;
+  return Array.from(
+    { length: BUILDINGS.length },
+    (_, offset) => BUILDINGS[(startIndex + offset) % BUILDINGS.length]
+  ).filter(building => availableSet.has(building));
 }
 
 function getMonitorSelectionMapHtml(keysOverride){
@@ -386,17 +386,13 @@ function getMonitorSelectionMapHtml(keysOverride){
     grouped[buildingKey][parsed.bed].push(parsed.number);
   });
   const selectedSet = new Set(validKeys);
-  const startKey = validKeys[0] || "";
-  const endKey = validKeys[validKeys.length - 1] || "";
 
-  return BUILDINGS
-    .filter(building => grouped[String(building)])
+  return getMonitorBuildingDisplayOrder(grouped)
     .map(building => {
       const beds = grouped[String(building)];
       return `
         <div class="monitorBuildingBlock" role="img" aria-label="${building}号棟の収穫場所">
           <div class="monitorBuildingTitle">${building}号棟</div>
-          <div class="monitorBuildingDirection top">奥</div>
           <div class="monitorBedGrid">
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
@@ -414,13 +410,11 @@ function getMonitorSelectionMapHtml(keysOverride){
                     <div class="monitorBedName">${bed}</div>
                     <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
                   </div>
-                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey)}
-                  ${getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey)}
+                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet)}
                 </div>
               `;
             }).join("")}
           </div>
-          <div class="monitorBuildingDirection bottom">手前</div>
         </div>
       `;
     }).join("");

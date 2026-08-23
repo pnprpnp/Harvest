@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-pallet-map">
+<meta name="harvestnavi-version" content="20260823-monitor-map-order">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8857,11 +8857,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   line-height:1;
   font-weight:780;
 }
-.monitorBuildingDirection{
-  color:var(--ui-text-secondary);
-  font-size:11px;
-  font-weight:700;
-}
 .monitorBedGrid{gap:5px;}
 .monitorBedCard{
   border-width:1px;
@@ -8912,28 +8907,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorBedPalletMap .monitorBedMapCell.is-recorded:not(.is-selected){background:#a7adb5;}
 .monitorBedPalletMap .monitorBedMapCell.is-partial-harvest{background:#eef0f3;}
-.monitorBedPalletMap .monitorBedMapCell.is-monitor-start,
-.monitorBedPalletMap .monitorBedMapCell.is-monitor-end{
-  box-shadow:inset 0 0 0 1px var(--ui-accent-dark);
-}
-.monitorBedRangeMarkers{
-  min-height:12px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex-wrap:wrap;
-  gap:2px;
-}
-.monitorBedRangeMarker{
-  padding:1px 3px;
-  border-radius:4px;
-  background:var(--ui-accent-soft);
-  color:var(--ui-accent-dark);
-  font-size:7px;
-  font-weight:800;
-  line-height:1.15;
-  white-space:nowrap;
-}
 .monitorMemoPanel{
   min-width:0;
   width:100%;
@@ -30515,7 +30488,7 @@ function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCou
   });
 }
 
-function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey){
+function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet){
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
@@ -30528,8 +30501,6 @@ function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, sta
       const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell", "monitorBedMapCell"];
       if(selected) classes.push("is-selected");
       if(recorded) classes.push("is-recorded");
-      if(selected && key === startKey) classes.push("is-monitor-start");
-      if(selected && key === endKey) classes.push("is-monitor-end");
       if(sectionStart) classes.push("is-section-start");
       const state = selected ? "今回収穫" : (recorded ? "収穫済み" : "未選択");
       cells.push(`<span class="${classes.join(" ")}" title="${number}番 ${state}"></span>`);
@@ -30542,21 +30513,23 @@ function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, sta
   `;
 }
 
-function getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey){
-  const start = parsePalletKey(startKey || "");
-  const end = parsePalletKey(endKey || "");
-  const hasStart = start.building === building && start.bed === bed && Number.isFinite(start.number);
-  const hasEnd = end.building === building && end.bed === bed && Number.isFinite(end.number);
-  if(!hasStart && !hasEnd) return '<div class="monitorBedRangeMarkers" aria-hidden="true"></div>';
-  if(hasStart && hasEnd && start.number === end.number){
-    return `<div class="monitorBedRangeMarkers"><span class="monitorBedRangeMarker is-both">開始・終了 ${start.number}</span></div>`;
+function getMonitorBuildingDisplayOrder(grouped){
+  const available = BUILDINGS.filter(building => grouped[String(building)]);
+  const availableSet = new Set(available);
+  const firstBuilding = BUILDINGS[0];
+  const lastBuilding = BUILDINGS[BUILDINGS.length - 1];
+  if(!availableSet.has(firstBuilding) || !availableSet.has(lastBuilding)) return available;
+
+  let startIndex = BUILDINGS.length - 1;
+  if(available.length < BUILDINGS.length){
+    while(startIndex > 0 && availableSet.has(BUILDINGS[startIndex - 1])){
+      startIndex--;
+    }
   }
-  return `
-    <div class="monitorBedRangeMarkers">
-      ${hasStart ? `<span class="monitorBedRangeMarker is-start">開始 ${start.number}</span>` : ""}
-      ${hasEnd ? `<span class="monitorBedRangeMarker is-end">終了 ${end.number}</span>` : ""}
-    </div>
-  `;
+  return Array.from(
+    { length: BUILDINGS.length },
+    (_, offset) => BUILDINGS[(startIndex + offset) % BUILDINGS.length]
+  ).filter(building => availableSet.has(building));
 }
 
 function getMonitorSelectionMapHtml(keysOverride){
@@ -30583,17 +30556,13 @@ function getMonitorSelectionMapHtml(keysOverride){
     grouped[buildingKey][parsed.bed].push(parsed.number);
   });
   const selectedSet = new Set(validKeys);
-  const startKey = validKeys[0] || "";
-  const endKey = validKeys[validKeys.length - 1] || "";
 
-  return BUILDINGS
-    .filter(building => grouped[String(building)])
+  return getMonitorBuildingDisplayOrder(grouped)
     .map(building => {
       const beds = grouped[String(building)];
       return `
         <div class="monitorBuildingBlock" role="img" aria-label="${building}号棟の収穫場所">
           <div class="monitorBuildingTitle">${building}号棟</div>
-          <div class="monitorBuildingDirection top">奥</div>
           <div class="monitorBedGrid">
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
@@ -30611,13 +30580,11 @@ function getMonitorSelectionMapHtml(keysOverride){
                     <div class="monitorBedName">${bed}</div>
                     <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
                   </div>
-                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey)}
-                  ${getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey)}
+                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet)}
                 </div>
               `;
             }).join("")}
           </div>
-          <div class="monitorBuildingDirection bottom">手前</div>
         </div>
       `;
     }).join("");
