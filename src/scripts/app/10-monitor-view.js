@@ -711,7 +711,7 @@ function getMonitorHarvestLocationDisplayText(value, keys = []){
 
   const order = getMonitorBuildingDisplayOrder(grouped);
   const orderIndexes = new Map(order.map((building, index) => [building, index]));
-  const orderedLines = lines
+  return lines
     .map((line, index) => {
       const building = Number(line.match(/^(\d+)号棟/)?.[1]);
       return {
@@ -721,30 +721,55 @@ function getMonitorHarvestLocationDisplayText(value, keys = []){
       };
     })
     .sort((left, right) => left.order - right.order || left.index - right.index)
-    .map(item => item.line);
+    .map(item => item.line)
+    .join("\n");
+}
+
+function getMonitorHarvestLocationAbbreviatedText(value, keys = []){
+  const orderedLines = getMonitorHarvestLocationDisplayText(value, keys)
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean);
+  let omitted = false;
   const abbreviatedLines = orderedLines.map(line => {
     const match = line.match(/^(\d+号棟)\s*(.*)$/);
     if(!match) return line;
     const buildingLabel = match[1];
     const details = String(match[2] || "").trim();
-    if(!details || details === "全部") return buildingLabel;
+    if(details === "全部"){
+      omitted = true;
+      return "";
+    }
+    if(!details) return line;
+    const detailParts = details
+      .split("、")
+      .map(detail => detail.trim())
+      .filter(Boolean);
     const remainingDetails = details
       .split("、")
       .map(detail => detail.trim())
       .filter(detail => detail && !/全部$/.test(detail));
+    if(remainingDetails.length !== detailParts.length) omitted = true;
     return remainingDetails.length
       ? `${buildingLabel} ${remainingDetails.join("、")}`
-      : buildingLabel;
-  });
+      : "";
+  }).filter(Boolean);
+  if(!omitted) return orderedLines.join("\n");
   return "（略）" + abbreviatedLines.join("\n");
 }
 
-function getMonitorHarvestLocationInlineHtml(value, keys = []){
-  const text = getMonitorHarvestLocationDisplayText(value, keys).trim();
+function getMonitorHarvestLocationInlineHtmlFromText(value){
+  const text = String(value || "").trim();
   if(!text || text === "-") return "未選択";
   return escapeHtml(text)
     .replace(/\n+/g, " / ")
     .replace(/(後ろ|前|\d+\s*ピン|とる|取る|残す)/g, '<span class="monitorLocationHighlight">$1</span>');
+}
+
+function getMonitorHarvestLocationInlineHtml(value, keys = []){
+  return getMonitorHarvestLocationInlineHtmlFromText(
+    getMonitorHarvestLocationDisplayText(value, keys)
+  );
 }
 
 function fitMonitorSummaryMetricText(root = document){
@@ -796,9 +821,20 @@ function fitMonitorHarvestLocationText(root = document){
   const locations = Array.from(root.querySelectorAll?.(".monitorHarvestLocationText") || []);
   locations.forEach(location => {
     if(location.clientWidth <= 0) return;
+    const fullText = String(location.dataset.fullLocation || "");
+    const abbreviatedText = String(location.dataset.abbreviatedLocation || fullText);
+    const panel = location.closest(".monitorHarvestPanel");
     location.style.transform = "none";
     const minimumSize = 12;
     const maximumSize = 28;
+    location.innerHTML = getMonitorHarvestLocationInlineHtmlFromText(fullText);
+    location.style.fontSize = maximumSize + "px";
+    const fullTextFitsOneLine = location.scrollWidth <= location.clientWidth + 1;
+    const useAbbreviatedText = !fullTextFitsOneLine && abbreviatedText !== fullText;
+    if(useAbbreviatedText){
+      location.innerHTML = getMonitorHarvestLocationInlineHtmlFromText(abbreviatedText);
+    }
+    panel?.classList.toggle("has-single-location-line", fullTextFitsOneLine);
     const fitsAtSize = size => {
       location.style.fontSize = size + "px";
       return location.scrollWidth <= location.clientWidth + 1;
@@ -834,14 +870,8 @@ function buildMonitorDashboardHtml(content){
     ? normalized.memoItems
     : String(normalized.memoText || "");
   const monitorHarvestKeys = normalized.harvestFillKeys || [];
-  const harvestLocationLineCount = String(fields.harvestLocation || "")
-    .split("\n")
-    .map(line => line.trim())
-    .filter(Boolean)
-    .length;
-  const harvestPanelClass = harvestLocationLineCount <= 1
-    ? " has-single-location-line"
-    : "";
+  const fullHarvestLocationText = getMonitorHarvestLocationDisplayText(fields.harvestLocation, monitorHarvestKeys);
+  const abbreviatedHarvestLocationText = getMonitorHarvestLocationAbbreviatedText(fields.harvestLocation, monitorHarvestKeys);
   const harvestMapClass = getMonitorSelectionBuildingCount(monitorHarvestKeys) === 3
     ? " has-three-buildings"
     : "";
@@ -870,11 +900,11 @@ function buildMonitorDashboardHtml(content){
           </div>
         </section>
       </div>
-      <section class="monitorPanel monitorHarvestPanel${harvestPanelClass}">
+      <section class="monitorPanel monitorHarvestPanel">
         <div class="monitorPanelHeader">
           <div class="monitorHarvestTitleGroup">
             <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>
-            <div class="monitorHarvestLocationText">${getMonitorHarvestLocationInlineHtml(fields.harvestLocation, normalized.harvestFillKeys || [])}</div>
+            <div class="monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
           </div>
           <div class="monitorMapLegend" aria-label="収穫場所の凡例">
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>

@@ -3995,11 +3995,13 @@
             threeDashboardHost.style.cssText = "position:fixed;left:-4000px;top:0;";
             threeDashboardHost.innerHTML = buildMonitorDashboardHtml({
               enabled:true,
-              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 8号棟 A全部\\n9号棟 A全部\\n2号棟 A全部\\n残すケース:\\n8号棟 配置: 48ケース\\n9号棟 配置: 48ケース\\n2号棟 配置: 48ケース",
+              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 8号棟全部\\n9号棟 A 個別選択、B 個別選択、C 個別選択\\n2号棟 A 個別選択、B 個別選択\\n残すケース:\\n8号棟 配置: 48ケース\\n9号棟 配置: 48ケース\\n2号棟 配置: 48ケース",
               harvestFillKeys:threeBuildingKeys,
               memoItems:[]
             });
             document.body.appendChild(threeDashboardHost);
+            fitMonitorHarvestLocationText(dashboardHost);
+            fitMonitorHarvestLocationText(threeDashboardHost);
             const cards = [...host.querySelectorAll(".monitorBedCard")];
             const firstGrid = host.querySelector(".monitorBedPalletMapGrid");
             const firstBedHead = host.querySelector(".monitorBedHead");
@@ -4054,9 +4056,17 @@
                 "2号棟 A全部\\n9号棟 F全部",
                 [getPalletKey(2, "A", 1), getPalletKey(9, "F", 1)]
               ),
-              mixedAbbreviatedLocationText:getMonitorHarvestLocationDisplayText(
+              wrappedAbbreviatedLocationText:getMonitorHarvestLocationAbbreviatedText(
+                "2号棟 A全部\\n9号棟 F全部",
+                [getPalletKey(2, "A", 1), getPalletKey(9, "F", 1)]
+              ),
+              mixedAbbreviatedLocationText:getMonitorHarvestLocationAbbreviatedText(
                 "2号棟 A,B全部、C 前2ピンとる\\n3号棟全部",
                 [getPalletKey(2, "C", 1), getPalletKey(3, "A", 1)]
+              ),
+              wholeBuildingAbbreviatedLocationText:getMonitorHarvestLocationAbbreviatedText(
+                "2号棟全部\\n3号棟 A 個別選択",
+                [getPalletKey(2, "A", 1), getPalletKey(3, "A", 1)]
               ),
               harvestPanelTitle:dashboardHost.querySelector(".monitorHarvestPanel .monitorSectionTitle")?.textContent.trim() || "",
               legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim()),
@@ -4120,8 +4130,10 @@
           emphasizedPalletCount:0,
           directionCount:0,
           wrappedOrders:[["8号棟", "9号棟", "2号棟"], ["9号棟", "2号棟", "3号棟"]],
-          wrappedLocationText:"（略）9号棟\n2号棟",
-          mixedAbbreviatedLocationText:"（略）2号棟 C 前2ピンとる\n3号棟",
+          wrappedLocationText:"9号棟 F全部\n2号棟 A全部",
+          wrappedAbbreviatedLocationText:"（略）",
+          mixedAbbreviatedLocationText:"（略）2号棟 C 前2ピンとる",
+          wholeBuildingAbbreviatedLocationText:"（略）3号棟 A 個別選択",
           harvestPanelTitle:"収穫場所と配置コンテナ数",
           legend:["今回収穫", "収穫済み"],
           legendFontSize:"13px",
@@ -4132,7 +4144,7 @@
           singleLineBuildingTitleGap:"20px",
           singleBuildingUsesRegularLayout:true,
           multiLineLayoutKeepsDefaultHeight:true,
-          multiLineLocationText:"（略）8号棟 / 9号棟 / 2号棟",
+          multiLineLocationText:"（略）9号棟 A 個別選択、B 個別選択、C 個別選択 / 2号棟 A 個別選択、B 個別選択",
           threeBuildingLayoutEnabled:true,
           threeBuildingColumnCount:3,
           threeBuildingCount:3,
