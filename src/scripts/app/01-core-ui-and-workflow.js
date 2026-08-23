@@ -3130,11 +3130,11 @@ function openWorkflowNextAction(){
   if(switchTab("record") === false) return;
   if(pendingRecord && (recordSelectionMode !== "planting" || Number(activePlantingRecordId) !== Number(pendingRecord.id))){
     resumePlantingRecord(pendingRecord.id);
-    requestAnimationFrame(() => requestAnimationFrame(() => focusWorkflowTarget("recordPlantingStageCaption")));
+    requestAnimationFrame(() => requestAnimationFrame(() => focusWorkflowTarget("recordPlantingStageSection")));
     return;
   }
   requestAnimationFrame(() => requestAnimationFrame(() => {
     scrollToRecordActiveStage({ behavior: "smooth" });
-    focusWorkflowTarget("recordPlantingStageCaption");
+    focusWorkflowTarget("recordPlantingStageSection");
   }));
 }

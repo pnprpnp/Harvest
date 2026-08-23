@@ -2112,6 +2112,56 @@
         assertEqual(app.normalizeMainTabName("unknown"), "", "不明なタブを受け入れています");
       });
 
+      await runTest("選択中の全メインタブをシミュと同じ色で表示する", () => {
+        const state = comparable(app.eval(`(() => {
+          const root = document.documentElement;
+          const previousTheme = root.getAttribute("data-theme");
+          const buttons = MAIN_TAB_NAMES.map(name => document.getElementById(name + "TabBtn"));
+          const previousClasses = buttons.map(button => button.className);
+          const previousStyles = buttons.map(button => ({
+            button: button.getAttribute("style"),
+            icon: button.querySelector(".tabIconFrame").getAttribute("style")
+          }));
+          try{
+            buttons.forEach(button => {
+              button.style.transition = "none";
+              button.querySelector(".tabIconFrame").style.transition = "none";
+            });
+            void document.body.offsetWidth;
+            return Object.fromEntries(["light", "dark"].map(theme => {
+              if(theme === "dark") root.setAttribute("data-theme", "dark");
+              else root.removeAttribute("data-theme");
+              const colors = Object.fromEntries(buttons.map((button, index) => {
+                buttons.forEach(item => item.classList.remove("active"));
+                button.classList.add("active");
+                return [MAIN_TAB_NAMES[index], {
+                  text: getComputedStyle(button).color,
+                  icon: getComputedStyle(button.querySelector(".tabIconFrame")).backgroundColor
+                }];
+              }));
+              return [theme, colors];
+            }));
+          }finally{
+            buttons.forEach((button, index) => {
+              button.className = previousClasses[index];
+              if(previousStyles[index].button === null) button.removeAttribute("style");
+              else button.setAttribute("style", previousStyles[index].button);
+              const icon = button.querySelector(".tabIconFrame");
+              if(previousStyles[index].icon === null) icon.removeAttribute("style");
+              else icon.setAttribute("style", previousStyles[index].icon);
+            });
+            if(previousTheme === null) root.removeAttribute("data-theme");
+            else root.setAttribute("data-theme", previousTheme);
+          }
+        })()`));
+        ["light", "dark"].forEach(theme => {
+          const forecastColor = state[theme].forecast;
+          Object.entries(state[theme]).forEach(([name, color]) => {
+            assertDeepEqual(color, forecastColor, `${theme}の${name}タブがシミュと同じ選択色ではありません`);
+          });
+        });
+      });
+
       await runTest("工程ナビを初期状態では閉じ、タイトルから開閉できる", () => {
         const bar = app.document.getElementById("workflowBar");
         const button = app.document.getElementById("workflowVisibilityBtn");
@@ -2583,6 +2633,7 @@
             resultActionsHiddenBeforeCalculation,
             resultActionsVisibleAfterCalculation: !resultActions.hidden
               && resultActionsRect.height > 0,
+            progressExplanationAbsent: !progressPanel.querySelector(".harvestProgressLead"),
             resultActionsBelowCasesAndAbovePagination:
               resultActions.previousElementSibling?.classList.contains("casePlacementDivider")
               && resultActions.nextElementSibling === progressPanel
@@ -2627,6 +2678,7 @@
             settingsSummaryFits: true,
             resultActionsHiddenBeforeCalculation: true,
             resultActionsVisibleAfterCalculation: true,
+            progressExplanationAbsent: true,
             resultActionsBelowCasesAndAbovePagination: true,
             usesSixEqualColumns: true,
             actionWidthsFollowOneFourOne: true,
@@ -3280,14 +3332,20 @@
           monitor: !!document.getElementById("monitorSectionTitle"),
           record: !!document.getElementById("recordSaveSectionTitleText"),
           monitorActions: document.querySelectorAll('#monitorCard [data-ui-click="openMonitorMode"], #monitorCard [data-ui-click="openMonitorEditorWindow"]').length,
-          recordStatusExists: !!document.getElementById("recordTodayRecordedStatus")
+          recordStatusExists: !!document.getElementById("recordTodayRecordedStatus"),
+          recordDateIsFirst: document.getElementById("recordSaveCard")?.firstElementChild?.classList.contains("recordDateField") || false,
+          recordStepIndicatorExists: !!document.getElementById("recordStepIndicator"),
+          recordStageCaptionCount: document.querySelectorAll("#recordSaveCard .recordStageCaption").length
         }))()`));
         assertDeepEqual(headings, {
           forecast: false,
           monitor: false,
           record: false,
-          monitorActions: 2,
-          recordStatusExists: true
+          monitorActions: 1,
+          recordStatusExists: true,
+          recordDateIsFirst: true,
+          recordStepIndicatorExists: false,
+          recordStageCaptionCount: 0
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
       });
 
@@ -3961,14 +4019,13 @@
               memoInputExists: !!sendContentCard?.querySelector("textarea, input"),
               memoAddExists: !!sendContentCard?.querySelector(".monitorMemoAddBtn"),
               memoText: document.getElementById("monitorMemoReadOnlyValue")?.textContent || "",
-              editLabel: document.querySelector("#monitorCard .monitorContentEditBtn")?.textContent || ""
+              editExists: !!document.querySelector("#monitorCard .monitorContentEditBtn")
             };
 
             openMonitorEditorWindow();
             const editorState = {
               open: document.getElementById("monitorEditorModal")?.classList.contains("show") || false,
               title: document.getElementById("monitorEditorWindowTitle")?.textContent || "",
-              editAction: document.querySelector("#monitorCard .monitorContentEditBtn")?.dataset.uiClick || "",
               discardAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorDiscardBtn")?.dataset.uiClick || "",
               applyAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorApplyBtn")?.dataset.uiClick || "",
               allFieldsAreMultiline: [...document.querySelectorAll("#monitorRemoteEditorContent > textarea")].length === 4,
@@ -4058,11 +4115,10 @@
           interItemDividersAreInset:true,
           iconsUseAccentColor:true,
           unplantedNoteFontSize:11,
-          readOnlyState:{ seedlingInputExists:false, memoInputExists:false, memoAddExists:false, memoText:"なし", editLabel:"編集" },
+          readOnlyState:{ seedlingInputExists:false, memoInputExists:false, memoAddExists:false, memoText:"なし", editExists:false },
           editorState:{
             open:true,
             title:"今回送る内容を編集",
-            editAction:"openMonitorEditorWindow",
             discardAction:"discardMonitorCurrentEditor",
             applyAction:"applyMonitorCurrentEditor",
             allFieldsAreMultiline:true,
@@ -5622,18 +5678,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "02752f13", elements: 2205, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "445a31ad", elements: 2273, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "765591d4", elements: 2273, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "132b01c1", elements: 2206, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "37eccfe4", elements: 2206, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "5f836265", elements: 2289, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "ad5a0f9b", elements: 2304, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "9bfdea29", elements: 2304, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "e92a281b", elements: 2304, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "94c305b9", elements: 2304, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "9400ffd7", elements: 2304, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "f3bde01f", elements: 2304, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "fb7de911", elements: 2192, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "01b7ab40", elements: 2260, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "57786895", elements: 2260, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "1a0798fe", elements: 2193, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "26d581a6", elements: 2193, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "ebe294b8", elements: 2276, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "959ffef6", elements: 2291, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "66994ea6", elements: 2291, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "2789a728", elements: 2291, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "8365e436", elements: 2291, visible: 93, viewport: "390x844" },
+          wideForecast: { hash: "c5c00691", elements: 2291, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "8538b9fa", elements: 2291, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-progress-split-input">
+<meta name="harvestnavi-version" content="20260823-clean-record-header">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -6969,15 +6969,13 @@ header{
 .tabBtn:active{transform:scale(.97);}
 .tabBtn.active{
   background:transparent;
-  color:#6d28d9;
+  color:var(--ui-accent);
   box-shadow:none;
   text-shadow:none;
 }
 .tabBtn::after,.tabBtn.active::after{content:none;}
 .tabIconFrame{width:28px;height:28px;margin:0 auto 1px;border-radius:9px;}
-.tabBtn.active .tabIconFrame{background:#6d28d9;color:#fff;}
-#forecastTabBtn.active{color:var(--ui-accent);}
-#forecastTabBtn.active .tabIconFrame{background:var(--ui-accent);color:#fff;}
+.tabBtn.active .tabIconFrame{background:var(--ui-accent);color:#fff;}
 .tabIcon{width:20px;height:20px;margin:0;}
 .dashboardTabIcon{border:0;}
 
@@ -8076,14 +8074,8 @@ button.forecastClearBtn{border-radius:10px;}
   white-space:nowrap;
 }
 .harvestProgressBody{
-  padding:0 15px 16px;
+  padding:13px 15px 16px;
   border-top:0;
-}
-.harvestProgressLead{
-  margin:13px 0;
-  color:var(--ui-text-secondary);
-  font-size:13px;
-  line-height:1.55;
 }
 .harvestProgressBuildingSwitch{
   justify-content:center;
@@ -9096,24 +9088,13 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorSendContentTitle{
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  justify-content:flex-start;
   gap:12px;
   padding:11px 13px 9px;
   border-bottom:1px solid var(--ui-line);
   color:var(--ui-text);
   font-size:14px;
   font-weight:760;
-}
-.monitorContentEditBtn{
-  min-width:52px;
-  min-height:32px;
-  padding:5px 12px;
-  border:1px solid var(--ui-line);
-  border-radius:10px;
-  background:var(--ui-surface-muted);
-  color:var(--ui-accent-dark);
-  font-size:12px;
-  font-weight:720;
 }
 #instructionSummary.monitorSendSummary,
 #instructionSummary.instructionBox{
@@ -9365,21 +9346,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorSectionTitle{color:var(--ui-accent-dark);}
 
 /* Record workflow */
-.recordStepIndicator{gap:6px;margin:2px 0 20px;padding:4px;border-radius:16px;background:var(--ui-surface-muted);}
-.recordStepItem{
-  border:0;
-  border-radius:13px;
-  background:transparent;
-  color:var(--ui-text-tertiary);
-}
-.recordStepItem.active{
-  background:#fff;
-  color:var(--ui-accent-dark);
-  box-shadow:0 2px 9px rgba(0,0,0,.07);
-}
-.recordStepNumber{background:#dedee3;color:var(--ui-text-secondary);}
-.recordStepItem.active .recordStepNumber{background:var(--ui-accent);}
-.recordStageCaption{color:var(--ui-text-secondary);}
+#recordSaveCard > .recordDateField{margin-top:0;}
 .recordSeedlingDiffBox,
 .recordHarvestAdjustBox{
   padding:16px;
@@ -10229,10 +10196,10 @@ html[data-theme="dark"] .tabBar{
   box-shadow:0 -5px 20px rgba(0,0,0,.42);
 }
 html[data-theme="dark"] .tabBtn.active{
-  color:#b99cff;
+  color:var(--ui-accent-dark);
 }
 html[data-theme="dark"] .tabBtn.active .tabIconFrame{
-  background:#8758e8;
+  background:var(--ui-accent);
 }
 html[data-theme="dark"] .headerMenuBtn{
   border-color:transparent;
@@ -11458,7 +11425,6 @@ requestAnimationFrame(function(){
       <section class="monitorSendContentCard" aria-labelledby="monitorSendContentTitle">
         <div class="monitorSendContentTitle">
           <span id="monitorSendContentTitle">今回送る内容</span>
-          <button type="button" class="monitorContentEditBtn" data-ui-click="openMonitorEditorWindow">編集</button>
         </div>
         <div id="instructionSummary" class="resultBox instructionBox">苗: 0枚
 収穫ケース数: 0
@@ -11536,7 +11502,6 @@ requestAnimationFrame(function(){
           <span id="harvestProgressSummaryStatus" class="harvestProgressSummaryStatus">収穫中に使えます</span>
         </summary>
         <div class="harvestProgressBody">
-          <p class="harvestProgressLead">新たに収穫が完了したベッドをタップし、そのベッドから取れたケース数を入力してください。入力するたびに前回までのケース数へ追加します。</p>
           <div class="buildingSwitch harvestProgressBuildingSwitch">
             <button type="button" class="buildingBtn" data-ui-click="shiftHarvestProgressBuilding" data-ui-number="-1" aria-label="前の号棟">‹</button>
             <button id="harvestProgressBuildingBtn" type="button" class="buildingBtn active">2号棟</button>
@@ -11985,31 +11950,16 @@ requestAnimationFrame(function(){
 
   <div id="recordTab" style="display:none;">
     <div id="recordSaveCard" class="card workflowFocusHeading" aria-label="記録入力">
-      <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
-      <div id="recordStepIndicator" class="recordStepIndicator">
-        <div id="recordStepHarvest" class="recordStepItem active">
-          <span class="recordStepNumber">1</span>
-          <span>収穫記録</span>
-        </div>
-        <div id="recordStepPlanting" class="recordStepItem">
-          <span class="recordStepNumber">2</span>
-          <span>苗植え記録</span>
+      <div class="recordDateField">
+        <label class="fieldAccentLabel">日付</label>
+        <div class="recordDateInputRow">
+          <input id="recordDateInput" type="date">
+          <div id="recordWeekdayDisplay" class="recordWeekdayDisplay">（--）</div>
         </div>
       </div>
+      <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
 
       <div id="recordHarvestStageSection" class="recordStageSection">
-        <div class="recordStageHeader">
-          <div class="recordStageCaption">第一段階: 収穫記録</div>
-        </div>
-
-        <div class="recordDateField">
-          <label class="fieldAccentLabel">日付</label>
-          <div class="recordDateInputRow">
-            <input id="recordDateInput" type="date">
-            <div id="recordWeekdayDisplay" class="recordWeekdayDisplay">（--）</div>
-          </div>
-        </div>
-
         <div class="recordActualRow recordActualCasesRow">
           <div>
             <label class="fieldAccentLabel">実際の収穫ケース数</label>
@@ -12026,9 +11976,6 @@ requestAnimationFrame(function(){
       </div>
 
       <div id="recordPlantingStageSection" class="recordStageSection" hidden>
-        <div class="recordStageHeader">
-          <h3 id="recordPlantingStageCaption" class="recordStageCaption workflowFocusHeading">第二段階: 苗植え記録</h3>
-        </div>
         <section class="plantingActionCard" aria-labelledby="plantingActionTitle">
           <div id="plantingActionTitle" class="plantingActionTitle">今回の指示</div>
           <div class="plantingActionList">
@@ -16210,12 +16157,12 @@ function openWorkflowNextAction(){
   if(switchTab("record") === false) return;
   if(pendingRecord && (recordSelectionMode !== "planting" || Number(activePlantingRecordId) !== Number(pendingRecord.id))){
     resumePlantingRecord(pendingRecord.id);
-    requestAnimationFrame(() => requestAnimationFrame(() => focusWorkflowTarget("recordPlantingStageCaption")));
+    requestAnimationFrame(() => requestAnimationFrame(() => focusWorkflowTarget("recordPlantingStageSection")));
     return;
   }
   requestAnimationFrame(() => requestAnimationFrame(() => {
     scrollToRecordActiveStage({ behavior: "smooth" });
-    focusWorkflowTarget("recordPlantingStageCaption");
+    focusWorkflowTarget("recordPlantingStageSection");
   }));
 }
 
