@@ -446,12 +446,21 @@ function renderRecordList(){
         plantingHtml ? '<span class="recordDateGroupType is-planting">苗植え</span>' : "",
         partialHtml ? '<span class="recordDateGroupType is-partial">部分</span>' : ""
       ].join("");
+      const primaryHtml = harvestHtml || plantingHtml
+        ? `<div class="recordDateGroupPrimary">
+            ${harvestHtml ? `<div class="recordDateColumn recordDateHarvestColumn">${harvestHtml}</div>` : ""}
+            ${plantingHtml ? `<div class="recordDateColumn recordDatePlantingColumn">${plantingHtml}</div>` : ""}
+          </div>`
+        : "";
       return `<section class="recordDateGroup" data-record-history-date="${escapeHtml(group.dateKey)}">
         <div class="recordDateGroupHeader">
           <div class="recordDateGroupTitle">${escapeHtml(formatRecordHistoryDateLabel(group.dateKey))}</div>
           <div class="recordDateGroupTypes" aria-label="この日の記録">${typeBadges}</div>
         </div>
-        <div class="recordDateGroupItems">${harvestHtml}${plantingHtml}${partialHtml}</div>
+        <div class="recordDateGroupItems">
+          ${primaryHtml}
+          ${partialHtml ? `<div class="recordDateColumn recordDatePartialColumn">${partialHtml}</div>` : ""}
+        </div>
       </section>`;
     }).join("");
   };

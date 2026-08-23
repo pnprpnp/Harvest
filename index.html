@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-daily-record-weekday">
+<meta name="harvestnavi-version" content="20260823-daily-record-horizontal">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10155,6 +10155,20 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   display:grid;
   gap:9px;
   padding-top:11px;
+}
+.recordDateGroupPrimary{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+  gap:9px;
+  align-items:start;
+}
+.recordDateColumn{
+  display:grid;
+  gap:9px;
+  min-width:0;
+}
+.recordDateGroupPrimary > .recordDateColumn:only-child{
+  grid-column:1 / -1;
 }
 .recordDateGroup .recordItem{
   margin-top:0;
@@ -35279,12 +35293,21 @@ function renderRecordList(){
         plantingHtml ? '<span class="recordDateGroupType is-planting">苗植え</span>' : "",
         partialHtml ? '<span class="recordDateGroupType is-partial">部分</span>' : ""
       ].join("");
+      const primaryHtml = harvestHtml || plantingHtml
+        ? `<div class="recordDateGroupPrimary">
+            ${harvestHtml ? `<div class="recordDateColumn recordDateHarvestColumn">${harvestHtml}</div>` : ""}
+            ${plantingHtml ? `<div class="recordDateColumn recordDatePlantingColumn">${plantingHtml}</div>` : ""}
+          </div>`
+        : "";
       return `<section class="recordDateGroup" data-record-history-date="${escapeHtml(group.dateKey)}">
         <div class="recordDateGroupHeader">
           <div class="recordDateGroupTitle">${escapeHtml(formatRecordHistoryDateLabel(group.dateKey))}</div>
           <div class="recordDateGroupTypes" aria-label="この日の記録">${typeBadges}</div>
         </div>
-        <div class="recordDateGroupItems">${harvestHtml}${plantingHtml}${partialHtml}</div>
+        <div class="recordDateGroupItems">
+          ${primaryHtml}
+          ${partialHtml ? `<div class="recordDateColumn recordDatePartialColumn">${partialHtml}</div>` : ""}
+        </div>
       </section>`;
     }).join("");
   };
