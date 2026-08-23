@@ -3981,6 +3981,8 @@
             });
             const cards = [...host.querySelectorAll(".monitorBedCard")];
             const firstGrid = host.querySelector(".monitorBedPalletMapGrid");
+            const firstBedHead = host.querySelector(".monitorBedHead");
+            const firstBedName = firstBedHead?.querySelector(".monitorBedName");
             const readBuildingOrder = buildings => {
               const orderHost = document.createElement("div");
               orderHost.innerHTML = getMonitorSelectionMapHtml(
@@ -4001,6 +4003,9 @@
               oldSegmentCount:host.querySelectorAll(".monitorBedSegment").length,
               columns:getComputedStyle(firstGrid).gridTemplateColumns.trim().split(/\\s+/).length,
               rows:getComputedStyle(firstGrid).gridTemplateRows.trim().split(/\\s+/).length,
+              bedNameCentered:getComputedStyle(firstBedHead).display === "grid" &&
+                getComputedStyle(firstBedName).gridColumnStart === "2" &&
+                getComputedStyle(firstBedName).textAlign === "center",
               rangeMarkerCount:host.querySelectorAll(".monitorBedRangeMarker").length,
               emphasizedPalletCount:host.querySelectorAll(".is-monitor-start, .is-monitor-end").length,
               directionCount:host.querySelectorAll(".monitorBuildingDirection").length,
@@ -4024,12 +4029,65 @@
           oldSegmentCount:0,
           columns:2,
           rows:39,
+          bedNameCentered:true,
           rangeMarkerCount:0,
           emphasizedPalletCount:0,
           directionCount:0,
           wrappedOrders:[["8号棟", "9号棟", "2号棟"], ["9号棟", "2号棟", "3号棟"]],
           legend:["今回収穫", "収穫済み"]
         }, "モニターの収穫場所が2列39段の配置図になっていません");
+      });
+
+      await runTest("モニター要約は短い項目名・アイコン・数を同じ行と大きさで表示する", () => {
+        const summaryState = comparable(app.eval(`(() => {
+          const host = document.createElement("div");
+          host.style.cssText = "position:fixed;left:-2000px;top:0;width:1200px;height:300px;";
+          host.innerHTML = buildMonitorDashboardHtml({
+            enabled:true,
+            instructionText:"苗: 9枚（未定植分 3枚）\\n収穫ケース数: 42\\n収穫場所: -\\n残すケース: 2号棟 手前: 6ケース",
+            harvestFillKeys:[],
+            memoItems:[]
+          });
+          document.body.appendChild(host);
+          try{
+            const cards = [...host.querySelectorAll(".monitorMetricCard")];
+            return {
+              labels:cards.map(card => card.querySelector(".monitorMetricLabel")?.textContent.trim() || ""),
+              unplantedVisible:host.textContent.includes("未定植分"),
+              allUseOneRow:cards.every(card => {
+                const line = card.querySelector(".monitorMetricLine");
+                const label = card.querySelector(".monitorMetricLabel");
+                const value = card.querySelector(".monitorMetricValue, .monitorRemainingList");
+                return !!line && label?.parentElement === line && !!value && line.contains(value) &&
+                  getComputedStyle(line).display === "flex" && getComputedStyle(line).flexWrap === "nowrap";
+              }),
+              allTextSizesMatch:cards.every(card => {
+                const line = card.querySelector(".monitorMetricLine");
+                const label = card.querySelector(".monitorMetricLabel");
+                const value = card.querySelector(".monitorMetricValue, .monitorRemainingList");
+                const unit = card.querySelector(".monitorMetricUnit");
+                const lineSize = parseFloat(getComputedStyle(line).fontSize);
+                const sizes = [label, value, unit].filter(Boolean)
+                  .map(element => parseFloat(getComputedStyle(element).fontSize));
+                return sizes.every(size => Math.abs(size - lineSize) < 0.1);
+              }),
+              allIconSizesMatch:cards.every(card => {
+                const line = card.querySelector(".monitorMetricLine");
+                const icon = card.querySelector(".monitorMetricLabelIcon");
+                return Math.abs(icon.getBoundingClientRect().width - parseFloat(getComputedStyle(line).fontSize)) < 0.1;
+              })
+            };
+          }finally{
+            host.remove();
+          }
+        })()`));
+        assertDeepEqual(summaryState, {
+          labels:["苗：", "収穫：", "残し："],
+          unplantedVisible:false,
+          allUseOneRow:true,
+          allTextSizesMatch:true,
+          allIconSizesMatch:true
+        }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");
       });
 
       await runTest("モニターへ送る苗枚数に未定植分の枚数を表示する", () => {

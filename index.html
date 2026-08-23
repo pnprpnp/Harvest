@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-map-order">
+<meta name="harvestnavi-version" content="20260823-monitor-summary-row">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8655,19 +8655,19 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   border-left:1px solid var(--ui-line);
 }
 .monitorMetricLabel{
-  min-height:20px;
+  min-width:max-content;
   display:flex;
   align-items:center;
   justify-content:center;
-  gap:6px;
+  gap:.22em;
   color:var(--ui-text-secondary);
-  font-size:16px;
-  line-height:1.2;
+  font-size:inherit;
+  line-height:inherit;
   font-weight:700;
 }
 .monitorMetricLabelIcon{
-  width:18px;
-  height:18px;
+  width:1em;
+  height:1em;
   flex:0 0 auto;
   color:#147a39;
 }
@@ -8679,30 +8679,36 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorMetricLine{
   min-width:0;
+  min-height:0;
   width:100%;
   flex:1 1 auto;
-  display:grid;
-  grid-auto-flow:column;
-  grid-auto-columns:max-content;
+  display:flex;
   justify-content:center;
-  align-content:center;
-  align-items:baseline;
-  gap:8px;
-  margin-top:4px;
+  align-items:center;
+  gap:.32em;
+  margin:0;
   color:var(--ui-accent-dark);
+  font-size:clamp(20px,2.35vw,30px);
+  line-height:1.05;
+}
+.monitorMetricValueGroup{
+  min-width:0;
+  display:inline-flex;
+  align-items:baseline;
+  gap:.12em;
 }
 .monitorMetricValue{
   min-width:0;
-  font-size:52px;
-  line-height:.88;
+  font-size:inherit;
+  line-height:inherit;
   font-weight:780;
-  letter-spacing:-.06em;
+  letter-spacing:-.025em;
   font-variant-numeric:tabular-nums;
 }
 .monitorMetricUnit{
   flex:0 0 auto;
   color:var(--ui-text);
-  font-size:18px;
+  font-size:inherit;
   font-weight:700;
 }
 .monitorMetricNote{
@@ -8716,24 +8722,26 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   text-overflow:ellipsis;
 }
 .monitorRemainingList{
+  min-width:0;
   min-height:0;
   flex:1 1 auto;
   display:grid;
   align-content:center;
   gap:2px;
-  margin-top:4px;
+  align-self:stretch;
+  margin:0;
   overflow:hidden;
   color:var(--ui-text);
-  font-size:24px;
-  line-height:1.2;
+  font-size:inherit;
+  line-height:1.05;
   font-weight:720;
 }
 .monitorRemainingCard{
   justify-content:flex-start;
 }
 .monitorRemainingCard .monitorRemainingList{
-  width:100%;
-  margin-top:4px;
+  width:auto;
+  margin:0;
   color:#a94300;
   font-weight:780;
 }
@@ -8871,9 +8879,20 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   opacity:.68;
 }
 .monitorBedName{
+  text-align:center;
   color:var(--ui-text);
   font-size:17px;
   font-weight:780;
+}
+.monitorBedHead{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+}
+.monitorBedHead .monitorBedName{grid-column:2;}
+.monitorBedHead .monitorBedCount{
+  grid-column:3;
+  justify-self:end;
 }
 .monitorBedCount{
   color:var(--ui-accent-dark);
@@ -30662,10 +30681,18 @@ function getMonitorMetricParts(rawValue, fallbackUnit){
   };
 }
 
+function removeMonitorUnplantedSeedlingNote(value){
+  return String(value || "")
+    .replace(/（未定植分\s*\+?\d+枚）/g, "")
+    .replace(/\(未定植分\s*\+?\d+枚\)/g, "")
+    .trim();
+}
+
 function getMonitorMetricCardHtml(label, rawValue, unit){
-  const parts = getMonitorMetricParts(rawValue, unit);
+  const displayValue = label === "苗" ? removeMonitorUnplantedSeedlingNote(rawValue) : rawValue;
+  const parts = getMonitorMetricParts(displayValue, unit);
   let labelIcon = "";
-  if(label === "苗枚数"){
+  if(label === "苗"){
     labelIcon = `
     <svg class="monitorMetricLabelIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M12 21v-9"></path>
@@ -30674,7 +30701,7 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
       <path d="M8.5 21h7"></path>
     </svg>
     `;
-  }else if(label === "収穫ケース数"){
+  }else if(label === "収穫"){
     labelIcon = `
     <svg class="monitorMetricLabelIcon is-harvest-case" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 9.5 11 3.5l18 4.2-8.2 6.8L3 9.5Z" fill="currentColor" fill-opacity=".14"></path>
@@ -30687,10 +30714,12 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
   }
   return `
     <section class="monitorPanel monitorMetricCard">
-      <div class="monitorMetricLabel">${labelIcon}<span>${escapeHtml(label)}</span></div>
       <div class="monitorMetricLine">
-        <strong class="monitorMetricValue">${escapeHtml(parts.value)}</strong>
-        ${parts.unit ? `<span class="monitorMetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
+        <div class="monitorMetricLabel">${labelIcon}<span>${escapeHtml(label)}：</span></div>
+        <div class="monitorMetricValueGroup">
+          <strong class="monitorMetricValue">${escapeHtml(parts.value)}</strong>
+          ${parts.unit ? `<span class="monitorMetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
+        </div>
       </div>
       ${parts.note ? `<div class="monitorMetricNote" title="${escapeHtml(parts.note)}">${escapeHtml(parts.note)}</div>` : ""}
     </section>
@@ -30721,10 +30750,13 @@ function fitMonitorRemainingCasesText(root = document){
   const lists = Array.from(root.querySelectorAll?.(".monitorRemainingList") || []);
   lists.forEach(list => {
     if(list.clientWidth <= 0 || list.clientHeight <= 0) return;
+    const metricLine = list.closest(".monitorMetricLine");
+    const sizeTarget = metricLine || list;
+    list.style.fontSize = "";
     const minimumSize = 5;
     const maximumSize = 30;
     const fitsAtSize = size => {
-      list.style.fontSize = size + "px";
+      sizeTarget.style.fontSize = size + "px";
       return list.scrollHeight <= list.clientHeight + 1 && list.scrollWidth <= list.clientWidth + 1;
     };
 
@@ -30741,7 +30773,7 @@ function fitMonitorRemainingCasesText(root = document){
         upper = middle;
       }
     }
-    list.style.fontSize = lower.toFixed(2) + "px";
+    sizeTarget.style.fontSize = lower.toFixed(2) + "px";
   });
 }
 
@@ -30796,18 +30828,20 @@ function buildMonitorDashboardHtml(content){
         ${updatedAt ? `<div class="monitorUpdatedAt"><span>最終更新</span><span class="monitorUpdatedAtValue">${escapeHtml(updatedAt)}</span></div>` : ""}
       </div>
       <div class="monitorSummaryGrid">
-        ${getMonitorMetricCardHtml("苗枚数", fields.seedling, "枚")}
-        ${getMonitorMetricCardHtml("収穫ケース数", fields.cases, "ケース")}
+        ${getMonitorMetricCardHtml("苗", fields.seedling, "枚")}
+        ${getMonitorMetricCardHtml("収穫", fields.cases, "ケース")}
         <section class="monitorPanel monitorMetricCard monitorRemainingCard">
-          <div class="monitorMetricLabel">
-            <svg class="monitorMetricLabelIcon is-remaining-case" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
-              <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
-              <path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>
-            </svg>
-            <span>残すケース</span>
+          <div class="monitorMetricLine">
+            <div class="monitorMetricLabel">
+              <svg class="monitorMetricLabelIcon is-remaining-case" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
+                <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
+                <path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>
+              </svg>
+              <span>残し：</span>
+            </div>
+            <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases)}</div>
           </div>
-          <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases)}</div>
         </section>
       </div>
       <section class="monitorPanel monitorHarvestPanel">

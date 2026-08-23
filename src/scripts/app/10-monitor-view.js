@@ -492,10 +492,18 @@ function getMonitorMetricParts(rawValue, fallbackUnit){
   };
 }
 
+function removeMonitorUnplantedSeedlingNote(value){
+  return String(value || "")
+    .replace(/（未定植分\s*\+?\d+枚）/g, "")
+    .replace(/\(未定植分\s*\+?\d+枚\)/g, "")
+    .trim();
+}
+
 function getMonitorMetricCardHtml(label, rawValue, unit){
-  const parts = getMonitorMetricParts(rawValue, unit);
+  const displayValue = label === "苗" ? removeMonitorUnplantedSeedlingNote(rawValue) : rawValue;
+  const parts = getMonitorMetricParts(displayValue, unit);
   let labelIcon = "";
-  if(label === "苗枚数"){
+  if(label === "苗"){
     labelIcon = `
     <svg class="monitorMetricLabelIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M12 21v-9"></path>
@@ -504,7 +512,7 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
       <path d="M8.5 21h7"></path>
     </svg>
     `;
-  }else if(label === "収穫ケース数"){
+  }else if(label === "収穫"){
     labelIcon = `
     <svg class="monitorMetricLabelIcon is-harvest-case" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M3 9.5 11 3.5l18 4.2-8.2 6.8L3 9.5Z" fill="currentColor" fill-opacity=".14"></path>
@@ -517,10 +525,12 @@ function getMonitorMetricCardHtml(label, rawValue, unit){
   }
   return `
     <section class="monitorPanel monitorMetricCard">
-      <div class="monitorMetricLabel">${labelIcon}<span>${escapeHtml(label)}</span></div>
       <div class="monitorMetricLine">
-        <strong class="monitorMetricValue">${escapeHtml(parts.value)}</strong>
-        ${parts.unit ? `<span class="monitorMetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
+        <div class="monitorMetricLabel">${labelIcon}<span>${escapeHtml(label)}：</span></div>
+        <div class="monitorMetricValueGroup">
+          <strong class="monitorMetricValue">${escapeHtml(parts.value)}</strong>
+          ${parts.unit ? `<span class="monitorMetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
+        </div>
       </div>
       ${parts.note ? `<div class="monitorMetricNote" title="${escapeHtml(parts.note)}">${escapeHtml(parts.note)}</div>` : ""}
     </section>
@@ -551,10 +561,13 @@ function fitMonitorRemainingCasesText(root = document){
   const lists = Array.from(root.querySelectorAll?.(".monitorRemainingList") || []);
   lists.forEach(list => {
     if(list.clientWidth <= 0 || list.clientHeight <= 0) return;
+    const metricLine = list.closest(".monitorMetricLine");
+    const sizeTarget = metricLine || list;
+    list.style.fontSize = "";
     const minimumSize = 5;
     const maximumSize = 30;
     const fitsAtSize = size => {
-      list.style.fontSize = size + "px";
+      sizeTarget.style.fontSize = size + "px";
       return list.scrollHeight <= list.clientHeight + 1 && list.scrollWidth <= list.clientWidth + 1;
     };
 
@@ -571,7 +584,7 @@ function fitMonitorRemainingCasesText(root = document){
         upper = middle;
       }
     }
-    list.style.fontSize = lower.toFixed(2) + "px";
+    sizeTarget.style.fontSize = lower.toFixed(2) + "px";
   });
 }
 
@@ -626,18 +639,20 @@ function buildMonitorDashboardHtml(content){
         ${updatedAt ? `<div class="monitorUpdatedAt"><span>最終更新</span><span class="monitorUpdatedAtValue">${escapeHtml(updatedAt)}</span></div>` : ""}
       </div>
       <div class="monitorSummaryGrid">
-        ${getMonitorMetricCardHtml("苗枚数", fields.seedling, "枚")}
-        ${getMonitorMetricCardHtml("収穫ケース数", fields.cases, "ケース")}
+        ${getMonitorMetricCardHtml("苗", fields.seedling, "枚")}
+        ${getMonitorMetricCardHtml("収穫", fields.cases, "ケース")}
         <section class="monitorPanel monitorMetricCard monitorRemainingCard">
-          <div class="monitorMetricLabel">
-            <svg class="monitorMetricLabelIcon is-remaining-case" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
-              <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
-              <path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>
-            </svg>
-            <span>残すケース</span>
+          <div class="monitorMetricLine">
+            <div class="monitorMetricLabel">
+              <svg class="monitorMetricLabelIcon is-remaining-case" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3.5 10h24l-1.6 16H5.1L3.5 10Z" fill="currentColor" fill-opacity=".12"></path>
+                <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
+                <path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>
+              </svg>
+              <span>残し：</span>
+            </div>
+            <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases)}</div>
           </div>
-          <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases)}</div>
         </section>
       </div>
       <section class="monitorPanel monitorHarvestPanel">
