@@ -4139,7 +4139,7 @@
         assertDeepEqual(summaryState, {
           labels:["苗：", "収穫：", "配置：", ""],
           labelsUseHalfWidthSpace:true,
-          summaryColumns:4,
+          summaryColumns:2,
           caseCardsUseEqualWidths:true,
           unplantedVisible:false,
           allUseOneRow:true,
@@ -4163,6 +4163,50 @@
           updatedAtText:"最終更新2026/8/23 17:14",
           updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");
+      });
+
+      await runTest("モニターを六分割し要約・収穫場所・メモへ割り当てる", () => {
+        const layoutState = comparable(app.eval(`(() => {
+          const host = document.createElement("div");
+          host.className = "monitorModeBody";
+          host.style.cssText = "position:fixed;left:-2000px;top:0;width:1280px;height:720px;";
+          host.innerHTML = buildMonitorDashboardHtml({
+            enabled:true,
+            updatedAt:"2026-08-23 17:14:00",
+            instructionText:"苗: 9枚\\n収穫ケース数: 42\\n収穫場所: 2号棟 A-1\\n残すケース: 2号棟 配置: 48ケース\\n2号棟 前側: 6ケース",
+            harvestFillKeys:[getPalletKey(2, "A", 1)],
+            memoItems:["確認用メモ"]
+          });
+          document.body.appendChild(host);
+          try{
+            const summary = host.querySelector(".monitorSummaryGrid");
+            const harvest = host.querySelector(".monitorHarvestPanel");
+            const memo = host.querySelector(".monitorMemoPanel");
+            const style = element => getComputedStyle(element);
+            return {
+              bodyColumns:style(host).gridTemplateColumns.trim().split(/\\s+/).length,
+              bodyRows:style(host).gridTemplateRows.trim().split(/\\s+/).length,
+              summaryArea:[style(summary).gridColumnStart, style(summary).gridColumnEnd, style(summary).gridRowStart, style(summary).gridRowEnd],
+              harvestArea:[style(harvest).gridColumnStart, style(harvest).gridColumnEnd, style(harvest).gridRowStart, style(harvest).gridRowEnd],
+              memoArea:[style(memo).gridColumnStart, style(memo).gridColumnEnd, style(memo).gridRowStart, style(memo).gridRowEnd],
+              summaryColumns:style(summary).gridTemplateColumns.trim().split(/\\s+/).length,
+              summaryRows:style(summary).gridTemplateRows.trim().split(/\\s+/).length,
+              memoSpansBothColumns:memo.getBoundingClientRect().width > summary.getBoundingClientRect().width * 1.9
+            };
+          }finally{
+            host.remove();
+          }
+        })()`));
+        assertDeepEqual(layoutState, {
+          bodyColumns:2,
+          bodyRows:4,
+          summaryArea:["1", "2", "2", "4"],
+          harvestArea:["2", "3", "2", "4"],
+          memoArea:["1", "3", "4", "5"],
+          summaryColumns:2,
+          summaryRows:2,
+          memoSpansBothColumns:true
+        }, "モニターの六分割領域に要約・収穫場所・メモを割り当てられていません");
       });
 
       await runTest("モニターへ棟別ケース配置合計と残し数を収穫順で送る", () => {
@@ -6016,18 +6060,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e0af881c", elements: 2208, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "880ad8eb", elements: 2277, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "9c42fcee", elements: 2277, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "55802de8", elements: 2209, visible: 104, viewport: "390x844" },
-          mobileDashboard: { hash: "50c8d4fe", elements: 2209, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "68ebb3b6", elements: 2292, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "4233f9de", elements: 2307, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "431a6dfc", elements: 2307, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "66dc5c78", elements: 2307, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "5e43db44", elements: 2307, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "0e61be56", elements: 2307, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "3ef50ae2", elements: 2307, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "86316182", elements: 2208, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "30a7a031", elements: 2277, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "233ebd5c", elements: 2277, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "dcf34042", elements: 2209, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "5b8aaae0", elements: 2209, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "df9ee36c", elements: 2292, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "f3c7731e", elements: 2307, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "c9e6e2fc", elements: 2307, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "15b19878", elements: 2307, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "c6db3e44", elements: 2307, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "7ec8e456", elements: 2307, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "b9531cc2", elements: 2307, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
