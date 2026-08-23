@@ -3976,7 +3976,8 @@
               "苗: 9枚（未定植分 3枚） / 収穫ケース数: 42ケース",
               "収穫場所: 2号棟 A-1〜2、B-1",
               "残すケース: 2号棟 配置: 120ケース",
-              "2号棟 前側: 6ケース"
+              "3号棟 前側: 20ケース",
+              "3号棟 後ろ: 20ケース"
             ].join("\\n"),
             harvestFillKeys:selectedKeys,
             memoItems:["Aベッドから収穫する", "収穫後は冷蔵庫へ運ぶ"]
@@ -4030,6 +4031,13 @@
             const harvestMetricIconRect = harvestMetricHeader?.querySelector(".monitorV2MetricIcon")?.getBoundingClientRect();
             const seedlingMetricLabelRect = seedlingMetricHeader?.querySelector(".monitorV2MetricLabel")?.getBoundingClientRect();
             const harvestMetricLabelRect = harvestMetricHeader?.querySelector(".monitorV2MetricLabel")?.getBoundingClientRect();
+            const locationHeaderRect = preview2Host.querySelector(".monitorV2LocationHeader")?.getBoundingClientRect();
+            const locationContentRect = preview2Host.querySelector(".monitorV2LocationContent")?.getBoundingClientRect();
+            const locationIconRect = preview2Host.querySelector(".monitorV2LocationHeader .monitorV2LocationIcon")?.getBoundingClientRect();
+            const locationLabelRect = preview2Host.querySelector(".monitorV2LocationHeader .monitorV2LocationLabel")?.getBoundingClientRect();
+            const remainingBuilding = preview2Host.querySelector(".monitorV2MetricCard-remaining .monitorCaseRemainingBuilding");
+            const remainingLocations = [...preview2Host.querySelectorAll(".monitorV2MetricCard-remaining .monitorCaseRemainingLocation")];
+            const remainingLocationRects = remainingLocations.map(location => location.getBoundingClientRect());
             const longLocationValue = longLocationHost.querySelector(".monitorV2LocationValue");
             const longLocationStyle = longLocationValue ? getComputedStyle(longLocationValue) : null;
             const longLocationLineHeight = parseFloat(longLocationStyle?.lineHeight || "0");
@@ -4081,6 +4089,12 @@
                   && Math.abs(seedlingMetricLabelRect.top - harvestMetricLabelRect.top) <= 1
                   && Math.abs((seedlingMetricIconRect.top + seedlingMetricIconRect.height / 2) - (seedlingMetricLabelRect.top + seedlingMetricLabelRect.height / 2)) <= 1
                   && Math.abs((harvestMetricIconRect.top + harvestMetricIconRect.height / 2) - (harvestMetricLabelRect.top + harvestMetricLabelRect.height / 2)) <= 1,
+                locationHeaderIsAboveValue:!!locationHeaderRect && !!locationContentRect
+                  && locationHeaderRect.bottom <= locationContentRect.top + 1,
+                locationHeaderIsAligned:!!locationIconRect && !!locationLabelRect
+                  && Math.abs((locationIconRect.top + locationIconRect.height / 2) - (locationLabelRect.top + locationLabelRect.height / 2)) <= 1,
+                itemNameSizes:[...preview2Host.querySelectorAll(".monitorV2MetricLabel, .monitorV2LocationLabel, .monitorV2PanelTitle")]
+                  .map(value => getComputedStyle(value).fontSize),
                 locationHasMoreHeight:!!locationRect && locationRect.height >= 175,
                 seedlingAndHarvestValueSize:[...preview2Host.querySelectorAll(".monitorV2MetricCard-seedling .monitorV2MetricValue, .monitorV2MetricCard-harvest .monitorV2MetricValue")]
                   .map(value => getComputedStyle(value).fontSize),
@@ -4094,6 +4108,11 @@
                 placementCaseUnitHidden:getComputedStyle(preview2Host.querySelector(".monitorV2MetricCard-placement .monitorMetricSmallUnit")).display === "none",
                 remainingCaseNumberSizes:[...preview2Host.querySelectorAll(".monitorV2MetricCard-remaining .monitorCaseRemainingBuilding, .monitorV2MetricCard-remaining .monitorRemainingCount")]
                   .map(value => getComputedStyle(value).fontSize),
+                remainingCaseUsesAlignedRows:remainingBuilding?.textContent.trim() === "3号棟"
+                  && remainingLocations.map(location => location.textContent.trim()).join("|") === "前20|奥20"
+                  && remainingLocationRects.length === 2
+                  && Math.abs(remainingLocationRects[0].left - remainingLocationRects[1].left) <= 1
+                  && remainingLocationRects[0].top < remainingLocationRects[1].top,
                 seedlingNoteRemoved:!preview2Host.querySelector(".monitorV2MetricCard-seedling .monitorV2MetricNote")
                   && !preview2Host.querySelector(".monitorV2MetricCard-seedling")?.textContent.includes("未定植"),
                 remainingSuffixRemoved:!preview2Host.querySelector(".monitorV2MetricCard-remaining")?.textContent.includes("ケース残す"),
@@ -4159,16 +4178,21 @@
             topMetricsAreShorter:true,
             metricHeadersAreAboveValues:true,
             seedlingAndHarvestHeadersAligned:true,
+            locationHeaderIsAboveValue:true,
+            locationHeaderIsAligned:true,
+            itemNameSizes:["21px", "21px", "21px", "21px", "21px", "21px", "21px"],
             locationHasMoreHeight:true,
             seedlingAndHarvestValueSize:["60px", "60px"],
             placementCaseText:"2号棟120",
             placementCaseNumberSize:"60px",
             placementBuildingSuffixIsSmall:true,
             placementCaseUnitHidden:true,
-            remainingCaseNumberSizes:["60px", "60px"],
+            remainingCaseNumberSizes:["60px", "60px", "60px"],
+            remainingCaseUsesAlignedRows:true,
             seedlingNoteRemoved:true,
             remainingSuffixRemoved:true,
             numericWidthTransforms:[
+              "matrix(0.7, 0, 0, 1, 0, 0)",
               "matrix(0.7, 0, 0, 1, 0, 0)",
               "matrix(0.7, 0, 0, 1, 0, 0)",
               "matrix(0.7, 0, 0, 1, 0, 0)",

@@ -628,12 +628,13 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
     const remainingHtml = buildingOrder.map(building => {
       const summary = summaries[String(building)];
       if(!summary.locations.length) return "";
+      const remainingBuildingSuffix = displayVariant === "preview2" ? "号棟" : "-";
       return `
         <div class="monitorCaseBuildingSummary is-remaining">
           <div class="monitorCaseRemainingLine">
-            <span class="monitorCaseRemainingBuilding"><span class="monitorCaseBuildingNumber">${building}</span>-</span>
-            ${summary.locations.map(location => `
-              <span class="monitorCaseRemainingLocation${location.suffix === "不足" ? " is-shortage" : ""}">
+            <span class="monitorCaseRemainingBuilding"><span class="monitorCaseBuildingNumber">${building}</span><span class="monitorCaseRemainingBuildingSuffix">${remainingBuildingSuffix}</span></span>
+            ${summary.locations.map((location, index) => `
+              <span class="monitorCaseRemainingLocation${index === 0 ? " is-first" : ""}${location.suffix === "不足" ? " is-shortage" : ""}">
                 <span class="monitorRemainingLocation">${location.label}</span><span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
               </span>
             `).join("")}
@@ -989,9 +990,11 @@ function buildMonitorPreview2DashboardHtml(normalized, fields){
             ${getMonitorPreview2CaseCardHtml("残すケース", fields.remainingCases, "remaining", "remaining")}
           </div>
           <section class="monitorPanel monitorV2LocationCard">
-            <div class="monitorV2LocationIcon">${getMonitorPreview2IconHtml("location")}</div>
-            <div class="monitorV2LocationContent">
+            <div class="monitorV2LocationHeader">
+              <div class="monitorV2LocationIcon">${getMonitorPreview2IconHtml("location")}</div>
               <div class="monitorV2LocationLabel">収穫場所</div>
+            </div>
+            <div class="monitorV2LocationContent">
               <div class="monitorV2LocationValue monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
             </div>
           </section>
