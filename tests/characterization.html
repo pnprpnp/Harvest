@@ -1402,7 +1402,7 @@
             skippedPalletKeys: ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "2-A-5", "2-A-6"],
             simulationSkipCardExists: false,
           simulationSummaryShowsSkip: true,
-            monitorSeedling: "1枚（先取り収穫: 苗を1枚飛ばす）"
+            monitorSeedling: "1枚（未定植分 0枚）（先取り収穫: 苗を1枚飛ばす）"
           }, "先取り収穫で飛ばす苗枚数を計算・表示できません");
 
           const normalState = comparable(app.eval(`(() => {
@@ -3617,6 +3617,28 @@
         }, "モニターの簡易パレット連結条件が選択可能パレットと一致しません");
       });
 
+      await runTest("モニターへ送る苗枚数に未定植分の枚数を表示する", () => {
+        const unplantedSeedlingState = comparable(app.eval(`(() => {
+          const previousGetCounts = getSeedlingInstructionCounts;
+          const previousGetSkipText = getHarvestOrderSkipSeedlingText;
+          try{
+            getHarvestOrderSkipSeedlingText = () => "";
+            getSeedlingInstructionCounts = () => ({ totalCount:9, additionalCount:3, carryoverSeedlings:0 });
+            const withUnplanted = getCurrentMonitorInstructionFields().seedling;
+            getSeedlingInstructionCounts = () => ({ totalCount:6, additionalCount:0, carryoverSeedlings:0 });
+            const withoutUnplanted = getCurrentMonitorInstructionFields().seedling;
+            return { withUnplanted, withoutUnplanted };
+          }finally{
+            getSeedlingInstructionCounts = previousGetCounts;
+            getHarvestOrderSkipSeedlingText = previousGetSkipText;
+          }
+        })()`));
+        assertDeepEqual(unplantedSeedlingState, {
+          withUnplanted:"9枚（未定植分 3枚）",
+          withoutUnplanted:"6枚（未定植分 0枚）"
+        }, "送信内容の苗枚数で未定植分を確認できません");
+      });
+
       await runTest("モニタータブで送信内容・送信状態・主操作をまとめて確認できる", () => {
         const monitorTabState = comparable(app.eval(`(() => {
           const previousGetPlanStatus = getWorkflowPlanStatus;
@@ -5286,18 +5308,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "24a3dd96", elements: 2180, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "a5da5e6f", elements: 2248, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "2ac66732", elements: 2248, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "15889cc6", elements: 2181, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "f42bd90b", elements: 2181, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "9540736c", elements: 2264, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "96456442", elements: 2279, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "223ede20", elements: 2279, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "56405d68", elements: 2279, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "19af1a01", elements: 2279, visible: 72, viewport: "390x844" },
-          wideForecast: { hash: "fe827e2c", elements: 2279, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "59d351c6", elements: 2279, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "795ef029", elements: 2181, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "3cc93c5b", elements: 2249, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "b9718ab6", elements: 2249, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "4d941b60", elements: 2182, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "6302c4f1", elements: 2182, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "7a3b3cc8", elements: 2265, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "7d0ce80c", elements: 2280, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "e2069552", elements: 2280, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "f3ab1406", elements: 2280, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "37ff2d7c", elements: 2280, visible: 73, viewport: "390x844" },
+          wideForecast: { hash: "711c6d7a", elements: 2280, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "6f104acc", elements: 2280, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
