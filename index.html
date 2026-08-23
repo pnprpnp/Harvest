@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-progress-modal">
+<meta name="harvestnavi-version" content="20260823-monitor-pallet-map">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8863,8 +8863,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-weight:700;
 }
 .monitorBedGrid{gap:5px;}
-.monitorBedCard,
-.monitorBedCard.full{
+.monitorBedCard{
   border-width:1px;
   border-color:var(--ui-line-strong);
   border-radius:10px;
@@ -8882,47 +8881,59 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-weight:780;
 }
 .monitorBedCount{
-  color:var(--ui-text-secondary);
-  font-size:10px;
-  font-weight:700;
+  color:var(--ui-accent-dark);
+  font-size:12px;
+  font-weight:780;
 }
-.monitorBedBar{gap:2px;}
-.monitorBedSegment{
-  border:0;
-  border-radius:6px;
-  background:#dbe7ef;
+.monitorBedPalletMap{
+  width:clamp(36px,64%,58px);
+  min-height:76px;
+  flex:1 1 auto;
+  display:flex;
+  margin:0 auto 4px;
 }
-.monitorBedSegment.recorded,
-.monitorBedSegment.recorded.active{background:#a7adb5;}
-.monitorBedSegment.recorded.partial{background:#c8ccd1;}
-.monitorBedSegment.selected.partial{background:#9be3ad;}
-.monitorBedSegment.selected.active{background:var(--ui-accent-bright);}
-.monitorBedSegment.partialHarvest{
-  background:#fbbf24;
-  box-shadow:inset 0 0 0 1px rgba(146,64,14,.32);
+.monitorBedPalletMapGrid{
+  width:100%;
+  height:auto;
+  min-height:76px;
+  flex:1 1 auto;
+  grid-template-rows:repeat(39,minmax(1px,1fr));
+  border-color:var(--ui-line-strong);
+  background:#eef0f3;
+  border-radius:4px;
 }
-.monitorBedSegment.recorded.partialHarvest{
-  background:#a7adb5;
-  box-shadow:none;
+.monitorBedPalletMap .monitorBedMapCell{
+  background:#eef0f3;
+  border-bottom-color:rgba(100,116,139,.11);
 }
-.monitorBedSegment.recorded.partial.partialHarvest{
-  background:#c8ccd1;
-}
-.monitorBedSegment.selected.partialHarvest{
-  background:var(--ui-accent-bright);
-  box-shadow:none;
-}
-.monitorBedSegment.selected.partial.partialHarvest{
-  background:#9be3ad;
-}
-.monitorBedSegment.selected.active.partialHarvest{
+.monitorBedPalletMap .monitorBedMapCell.is-selected,
+.monitorBedPalletMap .monitorBedMapCell.is-selected.is-partial-harvest{
   background:var(--ui-accent-bright);
 }
-.monitorBedCard.full .monitorBedBar{
-  border-color:var(--ui-accent);
-  background:var(--ui-accent-bright);
+.monitorBedPalletMap .monitorBedMapCell.is-recorded:not(.is-selected){background:#a7adb5;}
+.monitorBedPalletMap .monitorBedMapCell.is-partial-harvest{background:#eef0f3;}
+.monitorBedPalletMap .monitorBedMapCell.is-monitor-start,
+.monitorBedPalletMap .monitorBedMapCell.is-monitor-end{
+  box-shadow:inset 0 0 0 1px var(--ui-accent-dark);
 }
-.monitorBedCard.full .monitorBedSegment{background:var(--ui-accent-bright);}
+.monitorBedRangeMarkers{
+  min-height:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:2px;
+}
+.monitorBedRangeMarker{
+  padding:1px 3px;
+  border-radius:4px;
+  background:var(--ui-accent-soft);
+  color:var(--ui-accent-dark);
+  font-size:7px;
+  font-weight:800;
+  line-height:1.15;
+  white-space:nowrap;
+}
 .monitorMemoPanel{
   min-width:0;
   width:100%;
@@ -10320,7 +10331,6 @@ html[data-theme="dark"] .forecastPlantingAgeResult:active{background:rgba(126,16
 html[data-theme="dark"] .bed,
 html[data-theme="dark"] .buildingStatusCard,
 html[data-theme="dark"] .monitorBedCard,
-html[data-theme="dark"] .monitorBedCard.full,
 html[data-theme="dark"] .recordItem,
 html[data-theme="dark"] .seedlingHousePrimaryLot{
   border-color:var(--ui-line);
@@ -10544,10 +10554,17 @@ html[data-theme="dark"] .pallet{
 html[data-theme="dark"] .palletEven{background:#414d5d;}
 html[data-theme="dark"] .pallet.frontZone{border-color:#397151;background:#214330;}
 html[data-theme="dark"] .pallet.backZone{border-color:#81506a;background:#4b2b3b;}
-html[data-theme="dark"] .monitorBedSegment{background:#354150;}
-html[data-theme="dark"] .monitorBedSegment.recorded,
-html[data-theme="dark"] .monitorBedSegment.recorded.active{background:#697382;}
-html[data-theme="dark"] .monitorBedSegment.recorded.partial{background:#596371;}
+html[data-theme="dark"] .monitorBedPalletMapGrid,
+html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell,
+html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-partial-harvest{
+  border-color:#4b5664;
+  background:#2a3039;
+}
+html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-selected,
+html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-selected.is-partial-harvest{
+  background:var(--ui-accent-bright);
+}
+html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-recorded:not(.is-selected){background:#697382;}
 
 html[data-theme="dark"] .recordTitleHarvest{color:#71dc92;}
 html[data-theme="dark"] .recordTitlePlanting{color:#8bbcff;}
@@ -30498,16 +30515,48 @@ function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCou
   });
 }
 
-function isMonitorBedFullySelected(numbers, building, bed, recordedSet){
-  const selected = new Set(Array.isArray(numbers) ? numbers : []);
-  let selectableCount = 0;
-  for(let number = 1; number <= PALLETS_PER_BED; number++){
-    const key = getPalletKey(building, bed, number);
-    if(recordedSet?.has(key)) continue;
-    selectableCount++;
-    if(!selected.has(number)) return false;
+function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey){
+  const cells = [];
+  for(let row = ROWS; row >= 1; row--){
+    const displayRowIndex = ROWS - row;
+    const sectionStart = displayRowIndex > 0
+      && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
+    [row * 2 - 1, row * 2].forEach(number => {
+      const key = getPalletKey(building, bed, number);
+      const selected = selectedSet.has(key);
+      const recorded = recordedSet.has(key);
+      const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell", "monitorBedMapCell"];
+      if(selected) classes.push("is-selected");
+      if(recorded) classes.push("is-recorded");
+      if(selected && key === startKey) classes.push("is-monitor-start");
+      if(selected && key === endKey) classes.push("is-monitor-end");
+      if(sectionStart) classes.push("is-section-start");
+      const state = selected ? "今回収穫" : (recorded ? "収穫済み" : "未選択");
+      cells.push(`<span class="${classes.join(" ")}" title="${number}番 ${state}"></span>`);
+    });
   }
-  return selectableCount > 0;
+  return `
+    <div class="dashboardSeedlingBedMap simulationBedMap monitorBedPalletMap" aria-hidden="true">
+      <div class="dashboardSeedlingBedMapGrid monitorBedPalletMapGrid">${cells.join("")}</div>
+    </div>
+  `;
+}
+
+function getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey){
+  const start = parsePalletKey(startKey || "");
+  const end = parsePalletKey(endKey || "");
+  const hasStart = start.building === building && start.bed === bed && Number.isFinite(start.number);
+  const hasEnd = end.building === building && end.bed === bed && Number.isFinite(end.number);
+  if(!hasStart && !hasEnd) return '<div class="monitorBedRangeMarkers" aria-hidden="true"></div>';
+  if(hasStart && hasEnd && start.number === end.number){
+    return `<div class="monitorBedRangeMarkers"><span class="monitorBedRangeMarker is-both">開始・終了 ${start.number}</span></div>`;
+  }
+  return `
+    <div class="monitorBedRangeMarkers">
+      ${hasStart ? `<span class="monitorBedRangeMarker is-start">開始 ${start.number}</span>` : ""}
+      ${hasEnd ? `<span class="monitorBedRangeMarker is-end">終了 ${end.number}</span>` : ""}
+    </div>
+  `;
 }
 
 function getMonitorSelectionMapHtml(keysOverride){
@@ -30518,9 +30567,12 @@ function getMonitorSelectionMapHtml(keysOverride){
   const recordedSet = getRecordedPalletSet();
 
   const grouped = {};
+  const validKeys = [];
   sourceKeys.forEach(key => {
     const parsed = parsePalletKey(String(key || ""));
     if(!BUILDINGS.includes(parsed.building) || !bedOrder.includes(parsed.bed) || !Number.isFinite(parsed.number)) return;
+    const normalizedKey = getPalletKey(parsed.building, parsed.bed, parsed.number);
+    validKeys.push(normalizedKey);
     const buildingKey = String(parsed.building);
     if(!grouped[buildingKey]){
       grouped[buildingKey] = {};
@@ -30530,6 +30582,9 @@ function getMonitorSelectionMapHtml(keysOverride){
     }
     grouped[buildingKey][parsed.bed].push(parsed.number);
   });
+  const selectedSet = new Set(validKeys);
+  const startKey = validKeys[0] || "";
+  const endKey = validKeys[validKeys.length - 1] || "";
 
   return BUILDINGS
     .filter(building => grouped[String(building)])
@@ -30543,44 +30598,21 @@ function getMonitorSelectionMapHtml(keysOverride){
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
               const selectedCount = new Set(numbers).size;
-              const isFullBed = isMonitorBedFullySelected(numbers, building, bed, recordedSet);
-              const hasPartialHarvest = getPartialHarvestCountForPallet(building, bed, 1) > 0;
               let recordedCount = 0;
               for(let number = 1; number <= PALLETS_PER_BED; number++){
                 if(recordedSet.has(getPalletKey(building, bed, number))) recordedCount++;
               }
-              const segments = buildMonitorBedSegments(numbers, building, bed, recordedSet).reverse();
               const cardClass = numbers.length || recordedCount
-                ? `monitorBedCard${isFullBed ? " full" : ""}`
+                ? "monitorBedCard"
                 : "monitorBedCard inactive";
               return `
                 <div class="${cardClass}">
                   <div class="monitorBedHead">
                     <div class="monitorBedName">${bed}</div>
-                    <div class="monitorBedCount">${selectedCount ? `今回 ${selectedCount}枚` : ""}</div>
+                    <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
                   </div>
-                  <div class="monitorBedBar">
-                    ${segments.map(segment => {
-                      const segmentClasses = [
-                        "monitorBedSegment",
-                        segment.location,
-                        segment.selectedActive || segment.selectedPartial ? "selected" : "",
-                        segment.selectedActive ? "active" : "",
-                        segment.selectedPartial ? "partial" : "",
-                        segment.recordedActive || segment.recordedPartial ? "recorded" : "",
-                        segment.recordedActive ? "active" : "",
-                        segment.recordedPartial ? "partial" : "",
-                        hasPartialHarvest ? "partialHarvest" : ""
-                      ].filter(Boolean).join(" ");
-                      const title = [
-                        segment.location === "back" ? "奥" : (segment.location === "middle" ? "中央" : "手前"),
-                        segment.selectedCount ? `今回:${segment.selectedCount}枚` : "",
-                        segment.recordedCount ? `収穫済み:${segment.recordedCount}枚` : "",
-                        hasPartialHarvest ? "各パレット部分収穫あり" : ""
-                      ].filter(Boolean).join(" ");
-                      return `<span class="${segmentClasses}" title="${escapeHtml(title)}"></span>`;
-                    }).join("")}
-                  </div>
+                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey)}
+                  ${getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey)}
                 </div>
               `;
             }).join("")}
@@ -30820,7 +30852,6 @@ function buildMonitorDashboardHtml(content){
           <div class="monitorMapLegend" aria-label="収穫場所の凡例">
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
-            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip partialHarvest"></span>部分収穫あり</span>
           </div>
         </div>
         <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [])}</div>

@@ -318,16 +318,48 @@ function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCou
   });
 }
 
-function isMonitorBedFullySelected(numbers, building, bed, recordedSet){
-  const selected = new Set(Array.isArray(numbers) ? numbers : []);
-  let selectableCount = 0;
-  for(let number = 1; number <= PALLETS_PER_BED; number++){
-    const key = getPalletKey(building, bed, number);
-    if(recordedSet?.has(key)) continue;
-    selectableCount++;
-    if(!selected.has(number)) return false;
+function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey){
+  const cells = [];
+  for(let row = ROWS; row >= 1; row--){
+    const displayRowIndex = ROWS - row;
+    const sectionStart = displayRowIndex > 0
+      && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
+    [row * 2 - 1, row * 2].forEach(number => {
+      const key = getPalletKey(building, bed, number);
+      const selected = selectedSet.has(key);
+      const recorded = recordedSet.has(key);
+      const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell", "monitorBedMapCell"];
+      if(selected) classes.push("is-selected");
+      if(recorded) classes.push("is-recorded");
+      if(selected && key === startKey) classes.push("is-monitor-start");
+      if(selected && key === endKey) classes.push("is-monitor-end");
+      if(sectionStart) classes.push("is-section-start");
+      const state = selected ? "今回収穫" : (recorded ? "収穫済み" : "未選択");
+      cells.push(`<span class="${classes.join(" ")}" title="${number}番 ${state}"></span>`);
+    });
   }
-  return selectableCount > 0;
+  return `
+    <div class="dashboardSeedlingBedMap simulationBedMap monitorBedPalletMap" aria-hidden="true">
+      <div class="dashboardSeedlingBedMapGrid monitorBedPalletMapGrid">${cells.join("")}</div>
+    </div>
+  `;
+}
+
+function getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey){
+  const start = parsePalletKey(startKey || "");
+  const end = parsePalletKey(endKey || "");
+  const hasStart = start.building === building && start.bed === bed && Number.isFinite(start.number);
+  const hasEnd = end.building === building && end.bed === bed && Number.isFinite(end.number);
+  if(!hasStart && !hasEnd) return '<div class="monitorBedRangeMarkers" aria-hidden="true"></div>';
+  if(hasStart && hasEnd && start.number === end.number){
+    return `<div class="monitorBedRangeMarkers"><span class="monitorBedRangeMarker is-both">開始・終了 ${start.number}</span></div>`;
+  }
+  return `
+    <div class="monitorBedRangeMarkers">
+      ${hasStart ? `<span class="monitorBedRangeMarker is-start">開始 ${start.number}</span>` : ""}
+      ${hasEnd ? `<span class="monitorBedRangeMarker is-end">終了 ${end.number}</span>` : ""}
+    </div>
+  `;
 }
 
 function getMonitorSelectionMapHtml(keysOverride){
@@ -338,9 +370,12 @@ function getMonitorSelectionMapHtml(keysOverride){
   const recordedSet = getRecordedPalletSet();
 
   const grouped = {};
+  const validKeys = [];
   sourceKeys.forEach(key => {
     const parsed = parsePalletKey(String(key || ""));
     if(!BUILDINGS.includes(parsed.building) || !bedOrder.includes(parsed.bed) || !Number.isFinite(parsed.number)) return;
+    const normalizedKey = getPalletKey(parsed.building, parsed.bed, parsed.number);
+    validKeys.push(normalizedKey);
     const buildingKey = String(parsed.building);
     if(!grouped[buildingKey]){
       grouped[buildingKey] = {};
@@ -350,6 +385,9 @@ function getMonitorSelectionMapHtml(keysOverride){
     }
     grouped[buildingKey][parsed.bed].push(parsed.number);
   });
+  const selectedSet = new Set(validKeys);
+  const startKey = validKeys[0] || "";
+  const endKey = validKeys[validKeys.length - 1] || "";
 
   return BUILDINGS
     .filter(building => grouped[String(building)])
@@ -363,44 +401,21 @@ function getMonitorSelectionMapHtml(keysOverride){
             ${bedMap.map(bed => {
               const numbers = (beds[bed] || []).slice().sort((a, b) => a - b);
               const selectedCount = new Set(numbers).size;
-              const isFullBed = isMonitorBedFullySelected(numbers, building, bed, recordedSet);
-              const hasPartialHarvest = getPartialHarvestCountForPallet(building, bed, 1) > 0;
               let recordedCount = 0;
               for(let number = 1; number <= PALLETS_PER_BED; number++){
                 if(recordedSet.has(getPalletKey(building, bed, number))) recordedCount++;
               }
-              const segments = buildMonitorBedSegments(numbers, building, bed, recordedSet).reverse();
               const cardClass = numbers.length || recordedCount
-                ? `monitorBedCard${isFullBed ? " full" : ""}`
+                ? "monitorBedCard"
                 : "monitorBedCard inactive";
               return `
                 <div class="${cardClass}">
                   <div class="monitorBedHead">
                     <div class="monitorBedName">${bed}</div>
-                    <div class="monitorBedCount">${selectedCount ? `今回 ${selectedCount}枚` : ""}</div>
+                    <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
                   </div>
-                  <div class="monitorBedBar">
-                    ${segments.map(segment => {
-                      const segmentClasses = [
-                        "monitorBedSegment",
-                        segment.location,
-                        segment.selectedActive || segment.selectedPartial ? "selected" : "",
-                        segment.selectedActive ? "active" : "",
-                        segment.selectedPartial ? "partial" : "",
-                        segment.recordedActive || segment.recordedPartial ? "recorded" : "",
-                        segment.recordedActive ? "active" : "",
-                        segment.recordedPartial ? "partial" : "",
-                        hasPartialHarvest ? "partialHarvest" : ""
-                      ].filter(Boolean).join(" ");
-                      const title = [
-                        segment.location === "back" ? "奥" : (segment.location === "middle" ? "中央" : "手前"),
-                        segment.selectedCount ? `今回:${segment.selectedCount}枚` : "",
-                        segment.recordedCount ? `収穫済み:${segment.recordedCount}枚` : "",
-                        hasPartialHarvest ? "各パレット部分収穫あり" : ""
-                      ].filter(Boolean).join(" ");
-                      return `<span class="${segmentClasses}" title="${escapeHtml(title)}"></span>`;
-                    }).join("")}
-                  </div>
+                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, startKey, endKey)}
+                  ${getMonitorBedRangeMarkersHtml(building, bed, startKey, endKey)}
                 </div>
               `;
             }).join("")}
@@ -640,7 +655,6 @@ function buildMonitorDashboardHtml(content){
           <div class="monitorMapLegend" aria-label="収穫場所の凡例">
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
-            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip partialHarvest"></span>部分収穫あり</span>
           </div>
         </div>
         <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [])}</div>

@@ -284,11 +284,12 @@
           <span class="pallet plantingSelectablePallet"></span><span class="pallet plantingSelectedPallet"></span>
           <span class="pallet plantingUnavailablePallet"></span><span class="pallet harvestProgressCompletedPallet"></span>
         </div>
-        <div class="monitorBedBar">
-          <span class="monitorBedSegment partialHarvest"></span>
-          <span class="monitorBedSegment selected partialHarvest"></span>
-          <span class="monitorBedSegment recorded partialHarvest"></span>
-          <span class="monitorBedSegment recorded partial partialHarvest"></span>
+        <div class="monitorBedPalletMap">
+          <span class="monitorBedMapCell"></span>
+          <span class="monitorBedMapCell is-partial-harvest"></span>
+          <span class="monitorBedMapCell is-selected"></span>
+          <span class="monitorBedMapCell is-selected is-partial-harvest"></span>
+          <span class="monitorBedMapCell is-recorded"></span>
         </div>
         <button class="harvestProgressBed is-selected"><span class="bedMiniMapSegment"></span></button>
         <div class="bed harvestProgressCompletedBed"><span class="bedMiniMapSegment"></span></div>
@@ -3954,41 +3955,70 @@
         }
       });
 
-      await runTest("モニターは選択可能なパレットを全選択すると簡易表示を連結する", () => {
+      await runTest("モニターはシミュと同じ2列39段の配置図で収穫場所を表示する", () => {
         const monitorState = comparable(app.eval(`(() => {
           const previousGetRecorded = getRecordedPalletSet;
-          const selectedKeys = Array.from(
-            { length: PALLETS_PER_BED - 2 },
-            (_, index) => getPalletKey(2, "A", index + 1)
-          );
+          const selectedKeys = [
+            getPalletKey(2, "F", 1),
+            getPalletKey(2, "F", 2),
+            getPalletKey(2, "D", 78)
+          ];
           const recordedSet = new Set([
-            getPalletKey(2, "A", PALLETS_PER_BED - 1),
-            getPalletKey(2, "A", PALLETS_PER_BED)
+            getPalletKey(2, "A", 1),
+            getPalletKey(2, "A", 2)
           ]);
-          const readBedState = keys => {
-            const host = document.createElement("div");
-            host.innerHTML = getMonitorSelectionMapHtml(keys);
-            const card = [...host.querySelectorAll(".monitorBedCard")]
-              .find(item => item.querySelector(".monitorBedName")?.textContent === "A");
-            return {
-              full: card?.classList.contains("full") || false,
-              segments: card?.querySelectorAll(".monitorBedSegment").length || 0
-            };
-          };
+          const host = document.createElement("div");
+          const dashboardHost = document.createElement("div");
           try{
             getRecordedPalletSet = () => recordedSet;
+            host.innerHTML = getMonitorSelectionMapHtml(selectedKeys);
+            document.body.appendChild(host);
+            dashboardHost.innerHTML = buildMonitorDashboardHtml({
+              enabled:true,
+              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 2号棟 F-1〜2、D-78\\n残すケース:\\nなし",
+              harvestFillKeys:selectedKeys,
+              memoItems:[]
+            });
+            const cards = [...host.querySelectorAll(".monitorBedCard")];
+            const cardByBed = bed => cards.find(card => card.querySelector(".monitorBedName")?.textContent === bed);
+            const firstGrid = host.querySelector(".monitorBedPalletMapGrid");
             return {
-              allSelectableSelected: readBedState(selectedKeys),
-              oneSelectableMissing: readBedState(selectedKeys.slice(0, -1))
+              buildingTitle:host.querySelector(".monitorBuildingTitle")?.textContent.trim() || "",
+              bedNames:cards.map(card => card.querySelector(".monitorBedName")?.textContent.trim() || ""),
+              counts:cards.map(card => card.querySelector(".monitorBedCount")?.textContent.trim() || ""),
+              mapCount:host.querySelectorAll(".monitorBedPalletMap").length,
+              cellCount:host.querySelectorAll(".monitorBedMapCell").length,
+              selectedCount:host.querySelectorAll(".monitorBedMapCell.is-selected").length,
+              recordedCount:host.querySelectorAll(".monitorBedMapCell.is-recorded").length,
+              partialHarvestCount:host.querySelectorAll(".monitorBedMapCell.is-partial-harvest").length,
+              oldSegmentCount:host.querySelectorAll(".monitorBedSegment").length,
+              columns:getComputedStyle(firstGrid).gridTemplateColumns.trim().split(/\\s+/).length,
+              rows:getComputedStyle(firstGrid).gridTemplateRows.trim().split(/\\s+/).length,
+              startMarker:cardByBed("F")?.querySelector(".monitorBedRangeMarker.is-start")?.textContent.trim() || "",
+              endMarker:cardByBed("D")?.querySelector(".monitorBedRangeMarker.is-end")?.textContent.trim() || "",
+              legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim())
             };
           }finally{
+            host.remove();
             getRecordedPalletSet = previousGetRecorded;
           }
         })()`));
         assertDeepEqual(monitorState, {
-          allSelectableSelected: { full: true, segments: 6 },
-          oneSelectableMissing: { full: false, segments: 6 }
-        }, "モニターの簡易パレット連結条件が選択可能パレットと一致しません");
+          buildingTitle:"2号棟",
+          bedNames:["F", "D", "B", "E", "C", "A"],
+          counts:["2枚", "1枚", "", "", "", ""],
+          mapCount:6,
+          cellCount:468,
+          selectedCount:3,
+          recordedCount:2,
+          partialHarvestCount:0,
+          oldSegmentCount:0,
+          columns:2,
+          rows:39,
+          startMarker:"開始 1",
+          endMarker:"終了 78",
+          legend:["今回収穫", "収穫済み"]
+        }, "モニターの収穫場所が2列39段の配置図になっていません");
       });
 
       await runTest("モニターへ送る苗枚数に未定植分の枚数を表示する", () => {
@@ -5353,11 +5383,11 @@
             '</div>',
             '<span class="simulationBedMapCell is-selected"></span>',
             '<span class="simulationBedMapCell is-selected is-partial-harvest"></span>',
-            '<div class="monitorBedBar">',
-            '<span class="monitorBedSegment selected active"></span>',
-            '<span class="monitorBedSegment selected active partialHarvest"></span>',
-            '<span class="monitorBedSegment selected partial"></span>',
-            '<span class="monitorBedSegment selected partial partialHarvest"></span>',
+            '<div class="monitorBedPalletMap">',
+            '<span class="monitorBedMapCell"></span>',
+            '<span class="monitorBedMapCell is-partial-harvest"></span>',
+            '<span class="monitorBedMapCell is-selected"></span>',
+            '<span class="monitorBedMapCell is-selected is-partial-harvest"></span>',
             '</div>'
           ].join("");
           document.body.appendChild(host);
@@ -5369,8 +5399,8 @@
               [".pallet.harvestStart:not(.partialHarvestPallet)", ".pallet.harvestStart.partialHarvestPallet"],
               [".pallet.harvestEnd:not(.partialHarvestPallet)", ".pallet.harvestEnd.partialHarvestPallet"],
               [".simulationBedMapCell.is-selected:not(.is-partial-harvest)", ".simulationBedMapCell.is-selected.is-partial-harvest"],
-              [".monitorBedSegment.selected.active:not(.partialHarvest)", ".monitorBedSegment.selected.active.partialHarvest"],
-              [".monitorBedSegment.selected.partial:not(.partialHarvest)", ".monitorBedSegment.selected.partial.partialHarvest"]
+              [".monitorBedMapCell:not(.is-selected):not(.is-partial-harvest)", ".monitorBedMapCell.is-partial-harvest:not(.is-selected)"],
+              [".monitorBedMapCell.is-selected:not(.is-partial-harvest)", ".monitorBedMapCell.is-selected.is-partial-harvest"]
             ];
             const properties = ["backgroundColor", "backgroundImage", "borderColor", "boxShadow"];
             return selectors.map(([plainSelector, partialSelector]) => {
@@ -5812,8 +5842,8 @@
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
           mobileForecast: { hash: "e0af881c", elements: 2208, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "0406698b", elements: 2276, visible: 665, viewport: "390x844" },
-          cssFocus: { hash: "a5cba306", elements: 2276, visible: 665, viewport: "390x844" },
+          cssStates: { hash: "880ad8eb", elements: 2277, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "9c42fcee", elements: 2277, visible: 661, viewport: "390x844" },
           mobileRecord: { hash: "55802de8", elements: 2209, visible: 104, viewport: "390x844" },
           mobileDashboard: { hash: "50c8d4fe", elements: 2209, visible: 104, viewport: "390x844" },
           mobileDashboardRecord: { hash: "68ebb3b6", elements: 2292, visible: 168, viewport: "390x844" },
