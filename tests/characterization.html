@@ -5319,6 +5319,30 @@
         }, "記録タブ上部の工程表示が現在の記録モードに追従していません");
       });
 
+      await runTest("記録の工程表示をヘッダー直下へ配置する", () => {
+        const layoutState = comparable(app.eval(`(() => {
+          const previousTab = activeAppTab;
+          const previousScrollY = window.scrollY;
+          try{
+            switchTab("record");
+            window.scrollTo(0, 0);
+            const chrome = document.querySelector(".appTopChrome");
+            const status = document.getElementById("recordModeStatus");
+            return {
+              gap:Math.round(status.getBoundingClientRect().top - chrome.getBoundingClientRect().bottom),
+              cardPaddingTop:getComputedStyle(document.getElementById("recordSaveCard")).paddingTop
+            };
+          }finally{
+            switchTab(previousTab);
+            window.scrollTo(0, previousScrollY);
+          }
+        })()`));
+        assertDeepEqual(layoutState, {
+          gap:0,
+          cardPaddingTop:"0px"
+        }, "記録工程とヘッダーの間に余白が残っています");
+      });
+
       await runTest("記録タブもシミュと同じ縦型パレット配置図を使う", () => {
         const mapState = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");
@@ -6616,18 +6640,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "421c8d13", elements: 2230, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "1a70f374", elements: 2299, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "aff7990d", elements: 2299, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "8522c0a1", elements: 2231, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "9d641028", elements: 2231, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "1277609d", elements: 2314, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "07016e1b", elements: 2329, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "ac4b324d", elements: 2329, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "2fd75ad3", elements: 2329, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "5302de62", elements: 2329, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "9000346d", elements: 2329, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "b3e60d99", elements: 2329, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "8e911b32", elements: 2230, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "ebacc60f", elements: 2299, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "203bef52", elements: 2299, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "57bf8842", elements: 2231, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "ba23e5e1", elements: 2231, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "bd3e3f8e", elements: 2314, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "66f1b742", elements: 2329, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "3dbd62ea", elements: 2329, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "ccbfabee", elements: 2329, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "de879c47", elements: 2329, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "1aca7bce", elements: 2329, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "b2146832", elements: 2329, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
