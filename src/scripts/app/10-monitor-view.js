@@ -595,11 +595,10 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
     const placementHtml = buildingOrder.map(building => {
       const summary = summaries[String(building)];
       if(!summary.placement) return "";
-      const circledBuilding = String.fromCodePoint(0x2460 + building - 1);
       return `
         <div class="monitorCaseBuildingSummary is-placement">
           <div class="monitorCasePlacementRow">
-            <span class="monitorCaseBuildingCircle">${circledBuilding}</span>
+            <span class="monitorCaseBuildingCircle" aria-label="${building}号棟">${building}</span>
             <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span>
           </div>
         </div>
@@ -631,7 +630,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
       return `<div class="monitorRemainingLine is-freeform${shortageClass}">${lineHtml}</div>`;
     }).join("");
     if(!hasRemainingLocations && !freeHtml) return `<div class="monitorRemainingLine is-freeform">なし</div>`;
-    return `${remainingHtml}${hasRemainingLocations ? `<div class="monitorRemainingFooter">ケース残す</div>` : ""}${freeHtml}`;
+    return `${remainingHtml}${freeHtml}`;
   }
   const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
@@ -853,6 +852,7 @@ function buildMonitorDashboardHtml(content){
                 <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
                 <path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>
               </svg>
+              <span class="monitorMetricLabelText monitorRemainingLabelText">ケース残す </span>
             </div>
             <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases, normalized.harvestFillKeys || [], "remaining")}</div>
           </div>

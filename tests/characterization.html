@@ -4114,9 +4114,18 @@
                 return Math.abs(icon.getBoundingClientRect().width - parseFloat(getComputedStyle(line).fontSize)) < 0.1;
               }),
               placementRows:[...host.querySelectorAll(".monitorCasePlacementRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
+              placementBuildingDigits:[...host.querySelectorAll(".monitorCaseBuildingCircle")].map(circle => circle.textContent.trim()),
+              placementBuildingDigitsAreReadable:[...host.querySelectorAll(".monitorCaseBuildingCircle")].every(circle =>
+                parseFloat(getComputedStyle(circle).fontWeight) >= 700 && getComputedStyle(circle).borderRadius === "50%"
+              ),
               remainingRows:[...host.querySelectorAll(".monitorCaseRemainingRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
-              remainingFooter:host.querySelector(".monitorRemainingFooter")?.textContent.trim() || "",
-              remainingFooterCentered:getComputedStyle(host.querySelector(".monitorRemainingFooter")).textAlign === "center",
+              remainingLabelSharesValueRow:(() => {
+                const card = host.querySelector(".monitorRemainingCard");
+                const line = card?.querySelector(".monitorMetricLine");
+                return card?.querySelector(".monitorRemainingLabelText")?.parentElement?.parentElement === line &&
+                  card?.querySelector(".monitorRemainingList")?.parentElement === line;
+              })(),
+              remainingFooterAbsent:!host.querySelector(".monitorRemainingFooter"),
               buildingSummaries:[...host.querySelectorAll(".monitorCaseBuildingSummary")]
                 .map(summary => summary.textContent.trim().replace(/\\s+/g, "")),
               updatedAtText:host.querySelector(".monitorUpdatedAt")?.textContent.replace(/\\s+/g, " ").trim() || "",
@@ -4127,7 +4136,7 @@
           }
         })()`));
         assertDeepEqual(summaryState, {
-          labels:["苗：", "収穫：", "配置：", ""],
+          labels:["苗：", "収穫：", "配置：", "ケース残す"],
           labelsUseHalfWidthSpace:true,
           summaryColumns:4,
           caseCardsUseEqualWidths:true,
@@ -4141,11 +4150,13 @@
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
           allIconSizesMatch:true,
-          placementRows:["②48ケース"],
+          placementRows:["248ケース"],
+          placementBuildingDigits:["2"],
+          placementBuildingDigitsAreReadable:true,
           remainingRows:["2-前6", "中20", "奥30"],
-          remainingFooter:"ケース残す",
-          remainingFooterCentered:true,
-          buildingSummaries:["②48ケース", "2-前6中20奥30"],
+          remainingLabelSharesValueRow:true,
+          remainingFooterAbsent:true,
+          buildingSummaries:["248ケース", "2-前6中20奥30"],
           updatedAtText:"最終更新2026/8/23 17:14",
           updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");
