@@ -301,12 +301,19 @@ function formatMonitorTabDetailValueHtml(value){
     .join("<br>");
 }
 
+function formatMonitorTabMetricValueHtml(value, fallbackUnit){
+  const parts = getMonitorMetricParts(value, fallbackUnit);
+  const unit = parts.unit || "";
+  const noteHtml = parts.note
+    ? `<span class="instructionAutoNote">${escapeHtml(parts.note)}</span>`
+    : "";
+  return `<span class="instructionEmphasis">${escapeHtml(parts.value)}${escapeHtml(unit)}</span>${noteHtml}`;
+}
+
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
-  const cases = casePlan.totalCases;
   updatePartialHarvestDeductionNote(casePlan);
   updateRecordPartialHarvestIncludedNote();
-  const seedlingCounts = getSeedlingInstructionCounts();
   renderSeedlingHouseUi();
   const resultActions = document.getElementById("forecastResultActions");
   if(resultActions){
@@ -338,18 +345,17 @@ function renderForecastSummary(){
 
   const instructionBox = document.getElementById("instructionSummary");
   if(instructionBox){
-    const completedCases = getHarvestProgressActualCases() + casePlan.partialCases;
-    const caseValueHtml = hasAppliedHarvestProgress()
-      ? `<span class="instructionEmphasis">残り ${escapeHtml(formatHarvestProgressCases(getHarvestProgressRemainingTargetCases()))}ケース</span><span class="instructionAutoNote">（目標 ${escapeHtml(String(cases))} / 収穫済み ${escapeHtml(formatHarvestProgressCases(completedCases))}）</span>`
-      : `<span class="instructionEmphasis">${escapeHtml(String(cases))}ケース</span>`;
-    const harvestLocationLine = formatHarvestLocationInstruction(getHarvestProgressRemainingSelectionKeys());
-    const harvestLocationValue = harvestLocationLine.replace(/^収穫場所:\s*/, "") || "-";
-    const remainingCasesValue = getCasePlacementSummaryText() || "なし";
+    const monitorContent = buildCurrentMonitorRemoteContent();
+    const monitorFields = parseMonitorInstructionFields(monitorContent.instructionText);
+    const seedlingValueHtml = formatMonitorTabMetricValueHtml(monitorFields.seedling, "枚");
+    const caseValueHtml = formatMonitorTabMetricValueHtml(monitorFields.cases, "ケース");
+    const harvestLocationValue = monitorFields.harvestLocation || "-";
+    const remainingCasesValue = monitorFields.remainingCases || "なし";
     instructionBox.innerHTML = `
       <div class="monitorSendMetricGrid">
         <div class="monitorSendMetricItem">
           <span class="monitorSendSummaryLabel">苗枚数</span>
-          <div class="monitorSendSummaryValue">${getSeedlingInstructionValueEditorHtml(seedlingCounts.totalCount, seedlingCounts.additionalCount, seedlingCounts.carryoverSeedlings)}</div>
+          <div class="monitorSendSummaryValue">${seedlingValueHtml}</div>
         </div>
         <div class="monitorSendMetricItem">
           <span class="monitorSendSummaryLabel">収穫ケース数</span>
@@ -364,7 +370,7 @@ function renderForecastSummary(){
         <span class="monitorSendSummaryLabel">残すケース</span>
         <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(remainingCasesValue)}</div>
       </div>`;
-    bindSeedlingInlineInput();
+    renderMonitorMemoReadOnly(monitorContent);
   }
   renderMonitorTabControls();
 

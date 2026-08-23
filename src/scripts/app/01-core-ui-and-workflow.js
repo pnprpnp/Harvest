@@ -318,6 +318,8 @@ let monitorFirebaseFallbackNoticeShown = false;
 let monitorMemoInputsDirty = false;
 let monitorMemoRemoteLoadGeneration = 0;
 let monitorRemoteEditorHarvestFillKeys = [];
+let monitorContentDraftOverride = null;
+let monitorContentDraftBaseSignature = "";
 let monitorModeOpenInProgress = false;
 let monitorModeLoading = false;
 let monitorCurrentSaveInProgress = false;
@@ -512,35 +514,19 @@ function hidePageBlockingUi(element){
   restorePageAfterBlockingUiClose();
 }
 
-async function openMonitorEditorWindow(){
+function openMonitorEditorWindow(){
   const modal = document.getElementById("monitorEditorModal");
   const body = document.getElementById("monitorEditorModalBody");
   const content = document.getElementById("monitorRemoteEditorContent");
   const tabBar = document.querySelector(".tabBar");
   if(!modal || !body || !content) return;
-  body.innerHTML = `<div class="monitorEmpty monitorLoading">最新のモニター内容を読み込み中です</div>`;
-  showPageBlockingUi(modal);
-  if(tabBar) tabBar.classList.add("monitorHidden");
-
-  const config = getValidatedGoogleSheetConfig({ statusSetter: setMonitorRemoteEditorStatus });
-  if(!config){
-    body.innerHTML = "";
-    body.appendChild(content);
-    renderMonitorRemoteMemoInputs([]);
-    return;
-  }
-
-  setMonitorRemoteEditorStatus("最新のモニター内容を読み込み中です...");
-  const contentFromRemote = await fetchMonitorRemoteContent({ silentErrors: false, force: true });
-  if(contentFromRemote){
-    populateMonitorRemoteEditor(contentFromRemote);
-    setMonitorRemoteEditorStatus("最新のモニター内容を読み込みました。");
-  }else{
-    renderMonitorRemoteMemoInputs([]);
-    setMonitorRemoteEditorStatus("最新のモニター内容を読み込めませんでした。");
-  }
+  populateMonitorRemoteEditor(buildCurrentMonitorRemoteContent());
+  setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
   body.innerHTML = "";
   body.appendChild(content);
+  showPageBlockingUi(modal);
+  if(tabBar) tabBar.classList.add("monitorHidden");
+  requestAnimationFrame(() => document.getElementById("monitorRemoteSeedlingValueInput")?.focus());
 }
 
 function closeMonitorEditorWindow(){
@@ -978,6 +964,8 @@ function saveHarvestStateToStorage(options = {}){
     monitorMemoInput: getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
     monitorMemoItems: getMonitorMemoInputValues(),
     monitorMemoInputsDirty,
+    monitorContentDraftOverride,
+    monitorContentDraftBaseSignature,
     casePlacementByBuilding,
     recordCasesInput: document.getElementById("recordCasesInput")?.value || "",
     recordActualSeedlingTrayCountInput: document.getElementById("recordActualSeedlingTrayCountInput")?.value || "",
@@ -1106,6 +1094,10 @@ function loadHarvestStateFromStorage(){
       monitorMemoInput: parsed.monitorMemoInput ?? "",
       monitorMemoItems: Array.isArray(parsed.monitorMemoItems) ? parsed.monitorMemoItems.map(item => String(item ?? "")) : null,
       monitorMemoInputsDirty: parsed.monitorMemoInputsDirty === true,
+      monitorContentDraftOverride: normalizeRemoteMonitorContent(parsed.monitorContentDraftOverride),
+      monitorContentDraftBaseSignature: typeof parsed.monitorContentDraftBaseSignature === "string"
+        ? parsed.monitorContentDraftBaseSignature.slice(0, 128)
+        : "",
       casePlacementByBuilding: parsed.casePlacementByBuilding && typeof parsed.casePlacementByBuilding === "object" ? parsed.casePlacementByBuilding : null,
       frontCaseInput: parsed.frontCaseInput ?? "",
       middleCaseInput: parsed.middleCaseInput ?? "",
@@ -2718,14 +2710,15 @@ function hashWorkflowCheckpoint(value){
 }
 
 function getWorkflowPlanFingerprint(){
-  const memoItems = getMonitorMemoInputValues()
+  const monitorContent = buildCurrentMonitorRemoteContent();
+  const memoItems = normalizeMonitorMemoItems(monitorContent.memoItems, monitorContent.memoText)
     .map(item => String(item || "").trim())
     .filter(Boolean);
-  const selectedKeys = [...new Set(getHarvestProgressRemainingSelectionKeys(harvestFillKeys))]
+  const selectedKeys = [...new Set(expandPalletKeyItemsToKeys(monitorContent.harvestFillKeys))]
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   return hashWorkflowCheckpoint(JSON.stringify({
     targetDay: getHarvestTargetDateString(),
-    instructionText: buildMonitorInstructionTextFromFields(getCurrentMonitorInstructionFields()).replace(/\r\n?/g, "\n").trim(),
+    instructionText: String(monitorContent.instructionText || "").replace(/\r\n?/g, "\n").trim(),
     memoItems,
     harvestFillKeys: selectedKeys
   }));

@@ -601,7 +601,7 @@ function readMonitorRemoteEditorContent(){
   };
 }
 
-function buildCurrentMonitorRemoteContent(){
+function buildCalculatedMonitorRemoteContent(){
   const memoItems = getMonitorMemoInputValues();
   const remainingKeys = getHarvestProgressRemainingSelectionKeys();
 
@@ -614,13 +614,61 @@ function buildCurrentMonitorRemoteContent(){
   };
 }
 
+function getMonitorContentDraftBaseSignature(){
+  const content = buildCalculatedMonitorRemoteContent();
+  return hashWorkflowCheckpoint(JSON.stringify({
+    instructionText: content.instructionText,
+    harvestFillKeys: content.harvestFillKeys
+  }));
+}
+
+function getActiveMonitorContentDraft(){
+  if(!monitorContentDraftOverride || !monitorContentDraftBaseSignature) return null;
+  if(monitorContentDraftBaseSignature !== getMonitorContentDraftBaseSignature()) return null;
+  return normalizeRemoteMonitorContent(monitorContentDraftOverride);
+}
+
+function buildCurrentMonitorRemoteContent(){
+  const draft = getActiveMonitorContentDraft();
+  if(!draft) return buildCalculatedMonitorRemoteContent();
+  return {
+    enabled:true,
+    instructionText:draft.instructionText,
+    memoText:getMonitorMemoTextFromItems(draft.memoItems),
+    memoItems:draft.memoItems,
+    harvestFillKeys:compressPalletKeysToRanges(draft.harvestFillKeys)
+  };
+}
+
 function fillMonitorRemoteEditorFromCurrentState(){
   const content = buildCurrentMonitorRemoteContent();
-  populateMonitorRemoteEditor({
-    ...content,
-    harvestFillKeys
-  });
-  setMonitorRemoteEditorStatus("現在の計算内容を編集欄に反映しました。保存するとモニターへ配信されます。");
+  populateMonitorRemoteEditor(content);
+  setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
+}
+
+function applyMonitorCurrentEditor(){
+  const editedContent = normalizeRemoteMonitorContent(readMonitorRemoteEditorContent());
+  if(!editedContent){
+    setMonitorRemoteEditorStatus("入力内容が長すぎるか、使用できない値が含まれています。");
+    showToast("編集内容を反映できませんでした");
+    return;
+  }
+
+  monitorContentDraftBaseSignature = getMonitorContentDraftBaseSignature();
+  monitorContentDraftOverride = {
+    enabled:true,
+    instructionText:editedContent.instructionText,
+    memoText:getMonitorMemoTextFromItems(editedContent.memoItems),
+    memoItems:editedContent.memoItems,
+    harvestFillKeys:compressPalletKeysToRanges(editedContent.harvestFillKeys)
+  };
+  renderMonitorMemoInputs(editedContent.memoItems);
+  monitorMemoInputsDirty = true;
+  invalidateWorkflowMonitorCheckpoint();
+  renderForecastSummary();
+  saveHarvestStateToStorage();
+  closeMonitorEditorWindow();
+  showToast("今回送る内容を変更しました");
 }
 
 function setCurrentMonitorSaveLoading(isLoading, message = "モニターへ送信中…"){

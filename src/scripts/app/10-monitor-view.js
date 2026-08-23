@@ -40,27 +40,7 @@ function formatInstructionDisplayHtml(text){
 }
 
 function buildInstructionSummaryText(){
-  if(hasAppliedHarvestProgress()){
-    return buildMonitorInstructionTextFromFields(getCurrentMonitorInstructionFields());
-  }
-  const casePlan = getHarvestCasePlan();
-  const cases = casePlan.totalCases;
-  const seedlingCounts = getSeedlingInstructionCounts();
-  const skipSeedlingText = getHarvestOrderSkipSeedlingText();
-  const seedlingLine = getSeedlingInstructionTextForMonitor(seedlingCounts.totalCount, seedlingCounts.carryoverSeedlings)
-    + (skipSeedlingText ? `（${skipSeedlingText}）` : "");
-  const caseLine = "収穫ケース数: " + cases;
-  const additionalCaseLines = casePlan.partialCases > 0
-    ? "各パレット部分収穫: " + casePlan.partialCases + "ケース\n" +
-      "通常順の収穫: " + casePlan.regularCases + "ケース"
-    : "";
-
-  return (
-    seedlingLine + " / " + caseLine + "\n" +
-    (additionalCaseLines ? additionalCaseLines + "\n" : "") +
-    formatHarvestLocationInstruction() + "\n" +
-    "残すケース: " + getCasePlacementSummaryText().replace(/\n/g, "\n")
-  );
+  return buildCurrentMonitorRemoteContent().instructionText;
 }
 
 function renderMonitorTabControls(){
@@ -156,8 +136,6 @@ function renderMemoInputsToList(listId, items = [], options = {}){
 }
 
 function renderMonitorMemoInputs(items = []){
-  const hasMemo = normalizeMonitorMemoItems(items)
-    .some(item => String(item || "").trim() !== "");
   renderMemoInputsToList("monitorMemoInputList", items, {
     inputClass: "monitorMemoItemInput",
     kind: "main",
@@ -165,7 +143,21 @@ function renderMonitorMemoInputs(items = []){
     onInput: handleMonitorMemoInput
   });
   refreshMonitorMemoPanelSummary();
-  setMonitorMemoPanelOpen(hasMemo);
+  setMonitorMemoPanelOpen(false);
+  renderMonitorMemoReadOnly();
+}
+
+function renderMonitorMemoReadOnly(contentOverride){
+  const valueElement = document.getElementById("monitorMemoReadOnlyValue");
+  if(!valueElement) return;
+  const content = contentOverride || buildCurrentMonitorRemoteContent();
+  const items = normalizeMonitorMemoItems(content?.memoItems, content?.memoText)
+    .map(item => String(item || "").trim())
+    .filter(Boolean);
+  valueElement.classList.toggle("is-empty", items.length === 0);
+  valueElement.innerHTML = items.length
+    ? items.map(item => `<div class="monitorMemoReadOnlyItem">${escapeHtml(item).replace(/\n/g, "<br>")}</div>`).join("")
+    : "なし";
 }
 
 function renderMonitorRemoteMemoInputs(items = []){
@@ -241,16 +233,13 @@ function updateMonitorMemoRemoveButtons(list = document.getElementById("monitorM
   const items = Array.from(list.querySelectorAll(".monitorMemoInputItem"));
   items.forEach(item => {
     const button = item.querySelector(".monitorMemoRemoveBtn");
-    const showButton = items.length > 1 || list.id === "monitorMemoInputList";
-    item.classList.toggle("hasRemoveButton", showButton);
-    if(button) button.style.display = showButton ? "" : "none";
+    item.classList.add("hasRemoveButton");
+    if(button) button.style.display = "";
   });
 }
 
 function removeMonitorMemoInput(item){
   const list = item?.parentElement;
-  const items = Array.from(list?.querySelectorAll(".monitorMemoInputItem") || []);
-  if(items.length <= 1 && list?.id !== "monitorMemoInputList") return;
   const kind = item.dataset.memoInputKind || "main";
   item.remove();
   updateMonitorMemoRemoveButtons(list);
@@ -675,11 +664,8 @@ function renderMonitorMode(){
     return;
   }
   const content = remote || {
-    enabled:true,
-    instructionText:buildInstructionSummaryText(),
-    memoText:getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
-    memoItems:getMonitorMemoInputValues(),
-    harvestFillKeys:getHarvestProgressRemainingSelectionKeys()
+    ...buildCurrentMonitorRemoteContent(),
+    enabled:true
   };
   body.innerHTML = buildMonitorDashboardHtml(content);
   updateMonitorTodayDisplays();

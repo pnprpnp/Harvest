@@ -1401,7 +1401,7 @@
             skippedSeedlingTrayCount: 1,
             skippedPalletKeys: ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "2-A-5", "2-A-6"],
             simulationSkipCardExists: false,
-            simulationSummaryShowsSkip: false,
+          simulationSummaryShowsSkip: true,
             monitorSeedling: "1枚（先取り収穫: 苗を1枚飛ばす）"
           }, "先取り収穫で飛ばす苗枚数を計算・表示できません");
 
@@ -3627,6 +3627,8 @@
           const previousRemoteFetchedContent = monitorRemoteFetchedContent;
           const previousMemoItems = getMonitorMemoInputValues();
           const previousMemoDirty = monitorMemoInputsDirty;
+          const previousDraft = monitorContentDraftOverride;
+          const previousDraftSignature = monitorContentDraftBaseSignature;
           const readStatus = () => ({
             text: document.getElementById("monitorSendStatusBadge")?.textContent || "",
             className: document.getElementById("monitorSendStatusBadge")?.className || "",
@@ -3655,18 +3657,10 @@
             renderMonitorTabControls();
             const sent = readStatus();
 
+            monitorContentDraftOverride = null;
+            monitorContentDraftBaseSignature = "";
             renderMonitorMemoInputs([]);
-            const memoClosed = {
-              hidden: document.getElementById("monitorMemoInputPanel")?.hidden || false,
-              count: document.getElementById("monitorMemoCount")?.textContent || "",
-              expanded: document.getElementById("monitorMemoToggleBtn")?.getAttribute("aria-expanded") || ""
-            };
-            addMonitorMemoInput("");
-            const memoAfterAdd = {
-              hidden: document.getElementById("monitorMemoInputPanel")?.hidden || false,
-              itemCount: document.querySelectorAll("#monitorMemoInputList .monitorMemoInputItem").length,
-              expanded: document.getElementById("monitorMemoToggleBtn")?.getAttribute("aria-expanded") || ""
-            };
+            renderForecastSummary();
             const sendContentCard = document.querySelector("#monitorCard .monitorSendContentCard");
             const metricGrid = document.querySelector("#instructionSummary .monitorSendMetricGrid");
             const layoutFixture = metricGrid?.cloneNode(true);
@@ -3683,8 +3677,40 @@
             }
             itemNamesAreLarger = [
               ...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel"),
-              document.querySelector("#monitorCard .monitorMemoInputTitle")
+              document.querySelector("#monitorCard .monitorMemoReadOnlyRow .monitorSendSummaryLabel")
             ].filter(Boolean).every(label => parseFloat(getComputedStyle(label).fontSize) >= 13);
+
+            const readOnlyState = {
+              seedlingInputExists: !!sendContentCard?.querySelector("#seedlingInlineInput"),
+              memoInputExists: !!sendContentCard?.querySelector("textarea, input"),
+              memoAddExists: !!sendContentCard?.querySelector(".monitorMemoAddBtn"),
+              memoText: document.getElementById("monitorMemoReadOnlyValue")?.textContent || "",
+              editLabel: document.querySelector("#monitorCard .monitorContentEditBtn")?.textContent || ""
+            };
+
+            openMonitorEditorWindow();
+            const editorState = {
+              open: document.getElementById("monitorEditorModal")?.classList.contains("show") || false,
+              title: document.getElementById("monitorEditorWindowTitle")?.textContent || "",
+              editAction: document.querySelector("#monitorCard .monitorContentEditBtn")?.dataset.uiClick || "",
+              applyAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorApplyBtn")?.dataset.uiClick || "",
+              allFieldsAreMultiline: [...document.querySelectorAll("#monitorRemoteEditorContent > textarea")].length === 4,
+              memoAddAction: document.querySelector("#monitorRemoteEditorContent .monitorMemoAddBtn")?.dataset.uiClick || ""
+            };
+            document.getElementById("monitorRemoteSeedlingValueInput").value = "7枚\\n予備 1枚";
+            document.getElementById("monitorRemoteCasesValueInput").value = "42ケース";
+            document.getElementById("monitorRemoteHarvestLocationValueInput").value = "3号棟 A-1〜A-4";
+            document.getElementById("monitorRemoteRemainingCasesValueInput").value = "手前 2ケース";
+            renderMonitorRemoteMemoInputs(["連絡メモ"]);
+            applyMonitorCurrentEditor();
+            const appliedFields = parseMonitorInstructionFields(buildCurrentMonitorRemoteContent().instructionText);
+            const appliedState = {
+              editorClosed: !document.getElementById("monitorEditorModal")?.classList.contains("show"),
+              fields: appliedFields,
+              memoItems: buildCurrentMonitorRemoteContent().memoItems,
+              memoText: document.getElementById("monitorMemoReadOnlyValue")?.textContent || "",
+              stillReadOnly: !sendContentCard?.querySelector("textarea, input, .monitorMemoAddBtn")
+            };
             const actionBar = document.querySelector("#monitorCard .monitorSendActionBar");
             return {
               beforeCalculation,
@@ -3692,13 +3718,13 @@
               sent,
               summaryTitle: document.getElementById("monitorSendContentTitle")?.textContent || "",
               summaryLabels: [...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel")].map(item => item.textContent),
-              memoInsideSendContent: sendContentCard?.contains(document.querySelector("#monitorCard .monitorMemoInputHeader")) || false,
+              memoInsideSendContent: sendContentCard?.contains(document.querySelector("#monitorCard .monitorMemoReadOnlyRow")) || false,
               metricRowsStacked,
               itemNamesAreLarger,
-              memoClosed,
-              memoAfterAdd,
+              readOnlyState,
+              editorState,
+              appliedState,
               openAction: document.querySelector("#monitorCard .monitorOpenBtn")?.dataset.uiClick || "",
-              editAction: document.querySelector("#monitorCard .monitorRemoteEditBtn")?.dataset.uiClick || "",
               saveAction: document.getElementById("monitorSaveBtn")?.dataset.uiClick || "",
               saveLabel: document.getElementById("monitorSaveBtnLabel")?.textContent || "",
               actionBarPosition: actionBar ? getComputedStyle(actionBar).position : ""
@@ -3710,8 +3736,12 @@
             workflowHarvestRecordingActive = previousRecordingActive;
             monitorRemoteContent = previousRemoteContent;
             monitorRemoteFetchedContent = previousRemoteFetchedContent;
+            monitorContentDraftOverride = previousDraft;
+            monitorContentDraftBaseSignature = previousDraftSignature;
             renderMonitorMemoInputs(previousMemoItems);
             monitorMemoInputsDirty = previousMemoDirty;
+            closeMonitorEditorWindow();
+            renderForecastSummary();
             renderMonitorTabControls();
           }
         })()`));
@@ -3724,23 +3754,34 @@
           memoInsideSendContent:true,
           metricRowsStacked:true,
           itemNamesAreLarger:true,
-          memoClosed:{ hidden:true, count:"0件", expanded:"false" },
-          memoAfterAdd:{ hidden:false, itemCount:1, expanded:"true" },
+          readOnlyState:{ seedlingInputExists:false, memoInputExists:false, memoAddExists:false, memoText:"なし", editLabel:"編集" },
+          editorState:{
+            open:true,
+            title:"今回送る内容を編集",
+            editAction:"openMonitorEditorWindow",
+            applyAction:"applyMonitorCurrentEditor",
+            allFieldsAreMultiline:true,
+            memoAddAction:"addMonitorRemoteMemoInput"
+          },
+          appliedState:{
+            editorClosed:true,
+            fields:{ seedling:"7枚\n予備 1枚", cases:"42ケース", harvestLocation:"3号棟 A-1〜A-4", remainingCases:"手前 2ケース" },
+            memoItems:["連絡メモ"],
+            memoText:"連絡メモ",
+            stillReadOnly:true
+          },
           openAction:"openMonitorMode",
-          editAction:"openMonitorEditorWindow",
           saveAction:"saveCurrentMonitorRemoteContent",
           saveLabel:"プレビューして送信",
           actionBarPosition:"fixed"
         }, "モニタータブの確認・メモ・送信操作が推奨配置になっていません");
       });
 
-      await runTest("モニターの表示メモを1件だけでも削除できる", () => {
+      await runTest("モニター編集で表示メモを1件だけでも削除できる", () => {
         const memoState = comparable(app.eval(`(() => {
-          const previousItems = getMonitorMemoInputValues();
-          const previousDirty = monitorMemoInputsDirty;
           try{
-            renderMonitorMemoInputs(["一つだけのメモ"]);
-            const list = document.getElementById("monitorMemoInputList");
+            renderMonitorRemoteMemoInputs(["一つだけのメモ"]);
+            const list = document.getElementById("monitorRemoteMemoInputList");
             const item = list?.querySelector(".monitorMemoInputItem");
             const removeButton = item?.querySelector(".monitorMemoRemoveBtn");
             const before = {
@@ -3753,16 +3794,15 @@
               before,
               after: {
                 itemCount: list?.children.length || 0,
-                values: getMonitorMemoInputValues(),
+                values: getMonitorRemoteMemoInputValues(),
                 emptyListHidden: list ? getComputedStyle(list).display === "none" : false,
-                addAction: document.querySelector("#monitorTab .monitorMemoAddBtn")?.dataset.uiClick || "",
-                addBackground: getComputedStyle(document.querySelector("#monitorTab .monitorMemoAddBtn")).backgroundColor,
-                addColor: getComputedStyle(document.querySelector("#monitorTab .monitorMemoAddBtn")).color
+                addAction: document.querySelector("#monitorRemoteEditorContent .monitorMemoAddBtn")?.dataset.uiClick || "",
+                addBackground: getComputedStyle(document.querySelector("#monitorRemoteEditorContent .monitorMemoAddBtn")).backgroundColor,
+                addColor: getComputedStyle(document.querySelector("#monitorRemoteEditorContent .monitorMemoAddBtn")).color
               }
             };
           }finally{
-            renderMonitorMemoInputs(previousItems);
-            monitorMemoInputsDirty = previousDirty;
+            renderMonitorRemoteMemoInputs([]);
           }
         })()`));
         assertDeepEqual(memoState, {
@@ -3775,11 +3815,11 @@
             itemCount: 0,
             values: [],
             emptyListHidden: true,
-            addAction: "addMonitorMemoInput",
+            addAction: "addMonitorRemoteMemoInput",
             addBackground: "rgb(10, 132, 255)",
             addColor: "rgb(255, 255, 255)"
           }
-        }, "最後の表示メモを削除して空の状態にできません");
+        }, "編集画面で最後の表示メモを削除して空の状態にできません");
       });
 
       await runTest("最新版の確認後に現在のバージョン番号を表示する", async () => {
@@ -5232,18 +5272,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "dd97bab1", elements: 2185, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "79f22dbc", elements: 2253, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "1d20c889", elements: 2253, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "fd585704", elements: 2186, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "fed4ac25", elements: 2186, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "763bcd54", elements: 2269, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "09be4872", elements: 2284, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "a7af471c", elements: 2284, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "3ff4383a", elements: 2284, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "677b1dd6", elements: 2284, visible: 76, viewport: "390x844" },
-          wideForecast: { hash: "6fb7b58a", elements: 2284, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "9c98cc1c", elements: 2284, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "81a36027", elements: 2178, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "94e5949a", elements: 2246, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "bbeb80f7", elements: 2246, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "7e958474", elements: 2179, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "d9bda44b", elements: 2179, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "cce68367", elements: 2262, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "e2b12753", elements: 2277, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "9cfc9465", elements: 2277, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "3d56aa9d", elements: 2277, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "2c70e832", elements: 2277, visible: 72, viewport: "390x844" },
+          wideForecast: { hash: "b5f80229", elements: 2277, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "c19a4b0f", elements: 2277, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
