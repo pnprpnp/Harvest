@@ -188,7 +188,7 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
   const model = buildPlantingAgeMapModel(items);
   const heading = document.createElement("div");
   heading.className = "plantingAgeMapHeading";
-  heading.textContent = `${building}号棟の選択場所`;
+  heading.textContent = `${building}号棟の全ベッド`;
   container.appendChild(heading);
 
   const legend = document.createElement("div");
@@ -206,7 +206,6 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
   beds.className = "plantingAgeMapBeds";
   bedMap.forEach(bedName => {
     const bedItems = model.itemsByBed.get(bedName) || [];
-    if(!bedItems.length) return;
     const bed = document.createElement("section");
     bed.className = "bed bedCollapsed simulationBedOverview plantingAgeMapBed";
 
@@ -229,16 +228,24 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
     });
     const summary = document.createElement("div");
     summary.className = "plantingAgeMapBedSummary";
-    summary.innerHTML = [...bedGroups.values()].map(({ group, count }) => `
-      <span class="plantingAgeMapBedSummaryItem">
-        ${getPlantingAgeMapGroupSwatchHtml(group)}
-        ${getPlantingAgeMapGroupLabel(group.ageDays)}・${count}枚
-      </span>
-    `).join("");
+    if(bedGroups.size){
+      summary.innerHTML = [...bedGroups.values()].map(({ group, count }) => `
+        <span class="plantingAgeMapBedSummaryItem">
+          ${getPlantingAgeMapGroupSwatchHtml(group)}
+          ${getPlantingAgeMapGroupLabel(group.ageDays)}・${count}枚
+        </span>
+      `).join("");
+    }else{
+      summary.classList.add("is-empty");
+      summary.textContent = "選択なし";
+    }
     bed.appendChild(summary);
-    bed.setAttribute("aria-label", `${building}号棟 ${bedName}ベッド。` + [...bedGroups.values()]
-      .map(({ group, count }) => `${getPlantingAgeMapGroupLabel(group.ageDays)} ${count}枚`)
-      .join("、"));
+    const bedSummaryText = bedGroups.size
+      ? [...bedGroups.values()]
+          .map(({ group, count }) => `${getPlantingAgeMapGroupLabel(group.ageDays)} ${count}枚`)
+          .join("、")
+      : "今回の選択なし";
+    bed.setAttribute("aria-label", `${building}号棟 ${bedName}ベッド。${bedSummaryText}`);
     beds.appendChild(bed);
   });
   container.appendChild(beds);

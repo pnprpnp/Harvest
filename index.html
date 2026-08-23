@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-inset-dividers">
+<meta name="harvestnavi-version" content="20260823-all-planting-age-beds">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7620,6 +7620,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 .plantingAgeMapBed .simulationBedMapCell.is-selected.is-planting-age{border-color:var(--planting-age-border);background:var(--planting-age-color);}
 .plantingAgeMapBed .simulationBedMapCell.is-selected.is-planting-age-unknown{border-color:#64748b;background:#94a3b8;}
 .plantingAgeMapBedSummary{display:flex;min-height:30px;align-content:flex-start;justify-content:center;flex-wrap:wrap;gap:3px 8px;margin-top:auto;color:var(--ui-text-secondary);font-size:9px;font-weight:750;line-height:1.35;text-align:center;}
+.plantingAgeMapBedSummary.is-empty{align-items:center;color:var(--ui-text-tertiary);font-weight:650;}
 .plantingAgeMapEmpty{padding:18px 8px;color:var(--ui-text-secondary);font-size:13px;font-weight:650;text-align:center;}
 .seedlingHouseWindow{width:min(760px,100%);}
 .seedlingHouseWindowBody{display:grid;gap:12px;}
@@ -25971,7 +25972,7 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
   const model = buildPlantingAgeMapModel(items);
   const heading = document.createElement("div");
   heading.className = "plantingAgeMapHeading";
-  heading.textContent = `${building}号棟の選択場所`;
+  heading.textContent = `${building}号棟の全ベッド`;
   container.appendChild(heading);
 
   const legend = document.createElement("div");
@@ -25989,7 +25990,6 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
   beds.className = "plantingAgeMapBeds";
   bedMap.forEach(bedName => {
     const bedItems = model.itemsByBed.get(bedName) || [];
-    if(!bedItems.length) return;
     const bed = document.createElement("section");
     bed.className = "bed bedCollapsed simulationBedOverview plantingAgeMapBed";
 
@@ -26012,16 +26012,24 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
     });
     const summary = document.createElement("div");
     summary.className = "plantingAgeMapBedSummary";
-    summary.innerHTML = [...bedGroups.values()].map(({ group, count }) => `
-      <span class="plantingAgeMapBedSummaryItem">
-        ${getPlantingAgeMapGroupSwatchHtml(group)}
-        ${getPlantingAgeMapGroupLabel(group.ageDays)}・${count}枚
-      </span>
-    `).join("");
+    if(bedGroups.size){
+      summary.innerHTML = [...bedGroups.values()].map(({ group, count }) => `
+        <span class="plantingAgeMapBedSummaryItem">
+          ${getPlantingAgeMapGroupSwatchHtml(group)}
+          ${getPlantingAgeMapGroupLabel(group.ageDays)}・${count}枚
+        </span>
+      `).join("");
+    }else{
+      summary.classList.add("is-empty");
+      summary.textContent = "選択なし";
+    }
     bed.appendChild(summary);
-    bed.setAttribute("aria-label", `${building}号棟 ${bedName}ベッド。` + [...bedGroups.values()]
-      .map(({ group, count }) => `${getPlantingAgeMapGroupLabel(group.ageDays)} ${count}枚`)
-      .join("、"));
+    const bedSummaryText = bedGroups.size
+      ? [...bedGroups.values()]
+          .map(({ group, count }) => `${getPlantingAgeMapGroupLabel(group.ageDays)} ${count}枚`)
+          .join("、")
+      : "今回の選択なし";
+    bed.setAttribute("aria-label", `${building}号棟 ${bedName}ベッド。${bedSummaryText}`);
     beds.appendChild(bed);
   });
   container.appendChild(beds);
