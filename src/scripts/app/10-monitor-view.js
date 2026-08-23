@@ -631,7 +631,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
       return `
         <div class="monitorCaseBuildingSummary is-remaining">
           <div class="monitorCaseRemainingLine">
-            <span class="monitorCaseRemainingBuilding">${building}-</span>
+            <span class="monitorCaseRemainingBuilding"><span class="monitorCaseBuildingNumber">${building}</span>-</span>
             ${summary.locations.map(location => `
               <span class="monitorCaseRemainingLocation${location.suffix === "不足" ? " is-shortage" : ""}">
                 <span class="monitorRemainingLocation">${location.label}</span><span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
@@ -652,9 +652,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
   }
   const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
-    const buildingName = displayVariant === "preview2" && mode === "placement"
-      ? `${building}-`
-      : `${building}号棟`;
+    const buildingSuffix = displayVariant === "preview2" && mode === "placement" ? "-" : "号棟";
     const showPlacement = mode !== "remaining" && !!summary.placement;
     const showRemaining = mode !== "placement" && summary.locations.length > 0;
     if(!showPlacement && !showRemaining) return "";
@@ -673,7 +671,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
     return `
       <div class="monitorCaseBuildingSummary is-${escapeHtml(mode)}">
         <div class="monitorCaseBuildingLine">
-          <span class="monitorCaseBuildingName">${buildingName}</span>
+          <span class="monitorCaseBuildingName"><span class="monitorCaseBuildingNumber">${building}</span>${buildingSuffix}</span>
           ${showPlacement ? `
             <span class="monitorCasePlacement">
               <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span><span class="monitorCasePlacementSuffix">配置</span>
