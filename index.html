@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-case-row-label">
+<meta name="harvestnavi-version" content="20260823-monitor-case-suffix">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8772,6 +8772,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   justify-items:center;
   text-align:center;
 }
+.monitorRemainingCard .monitorCaseSummaryIcon{margin-right:.22em;}
 .monitorCaseBuildingSummary{
   max-width:100%;
 }
@@ -8794,9 +8795,14 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorCasePlacementRow{
   display:flex;
-  align-items:baseline;
+  align-items:center;
   gap:.18em;
   white-space:nowrap;
+}
+.monitorCasePlacementValue{
+  display:inline-flex;
+  align-items:baseline;
+  gap:.08em;
 }
 .monitorCaseBuildingCircle{
   box-sizing:border-box;
@@ -8823,6 +8829,19 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorCaseRemainingRow.is-shortage{color:#c9342b;}
 .monitorCaseRemainingBuilding{text-align:right;}
+.monitorRemainingInlineContent{
+  display:flex;
+  align-items:center;
+  gap:.28em;
+  white-space:nowrap;
+}
+.monitorRemainingRows{display:grid;}
+.monitorRemainingSuffixInline{
+  flex:0 0 auto;
+  color:var(--ui-text);
+  font-size:.72em;
+  font-weight:700;
+}
 .monitorCasePlacementCount{font-variant-numeric:tabular-nums;}
 .monitorCasePlacementCard .monitorCasePlacementCount{color:#147a39;}
 .monitorRemainingCard .monitorRemainingCount{color:#a94300;}
@@ -30922,7 +30941,9 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
         <div class="monitorCaseBuildingSummary is-placement">
           <div class="monitorCasePlacementRow">
             <span class="monitorCaseBuildingCircle" aria-label="${building}号棟">${building}</span>
-            <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span>
+            <span class="monitorCasePlacementValue">
+              <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span>
+            </span>
           </div>
         </div>
       `;
@@ -30953,7 +30974,12 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined"){
       return `<div class="monitorRemainingLine is-freeform${shortageClass}">${lineHtml}</div>`;
     }).join("");
     if(!hasRemainingLocations && !freeHtml) return `<div class="monitorRemainingLine is-freeform">なし</div>`;
-    return `${remainingHtml}${freeHtml}`;
+    return `
+      <div class="monitorRemainingInlineContent">
+        <div class="monitorRemainingRows">${remainingHtml}${freeHtml}</div>
+        ${hasRemainingLocations ? `<span class="monitorRemainingSuffixInline">ケース残す</span>` : ""}
+      </div>
+    `;
   }
   const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
@@ -31175,7 +31201,6 @@ function buildMonitorDashboardHtml(content){
                 <path d="M2.5 10h26M8 14v8M13 14v8M18 14v8M5 18h21M5 22h21"></path>
                 <path d="M20.5 3h8v10.5l-4-2.4-4 2.4V3Z" fill="currentColor" stroke="currentColor"></path>
               </svg>
-              <span class="monitorMetricLabelText monitorRemainingLabelText">ケース残す </span>
             </div>
             <div class="monitorRemainingList">${getMonitorRemainingCasesHtml(fields.remainingCases, normalized.harvestFillKeys || [], "remaining")}</div>
           </div>

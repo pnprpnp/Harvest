@@ -4118,13 +4118,14 @@
               placementBuildingDigitsAreReadable:[...host.querySelectorAll(".monitorCaseBuildingCircle")].every(circle =>
                 parseFloat(getComputedStyle(circle).fontWeight) >= 700 && getComputedStyle(circle).borderRadius === "50%"
               ),
+              placementBuildingAndValueAreAligned:[...host.querySelectorAll(".monitorCasePlacementRow")].every(row => {
+                const circleRect = row.querySelector(".monitorCaseBuildingCircle").getBoundingClientRect();
+                const valueRect = row.querySelector(".monitorCasePlacementValue").getBoundingClientRect();
+                return Math.abs((circleRect.top + circleRect.bottom) / 2 - (valueRect.top + valueRect.bottom) / 2) < 1;
+              }),
               remainingRows:[...host.querySelectorAll(".monitorCaseRemainingRow")].map(row => row.textContent.trim().replace(/\\s+/g, "")),
-              remainingLabelSharesValueRow:(() => {
-                const card = host.querySelector(".monitorRemainingCard");
-                const line = card?.querySelector(".monitorMetricLine");
-                return card?.querySelector(".monitorRemainingLabelText")?.parentElement?.parentElement === line &&
-                  card?.querySelector(".monitorRemainingList")?.parentElement === line;
-              })(),
+              remainingSuffix:host.querySelector(".monitorRemainingSuffixInline")?.textContent.trim() || "",
+              remainingSuffixFollowsNumbers:host.querySelector(".monitorRemainingRows")?.nextElementSibling?.classList.contains("monitorRemainingSuffixInline") || false,
               remainingFooterAbsent:!host.querySelector(".monitorRemainingFooter"),
               buildingSummaries:[...host.querySelectorAll(".monitorCaseBuildingSummary")]
                 .map(summary => summary.textContent.trim().replace(/\\s+/g, "")),
@@ -4136,7 +4137,7 @@
           }
         })()`));
         assertDeepEqual(summaryState, {
-          labels:["苗：", "収穫：", "配置：", "ケース残す"],
+          labels:["苗：", "収穫：", "配置：", ""],
           labelsUseHalfWidthSpace:true,
           summaryColumns:4,
           caseCardsUseEqualWidths:true,
@@ -4153,8 +4154,10 @@
           placementRows:["248ケース"],
           placementBuildingDigits:["2"],
           placementBuildingDigitsAreReadable:true,
+          placementBuildingAndValueAreAligned:true,
           remainingRows:["2-前6", "中20", "奥30"],
-          remainingLabelSharesValueRow:true,
+          remainingSuffix:"ケース残す",
+          remainingSuffixFollowsNumbers:true,
           remainingFooterAbsent:true,
           buildingSummaries:["248ケース", "2-前6中20奥30"],
           updatedAtText:"最終更新2026/8/23 17:14",
