@@ -4333,7 +4333,7 @@
             ];
             const rowsHaveLeadingInset = summaryRows.every(row => parseFloat(getComputedStyle(row).paddingLeft) >= 18);
             const labelsHaveWideColumn = summaryRows.every(row => parseFloat(getComputedStyle(row).gridTemplateColumns) >= 124);
-            const nonMemoRowsUseUnifiedHeight = nonMemoRows.length === 4 && nonMemoRows.every(row => {
+            const nonMemoRowsUseUnifiedHeight = nonMemoRows.length === 5 && nonMemoRows.every(row => {
               const rowStyle = getComputedStyle(row);
               return parseFloat(rowStyle.minHeight) === 52 &&
                 rowStyle.alignItems === "center" &&
@@ -4350,7 +4350,7 @@
               parseFloat(getComputedStyle(document.querySelector("#monitorCard .monitorSendContentTitle")).borderBottomWidth) === 1 &&
               parseFloat(getComputedStyle(document.querySelector("#monitorCard .monitorSendMetricGrid")).borderBottomWidth) === 0 &&
               getComputedStyle(metricItems[0], "::before").content === "none" &&
-              insetDividerRows.length === 4 && insetDividerRows.every(row => {
+              insetDividerRows.length === 5 && insetDividerRows.every(row => {
                 const dividerStyle = getComputedStyle(row, "::before");
                 return dividerStyle.content !== "none" &&
                   parseFloat(dividerStyle.left) === 18 &&
@@ -4423,6 +4423,14 @@
               sent,
               summaryTitle: document.getElementById("monitorSendContentTitle")?.textContent || "",
               summaryLabels: [...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel")].map(item => item.textContent),
+              caseSummarySections:getMonitorTabCaseSummarySections([
+                "2号棟 配置: 60ケース",
+                "2号棟 前側: 20ケース",
+                "2号棟 中央: 10ケース",
+                "2号棟 後ろ: 30ケース",
+                "3号棟 配置: 48ケース",
+                "3号棟 中央: 8ケース"
+              ].join("\\n")),
               memoInsideSendContent: sendContentCard?.contains(document.querySelector("#monitorCard .monitorMemoReadOnlyRow")) || false,
               metricRowsStacked,
               itemNamesAreLarger,
@@ -4464,12 +4472,16 @@
           waiting: { text:"送信待ち", className:"monitorSendStatusBadge is-waiting", lastSent:"最終送信 --" },
           sent: { text:"送信済み", className:"monitorSendStatusBadge is-sent", lastSent:"最終送信 2026/8/23 17:14" },
           summaryTitle:"今回送る内容",
-          summaryLabels:["苗枚数", "収穫ケース数", "収穫場所", "残すケース"],
+          summaryLabels:["苗枚数", "収穫ケース数", "収穫場所", "配置コンテナ数", "残すケース数"],
+          caseSummarySections:{
+            placement:"2号棟：60ケース\n3号棟：48ケース",
+            remaining:"2号棟：前20中10奥30ケース\n3号棟：中8ケース"
+          },
           memoInsideSendContent:true,
           metricRowsStacked:true,
           itemNamesAreLarger:true,
           labelStyleMatchesTitle:true,
-          summaryIconCount:5,
+          summaryIconCount:6,
           rowsHaveLeadingInset:true,
           labelsHaveWideColumn:true,
           nonMemoRowsUseUnifiedHeight:true,
@@ -6048,18 +6060,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e0af881c", elements: 2208, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "880ad8eb", elements: 2277, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "9c42fcee", elements: 2277, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "55802de8", elements: 2209, visible: 104, viewport: "390x844" },
-          mobileDashboard: { hash: "50c8d4fe", elements: 2209, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "68ebb3b6", elements: 2292, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "4233f9de", elements: 2307, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "431a6dfc", elements: 2307, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "66dc5c78", elements: 2307, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "5e43db44", elements: 2307, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "0e61be56", elements: 2307, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "3ef50ae2", elements: 2307, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "1934a940", elements: 2216, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "2af81afa", elements: 2285, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "f07b9dcb", elements: 2285, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "331f9085", elements: 2217, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "9d520ac9", elements: 2217, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "75193bc4", elements: 2300, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "5fb2e955", elements: 2315, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "8d127c2b", elements: 2315, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "0a05c809", elements: 2315, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "c03073e1", elements: 2315, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "c7dc2cb3", elements: 2315, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "ef5cd3f7", elements: 2315, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

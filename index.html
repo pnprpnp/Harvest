@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-harvest-heading">
+<meta name="harvestnavi-version" content="20260823-monitor-case-summary-split">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -11516,7 +11516,9 @@ requestAnimationFrame(function(){
         <div id="instructionSummary" class="resultBox instructionBox">苗: 0枚
 収穫ケース数: 0
 収穫場所: -
-残すケース:
+配置コンテナ数:
+なし
+残すケース数:
 なし</div>
         <div class="monitorMemoReadOnlyRow">
           <span class="monitorSendSummaryLabel">
@@ -31497,6 +31499,55 @@ function formatMonitorTabDetailValueHtml(value){
     .join("<br>");
 }
 
+function getMonitorTabCaseSummarySections(value){
+  const placementLines = [];
+  const remainingByBuilding = new Map();
+  const remainingOtherLines = [];
+  const locationLabels = {
+    "手前":"前",
+    "前側":"前",
+    "前":"前",
+    "中央":"中",
+    "中側":"中",
+    "中":"中",
+    "後ろ":"奥",
+    "後側":"奥",
+    "奥側":"奥",
+    "奥":"奥"
+  };
+
+  String(value || "").split("\n").forEach(rawLine => {
+    const line = rawLine.trim();
+    if(!line || line === "なし") return;
+    const placementMatch = line.match(/^(\d+)号棟\s*配置\s*[:：]\s*([\d,.]+)\s*ケース$/);
+    if(placementMatch){
+      placementLines.push(`${placementMatch[1]}号棟：${placementMatch[2]}ケース`);
+      return;
+    }
+    const remainingMatch = line.match(/^(\d+)号棟\s*(手前|前側|前|中央|中側|中|後ろ|後側|奥側|奥)\s*[:：]\s*([\d,.]+)\s*ケース(?:\s*残す)?$/);
+    if(remainingMatch){
+      const building = remainingMatch[1];
+      if(!remainingByBuilding.has(building)) remainingByBuilding.set(building, {});
+      remainingByBuilding.get(building)[locationLabels[remainingMatch[2]]] = remainingMatch[3];
+      return;
+    }
+    remainingOtherLines.push(line);
+  });
+
+  const remainingLines = Array.from(remainingByBuilding.entries()).map(([building, locations]) => {
+    const details = ["前", "中", "奥"]
+      .filter(location => Object.prototype.hasOwnProperty.call(locations, location))
+      .map(location => location + locations[location])
+      .join("");
+    return `${building}号棟：${details}ケース`;
+  });
+  remainingLines.push(...remainingOtherLines);
+  return {
+    placement:placementLines.length ? placementLines.join("\n") : "なし",
+    remaining:remainingLines.length ? remainingLines.join("\n") : "なし"
+  };
+}
+
 function formatMonitorTabMetricValueHtml(value, fallbackUnit){
   const parts = getMonitorMetricParts(value, fallbackUnit);
   const unit = parts.unit || "";
@@ -31563,6 +31614,7 @@ function renderForecastSummary(){
     const caseValueHtml = formatMonitorTabMetricValueHtml(monitorFields.cases, "ケース");
     const harvestLocationValue = monitorFields.harvestLocation || "-";
     const remainingCasesValue = monitorFields.remainingCases || "なし";
+    const caseSummarySections = getMonitorTabCaseSummarySections(remainingCasesValue);
     instructionBox.innerHTML = `
       <div class="monitorSendMetricGrid">
         <div class="monitorSendMetricItem">
@@ -31579,8 +31631,12 @@ function renderForecastSummary(){
         <div class="monitorSendDetailValue">${formatMonitorTabDetailValueHtml(harvestLocationValue)}</div>
       </div>
       <div class="monitorSendDetailItem">
-        ${getMonitorSendSummaryLabelHtml("残すケース", "remaining")}
-        <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(remainingCasesValue)}</div>
+        ${getMonitorSendSummaryLabelHtml("配置コンテナ数", "cases")}
+        <div class="monitorSendDetailValue casePlacementContainerValue">${formatMonitorTabDetailValueHtml(caseSummarySections.placement)}</div>
+      </div>
+      <div class="monitorSendDetailItem">
+        ${getMonitorSendSummaryLabelHtml("残すケース数", "remaining")}
+        <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(caseSummarySections.remaining)}</div>
       </div>`;
     renderMonitorMemoReadOnly(monitorContent);
   }
