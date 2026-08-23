@@ -484,6 +484,7 @@ function getMonitorRemoteEditorElements(){
     seedlingInput: document.getElementById("monitorRemoteSeedlingValueInput"),
     casesInput: document.getElementById("monitorRemoteCasesValueInput"),
     harvestLocationInput: document.getElementById("monitorRemoteHarvestLocationValueInput"),
+    placementCasesInput: document.getElementById("monitorRemotePlacementCasesValueInput"),
     remainingCasesInput: document.getElementById("monitorRemoteRemainingCasesValueInput")
   };
 }
@@ -501,6 +502,32 @@ function removeMonitorSkipSeedlingNote(value){
   return String(value || "")
     .replace(/[（(]?\s*先取り収穫\s*[:：]\s*苗を\s*[\d,.]+\s*枚\s*(?:飛ばす|とばす)\s*[）)]?/g, "")
     .trim();
+}
+
+function splitMonitorCaseEditorFields(value){
+  const placementLines = [];
+  const remainingLines = [];
+  String(value || "").split("\n").forEach(rawLine => {
+    const line = rawLine.trim();
+    if(!line || line === "なし") return;
+    if(/^\d+号棟\s*配置\s*[:：]/.test(line)){
+      placementLines.push(line);
+    }else{
+      remainingLines.push(line);
+    }
+  });
+  return {
+    placement: placementLines.length ? placementLines.join("\n") : "なし",
+    remaining: remainingLines.length ? remainingLines.join("\n") : "なし"
+  };
+}
+
+function combineMonitorCaseEditorFields(placementValue, remainingValue){
+  const lines = [placementValue, remainingValue]
+    .flatMap(value => String(value || "").split("\n"))
+    .map(line => line.trim())
+    .filter(line => line && line !== "なし");
+  return lines.length ? lines.join("\n") : "なし";
 }
 
 function parseMonitorInstructionFields(text){
@@ -625,11 +652,13 @@ function populateMonitorRemoteEditor(content){
     harvestFillKeys: []
   };
   const fields = parseMonitorInstructionFields(normalized.instructionText || "");
+  const caseSections = splitMonitorCaseEditorFields(fields.remainingCases);
   monitorRemoteEditorHarvestFillKeys = Array.isArray(normalized.harvestFillKeys) ? normalized.harvestFillKeys : [];
   if(els.seedlingInput) els.seedlingInput.value = fields.seedling;
   if(els.casesInput) els.casesInput.value = fields.cases;
   if(els.harvestLocationInput) els.harvestLocationInput.value = fields.harvestLocation;
-  if(els.remainingCasesInput) els.remainingCasesInput.value = fields.remainingCases;
+  if(els.placementCasesInput) els.placementCasesInput.value = caseSections.placement;
+  if(els.remainingCasesInput) els.remainingCasesInput.value = caseSections.remaining;
   renderMonitorRemoteMemoInputs(normalized.memoItems || normalizeMonitorMemoItems(null, normalized.memoText || ""));
 }
 
@@ -639,7 +668,10 @@ function readMonitorRemoteEditorContent(){
     seedling: els.seedlingInput?.value || "",
     cases: els.casesInput?.value || "",
     harvestLocation: els.harvestLocationInput?.value || "",
-    remainingCases: els.remainingCasesInput?.value || ""
+    remainingCases: combineMonitorCaseEditorFields(
+      els.placementCasesInput?.value || "",
+      els.remainingCasesInput?.value || ""
+    )
   };
   return {
     enabled: true,

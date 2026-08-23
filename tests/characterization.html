@@ -4454,7 +4454,9 @@
               memoAddExists: !!sendContentCard?.querySelector(".monitorMemoAddBtn"),
               memoText: document.getElementById("monitorMemoReadOnlyValue")?.textContent || "",
               editLabel: document.querySelector("#monitorCard .monitorContentEditBtn")?.textContent || "",
-              editAction: document.querySelector("#monitorCard .monitorContentEditBtn")?.dataset.uiClick || ""
+              editAction: document.querySelector("#monitorCard .monitorContentEditBtn")?.dataset.uiClick || "",
+              editBackground: getComputedStyle(document.querySelector("#monitorCard .monitorContentEditBtn")).backgroundColor,
+              editColor: getComputedStyle(document.querySelector("#monitorCard .monitorContentEditBtn")).color
             };
 
             openMonitorEditorWindow();
@@ -4466,7 +4468,11 @@
               restoreLabel: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorRestoreBtn")?.textContent || "",
               restoreAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorRestoreBtn")?.dataset.uiClick || "",
               applyAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorApplyBtn")?.dataset.uiClick || "",
-              allFieldsAreMultiline: [...document.querySelectorAll("#monitorRemoteEditorContent > textarea")].length === 4,
+              allFieldsAreMultiline: [...document.querySelectorAll("#monitorRemoteEditorContent > textarea")].length === 5,
+              caseFieldLabels: [
+                document.querySelector('label[for="monitorRemotePlacementCasesValueInput"]')?.textContent || "",
+                document.querySelector('label[for="monitorRemoteRemainingCasesValueInput"]')?.textContent || ""
+              ],
               memoAddAction: document.querySelector("#monitorRemoteEditorContent .monitorMemoAddBtn")?.dataset.uiClick || ""
             };
             const calculatedContentBeforeManualEdit = buildCalculatedMonitorRemoteContent();
@@ -4492,7 +4498,8 @@
             document.getElementById("monitorRemoteSeedlingValueInput").value = "7枚\\n予備 1枚";
             document.getElementById("monitorRemoteCasesValueInput").value = "42ケース";
             document.getElementById("monitorRemoteHarvestLocationValueInput").value = "3号棟 A-1〜A-4";
-            document.getElementById("monitorRemoteRemainingCasesValueInput").value = "手前 2ケース";
+            document.getElementById("monitorRemotePlacementCasesValueInput").value = "3号棟 配置: 50ケース";
+            document.getElementById("monitorRemoteRemainingCasesValueInput").value = "3号棟 手前: 2ケース";
             renderMonitorRemoteMemoInputs(["連絡メモ"]);
             applyMonitorCurrentEditor();
             const appliedFields = parseMonitorInstructionFields(buildCurrentMonitorRemoteContent().instructionText);
@@ -4581,7 +4588,9 @@
             memoAddExists:false,
             memoText:"なし",
             editLabel:"編集",
-            editAction:"openMonitorEditorWindow"
+            editAction:"openMonitorEditorWindow",
+            editBackground:"rgb(36, 138, 75)",
+            editColor:"rgb(255, 255, 255)"
           },
           editorState:{
             open:true,
@@ -4592,6 +4601,7 @@
             restoreAction:"restoreMonitorCurrentEditorToCalculatedValues",
             applyAction:"applyMonitorCurrentEditor",
             allFieldsAreMultiline:true,
+            caseFieldLabels:["配置コンテナ数", "残すケース数"],
             memoAddAction:"addMonitorRemoteMemoInput"
           },
           restoreState:{
@@ -4604,7 +4614,7 @@
           },
           appliedState:{
             editorClosed:true,
-            fields:{ seedling:"7枚\n予備 1枚", cases:"42ケース", harvestLocation:"3号棟 A-1〜A-4", remainingCases:"手前 2ケース" },
+            fields:{ seedling:"7枚\n予備 1枚", cases:"42ケース", harvestLocation:"3号棟 A-1〜A-4", remainingCases:"3号棟 配置: 50ケース\n3号棟 手前: 2ケース" },
             memoItems:["連絡メモ"],
             memoText:"連絡メモ",
             stillReadOnly:true
@@ -6155,18 +6165,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "0f73b78c", elements: 2216, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "8f5056f6", elements: 2285, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "d8902007", elements: 2285, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "77c76629", elements: 2217, visible: 104, viewport: "390x844" },
-          mobileDashboard: { hash: "ad8e7a8d", elements: 2217, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "c0ea8880", elements: 2300, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "d35931d9", elements: 2315, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "1d3e6163", elements: 2315, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "aff134cd", elements: 2315, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "4fd93545", elements: 2315, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "4e9835a7", elements: 2315, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "4ce3121b", elements: 2315, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "f3d71f01", elements: 2218, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "f6d771bf", elements: 2287, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "ad74d4f2", elements: 2287, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "6271e9e0", elements: 2219, visible: 104, viewport: "390x844" },
+          mobileDashboard: { hash: "09e2227c", elements: 2219, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "641fce03", elements: 2302, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "dee9735c", elements: 2317, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "cd2835de", elements: 2317, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "39c23a88", elements: 2317, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "74ec4d8c", elements: 2317, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "f96aa9fe", elements: 2317, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "0f8204f2", elements: 2317, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

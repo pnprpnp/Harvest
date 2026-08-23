@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-location-preview-summary">
+<meta name="harvestnavi-version" content="20260823-monitor-editor-case-sections">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9198,13 +9198,14 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   min-width:52px;
   min-height:32px;
   padding:5px 12px;
-  border:1px solid var(--ui-line);
+  border:1px solid #248a4b;
   border-radius:10px;
-  background:var(--ui-surface-muted);
-  color:var(--ui-accent-dark);
+  background:#248a4b;
+  color:#fff;
   font-size:12px;
   font-weight:720;
 }
+.monitorContentEditBtn:active{background:#176637;}
 #instructionSummary.monitorSendSummary,
 #instructionSummary.instructionBox{
   padding:0;
@@ -13054,8 +13055,10 @@ requestAnimationFrame(function(){
     <textarea id="monitorRemoteCasesValueInput" rows="2" placeholder="例: 120ケース"></textarea>
     <label for="monitorRemoteHarvestLocationValueInput">収穫場所</label>
     <textarea id="monitorRemoteHarvestLocationValueInput" rows="3" placeholder="例: 2号棟 A 後ろ3ピンとる"></textarea>
-    <label for="monitorRemoteRemainingCasesValueInput">残すケース</label>
-    <textarea id="monitorRemoteRemainingCasesValueInput" rows="3" placeholder="例: 手前 10ケース"></textarea>
+    <label for="monitorRemotePlacementCasesValueInput">配置コンテナ数</label>
+    <textarea id="monitorRemotePlacementCasesValueInput" rows="2" placeholder="例: 2号棟 配置: 48ケース"></textarea>
+    <label for="monitorRemoteRemainingCasesValueInput">残すケース数</label>
+    <textarea id="monitorRemoteRemainingCasesValueInput" rows="3" placeholder="例: 2号棟 前側: 10ケース"></textarea>
     <div class="monitorMemoInputHeader">
       <div class="monitorMemoInputTitle">表示するメモ</div>
       <button type="button" class="monitorMemoAddBtn" data-ui-click="addMonitorRemoteMemoInput">＋追加</button>
@@ -20303,6 +20306,7 @@ function getMonitorRemoteEditorElements(){
     seedlingInput: document.getElementById("monitorRemoteSeedlingValueInput"),
     casesInput: document.getElementById("monitorRemoteCasesValueInput"),
     harvestLocationInput: document.getElementById("monitorRemoteHarvestLocationValueInput"),
+    placementCasesInput: document.getElementById("monitorRemotePlacementCasesValueInput"),
     remainingCasesInput: document.getElementById("monitorRemoteRemainingCasesValueInput")
   };
 }
@@ -20320,6 +20324,32 @@ function removeMonitorSkipSeedlingNote(value){
   return String(value || "")
     .replace(/[（(]?\s*先取り収穫\s*[:：]\s*苗を\s*[\d,.]+\s*枚\s*(?:飛ばす|とばす)\s*[）)]?/g, "")
     .trim();
+}
+
+function splitMonitorCaseEditorFields(value){
+  const placementLines = [];
+  const remainingLines = [];
+  String(value || "").split("\n").forEach(rawLine => {
+    const line = rawLine.trim();
+    if(!line || line === "なし") return;
+    if(/^\d+号棟\s*配置\s*[:：]/.test(line)){
+      placementLines.push(line);
+    }else{
+      remainingLines.push(line);
+    }
+  });
+  return {
+    placement: placementLines.length ? placementLines.join("\n") : "なし",
+    remaining: remainingLines.length ? remainingLines.join("\n") : "なし"
+  };
+}
+
+function combineMonitorCaseEditorFields(placementValue, remainingValue){
+  const lines = [placementValue, remainingValue]
+    .flatMap(value => String(value || "").split("\n"))
+    .map(line => line.trim())
+    .filter(line => line && line !== "なし");
+  return lines.length ? lines.join("\n") : "なし";
 }
 
 function parseMonitorInstructionFields(text){
@@ -20444,11 +20474,13 @@ function populateMonitorRemoteEditor(content){
     harvestFillKeys: []
   };
   const fields = parseMonitorInstructionFields(normalized.instructionText || "");
+  const caseSections = splitMonitorCaseEditorFields(fields.remainingCases);
   monitorRemoteEditorHarvestFillKeys = Array.isArray(normalized.harvestFillKeys) ? normalized.harvestFillKeys : [];
   if(els.seedlingInput) els.seedlingInput.value = fields.seedling;
   if(els.casesInput) els.casesInput.value = fields.cases;
   if(els.harvestLocationInput) els.harvestLocationInput.value = fields.harvestLocation;
-  if(els.remainingCasesInput) els.remainingCasesInput.value = fields.remainingCases;
+  if(els.placementCasesInput) els.placementCasesInput.value = caseSections.placement;
+  if(els.remainingCasesInput) els.remainingCasesInput.value = caseSections.remaining;
   renderMonitorRemoteMemoInputs(normalized.memoItems || normalizeMonitorMemoItems(null, normalized.memoText || ""));
 }
 
@@ -20458,7 +20490,10 @@ function readMonitorRemoteEditorContent(){
     seedling: els.seedlingInput?.value || "",
     cases: els.casesInput?.value || "",
     harvestLocation: els.harvestLocationInput?.value || "",
-    remainingCases: els.remainingCasesInput?.value || ""
+    remainingCases: combineMonitorCaseEditorFields(
+      els.placementCasesInput?.value || "",
+      els.remainingCasesInput?.value || ""
+    )
   };
   return {
     enabled: true,
