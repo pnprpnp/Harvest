@@ -2538,7 +2538,9 @@
               (settingsRect.top - actionBarRect.top)
               - (actionBarRect.bottom - settingsRect.bottom)
             ) <= 1,
-            calculateIsWidePrimary: calculateRect.width >= 110 && calculateStyle.backgroundImage !== "none",
+            calculateIsWidePrimary: calculateRect.width >= 110
+              && calculateStyle.backgroundImage === "none"
+              && calculateStyle.backgroundColor !== "rgba(0, 0, 0, 0)",
             settingsIsWider: settingsRect.width > calculateRect.width,
             calculateLabel: calculateButton.textContent.trim(),
             omitsSettingsLabel: !settingsButton.querySelector(".forecastSettingsOpenLabel"),
@@ -3881,6 +3883,50 @@
           app.checkHarvestnaviAppUpdate = previousCheck;
           if(status) status.textContent = previousStatus;
         }
+      });
+
+      await runTest("すべてのボタンを影なしの単色で表示する", () => {
+        const flatButtonState = comparable(app.eval(`(() => {
+          const root = document.documentElement;
+          const previousTheme = root.getAttribute("data-theme");
+          const readState = () => {
+            const buttons = [...document.querySelectorAll("button")];
+            return {
+              gradientButtons: buttons
+                .filter(button => getComputedStyle(button).backgroundImage !== "none")
+                .map(button => button.id || button.className || button.textContent.trim()),
+              shadowButtons: buttons
+                .filter(button => getComputedStyle(button).boxShadow !== "none")
+                .map(button => button.id || button.className || button.textContent.trim()),
+              calculateBackground: getComputedStyle(document.querySelector("button.casePlacementCalculateBtn")).backgroundColor,
+              monitorSendBackground: getComputedStyle(document.getElementById("monitorSaveBtn")).backgroundColor
+            };
+          };
+          try{
+            root.setAttribute("data-theme", "light");
+            const light = readState();
+            root.setAttribute("data-theme", "dark");
+            const dark = readState();
+            return { light, dark };
+          }finally{
+            if(previousTheme === null) root.removeAttribute("data-theme");
+            else root.setAttribute("data-theme", previousTheme);
+          }
+        })()`));
+        assertDeepEqual(flatButtonState, {
+          light:{
+            gradientButtons:[],
+            shadowButtons:[],
+            calculateBackground:"rgb(36, 138, 75)",
+            monitorSendBackground:"rgb(36, 138, 75)"
+          },
+          dark:{
+            gradientButtons:[],
+            shadowButtons:[],
+            calculateBackground:"rgb(111, 143, 196)",
+            monitorSendBackground:"rgb(111, 143, 196)"
+          }
+        }, "影またはグラデーションが残ったボタンがあります");
       });
 
       await runTest("アプリ内のすべての文字を長押し選択できない", () => {
@@ -5308,18 +5354,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "795ef029", elements: 2181, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "3cc93c5b", elements: 2249, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "b9718ab6", elements: 2249, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "4d941b60", elements: 2182, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "6302c4f1", elements: 2182, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "7a3b3cc8", elements: 2265, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "7d0ce80c", elements: 2280, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "e2069552", elements: 2280, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "f3ab1406", elements: 2280, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "37ff2d7c", elements: 2280, visible: 73, viewport: "390x844" },
-          wideForecast: { hash: "711c6d7a", elements: 2280, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "6f104acc", elements: 2280, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "185f66b2", elements: 2181, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "4e7e03c0", elements: 2249, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "ee477519", elements: 2249, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "f401cc49", elements: 2182, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "2e6ca7a2", elements: 2182, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "b202937f", elements: 2265, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "b3cd1331", elements: 2280, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "40cc83b9", elements: 2280, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "16ec1c03", elements: 2280, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "3258aca9", elements: 2280, visible: 73, viewport: "390x844" },
+          wideForecast: { hash: "3af43cf5", elements: 2280, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "683d3c05", elements: 2280, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
