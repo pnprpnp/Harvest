@@ -3703,6 +3703,29 @@
               ...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel"),
               document.querySelector("#monitorCard .monitorMemoReadOnlyRow .monitorSendSummaryLabel")
             ].filter(Boolean).every(label => parseFloat(getComputedStyle(label).fontSize) >= 13);
+            const summaryLabels = [
+              ...document.querySelectorAll("#instructionSummary .monitorSendSummaryLabel"),
+              document.querySelector("#monitorCard .monitorMemoReadOnlyRow .monitorSendSummaryLabel")
+            ].filter(Boolean);
+            const titleStyle = getComputedStyle(document.getElementById("monitorSendContentTitle"));
+            const labelStyleMatchesTitle = summaryLabels.every(label => {
+              const labelStyle = getComputedStyle(label);
+              return labelStyle.color === titleStyle.color && labelStyle.fontWeight === titleStyle.fontWeight;
+            });
+            const summaryIconCount = summaryLabels.filter(label => label.querySelector(".monitorSendSummaryIcon")).length;
+            const summaryRows = [
+              ...document.querySelectorAll("#monitorCard .monitorSendMetricItem"),
+              ...document.querySelectorAll("#monitorCard .monitorSendDetailItem"),
+              document.querySelector("#monitorCard .monitorMemoReadOnlyRow")
+            ].filter(Boolean);
+            const rowsHaveLeadingInset = summaryRows.every(row => parseFloat(getComputedStyle(row).paddingLeft) >= 18);
+            const noteFixture = document.createElement("div");
+            noteFixture.className = "monitorSendSummaryValue";
+            noteFixture.style.cssText = "position:fixed;left:-1000px;top:0;";
+            noteFixture.innerHTML = formatMonitorTabMetricValueHtml("9枚（未定植分 3枚）", "枚");
+            document.body.appendChild(noteFixture);
+            const unplantedNoteFontSize = parseFloat(getComputedStyle(noteFixture.querySelector(".monitorUnplantedSeedlingNote")).fontSize);
+            noteFixture.remove();
 
             const readOnlyState = {
               seedlingInputExists: !!sendContentCard?.querySelector("#seedlingInlineInput"),
@@ -3756,6 +3779,10 @@
               memoInsideSendContent: sendContentCard?.contains(document.querySelector("#monitorCard .monitorMemoReadOnlyRow")) || false,
               metricRowsStacked,
               itemNamesAreLarger,
+              labelStyleMatchesTitle,
+              summaryIconCount,
+              rowsHaveLeadingInset,
+              unplantedNoteFontSize,
               readOnlyState,
               editorState,
               discardState,
@@ -3790,6 +3817,10 @@
           memoInsideSendContent:true,
           metricRowsStacked:true,
           itemNamesAreLarger:true,
+          labelStyleMatchesTitle:true,
+          summaryIconCount:5,
+          rowsHaveLeadingInset:true,
+          unplantedNoteFontSize:11,
           readOnlyState:{ seedlingInputExists:false, memoInputExists:false, memoAddExists:false, memoText:"なし", editLabel:"編集" },
           editorState:{
             open:true,
@@ -5354,18 +5385,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "185f66b2", elements: 2181, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "4e7e03c0", elements: 2249, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "ee477519", elements: 2249, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "f401cc49", elements: 2182, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "2e6ca7a2", elements: 2182, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "b202937f", elements: 2265, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "b3cd1331", elements: 2280, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "40cc83b9", elements: 2280, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "16ec1c03", elements: 2280, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "3258aca9", elements: 2280, visible: 73, viewport: "390x844" },
-          wideForecast: { hash: "3af43cf5", elements: 2280, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "683d3c05", elements: 2280, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "61f35207", elements: 2205, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "0df5a7e1", elements: 2273, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "e137ad88", elements: 2273, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "a53189f9", elements: 2206, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "d379d2ec", elements: 2206, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "682cb6a7", elements: 2289, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "87e81741", elements: 2304, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "eeaaf131", elements: 2304, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "b2061763", elements: 2304, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "0019ebea", elements: 2304, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "71302fb3", elements: 2304, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "b6ac0feb", elements: 2304, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-flat-buttons">
+<meta name="harvestnavi-version" content="20260823-monitor-label-icons">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9108,15 +9108,29 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   grid-template-columns:110px minmax(0,1fr);
   align-items:center;
   gap:10px;
-  padding:8px 13px;
+  padding:8px 13px 8px 18px;
   text-align:left;
 }
 .monitorSendMetricItem + .monitorSendMetricItem{border-top:1px solid var(--ui-line);}
 .monitorSendSummaryLabel{
-  color:var(--ui-text-tertiary);
+  min-width:0;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:var(--ui-text);
   font-size:13px;
-  font-weight:720;
+  font-weight:760;
   line-height:1.2;
+}
+.monitorSendSummaryIcon{
+  width:14px;
+  height:14px;
+  flex:0 0 14px;
+  fill:none;
+  stroke:var(--ui-text-secondary);
+  stroke-width:1.7;
+  stroke-linecap:round;
+  stroke-linejoin:round;
 }
 .monitorSendSummaryValue{
   min-width:0;
@@ -9141,13 +9155,17 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-size:9px;
   white-space:nowrap;
 }
+.monitorSendSummaryValue .monitorUnplantedSeedlingNote{
+  font-size:11px;
+  font-weight:720;
+}
 .monitorSendDetailItem{
   min-width:0;
   display:grid;
   grid-template-columns:110px minmax(0,1fr);
   align-items:start;
   gap:9px;
-  padding:9px 13px;
+  padding:9px 13px 9px 18px;
 }
 .monitorSendDetailItem + .monitorSendDetailItem{border-top:1px solid var(--ui-line);}
 .monitorSendDetailItem .monitorSendSummaryLabel{padding-top:2px;}
@@ -9167,7 +9185,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   grid-template-columns:110px minmax(0,1fr);
   align-items:start;
   gap:9px;
-  padding:9px 13px 11px;
+  padding:9px 13px 11px 18px;
   border-top:1px solid var(--ui-line);
 }
 .monitorMemoReadOnlyRow .monitorSendSummaryLabel{padding-top:2px;}
@@ -11407,7 +11425,13 @@ requestAnimationFrame(function(){
 残すケース:
 なし</div>
         <div class="monitorMemoReadOnlyRow">
-          <span class="monitorSendSummaryLabel">表示メモ</span>
+          <span class="monitorSendSummaryLabel">
+            <svg class="monitorSendSummaryIcon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4.5 4.5h11v8h-6l-3.5 3v-3H4.5z"></path>
+              <path d="M7 7h6M7 9.7h4"></path>
+            </svg>
+            <span>表示メモ</span>
+          </span>
           <div id="monitorMemoReadOnlyValue" class="monitorMemoReadOnlyValue">なし</div>
         </div>
       </section>
@@ -31072,10 +31096,26 @@ function formatMonitorTabDetailValueHtml(value){
 function formatMonitorTabMetricValueHtml(value, fallbackUnit){
   const parts = getMonitorMetricParts(value, fallbackUnit);
   const unit = parts.unit || "";
+  const noteContent = parts.note
+    ? escapeHtml(parts.note).replace(
+        /（未定植分\s+\d+枚）/g,
+        '<span class="monitorUnplantedSeedlingNote">$&</span>'
+      )
+    : "";
   const noteHtml = parts.note
-    ? `<span class="instructionAutoNote">${escapeHtml(parts.note)}</span>`
+    ? `<span class="instructionAutoNote">${noteContent}</span>`
     : "";
   return `<span class="instructionEmphasis">${escapeHtml(parts.value)}${escapeHtml(unit)}</span>${noteHtml}`;
+}
+
+function getMonitorSendSummaryLabelHtml(label, iconKind){
+  const iconPaths = {
+    seedling:'<path d="M10 16V8.5"></path><path d="M10 10c-3.2 0-5.2-1.7-5.5-5 3.4-.2 5.3 1.5 5.5 5Z"></path><path d="M10 12c3 0 4.8-1.6 5.1-4.6-3.1-.2-4.9 1.4-5.1 4.6Z"></path><path d="M6 16h8"></path>',
+    cases:'<path d="m4 6 6-3 6 3-6 3Z"></path><path d="M4 6v7l6 4 6-4V6"></path><path d="M10 9v8"></path>',
+    location:'<path d="M15.2 8.1c0 3.8-5.2 8.4-5.2 8.4S4.8 11.9 4.8 8.1a5.2 5.2 0 1 1 10.4 0Z"></path><circle cx="10" cy="8.1" r="1.7"></circle>',
+    remaining:'<rect x="3.5" y="4" width="13" height="12" rx="1.8"></rect><path d="M3.5 8h13M7.8 4v12"></path>'
+  };
+  return `<span class="monitorSendSummaryLabel"><svg class="monitorSendSummaryIcon" viewBox="0 0 20 20" aria-hidden="true">${iconPaths[iconKind] || iconPaths.remaining}</svg><span>${escapeHtml(label)}</span></span>`;
 }
 
 function renderForecastSummary(){
@@ -31122,20 +31162,20 @@ function renderForecastSummary(){
     instructionBox.innerHTML = `
       <div class="monitorSendMetricGrid">
         <div class="monitorSendMetricItem">
-          <span class="monitorSendSummaryLabel">苗枚数</span>
+          ${getMonitorSendSummaryLabelHtml("苗枚数", "seedling")}
           <div class="monitorSendSummaryValue">${seedlingValueHtml}</div>
         </div>
         <div class="monitorSendMetricItem">
-          <span class="monitorSendSummaryLabel">収穫ケース数</span>
+          ${getMonitorSendSummaryLabelHtml("収穫ケース数", "cases")}
           <div class="monitorSendSummaryValue">${caseValueHtml}</div>
         </div>
       </div>
       <div class="monitorSendDetailItem">
-        <span class="monitorSendSummaryLabel">収穫場所</span>
+        ${getMonitorSendSummaryLabelHtml("収穫場所", "location")}
         <div class="monitorSendDetailValue">${formatMonitorTabDetailValueHtml(harvestLocationValue)}</div>
       </div>
       <div class="monitorSendDetailItem">
-        <span class="monitorSendSummaryLabel">残すケース</span>
+        ${getMonitorSendSummaryLabelHtml("残すケース", "remaining")}
         <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(remainingCasesValue)}</div>
       </div>`;
     renderMonitorMemoReadOnly(monitorContent);

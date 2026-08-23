@@ -304,10 +304,26 @@ function formatMonitorTabDetailValueHtml(value){
 function formatMonitorTabMetricValueHtml(value, fallbackUnit){
   const parts = getMonitorMetricParts(value, fallbackUnit);
   const unit = parts.unit || "";
+  const noteContent = parts.note
+    ? escapeHtml(parts.note).replace(
+        /（未定植分\s+\d+枚）/g,
+        '<span class="monitorUnplantedSeedlingNote">$&</span>'
+      )
+    : "";
   const noteHtml = parts.note
-    ? `<span class="instructionAutoNote">${escapeHtml(parts.note)}</span>`
+    ? `<span class="instructionAutoNote">${noteContent}</span>`
     : "";
   return `<span class="instructionEmphasis">${escapeHtml(parts.value)}${escapeHtml(unit)}</span>${noteHtml}`;
+}
+
+function getMonitorSendSummaryLabelHtml(label, iconKind){
+  const iconPaths = {
+    seedling:'<path d="M10 16V8.5"></path><path d="M10 10c-3.2 0-5.2-1.7-5.5-5 3.4-.2 5.3 1.5 5.5 5Z"></path><path d="M10 12c3 0 4.8-1.6 5.1-4.6-3.1-.2-4.9 1.4-5.1 4.6Z"></path><path d="M6 16h8"></path>',
+    cases:'<path d="m4 6 6-3 6 3-6 3Z"></path><path d="M4 6v7l6 4 6-4V6"></path><path d="M10 9v8"></path>',
+    location:'<path d="M15.2 8.1c0 3.8-5.2 8.4-5.2 8.4S4.8 11.9 4.8 8.1a5.2 5.2 0 1 1 10.4 0Z"></path><circle cx="10" cy="8.1" r="1.7"></circle>',
+    remaining:'<rect x="3.5" y="4" width="13" height="12" rx="1.8"></rect><path d="M3.5 8h13M7.8 4v12"></path>'
+  };
+  return `<span class="monitorSendSummaryLabel"><svg class="monitorSendSummaryIcon" viewBox="0 0 20 20" aria-hidden="true">${iconPaths[iconKind] || iconPaths.remaining}</svg><span>${escapeHtml(label)}</span></span>`;
 }
 
 function renderForecastSummary(){
@@ -354,20 +370,20 @@ function renderForecastSummary(){
     instructionBox.innerHTML = `
       <div class="monitorSendMetricGrid">
         <div class="monitorSendMetricItem">
-          <span class="monitorSendSummaryLabel">苗枚数</span>
+          ${getMonitorSendSummaryLabelHtml("苗枚数", "seedling")}
           <div class="monitorSendSummaryValue">${seedlingValueHtml}</div>
         </div>
         <div class="monitorSendMetricItem">
-          <span class="monitorSendSummaryLabel">収穫ケース数</span>
+          ${getMonitorSendSummaryLabelHtml("収穫ケース数", "cases")}
           <div class="monitorSendSummaryValue">${caseValueHtml}</div>
         </div>
       </div>
       <div class="monitorSendDetailItem">
-        <span class="monitorSendSummaryLabel">収穫場所</span>
+        ${getMonitorSendSummaryLabelHtml("収穫場所", "location")}
         <div class="monitorSendDetailValue">${formatMonitorTabDetailValueHtml(harvestLocationValue)}</div>
       </div>
       <div class="monitorSendDetailItem">
-        <span class="monitorSendSummaryLabel">残すケース</span>
+        ${getMonitorSendSummaryLabelHtml("残すケース", "remaining")}
         <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(remainingCasesValue)}</div>
       </div>`;
     renderMonitorMemoReadOnly(monitorContent);
