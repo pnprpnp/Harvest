@@ -1712,28 +1712,36 @@
           const button = app.document.getElementById("seedlingHouseOpenBtn");
           const resultActions = app.document.getElementById("forecastResultActions");
           const clearButton = resultActions.querySelector(".forecastClearBtn");
-          const bedPanel = app.document.querySelector("#forecastTab .casePlacementBedPanel");
+          const progressButton = app.document.getElementById("harvestProgressOpenBtn");
+          const progressPanel = app.document.getElementById("harvestProgressPanel");
+          const casePlacementPanel = app.document.querySelector("#forecastTab .casePlacementPanel");
           const buttonRect = button.getBoundingClientRect();
+          const progressButtonRect = progressButton.getBoundingClientRect();
           const clearButtonRect = clearButton.getBoundingClientRect();
           const resultActionState = comparable({
             visibleAfterCalculation: !resultActions.hidden && resultActions.getClientRects().length > 0,
-            directlyBelowBeds: resultActions.previousElementSibling === bedPanel,
-            buttonsShareRow: Math.abs(buttonRect.top - clearButtonRect.top) <= 1
+            belowCasesAndAbovePagination: resultActions.previousElementSibling?.classList.contains("casePlacementDivider")
+              && resultActions.nextElementSibling === progressPanel
+              && progressPanel.nextElementSibling === casePlacementPanel,
+            buttonsShareRow: Math.abs(buttonRect.top - progressButtonRect.top) <= 1
+              && Math.abs(buttonRect.top - clearButtonRect.top) <= 1
               && Math.abs(buttonRect.bottom - clearButtonRect.bottom) <= 1,
             compact: buttonRect.width <= 78 && buttonRect.height <= 36,
             hasSeedlingIcon: !!button.querySelector(".seedlingHouseOpenIcon svg"),
             accessibleLabelIncludesPurpose: (button.getAttribute("aria-label") || "").startsWith("1号棟の苗取り場所"),
+            progressLabel: progressButton.textContent.trim(),
             clearLabel: clearButton.textContent.trim()
           });
           assertDeepEqual(resultActionState, {
             visibleAfterCalculation: true,
-            directlyBelowBeds: true,
+            belowCasesAndAbovePagination: true,
             buttonsShareRow: true,
             compact: true,
             hasSeedlingIcon: true,
             accessibleLabelIncludesPurpose: true,
-            clearLabel: "計算結果をクリア"
-          }, "計算後の1号棟ボタンとクリアボタンが配置図直下の同じ行にありません");
+            progressLabel: "途中経過を入力",
+            clearLabel: "クリア"
+          }, "計算後の1号棟・途中経過・クリアが収穫ケース数直下の同じ行にありません");
           app.openSeedlingHouseWindow();
           const viewState = {
             buttonText: button.textContent.replace(/\s+/g, " ").trim(),
@@ -2482,13 +2490,17 @@
         }, "定植日数の詳細が計算後にページネーション下の共有カードへ表示されていません");
       });
 
-      await runTest("計算後だけ1号棟とクリアを配置図直下の同じ行に表示する", async () => {
+      await runTest("計算後だけ1号棟・途中経過・クリアを収穫ケース数直下の同じ行に表示する", async () => {
         const previousTab = app.eval("activeAppTab");
         const previousFrameWidth = iframe.style.width;
         const previousSelectionState = app.eval(`JSON.stringify({
           keys:[...harvestFillKeys],
           summary:harvestSummary,
-          mode:harvestSelectionMode
+          mode:harvestSelectionMode,
+          progress:harvestProgressState,
+          progressAvailable:harvestProgressAvailable,
+          progressBuilding:harvestProgressBuilding,
+          casesInput:document.getElementById("casesInput")?.value || ""
         })`);
         try{
           app.setMainTabSelection("forecast");
@@ -2499,15 +2511,22 @@
           const clearButton = app.document.querySelector(".forecastBottomClearRow .forecastClearBtn");
           const resultActions = app.document.getElementById("forecastResultActions");
           const seedlingButton = app.document.getElementById("seedlingHouseOpenBtn");
-          const bedPanel = app.document.querySelector("#forecastTab .casePlacementBedPanel");
+          const seedlingButtonLabel = seedlingButton.querySelector(".seedlingHouseOpenBuilding");
+          const seedlingButtonIcon = seedlingButton.querySelector(".seedlingHouseOpenIcon");
+          const progressButton = app.document.getElementById("harvestProgressOpenBtn");
+          const progressPanel = app.document.getElementById("harvestProgressPanel");
+          const placementPanel = app.document.querySelector("#forecastTab .casePlacementPanel");
+          const placementHeader = app.document.querySelector("#forecastTab .casePlacementHeader");
           const tabBar = app.document.querySelector(".tabBar");
-          app.eval(`harvestFillKeys=[]; harvestSummary=null; harvestSelectionMode="none"; renderForecastSummary();`);
+          app.eval(`harvestFillKeys=[]; harvestSummary=null; harvestSelectionMode="none"; harvestProgressState=null; harvestProgressAvailable=false; renderForecastSummary();`);
           const resultActionsHiddenBeforeCalculation = resultActions.hidden
             && resultActions.getClientRects().length === 0;
           app.eval(`
             harvestFillKeys=[getPalletKey(2,"A",1)];
             harvestSummary={start:harvestFillKeys[0],end:harvestFillKeys[0],filledCount:1,totalHarvest:12,needHeads:12};
             harvestSelectionMode="auto";
+            harvestProgressAvailable=true;
+            document.getElementById("casesInput").value="1";
             renderForecastSummary();
           `);
           const actionBarRect = actionBar.getBoundingClientRect();
@@ -2516,6 +2535,7 @@
           const tabBarRect = tabBar.getBoundingClientRect();
           const resultActionsRect = resultActions.getBoundingClientRect();
           const seedlingButtonRect = seedlingButton.getBoundingClientRect();
+          const progressButtonRect = progressButton.getBoundingClientRect();
           const clearRect = clearButton.getBoundingClientRect();
           const actionStyle = app.getComputedStyle(actionBar);
           const actionGapStyle = app.getComputedStyle(actionBar, "::after");
@@ -2523,6 +2543,16 @@
           const calculateStyle = app.getComputedStyle(calculateButton);
           const settingsSummaryStyle = app.getComputedStyle(settingsSummary);
           const forecastStyle = app.getComputedStyle(app.document.getElementById("forecastTab"));
+          const resultActionsStyle = app.getComputedStyle(resultActions);
+          const textColorProbe = app.document.createElement("span");
+          textColorProbe.style.color = "var(--ui-text)";
+          const accentColorProbe = app.document.createElement("span");
+          accentColorProbe.style.color = "var(--ui-accent)";
+          app.document.body.append(textColorProbe, accentColorProbe);
+          const uiTextColor = app.getComputedStyle(textColorProbe).color;
+          const accentColor = app.getComputedStyle(accentColorProbe).color;
+          textColorProbe.remove();
+          accentColorProbe.remove();
           const visibleState = comparable({
             position: actionStyle.position,
             safeGapFromTabBar: Math.abs(tabBarRect.top - actionBarRect.bottom) <= 1,
@@ -2553,9 +2583,23 @@
             resultActionsHiddenBeforeCalculation,
             resultActionsVisibleAfterCalculation: !resultActions.hidden
               && resultActionsRect.height > 0,
-            resultActionsAfterBeds: resultActions.previousElementSibling === bedPanel,
-            clearSharesRowWithSeedling: Math.abs(seedlingButtonRect.top - clearRect.top) <= 1
+            resultActionsBelowCasesAndAbovePagination:
+              resultActions.previousElementSibling?.classList.contains("casePlacementDivider")
+              && resultActions.nextElementSibling === progressPanel
+              && progressPanel.nextElementSibling === placementPanel
+              && resultActionsRect.bottom <= placementHeader.getBoundingClientRect().top,
+            usesSixEqualColumns: (resultActionsStyle.gridTemplateColumns.match(/px/g) || []).length === 6
+              && [app.getComputedStyle(progressButton).gridColumnStart, app.getComputedStyle(progressButton).gridColumnEnd].includes("span 4"),
+            actionWidthsFollowOneFourOne:
+              Math.abs(seedlingButtonRect.width - clearRect.width) <= 1
+              && progressButtonRect.width >= seedlingButtonRect.width * 3.8,
+            threeButtonsShareRow: Math.abs(seedlingButtonRect.top - progressButtonRect.top) <= 1
+              && Math.abs(seedlingButtonRect.top - clearRect.top) <= 1
               && Math.abs(seedlingButtonRect.bottom - clearRect.bottom) <= 1,
+            seedlingTextIsDark: app.getComputedStyle(seedlingButtonLabel).color === uiTextColor
+              && parseFloat(app.getComputedStyle(seedlingButtonLabel).fontWeight) >= 700,
+            seedlingIconIsGreen: app.getComputedStyle(seedlingButtonIcon).color === accentColor,
+            progressLabel: progressButton.textContent.trim(),
             clearLabel: clearButton.textContent.trim(),
             clearOutsideFixedBar: !actionBar.contains(clearButton),
             clearIsOutlined: parseFloat(clearStyle.borderTopWidth) >= 1 && clearStyle.backgroundColor === "rgb(255, 255, 255)",
@@ -2583,14 +2627,32 @@
             settingsSummaryFits: true,
             resultActionsHiddenBeforeCalculation: true,
             resultActionsVisibleAfterCalculation: true,
-            resultActionsAfterBeds: true,
-            clearSharesRowWithSeedling: true,
-            clearLabel: "計算結果をクリア",
+            resultActionsBelowCasesAndAbovePagination: true,
+            usesSixEqualColumns: true,
+            actionWidthsFollowOneFourOne: true,
+            threeButtonsShareRow: true,
+            seedlingTextIsDark: true,
+            seedlingIconIsGreen: true,
+            progressLabel: "途中経過を入力",
+            clearLabel: "クリア",
             clearOutsideFixedBar: true,
             clearIsOutlined: true,
             buttonsStayInsideViewport: true,
             contentClearsActionBar: true
           }, "設定・計算・クリアの配置が指定どおりになっていません");
+
+          app.toggleHarvestProgressInput();
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
+          assertDeepEqual(comparable({
+            panelOpen: progressPanel.open,
+            buttonExpanded: progressButton.getAttribute("aria-expanded"),
+            panelAbovePagination: progressPanel.nextElementSibling === placementPanel
+          }), {
+            panelOpen: true,
+            buttonExpanded: "true",
+            panelAbovePagination: true
+          }, "途中経過入力がページネーションの上で開きません");
+          app.toggleHarvestProgressInput();
 
           iframe.style.width = "320px";
           await new Promise(resolve => app.requestAnimationFrame(resolve));
@@ -2610,10 +2672,18 @@
               && resultActions.getBoundingClientRect().right <= app.innerWidth - 12,
             "320px幅で計算結果の操作行が画面外にはみ出しています"
           );
+          assert(
+            [seedlingButton, progressButton, clearButton].every(button => (
+              button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight
+            )),
+            "320px幅で1号棟・途中経過・クリアの文字が途切れています"
+          );
 
           app.clearHarvestPrediction();
           assert(resultActions.hidden && resultActions.getClientRects().length === 0,
             "計算結果をクリアした後も結果操作が表示されています");
+          assert(progressPanel.hidden && !progressPanel.open,
+            "計算結果をクリアした後も途中経過入力が表示されています");
 
           app.setMainTabSelection("monitor");
           assertEqual(actionBar.getClientRects().length, 0, "シミュ以外のタブにも固定操作バーが表示されています");
@@ -2623,11 +2693,132 @@
             harvestFillKeys=state.keys;
             harvestSummary=state.summary;
             harvestSelectionMode=state.mode;
+            harvestProgressState=state.progress;
+            harvestProgressAvailable=state.progressAvailable;
+            harvestProgressBuilding=state.progressBuilding;
+            document.getElementById("casesInput").value=state.casesInput;
             renderForecastSummary();
           })()`);
           iframe.style.width = previousFrameWidth;
           app.setMainTabSelection(previousTab);
         }
+      });
+
+      await runTest("途中経過のケース数を複数回に分けて追加できる", () => {
+        const progressState = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            getRecorded:getRecordedPalletSet,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            building:harvestProgressBuilding,
+            currentBuilding,
+            inputValue:document.getElementById("harvestProgressCasesInput")?.value || "",
+            storedHarvestState:localStorage.getItem(HARVEST_STATE_KEY)
+          };
+          try{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = () => ({ totalCases:200, regularCases:200, date:"2026-08-23" });
+            getRecordedPalletSet = () => new Set();
+            currentBuilding = 2;
+            harvestProgressBuilding = 2;
+            harvestSelectionMode = "manual";
+            harvestProgressAvailable = true;
+            harvestFillKeys = ["2-A-1", "2-B-1", "2-C-1"];
+            harvestSummary = { start:"2-A-1", end:"2-C-1", filledCount:3, totalHarvest:36, needHeads:2400 };
+            harvestProgressState = {
+              inputMode:"incremental",
+              baseSelectionMode:"manual",
+              planKeys:[...harvestFillKeys],
+              selectedBeds:["2-A"],
+              appliedSelectedBeds:[],
+              actualCasesInput:"",
+              appliedActualCases:null,
+              targetDate:"2026-08-23",
+              targetCases:200
+            };
+            const input = document.getElementById("harvestProgressCasesInput");
+            input.value = "70";
+            handleHarvestProgressCasesInput();
+            recalculateFromHarvestProgress();
+            const first = {
+              totalCases:harvestProgressState.appliedActualCases,
+              appliedBeds:[...harvestProgressState.appliedSelectedBeds],
+              inputValue:input.value,
+              pendingBeds:getPendingHarvestProgressBedKeys()
+            };
+
+            toggleHarvestProgressBed(2, "A");
+            const appliedBedCannotBeRemoved = harvestProgressState.selectedBeds.includes("2-A");
+            toggleHarvestProgressBed(2, "B");
+            input.value = "75";
+            handleHarvestProgressCasesInput();
+            const secondInputIsAdditional = harvestProgressState.actualCasesInput;
+            recalculateFromHarvestProgress();
+            const second = {
+              totalCases:harvestProgressState.appliedActualCases,
+              appliedBeds:[...harvestProgressState.appliedSelectedBeds],
+              inputValue:input.value,
+              pendingBeds:getPendingHarvestProgressBedKeys(),
+              appliedBedCount:document.querySelectorAll("#harvestProgressBeds .harvestProgressBed.is-applied").length,
+              selectionText:document.getElementById("harvestProgressSelectionText")?.textContent.trim() || ""
+            };
+            const migratedOldStateInput = normalizeHarvestProgressState({
+              baseSelectionMode:"auto",
+              planKeys:["2-A-1"],
+              selectedBeds:["2-A"],
+              appliedSelectedBeds:["2-A"],
+              actualCasesInput:"70",
+              appliedActualCases:70,
+              targetDate:"2026-08-23",
+              targetCases:200
+            }).actualCasesInput;
+            return {
+              first,
+              appliedBedCannotBeRemoved,
+              secondInputIsAdditional,
+              second,
+              migratedOldStateInput,
+              fieldLabel:document.querySelector(".harvestProgressCaseField label")?.textContent.trim() || "",
+              applyLabel:document.querySelector(".harvestProgressActions .actionBtn")?.textContent.trim() || ""
+            };
+          }finally{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = previous.getPlan;
+            getRecordedPalletSet = previous.getRecorded;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            harvestProgressBuilding = previous.building;
+            currentBuilding = previous.currentBuilding;
+            const input = document.getElementById("harvestProgressCasesInput");
+            if(input) input.value = previous.inputValue;
+            if(previous.storedHarvestState === null) localStorage.removeItem(HARVEST_STATE_KEY);
+            else localStorage.setItem(HARVEST_STATE_KEY, previous.storedHarvestState);
+            renderForecastSummary();
+          }
+        })()`));
+        assertDeepEqual(progressState, {
+          first:{ totalCases:70, appliedBeds:["2-A"], inputValue:"", pendingBeds:[] },
+          appliedBedCannotBeRemoved:true,
+          secondInputIsAdditional:"75",
+          second:{
+            totalCases:145,
+            appliedBeds:["2-A", "2-B"],
+            inputValue:"",
+            pendingBeds:[],
+            appliedBedCount:2,
+            selectionText:"新たに完了したベッドを選択してください"
+          },
+          migratedOldStateInput:"",
+          fieldLabel:"今回追加するケース数",
+          applyLabel:"追加して再計算する"
+        }, "途中経過を70ケースと75ケースに分けて追加できません");
       });
 
       await runTest("画面内に収まる計算前シミュとモニターのスクロールを止める", async () => {
@@ -5431,18 +5622,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "dec8f525", elements: 2205, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "7a1eb7a7", elements: 2273, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "e314138e", elements: 2273, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "9d0a2e1b", elements: 2206, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "532d595a", elements: 2206, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "2ebe7d0d", elements: 2289, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "8f881963", elements: 2304, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "efca28af", elements: 2304, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "948b93dd", elements: 2304, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "b1a70ce1", elements: 2304, visible: 94, viewport: "390x844" },
-          wideForecast: { hash: "10c761c1", elements: 2304, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "108cbb05", elements: 2304, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "02752f13", elements: 2205, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "445a31ad", elements: 2273, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "765591d4", elements: 2273, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "132b01c1", elements: 2206, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "37eccfe4", elements: 2206, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "5f836265", elements: 2289, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "ad5a0f9b", elements: 2304, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "9bfdea29", elements: 2304, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "e92a281b", elements: 2304, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "94c305b9", elements: 2304, visible: 94, viewport: "390x844" },
+          wideForecast: { hash: "9400ffd7", elements: 2304, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "f3bde01f", elements: 2304, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-all-planting-age-beds">
+<meta name="harvestnavi-version" content="20260823-progress-split-input">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7483,17 +7483,17 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   gap:2px;
   transform:none;
   margin:0;
-  padding:2px 4px;
+  padding:2px 1px;
   border:1px solid var(--ui-line);
   border-radius:7px;
   background:var(--ui-surface-solid);
-  color:var(--ui-text-secondary);
+  color:var(--ui-text);
   box-shadow:none;
   line-height:1.1;
 }
-.seedlingHouseOpenIcon{width:11px;height:11px;flex:0 0 11px;color:var(--ui-text-tertiary);}
+.seedlingHouseOpenIcon{width:10px;height:10px;flex:0 0 10px;color:var(--ui-accent);}
 .seedlingHouseOpenIcon svg{display:block;width:100%;height:100%;}
-.seedlingHouseOpenBuilding{color:var(--ui-text-tertiary);font-size:10px;font-weight:600;white-space:nowrap;}
+.seedlingHouseOpenBuilding{color:var(--ui-text);font-size:11px;font-weight:760;white-space:nowrap;}
 .casePlacementRemainingSummary{
   min-width:0;
   max-width:none;
@@ -7977,27 +7977,49 @@ button.forecastClearBtn{border-radius:10px;}
 .forecastPlantingAgeRange{overflow:hidden;color:var(--ui-accent-dark);font-size:15px;font-weight:820;line-height:1.2;text-overflow:ellipsis;white-space:nowrap;}
 .forecastPlantingAgeInfoBtn{width:22px;height:22px;flex:0 0 22px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:var(--ui-accent-soft);color:var(--ui-accent);font-size:14px;font-weight:800;line-height:1;}
 .forecastBottomClearRow{
-  width:min(100%,266px);
+  width:100%;
   max-width:none;
   display:grid;
-  grid-template-columns:72px minmax(0,1fr);
+  grid-template-columns:repeat(6,minmax(0,1fr));
   align-items:center;
   flex:0 0 auto;
-  gap:8px;
-  margin:6px auto 0;
+  gap:4px;
+  margin:5px 0 3px;
   padding:0;
 }
 .forecastBottomClearRow[hidden]{display:none;}
+.forecastBottomClearRow > .seedlingHouseOpenBtn{grid-column:span 1;}
+.forecastBottomClearRow > .harvestProgressOpenBtn{grid-column:span 4;}
+.forecastBottomClearRow > .forecastClearBtn{grid-column:span 1;}
+.forecastBottomClearRow > button{height:36px;min-height:36px;box-sizing:border-box;}
+.harvestProgressOpenBtn{
+  min-width:0;
+  margin:0;
+  padding:5px 8px;
+  border:1px solid var(--ui-line);
+  border-radius:8px;
+  background:var(--ui-surface-muted);
+  color:var(--ui-text);
+  font-size:13px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.harvestProgressOpenBtn[aria-expanded="true"]{
+  border-color:var(--ui-accent);
+  background:var(--ui-accent-soft);
+  color:var(--ui-accent-dark);
+}
 .forecastBottomClearRow button.forecastClearBtn{
   width:100%;
-  min-height:34px;
+  min-width:0;
+  min-height:36px;
   margin:0;
-  padding:6px 10px;
-  border-radius:10px;
+  padding:4px 2px;
+  border-radius:8px;
   border:1px solid rgba(255,59,48,.28);
   background:#fff;
   color:#c62821;
-  font-size:12px;
+  font-size:11px;
   font-weight:720;
   box-shadow:none;
 }
@@ -8006,8 +8028,9 @@ button.forecastClearBtn{border-radius:10px;}
   background:#fff5f4;
 }
 .harvestProgressPanel{
+  width:100%;
   max-width:760px;
-  margin:18px auto 0;
+  margin:7px auto 9px;
   border:1px solid var(--ui-line);
   border-radius:14px;
   background:#fff;
@@ -8025,6 +8048,7 @@ button.forecastClearBtn{border-radius:10px;}
   cursor:pointer;
 }
 .harvestProgressSummary::-webkit-details-marker{display:none;}
+.harvestProgressSummary[hidden]{display:none;}
 .harvestProgressSummary::after{
   content:"⌄";
   margin-left:auto;
@@ -8053,7 +8077,7 @@ button.forecastClearBtn{border-radius:10px;}
 }
 .harvestProgressBody{
   padding:0 15px 16px;
-  border-top:1px solid var(--ui-line);
+  border-top:0;
 }
 .harvestProgressLead{
   margin:13px 0;
@@ -8197,6 +8221,10 @@ button.harvestProgressBed.is-selected{
   border-color:#0f766e;
   background:#ecfdf5;
   box-shadow:0 0 0 2px rgba(15,118,110,.14);
+}
+button.harvestProgressBed.is-applied{
+  border-color:#0f766e;
+  background:#ecfdf5;
 }
 .harvestProgressBed.is-selected .bedMiniMapSegment:not(.recorded){
   background:#14b8a6;
@@ -11488,6 +11516,49 @@ requestAnimationFrame(function(){
 
       <div class="casePlacementDivider"></div>
 
+      <div id="forecastResultActions" class="forecastResultActions forecastBottomClearRow" hidden>
+        <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-label="苗取り場所の1号棟を開く" aria-haspopup="dialog" aria-controls="seedlingHouseModal">
+          <span class="seedlingHouseOpenIcon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+              <path d="M12 21V10"></path>
+              <path d="M12 14c-4.5 0-7-2.2-7-6 4.5 0 7 2.2 7 6Z"></path>
+              <path d="M12 10c0-4 2.4-6 7-6 0 4-2.4 6-7 6Z"></path>
+            </svg>
+          </span>
+          <span class="seedlingHouseOpenBuilding">1号棟</span>
+        </button>
+        <button id="harvestProgressOpenBtn" type="button" class="harvestProgressOpenBtn" data-ui-click="toggleHarvestProgressInput" aria-expanded="false" aria-controls="harvestProgressPanel">途中経過を入力</button>
+        <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction">クリア</button>
+      </div>
+      <details id="harvestProgressPanel" class="harvestProgressPanel" data-ui-toggle="handleHarvestProgressPanelToggle" hidden>
+        <summary class="harvestProgressSummary" hidden aria-hidden="true">
+          <span class="harvestProgressTitle">途中経過</span>
+          <span id="harvestProgressSummaryStatus" class="harvestProgressSummaryStatus">収穫中に使えます</span>
+        </summary>
+        <div class="harvestProgressBody">
+          <p class="harvestProgressLead">新たに収穫が完了したベッドをタップし、そのベッドから取れたケース数を入力してください。入力するたびに前回までのケース数へ追加します。</p>
+          <div class="buildingSwitch harvestProgressBuildingSwitch">
+            <button type="button" class="buildingBtn" data-ui-click="shiftHarvestProgressBuilding" data-ui-number="-1" aria-label="前の号棟">‹</button>
+            <button id="harvestProgressBuildingBtn" type="button" class="buildingBtn active">2号棟</button>
+            <button type="button" class="buildingBtn" data-ui-click="shiftHarvestProgressBuilding" data-ui-number="1" aria-label="次の号棟">›</button>
+          </div>
+          <div id="harvestProgressBeds" class="bedWrap harvestProgressBeds"></div>
+          <div id="harvestProgressSelectionText" class="harvestProgressSelectionText">完了したベッドを選択してください</div>
+          <div class="harvestProgressCaseField">
+            <label for="harvestProgressCasesInput">今回追加するケース数</label>
+            <span class="inputUnitWrap">
+              <input id="harvestProgressCasesInput" type="number" min="0" step="1" inputmode="numeric" data-ui-input="handleHarvestProgressCasesInput">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
+          </div>
+          <div id="harvestProgressResult" class="harvestProgressResult">先に通常の収穫場所を計算または選択してください。</div>
+          <div class="harvestProgressActions">
+            <button type="button" class="actionBtn" data-ui-click="recalculateFromHarvestProgress">追加して再計算する</button>
+            <button id="harvestProgressResetBtn" type="button" class="actionBtn secondaryBtn harvestProgressResetBtn" data-ui-click="resetHarvestProgress" hidden>取り消す</button>
+          </div>
+        </div>
+      </details>
+
       <div class="casePlacementPanel">
         <div class="casePlacementHeader">
           <div class="buildingSwitch casePlacementBuildingSwitch">
@@ -11567,19 +11638,6 @@ requestAnimationFrame(function(){
         <div class="casePlacementBedPanel">
           <div id="beds" class="bedWrap"></div>
         </div>
-        <div id="forecastResultActions" class="forecastResultActions forecastBottomClearRow" hidden>
-          <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-label="苗取り場所の1号棟を開く" aria-haspopup="dialog" aria-controls="seedlingHouseModal">
-            <span class="seedlingHouseOpenIcon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
-                <path d="M12 21V10"></path>
-                <path d="M12 14c-4.5 0-7-2.2-7-6 4.5 0 7 2.2 7 6Z"></path>
-                <path d="M12 10c0-4 2.4-6 7-6 0 4-2.4 6-7 6Z"></path>
-              </svg>
-            </span>
-            <span class="seedlingHouseOpenBuilding">1号棟</span>
-          </button>
-          <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction">計算結果をクリア</button>
-        </div>
         <div class="simulationBedMapLegend" aria-label="ベッド配置図の色分け">
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>記録済み</span>
@@ -11603,35 +11661,6 @@ requestAnimationFrame(function(){
             <button class="actionBtn casePlacementCalculateBtn" data-ui-click="runHarvestPrediction">計算</button>
           </div>
         </div>
-        <details id="harvestProgressPanel" class="harvestProgressPanel" data-ui-toggle="handleHarvestProgressPanelToggle" hidden>
-          <summary class="harvestProgressSummary">
-            <span class="harvestProgressTitle">途中経過</span>
-            <span class="harvestProgressOptionalBadge">任意</span>
-            <span id="harvestProgressSummaryStatus" class="harvestProgressSummaryStatus">収穫中に使えます</span>
-          </summary>
-          <div class="harvestProgressBody">
-            <p class="harvestProgressLead">収穫が完了したベッドをタップし、そのベッドから取れたケース数の合計を入力してください。</p>
-            <div class="buildingSwitch harvestProgressBuildingSwitch">
-              <button type="button" class="buildingBtn" data-ui-click="shiftHarvestProgressBuilding" data-ui-number="-1" aria-label="前の号棟">‹</button>
-              <button id="harvestProgressBuildingBtn" type="button" class="buildingBtn active">2号棟</button>
-              <button type="button" class="buildingBtn" data-ui-click="shiftHarvestProgressBuilding" data-ui-number="1" aria-label="次の号棟">›</button>
-            </div>
-            <div id="harvestProgressBeds" class="bedWrap harvestProgressBeds"></div>
-            <div id="harvestProgressSelectionText" class="harvestProgressSelectionText">完了したベッドを選択してください</div>
-            <div class="harvestProgressCaseField">
-              <label for="harvestProgressCasesInput">選択した完了ベッドから取れた合計</label>
-              <span class="inputUnitWrap">
-                <input id="harvestProgressCasesInput" type="number" min="0" step="1" inputmode="numeric" data-ui-input="handleHarvestProgressCasesInput">
-                <span class="inputUnitSuffix">ケース</span>
-              </span>
-            </div>
-            <div id="harvestProgressResult" class="harvestProgressResult">先に通常の収穫場所を計算または選択してください。</div>
-            <div class="harvestProgressActions">
-              <button type="button" class="actionBtn" data-ui-click="recalculateFromHarvestProgress">残りを再計算する</button>
-              <button id="harvestProgressResetBtn" type="button" class="actionBtn secondaryBtn harvestProgressResetBtn" data-ui-click="resetHarvestProgress" hidden>取り消す</button>
-            </div>
-          </div>
-        </details>
       </div>
 
       <details class="forecastSummaryCard" hidden>
@@ -14850,16 +14879,22 @@ function normalizeHarvestProgressState(value){
   const appliedSelectedBeds = Array.isArray(value.appliedSelectedBeds)
     ? [...new Set(value.appliedSelectedBeds.map(normalizeHarvestProgressBedKey).filter(Boolean))]
     : [];
-  const actualCasesInput = String(value.actualCasesInput ?? "").trim();
+  let actualCasesInput = String(value.actualCasesInput ?? "").trim();
   const hasAppliedCases = value.appliedActualCases !== null
     && value.appliedActualCases !== undefined
     && String(value.appliedActualCases).trim() !== "";
   const appliedActualCases = hasAppliedCases
     ? clampNumber(value.appliedActualCases, 0, 999999, 0)
     : null;
+  const usesIncrementalInput = value.inputMode === "incremental";
+  if(!usesIncrementalInput && hasAppliedCases && actualCasesInput
+    && formatHarvestProgressCases(actualCasesInput) === formatHarvestProgressCases(appliedActualCases)){
+    actualCasesInput = "";
+  }
   const targetDate = String(value.targetDate || "").trim();
 
   return {
+    inputMode: "incremental",
     baseSelectionMode: normalizeHarvestSelectionMode(value.baseSelectionMode) === "auto" ? "auto" : "manual",
     planKeys,
     selectedBeds,
@@ -14880,6 +14915,7 @@ function ensureHarvestProgressState(){
   const casePlan = getHarvestCasePlan();
   if(!harvestFillKeys.length || casePlan.totalCases <= 0) return null;
   harvestProgressState = {
+    inputMode: "incremental",
     baseSelectionMode: harvestSelectionMode === "auto" ? "auto" : "manual",
     planKeys: [...harvestFillKeys],
     selectedBeds: [],
@@ -14957,14 +14993,20 @@ function getHarvestProgressActualCases(){
     : 0;
 }
 
+function getPendingHarvestProgressBedKeys(state = harvestProgressState){
+  const normalized = normalizeHarvestProgressState(state);
+  if(!normalized) return [];
+  const appliedSet = new Set(normalized.appliedSelectedBeds);
+  return normalized.selectedBeds.filter(bedKey => !appliedSet.has(bedKey));
+}
+
 function hasUnappliedHarvestProgressChanges(){
   const state = normalizeHarvestProgressState(harvestProgressState);
   if(!state || !hasAppliedHarvestProgress()) return false;
   const selected = [...state.selectedBeds].sort().join("|");
   const applied = [...state.appliedSelectedBeds].sort().join("|");
   const draftCases = String(state.actualCasesInput || "").trim();
-  const appliedCases = formatHarvestProgressCases(state.appliedActualCases);
-  return selected !== applied || (draftCases !== "" && formatHarvestProgressCases(draftCases) !== appliedCases);
+  return selected !== applied || draftCases !== "";
 }
 
 function getHarvestProgressRemainingTargetCases(){
@@ -15012,6 +15054,7 @@ function renderHarvestProgressBeds(){
   bedMap.forEach(bedName => {
     const bedKey = getHarvestProgressBedKey(harvestProgressBuilding, bedName);
     const isSelected = selectedBedSet.has(bedKey);
+    const isApplied = state?.appliedSelectedBeds.includes(bedKey) || false;
     const availableCount = PALLETS_PER_BED - getBedSummaryCounts(
       harvestProgressBuilding,
       bedName,
@@ -15020,12 +15063,14 @@ function renderHarvestProgressBeds(){
     const plannedCount = getSelectedNumbersForBed(harvestProgressBuilding, bedName, planSet).length;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "harvestProgressBed" + (isSelected ? " is-selected" : "");
+    button.className = "harvestProgressBed"
+      + (isSelected ? " is-selected" : "")
+      + (isApplied ? " is-applied" : "");
     button.disabled = availableCount <= 0;
     button.setAttribute("aria-pressed", String(isSelected));
     button.setAttribute(
       "aria-label",
-      `${harvestProgressBuilding}号棟 ${bedName}ベッド。${isSelected ? "完了として選択済み" : "タップして完了にする"}`
+      `${harvestProgressBuilding}号棟 ${bedName}ベッド。${isApplied ? "途中経過へ反映済み" : (isSelected ? "今回追加する完了ベッドとして選択済み" : "タップして今回の完了に追加する")}`
     );
     button.onclick = () => toggleHarvestProgressBed(harvestProgressBuilding, bedName);
 
@@ -15036,9 +15081,11 @@ function renderHarvestProgressBeds(){
     appendBedMiniMap(button, harvestProgressBuilding, bedName, { selectedSet: planSet, recordedSet });
     const meta = document.createElement("div");
     meta.className = "harvestProgressBedMeta";
-    meta.textContent = availableCount <= 0
+    meta.textContent = isApplied
+      ? "反映済み"
+      : (availableCount <= 0
       ? "収穫済み"
-      : (plannedCount > 0 ? `計画 ${plannedCount}枚` : `対象 ${availableCount}枚`);
+      : (plannedCount > 0 ? `計画 ${plannedCount}枚` : `対象 ${availableCount}枚`));
     button.appendChild(meta);
     container.appendChild(button);
   });
@@ -15056,11 +15103,11 @@ function getHarvestProgressResultModel(){
   if(!state || !hasAppliedHarvestProgress()){
     const selectedCount = state?.selectedBeds.length || 0;
     return selectedCount > 0
-      ? { text: `${selectedCount}ベッドを選択中です。ケース数を入力して再計算してください。`, className: "" }
-      : { text: "完了したベッドを選び、ケース数を入力すると残りを再計算します。", className: "" };
+      ? { text: `${selectedCount}ベッドを選択中です。今回取れたケース数を入力して追加してください。`, className: "" }
+      : { text: "完了したベッドを選び、今回取れたケース数を入力すると残りを再計算します。", className: "" };
   }
   if(hasUnappliedHarvestProgressChanges()){
-    return { text: "完了ベッドまたはケース数の変更はまだ反映されていません。「残りを再計算する」を押してください。", className: "needs-selection" };
+    return { text: "今回の完了ベッドまたはケース数はまだ反映されていません。「追加して再計算する」を押してください。", className: "needs-selection" };
   }
 
   const actualCases = getHarvestProgressActualCases();
@@ -15096,12 +15143,17 @@ function getHarvestProgressResultModel(){
 
 function updateHarvestProgressVisibility(){
   const panel = document.getElementById("harvestProgressPanel");
+  const openButton = document.getElementById("harvestProgressOpenBtn");
   if(!panel) return false;
   const shouldShow = harvestProgressAvailable
     && harvestFillKeys.length > 0
     && getHarvestCasePlan().totalCases > 0;
   panel.hidden = !shouldShow;
   if(!shouldShow) panel.open = false;
+  if(openButton){
+    openButton.disabled = !shouldShow;
+    openButton.setAttribute("aria-expanded", String(shouldShow && panel.open));
+  }
   return shouldShow;
 }
 
@@ -15116,9 +15168,12 @@ function updateHarvestProgressUi(){
   }
   const selectionText = document.getElementById("harvestProgressSelectionText");
   if(selectionText){
-    selectionText.textContent = state?.selectedBeds.length
-      ? "完了: " + formatHarvestProgressBedSelection(state.selectedBeds)
-      : "完了したベッドを選択してください";
+    const pendingBedKeys = getPendingHarvestProgressBedKeys(state);
+    selectionText.textContent = pendingBedKeys.length
+      ? "今回追加: " + formatHarvestProgressBedSelection(pendingBedKeys)
+      : (hasAppliedHarvestProgress()
+        ? "新たに完了したベッドを選択してください"
+        : "完了したベッドを選択してください");
   }
   const summary = document.getElementById("harvestProgressSummaryStatus");
   if(summary){
@@ -15141,12 +15196,26 @@ function updateHarvestProgressUi(){
 }
 
 function handleHarvestProgressPanelToggle(){
-  if(document.getElementById("harvestProgressPanel")?.open){
+  const panel = document.getElementById("harvestProgressPanel");
+  document.getElementById("harvestProgressOpenBtn")
+    ?.setAttribute("aria-expanded", String(!!panel?.open && !panel.hidden));
+  if(panel?.open){
     if(!harvestProgressState && harvestFillKeys.length){
       harvestProgressBuilding = currentBuilding;
     }
     updateHarvestProgressUi();
   }
+}
+
+function toggleHarvestProgressInput(){
+  const panel = document.getElementById("harvestProgressPanel");
+  if(!panel || !updateHarvestProgressVisibility()){
+    showToast("先に収穫場所を計算してください");
+    return;
+  }
+  panel.open = !panel.open;
+  handleHarvestProgressPanelToggle();
+  scheduleMainTabViewportScrollLock();
 }
 
 function shiftHarvestProgressBuilding(direction){
@@ -15162,6 +15231,10 @@ function toggleHarvestProgressBed(building, bed){
     return;
   }
   const bedKey = getHarvestProgressBedKey(building, bed);
+  if(state.appliedSelectedBeds.includes(bedKey)){
+    showToast("このベッドは途中経過へ反映済みです。全て取り消す場合は「取り消す」を押してください");
+    return;
+  }
   const selectedSet = new Set(state.selectedBeds);
   if(selectedSet.has(bedKey)) selectedSet.delete(bedKey);
   else selectedSet.add(bedKey);
@@ -15207,8 +15280,9 @@ function recalculateFromHarvestProgress(){
     updateHarvestProgressUi();
     return;
   }
-  if(!state.selectedBeds.length){
-    showToast("完了したベッドを選択してください");
+  const pendingBedKeys = getPendingHarvestProgressBedKeys(state);
+  if(!pendingBedKeys.length){
+    showToast("新たに完了したベッドを選択してください");
     return;
   }
   const casesInput = document.getElementById("harvestProgressCasesInput");
@@ -15218,7 +15292,8 @@ function recalculateFromHarvestProgress(){
     return;
   }
 
-  const actualCases = clampNumber(casesInput.value, 0, 999999, 0);
+  const additionalActualCases = clampNumber(casesInput.value, 0, 999999, 0);
+  const actualCases = Math.min(999999, getHarvestProgressActualCases() + additionalActualCases);
   const completedKeys = getHarvestProgressKeysForBeds(state.selectedBeds);
   if(!completedKeys.length){
     showToast("選択したベッドには今回の収穫対象がありません");
@@ -15248,10 +15323,11 @@ function recalculateFromHarvestProgress(){
     harvestSelectionMode = "manual";
   }
 
-  state.actualCasesInput = String(casesInput.value || "").trim();
+  state.actualCasesInput = "";
   state.appliedActualCases = actualCases;
   state.appliedSelectedBeds = [...state.selectedBeds];
   harvestProgressState = state;
+  casesInput.value = "";
   harvestFillKeys = [...new Set([...completedKeys, ...remainingKeys])]
     .sort((left, right) => getOrderIndexFromKey(left) - getOrderIndexFromKey(right));
 
@@ -15272,7 +15348,7 @@ function recalculateFromHarvestProgress(){
   });
   updateHarvestProgressUi();
   showToast(state.baseSelectionMode === "auto"
-    ? "途中経過を反映し、残りの収穫場所を更新しました"
+    ? `${formatHarvestProgressCases(additionalActualCases)}ケースを追加し、残りの収穫場所を更新しました`
     : getHarvestProgressResultModel().text.split("\n").slice(-1)[0]);
 }
 
