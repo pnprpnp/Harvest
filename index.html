@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-building-cases">
+<meta name="harvestnavi-version" content="20260823-monitor-compact-cases">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8752,26 +8752,35 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   color:#a94300;
   font-weight:780;
 }
-.monitorCaseSummaryLine{justify-content:flex-start;}
-.monitorCaseSummaryIcon{align-self:flex-start;}
+.monitorCaseSummaryLine{justify-content:center;}
+.monitorCaseSummaryIcon{align-self:center;}
+.monitorCaseSummaryLine .monitorRemainingList{
+  justify-items:center;
+  text-align:center;
+}
 .monitorCaseBuildingSummary{
-  display:grid;
-  gap:1px;
+  max-width:100%;
 }
 .monitorCaseBuildingSummary + .monitorCaseBuildingSummary{margin-top:.18em;}
-.monitorCaseBuildingTotal{
+.monitorCaseBuildingLine{
   display:flex;
   align-items:baseline;
-  gap:.12em;
+  justify-content:center;
+  max-width:100%;
+  gap:.14em;
   color:var(--ui-text);
   white-space:nowrap;
 }
-.monitorCaseBuildingName{margin-right:.3em;}
-.monitorCasePlacementCount{font-variant-numeric:tabular-nums;}
-.monitorCaseRemainingRows{
-  display:grid;
-  padding-left:1.4em;
+.monitorCaseBuildingName{margin-right:.22em;}
+.monitorCasePlacement,
+.monitorRemainingLine.is-compact,
+.monitorCaseLocation{
+  display:inline-flex;
+  align-items:baseline;
 }
+.monitorCasePlacementCount{font-variant-numeric:tabular-nums;}
+.monitorCaseDivider{margin:0 .08em;color:var(--ui-line-strong);font-weight:500;}
+.monitorCaseLocationSeparator{margin:0 .02em;color:var(--ui-text-secondary);}
 .monitorSummaryGrid .monitorMetricCard:nth-child(-n+2) .monitorMetricLine{
   font-size:clamp(32px,3.6vw,46px);
 }
@@ -8783,13 +8792,6 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorSummaryGrid .monitorMetricCard:nth-child(-n+2) .monitorMetricLabel{
   color:var(--ui-text);
-}
-.monitorRemainingLine.is-location{
-  display:grid;
-  grid-template-columns:1em .7em max-content max-content max-content;
-  align-items:baseline;
-  justify-content:start;
-  white-space:nowrap;
 }
 .monitorRemainingLine.is-freeform{white-space:nowrap;}
 .monitorRemainingLocation{text-align:center;}
@@ -8888,7 +8890,10 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .monitorBuildingBlock{
   min-width:0;
   min-height:0;
+  width:100%;
+  max-width:420px;
   height:auto;
+  justify-self:center;
   border:1px solid var(--ui-line);
   border-radius:17px;
   padding:9px;
@@ -8902,6 +8907,7 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-size:23px;
   line-height:1;
   font-weight:780;
+  text-align:center;
 }
 .monitorBedGrid{gap:5px;}
 .monitorBedCard{
@@ -30856,32 +30862,34 @@ function getMonitorRemainingCasesHtml(value, keys = []){
   });
   const summaryHtml = getMonitorBuildingDisplayOrder(grouped).map(building => {
     const summary = summaries[String(building)];
+    const locationSuffixes = new Set(summary.locations.map(location => location.suffix));
+    const hasSharedLocationSuffix = locationSuffixes.size === 1;
+    const sharedLocationSuffix = hasSharedLocationSuffix ? summary.locations[0]?.suffix : "";
+    const locationsHtml = summary.locations.map((location, index) => {
+      const shortageClass = location.suffix === "不足" ? " is-shortage" : "";
+      return `
+        ${index ? `<span class="monitorCaseLocationSeparator">・</span>` : ""}
+        <span class="monitorCaseLocation${shortageClass}">
+          <span class="monitorRemainingLocation">${location.label}</span><span class="monitorRemainingCount">${escapeHtml(location.count)}</span>${hasSharedLocationSuffix ? "" : `<span class="monitorMetricSmallUnit">ケース</span><span class="monitorRemainingSuffix">${location.suffix}</span>`}
+        </span>
+      `;
+    }).join("");
     return `
       <div class="monitorCaseBuildingSummary">
-        <div class="monitorCaseBuildingTotal">
+        <div class="monitorCaseBuildingLine">
           <span class="monitorCaseBuildingName">${building}号棟</span>
           ${summary.placement ? `
-            <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span>
-            <span class="monitorMetricSmallUnit">ケース</span>
-            <span class="monitorCasePlacementSuffix">配置</span>
+            <span class="monitorCasePlacement">
+              <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span><span class="monitorCasePlacementSuffix">配置</span>
+            </span>
+          ` : ""}
+          ${summary.placement && summary.locations.length ? `<span class="monitorCaseDivider" aria-hidden="true">｜</span>` : ""}
+          ${summary.locations.length ? `
+            <span class="monitorRemainingLine is-compact${sharedLocationSuffix === "不足" ? " is-shortage" : ""}">
+              ${locationsHtml}${hasSharedLocationSuffix ? `<span class="monitorMetricSmallUnit">ケース</span><span class="monitorRemainingSuffix">${sharedLocationSuffix}</span>` : ""}
+            </span>
           ` : ""}
         </div>
-        ${summary.locations.length ? `
-          <div class="monitorCaseRemainingRows">
-            ${summary.locations.map(location => {
-              const shortageClass = location.suffix === "不足" ? " is-shortage" : "";
-              return `
-                <div class="monitorRemainingLine is-location${shortageClass}">
-                  <span class="monitorRemainingLocation">${location.label}</span>
-                  <span class="monitorRemainingColon">：</span>
-                  <span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
-                  <span class="monitorMetricSmallUnit">ケース</span>
-                  <span class="monitorRemainingSuffix">${location.suffix}</span>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        ` : ""}
       </div>
     `;
   }).join("");

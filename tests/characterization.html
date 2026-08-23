@@ -4006,6 +4006,8 @@
               bedNameCentered:getComputedStyle(firstBedHead).display === "grid" &&
                 getComputedStyle(firstBedName).gridColumnStart === "2" &&
                 getComputedStyle(firstBedName).textAlign === "center",
+              buildingBlockCentered:getComputedStyle(host.querySelector(".monitorBuildingBlock")).justifySelf === "center" &&
+                getComputedStyle(host.querySelector(".monitorBuildingTitle")).textAlign === "center",
               rangeMarkerCount:host.querySelectorAll(".monitorBedRangeMarker").length,
               emphasizedPalletCount:host.querySelectorAll(".is-monitor-start, .is-monitor-end").length,
               directionCount:host.querySelectorAll(".monitorBuildingDirection").length,
@@ -4034,6 +4036,7 @@
           columns:2,
           rows:39,
           bedNameCentered:true,
+          buildingBlockCentered:true,
           rangeMarkerCount:0,
           emphasizedPalletCount:0,
           directionCount:0,
@@ -4102,11 +4105,8 @@
               remainingLines:[...host.querySelectorAll(".monitorRemainingLine")].map(line => line.textContent.trim().replace(/\\s+/g, "")),
               buildingSummaries:[...host.querySelectorAll(".monitorCaseBuildingSummary")]
                 .map(summary => summary.textContent.trim().replace(/\\s+/g, "")),
-              remainingLocationsAligned:(() => {
-                const locations = [...host.querySelectorAll(".monitorRemainingLocation")];
-                const lefts = locations.map(location => Math.round(location.getBoundingClientRect().left * 10) / 10);
-                return locations.length === 3 && lefts.every(left => left === lefts[0]);
-              })(),
+              compactCaseLine:host.querySelectorAll(".monitorCaseBuildingLine").length === 1 &&
+                getComputedStyle(host.querySelector(".monitorCaseBuildingLine")).justifyContent === "center",
               updatedAtText:host.querySelector(".monitorUpdatedAt")?.textContent.replace(/\\s+/g, " ").trim() || "",
               updatedAtIsRightItem:host.querySelector(".monitorTodayBar")?.lastElementChild?.classList.contains("monitorUpdatedAt") || false
             };
@@ -4125,9 +4125,9 @@
           labelsAndNumbersMatch:true,
           allUnitsAreSmaller:true,
           allIconSizesMatch:true,
-          remainingLines:["前：6ケース残す", "中：20ケース残す", "奥：30ケース残す"],
-          buildingSummaries:["2号棟48ケース配置前：6ケース残す中：20ケース残す奥：30ケース残す"],
-          remainingLocationsAligned:true,
+          remainingLines:["前6・中20・奥30ケース残す"],
+          buildingSummaries:["2号棟48ケース配置｜前6・中20・奥30ケース残す"],
+          compactCaseLine:true,
           updatedAtText:"最終更新2026/8/23 17:14",
           updatedAtIsRightItem:true
         }, "モニター要約の項目名・アイコン・数が同じ行と大きさに揃っていません");

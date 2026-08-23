@@ -592,32 +592,34 @@ function getMonitorRemainingCasesHtml(value, keys = []){
   });
   const summaryHtml = getMonitorBuildingDisplayOrder(grouped).map(building => {
     const summary = summaries[String(building)];
+    const locationSuffixes = new Set(summary.locations.map(location => location.suffix));
+    const hasSharedLocationSuffix = locationSuffixes.size === 1;
+    const sharedLocationSuffix = hasSharedLocationSuffix ? summary.locations[0]?.suffix : "";
+    const locationsHtml = summary.locations.map((location, index) => {
+      const shortageClass = location.suffix === "不足" ? " is-shortage" : "";
+      return `
+        ${index ? `<span class="monitorCaseLocationSeparator">・</span>` : ""}
+        <span class="monitorCaseLocation${shortageClass}">
+          <span class="monitorRemainingLocation">${location.label}</span><span class="monitorRemainingCount">${escapeHtml(location.count)}</span>${hasSharedLocationSuffix ? "" : `<span class="monitorMetricSmallUnit">ケース</span><span class="monitorRemainingSuffix">${location.suffix}</span>`}
+        </span>
+      `;
+    }).join("");
     return `
       <div class="monitorCaseBuildingSummary">
-        <div class="monitorCaseBuildingTotal">
+        <div class="monitorCaseBuildingLine">
           <span class="monitorCaseBuildingName">${building}号棟</span>
           ${summary.placement ? `
-            <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span>
-            <span class="monitorMetricSmallUnit">ケース</span>
-            <span class="monitorCasePlacementSuffix">配置</span>
+            <span class="monitorCasePlacement">
+              <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span><span class="monitorCasePlacementSuffix">配置</span>
+            </span>
+          ` : ""}
+          ${summary.placement && summary.locations.length ? `<span class="monitorCaseDivider" aria-hidden="true">｜</span>` : ""}
+          ${summary.locations.length ? `
+            <span class="monitorRemainingLine is-compact${sharedLocationSuffix === "不足" ? " is-shortage" : ""}">
+              ${locationsHtml}${hasSharedLocationSuffix ? `<span class="monitorMetricSmallUnit">ケース</span><span class="monitorRemainingSuffix">${sharedLocationSuffix}</span>` : ""}
+            </span>
           ` : ""}
         </div>
-        ${summary.locations.length ? `
-          <div class="monitorCaseRemainingRows">
-            ${summary.locations.map(location => {
-              const shortageClass = location.suffix === "不足" ? " is-shortage" : "";
-              return `
-                <div class="monitorRemainingLine is-location${shortageClass}">
-                  <span class="monitorRemainingLocation">${location.label}</span>
-                  <span class="monitorRemainingColon">：</span>
-                  <span class="monitorRemainingCount">${escapeHtml(location.count)}</span>
-                  <span class="monitorMetricSmallUnit">ケース</span>
-                  <span class="monitorRemainingSuffix">${location.suffix}</span>
-                </div>
-              `;
-            }).join("")}
-          </div>
-        ` : ""}
       </div>
     `;
   }).join("");
