@@ -986,8 +986,8 @@ function buildMonitorPreview2DashboardHtml(normalized, fields){
           <div class="monitorV2MetricGrid">
             ${getMonitorPreview2MetricCardHtml("苗数", fields.seedling, "枚", "seedling")}
             ${getMonitorPreview2MetricCardHtml("収穫数", fields.cases, "ケース", "harvest")}
-            ${getMonitorPreview2CaseCardHtml("ケース配置", fields.remainingCases, "placement", "placement")}
-            ${getMonitorPreview2CaseCardHtml("残すケース", fields.remainingCases, "remaining", "remaining")}
+            ${getMonitorPreview2CaseCardHtml("コンテナ配置", fields.remainingCases, "placement", "placement")}
+            ${getMonitorPreview2CaseCardHtml("残すコンテナ", fields.remainingCases, "remaining", "remaining")}
           </div>
           <section class="monitorPanel monitorV2LocationCard">
             <div class="monitorV2LocationHeader">
