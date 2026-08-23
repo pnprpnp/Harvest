@@ -3693,10 +3693,21 @@
               open: document.getElementById("monitorEditorModal")?.classList.contains("show") || false,
               title: document.getElementById("monitorEditorWindowTitle")?.textContent || "",
               editAction: document.querySelector("#monitorCard .monitorContentEditBtn")?.dataset.uiClick || "",
+              discardAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorDiscardBtn")?.dataset.uiClick || "",
               applyAction: document.querySelector("#monitorRemoteEditorContent .monitorContentEditorApplyBtn")?.dataset.uiClick || "",
               allFieldsAreMultiline: [...document.querySelectorAll("#monitorRemoteEditorContent > textarea")].length === 4,
               memoAddAction: document.querySelector("#monitorRemoteEditorContent .monitorMemoAddBtn")?.dataset.uiClick || ""
             };
+            const contentBeforeDiscard = JSON.stringify(buildCurrentMonitorRemoteContent());
+            document.getElementById("monitorRemoteSeedlingValueInput").value = "破棄する内容";
+            renderMonitorRemoteMemoInputs(["破棄するメモ"]);
+            discardMonitorCurrentEditor();
+            const discardState = {
+              editorClosed: !document.getElementById("monitorEditorModal")?.classList.contains("show"),
+              contentUnchanged: JSON.stringify(buildCurrentMonitorRemoteContent()) === contentBeforeDiscard,
+              memoStillEmpty: getMonitorMemoInputValues().length === 0
+            };
+            openMonitorEditorWindow();
             document.getElementById("monitorRemoteSeedlingValueInput").value = "7枚\\n予備 1枚";
             document.getElementById("monitorRemoteCasesValueInput").value = "42ケース";
             document.getElementById("monitorRemoteHarvestLocationValueInput").value = "3号棟 A-1〜A-4";
@@ -3723,6 +3734,7 @@
               itemNamesAreLarger,
               readOnlyState,
               editorState,
+              discardState,
               appliedState,
               openAction: document.querySelector("#monitorCard .monitorOpenBtn")?.dataset.uiClick || "",
               saveAction: document.getElementById("monitorSaveBtn")?.dataset.uiClick || "",
@@ -3759,10 +3771,12 @@
             open:true,
             title:"今回送る内容を編集",
             editAction:"openMonitorEditorWindow",
+            discardAction:"discardMonitorCurrentEditor",
             applyAction:"applyMonitorCurrentEditor",
             allFieldsAreMultiline:true,
             memoAddAction:"addMonitorRemoteMemoInput"
           },
+          discardState:{ editorClosed:true, contentUnchanged:true, memoStillEmpty:true },
           appliedState:{
             editorClosed:true,
             fields:{ seedling:"7枚\n予備 1枚", cases:"42ケース", harvestLocation:"3号棟 A-1〜A-4", remainingCases:"手前 2ケース" },
@@ -5272,18 +5286,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "81a36027", elements: 2178, visible: 599, viewport: "390x844" },
-          cssStates: { hash: "94e5949a", elements: 2246, visible: 658, viewport: "390x844" },
-          cssFocus: { hash: "bbeb80f7", elements: 2246, visible: 658, viewport: "390x844" },
-          mobileRecord: { hash: "7e958474", elements: 2179, visible: 113, viewport: "390x844" },
-          mobileDashboard: { hash: "d9bda44b", elements: 2179, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "cce68367", elements: 2262, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "e2b12753", elements: 2277, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "9cfc9465", elements: 2277, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "3d56aa9d", elements: 2277, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "2c70e832", elements: 2277, visible: 72, viewport: "390x844" },
-          wideForecast: { hash: "b5f80229", elements: 2277, visible: 599, viewport: "1024x900" },
-          wideDashboard: { hash: "c19a4b0f", elements: 2277, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "24a3dd96", elements: 2180, visible: 599, viewport: "390x844" },
+          cssStates: { hash: "a5da5e6f", elements: 2248, visible: 658, viewport: "390x844" },
+          cssFocus: { hash: "2ac66732", elements: 2248, visible: 658, viewport: "390x844" },
+          mobileRecord: { hash: "15889cc6", elements: 2181, visible: 113, viewport: "390x844" },
+          mobileDashboard: { hash: "f42bd90b", elements: 2181, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "9540736c", elements: 2264, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "96456442", elements: 2279, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "223ede20", elements: 2279, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "56405d68", elements: 2279, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "19af1a01", elements: 2279, visible: 72, viewport: "390x844" },
+          wideForecast: { hash: "fe827e2c", elements: 2279, visible: 599, viewport: "1024x900" },
+          wideDashboard: { hash: "59d351c6", elements: 2279, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

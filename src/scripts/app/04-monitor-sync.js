@@ -646,6 +646,12 @@ function fillMonitorRemoteEditorFromCurrentState(){
   setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
 }
 
+function discardMonitorCurrentEditor(){
+  populateMonitorRemoteEditor(buildCurrentMonitorRemoteContent());
+  closeMonitorEditorWindow();
+  showToast("入力途中の編集を破棄しました");
+}
+
 function applyMonitorCurrentEditor(){
   const editedContent = normalizeRemoteMonitorContent(readMonitorRemoteEditorContent());
   if(!editedContent){

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-readonly-editor">
+<meta name="harvestnavi-version" content="20260823-monitor-edit-discard">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9270,7 +9270,17 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   margin-top:12px;
   line-height:1.5;
 }
-.monitorContentEditorApplyBtn{margin-top:10px;}
+.monitorContentEditorActions{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:9px;
+  margin-top:10px;
+}
+.monitorContentEditorActions > .actionBtn{
+  min-height:46px;
+  margin:0;
+}
+.monitorContentEditorDiscardBtn{color:var(--ui-text-secondary);}
 .monitorSendActionBar{
   position:fixed;
   right:0;
@@ -12900,7 +12910,10 @@ requestAnimationFrame(function(){
     </div>
     <div id="monitorRemoteMemoInputList" class="monitorMemoInputList"></div>
     <div id="monitorRemoteEditorStatus" class="smallText monitorContentEditorStatus">変更はまだ送信されません。</div>
-    <button class="actionBtn thirdBtn monitorContentEditorApplyBtn" data-ui-click="applyMonitorCurrentEditor">変更を反映</button>
+    <div class="monitorContentEditorActions">
+      <button class="actionBtn secondaryBtn monitorContentEditorDiscardBtn" data-ui-click="discardMonitorCurrentEditor">編集を破棄</button>
+      <button class="actionBtn thirdBtn monitorContentEditorApplyBtn" data-ui-click="applyMonitorCurrentEditor">変更を反映</button>
+    </div>
   </div>
 </div>
 <div id="bedDetailModal" class="bedDetailModal" role="dialog" aria-modal="true" aria-labelledby="bedDetailWindowTitle" data-ui-backdrop-click="closeBedDetailWindow">
@@ -20232,6 +20245,12 @@ function fillMonitorRemoteEditorFromCurrentState(){
   const content = buildCurrentMonitorRemoteContent();
   populateMonitorRemoteEditor(content);
   setMonitorRemoteEditorStatus("変更は確認画面へ反映され、プレビュー後に送信できます。");
+}
+
+function discardMonitorCurrentEditor(){
+  populateMonitorRemoteEditor(buildCurrentMonitorRemoteContent());
+  closeMonitorEditorWindow();
+  showToast("入力途中の編集を破棄しました");
 }
 
 function applyMonitorCurrentEditor(){
