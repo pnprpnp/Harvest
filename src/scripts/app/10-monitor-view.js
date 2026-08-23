@@ -837,7 +837,7 @@ function buildMonitorDashboardHtml(content){
       <section class="monitorPanel monitorHarvestPanel">
         <div class="monitorPanelHeader">
           <div class="monitorHarvestTitleGroup">
-            <div class="monitorSectionTitle">収穫場所</div>
+            <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>
             <div class="monitorHarvestLocationText">${getMonitorHarvestLocationInlineHtml(fields.harvestLocation, normalized.harvestFillKeys || [])}</div>
           </div>
           <div class="monitorMapLegend" aria-label="収穫場所の凡例">

@@ -3979,6 +3979,8 @@
               harvestFillKeys:selectedKeys,
               memoItems:[]
             });
+            dashboardHost.style.cssText = "position:fixed;left:-2000px;top:0;width:1200px;height:800px;";
+            document.body.appendChild(dashboardHost);
             const cards = [...host.querySelectorAll(".monitorBedCard")];
             const firstGrid = host.querySelector(".monitorBedPalletMapGrid");
             const firstBedHead = host.querySelector(".monitorBedHead");
@@ -4030,10 +4032,18 @@
                 "2号棟 A全部\\n9号棟 F全部",
                 [getPalletKey(2, "A", 1), getPalletKey(9, "F", 1)]
               ),
-              legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim())
+              harvestPanelTitle:dashboardHost.querySelector(".monitorHarvestPanel .monitorSectionTitle")?.textContent.trim() || "",
+              legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim()),
+              legendFontSize:getComputedStyle(dashboardHost.querySelector(".monitorMapLegend")).fontSize,
+              legendChipSize:(() => {
+                const chip = dashboardHost.querySelector(".monitorMapLegendChip");
+                const style = getComputedStyle(chip);
+                return [style.width, style.height];
+              })()
             };
           }finally{
             host.remove();
+            dashboardHost.remove();
             getRecordedPalletSet = previousGetRecorded;
           }
         })()`));
@@ -4061,7 +4071,10 @@
           directionCount:0,
           wrappedOrders:[["8号棟", "9号棟", "2号棟"], ["9号棟", "2号棟", "3号棟"]],
           wrappedLocationText:"9号棟 F全部\n2号棟 A全部",
-          legend:["今回収穫", "収穫済み"]
+          harvestPanelTitle:"収穫場所と配置コンテナ数",
+          legend:["今回収穫", "収穫済み"],
+          legendFontSize:"13px",
+          legendChipSize:["18px", "12px"]
         }, "モニターの収穫場所が2列39段の配置図になっていません");
       });
 
