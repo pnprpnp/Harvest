@@ -4023,6 +4023,13 @@
             const memoRect = preview2Host.querySelector(".monitorV2MemoPanel")?.getBoundingClientRect();
             const dashboard = preview2Host.querySelector(".monitorV2Dashboard");
             const preview2Header = preview2Host.querySelector(".monitorV2Header");
+            const metricCards = [...preview2Host.querySelectorAll(".monitorV2MetricCard")];
+            const seedlingMetricHeader = preview2Host.querySelector(".monitorV2MetricCard-seedling .monitorV2MetricHeader");
+            const harvestMetricHeader = preview2Host.querySelector(".monitorV2MetricCard-harvest .monitorV2MetricHeader");
+            const seedlingMetricIconRect = seedlingMetricHeader?.querySelector(".monitorV2MetricIcon")?.getBoundingClientRect();
+            const harvestMetricIconRect = harvestMetricHeader?.querySelector(".monitorV2MetricIcon")?.getBoundingClientRect();
+            const seedlingMetricLabelRect = seedlingMetricHeader?.querySelector(".monitorV2MetricLabel")?.getBoundingClientRect();
+            const harvestMetricLabelRect = harvestMetricHeader?.querySelector(".monitorV2MetricLabel")?.getBoundingClientRect();
             const longLocationValue = longLocationHost.querySelector(".monitorV2LocationValue");
             const longLocationStyle = longLocationValue ? getComputedStyle(longLocationValue) : null;
             const longLocationLineHeight = parseFloat(longLocationStyle?.lineHeight || "0");
@@ -4063,6 +4070,17 @@
                 topMetricsAreShorter:!!firstMetricRect && !!harvestMetricRect && !!placementMetricRect
                   && Math.abs(firstMetricRect.height - harvestMetricRect.height) <= 1
                   && firstMetricRect.height < placementMetricRect.height,
+                metricHeadersAreAboveValues:metricCards.length === 4 && metricCards.every(card => {
+                  const headerRect = card.querySelector(".monitorV2MetricHeader")?.getBoundingClientRect();
+                  const contentRect = card.querySelector(".monitorV2MetricContent")?.getBoundingClientRect();
+                  return !!headerRect && !!contentRect && headerRect.bottom <= contentRect.top + 1;
+                }),
+                seedlingAndHarvestHeadersAligned:!!seedlingMetricIconRect && !!harvestMetricIconRect
+                  && !!seedlingMetricLabelRect && !!harvestMetricLabelRect
+                  && Math.abs(seedlingMetricIconRect.top - harvestMetricIconRect.top) <= 1
+                  && Math.abs(seedlingMetricLabelRect.top - harvestMetricLabelRect.top) <= 1
+                  && Math.abs((seedlingMetricIconRect.top + seedlingMetricIconRect.height / 2) - (seedlingMetricLabelRect.top + seedlingMetricLabelRect.height / 2)) <= 1
+                  && Math.abs((harvestMetricIconRect.top + harvestMetricIconRect.height / 2) - (harvestMetricLabelRect.top + harvestMetricLabelRect.height / 2)) <= 1,
                 locationHasMoreHeight:!!locationRect && locationRect.height >= 175,
                 seedlingAndHarvestValueSize:[...preview2Host.querySelectorAll(".monitorV2MetricCard-seedling .monitorV2MetricValue, .monitorV2MetricCard-harvest .monitorV2MetricValue")]
                   .map(value => getComputedStyle(value).fontSize),
@@ -4139,6 +4157,8 @@
             brandAndDashboardTitleRemoved:true,
             headerOnlyShowsMeta:true,
             topMetricsAreShorter:true,
+            metricHeadersAreAboveValues:true,
+            seedlingAndHarvestHeadersAligned:true,
             locationHasMoreHeight:true,
             seedlingAndHarvestValueSize:["60px", "60px"],
             placementCaseText:"2-100ケース",

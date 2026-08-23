@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-preview2-clean-metrics">
+<meta name="harvestnavi-version" content="20260823-monitor-preview2-card-headers">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9199,13 +9199,18 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   min-width:0;
   min-height:0;
   display:grid;
-  grid-template-columns:64px minmax(0,1fr);
-  align-items:center;
-  gap:16px;
-  padding:16px;
+  grid-template-rows:42px minmax(0,1fr);
+  gap:4px;
+  padding:14px;
   overflow:hidden;
   border-radius:17px;
   background:var(--ui-surface-solid);
+}
+.monitorV2MetricHeader{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:10px;
 }
 .monitorV2MetricIcon,
 .monitorV2LocationIcon{
@@ -9219,7 +9224,20 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   background:var(--ui-accent-soft);
   color:var(--ui-accent);
 }
-.monitorV2MetricContent{min-width:0;}
+.monitorV2MetricCard .monitorV2MetricIcon{
+  width:42px;
+  height:42px;
+  flex:0 0 42px;
+  padding:10px;
+}
+.monitorV2MetricContent{
+  min-width:0;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+}
 .monitorV2MetricLabel,
 .monitorV2LocationLabel{
   margin-bottom:7px;
@@ -9228,10 +9246,12 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   line-height:1.15;
   font-weight:730;
 }
+.monitorV2MetricLabel{margin:0;}
 .monitorV2MetricValueLine{
   min-width:0;
   display:flex;
   align-items:baseline;
+  justify-content:center;
   gap:9px;
   white-space:nowrap;
 }
@@ -9268,31 +9288,14 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorV2MetricCard-seedling .monitorV2MetricValue,
 .monitorV2MetricCard-placement .monitorV2CaseValue{color:var(--ui-accent-dark);}
-.monitorV2CaseCard{
-  position:relative;
-  display:block;
-  padding:14px;
-}
-.monitorV2CaseCard .monitorV2MetricIcon{
-  position:absolute;
-  top:14px;
-  left:14px;
-  width:42px;
-  height:42px;
-  padding:10px;
-}
 .monitorV2CaseCard .monitorV2MetricContent{
+  width:100%;
   height:100%;
   display:grid;
-  grid-template-rows:42px minmax(0,1fr);
-}
-.monitorV2CaseCard .monitorV2MetricLabel{
-  display:flex;
-  align-items:center;
-  margin:0;
-  padding-left:52px;
 }
 .monitorV2CaseValue{
+  width:100%;
+  height:100%;
   min-width:0;
   min-height:0;
   overflow:hidden;
@@ -31773,9 +31776,11 @@ function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){
   const parts = getMonitorMetricParts(displayValue, fallbackUnit);
   return `
     <section class="monitorPanel monitorV2MetricCard monitorV2MetricCard-${escapeHtml(kind)}">
-      <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
-      <div class="monitorV2MetricContent">
+      <div class="monitorV2MetricHeader">
+        <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
         <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
+      </div>
+      <div class="monitorV2MetricContent">
         <div class="monitorV2MetricValueLine">
           <strong class="monitorV2MetricValue">${escapeHtml(parts.value)}</strong>
           ${parts.unit ? `<span class="monitorV2MetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
@@ -31789,9 +31794,11 @@ function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){
 function getMonitorPreview2CaseCardHtml(label, value, mode, kind){
   return `
     <section class="monitorPanel monitorV2MetricCard monitorV2CaseCard monitorV2MetricCard-${escapeHtml(kind)}">
-      <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
-      <div class="monitorV2MetricContent">
+      <div class="monitorV2MetricHeader">
+        <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
         <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
+      </div>
+      <div class="monitorV2MetricContent">
         <div class="monitorV2CaseValue">${getMonitorRemainingCasesHtml(value, [], mode, "preview2")}</div>
       </div>
     </section>

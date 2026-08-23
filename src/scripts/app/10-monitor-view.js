@@ -929,9 +929,11 @@ function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){
   const parts = getMonitorMetricParts(displayValue, fallbackUnit);
   return `
     <section class="monitorPanel monitorV2MetricCard monitorV2MetricCard-${escapeHtml(kind)}">
-      <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
-      <div class="monitorV2MetricContent">
+      <div class="monitorV2MetricHeader">
+        <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
         <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
+      </div>
+      <div class="monitorV2MetricContent">
         <div class="monitorV2MetricValueLine">
           <strong class="monitorV2MetricValue">${escapeHtml(parts.value)}</strong>
           ${parts.unit ? `<span class="monitorV2MetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
@@ -945,9 +947,11 @@ function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){
 function getMonitorPreview2CaseCardHtml(label, value, mode, kind){
   return `
     <section class="monitorPanel monitorV2MetricCard monitorV2CaseCard monitorV2MetricCard-${escapeHtml(kind)}">
-      <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
-      <div class="monitorV2MetricContent">
+      <div class="monitorV2MetricHeader">
+        <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
         <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
+      </div>
+      <div class="monitorV2MetricContent">
         <div class="monitorV2CaseValue">${getMonitorRemainingCasesHtml(value, [], mode, "preview2")}</div>
       </div>
     </section>
