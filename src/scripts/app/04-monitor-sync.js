@@ -497,6 +497,12 @@ function getEmptyMonitorInstructionFields(){
   };
 }
 
+function removeMonitorSkipSeedlingNote(value){
+  return String(value || "")
+    .replace(/[（(]?\s*先取り収穫\s*[:：]\s*苗を\s*[\d,.]+\s*枚\s*(?:飛ばす|とばす)\s*[）)]?/g, "")
+    .trim();
+}
+
 function parseMonitorInstructionFields(text){
   const fields = getEmptyMonitorInstructionFields();
   const labelToKey = {
@@ -525,12 +531,13 @@ function parseMonitorInstructionFields(text){
     }
   });
 
+  fields.seedling = removeMonitorSkipSeedlingNote(fields.seedling);
   return fields;
 }
 
 function buildMonitorInstructionTextFromFields(fields){
   const source = fields || {};
-  const seedling = removeSeedlingAutoNote(source.seedling);
+  const seedling = removeMonitorSkipSeedlingNote(removeSeedlingAutoNote(source.seedling));
   const cases = String(source.cases || "").trim();
   const harvestLocation = String(source.harvestLocation || "").trim();
   const remainingCases = String(source.remainingCases || "").trim();
@@ -594,14 +601,12 @@ function getCurrentMonitorInstructionFields(){
   const casesText = hasAppliedHarvestProgress()
     ? `${formatHarvestProgressCases(getHarvestProgressRemainingTargetCases())}ケース\n目標 ${formatHarvestProgressCases(casePlan.totalCases)}ケース / 収穫済み ${formatHarvestProgressCases(completedCases)}ケース`
     : String(casePlan.totalCases);
-  const skipSeedlingText = getHarvestOrderSkipSeedlingText();
   const unplantedSeedlingText = `（未定植分 ${seedlingCounts.additionalCount}枚）`;
   const seedlingText = getSeedlingInstructionTextForMonitor(
     seedlingCounts.totalCount,
     seedlingCounts.carryoverSeedlings
   ).replace(/^苗:\s*/, "")
-    + unplantedSeedlingText
-    + (skipSeedlingText ? `（${skipSeedlingText}）` : "");
+    + unplantedSeedlingText;
   return {
     seedling: seedlingText,
     cases: casesText,

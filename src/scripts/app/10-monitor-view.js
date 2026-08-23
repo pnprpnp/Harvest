@@ -372,6 +372,16 @@ function getMonitorCasePlacementCounts(value){
   return counts;
 }
 
+function getMonitorSelectionBuildingCount(keysOverride){
+  const sourceKeys = Array.isArray(keysOverride) ? keysOverride : harvestFillKeys;
+  const buildings = new Set();
+  sourceKeys.forEach(key => {
+    const parsed = parsePalletKey(String(key || ""));
+    if(BUILDINGS.includes(parsed.building)) buildings.add(parsed.building);
+  });
+  return buildings.size;
+}
+
 function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
   const sourceKeys = Array.isArray(keysOverride) ? keysOverride : harvestFillKeys;
   if(!sourceKeys.length){
@@ -809,6 +819,10 @@ function buildMonitorDashboardHtml(content){
   const memoSource = Array.isArray(normalized.memoItems)
     ? normalized.memoItems
     : String(normalized.memoText || "");
+  const monitorHarvestKeys = normalized.harvestFillKeys || [];
+  const harvestMapClass = getMonitorSelectionBuildingCount(monitorHarvestKeys) === 3
+    ? " has-three-buildings"
+    : "";
 
   return `
     <main class="monitorDashboardMain">
@@ -845,7 +859,7 @@ function buildMonitorDashboardHtml(content){
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
           </div>
         </div>
-        <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [], fields.remainingCases)}</div>
+        <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
       </section>
     </main>
     <aside class="monitorPanel monitorMemoPanel">

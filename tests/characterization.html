@@ -1356,7 +1356,7 @@
         }
       });
 
-      await runTest("通常順より先を収穫する時に飛ばす苗枚数を表示する", () => {
+      await runTest("通常順より先を収穫する時の飛ばす苗枚数を計算しモニターでは隠す", () => {
         const previousSettings = comparable(app.eval("settings"));
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
@@ -1391,7 +1391,10 @@
               skippedPalletKeys: info.skippedPalletKeys,
               simulationSkipCardExists: !!document.getElementById("harvestOrderSkipSeedlingNote"),
               simulationSummaryShowsSkip: document.getElementById("instructionSummary").textContent.includes("先取り収穫"),
-              monitorSeedling: getCurrentMonitorInstructionFields().seedling
+              monitorSeedling: getCurrentMonitorInstructionFields().seedling,
+              savedMonitorSeedling: parseMonitorInstructionFields(
+                "苗: 1枚（未定植分 0枚）（先取り収穫: 苗を1枚飛ばす）"
+              ).seedling
             };
           })()`));
           assertDeepEqual(aheadState, {
@@ -1402,9 +1405,10 @@
             skippedSeedlingTrayCount: 1,
             skippedPalletKeys: ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "2-A-5", "2-A-6"],
             simulationSkipCardExists: false,
-          simulationSummaryShowsSkip: true,
-            monitorSeedling: "1枚（未定植分 0枚）（先取り収穫: 苗を1枚飛ばす）"
-          }, "先取り収穫で飛ばす苗枚数を計算・表示できません");
+            simulationSummaryShowsSkip: false,
+            monitorSeedling: "1枚（未定植分 0枚）",
+            savedMonitorSeedling: "1枚（未定植分 0枚）"
+          }, "先取り収穫で飛ばす苗枚数の計算またはモニター非表示が正しくありません");
 
           const normalState = comparable(app.eval(`(() => {
             harvestFillKeys = ["2-A-1", "2-A-2", "2-A-3", "2-A-4", "2-A-5", "2-A-6"];
@@ -3969,6 +3973,7 @@
           ]);
           const host = document.createElement("div");
           const dashboardHost = document.createElement("div");
+          const threeDashboardHost = document.createElement("div");
           try{
             getRecordedPalletSet = () => recordedSet;
             host.innerHTML = getMonitorSelectionMapHtml(selectedKeys, "2号棟 配置: 48ケース");
@@ -3981,10 +3986,27 @@
             });
             dashboardHost.style.cssText = "position:fixed;left:-2000px;top:0;width:1200px;height:800px;";
             document.body.appendChild(dashboardHost);
+            const threeBuildingKeys = [
+              getPalletKey(8, "A", 1),
+              getPalletKey(9, "A", 1),
+              getPalletKey(2, "A", 1)
+            ];
+            threeDashboardHost.className = "monitorModeBody";
+            threeDashboardHost.style.cssText = "position:fixed;left:-4000px;top:0;";
+            threeDashboardHost.innerHTML = buildMonitorDashboardHtml({
+              enabled:true,
+              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: 8号棟 A-1 / 9号棟 A-1 / 2号棟 A-1\\n残すケース:\\n8号棟 配置: 48ケース\\n9号棟 配置: 48ケース\\n2号棟 配置: 48ケース",
+              harvestFillKeys:threeBuildingKeys,
+              memoItems:[]
+            });
+            document.body.appendChild(threeDashboardHost);
             const cards = [...host.querySelectorAll(".monitorBedCard")];
             const firstGrid = host.querySelector(".monitorBedPalletMapGrid");
             const firstBedHead = host.querySelector(".monitorBedHead");
             const firstBedName = firstBedHead?.querySelector(".monitorBedName");
+            const threeBuildingMap = threeDashboardHost.querySelector(".monitorHarvestMap");
+            const threeBuildingBlocks = [...threeBuildingMap.querySelectorAll(".monitorBuildingBlock")];
+            const threeBuildingRects = threeBuildingBlocks.map(block => block.getBoundingClientRect());
             const readBuildingOrder = buildings => {
               const orderHost = document.createElement("div");
               orderHost.innerHTML = getMonitorSelectionMapHtml(
@@ -4039,11 +4061,22 @@
                 const chip = dashboardHost.querySelector(".monitorMapLegendChip");
                 const style = getComputedStyle(chip);
                 return [style.width, style.height];
-              })()
+              })(),
+              singleBuildingUsesRegularLayout:!dashboardHost.querySelector(".monitorHarvestMap").classList.contains("has-three-buildings"),
+              threeBuildingLayoutEnabled:threeBuildingMap.classList.contains("has-three-buildings"),
+              threeBuildingColumnCount:getComputedStyle(threeBuildingMap).gridTemplateColumns.trim().split(/\\s+/).length,
+              threeBuildingCount:threeBuildingBlocks.length,
+              threeBuildingsShareOneRow:threeBuildingRects.every(rect => Math.abs(rect.top - threeBuildingRects[0].top) <= 1),
+              threeBuildingCardsAreNarrow:threeBuildingRects.every(rect => rect.width > 0 && rect.width < 220),
+              threeBuildingTitlesFit:threeBuildingBlocks.every(block => {
+                const title = block.querySelector(".monitorBuildingTitle");
+                return title.scrollWidth <= title.clientWidth + 1;
+              })
             };
           }finally{
             host.remove();
             dashboardHost.remove();
+            threeDashboardHost.remove();
             getRecordedPalletSet = previousGetRecorded;
           }
         })()`));
@@ -4074,7 +4107,14 @@
           harvestPanelTitle:"収穫場所と配置コンテナ数",
           legend:["今回収穫", "収穫済み"],
           legendFontSize:"13px",
-          legendChipSize:["18px", "12px"]
+          legendChipSize:["18px", "12px"],
+          singleBuildingUsesRegularLayout:true,
+          threeBuildingLayoutEnabled:true,
+          threeBuildingColumnCount:3,
+          threeBuildingCount:3,
+          threeBuildingsShareOneRow:true,
+          threeBuildingCardsAreNarrow:true,
+          threeBuildingTitlesFit:true
         }, "モニターの収穫場所が2列39段の配置図になっていません");
       });
 

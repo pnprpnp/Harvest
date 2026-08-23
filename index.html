@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-auto-restore">
+<meta name="harvestnavi-version" content="20260823-monitor-three-buildings">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8915,6 +8915,29 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   justify-content:stretch;
   gap:12px;
   overflow:auto;
+}
+.monitorHarvestMap.has-three-buildings{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+}
+.monitorHarvestMap.has-three-buildings .monitorBuildingBlock{
+  max-width:none;
+  padding:6px;
+  border-radius:14px;
+}
+.monitorHarvestMap.has-three-buildings .monitorBuildingTitle{
+  gap:.3em;
+  font-size:17px;
+}
+.monitorHarvestMap.has-three-buildings .monitorBedGrid{gap:3px;}
+.monitorHarvestMap.has-three-buildings .monitorBedCard{
+  padding:2px;
+  border-radius:7px;
+}
+.monitorHarvestMap.has-three-buildings .monitorBedName{font-size:14px;}
+.monitorHarvestMap.has-three-buildings .monitorBedCount{font-size:9px;}
+.monitorHarvestMap.has-three-buildings .monitorBedPalletMap{
+  width:clamp(22px,70%,42px);
 }
 .monitorBuildingBlock{
   min-width:0;
@@ -20288,6 +20311,12 @@ function getEmptyMonitorInstructionFields(){
   };
 }
 
+function removeMonitorSkipSeedlingNote(value){
+  return String(value || "")
+    .replace(/[（(]?\s*先取り収穫\s*[:：]\s*苗を\s*[\d,.]+\s*枚\s*(?:飛ばす|とばす)\s*[）)]?/g, "")
+    .trim();
+}
+
 function parseMonitorInstructionFields(text){
   const fields = getEmptyMonitorInstructionFields();
   const labelToKey = {
@@ -20316,12 +20345,13 @@ function parseMonitorInstructionFields(text){
     }
   });
 
+  fields.seedling = removeMonitorSkipSeedlingNote(fields.seedling);
   return fields;
 }
 
 function buildMonitorInstructionTextFromFields(fields){
   const source = fields || {};
-  const seedling = removeSeedlingAutoNote(source.seedling);
+  const seedling = removeMonitorSkipSeedlingNote(removeSeedlingAutoNote(source.seedling));
   const cases = String(source.cases || "").trim();
   const harvestLocation = String(source.harvestLocation || "").trim();
   const remainingCases = String(source.remainingCases || "").trim();
@@ -20385,14 +20415,12 @@ function getCurrentMonitorInstructionFields(){
   const casesText = hasAppliedHarvestProgress()
     ? `${formatHarvestProgressCases(getHarvestProgressRemainingTargetCases())}ケース\n目標 ${formatHarvestProgressCases(casePlan.totalCases)}ケース / 収穫済み ${formatHarvestProgressCases(completedCases)}ケース`
     : String(casePlan.totalCases);
-  const skipSeedlingText = getHarvestOrderSkipSeedlingText();
   const unplantedSeedlingText = `（未定植分 ${seedlingCounts.additionalCount}枚）`;
   const seedlingText = getSeedlingInstructionTextForMonitor(
     seedlingCounts.totalCount,
     seedlingCounts.carryoverSeedlings
   ).replace(/^苗:\s*/, "")
-    + unplantedSeedlingText
-    + (skipSeedlingText ? `（${skipSeedlingText}）` : "");
+    + unplantedSeedlingText;
   return {
     seedling: seedlingText,
     cases: casesText,
@@ -30697,6 +30725,16 @@ function getMonitorCasePlacementCounts(value){
   return counts;
 }
 
+function getMonitorSelectionBuildingCount(keysOverride){
+  const sourceKeys = Array.isArray(keysOverride) ? keysOverride : harvestFillKeys;
+  const buildings = new Set();
+  sourceKeys.forEach(key => {
+    const parsed = parsePalletKey(String(key || ""));
+    if(BUILDINGS.includes(parsed.building)) buildings.add(parsed.building);
+  });
+  return buildings.size;
+}
+
 function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
   const sourceKeys = Array.isArray(keysOverride) ? keysOverride : harvestFillKeys;
   if(!sourceKeys.length){
@@ -31134,6 +31172,10 @@ function buildMonitorDashboardHtml(content){
   const memoSource = Array.isArray(normalized.memoItems)
     ? normalized.memoItems
     : String(normalized.memoText || "");
+  const monitorHarvestKeys = normalized.harvestFillKeys || [];
+  const harvestMapClass = getMonitorSelectionBuildingCount(monitorHarvestKeys) === 3
+    ? " has-three-buildings"
+    : "";
 
   return `
     <main class="monitorDashboardMain">
@@ -31170,7 +31212,7 @@ function buildMonitorDashboardHtml(content){
             <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
           </div>
         </div>
-        <div class="monitorHarvestMap">${getMonitorSelectionMapHtml(normalized.harvestFillKeys || [], fields.remainingCases)}</div>
+        <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
       </section>
     </main>
     <aside class="monitorPanel monitorMemoPanel">
