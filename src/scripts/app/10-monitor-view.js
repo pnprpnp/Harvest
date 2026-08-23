@@ -652,7 +652,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
   }
   const summaryHtml = buildingOrder.map(building => {
     const summary = summaries[String(building)];
-    const buildingSuffix = displayVariant === "preview2" && mode === "placement" ? "-" : "号棟";
+    const buildingSuffix = "号棟";
     const showPlacement = mode !== "remaining" && !!summary.placement;
     const showRemaining = mode !== "placement" && summary.locations.length > 0;
     if(!showPlacement && !showRemaining) return "";
@@ -671,7 +671,7 @@ function getMonitorRemainingCasesHtml(value, keys = [], mode = "combined", displ
     return `
       <div class="monitorCaseBuildingSummary is-${escapeHtml(mode)}">
         <div class="monitorCaseBuildingLine">
-          <span class="monitorCaseBuildingName"><span class="monitorCaseBuildingNumber">${building}</span>${buildingSuffix}</span>
+          <span class="monitorCaseBuildingName"><span class="monitorCaseBuildingNumber">${building}</span><span class="monitorCaseBuildingSuffix">${buildingSuffix}</span></span>
           ${showPlacement ? `
             <span class="monitorCasePlacement">
               <span class="monitorCasePlacementCount">${escapeHtml(summary.placement)}</span><span class="monitorMetricSmallUnit">ケース</span><span class="monitorCasePlacementSuffix">配置</span>
