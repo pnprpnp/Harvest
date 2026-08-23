@@ -318,6 +318,7 @@ let monitorFirebaseFallbackNoticeShown = false;
 let monitorMemoInputsDirty = false;
 let monitorMemoRemoteLoadGeneration = 0;
 let monitorRemoteEditorHarvestFillKeys = [];
+let monitorRemoteEditorPreviewLayout = "preview1";
 let monitorContentDraftOverride = null;
 let monitorContentDraftBaseSignature = "";
 let monitorModeOpenInProgress = false;
@@ -325,6 +326,9 @@ let monitorModeLoading = false;
 let monitorCurrentSaveInProgress = false;
 let monitorViewportResizeObserver = null;
 let monitorPreviewResolver = null;
+let monitorPreviewContent = null;
+let monitorPreviewSelectedLayout = "preview1";
+let monitorPreviewLayoutPreference = "preview1";
 let monitorTodayRefreshTimer = null;
 let workflowMonitorCheckpointSignature = "";
 let workflowHarvestRecordingActive = false;
@@ -845,16 +849,31 @@ function updateMonitorPreviewScale(){
   body.style.setProperty("--monitor-offset-y", Math.max(0, (viewport.clientHeight - MONITOR_DESIGN_HEIGHT * scale) / 2) + "px");
 }
 
-function renderMonitorPreviewContent(content){
+function renderMonitorPreviewContent(content = monitorPreviewContent, previewLayout = monitorPreviewSelectedLayout){
   const body = document.getElementById("monitorPreviewBody");
   if(!body) return;
   const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
-  body.innerHTML = buildMonitorDashboardHtml(normalized);
+  body.innerHTML = buildMonitorDashboardHtml(normalized, { previewLayout });
   requestAnimationFrame(() => {
     fitMonitorSummaryMetricText(body);
     fitMonitorHarvestLocationText(body);
+    fitMonitorPreview2CaseText(body);
     updateMonitorPreviewScale();
   });
+}
+
+function refreshMonitorPreviewLayoutSwitch(){
+  document.querySelectorAll("[data-monitor-preview-layout]").forEach(button => {
+    const isActive = button.dataset.monitorPreviewLayout === monitorPreviewSelectedLayout;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+function setMonitorPreviewLayout(layout){
+  monitorPreviewSelectedLayout = normalizeMonitorPreviewLayout(layout);
+  refreshMonitorPreviewLayoutSwitch();
+  renderMonitorPreviewContent(monitorPreviewContent, monitorPreviewSelectedLayout);
 }
 
 function showMonitorPreviewConfirm(content){
@@ -864,8 +883,14 @@ function showMonitorPreviewConfirm(content){
       resolve(false);
       return;
     }
+    const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
+    monitorPreviewContent = normalized;
+    monitorPreviewSelectedLayout = normalizeMonitorPreviewLayout(
+      normalized.previewLayout || monitorPreviewLayoutPreference
+    );
     monitorPreviewResolver = resolve;
-    renderMonitorPreviewContent(content);
+    refreshMonitorPreviewLayoutSwitch();
+    renderMonitorPreviewContent(normalized, monitorPreviewSelectedLayout);
     showPageBlockingUi(modal);
   });
 }
@@ -879,7 +904,10 @@ function resolveMonitorPreview(confirmed){
   hidePageBlockingUi(modal);
   const resolver = monitorPreviewResolver;
   monitorPreviewResolver = null;
-  if(resolver) resolver(!!confirmed);
+  const selectedLayout = confirmed ? monitorPreviewSelectedLayout : null;
+  if(confirmed) monitorPreviewLayoutPreference = selectedLayout;
+  monitorPreviewContent = null;
+  if(resolver) resolver(selectedLayout);
 }
 
 async function openMonitorMode(){
@@ -965,6 +993,7 @@ function saveHarvestStateToStorage(options = {}){
     monitorMemoInput: getMonitorMemoTextFromItems(getMonitorMemoInputValues()),
     monitorMemoItems: getMonitorMemoInputValues(),
     monitorMemoInputsDirty,
+    monitorPreviewLayoutPreference,
     monitorContentDraftOverride,
     monitorContentDraftBaseSignature,
     casePlacementByBuilding,
@@ -1095,6 +1124,7 @@ function loadHarvestStateFromStorage(){
       monitorMemoInput: parsed.monitorMemoInput ?? "",
       monitorMemoItems: Array.isArray(parsed.monitorMemoItems) ? parsed.monitorMemoItems.map(item => String(item ?? "")) : null,
       monitorMemoInputsDirty: parsed.monitorMemoInputsDirty === true,
+      monitorPreviewLayoutPreference: normalizeMonitorPreviewLayout(parsed.monitorPreviewLayoutPreference),
       monitorContentDraftOverride: normalizeRemoteMonitorContent(parsed.monitorContentDraftOverride),
       monitorContentDraftBaseSignature: typeof parsed.monitorContentDraftBaseSignature === "string"
         ? parsed.monitorContentDraftBaseSignature.slice(0, 128)
@@ -2784,7 +2814,9 @@ function getWorkflowPlanFingerprint(){
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   return hashWorkflowCheckpoint(JSON.stringify({
     targetDay: getHarvestTargetDateString(),
-    instructionText: String(monitorContent.instructionText || "").replace(/\r\n?/g, "\n").trim(),
+    instructionText: removeMonitorPreviewLayoutLine(
+      String(monitorContent.instructionText || "").replace(/\r\n?/g, "\n")
+    ),
     memoItems,
     harvestFillKeys: selectedKeys
   }));

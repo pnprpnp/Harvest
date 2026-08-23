@@ -55,6 +55,7 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   harvestProgressAvailable = !!savedHarvestState.harvestProgressAvailable;
   harvestProgressBuilding = savedHarvestState.harvestProgressBuilding;
   monitorMemoInputsDirty = !!savedHarvestState.monitorMemoInputsDirty;
+  monitorPreviewLayoutPreference = normalizeMonitorPreviewLayout(savedHarvestState.monitorPreviewLayoutPreference);
   monitorContentDraftOverride = savedHarvestState.monitorContentDraftOverride;
   monitorContentDraftBaseSignature = savedHarvestState.monitorContentDraftBaseSignature || "";
   recordCasesEdited = !!savedHarvestState.recordCasesEdited;

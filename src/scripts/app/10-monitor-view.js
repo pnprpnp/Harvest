@@ -14,6 +14,10 @@ function formatInstructionDisplayHtml(text){
 
   while(index < lines.length){
     const line = lines[index] || "";
+    if(/^表示レイアウト\s*[:：]/.test(line)){
+      index++;
+      continue;
+    }
     if(line.startsWith("収穫場所: ") || line.startsWith("残すケース: ")){
       const label = line.startsWith("収穫場所: ") ? "収穫場所: " : "残すケース: ";
       const detailLines = [line.slice(label.length)];
@@ -21,7 +25,7 @@ function formatInstructionDisplayHtml(text){
       index++;
       while(index < lines.length && lines[index] && (
         isRemainingCaseLine
-          ? !/^(苗:|収穫ケース数:|収穫場所:|残すケース:)\s*/.test(lines[index] || "")
+          ? !/^(苗:|収穫ケース数:|収穫場所:|残すケース:|表示レイアウト:)\s*/.test(lines[index] || "")
           : !/^[^:\n]+:\s/.test(lines[index] || "")
       )){
         detailLines.push(lines[index] || "");
@@ -825,8 +829,9 @@ function fitMonitorHarvestLocationText(root = document){
     const abbreviatedText = String(location.dataset.abbreviatedLocation || fullText);
     const panel = location.closest(".monitorHarvestPanel");
     location.style.transform = "none";
-    const minimumSize = 12;
-    const maximumSize = 28;
+    const isPreview2Location = location.classList.contains("monitorV2LocationValue");
+    const minimumSize = isPreview2Location ? 16 : 12;
+    const maximumSize = isPreview2Location ? 36 : 28;
     location.innerHTML = getMonitorHarvestLocationInlineHtmlFromText(fullText);
     location.style.fontSize = maximumSize + "px";
     const fullTextFitsOneLine = location.scrollWidth <= location.clientWidth + 1;
@@ -861,9 +866,146 @@ function fitMonitorHarvestLocationText(root = document){
   });
 }
 
-function buildMonitorDashboardHtml(content){
+function fitMonitorPreview2CaseText(root = document){
+  const values = Array.from(root.querySelectorAll?.(".monitorV2CaseValue") || []);
+  values.forEach(value => {
+    if(value.clientWidth <= 0 || value.clientHeight <= 0) return;
+    const minimumSize = 13;
+    const maximumSize = 23;
+    const fitsAtSize = size => {
+      value.style.fontSize = size + "px";
+      return value.scrollWidth <= value.clientWidth + 1 && value.scrollHeight <= value.clientHeight + 1;
+    };
+    if(fitsAtSize(maximumSize)) return;
+    let lower = minimumSize;
+    let upper = maximumSize;
+    fitsAtSize(lower);
+    for(let index = 0; index < 8; index++){
+      const middle = (lower + upper) / 2;
+      if(fitsAtSize(middle)) lower = middle;
+      else upper = middle;
+    }
+    value.style.fontSize = Math.max(minimumSize, lower - .5).toFixed(2) + "px";
+  });
+}
+
+function getMonitorPreview2IconHtml(kind){
+  const paths = {
+    seedling:'<path d="M16 27V13"></path><path d="M16 16C9.5 16 6 12.5 6 6c6.5 0 10 3.5 10 10Z"></path><path d="M16 20c6 0 9.5-3.2 10-9.2-6-.3-9.5 2.9-10 9.2Z"></path><path d="M9 27h14"></path>',
+    harvest:'<path d="M5 12h22l-2 14H7L5 12Z"></path><path d="M3 12h26M10 12l2-6h8l2 6M11 16v6M16 16v6M21 16v6"></path>',
+    placement:'<path d="M5 12h22l-2 14H7L5 12Z"></path><path d="M3 12h26M9 17h14M10 22h12M11 12V8h10v4"></path>',
+    remaining:'<path d="M5 12h22l-2 14H7L5 12Z"></path><path d="M3 12h26M10 12l2-6h8l2 6"></path><path d="M16 16v6"></path>',
+    location:'<path d="M24 13c0 6-8 14-8 14S8 19 8 13a8 8 0 1 1 16 0Z"></path><circle cx="16" cy="13" r="2.5"></circle>',
+    map:'<path d="m4 7 7-3 10 4 7-3v20l-7 3-10-4-7 3Z"></path><path d="M11 4v20M21 8v20"></path>',
+    memo:'<path d="M7 25 9 18 21 6a3.5 3.5 0 0 1 5 5L14 23l-7 2Z"></path><path d="m18.5 8.5 5 5M9 18l5 5"></path>'
+  };
+  return `<svg viewBox="0 0 32 32" aria-hidden="true">${paths[kind] || paths.harvest}</svg>`;
+}
+
+function getMonitorPreview2MetricCardHtml(label, value, fallbackUnit, kind){
+  const parts = getMonitorMetricParts(value, fallbackUnit);
+  return `
+    <section class="monitorPanel monitorV2MetricCard monitorV2MetricCard-${escapeHtml(kind)}">
+      <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
+      <div class="monitorV2MetricContent">
+        <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
+        <div class="monitorV2MetricValueLine">
+          <strong class="monitorV2MetricValue">${escapeHtml(parts.value)}</strong>
+          ${parts.unit ? `<span class="monitorV2MetricUnit">${escapeHtml(parts.unit)}</span>` : ""}
+        </div>
+        ${parts.note ? `<div class="monitorV2MetricNote">${escapeHtml(parts.note)}</div>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function getMonitorPreview2CaseCardHtml(label, value, mode, kind){
+  return `
+    <section class="monitorPanel monitorV2MetricCard monitorV2CaseCard monitorV2MetricCard-${escapeHtml(kind)}">
+      <div class="monitorV2MetricIcon">${getMonitorPreview2IconHtml(kind)}</div>
+      <div class="monitorV2MetricContent">
+        <div class="monitorV2MetricLabel">${escapeHtml(label)}</div>
+        <div class="monitorV2CaseValue">${getMonitorRemainingCasesHtml(value, [], mode)}</div>
+      </div>
+    </section>
+  `;
+}
+
+function buildMonitorPreview2DashboardHtml(normalized, fields){
+  const today = getMonitorTodayDisplay();
+  const updatedAt = getMonitorUpdatedAtDisplay(normalized.updatedAt);
+  const memoSource = Array.isArray(normalized.memoItems)
+    ? normalized.memoItems
+    : String(normalized.memoText || "");
+  const monitorHarvestKeys = normalized.harvestFillKeys || [];
+  const fullHarvestLocationText = getMonitorHarvestLocationDisplayText(fields.harvestLocation, monitorHarvestKeys);
+  const abbreviatedHarvestLocationText = getMonitorHarvestLocationAbbreviatedText(fields.harvestLocation, monitorHarvestKeys);
+  const harvestMapClass = getMonitorSelectionBuildingCount(monitorHarvestKeys) === 3
+    ? " has-three-buildings"
+    : "";
+
+  return `
+    <div class="monitorV2Dashboard">
+      <header class="monitorV2Header">
+        <div class="monitorV2Brand">
+          <span class="monitorV2BrandIcon">${getMonitorPreview2IconHtml("seedling")}</span>
+          <span>Harvestnavi</span>
+        </div>
+        <div class="monitorV2HeaderTitle">モニターダッシュボード</div>
+        <div class="monitorV2HeaderMeta">
+          <time data-monitor-today datetime="${escapeHtml(today.dateTime)}">${escapeHtml(today.text)}</time>
+          <span class="monitorV2HeaderDivider" aria-hidden="true"></span>
+          <span class="monitorV2UpdatedAt">最終更新 ${escapeHtml(updatedAt || "--")}</span>
+        </div>
+      </header>
+      <div class="monitorV2Content">
+        <div class="monitorV2LeftColumn">
+          <div class="monitorV2MetricGrid">
+            ${getMonitorPreview2MetricCardHtml("苗数", fields.seedling, "枚", "seedling")}
+            ${getMonitorPreview2MetricCardHtml("収穫数", fields.cases, "ケース", "harvest")}
+            ${getMonitorPreview2CaseCardHtml("ケース配置", fields.remainingCases, "placement", "placement")}
+            ${getMonitorPreview2CaseCardHtml("残すケース", fields.remainingCases, "remaining", "remaining")}
+          </div>
+          <section class="monitorPanel monitorV2LocationCard">
+            <div class="monitorV2LocationIcon">${getMonitorPreview2IconHtml("location")}</div>
+            <div class="monitorV2LocationContent">
+              <div class="monitorV2LocationLabel">収穫場所</div>
+              <div class="monitorV2LocationValue monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
+            </div>
+          </section>
+        </div>
+        <div class="monitorV2RightColumn">
+          <section class="monitorPanel monitorV2MapPanel">
+            <div class="monitorV2PanelHeader">
+              <div class="monitorV2PanelTitle"><span class="monitorV2PanelIcon">${getMonitorPreview2IconHtml("map")}</span><span>収穫場所（配置図）</span></div>
+              <div class="monitorMapLegend" aria-label="収穫場所の凡例">
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+              </div>
+            </div>
+            <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
+          </section>
+          <section class="monitorPanel monitorV2MemoPanel">
+            <div class="monitorV2PanelHeader">
+              <div class="monitorV2PanelTitle"><span class="monitorV2PanelIcon">${getMonitorPreview2IconHtml("memo")}</span><span>メモ</span></div>
+            </div>
+            <div class="monitorV2MemoText">${getMonitorMemoHtml(memoSource)}</div>
+          </section>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildMonitorDashboardHtml(content, options = {}){
   const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
   const fields = parseMonitorInstructionFields(normalized.instructionText || "");
+  const previewLayout = normalizeMonitorPreviewLayout(
+    options.previewLayout || normalized.previewLayout || fields.previewLayout
+  );
+  if(previewLayout === "preview2"){
+    return buildMonitorPreview2DashboardHtml(normalized, fields);
+  }
   const today = getMonitorTodayDisplay();
   const updatedAt = getMonitorUpdatedAtDisplay(normalized.updatedAt);
   const memoSource = Array.isArray(normalized.memoItems)
@@ -940,5 +1082,6 @@ function renderMonitorMode(){
   requestAnimationFrame(() => {
     fitMonitorSummaryMetricText(body);
     fitMonitorHarvestLocationText(body);
+    fitMonitorPreview2CaseText(body);
   });
 }

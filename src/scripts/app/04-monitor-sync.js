@@ -13,6 +13,7 @@ function buildGoogleSheetMonitorSavePayload(config, content){
   const saveContent = { ...(content || {}) };
   delete saveContent.version;
   delete saveContent.updatedAt;
+  delete saveContent.previewLayout;
   return {
     app: "Harvestnavi",
     type: "harvest-monitor-save",
@@ -63,6 +64,19 @@ function getMonitorMemoItemsFromText(text){
     .filter(Boolean);
 }
 
+function normalizeMonitorPreviewLayout(value){
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "preview2" || normalized === "2" ? "preview2" : "preview1";
+}
+
+function removeMonitorPreviewLayoutLine(value){
+  return String(value || "")
+    .split("\n")
+    .filter(line => !/^\s*表示レイアウト\s*[:：]/.test(line))
+    .join("\n")
+    .trim();
+}
+
 function normalizeRemoteMonitorContent(content){
   if(!content || typeof content !== "object" || Array.isArray(content)) return null;
   if(Object.prototype.hasOwnProperty.call(content, "palletRanges")) return null;
@@ -89,6 +103,10 @@ function normalizeRemoteMonitorContent(content){
   const enabled = content.enabled === true || ["true", "1", "yes", "on", "有効", "使う"].includes(String(content.enabled || "").trim().toLowerCase());
   const harvestKeys = expandPalletKeyItemsToKeys(content.harvestFillKeys);
   const memoItems = normalizeMonitorMemoItems(content.memoItems, content.memoText);
+  const instructionText = String(content.instructionText || "");
+  const previewLayout = normalizeMonitorPreviewLayout(
+    content.previewLayout || parseMonitorInstructionFields(instructionText).previewLayout
+  );
   if(getMonitorMemoTextFromItems(memoItems).length > MONITOR_MAX_MEMO_LENGTH) return null;
   const uniqueHarvestKeys = [...new Set(harvestKeys)].sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   if(uniqueHarvestKeys.length > RECORD_MAX_PALLET_KEYS) return null;
@@ -96,10 +114,11 @@ function normalizeRemoteMonitorContent(content){
     enabled,
     version: String(content.version ?? ""),
     updatedAt: String(content.updatedAt ?? ""),
-    instructionText: String(content.instructionText || ""),
+    instructionText,
     memoText: String(content.memoText || memoItems.join("\n\n")),
     memoItems,
-    harvestFillKeys: uniqueHarvestKeys
+    harvestFillKeys: uniqueHarvestKeys,
+    previewLayout
   };
 }
 
@@ -111,7 +130,8 @@ function getMonitorRemoteSignature(content){
     instructionText: content.instructionText,
     memoText: content.memoText,
     memoItems: content.memoItems,
-    harvestFillKeys: content.harvestFillKeys
+    harvestFillKeys: content.harvestFillKeys,
+    previewLayout: content.previewLayout
   });
 }
 
@@ -122,7 +142,8 @@ function getMonitorNotificationRevision(content){
     instructionText: normalized.instructionText,
     memoText: normalized.memoText,
     memoItems: normalized.memoItems,
-    harvestFillKeys: normalized.harvestFillKeys
+    harvestFillKeys: normalized.harvestFillKeys,
+    previewLayout: normalized.previewLayout
   }) : "invalid";
   let first = 2166136261;
   let second = 5381;
@@ -494,7 +515,8 @@ function getEmptyMonitorInstructionFields(){
     seedling: "",
     cases: "",
     harvestLocation: "",
-    remainingCases: ""
+    remainingCases: "",
+    previewLayout: "preview1"
   };
 }
 
@@ -536,7 +558,8 @@ function parseMonitorInstructionFields(text){
     "苗": "seedling",
     "収穫ケース数": "cases",
     "収穫場所": "harvestLocation",
-    "残すケース": "remainingCases"
+    "残すケース": "remainingCases",
+    "表示レイアウト": "previewLayout"
   };
   const normalizedText = String(text || "").replace(/\s*\/\s*収穫ケース数\s*[:：]/g, "\n収穫ケース数:");
   const lines = normalizedText.split("\n");
@@ -559,6 +582,7 @@ function parseMonitorInstructionFields(text){
   });
 
   fields.seedling = removeMonitorSkipSeedlingNote(fields.seedling);
+  fields.previewLayout = normalizeMonitorPreviewLayout(fields.previewLayout);
   return fields;
 }
 
@@ -568,13 +592,26 @@ function buildMonitorInstructionTextFromFields(fields){
   const cases = String(source.cases || "").trim();
   const harvestLocation = String(source.harvestLocation || "").trim();
   const remainingCases = String(source.remainingCases || "").trim();
+  const previewLayout = normalizeMonitorPreviewLayout(source.previewLayout);
   const lines = [
     "苗: " + seedling + " / 収穫ケース数: " + cases
   ];
 
   lines.push("収穫場所: " + harvestLocation);
   lines.push("残すケース: " + remainingCases);
+  if(previewLayout === "preview2") lines.push("表示レイアウト: 2");
   return lines.join("\n");
+}
+
+function withMonitorPreviewLayout(content, previewLayout){
+  const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
+  const fields = parseMonitorInstructionFields(normalized.instructionText || "");
+  fields.previewLayout = normalizeMonitorPreviewLayout(previewLayout);
+  return {
+    ...normalized,
+    instructionText: buildMonitorInstructionTextFromFields(fields),
+    previewLayout: fields.previewLayout
+  };
 }
 
 function removeSeedlingAutoNote(value){
@@ -638,7 +675,8 @@ function getCurrentMonitorInstructionFields(){
     seedling: seedlingText,
     cases: casesText,
     harvestLocation: formatHarvestLocationInstruction(remainingKeys).replace(/^収穫場所:\s*/, ""),
-    remainingCases: getMonitorCasePlacementSummaryText(remainingKeys)
+    remainingCases: getMonitorCasePlacementSummaryText(remainingKeys),
+    previewLayout: monitorPreviewLayoutPreference
   };
 }
 
@@ -649,10 +687,12 @@ function populateMonitorRemoteEditor(content){
     instructionText: "",
     memoText: "",
     memoItems: [],
-    harvestFillKeys: []
+    harvestFillKeys: [],
+    previewLayout: "preview1"
   };
   const fields = parseMonitorInstructionFields(normalized.instructionText || "");
   const caseSections = splitMonitorCaseEditorFields(fields.remainingCases);
+  monitorRemoteEditorPreviewLayout = normalizeMonitorPreviewLayout(normalized.previewLayout || fields.previewLayout);
   monitorRemoteEditorHarvestFillKeys = Array.isArray(normalized.harvestFillKeys) ? normalized.harvestFillKeys : [];
   if(els.seedlingInput) els.seedlingInput.value = fields.seedling;
   if(els.casesInput) els.casesInput.value = fields.cases;
@@ -671,14 +711,16 @@ function readMonitorRemoteEditorContent(){
     remainingCases: combineMonitorCaseEditorFields(
       els.placementCasesInput?.value || "",
       els.remainingCasesInput?.value || ""
-    )
+    ),
+    previewLayout: monitorRemoteEditorPreviewLayout
   };
   return {
     enabled: true,
     instructionText: buildMonitorInstructionTextFromFields(fields),
     memoText: getMonitorMemoTextFromItems(getMonitorRemoteMemoInputValues()),
     memoItems: getMonitorRemoteMemoInputValues(),
-    harvestFillKeys: compressPalletKeysToRanges(monitorRemoteEditorHarvestFillKeys)
+    harvestFillKeys: compressPalletKeysToRanges(monitorRemoteEditorHarvestFillKeys),
+    previewLayout: normalizeMonitorPreviewLayout(fields.previewLayout)
   };
 }
 
@@ -691,14 +733,15 @@ function buildCalculatedMonitorRemoteContent(){
     instructionText: buildMonitorInstructionTextFromFields(getCurrentMonitorInstructionFields()),
     memoText: getMonitorMemoTextFromItems(memoItems),
     memoItems,
-    harvestFillKeys: compressPalletKeysToRanges(remainingKeys)
+    harvestFillKeys: compressPalletKeysToRanges(remainingKeys),
+    previewLayout: normalizeMonitorPreviewLayout(monitorPreviewLayoutPreference)
   };
 }
 
 function getMonitorContentDraftBaseSignature(){
   const content = buildCalculatedMonitorRemoteContent();
   return hashWorkflowCheckpoint(JSON.stringify({
-    instructionText: content.instructionText,
+    instructionText: removeMonitorPreviewLayoutLine(content.instructionText),
     harvestFillKeys: content.harvestFillKeys
   }));
 }
@@ -717,7 +760,8 @@ function buildCurrentMonitorRemoteContent(){
     instructionText:draft.instructionText,
     memoText:getMonitorMemoTextFromItems(draft.memoItems),
     memoItems:draft.memoItems,
-    harvestFillKeys:compressPalletKeysToRanges(draft.harvestFillKeys)
+    harvestFillKeys:compressPalletKeysToRanges(draft.harvestFillKeys),
+    previewLayout:normalizeMonitorPreviewLayout(draft.previewLayout)
   };
 }
 
@@ -753,7 +797,8 @@ function applyMonitorCurrentEditor(){
     instructionText:editedContent.instructionText,
     memoText:getMonitorMemoTextFromItems(editedContent.memoItems),
     memoItems:editedContent.memoItems,
-    harvestFillKeys:compressPalletKeysToRanges(editedContent.harvestFillKeys)
+    harvestFillKeys:compressPalletKeysToRanges(editedContent.harvestFillKeys),
+    previewLayout:normalizeMonitorPreviewLayout(editedContent.previewLayout)
   };
   renderMonitorMemoInputs(editedContent.memoItems);
   monitorMemoInputsDirty = true;
@@ -784,14 +829,18 @@ async function saveCurrentMonitorRemoteContent(){
 
   try{
     const content = buildCurrentMonitorRemoteContent();
-    const workflowSignature = getWorkflowPlanFingerprint();
     const workflowPlanWasReady = getWorkflowPlanStatus().ready;
-    const shouldSave = await showMonitorPreviewConfirm(content);
-    if(!shouldSave) return;
+    const selectedLayout = await showMonitorPreviewConfirm(content);
+    if(!selectedLayout) return;
+    const selectedContent = withMonitorPreviewLayout(content, selectedLayout);
+    if(monitorContentDraftOverride && monitorContentDraftBaseSignature){
+      monitorContentDraftOverride = normalizeRemoteMonitorContent(selectedContent);
+    }
+    const workflowSignature = getWorkflowPlanFingerprint();
 
     setCurrentMonitorSaveLoading(true, "モニターへ送信中…");
     populateMonitorRemoteEditor({
-      ...content,
+      ...selectedContent,
       harvestFillKeys
     });
     const saved = await saveMonitorRemoteEditor({ currentWorkflowPlan: true });
@@ -883,6 +932,9 @@ async function saveMonitorRemoteContent(content, options = {}){
     monitorRemoteContent = savedContent && savedContent.enabled ? savedContent : null;
     monitorRemoteSignature = getMonitorRemoteSignature(savedContent);
     monitorRemoteFetchedContent = savedContent || validatedContent;
+    monitorPreviewLayoutPreference = normalizeMonitorPreviewLayout(
+      (savedContent || validatedContent).previewLayout
+    );
     monitorRemoteFetchedAt = Date.now();
     if(isMonitorModeOpen) renderMonitorMode();
     if(result.unchanged){
