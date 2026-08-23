@@ -16,6 +16,8 @@ function hideWelcomeScreen(){
 }
 
 function initializeStartupSettingsAndStorage(){
+  monitorPreviewLayoutPreference = getStoredMonitorPreviewLayoutPreference()
+    || monitorPreviewLayoutPreference;
   moveCalculationSettingsToForecast();
   populateSettingsForm();
   populateGoogleSheetConfigForm();
@@ -55,7 +57,8 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   harvestProgressAvailable = !!savedHarvestState.harvestProgressAvailable;
   harvestProgressBuilding = savedHarvestState.harvestProgressBuilding;
   monitorMemoInputsDirty = !!savedHarvestState.monitorMemoInputsDirty;
-  monitorPreviewLayoutPreference = normalizeMonitorPreviewLayout(savedHarvestState.monitorPreviewLayoutPreference);
+  monitorPreviewLayoutPreference = getStoredMonitorPreviewLayoutPreference()
+    || normalizeMonitorPreviewLayout(savedHarvestState.monitorPreviewLayoutPreference);
   monitorContentDraftOverride = savedHarvestState.monitorContentDraftOverride;
   monitorContentDraftBaseSignature = savedHarvestState.monitorContentDraftBaseSignature || "";
   recordCasesEdited = !!savedHarvestState.recordCasesEdited;

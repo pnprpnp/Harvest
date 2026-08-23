@@ -28,6 +28,7 @@ const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
 const WORKFLOW_BAR_VISIBILITY_KEY = "harvestForecastWorkflowBarVisible_v2";
 const WORKFLOW_TITLE_HINT_SHOWN_KEY = "harvestnaviWorkflowTitleHintShown_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
+const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
 const MONITOR_DESIGN_HEIGHT = 720;
 const MONITOR_MAX_SCALE = 2;
@@ -886,7 +887,7 @@ function showMonitorPreviewConfirm(content){
     const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
     monitorPreviewContent = normalized;
     monitorPreviewSelectedLayout = normalizeMonitorPreviewLayout(
-      normalized.previewLayout || monitorPreviewLayoutPreference
+      monitorPreviewLayoutPreference || normalized.previewLayout
     );
     monitorPreviewResolver = resolve;
     refreshMonitorPreviewLayoutSwitch();
@@ -905,7 +906,6 @@ function resolveMonitorPreview(confirmed){
   const resolver = monitorPreviewResolver;
   monitorPreviewResolver = null;
   const selectedLayout = confirmed ? monitorPreviewSelectedLayout : null;
-  if(confirmed) monitorPreviewLayoutPreference = selectedLayout;
   monitorPreviewContent = null;
   if(resolver) resolver(selectedLayout);
 }

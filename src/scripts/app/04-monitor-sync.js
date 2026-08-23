@@ -69,6 +69,19 @@ function normalizeMonitorPreviewLayout(value){
   return normalized === "preview2" || normalized === "2" ? "preview2" : "preview1";
 }
 
+function getStoredMonitorPreviewLayoutPreference(){
+  const stored = String(harvestnaviLocalStorage.getItem(MONITOR_PREVIEW_LAYOUT_KEY) || "").trim();
+  if(stored !== "preview1" && stored !== "preview2") return null;
+  return stored;
+}
+
+function persistMonitorPreviewLayoutPreference(value){
+  const normalized = normalizeMonitorPreviewLayout(value);
+  monitorPreviewLayoutPreference = normalized;
+  harvestnaviLocalStorage.setItem(MONITOR_PREVIEW_LAYOUT_KEY, normalized);
+  return normalized;
+}
+
 function removeMonitorPreviewLayoutLine(value){
   return String(value || "")
     .split("\n")
@@ -932,7 +945,7 @@ async function saveMonitorRemoteContent(content, options = {}){
     monitorRemoteContent = savedContent && savedContent.enabled ? savedContent : null;
     monitorRemoteSignature = getMonitorRemoteSignature(savedContent);
     monitorRemoteFetchedContent = savedContent || validatedContent;
-    monitorPreviewLayoutPreference = normalizeMonitorPreviewLayout(
+    persistMonitorPreviewLayoutPreference(
       (savedContent || validatedContent).previewLayout
     );
     monitorRemoteFetchedAt = Date.now();

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-record-mode-status">
+<meta name="harvestnavi-version" content="20260823-preview-preference-record-steps">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9910,29 +9910,58 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 /* Record workflow */
 #recordSaveCard > .recordDateField{margin-top:0;}
 .recordModeStatus{
-  min-height:38px;
+  --record-mode-active:var(--ui-accent-dark);
+  min-height:46px;
   margin:0 0 10px;
-  padding:7px 12px;
+  padding:7px 10px;
   box-sizing:border-box;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr);
+  align-items:center;
+  gap:4px;
+  border-radius:10px;
+  background:var(--ui-surface-muted);
+}
+.recordModeStatus.is-planting{--record-mode-active:var(--ui-blue);}
+.recordModeStep{
+  min-width:0;
   display:flex;
   align-items:center;
   justify-content:center;
-  gap:8px;
-  border-radius:10px;
-  background:var(--ui-surface-muted);
-  color:var(--ui-accent-dark);
-  font-size:16px;
-  font-weight:800;
+  gap:6px;
+  color:var(--ui-text-tertiary);
+  font-size:14px;
+  font-weight:740;
   line-height:1.2;
-  letter-spacing:.02em;
+  white-space:nowrap;
 }
-.recordModeStatus.is-planting{color:var(--ui-blue);}
-.recordModeStatusDot{
-  width:8px;
-  height:8px;
+.recordModeStep.is-active{color:var(--record-mode-active);font-weight:820;}
+.recordModeStep.is-completed{color:var(--ui-accent-dark);}
+.recordModeStepNumber{
+  width:22px;
+  height:22px;
   flex:none;
+  display:grid;
+  place-items:center;
+  box-sizing:border-box;
+  border:1px solid currentColor;
   border-radius:50%;
-  background:currentColor;
+  font-size:11px;
+  font-weight:850;
+}
+.recordModeStep.is-active .recordModeStepNumber{
+  border-color:var(--record-mode-active);
+  background:var(--record-mode-active);
+  color:#fff;
+}
+.recordModeStep.is-completed .recordModeStepNumber{
+  border-color:var(--ui-accent-dark);
+  background:var(--ui-accent-soft);
+}
+.recordModeConnector{
+  width:100%;
+  height:1px;
+  background:var(--ui-line-strong);
 }
 .recordSeedlingDiffBox,
 .recordHarvestAdjustBox{
@@ -12545,9 +12574,16 @@ requestAnimationFrame(function(){
 
   <div id="recordTab" style="display:none;">
     <div id="recordSaveCard" class="card workflowFocusHeading" aria-label="記録入力">
-      <div id="recordModeStatus" class="recordModeStatus is-harvest" role="status" aria-live="polite">
-        <span class="recordModeStatusDot" aria-hidden="true"></span>
-        <span id="recordModeStatusText">収穫記録中</span>
+      <div id="recordModeStatus" class="recordModeStatus is-harvest" role="status" aria-live="polite" aria-label="全2段階。現在は収穫記録中">
+        <div id="recordModeHarvestStep" class="recordModeStep is-active" aria-current="step">
+          <span class="recordModeStepNumber" aria-hidden="true">1</span>
+          <span id="recordModeHarvestStepText">収穫記録中</span>
+        </div>
+        <span class="recordModeConnector" aria-hidden="true"></span>
+        <div id="recordModePlantingStep" class="recordModeStep is-upcoming">
+          <span class="recordModeStepNumber" aria-hidden="true">2</span>
+          <span id="recordModePlantingStepText">苗植え記録</span>
+        </div>
       </div>
       <div class="recordDateField">
         <label class="fieldAccentLabel">日付</label>
@@ -13698,6 +13734,7 @@ const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
 const WORKFLOW_BAR_VISIBILITY_KEY = "harvestForecastWorkflowBarVisible_v2";
 const WORKFLOW_TITLE_HINT_SHOWN_KEY = "harvestnaviWorkflowTitleHintShown_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
+const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
 const MONITOR_DESIGN_HEIGHT = 720;
 const MONITOR_MAX_SCALE = 2;
@@ -14556,7 +14593,7 @@ function showMonitorPreviewConfirm(content){
     const normalized = normalizeRemoteMonitorContent(content || {}) || content || {};
     monitorPreviewContent = normalized;
     monitorPreviewSelectedLayout = normalizeMonitorPreviewLayout(
-      normalized.previewLayout || monitorPreviewLayoutPreference
+      monitorPreviewLayoutPreference || normalized.previewLayout
     );
     monitorPreviewResolver = resolve;
     refreshMonitorPreviewLayoutSwitch();
@@ -14575,7 +14612,6 @@ function resolveMonitorPreview(confirmed){
   const resolver = monitorPreviewResolver;
   monitorPreviewResolver = null;
   const selectedLayout = confirmed ? monitorPreviewSelectedLayout : null;
-  if(confirmed) monitorPreviewLayoutPreference = selectedLayout;
   monitorPreviewContent = null;
   if(resolver) resolver(selectedLayout);
 }
@@ -20434,6 +20470,19 @@ function normalizeMonitorPreviewLayout(value){
   return normalized === "preview2" || normalized === "2" ? "preview2" : "preview1";
 }
 
+function getStoredMonitorPreviewLayoutPreference(){
+  const stored = String(harvestnaviLocalStorage.getItem(MONITOR_PREVIEW_LAYOUT_KEY) || "").trim();
+  if(stored !== "preview1" && stored !== "preview2") return null;
+  return stored;
+}
+
+function persistMonitorPreviewLayoutPreference(value){
+  const normalized = normalizeMonitorPreviewLayout(value);
+  monitorPreviewLayoutPreference = normalized;
+  harvestnaviLocalStorage.setItem(MONITOR_PREVIEW_LAYOUT_KEY, normalized);
+  return normalized;
+}
+
 function removeMonitorPreviewLayoutLine(value){
   return String(value || "")
     .split("\n")
@@ -21297,7 +21346,7 @@ async function saveMonitorRemoteContent(content, options = {}){
     monitorRemoteContent = savedContent && savedContent.enabled ? savedContent : null;
     monitorRemoteSignature = getMonitorRemoteSignature(savedContent);
     monitorRemoteFetchedContent = savedContent || validatedContent;
-    monitorPreviewLayoutPreference = normalizeMonitorPreviewLayout(
+    persistMonitorPreviewLayoutPreference(
       (savedContent || validatedContent).previewLayout
     );
     monitorRemoteFetchedAt = Date.now();
@@ -30524,7 +30573,10 @@ function refreshRecordModeUi(){
   const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const modeStatus = document.getElementById("recordModeStatus");
-  const modeStatusText = document.getElementById("recordModeStatusText");
+  const harvestModeStep = document.getElementById("recordModeHarvestStep");
+  const plantingModeStep = document.getElementById("recordModePlantingStep");
+  const harvestModeStepText = document.getElementById("recordModeHarvestStepText");
+  const plantingModeStepText = document.getElementById("recordModePlantingStepText");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
@@ -30560,8 +30612,24 @@ function refreshRecordModeUi(){
   if(modeStatus){
     modeStatus.classList.toggle("is-harvest", !isPlantingMode);
     modeStatus.classList.toggle("is-planting", isPlantingMode);
+    modeStatus.setAttribute("aria-label", `全2段階。現在は${isPlantingMode ? "苗植え記録中" : "収穫記録中"}`);
   }
-  if(modeStatusText) modeStatusText.textContent = isPlantingMode ? "苗植え記録中" : "収穫記録中";
+  if(harvestModeStep){
+    harvestModeStep.classList.toggle("is-active", !isPlantingMode);
+    harvestModeStep.classList.toggle("is-completed", isPlantingMode);
+    harvestModeStep.classList.remove("is-upcoming");
+    if(isPlantingMode) harvestModeStep.removeAttribute("aria-current");
+    else harvestModeStep.setAttribute("aria-current", "step");
+  }
+  if(plantingModeStep){
+    plantingModeStep.classList.toggle("is-active", isPlantingMode);
+    plantingModeStep.classList.toggle("is-upcoming", !isPlantingMode);
+    plantingModeStep.classList.remove("is-completed");
+    if(isPlantingMode) plantingModeStep.setAttribute("aria-current", "step");
+    else plantingModeStep.removeAttribute("aria-current");
+  }
+  if(harvestModeStepText) harvestModeStepText.textContent = isPlantingMode ? "収穫記録" : "収穫記録中";
+  if(plantingModeStepText) plantingModeStepText.textContent = isPlantingMode ? "苗植え記録中" : "苗植え記録";
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();
@@ -37654,6 +37722,8 @@ function hideWelcomeScreen(){
 }
 
 function initializeStartupSettingsAndStorage(){
+  monitorPreviewLayoutPreference = getStoredMonitorPreviewLayoutPreference()
+    || monitorPreviewLayoutPreference;
   moveCalculationSettingsToForecast();
   populateSettingsForm();
   populateGoogleSheetConfigForm();
@@ -37693,7 +37763,8 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   harvestProgressAvailable = !!savedHarvestState.harvestProgressAvailable;
   harvestProgressBuilding = savedHarvestState.harvestProgressBuilding;
   monitorMemoInputsDirty = !!savedHarvestState.monitorMemoInputsDirty;
-  monitorPreviewLayoutPreference = normalizeMonitorPreviewLayout(savedHarvestState.monitorPreviewLayoutPreference);
+  monitorPreviewLayoutPreference = getStoredMonitorPreviewLayoutPreference()
+    || normalizeMonitorPreviewLayout(savedHarvestState.monitorPreviewLayoutPreference);
   monitorContentDraftOverride = savedHarvestState.monitorContentDraftOverride;
   monitorContentDraftBaseSignature = savedHarvestState.monitorContentDraftBaseSignature || "";
   recordCasesEdited = !!savedHarvestState.recordCasesEdited;

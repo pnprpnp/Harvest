@@ -4270,6 +4270,65 @@
         }, "プレビューの切り替え、プレビュー2の配置、選択レイアウトの送信が正しくありません");
       });
 
+      await runTest("前回送信したモニタープレビュー方式を次回の初期選択にする", () => {
+        const preferenceState = comparable(app.eval(`(() => {
+          const previous = {
+            storedLayout:harvestnaviLocalStorage.getItem(MONITOR_PREVIEW_LAYOUT_KEY),
+            storedHarvestState:harvestnaviLocalStorage.getItem(HARVEST_STATE_KEY),
+            preference:monitorPreviewLayoutPreference,
+            selected:monitorPreviewSelectedLayout,
+            content:monitorPreviewContent,
+            resolver:monitorPreviewResolver
+          };
+          try{
+            persistMonitorPreviewLayoutPreference("preview2");
+            harvestnaviLocalStorage.setItem(HARVEST_STATE_KEY, JSON.stringify({ temporary:true }));
+            clearHarvestStateFromStorage();
+            const survivesCalculationClear = getStoredMonitorPreviewLayoutPreference() === "preview2";
+
+            showMonitorPreviewConfirm({
+              enabled:true,
+              instructionText:"苗: 0枚\\n収穫ケース数: 0\\n収穫場所: -\\n残すケース: なし",
+              harvestFillKeys:[],
+              memoItems:[],
+              previewLayout:"preview1"
+            });
+            const startsWithLastSentLayout = monitorPreviewSelectedLayout === "preview2"
+              && document.querySelector('[data-monitor-preview-layout="preview2"]')?.classList.contains("active");
+            setMonitorPreviewLayout("preview1");
+            resolveMonitorPreview(false);
+            const cancelKeepsLastSentLayout = monitorPreviewLayoutPreference === "preview2"
+              && getStoredMonitorPreviewLayoutPreference() === "preview2";
+
+            return {
+              stored:getStoredMonitorPreviewLayoutPreference(),
+              survivesCalculationClear,
+              startsWithLastSentLayout,
+              cancelKeepsLastSentLayout,
+              successfulSavePersists:saveMonitorRemoteContent.toString().includes("persistMonitorPreviewLayoutPreference")
+            };
+          }finally{
+            if(monitorPreviewResolver) resolveMonitorPreview(false);
+            if(previous.storedLayout === null) harvestnaviLocalStorage.removeItem(MONITOR_PREVIEW_LAYOUT_KEY);
+            else harvestnaviLocalStorage.setItem(MONITOR_PREVIEW_LAYOUT_KEY, previous.storedLayout);
+            if(previous.storedHarvestState === null) harvestnaviLocalStorage.removeItem(HARVEST_STATE_KEY);
+            else harvestnaviLocalStorage.setItem(HARVEST_STATE_KEY, previous.storedHarvestState);
+            monitorPreviewLayoutPreference = previous.preference;
+            monitorPreviewSelectedLayout = previous.selected;
+            monitorPreviewContent = previous.content;
+            monitorPreviewResolver = previous.resolver;
+            refreshMonitorPreviewLayoutSwitch();
+          }
+        })()`));
+        assertDeepEqual(preferenceState, {
+          stored:"preview2",
+          survivesCalculationClear:true,
+          startsWithLastSentLayout:true,
+          cancelKeepsLastSentLayout:true,
+          successfulSavePersists:true
+        }, "前回送信したプレビュー方式が次回の初期選択として保存されていません");
+      });
+
       await runTest("モニターはシミュと同じ2列39段の配置図で収穫場所を表示する", () => {
         const monitorState = comparable(app.eval(`(() => {
           const previousGetRecorded = getRecordedPalletSet;
@@ -5214,19 +5273,26 @@
       await runTest("記録タブ上部に現在の収穫・苗植え工程を表示する", () => {
         const modeState = comparable(app.eval(`(() => {
           const previousMode = recordSelectionMode;
+          const readState = () => ({
+            statusClass:document.getElementById("recordModeStatus")?.className || "",
+            statusLabel:document.getElementById("recordModeStatus")?.getAttribute("aria-label") || "",
+            labels:[
+              document.getElementById("recordModeHarvestStepText")?.textContent || "",
+              document.getElementById("recordModePlantingStepText")?.textContent || ""
+            ],
+            active:[...document.querySelectorAll("#recordModeStatus .recordModeStep.is-active")]
+              .map(step => step.id),
+            completed:[...document.querySelectorAll("#recordModeStatus .recordModeStep.is-completed")]
+              .map(step => step.id),
+            current:document.querySelector('#recordModeStatus [aria-current="step"]')?.id || ""
+          });
           try{
             recordSelectionMode = "harvest";
             refreshRecordModeUi();
-            const harvest = {
-              text:document.getElementById("recordModeStatusText")?.textContent || "",
-              className:document.getElementById("recordModeStatus")?.className || ""
-            };
+            const harvest = readState();
             recordSelectionMode = "planting";
             refreshRecordModeUi();
-            const planting = {
-              text:document.getElementById("recordModeStatusText")?.textContent || "",
-              className:document.getElementById("recordModeStatus")?.className || ""
-            };
+            const planting = readState();
             return { harvest, planting };
           }finally{
             recordSelectionMode = previousMode;
@@ -5234,8 +5300,22 @@
           }
         })()`));
         assertDeepEqual(modeState, {
-          harvest:{ text:"収穫記録中", className:"recordModeStatus is-harvest" },
-          planting:{ text:"苗植え記録中", className:"recordModeStatus is-planting" }
+          harvest:{
+            statusClass:"recordModeStatus is-harvest",
+            statusLabel:"全2段階。現在は収穫記録中",
+            labels:["収穫記録中", "苗植え記録"],
+            active:["recordModeHarvestStep"],
+            completed:[],
+            current:"recordModeHarvestStep"
+          },
+          planting:{
+            statusClass:"recordModeStatus is-planting",
+            statusLabel:"全2段階。現在は苗植え記録中",
+            labels:["収穫記録", "苗植え記録中"],
+            active:["recordModePlantingStep"],
+            completed:["recordModeHarvestStep"],
+            current:"recordModePlantingStep"
+          }
         }, "記録タブ上部の工程表示が現在の記録モードに追従していません");
       });
 
@@ -6536,18 +6616,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "37f2b739", elements: 2225, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "c421f472", elements: 2294, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "b1b04fa7", elements: 2294, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "5adcef58", elements: 2226, visible: 107, viewport: "390x844" },
-          mobileDashboard: { hash: "75342816", elements: 2226, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "6be395f0", elements: 2309, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "dfb3788f", elements: 2324, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "801758d3", elements: 2324, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "8f5637a9", elements: 2324, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "70e673a4", elements: 2324, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "e4fd51bd", elements: 2324, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "8b1548c5", elements: 2324, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "421c8d13", elements: 2230, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "1a70f374", elements: 2299, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "aff7990d", elements: 2299, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "8522c0a1", elements: 2231, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "9d641028", elements: 2231, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "1277609d", elements: 2314, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "07016e1b", elements: 2329, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "ac4b324d", elements: 2329, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "2fd75ad3", elements: 2329, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "5302de62", elements: 2329, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "9000346d", elements: 2329, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "b3e60d99", elements: 2329, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

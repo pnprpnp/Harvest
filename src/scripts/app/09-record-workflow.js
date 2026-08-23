@@ -1514,7 +1514,10 @@ function refreshRecordModeUi(){
   const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const modeStatus = document.getElementById("recordModeStatus");
-  const modeStatusText = document.getElementById("recordModeStatusText");
+  const harvestModeStep = document.getElementById("recordModeHarvestStep");
+  const plantingModeStep = document.getElementById("recordModePlantingStep");
+  const harvestModeStepText = document.getElementById("recordModeHarvestStepText");
+  const plantingModeStepText = document.getElementById("recordModePlantingStepText");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
@@ -1550,8 +1553,24 @@ function refreshRecordModeUi(){
   if(modeStatus){
     modeStatus.classList.toggle("is-harvest", !isPlantingMode);
     modeStatus.classList.toggle("is-planting", isPlantingMode);
+    modeStatus.setAttribute("aria-label", `全2段階。現在は${isPlantingMode ? "苗植え記録中" : "収穫記録中"}`);
   }
-  if(modeStatusText) modeStatusText.textContent = isPlantingMode ? "苗植え記録中" : "収穫記録中";
+  if(harvestModeStep){
+    harvestModeStep.classList.toggle("is-active", !isPlantingMode);
+    harvestModeStep.classList.toggle("is-completed", isPlantingMode);
+    harvestModeStep.classList.remove("is-upcoming");
+    if(isPlantingMode) harvestModeStep.removeAttribute("aria-current");
+    else harvestModeStep.setAttribute("aria-current", "step");
+  }
+  if(plantingModeStep){
+    plantingModeStep.classList.toggle("is-active", isPlantingMode);
+    plantingModeStep.classList.toggle("is-upcoming", !isPlantingMode);
+    plantingModeStep.classList.remove("is-completed");
+    if(isPlantingMode) plantingModeStep.setAttribute("aria-current", "step");
+    else plantingModeStep.removeAttribute("aria-current");
+  }
+  if(harvestModeStepText) harvestModeStepText.textContent = isPlantingMode ? "収穫記録" : "収穫記録中";
+  if(plantingModeStepText) plantingModeStepText.textContent = isPlantingMode ? "苗植え記録中" : "苗植え記録";
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();
