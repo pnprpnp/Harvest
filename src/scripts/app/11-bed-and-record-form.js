@@ -437,7 +437,7 @@ function renderForecastSummary(){
         <div class="monitorSendDetailValue casePlacementContainerValue">${formatMonitorTabDetailValueHtml(caseSummarySections.placement)}</div>
       </div>
       <div class="monitorSendDetailItem">
-        ${getMonitorSendSummaryLabelHtml("残すケース数", "remaining")}
+        ${getMonitorSendSummaryLabelHtml("残すコンテナ数", "remaining")}
         <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(caseSummarySections.remaining)}</div>
       </div>`;
     renderMonitorMemoReadOnly(monitorContent);

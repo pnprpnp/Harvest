@@ -4267,6 +4267,9 @@
             getPalletKey(2, "A", 1),
             getPalletKey(2, "A", 2)
           ]);
+          for(let number = 1; number <= PALLETS_PER_BED; number++){
+            recordedSet.add(getPalletKey(2, "B", number));
+          }
           const host = document.createElement("div");
           const dashboardHost = document.createElement("div");
           const threeDashboardHost = document.createElement("div");
@@ -4335,6 +4338,17 @@
               cellCount:host.querySelectorAll(".monitorBedMapCell").length,
               selectedCount:host.querySelectorAll(".monitorBedMapCell.is-selected").length,
               recordedCount:host.querySelectorAll(".monitorBedMapCell.is-recorded").length,
+              zeroHarvestableBedFilled:(() => {
+                const bedCard = cards.find(card => card.querySelector(".monitorBedName")?.textContent.trim() === "B");
+                const grid = bedCard?.querySelector(".monitorBedPalletMapGrid");
+                const cells = [...(bedCard?.querySelectorAll(".monitorBedMapCell") || [])];
+                return bedCard?.classList.contains("is-no-harvestable")
+                  && bedCard.dataset.harvestableCount === "0"
+                  && cells.length === PALLETS_PER_BED
+                  && cells.every(cell => getComputedStyle(cell).backgroundColor === getComputedStyle(grid).backgroundColor)
+                  && cells.every(cell => getComputedStyle(cell).borderBottomColor === "rgba(0, 0, 0, 0)")
+                  && dashboardHost.querySelector('.monitorBedCard.is-no-harvestable[data-harvestable-count="0"] .monitorBedName')?.textContent.trim() === "B";
+              })(),
               partialHarvestCount:host.querySelectorAll(".monitorBedMapCell.is-partial-harvest").length,
               oldSegmentCount:host.querySelectorAll(".monitorBedSegment").length,
               columns:getComputedStyle(firstGrid).gridTemplateColumns.trim().split(/\\s+/).length,
@@ -4415,7 +4429,8 @@
           mapCount:6,
           cellCount:468,
           selectedCount:3,
-          recordedCount:2,
+          recordedCount:80,
+          zeroHarvestableBedFilled:true,
           partialHarvestCount:0,
           oldSegmentCount:0,
           columns:2,
@@ -4862,7 +4877,7 @@
           waiting: { text:"送信待ち", className:"monitorSendStatusBadge is-waiting", lastSent:"最終送信 --" },
           sent: { text:"送信済み", className:"monitorSendStatusBadge is-sent", lastSent:"最終送信 2026/8/23 17:14" },
           summaryTitle:"今回送る内容",
-          summaryLabels:["苗枚数", "収穫ケース数", "収穫場所", "配置コンテナ数", "残すケース数"],
+          summaryLabels:["苗枚数", "収穫ケース数", "収穫場所", "配置コンテナ数", "残すコンテナ数"],
           caseSummarySections:{
             placement:"2号棟：60ケース\n3号棟：48ケース",
             remaining:"2号棟：前20中10奥30ケース\n3号棟：中8ケース"
@@ -4897,7 +4912,7 @@
             restoreAction:"restoreMonitorCurrentEditorToCalculatedValues",
             applyAction:"applyMonitorCurrentEditor",
             allFieldsAreMultiline:true,
-            caseFieldLabels:["配置コンテナ数", "残すケース数"],
+            caseFieldLabels:["配置コンテナ数", "残すコンテナ数"],
             memoAddAction:"addMonitorRemoteMemoInput"
           },
           restoreState:{
@@ -6470,7 +6485,7 @@
           mobileDashboardResultsGraph: { hash: "eeb18db6", elements: 2321, visible: 89, viewport: "390x844" },
           mobileMenu: { hash: "5fcc023c", elements: 2321, visible: 298, viewport: "390x844" },
           mobileSettings: { hash: "c3bad07a", elements: 2321, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "a4811066", elements: 2321, visible: 101, viewport: "390x844" },
+          mobileMonitor: { hash: "abfdf777", elements: 2321, visible: 101, viewport: "390x844" },
           wideForecast: { hash: "37fc4f62", elements: 2321, visible: 606, viewport: "1024x900" },
           wideDashboard: { hash: "1b53835e", elements: 2321, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");

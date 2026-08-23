@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260823-monitor-preview2-equal-case-rows">
+<meta name="harvestnavi-version" content="20260823-monitor-filled-unavailable-beds">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -9029,6 +9029,10 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   background:rgba(255,255,255,.58);
   opacity:.68;
 }
+.monitorBedCard.is-no-harvestable{
+  border-color:var(--ui-text-secondary);
+  background:var(--ui-surface-muted);
+}
 .monitorBedName{
   text-align:center;
   color:var(--ui-text);
@@ -9077,6 +9081,16 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 }
 .monitorBedPalletMap .monitorBedMapCell.is-recorded:not(.is-selected){background:#a7adb5;}
 .monitorBedPalletMap .monitorBedMapCell.is-partial-harvest{background:#eef0f3;}
+.monitorBedCard.is-no-harvestable .monitorBedPalletMapGrid{
+  border-color:var(--ui-text-secondary);
+  background:var(--ui-text-tertiary);
+}
+.monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell,
+.monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-selected,
+.monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-recorded{
+  border-bottom-color:transparent;
+  background:var(--ui-text-tertiary);
+}
 .monitorMemoPanel{
   min-width:0;
   width:100%;
@@ -11089,6 +11103,14 @@ html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-selected.is-p
   background:var(--ui-accent-bright);
 }
 html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-recorded:not(.is-selected){background:#697382;}
+html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMapGrid,
+html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell,
+html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-selected,
+html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-recorded{
+  border-color:var(--ui-text-secondary);
+  border-bottom-color:transparent;
+  background:var(--ui-text-tertiary);
+}
 
 html[data-theme="dark"] .recordTitleHarvest{color:#71dc92;}
 html[data-theme="dark"] .recordTitlePlanting{color:#8bbcff;}
@@ -11961,7 +11983,7 @@ requestAnimationFrame(function(){
 収穫場所: -
 配置コンテナ数:
 なし
-残すケース数:
+残すコンテナ数:
 なし</div>
         <div class="monitorMemoReadOnlyRow">
           <span class="monitorSendSummaryLabel">
@@ -13477,7 +13499,7 @@ requestAnimationFrame(function(){
     <textarea id="monitorRemoteHarvestLocationValueInput" rows="3" placeholder="例: 2号棟 A 後ろ3ピンとる"></textarea>
     <label for="monitorRemotePlacementCasesValueInput">配置コンテナ数</label>
     <textarea id="monitorRemotePlacementCasesValueInput" rows="2" placeholder="例: 2号棟 配置: 48ケース"></textarea>
-    <label for="monitorRemoteRemainingCasesValueInput">残すケース数</label>
+    <label for="monitorRemoteRemainingCasesValueInput">残すコンテナ数</label>
     <textarea id="monitorRemoteRemainingCasesValueInput" rows="3" placeholder="例: 2号棟 前側: 10ケース"></textarea>
     <div class="monitorMemoInputHeader">
       <div class="monitorMemoInputTitle">表示するメモ</div>
@@ -31331,11 +31353,12 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
               for(let number = 1; number <= PALLETS_PER_BED; number++){
                 if(recordedSet.has(getPalletKey(building, bed, number))) recordedCount++;
               }
-              const cardClass = numbers.length || recordedCount
-                ? "monitorBedCard"
-                : "monitorBedCard inactive";
+              const harvestableCount = Math.max(0, PALLETS_PER_BED - recordedCount);
+              const cardClasses = ["monitorBedCard"];
+              if(!numbers.length && !recordedCount) cardClasses.push("inactive");
+              if(harvestableCount === 0) cardClasses.push("is-no-harvestable");
               return `
-                <div class="${cardClass}">
+                <div class="${cardClasses.join(" ")}" data-harvestable-count="${harvestableCount}">
                   <div class="monitorBedHead">
                     <div class="monitorBedName">${bed}</div>
                     <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
@@ -32447,7 +32470,7 @@ function renderForecastSummary(){
         <div class="monitorSendDetailValue casePlacementContainerValue">${formatMonitorTabDetailValueHtml(caseSummarySections.placement)}</div>
       </div>
       <div class="monitorSendDetailItem">
-        ${getMonitorSendSummaryLabelHtml("残すケース数", "remaining")}
+        ${getMonitorSendSummaryLabelHtml("残すコンテナ数", "remaining")}
         <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(caseSummarySections.remaining)}</div>
       </div>`;
     renderMonitorMemoReadOnly(monitorContent);

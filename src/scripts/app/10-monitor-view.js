@@ -434,11 +434,12 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
               for(let number = 1; number <= PALLETS_PER_BED; number++){
                 if(recordedSet.has(getPalletKey(building, bed, number))) recordedCount++;
               }
-              const cardClass = numbers.length || recordedCount
-                ? "monitorBedCard"
-                : "monitorBedCard inactive";
+              const harvestableCount = Math.max(0, PALLETS_PER_BED - recordedCount);
+              const cardClasses = ["monitorBedCard"];
+              if(!numbers.length && !recordedCount) cardClasses.push("inactive");
+              if(harvestableCount === 0) cardClasses.push("is-no-harvestable");
               return `
-                <div class="${cardClass}">
+                <div class="${cardClasses.join(" ")}" data-harvestable-count="${harvestableCount}">
                   <div class="monitorBedHead">
                     <div class="monitorBedName">${bed}</div>
                     <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
