@@ -4016,6 +4016,8 @@
             fitMonitorHarvestLocationText(longLocationHost);
             fitMonitorPreview2CaseText(preview2Host);
             const firstMetricRect = preview2Host.querySelector(".monitorV2MetricCard")?.getBoundingClientRect();
+            const harvestMetricRect = preview2Host.querySelector(".monitorV2MetricCard-harvest")?.getBoundingClientRect();
+            const placementMetricRect = preview2Host.querySelector(".monitorV2MetricCard-placement")?.getBoundingClientRect();
             const locationRect = preview2Host.querySelector(".monitorV2LocationCard")?.getBoundingClientRect();
             const mapRect = preview2Host.querySelector(".monitorV2MapPanel")?.getBoundingClientRect();
             const memoRect = preview2Host.querySelector(".monitorV2MemoPanel")?.getBoundingClientRect();
@@ -4058,6 +4060,12 @@
                   && !preview2Host.textContent.includes("Harvestnavi")
                   && !preview2Host.textContent.includes("モニターダッシュボード"),
                 headerOnlyShowsMeta:preview2Header?.children.length === 1 && !!preview2Header.querySelector(".monitorV2HeaderMeta"),
+                topMetricsAreShorter:!!firstMetricRect && !!harvestMetricRect && !!placementMetricRect
+                  && Math.abs(firstMetricRect.height - harvestMetricRect.height) <= 1
+                  && firstMetricRect.height < placementMetricRect.height,
+                locationHasMoreHeight:!!locationRect && locationRect.height >= 175,
+                seedlingAndHarvestValueSize:[...preview2Host.querySelectorAll(".monitorV2MetricCard-seedling .monitorV2MetricValue, .monitorV2MetricCard-harvest .monitorV2MetricValue")]
+                  .map(value => getComputedStyle(value).fontSize),
                 leftRightLayout:!!firstMetricRect && !!locationRect && !!mapRect && firstMetricRect.left < mapRect.left && locationRect.left < mapRect.left,
                 mapAboveMemo:!!mapRect && !!memoRect && mapRect.bottom <= memoRect.top + 1,
                 fitsDesignFrame:!!dashboard && dashboard.scrollWidth <= dashboard.clientWidth + 1 && dashboard.scrollHeight <= dashboard.clientHeight + 1,
@@ -4115,6 +4123,9 @@
             memoTitle:"メモ",
             brandAndDashboardTitleRemoved:true,
             headerOnlyShowsMeta:true,
+            topMetricsAreShorter:true,
+            locationHasMoreHeight:true,
+            seedlingAndHarvestValueSize:["48px", "48px"],
             leftRightLayout:true,
             mapAboveMemo:true,
             fitsDesignFrame:true,
