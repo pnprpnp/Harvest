@@ -2770,27 +2770,27 @@ function switchTab(tabName){
 const WORKFLOW_GUIDE_STAGES = [
   {
     key: "input",
-    title: "収穫ケース数とケース配置を入力してください",
+    title: "ケース配置を入力し、ケース数または収穫場所を指定",
     actionLabel: "次へ"
   },
   {
     key: "calculate",
-    title: "計算設定を確認し、計算してください",
+    title: "計算設定を確認し、計算",
     actionLabel: "次へ"
   },
   {
     key: "monitor",
-    title: "内容を確認し、モニターに送信してください",
+    title: "内容を確認し、モニターに送信",
     actionLabel: "送信内容を確認"
   },
   {
     key: "harvest",
-    title: "収穫が完了したら、収穫記録をしてください",
+    title: "収穫完了後、収穫の記録へ",
     actionLabel: "収穫記録へ"
   },
   {
     key: "planting",
-    title: "二次定植が完了したら、二次定植の記録をしてください",
+    title: "二次定植完了後、二次定植の記録へ",
     actionLabel: "二次定植記録へ"
   }
 ];
@@ -2994,7 +2994,7 @@ function getWorkflowGuideState(){
     return {
       stage: WORKFLOW_GUIDE_COMPLETE_STAGE,
       key: "complete",
-      title: "お疲れ様でした",
+      title: "お疲れ様でした。",
       actionLabel: "最初に戻る",
       actionEnabled: true,
       showBack: false,
@@ -3004,9 +3004,13 @@ function getWorkflowGuideState(){
   const stage = normalizeWorkflowGuideStage(workflowGuideStage);
   const definition = WORKFLOW_GUIDE_STAGES[stage - 1];
   const isCompletedReview = stage < workflowGuideFurthestStage;
+  const title = stage === 2 && harvestCasesAutoEstimated
+    ? "計算設定と逆算結果を確認"
+    : definition.title;
   return {
     stage,
     ...definition,
+    title,
     actionLabel:isCompletedReview ? "次へ" : definition.actionLabel,
     actionEnabled: isCompletedReview || stage !== 2 || hasWorkflowCalculationResult(),
     showBack: stage > 1,
