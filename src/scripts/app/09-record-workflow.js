@@ -390,13 +390,29 @@ function renderRecordPlantingFlow(){
     return;
   }
 
-  const stepLabels = { building: "棟", location: "場所", count: "植え付け数", quality: "品質" };
   const currentIndex = RECORD_PLANTING_FLOW_STAGES.indexOf(recordPlantingFlowStage);
-  const stepsHtml = RECORD_PLANTING_FLOW_STAGES.map((stage, index) => `
-    <span class="recordPlantingFlowStep${index === currentIndex ? " is-active" : ""}${index < currentIndex ? " is-done" : ""}">
-      <span>${index + 1}</span>${stepLabels[stage]}
-    </span>
-  `).join("");
+  const currentStep = currentIndex + 1;
+  const stageInstructions = {
+    building: "苗植えする棟を選択してください",
+    location: "実際に苗植えした場所を選択してください",
+    count: "植え付け数を選び、設定する場所を選択してください",
+    quality: "品質を選び、設定する場所を選択してください"
+  };
+  const currentInstruction = stageInstructions[recordPlantingFlowStage];
+  const progressPercent = Math.round(currentStep / RECORD_PLANTING_FLOW_STAGES.length * 100);
+  const navigationHtml = `
+    <div class="recordPlantingFlowNavigation" aria-label="苗植え記録の現在の作業">
+      <div class="recordPlantingFlowProgressMeta">
+        <span>苗植え記録</span>
+        <span>工程 ${currentStep} / ${RECORD_PLANTING_FLOW_STAGES.length}</span>
+      </div>
+      <div class="recordPlantingFlowGauge" role="progressbar" aria-valuemin="1" aria-valuemax="${RECORD_PLANTING_FLOW_STAGES.length}"
+        aria-valuenow="${currentStep}" aria-valuetext="${escapeHtml(currentInstruction)}">
+        <span class="recordPlantingFlowGaugeValue" style="width:${progressPercent}%"></span>
+      </div>
+      <div class="recordPlantingFlowInstruction">${escapeHtml(currentInstruction)}</div>
+    </div>
+  `;
 
   let bodyHtml = "";
   if(recordPlantingFlowStage === "building"){
@@ -411,18 +427,12 @@ function renderRecordPlantingFlow(){
       </button>`;
     }).join("");
     bodyHtml = `
-      <div class="recordPlantingFlowHeading">苗植えする棟を選択</div>
       <div class="recordPlantingFlowHint">棟ごとに、場所・植え付け数・品質を設定します</div>
       <div class="recordPlantingFlowBuildings">${buttons || `<div class="recordPlantingFlowEmpty">苗植えできる棟がありません</div>`}</div>
     `;
   }else{
     const building = Number(recordPlantingFlowBuilding);
     const selectedCount = getRecordPlantingFlowKeys(building).length;
-    const headings = {
-      location: "苗植えした場所を選択",
-      count: "植え付け数を場所ごとに設定",
-      quality: "品質を場所ごとに設定"
-    };
     const hints = {
       location: "ベッドをタップし、実際に苗植えしたパレットを選びます",
       count: "12植え・16植え・20植えを選び、変更する場所をタップします",
@@ -439,12 +449,11 @@ function renderRecordPlantingFlow(){
     ` : "";
     bodyHtml = `
       <div class="recordPlantingFlowStageHeader"><strong>${building}号棟</strong><span>${selectedCount}枚選択</span></div>
-      <div class="recordPlantingFlowHeading">${headings[recordPlantingFlowStage]}</div>
       <div class="recordPlantingFlowHint">${hints[recordPlantingFlowStage]}</div>
       ${qualityHtml}
     `;
   }
-  panel.innerHTML = `<div class="recordPlantingFlowSteps" aria-label="苗植え記録の工程">${stepsHtml}</div><div class="recordPlantingFlowBody">${bodyHtml}</div>`;
+  panel.innerHTML = `${navigationHtml}<div class="recordPlantingFlowBody">${bodyHtml}</div>`;
 
   const footerActions = {
     location: ["building", "棟選択に戻る", "count", "植え付け数へ"],

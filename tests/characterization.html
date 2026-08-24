@@ -6026,11 +6026,23 @@
 
             initializeRecordPlantingFlow();
             renderRecordPlantingFlow();
+            const readNavigation = () => {
+              const gauge = document.querySelector(".recordPlantingFlowGauge");
+              return {
+                instruction:document.querySelector(".recordPlantingFlowInstruction")?.textContent || "",
+                current:Number(gauge?.getAttribute("aria-valuenow")),
+                max:Number(gauge?.getAttribute("aria-valuemax")),
+                gaugeWidth:document.querySelector(".recordPlantingFlowGaugeValue")?.style.width || "",
+                numberedSteps:document.querySelectorAll(".recordPlantingFlowStep").length
+              };
+            };
+            const buildingNavigation = readNavigation();
             const buildingButtons = [...document.querySelectorAll(".recordPlantingFlowBuildingBtn")]
               .map(button => button.textContent.replace(/\\s+/g, " ").trim());
             selectRecordPlantingFlowBuilding(2);
             const locationStage = { stage:recordPlantingFlowStage, building:recordPlantingFlowBuilding };
             moveRecordPlantingFlowToStage("count");
+            const countNavigation = readNavigation();
             const countToolbarVisible = !document.getElementById("recordPlantingCountPreset")?.hidden;
             setRecordPlantingCountPreset(16);
             const countChanged = applyRecordPlantingFlowAssignment("2-A-1");
@@ -6061,7 +6073,9 @@
             finishRecordPlantingFlowBuilding();
             return {
               buildingButtons,
+              buildingNavigation,
               locationStage,
+              countNavigation,
               countToolbarVisible,
               countState,
               qualityState,
@@ -6101,7 +6115,21 @@
         })()`));
         assertDeepEqual(flowState, {
           buildingButtons: ["2号棟2枚", "3号棟1枚"],
+          buildingNavigation: {
+            instruction:"苗植えする棟を選択してください",
+            current:1,
+            max:4,
+            gaugeWidth:"25%",
+            numberedSteps:0
+          },
           locationStage: { stage:"location", building:2 },
+          countNavigation: {
+            instruction:"植え付け数を選び、設定する場所を選択してください",
+            current:3,
+            max:4,
+            gaugeWidth:"75%",
+            numberedSteps:0
+          },
           countToolbarVisible:true,
           countState: { changed:true, stillSelected:true, count:16 },
           qualityState: { changed:true, first:"large", second:"large" },
