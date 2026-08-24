@@ -3015,6 +3015,19 @@
             }),
             fieldLabel: progressPanel.querySelector(".harvestProgressCaseField label")?.textContent.trim() || "",
             defaultExplanationHidden: progressResult.hidden && progressResult.textContent.trim() === "",
+            partialHarvestInsideModal: progressModal.contains(app.document.getElementById("harvestProgressPartialHarvest"))
+              && progressModal.contains(app.document.getElementById("partialHarvestBuildingInput"))
+              && progressModal.contains(app.document.getElementById("partialHarvestCasesInput")),
+            partialHarvestRemovedFromHelp: !app.document.getElementById("recordHelpDetails")
+              ?.contains(app.document.getElementById("partialHarvestBuildingInput")),
+            partialHarvestBelowProgressActions: app.document.getElementById("harvestProgressPartialHarvest")
+              ?.previousElementSibling?.classList.contains("harvestProgressActions") || false,
+            partialHarvestSummary: app.document.querySelector("#harvestProgressPartialHarvest > summary")
+              ?.textContent.trim() || "",
+            partialHarvestStartsCollapsed: !app.document.getElementById("harvestProgressPartialHarvest")?.open,
+            partialHarvestSaveAction: app.document.querySelector("#harvestProgressPartialHarvest [data-ui-click=\"savePartialHarvestRecord\"]")
+              ?.textContent.trim() || "",
+            partialHarvestBedCount: app.document.querySelectorAll("#harvestProgressPartialHarvest input[name=\"partialHarvestBed\"]").length,
             swipeInstalled: app.eval("harvestProgressBuildingSwipeInstalled")
           }), {
             modalOpen: true,
@@ -3029,8 +3042,15 @@
             paginationAxisAligned: true,
             fieldLabel: "選択場所で収穫したケース数",
             defaultExplanationHidden: true,
+            partialHarvestInsideModal: true,
+            partialHarvestRemovedFromHelp: true,
+            partialHarvestBelowProgressActions: true,
+            partialHarvestSummary: "各パレットの一部だけ収穫したい",
+            partialHarvestStartsCollapsed: true,
+            partialHarvestSaveAction: "各パレット部分収穫を記録する",
+            partialHarvestBedCount: 6,
             swipeInstalled: true
-          }, "途中経過入力がモーダルで開きません");
+          }, "途中経過モーダル内へ部分収穫機能を正しく移動できていません");
           const progressBuildingBeforeSwipe = app.eval("harvestProgressBuilding");
           progressPager.dispatchEvent(new app.PointerEvent("pointerdown", {
             bubbles:true,
@@ -7570,18 +7590,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "bbc9414c", elements: 2209, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "2197d505", elements: 2278, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "aaccfd70", elements: 2278, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "879ba5c8", elements: 2210, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "686ab87f", elements: 2210, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "13172f2f", elements: 2293, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "def27d26", elements: 2308, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "9f0092ce", elements: 2308, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "99649b66", elements: 2308, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "61a1efad", elements: 2308, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "88dadee7", elements: 2308, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "6cfa9b5b", elements: 2308, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "3fda2656", elements: 2209, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "3c50631f", elements: 2278, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "b1f4e3d2", elements: 2278, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "d7c804ce", elements: 2210, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "28906e0f", elements: 2210, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f7192377", elements: 2293, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "abf97008", elements: 2308, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "58ddc42b", elements: 2308, visible: 279, viewport: "390x844" },
+          mobileSettings: { hash: "63b58542", elements: 2308, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "bcd6def3", elements: 2308, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "c4b8c0f7", elements: 2308, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "26aa9917", elements: 2308, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
