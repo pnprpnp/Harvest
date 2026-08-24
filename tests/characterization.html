@@ -3184,13 +3184,16 @@
           const readCommon = () => {
             const title = document.getElementById("bedDetailWindowTitle");
             const body = document.getElementById("bedDetailWindowBody");
-            const button = body?.querySelector(".bedDetailBulkSelectBtn");
+            const button = document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn");
+            const buttonRect = button?.getBoundingClientRect();
             return {
               title:title?.textContent || "",
               noSelectionHint:!body?.querySelector(".bedDetailSelectionHint")
                 && !body?.textContent.includes("パレットをタップ、または指でなぞって"),
               buttonText:button?.textContent || "",
-              buttonIsFirst:body?.firstElementChild === button,
+              buttonBesideTitle:title?.parentElement === button?.parentElement,
+              buttonNotInBody:!body?.contains(button),
+              buttonCompact:!!buttonRect && buttonRect.height <= 34 && buttonRect.width < 100,
               hasPopup:button?.getAttribute("aria-haspopup") || "",
               titleHasNoLongPress:!title?.onmousedown && !title?.ontouchstart
             };
@@ -3201,7 +3204,7 @@
             recordSelectionMode = "harvest";
             openBedDetailWindow("forecast", "A");
             const forecastCommon = readCommon();
-            document.querySelector("#bedDetailWindowBody .bedDetailBulkSelectBtn")?.click();
+            document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn")?.click();
             const forecast = {
               ...forecastCommon,
               opensExistingBulkMenu:document.getElementById("bedActionMenu")?.classList.contains("show")
@@ -3214,7 +3217,7 @@
 
             openBedDetailWindow("record", "B");
             const recordCommon = readCommon();
-            document.querySelector("#bedDetailWindowBody .bedDetailBulkSelectBtn")?.click();
+            document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn")?.click();
             const record = {
               ...recordCommon,
               opensExistingBulkMenu:document.getElementById("recordBedActionMenu")?.classList.contains("show")
@@ -3233,7 +3236,9 @@
         const commonExpected = {
           noSelectionHint:true,
           buttonText:"一括選択",
-          buttonIsFirst:true,
+          buttonBesideTitle:true,
+          buttonNotInBody:true,
+          buttonCompact:true,
           hasPopup:"dialog",
           titleHasNoLongPress:true,
           opensExistingBulkMenu:true
@@ -5981,7 +5986,8 @@
             updateLabel: updateBuildingLabel,
             save: scheduleHarvestStateSave,
             closeDetail: closeBedDetailWindow,
-            refreshDetail: refreshBedDetailWindow
+            refreshDetail: refreshBedDetailWindow,
+            jump: jumpToRecordPlantingFlowPanel
           };
           try{
             recordSelectionMode = "planting";
@@ -6015,6 +6021,8 @@
             scheduleHarvestStateSave = () => {};
             closeBedDetailWindow = () => {};
             refreshBedDetailWindow = () => {};
+            let jumpCount = 0;
+            jumpToRecordPlantingFlowPanel = () => { jumpCount++; };
 
             initializeRecordPlantingFlow();
             renderRecordPlantingFlow();
@@ -6059,7 +6067,8 @@
               qualityState,
               afterFirstBuilding,
               finalIncomplete:getIncompleteRecordPlantingFlowBuildings(),
-              defaultQuality:getRecordPlantingQualityTagForKey("3-B-1")
+              defaultQuality:getRecordPlantingQualityTagForKey("3-B-1"),
+              jumpCount
             };
           }finally{
             recordSelectionMode = previous.mode;
@@ -6083,6 +6092,7 @@
             scheduleHarvestStateSave = previous.save;
             closeBedDetailWindow = previous.closeDetail;
             refreshBedDetailWindow = previous.refreshDetail;
+            jumpToRecordPlantingFlowPanel = previous.jump;
             const panel = document.getElementById("recordPlantingFlowPanel");
             const footer = document.getElementById("recordPlantingFlowFooter");
             if(panel){ panel.hidden = true; panel.innerHTML = ""; }
@@ -6102,7 +6112,8 @@
             incomplete:[3]
           },
           finalIncomplete:[],
-          defaultQuality:"medium"
+          defaultQuality:"medium",
+          jumpCount:8
         }, "苗植え記録を棟ごとの工程で完了できません");
       });
 
@@ -7052,18 +7063,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e7b48a45", elements: 2232, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "3606b732", elements: 2301, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "a73907cb", elements: 2301, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "00082cf6", elements: 2233, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "567b481d", elements: 2233, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "9c5a7dc4", elements: 2316, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "e7c40a93", elements: 2331, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "4a2796cb", elements: 2331, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "842d7781", elements: 2331, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "7f0ad230", elements: 2331, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "4cf706e4", elements: 2331, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "fbff5351", elements: 2331, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "73fdfba1", elements: 2234, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "458621ea", elements: 2303, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "c10e49d3", elements: 2303, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "27b7337e", elements: 2235, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "ad1cbe39", elements: 2235, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "a2ca2bc2", elements: 2318, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "10c0353f", elements: 2333, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "cb2e74b7", elements: 2333, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "be3270b9", elements: 2333, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "87b6eb70", elements: 2333, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "c6ac81a8", elements: 2333, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "14a1b3dd", elements: 2333, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

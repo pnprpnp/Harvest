@@ -7,6 +7,13 @@ function scrollToRecordActiveStage(options = {}){
   window.scrollTo({ top: Math.max(0, top), behavior: getWorkflowScrollBehavior(options.behavior || "auto") });
 }
 
+function jumpToRecordPlantingFlowPanel(){
+  const panel = document.getElementById("recordPlantingFlowPanel");
+  if(!panel || panel.hidden) return;
+  const top = panel.getBoundingClientRect().top + window.pageYOffset - getAppTopChromeOffset();
+  window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+}
+
 function switchToRecordSaveCard(options = {}){
   if(switchTab("record") === false) return;
   requestAnimationFrame(() => {
@@ -220,6 +227,7 @@ function selectRecordPlantingFlowBuilding(building){
   updateBuildingLabel();
   drawBeds();
   drawRecordBeds();
+  jumpToRecordPlantingFlowPanel();
   scheduleHarvestStateSave();
 }
 
@@ -243,6 +251,7 @@ function moveRecordPlantingFlowToStage(stage){
   }
   drawRecordBeds();
   refreshBedDetailWindow();
+  jumpToRecordPlantingFlowPanel();
   scheduleHarvestStateSave();
 }
 
@@ -296,6 +305,7 @@ function finishRecordPlantingFlowBuilding(){
   recordPlantingFlowBuilding = null;
   closeBedDetailWindow();
   drawRecordBeds();
+  jumpToRecordPlantingFlowPanel();
   scheduleHarvestStateSave();
   showToast(`${building}号棟の設定を完了しました`);
 }

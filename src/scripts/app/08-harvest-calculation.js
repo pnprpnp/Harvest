@@ -1384,13 +1384,6 @@ function renderBedDetailWindow(){
   title.ontouchend = null;
   title.ontouchcancel = null;
   body.innerHTML = "";
-  const bulkSelectButton = document.createElement("button");
-  bulkSelectButton.type = "button";
-  bulkSelectButton.className = "bedDetailBulkSelectBtn";
-  bulkSelectButton.textContent = "一括選択";
-  bulkSelectButton.setAttribute("aria-haspopup", "dialog");
-  bulkSelectButton.onclick = openBedDetailBulkActions;
-  body.appendChild(bulkSelectButton);
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     const legend = document.createElement("div");
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";

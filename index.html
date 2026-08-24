@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260824-planting-count-buttons-fix">
+<meta name="harvestnavi-version" content="20260824-bed-detail-header-flow-jump">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8459,17 +8459,19 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .simulationBedMapLegendSwatch.is-recorded{background:#9ca3af;}
 .simulationBedMapLegendSwatch.is-progress-completed{background:#14b8a6;}
 .simulationBedMapLegendSwatch.is-partial-harvest{background:#fbbf24;}
+.bedDetailWindowTitleRow{display:flex;align-items:center;gap:9px;min-width:0;}
 .bedDetailBulkSelectBtn{
-  width:100%;
-  min-height:38px;
-  margin:0 0 9px;
-  padding:7px 12px;
+  flex:none;
+  width:auto;
+  min-height:30px;
+  margin:0;
+  padding:5px 9px;
   border:0;
-  border-radius:10px;
+  border-radius:8px;
   background:var(--ui-accent);
   color:#fff;
-  font-size:13px;
-  font-weight:780;
+  font-size:11px;
+  font-weight:750;
   box-shadow:none;
 }
 
@@ -13837,7 +13839,10 @@ requestAnimationFrame(function(){
 <div id="bedDetailModal" class="bedDetailModal" role="dialog" aria-modal="true" aria-labelledby="bedDetailWindowTitle" data-ui-backdrop-click="closeBedDetailWindow">
   <div class="bedDetailWindow">
     <div class="bedDetailWindowHeader">
-      <div id="bedDetailWindowTitle" class="bedDetailWindowTitle">ベッド詳細</div>
+      <div class="bedDetailWindowTitleRow">
+        <div id="bedDetailWindowTitle" class="bedDetailWindowTitle">ベッド詳細</div>
+        <button type="button" class="bedDetailBulkSelectBtn" data-ui-click="openBedDetailBulkActions" aria-haspopup="dialog">一括選択</button>
+      </div>
       <button type="button" class="bedDetailWindowClose" data-ui-click="closeBedDetailWindow">閉じる</button>
     </div>
     <div id="bedDetailWindowBody" class="bedDetailWindowBody"></div>
@@ -28307,13 +28312,6 @@ function renderBedDetailWindow(){
   title.ontouchend = null;
   title.ontouchcancel = null;
   body.innerHTML = "";
-  const bulkSelectButton = document.createElement("button");
-  bulkSelectButton.type = "button";
-  bulkSelectButton.className = "bedDetailBulkSelectBtn";
-  bulkSelectButton.textContent = "一括選択";
-  bulkSelectButton.setAttribute("aria-haspopup", "dialog");
-  bulkSelectButton.onclick = openBedDetailBulkActions;
-  body.appendChild(bulkSelectButton);
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     const legend = document.createElement("div");
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";
@@ -29319,6 +29317,13 @@ function scrollToRecordActiveStage(options = {}){
   window.scrollTo({ top: Math.max(0, top), behavior: getWorkflowScrollBehavior(options.behavior || "auto") });
 }
 
+function jumpToRecordPlantingFlowPanel(){
+  const panel = document.getElementById("recordPlantingFlowPanel");
+  if(!panel || panel.hidden) return;
+  const top = panel.getBoundingClientRect().top + window.pageYOffset - getAppTopChromeOffset();
+  window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+}
+
 function switchToRecordSaveCard(options = {}){
   if(switchTab("record") === false) return;
   requestAnimationFrame(() => {
@@ -29532,6 +29537,7 @@ function selectRecordPlantingFlowBuilding(building){
   updateBuildingLabel();
   drawBeds();
   drawRecordBeds();
+  jumpToRecordPlantingFlowPanel();
   scheduleHarvestStateSave();
 }
 
@@ -29555,6 +29561,7 @@ function moveRecordPlantingFlowToStage(stage){
   }
   drawRecordBeds();
   refreshBedDetailWindow();
+  jumpToRecordPlantingFlowPanel();
   scheduleHarvestStateSave();
 }
 
@@ -29608,6 +29615,7 @@ function finishRecordPlantingFlowBuilding(){
   recordPlantingFlowBuilding = null;
   closeBedDetailWindow();
   drawRecordBeds();
+  jumpToRecordPlantingFlowPanel();
   scheduleHarvestStateSave();
   showToast(`${building}号棟の設定を完了しました`);
 }
@@ -34528,7 +34536,7 @@ async function savePlantingRecord(){
     drawBeds();
     drawRecordBeds();
     scheduleHarvestStateSave();
-    document.getElementById("recordPlantingFlowPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    jumpToRecordPlantingFlowPanel();
     showToast(`${building}号棟の設定を「この棟を終了」まで進めてください`);
     return;
   }

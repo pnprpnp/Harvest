@@ -275,7 +275,7 @@ async function savePlantingRecord(){
     drawBeds();
     drawRecordBeds();
     scheduleHarvestStateSave();
-    document.getElementById("recordPlantingFlowPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    jumpToRecordPlantingFlowPanel();
     showToast(`${building}号棟の設定を「この棟を終了」まで進めてください`);
     return;
   }
