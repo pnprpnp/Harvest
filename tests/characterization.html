@@ -3167,7 +3167,7 @@
             && inputPanelStyle.borderTopColor === "rgba(36, 138, 75, 0.68)",
           hasNoHelp: !app.document.querySelector(".forecastCaseHelp"),
           hasNoExamplePlaceholder: !input.hasAttribute("placeholder"),
-          hasCompactInput: inputPanel.getBoundingClientRect().width <= 160
+          hasCompactInput: inputPanel.getBoundingClientRect().width <= 144
             && inputPanel.getBoundingClientRect().height <= 44,
           keepsSimulationFramesLessRounded: frameRadii.every(radius => radius >= 7 && radius <= 14),
           hasNoStepper: !app.document.querySelector(".forecastCaseStepper")
@@ -3186,6 +3186,56 @@
           hasNoStepper: true,
           hasNoCalculatorIcon: true
         }, "収穫ケース数が参考画像どおりの入力カードになっていません");
+      });
+
+      await runTest("パレット選択からの逆算中は収穫ケース数を逆算値と表示する", () => {
+        const previousFrameWidth = iframe.style.width;
+        const previousInputValue = app.document.getElementById("casesInput").value;
+        const previousAutoEstimated = app.eval("harvestCasesAutoEstimated");
+        try{
+          iframe.style.width = "320px";
+          app.document.getElementById("casesInput").value = "12";
+          app.eval("harvestCasesAutoEstimated = true; updateHarvestCasesAutoEstimatedAppearance();");
+          const estimatedState = comparable(app.eval(`(() => {
+            const field = document.querySelector(".forecastCaseField");
+            const label = document.getElementById("forecastCasesLabel");
+            const input = document.getElementById("casesInput");
+            const inputPanel = document.querySelector(".forecastCaseInputPanel");
+            const labelRect = label.getBoundingClientRect();
+            const inputPanelRect = inputPanel.getBoundingClientRect();
+            return {
+              label:label.textContent,
+              ariaLabel:input.getAttribute("aria-label"),
+              fieldMarked:field.classList.contains("is-auto-estimated"),
+              inputMarked:input.classList.contains("harvestCasesAutoEstimated"),
+              labelFontSize:parseFloat(getComputedStyle(label).fontSize),
+              hasNoOverlap:labelRect.right <= inputPanelRect.left
+            };
+          })()`));
+          assertDeepEqual(estimatedState, {
+            label:"収穫ケース数（逆算値）",
+            ariaLabel:"収穫ケース数（逆算値）",
+            fieldMarked:true,
+            inputMarked:true,
+            labelFontSize:12,
+            hasNoOverlap:true
+          }, "逆算中の表示が入力欄と干渉せず切り替わっていません");
+
+          app.eval("harvestCasesAutoEstimated = false; updateHarvestCasesAutoEstimatedAppearance();");
+          assertDeepEqual(comparable({
+            label:app.document.getElementById("forecastCasesLabel").textContent,
+            ariaLabel:app.document.getElementById("casesInput").getAttribute("aria-label"),
+            fieldMarked:app.document.querySelector(".forecastCaseField").classList.contains("is-auto-estimated")
+          }), {
+            label:"収穫ケース数",
+            ariaLabel:"収穫ケース数",
+            fieldMarked:false
+          }, "逆算終了後に通常表示へ戻りません");
+        }finally{
+          iframe.style.width = previousFrameWidth;
+          app.document.getElementById("casesInput").value = previousInputValue;
+          app.eval(`harvestCasesAutoEstimated = ${JSON.stringify(previousAutoEstimated)}; updateHarvestCasesAutoEstimatedAppearance();`);
+        }
       });
 
       await runTest("収穫ケース数の入力エリアを320px幅でも画面内に収める", () => {
@@ -3250,7 +3300,12 @@
             "収穫ケース数と号棟選択の横幅が揃っていません"
           );
           assert(leftOffset >= 38 && leftOffset <= 42, "収穫ケース数の見出しがアイコンの横に揃っていません");
-          assert(parseFloat(app.getComputedStyle(label).fontSize) >= 19, "収穫ケース数の見出しが十分に大きくありません");
+          const labelFontSize = parseFloat(app.getComputedStyle(label).fontSize);
+          const isAutoEstimated = label.closest(".forecastCaseField").classList.contains("is-auto-estimated");
+          assert(
+            isAutoEstimated ? labelFontSize <= 15 : labelFontSize >= 19,
+            "収穫ケース数の見出しが通常時と逆算時で適切な大きさになっていません"
+          );
           assertEqual(app.getComputedStyle(label).whiteSpace, "nowrap", "収穫ケース数の見出しが一行表示ではありません");
           assert(centerOffset <= 3, "収穫ケース数の説明と入力エリアの縦位置が揃っていません");
         }finally{
@@ -6722,18 +6777,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "8e911b32", elements: 2230, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "ebacc60f", elements: 2299, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "203bef52", elements: 2299, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "57bf8842", elements: 2231, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "ba23e5e1", elements: 2231, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "bd3e3f8e", elements: 2314, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "66f1b742", elements: 2329, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "3dbd62ea", elements: 2329, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "ccbfabee", elements: 2329, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "de879c47", elements: 2329, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "1aca7bce", elements: 2329, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "b2146832", elements: 2329, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "54094d9e", elements: 2230, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "01dabf03", elements: 2299, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "848a8436", elements: 2299, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "1e2eb730", elements: 2231, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "ee9a4ad3", elements: 2231, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f70dac56", elements: 2314, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "ba95fed4", elements: 2329, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "a4ab4f0e", elements: 2329, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "c474f62e", elements: 2329, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "b0ebdb07", elements: 2329, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "bb4799f5", elements: 2329, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "ddb43afc", elements: 2329, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -1171,7 +1171,13 @@ function updateHarvestCasesAutoEstimatedAppearance(){
   const casesInput = document.getElementById("casesInput");
   if(!casesInput) return;
   const isAutoEstimated = harvestCasesAutoEstimated && String(casesInput.value || "").trim() !== "";
+  const labelText = isAutoEstimated ? "収穫ケース数（逆算値）" : "収穫ケース数";
+  const field = casesInput.closest(".forecastCaseField");
+  const label = document.getElementById("forecastCasesLabel");
   casesInput.classList.toggle("harvestCasesAutoEstimated", isAutoEstimated);
+  field?.classList.toggle("is-auto-estimated", isAutoEstimated);
+  if(label) label.textContent = labelText;
+  casesInput.setAttribute("aria-label", labelText);
   casesInput.title = isAutoEstimated ? "パレット選択から自動計算された値" : "";
 }
 
