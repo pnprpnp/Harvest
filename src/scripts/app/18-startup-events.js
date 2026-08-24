@@ -352,7 +352,5 @@ function installStartupGlobalEvents(){
   document.addEventListener("pointermove", handlePalletDragMove, { passive:false });
   document.addEventListener("pointerup", finishPalletDrag, { passive:false });
   document.addEventListener("pointercancel", finishPalletDrag, { passive:false });
-  document.addEventListener("pointerup", finishBedDetailOpenReleaseGuard);
-  document.addEventListener("pointercancel", finishBedDetailOpenReleaseGuard);
   document.getElementById("recordDetailModal")?.addEventListener("keydown", handleRecordDetailFocusTrap);
 }

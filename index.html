@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260824-reverse-case-label">
+<meta name="harvestnavi-version" content="20260824-compact-result-bed-tap">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -1548,9 +1548,6 @@ button.forecastClearBtn{
   display:flex;
   align-items:center;
   justify-content:center;
-}
-.bedDetailModal.awaitingPointerRelease .bedDetailWindowBody{
-  pointer-events:none;
 }
 .bedDetailWindow{
   width:min(280px, calc(100vw - 32px));
@@ -8454,6 +8451,9 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
     display:flex;
     flex-direction:column;
   }
+  #forecastSimulationCard.has-forecast-result-actions:not(:has(#casePlacementDetails[open])) .casePlacementPanel{
+    height:calc(100dvh - var(--app-top-chrome-height) - 257px);
+  }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .casePlacementHeader{
     min-height:52px;
     flex:0 0 auto;
@@ -13900,8 +13900,6 @@ const PLANTING_COUNT_BACKFILL_START_DATE = "2026-07-01";
 const PLANTING_COUNT_BACKFILL_END_DATE = "2026-07-31";
 const PLANTING_COUNT_BACKFILL_VALUE = 12;
 const BED_LONG_PRESS_MS = 450;
-const BED_DETAIL_OPEN_LONG_PRESS_MS = 350;
-const BED_DETAIL_OPEN_MOVE_THRESHOLD_PX = 10;
 const PRESET_ACCESS_PASSWORD = "1234";
 const DEFAULT_CASE_PLACEMENT = { front: "", middle: "", back: "" };
 const STANDARD_CASE_PLACEMENT = { front: "", middle: 80, back: 40 };
@@ -13942,8 +13940,6 @@ let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
 let bedLongPressFired = false;
-let bedDetailOpenPressState = null;
-let bedDetailOpenReleasePointerId = null;
 let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let expandedForecastBed = null;
@@ -16275,7 +16271,6 @@ function restoreTabScrollPosition(tabName){
 
 function doesForecastTabFitWithoutScrolling(){
   if(activeAppTab !== "forecast" || window.innerWidth > 759 || window.innerHeight < 760) return false;
-  if(harvestSummary && Array.isArray(harvestFillKeys) && harvestFillKeys.length > 0) return false;
   if(document.getElementById("casePlacementDetails")?.open) return false;
   if(document.getElementById("harvestProgressPanel")?.open) return false;
   const panel = document.querySelector("#forecastTab .casePlacementPanel");
@@ -27797,34 +27792,7 @@ function handleBedDetailTitlePressEnd(){
   bedLongPressFired = false;
 }
 
-function cancelBedDetailOpenLongPress(pointerId = null){
-  const state = bedDetailOpenPressState;
-  if(!state) return;
-  if(pointerId !== null && state.pointerId !== pointerId) return;
-  clearTimeout(state.timer);
-  bedDetailOpenPressState = null;
-}
-
-function beginBedDetailOpenReleaseGuard(pointerId){
-  bedDetailOpenReleasePointerId = pointerId;
-  document.getElementById("bedDetailModal")?.classList.add("awaitingPointerRelease");
-}
-
-function clearBedDetailOpenReleaseGuard(pointerId = null){
-  if(
-    pointerId !== null &&
-    bedDetailOpenReleasePointerId !== null &&
-    pointerId !== bedDetailOpenReleasePointerId
-  ) return;
-  bedDetailOpenReleasePointerId = null;
-  document.getElementById("bedDetailModal")?.classList.remove("awaitingPointerRelease");
-}
-
-function finishBedDetailOpenReleaseGuard(event){
-  clearBedDetailOpenReleaseGuard(event.pointerId);
-}
-
-function openBedDetailFromLongPress(context, building, bed){
+function openBedDetailFromOverview(context, building, bed){
   if(context === "record"){
     handleRecordBuildingBedClick(building, bed);
     return;
@@ -27833,59 +27801,18 @@ function openBedDetailFromLongPress(context, building, bed){
   openBedDetailWindow("forecast", bed);
 }
 
-function startBedDetailOpenLongPress(event, context, building, bed){
-  if(event.pointerType === "mouse" && event.button !== 0) return;
-  cancelBedDetailOpenLongPress();
-
-  const state = {
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    element: event.currentTarget,
-    timer: null
-  };
-  state.timer = setTimeout(() => {
-    if(bedDetailOpenPressState !== state) return;
-    bedDetailOpenPressState = null;
-    state.element?.blur?.();
-    beginBedDetailOpenReleaseGuard(state.pointerId);
-    openBedDetailFromLongPress(context, building, bed);
-  }, BED_DETAIL_OPEN_LONG_PRESS_MS);
-  bedDetailOpenPressState = state;
-}
-
-function moveBedDetailOpenLongPress(event){
-  const state = bedDetailOpenPressState;
-  if(!state || state.pointerId !== event.pointerId) return;
-  const distance = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
-  if(distance > BED_DETAIL_OPEN_MOVE_THRESHOLD_PX){
-    cancelBedDetailOpenLongPress(event.pointerId);
-  }
-}
-
-function finishBedDetailOpenLongPress(event){
-  cancelBedDetailOpenLongPress(event.pointerId);
-}
-
-function attachBedDetailOpenLongPressHandlers(element, context, building, bed){
-  element.onpointerdown = (event) => startBedDetailOpenLongPress(event, context, building, bed);
-  element.onpointermove = moveBedDetailOpenLongPress;
-  element.onpointerup = finishBedDetailOpenLongPress;
-  element.onpointercancel = finishBedDetailOpenLongPress;
-  element.onpointerleave = (event) => {
-    if(event.pointerType === "mouse") finishBedDetailOpenLongPress(event);
-  };
+function attachBedDetailOpenTapHandler(element, context, building, bed){
+  element.onclick = () => openBedDetailFromOverview(context, building, bed);
   element.oncontextmenu = (event) => event.preventDefault();
   element.ondragstart = (event) => event.preventDefault();
   element.onkeydown = (event) => {
     if(event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    cancelBedDetailOpenLongPress();
-    openBedDetailFromLongPress(context, building, bed);
+    openBedDetailFromOverview(context, building, bed);
   };
   element.tabIndex = 0;
   element.setAttribute("role", "button");
-  element.setAttribute("aria-label", `${building}号棟 ${bed}ベッド。長押しで詳細表示`);
+  element.setAttribute("aria-label", `${building}号棟 ${bed}ベッド。タップで詳細表示`);
 }
 
 function isBedDetailWindowOpen(){
@@ -27906,7 +27833,6 @@ function openBedDetailWindow(context, bed){
 function closeBedDetailWindow(){
   const modal = document.getElementById("bedDetailModal");
   hidePageBlockingUi(modal);
-  clearBedDetailOpenReleaseGuard();
   palletDragState = null;
   hideBedActionMenu();
   hideRecordBedActionMenu();
@@ -32627,9 +32553,14 @@ function renderForecastSummary(){
   updateRecordPartialHarvestIncludedNote();
   renderSeedlingHouseUi();
   const resultActions = document.getElementById("forecastResultActions");
+  const hasForecastResult = !!harvestSummary
+    && Array.isArray(harvestFillKeys)
+    && harvestFillKeys.length > 0;
   if(resultActions){
-    resultActions.hidden = !(harvestSummary && Array.isArray(harvestFillKeys) && harvestFillKeys.length > 0);
+    resultActions.hidden = !hasForecastResult;
   }
+  document.getElementById("forecastSimulationCard")
+    ?.classList.toggle("has-forecast-result-actions", hasForecastResult);
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
@@ -32711,7 +32642,6 @@ function renderForecastSummary(){
 }
 
 function drawBeds(){
-  cancelBedDetailOpenLongPress();
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const recordedSet = getRecordedPalletSet();
@@ -32759,10 +32689,10 @@ function drawBeds(){
       `
       : "";
     bed.appendChild(counts);
-    attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
+    attachBedDetailOpenTapHandler(bed, "forecast", currentBuilding, b);
     bed.setAttribute(
       "aria-label",
-      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${summaryCounts.selectable}パレット。長押しで拡大してパレットを選択`
+      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${summaryCounts.selectable}パレット。タップで拡大してパレットを選択`
     );
     container.appendChild(bed);
   });
@@ -32944,7 +32874,6 @@ function handleRecordBuildingBedClick(building, bed){
 }
 
 function drawRecordBeds(){
-  cancelBedDetailOpenLongPress();
   const recordTab = document.getElementById("recordTab");
   if(recordTab && recordTab.style.display === "none") return;
 
@@ -33057,12 +32986,12 @@ function drawRecordBeds(){
           <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
         `;
       bed.appendChild(counts);
-      attachBedDetailOpenLongPressHandlers(bed, "record", building, b);
+      attachBedDetailOpenTapHandler(bed, "record", building, b);
       bed.setAttribute(
         "aria-label",
         plantingAllowedSet
-          ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。長押しで拡大してパレットを選択`
-          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。長押しで拡大してパレットを選択`
+          ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
+          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。タップで拡大してパレットを選択`
       );
       beds.appendChild(bed);
     });
@@ -38332,8 +38261,6 @@ function installStartupGlobalEvents(){
   document.addEventListener("pointermove", handlePalletDragMove, { passive:false });
   document.addEventListener("pointerup", finishPalletDrag, { passive:false });
   document.addEventListener("pointercancel", finishPalletDrag, { passive:false });
-  document.addEventListener("pointerup", finishBedDetailOpenReleaseGuard);
-  document.addEventListener("pointercancel", finishBedDetailOpenReleaseGuard);
   document.getElementById("recordDetailModal")?.addEventListener("keydown", handleRecordDetailFocusTrap);
 }
 function finalizeHarvestnaviStartup(){

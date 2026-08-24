@@ -2999,7 +2999,7 @@
         }, "途中経過を70ケースと75ケースに分けて追加できません");
       });
 
-      await runTest("画面内に収まる計算前シミュとモニターのスクロールを止める", async () => {
+      await runTest("画面内に収まる計算前後のシミュとモニターのスクロールを止める", async () => {
         const visualFrame = await loadVisualAppFrame(390, 844);
         const visualApp = visualFrame.contentWindow;
         try{
@@ -3023,6 +3023,7 @@
           const mapRects = [...visualApp.document.querySelectorAll("#beds .dashboardSeedlingBedMapGrid")]
             .map(element => element.getBoundingClientRect());
           const rowTops = [...new Set(bedRects.map(rect => Math.round(rect.top)))];
+          const normalBedHeight = bedRects[0]?.height || 0;
           const normalState = {
             viewportScrollLocked: visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
             overflowHidden: visualApp.getComputedStyle(visualApp.document.documentElement).overflowY === "hidden",
@@ -3070,9 +3071,28 @@
             harvestSelectionMode="auto";
             renderForecastSummary();
           `);
+          await settleVisualApp(visualApp);
           visualApp.applyMainTabViewportScrollLock();
-          assert(!visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
-            "計算後もシミュのスクロールが固定されています");
+          const calculatedPanelRect = panel.getBoundingClientRect();
+          const calculatedActionRect = visualApp.document.querySelector(".forecastActionRow").getBoundingClientRect();
+          const calculatedBedRects = [...visualApp.document.querySelectorAll("#beds .simulationBedOverview")]
+            .map(element => element.getBoundingClientRect());
+          assertDeepEqual(comparable({
+            resultActionsVisible:!resultActions.hidden,
+            compactState:visualApp.document.getElementById("forecastSimulationCard")
+              .classList.contains("has-forecast-result-actions"),
+            viewportScrollLocked:visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            panelEndsBeforeActionBar:calculatedPanelRect.bottom <= calculatedActionRect.top + 1,
+            bedsShrinkOnlyAfterCalculation:calculatedBedRects.every(rect => rect.height < normalBedHeight),
+            bedsStayUsable:calculatedBedRects.every(rect => rect.height >= 100)
+          }), {
+            resultActionsVisible:true,
+            compactState:true,
+            viewportScrollLocked:true,
+            panelEndsBeforeActionBar:true,
+            bedsShrinkOnlyAfterCalculation:true,
+            bedsStayUsable:true
+          }, "計算後の操作バー表示時だけ配置図を縮めて画面内へ収められていません");
 
           visualApp.eval(`harvestFillKeys=[]; harvestSummary=null; harvestSelectionMode="none"; renderForecastSummary();`);
           visualApp.switchTab("monitor");
@@ -3107,6 +3127,12 @@
             drawBeds();
             const firstBed = document.querySelector("#beds .simulationBedOverview");
             const countText = firstBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
+            const hasTapHandler = typeof firstBed?.onclick === "function" && !firstBed?.onpointerdown;
+            firstBed?.click();
+            const opensDetailOnTap = document.getElementById("bedDetailModal")?.classList.contains("show")
+              && activeBedDetailContext === "forecast"
+              && activeBedDetailBed === "F";
+            closeBedDetailWindow();
             getRecordedPalletSet = () => new Set(
               Array.from({ length: 78 }, (_, index) => getPalletKey(2, "F", index + 1))
             );
@@ -3117,6 +3143,8 @@
               countText,
               hasSelectable: countText.includes("選択可 73"),
               hidesRecordedCount: !countText.includes("記録済"),
+              hasTapHandler,
+              opensDetailOnTap,
               unavailableCountText,
               hidesSelectedWhenUnavailable: !unavailableBed?.querySelector(".simulationBedOverviewCountSelected"),
               label: firstBed?.getAttribute("aria-label") || ""
@@ -3132,9 +3160,11 @@
           countText: "選択 0 選択可 73",
           hasSelectable: true,
           hidesRecordedCount: true,
+          hasTapHandler: true,
+          opensDetailOnTap: true,
           unavailableCountText: "",
           hidesSelectedWhenUnavailable: true,
-          label: "2号棟 Fベッド。選択 0パレット、選択可能 73パレット。長押しで拡大してパレットを選択"
+          label: "2号棟 Fベッド。選択 0パレット、選択可能 73パレット。タップで拡大してパレットを選択"
         }, "シミュの簡易ベッド表示が選択可能枚数になっていません");
       });
 
@@ -5534,7 +5564,7 @@
           plantingSelectable: 1,
           plantingUnavailable: 76,
           role: "button",
-          label: "2号棟 Fベッド。選択 0パレット、記録済み 0パレット。長押しで拡大してパレットを選択"
+          label: "2号棟 Fベッド。選択 0パレット、記録済み 0パレット。タップで拡大してパレットを選択"
         }, "記録タブの縦型パレット配置図がシミュと一致しません");
       });
 
@@ -6014,7 +6044,7 @@
           text: "12×1/16×1/20×1",
           breakdownElements: 1,
           selectableText: false,
-          ariaLabel: "2号棟 Aベッド。植え付け数 12×1/16×1/20×1。長押しで拡大してパレットを選択"
+          ariaLabel: "2号棟 Aベッド。植え付け数 12×1/16×1/20×1。タップで拡大してパレットを選択"
         }, "苗植えベッド配置図の下が選択内訳だけになっていません");
       });
 

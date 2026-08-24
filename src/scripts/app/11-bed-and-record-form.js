@@ -381,9 +381,14 @@ function renderForecastSummary(){
   updateRecordPartialHarvestIncludedNote();
   renderSeedlingHouseUi();
   const resultActions = document.getElementById("forecastResultActions");
+  const hasForecastResult = !!harvestSummary
+    && Array.isArray(harvestFillKeys)
+    && harvestFillKeys.length > 0;
   if(resultActions){
-    resultActions.hidden = !(harvestSummary && Array.isArray(harvestFillKeys) && harvestFillKeys.length > 0);
+    resultActions.hidden = !hasForecastResult;
   }
+  document.getElementById("forecastSimulationCard")
+    ?.classList.toggle("has-forecast-result-actions", hasForecastResult);
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
@@ -465,7 +470,6 @@ function renderForecastSummary(){
 }
 
 function drawBeds(){
-  cancelBedDetailOpenLongPress();
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const recordedSet = getRecordedPalletSet();
@@ -513,10 +517,10 @@ function drawBeds(){
       `
       : "";
     bed.appendChild(counts);
-    attachBedDetailOpenLongPressHandlers(bed, "forecast", currentBuilding, b);
+    attachBedDetailOpenTapHandler(bed, "forecast", currentBuilding, b);
     bed.setAttribute(
       "aria-label",
-      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${summaryCounts.selectable}パレット。長押しで拡大してパレットを選択`
+      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${summaryCounts.selectable}パレット。タップで拡大してパレットを選択`
     );
     container.appendChild(bed);
   });
@@ -698,7 +702,6 @@ function handleRecordBuildingBedClick(building, bed){
 }
 
 function drawRecordBeds(){
-  cancelBedDetailOpenLongPress();
   const recordTab = document.getElementById("recordTab");
   if(recordTab && recordTab.style.display === "none") return;
 
@@ -811,12 +814,12 @@ function drawRecordBeds(){
           <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
         `;
       bed.appendChild(counts);
-      attachBedDetailOpenLongPressHandlers(bed, "record", building, b);
+      attachBedDetailOpenTapHandler(bed, "record", building, b);
       bed.setAttribute(
         "aria-label",
         plantingAllowedSet
-          ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。長押しで拡大してパレットを選択`
-          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。長押しで拡大してパレットを選択`
+          ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
+          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。タップで拡大してパレットを選択`
       );
       beds.appendChild(bed);
     });

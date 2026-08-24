@@ -1048,34 +1048,7 @@ function handleBedDetailTitlePressEnd(){
   bedLongPressFired = false;
 }
 
-function cancelBedDetailOpenLongPress(pointerId = null){
-  const state = bedDetailOpenPressState;
-  if(!state) return;
-  if(pointerId !== null && state.pointerId !== pointerId) return;
-  clearTimeout(state.timer);
-  bedDetailOpenPressState = null;
-}
-
-function beginBedDetailOpenReleaseGuard(pointerId){
-  bedDetailOpenReleasePointerId = pointerId;
-  document.getElementById("bedDetailModal")?.classList.add("awaitingPointerRelease");
-}
-
-function clearBedDetailOpenReleaseGuard(pointerId = null){
-  if(
-    pointerId !== null &&
-    bedDetailOpenReleasePointerId !== null &&
-    pointerId !== bedDetailOpenReleasePointerId
-  ) return;
-  bedDetailOpenReleasePointerId = null;
-  document.getElementById("bedDetailModal")?.classList.remove("awaitingPointerRelease");
-}
-
-function finishBedDetailOpenReleaseGuard(event){
-  clearBedDetailOpenReleaseGuard(event.pointerId);
-}
-
-function openBedDetailFromLongPress(context, building, bed){
+function openBedDetailFromOverview(context, building, bed){
   if(context === "record"){
     handleRecordBuildingBedClick(building, bed);
     return;
@@ -1084,59 +1057,18 @@ function openBedDetailFromLongPress(context, building, bed){
   openBedDetailWindow("forecast", bed);
 }
 
-function startBedDetailOpenLongPress(event, context, building, bed){
-  if(event.pointerType === "mouse" && event.button !== 0) return;
-  cancelBedDetailOpenLongPress();
-
-  const state = {
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    element: event.currentTarget,
-    timer: null
-  };
-  state.timer = setTimeout(() => {
-    if(bedDetailOpenPressState !== state) return;
-    bedDetailOpenPressState = null;
-    state.element?.blur?.();
-    beginBedDetailOpenReleaseGuard(state.pointerId);
-    openBedDetailFromLongPress(context, building, bed);
-  }, BED_DETAIL_OPEN_LONG_PRESS_MS);
-  bedDetailOpenPressState = state;
-}
-
-function moveBedDetailOpenLongPress(event){
-  const state = bedDetailOpenPressState;
-  if(!state || state.pointerId !== event.pointerId) return;
-  const distance = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
-  if(distance > BED_DETAIL_OPEN_MOVE_THRESHOLD_PX){
-    cancelBedDetailOpenLongPress(event.pointerId);
-  }
-}
-
-function finishBedDetailOpenLongPress(event){
-  cancelBedDetailOpenLongPress(event.pointerId);
-}
-
-function attachBedDetailOpenLongPressHandlers(element, context, building, bed){
-  element.onpointerdown = (event) => startBedDetailOpenLongPress(event, context, building, bed);
-  element.onpointermove = moveBedDetailOpenLongPress;
-  element.onpointerup = finishBedDetailOpenLongPress;
-  element.onpointercancel = finishBedDetailOpenLongPress;
-  element.onpointerleave = (event) => {
-    if(event.pointerType === "mouse") finishBedDetailOpenLongPress(event);
-  };
+function attachBedDetailOpenTapHandler(element, context, building, bed){
+  element.onclick = () => openBedDetailFromOverview(context, building, bed);
   element.oncontextmenu = (event) => event.preventDefault();
   element.ondragstart = (event) => event.preventDefault();
   element.onkeydown = (event) => {
     if(event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    cancelBedDetailOpenLongPress();
-    openBedDetailFromLongPress(context, building, bed);
+    openBedDetailFromOverview(context, building, bed);
   };
   element.tabIndex = 0;
   element.setAttribute("role", "button");
-  element.setAttribute("aria-label", `${building}号棟 ${bed}ベッド。長押しで詳細表示`);
+  element.setAttribute("aria-label", `${building}号棟 ${bed}ベッド。タップで詳細表示`);
 }
 
 function isBedDetailWindowOpen(){
@@ -1157,7 +1089,6 @@ function openBedDetailWindow(context, bed){
 function closeBedDetailWindow(){
   const modal = document.getElementById("bedDetailModal");
   hidePageBlockingUi(modal);
-  clearBedDetailOpenReleaseGuard();
   palletDragState = null;
   hideBedActionMenu();
   hideRecordBedActionMenu();

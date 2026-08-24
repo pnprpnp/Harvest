@@ -137,8 +137,6 @@ const PLANTING_COUNT_BACKFILL_START_DATE = "2026-07-01";
 const PLANTING_COUNT_BACKFILL_END_DATE = "2026-07-31";
 const PLANTING_COUNT_BACKFILL_VALUE = 12;
 const BED_LONG_PRESS_MS = 450;
-const BED_DETAIL_OPEN_LONG_PRESS_MS = 350;
-const BED_DETAIL_OPEN_MOVE_THRESHOLD_PX = 10;
 const PRESET_ACCESS_PASSWORD = "1234";
 const DEFAULT_CASE_PLACEMENT = { front: "", middle: "", back: "" };
 const STANDARD_CASE_PLACEMENT = { front: "", middle: 80, back: 40 };
@@ -179,8 +177,6 @@ let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
 let bedLongPressTimer = null;
 let bedLongPressFired = false;
-let bedDetailOpenPressState = null;
-let bedDetailOpenReleasePointerId = null;
 let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let expandedForecastBed = null;
@@ -2512,7 +2508,6 @@ function restoreTabScrollPosition(tabName){
 
 function doesForecastTabFitWithoutScrolling(){
   if(activeAppTab !== "forecast" || window.innerWidth > 759 || window.innerHeight < 760) return false;
-  if(harvestSummary && Array.isArray(harvestFillKeys) && harvestFillKeys.length > 0) return false;
   if(document.getElementById("casePlacementDetails")?.open) return false;
   if(document.getElementById("harvestProgressPanel")?.open) return false;
   const panel = document.querySelector("#forecastTab .casePlacementPanel");
