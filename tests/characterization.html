@@ -2224,11 +2224,30 @@
             bar.hidden = wasHidden;
             return alignment;
           };
+          const readFirstStepLayout = () => {
+            const bar = document.getElementById("workflowBar");
+            const wasHidden = bar.hidden;
+            bar.hidden = false;
+            const row = document.querySelector(".workflowGuideRow").getBoundingClientRect();
+            const backButton = document.getElementById("workflowBackActionBtn");
+            const title = document.getElementById("workflowNextTitle");
+            const titleRect = title.getBoundingClientRect();
+            const layout = {
+              backNotDisplayed:getComputedStyle(backButton).display === "none",
+              titleStartsAtLeft:Math.abs(titleRect.left - row.left) < 1,
+              titleStaysOnOneLine:getComputedStyle(title).whiteSpace === "nowrap"
+                && title.scrollWidth <= title.clientWidth
+                && title.scrollHeight <= title.clientHeight
+            };
+            bar.hidden = wasHidden;
+            return layout;
+          };
           try{
             workflowGuideDate = getWorkflowGuideTodayKey();
             setWorkflowGuideStage(1, { force:true, resetFurthest:true });
             updateWorkflowGuide();
             const first = read();
+            const firstLayout = readFirstStepLayout();
 
             handleWorkflowPrimaryAction();
             updateWorkflowGuide();
@@ -2279,6 +2298,7 @@
 
             return {
               first,
+              firstLayout,
               secondBeforeCalculation,
               secondAlignment,
               secondAfterReverseCalculation,
@@ -2315,6 +2335,11 @@
           progress:"20",
           fractionShown:false
         }, "第1工程の表示が指定どおりではありません");
+        assertDeepEqual(state.firstLayout, {
+          backNotDisplayed:true,
+          titleStartsAtLeft:true,
+          titleStaysOnOneLine:true
+        }, "第1工程で戻るボタンの場所が残り、案内文が1行で表示されていません");
         assertDeepEqual(state.secondBeforeCalculation, {
           stage:2,
           key:"calculate",
@@ -7280,18 +7305,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "50d72def", elements: 2209, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "20053784", elements: 2278, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "b0b42c25", elements: 2278, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "2c18addf", elements: 2210, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "74af1634", elements: 2210, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "34f5e140", elements: 2293, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "e090b757", elements: 2308, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "05037b79", elements: 2308, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "f3e4f691", elements: 2308, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "e06dabb6", elements: 2308, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "aa332c97", elements: 2308, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "38a9c46d", elements: 2308, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "06d82986", elements: 2209, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "5767c60f", elements: 2278, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "ef53f502", elements: 2278, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "0e4db616", elements: 2210, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "9d8c99af", elements: 2210, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "05e9236b", elements: 2293, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "bb96cda2", elements: 2308, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "ab14df50", elements: 2308, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "c7348940", elements: 2308, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "516945fd", elements: 2308, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "34a97365", elements: 2308, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "9e613ce7", elements: 2308, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
