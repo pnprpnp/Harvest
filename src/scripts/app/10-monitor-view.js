@@ -1081,14 +1081,14 @@ function buildMonitorDashboardHtml(content, options = {}){
         <section class="monitorPanel monitorHarvestLocationPanel">
           <div class="monitorPanelHeader">
             <div class="monitorHarvestTitleGroup">
-              <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>
+              <div class="monitorSectionTitle">収穫場所</div>
               <div class="monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
             </div>
           </div>
         </section>
         <section class="monitorPanel monitorHarvestPanel">
           <div class="monitorPanelHeader monitorHarvestMapHeader">
-            <div class="monitorSectionTitle">配置図</div>
+            <div class="monitorSectionTitle">配置コンテナ数</div>
             <div class="monitorMapLegend" aria-label="収穫場所の凡例">
               <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
               <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
