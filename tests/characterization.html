@@ -2215,7 +2215,10 @@
             const alignment = {
               backAtLeft:Math.abs(back.left - row.left) < 1,
               backBeforeTitle:back.right < title.left,
-              nextAtRight:Math.abs(next.right - row.right) < 1
+              nextAtRight:Math.abs(next.right - row.right) < 1,
+              barOnlySlightlyTaller:bar.getBoundingClientRect().height > next.height
+                && bar.getBoundingClientRect().height - next.height <= 10,
+              titleIsLarger:parseFloat(getComputedStyle(document.getElementById("workflowNextTitle")).fontSize) >= 11
             };
             bar.hidden = wasHidden;
             return alignment;
@@ -2324,7 +2327,9 @@
         assertDeepEqual(state.secondAlignment, {
           backAtLeft:true,
           backBeforeTitle:true,
-          nextAtRight:true
+          nextAtRight:true,
+          barOnlySlightlyTaller:true,
+          titleIsLarger:true
         }, "戻るボタン・案内文・進むボタンが左・中央・右に分かれていません");
         assertEqual(state.secondAfterReverseCalculation.title, "計算設定と逆算結果を確認", "逆算時の第2工程の文章が切り替わりません");
         assertEqual(state.secondAfterReverseCalculation.actionDisabled, false, "配置図から逆算した後も次へ進めません");
@@ -7264,18 +7269,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "9f7ffa23", elements: 2209, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "d8c4c4a0", elements: 2278, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "348fa201", elements: 2278, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "20a5fb29", elements: 2210, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "1ab730d6", elements: 2210, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "e7f5df40", elements: 2293, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "a4167047", elements: 2308, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "fe0355ff", elements: 2308, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "77a7a183", elements: 2308, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "8e5d4db0", elements: 2308, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "6bc55f0d", elements: 2308, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "903e3201", elements: 2308, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "212d32fb", elements: 2209, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "7584e958", elements: 2278, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "962cd6e9", elements: 2278, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "c8ba9f91", elements: 2210, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "7531068e", elements: 2210, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "b4d67bf8", elements: 2293, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "da732bef", elements: 2308, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "34502dc7", elements: 2308, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "1b10acab", elements: 2308, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "8b9867e8", elements: 2308, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "2c378c39", elements: 2308, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "ff749c85", elements: 2308, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
