@@ -1198,6 +1198,21 @@ function updateHarvestCasesAutoEstimatedAppearance(){
   casesInput.title = isAutoEstimated ? "パレット選択から自動計算された値" : "";
 }
 
+function updateHarvestCalculationButtonState(){
+  const button = document.getElementById("harvestCalculateBtn");
+  const casesInput = document.getElementById("casesInput");
+  if(!button || !casesInput) return;
+  const hasCases = String(casesInput.value || "").trim() !== ""
+    && getHarvestCasePlan().totalCases > 0;
+  const isCalculated = hasCases && hasWorkflowCalculationResult();
+  button.disabled = !hasCases || isCalculated;
+  button.classList.toggle("is-calculated", isCalculated);
+  button.setAttribute("aria-label", isCalculated ? "計算済み" : "計算");
+  button.title = !hasCases
+    ? "収穫ケース数を入力してください"
+    : (isCalculated ? "現在の内容は計算済みです" : "");
+}
+
 function markHarvestCasesAsManuallyEdited(){
   harvestCasesAutoEstimated = false;
   updateHarvestCasesAutoEstimatedAppearance();
@@ -1207,6 +1222,11 @@ function updateEstimatedHarvestCasesFromSelection(currentHarvestTotal = null){
   if(activeAppTab !== "forecast") return;
   const casesInput = document.getElementById("casesInput");
   if(!casesInput) return;
+  const progressState = normalizeHarvestProgressState(harvestProgressState);
+  if(isReverseHarvestProgressState(progressState) && hasAppliedHarvestProgress()){
+    updateHarvestCasesAutoEstimatedAppearance();
+    return;
+  }
   if(casesInput.value !== "" && !harvestCasesAutoEstimated) return;
 
   const resolvedHarvestTotal = Number.isFinite(Number(currentHarvestTotal))
@@ -1279,6 +1299,7 @@ function refreshAfterHarvestSelectionChanged(options = {}){
   }
 
   updateEstimatedHarvestCasesFromSelection(currentHarvestTotal);
+  syncReverseHarvestProgressAvailability();
   renderHarvestSelectionMapsForActiveTab();
   renderForecastSummary();
 
@@ -1348,6 +1369,7 @@ function getForecastSettingsSummaryText(){
 function updateForecastSettingsSummary(){
   const el = document.getElementById("forecastSettingsSummary");
   if(el) el.textContent = getForecastSettingsSummaryText();
+  updateHarvestCalculationButtonState();
 }
 
 function getCalculationSettingValue(inputId, fallback = "-"){
@@ -1832,6 +1854,12 @@ function normalizeHarvestSelectionMode(value){
   return value === "auto" || value === "manual" ? value : "none";
 }
 
+function isReverseHarvestProgressState(value = harvestProgressState){
+  const normalized = normalizeHarvestProgressState(value);
+  if(normalized) return normalized.fixedReversePlan === true;
+  return harvestSelectionMode === "manual" && harvestCasesAutoEstimated;
+}
+
 function getHarvestProgressBedKey(building, bed){
   return `${Number(building)}-${String(bed || "")}`;
 }
@@ -1870,10 +1898,12 @@ function normalizeHarvestProgressState(value){
     actualCasesInput = "";
   }
   const targetDate = String(value.targetDate || "").trim();
+  const baseSelectionMode = normalizeHarvestSelectionMode(value.baseSelectionMode) === "auto" ? "auto" : "manual";
 
   return {
     inputMode: "incremental",
-    baseSelectionMode: normalizeHarvestSelectionMode(value.baseSelectionMode) === "auto" ? "auto" : "manual",
+    baseSelectionMode,
+    fixedReversePlan: value.fixedReversePlan === true,
     planKeys,
     selectedBeds,
     appliedSelectedBeds,
@@ -1895,6 +1925,7 @@ function ensureHarvestProgressState(){
   harvestProgressState = {
     inputMode: "incremental",
     baseSelectionMode: harvestSelectionMode === "auto" ? "auto" : "manual",
+    fixedReversePlan: harvestSelectionMode === "manual" && harvestCasesAutoEstimated,
     planKeys: [...harvestFillKeys],
     selectedBeds: [],
     appliedSelectedBeds: [],
@@ -1925,13 +1956,17 @@ function hasAppliedHarvestProgress(){
     && Number.isFinite(Number(state.appliedActualCases));
 }
 
-function getHarvestProgressKeysForBeds(bedKeys){
+function getHarvestProgressKeysForBeds(bedKeys, state = harvestProgressState){
   const selectedBedSet = new Set(
     (Array.isArray(bedKeys) ? bedKeys : [])
       .map(normalizeHarvestProgressBedKey)
       .filter(Boolean)
   );
   if(!selectedBedSet.size) return [];
+  const normalizedState = normalizeHarvestProgressState(state);
+  const reversePlanSet = isReverseHarvestProgressState(normalizedState)
+    ? new Set(normalizedState.planKeys)
+    : null;
   const recordedSet = getRecordedPalletSet(getHarvestTargetDate());
   const keys = [];
   BUILDINGS.forEach(building => {
@@ -1939,11 +1974,19 @@ function getHarvestProgressKeysForBeds(bedKeys){
       if(!selectedBedSet.has(getHarvestProgressBedKey(building, bed))) return;
       for(let number = 1; number <= PALLETS_PER_BED; number++){
         const key = getPalletKey(building, bed, number);
+        if(reversePlanSet && !reversePlanSet.has(key)) continue;
         if(!recordedSet.has(key)) keys.push(key);
       }
     });
   });
   return keys;
+}
+
+function hasHarvestProgressPlannedPalletInBed(state, building, bed){
+  const normalized = normalizeHarvestProgressState(state);
+  if(!normalized) return false;
+  const planSet = new Set(normalized.planKeys);
+  return getSelectedNumbersForBed(Number(building), String(bed || ""), planSet).length > 0;
 }
 
 function getAppliedHarvestProgressCompletedKeySet(){
@@ -2045,12 +2088,14 @@ function renderHarvestProgressBeds(){
       { selectedSet: planSet, recordedSet }
     ).recorded;
     const plannedCount = getSelectedNumbersForBed(harvestProgressBuilding, bedName, planSet).length;
+    const reverseMode = isReverseHarvestProgressState(state);
+    const canSelectBed = reverseMode ? plannedCount > 0 : availableCount > 0;
     const button = document.createElement("button");
     button.type = "button";
     button.className = "harvestProgressBed"
       + (isSelected ? " is-selected" : "")
       + (isApplied ? " is-applied" : "");
-    button.disabled = availableCount <= 0;
+    button.disabled = !canSelectBed;
     button.setAttribute("aria-pressed", String(isSelected));
     button.setAttribute(
       "aria-label",
@@ -2067,9 +2112,11 @@ function renderHarvestProgressBeds(){
     meta.className = "harvestProgressBedMeta";
     meta.textContent = isApplied
       ? "反映済み"
+      : (!canSelectBed
+      ? (reverseMode ? "対象外" : "収穫済み")
       : (availableCount <= 0
       ? "収穫済み"
-      : (plannedCount > 0 ? `計画 ${plannedCount}枚` : `対象 ${availableCount}枚`));
+      : (plannedCount > 0 ? `計画 ${plannedCount}枚` : `対象 ${availableCount}枚`)));
     button.appendChild(meta);
     container.appendChild(button);
   });
@@ -2091,12 +2138,23 @@ function getHarvestProgressResultModel(){
       : { text: "", className: "" };
   }
   if(hasUnappliedHarvestProgressChanges()){
-    return { text: "今回の完了ベッドまたはケース数はまだ反映されていません。「追加して再計算する」を押してください。", className: "needs-selection" };
+    return { text: `今回の完了ベッドまたはケース数はまだ反映されていません。「${getHarvestProgressApplyLabel(state)}」を押してください。`, className: "needs-selection" };
   }
 
   const actualCases = getHarvestProgressActualCases();
-  const remainingTargetCases = getHarvestProgressRemainingTargetCases();
   const selectedRemainingCases = getHarvestProgressSelectedRemainingHeads() / CASE_SIZE;
+  if(isReverseHarvestProgressState(state)){
+    const remainingPlanKeys = getHarvestProgressRemainingSelectionKeys();
+    return {
+      text: `実績 ${formatHarvestProgressCases(actualCases)}ケース / 逆算予測 ${formatHarvestProgressCases(state.targetCases)}ケース\n`
+        + (remainingPlanKeys.length
+          ? `残りの選択場所は変更していません（残り予測 約${formatHarvestProgressCases(selectedRemainingCases)}ケース）`
+          : "逆算時に選択した場所はすべて完了です。"),
+      className: remainingPlanKeys.length ? "" : "is-complete"
+    };
+  }
+
+  const remainingTargetCases = getHarvestProgressRemainingTargetCases();
   const shortageCases = Math.max(0, remainingTargetCases - selectedRemainingCases);
   const targetText = `完了 ${formatHarvestProgressCases(actualCases)}ケース / 通常収穫目標 ${formatHarvestProgressCases(casePlan.regularCases)}ケース`;
 
@@ -2123,6 +2181,10 @@ function getHarvestProgressResultModel(){
       : `${targetText}\n必要数に達しました。`,
     className: "is-complete"
   };
+}
+
+function getHarvestProgressApplyLabel(state = harvestProgressState){
+  return isReverseHarvestProgressState(state) ? "追加して反映する" : "追加して再計算する";
 }
 
 function updateHarvestProgressVisibility(){
@@ -2170,6 +2232,8 @@ function updateHarvestProgressUi(){
   }
   const resetButton = document.getElementById("harvestProgressResetBtn");
   if(resetButton) resetButton.hidden = !state;
+  const applyButton = document.getElementById("harvestProgressApplyBtn");
+  if(applyButton) applyButton.textContent = getHarvestProgressApplyLabel(state);
   renderHarvestProgressBeds();
 }
 
@@ -2226,6 +2290,11 @@ function toggleHarvestProgressBed(building, bed){
     showToast("先に通常の収穫場所を計算または選択してください");
     return;
   }
+  if(isReverseHarvestProgressState(state)
+    && !hasHarvestProgressPlannedPalletInBed(state, building, bed)){
+    showToast("逆算時に選択した場所を含むベッドだけ指定できます");
+    return;
+  }
   const bedKey = getHarvestProgressBedKey(building, bed);
   if(state.appliedSelectedBeds.includes(bedKey)){
     showToast("このベッドは途中経過へ反映済みです。全て取り消す場合は「取り消す」を押してください");
@@ -2251,11 +2320,33 @@ function handleHarvestProgressCasesInput(){
 
 function syncHarvestProgressPlanAfterManualSelection(){
   const state = normalizeHarvestProgressState(harvestProgressState);
-  if(!state || !hasAppliedHarvestProgress()) return;
+  if(!state) return;
   const completedSet = getAppliedHarvestProgressCompletedKeySet();
   const preservedPlannedCompletedKeys = state.planKeys.filter(key => completedSet.has(key));
   const currentRemainingKeys = harvestFillKeys.filter(key => !completedSet.has(key));
   state.planKeys = [...new Set([...preservedPlannedCompletedKeys, ...currentRemainingKeys])];
+  harvestProgressState = state;
+}
+
+function syncReverseHarvestProgressAvailability(){
+  if(activeAppTab !== "forecast" || harvestSelectionMode !== "manual") return;
+  const casePlan = getHarvestCasePlan();
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  const isReverseProgress = isReverseHarvestProgressState(state);
+  if(!isReverseProgress){
+    if(!harvestFillKeys.length) harvestProgressAvailable = false;
+    return;
+  }
+  const reverseProgressReady = harvestCasesAutoEstimated
+    && harvestFillKeys.length > 0
+    && !!harvestSummary
+    && casePlan.totalCases > 0;
+  harvestProgressAvailable = reverseProgressReady;
+  if(!state) return;
+  if(!hasAppliedHarvestProgress()){
+    state.targetCases = casePlan.totalCases;
+    state.targetDate = casePlan.date;
+  }
   harvestProgressState = state;
 }
 
@@ -2290,7 +2381,7 @@ function recalculateFromHarvestProgress(){
 
   const additionalActualCases = clampNumber(casesInput.value, 0, 999999, 0);
   const actualCases = Math.min(999999, getHarvestProgressActualCases() + additionalActualCases);
-  const completedKeys = getHarvestProgressKeysForBeds(state.selectedBeds);
+  const completedKeys = getHarvestProgressKeysForBeds(state.selectedBeds, state);
   if(!completedKeys.length){
     showToast("選択したベッドには今回の収穫対象がありません");
     return;

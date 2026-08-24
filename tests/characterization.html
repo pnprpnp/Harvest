@@ -3117,6 +3117,8 @@
             building:harvestProgressBuilding,
             currentBuilding,
             inputValue:document.getElementById("harvestProgressCasesInput")?.value || "",
+            casesInputValue:document.getElementById("casesInput")?.value || "",
+            autoEstimated:harvestCasesAutoEstimated,
             storedHarvestState:localStorage.getItem(HARVEST_STATE_KEY)
           };
           try{
@@ -3127,11 +3129,14 @@
             harvestProgressBuilding = 2;
             harvestSelectionMode = "manual";
             harvestProgressAvailable = true;
+            harvestCasesAutoEstimated = true;
+            document.getElementById("casesInput").value = "200";
             harvestFillKeys = ["2-A-1", "2-B-1", "2-C-1"];
             harvestSummary = { start:"2-A-1", end:"2-C-1", filledCount:3, totalHarvest:36, needHeads:2400 };
             harvestProgressState = {
               inputMode:"incremental",
               baseSelectionMode:"manual",
+              fixedReversePlan:true,
               planKeys:[...harvestFillKeys],
               selectedBeds:["2-A"],
               appliedSelectedBeds:[],
@@ -3196,6 +3201,8 @@
             harvestProgressAvailable = previous.available;
             harvestProgressBuilding = previous.building;
             currentBuilding = previous.currentBuilding;
+            harvestCasesAutoEstimated = previous.autoEstimated;
+            document.getElementById("casesInput").value = previous.casesInputValue;
             const input = document.getElementById("harvestProgressCasesInput");
             if(input) input.value = previous.inputValue;
             if(previous.storedHarvestState === null) localStorage.removeItem(HARVEST_STATE_KEY);
@@ -3217,8 +3224,203 @@
           },
           migratedOldStateInput:"",
           fieldLabel:"選択場所で収穫したケース数",
-          applyLabel:"追加して再計算する"
+          applyLabel:"追加して反映する"
         }, "途中経過を70ケースと75ケースに分けて追加できません");
+      });
+
+      await runTest("逆算時の途中経過は最初の選択場所を固定して反映する", () => {
+        const reverseProgress = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            getRecorded:getRecordedPalletSet,
+            getPredicted:getPredictedHarvestForPallet,
+            activeTab:activeAppTab,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            building:harvestProgressBuilding,
+            currentBuilding,
+            casesInput:document.getElementById("casesInput")?.value || "",
+            progressInput:document.getElementById("harvestProgressCasesInput")?.value || "",
+            autoEstimated:harvestCasesAutoEstimated,
+            storedHarvestState:localStorage.getItem(HARVEST_STATE_KEY)
+          };
+          try{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = () => ({ totalCases:3, regularCases:3, date:"2026-08-24" });
+            getRecordedPalletSet = () => new Set();
+            getPredictedHarvestForPallet = () => 12;
+            activeAppTab = "forecast";
+            currentBuilding = 2;
+            harvestProgressBuilding = 2;
+            harvestSelectionMode = "manual";
+            harvestProgressState = null;
+            harvestProgressAvailable = false;
+            harvestCasesAutoEstimated = false;
+            harvestFillKeys = ["2-A-1", "2-A-2", "2-B-1"];
+            harvestSummary = { start:"2-A-1", end:"2-B-1", filledCount:3, totalHarvest:36, needHeads:36 };
+            document.getElementById("casesInput").value = "";
+            refreshAfterHarvestSelectionChanged({ currentHarvestTotal:36 });
+            const enabledFromReverseSelection = harvestProgressAvailable
+              && !document.getElementById("harvestProgressOpenBtn").disabled;
+
+            const state = ensureHarvestProgressState();
+            renderHarvestProgressBeds();
+            const cBedButton = [...document.querySelectorAll("#harvestProgressBeds .harvestProgressBed")]
+              .find(button => button.querySelector(".harvestProgressBedTitle span")?.textContent.trim() === "C");
+            const unplannedBedDisabled = !!cBedButton?.disabled
+              && cBedButton.querySelector(".harvestProgressBedMeta")?.textContent.trim() === "対象外";
+            toggleHarvestProgressBed(2, "C");
+            const unplannedBedRejected = !state.selectedBeds.includes("2-C");
+
+            toggleHarvestProgressBed(2, "A");
+            const input = document.getElementById("harvestProgressCasesInput");
+            input.value = "1";
+            handleHarvestProgressCasesInput();
+            recalculateFromHarvestProgress();
+            const resultText = document.getElementById("harvestProgressResult")?.textContent.trim() || "";
+            return {
+              enabledFromReverseSelection,
+              autoEstimatedCases:document.getElementById("casesInput")?.value || "",
+              unplannedBedDisabled,
+              unplannedBedRejected,
+              completedKeys:[...getAppliedHarvestProgressCompletedKeySet()].sort(),
+              remainingKeys:getHarvestProgressRemainingSelectionKeys().sort(),
+              selectionKeys:[...harvestFillKeys].sort(),
+              reverseBedKeys:getHarvestProgressKeysForBeds(["2-A"], harvestProgressState).sort(),
+              autoBedKeyCount:getHarvestProgressKeysForBeds(["2-A"], {
+                inputMode:"incremental",
+                baseSelectionMode:"auto",
+                planKeys:["2-A-1"],
+                selectedBeds:[],
+                appliedSelectedBeds:[],
+                actualCasesInput:"",
+                appliedActualCases:null,
+                targetDate:"2026-08-24",
+                targetCases:3
+              }).length,
+              resultText,
+              applyLabel:document.getElementById("harvestProgressApplyBtn")?.textContent.trim() || ""
+            };
+          }finally{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = previous.getPlan;
+            getRecordedPalletSet = previous.getRecorded;
+            getPredictedHarvestForPallet = previous.getPredicted;
+            activeAppTab = previous.activeTab;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            harvestProgressBuilding = previous.building;
+            currentBuilding = previous.currentBuilding;
+            harvestCasesAutoEstimated = previous.autoEstimated;
+            document.getElementById("casesInput").value = previous.casesInput;
+            document.getElementById("harvestProgressCasesInput").value = previous.progressInput;
+            if(previous.storedHarvestState === null) localStorage.removeItem(HARVEST_STATE_KEY);
+            else localStorage.setItem(HARVEST_STATE_KEY, previous.storedHarvestState);
+            renderForecastSummary();
+          }
+        })()`));
+        assertDeepEqual(reverseProgress, {
+          enabledFromReverseSelection:true,
+          autoEstimatedCases:"3",
+          unplannedBedDisabled:true,
+          unplannedBedRejected:true,
+          completedKeys:["2-A-1", "2-A-2"],
+          remainingKeys:["2-B-1"],
+          selectionKeys:["2-A-1", "2-A-2", "2-B-1"],
+          reverseBedKeys:["2-A-1", "2-A-2"],
+          autoBedKeyCount:78,
+          resultText:"実績 1ケース / 逆算予測 3ケース\n残りの選択場所は変更していません（残り予測 約1ケース）",
+          applyLabel:"追加して反映する"
+        }, "逆算時の途中経過が未選択パレットを巻き込むか、残りの選択場所を変えています");
+      });
+
+      await runTest("計算ボタンは未入力時と計算済み時だけ目立たなくする", () => {
+        const buttonState = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            getTotal:getCurrentHarvestTotal,
+            activeTab:activeAppTab,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            casesInput:document.getElementById("casesInput")?.value || "",
+            autoEstimated:harvestCasesAutoEstimated
+          };
+          try{
+            const input = document.getElementById("casesInput");
+            const button = document.getElementById("harvestCalculateBtn");
+            getHarvestCasePlan = () => {
+              const cases = Number(input.value) || 0;
+              return { totalCases:cases, regularCases:cases, date:"2026-08-24" };
+            };
+            getCurrentHarvestTotal = () => 12;
+            activeAppTab = "forecast";
+            harvestFillKeys = [];
+            harvestSummary = null;
+            harvestSelectionMode = "none";
+            harvestProgressState = null;
+            harvestProgressAvailable = false;
+            harvestCasesAutoEstimated = false;
+            input.value = "";
+            renderForecastSummary();
+            const emptyDisabled = button.disabled;
+            const emptyColor = getComputedStyle(button).backgroundColor;
+
+            input.value = "1";
+            renderForecastSummary();
+            const readyEnabled = !button.disabled;
+            const readyColor = getComputedStyle(button).backgroundColor;
+
+            harvestFillKeys = ["2-A-1"];
+            harvestSummary = { start:"2-A-1", end:"2-A-1", filledCount:1, totalHarvest:12, needHeads:12 };
+            harvestSelectionMode = "auto";
+            renderForecastSummary();
+            const calculatedDisabled = button.disabled;
+            const calculatedColor = getComputedStyle(button).backgroundColor;
+            const calculatedTitle = button.title;
+
+            input.value = "2";
+            handleHarvestCasesInputChange();
+            return {
+              emptyDisabled,
+              readyEnabled,
+              calculatedDisabled,
+              recalculationEnabled:!button.disabled,
+              inactiveColorsMatch:emptyColor === calculatedColor,
+              activeColorDiffers:readyColor !== calculatedColor,
+              calculatedTitle
+            };
+          }finally{
+            getHarvestCasePlan = previous.getPlan;
+            getCurrentHarvestTotal = previous.getTotal;
+            activeAppTab = previous.activeTab;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            harvestCasesAutoEstimated = previous.autoEstimated;
+            document.getElementById("casesInput").value = previous.casesInput;
+            renderForecastSummary();
+          }
+        })()`));
+        assertDeepEqual(buttonState, {
+          emptyDisabled:true,
+          readyEnabled:true,
+          calculatedDisabled:true,
+          recalculationEnabled:true,
+          inactiveColorsMatch:true,
+          activeColorDiffers:true,
+          calculatedTitle:"現在の内容は計算済みです"
+        }, "計算ボタンの未入力・計算可能・計算済み状態が正しく切り替わりません");
       });
 
       await runTest("画面内に収まる計算前後のシミュとモニターのスクロールを止める", async () => {
@@ -5562,6 +5764,8 @@
         const flatButtonState = comparable(app.eval(`(() => {
           const root = document.documentElement;
           const previousTheme = root.getAttribute("data-theme");
+          const calculateButton = document.querySelector("button.casePlacementCalculateBtn");
+          const previousCalculateDisabled = calculateButton.disabled;
           const readState = () => {
             const buttons = [...document.querySelectorAll("button")];
             return {
@@ -5576,12 +5780,14 @@
             };
           };
           try{
+            calculateButton.disabled = false;
             root.setAttribute("data-theme", "light");
             const light = readState();
             root.setAttribute("data-theme", "dark");
             const dark = readState();
             return { light, dark };
           }finally{
+            calculateButton.disabled = previousCalculateDisabled;
             if(previousTheme === null) root.removeAttribute("data-theme");
             else root.setAttribute("data-theme", previousTheme);
           }
@@ -7364,18 +7570,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "06d82986", elements: 2209, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "5767c60f", elements: 2278, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "ef53f502", elements: 2278, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "0e4db616", elements: 2210, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "9d8c99af", elements: 2210, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "05e9236b", elements: 2293, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "bb96cda2", elements: 2308, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "ab14df50", elements: 2308, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "c7348940", elements: 2308, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "516945fd", elements: 2308, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "34a97365", elements: 2308, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "9e613ce7", elements: 2308, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "bbc9414c", elements: 2209, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "2197d505", elements: 2278, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "aaccfd70", elements: 2278, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "879ba5c8", elements: 2210, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "686ab87f", elements: 2210, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "13172f2f", elements: 2293, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "def27d26", elements: 2308, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "9f0092ce", elements: 2308, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "99649b66", elements: 2308, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "61a1efad", elements: 2308, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "88dadee7", elements: 2308, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "6cfa9b5b", elements: 2308, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

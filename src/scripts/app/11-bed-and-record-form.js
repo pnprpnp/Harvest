@@ -377,6 +377,7 @@ function getMonitorSendSummaryLabelHtml(label, iconKind){
 
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
+  updateHarvestCalculationButtonState();
   updatePartialHarvestDeductionNote(casePlan);
   updateRecordPartialHarvestIncludedNote();
   renderSeedlingHouseUi();
