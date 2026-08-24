@@ -3242,7 +3242,7 @@
         }, "ベッド名の長押し操作を一括選択ボタンへ移せていません");
       });
 
-      await runTest("収穫ケース数を独立した入力カードとして強調する", () => {
+      await runTest("収穫ケース数は外枠を付けず入力欄だけを区別する", () => {
         const field = app.document.querySelector(".forecastCaseField");
         const input = app.document.getElementById("casesInput");
         const inputPanel = app.document.querySelector(".forecastCaseInputPanel");
@@ -3258,13 +3258,12 @@
           ".harvestProgressOpenBtn"
         ].map(selector => parseFloat(app.getComputedStyle(app.document.querySelector(selector)).borderRadius));
         assertDeepEqual(comparable({
-          hasCardBorder: parseFloat(fieldStyle.borderTopWidth) >= 1
-            && parseFloat(fieldStyle.borderRightWidth) >= 1
-            && parseFloat(fieldStyle.borderBottomWidth) >= 1
-            && parseFloat(fieldStyle.borderLeftWidth) >= 1,
-          hasModerateRoundedCorners: parseFloat(fieldStyle.borderRadius) >= 12
-            && parseFloat(fieldStyle.borderRadius) <= 14,
-          differsFromPageBackground: fieldStyle.backgroundColor !== bodyStyle.backgroundColor,
+          hasNoOuterBorder: ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"]
+            .every(property => fieldStyle[property] === "0px"),
+          hasNoOuterRounding: fieldStyle.borderRadius === "0px",
+          blendsIntoPageBackground: fieldStyle.backgroundColor === "rgba(0, 0, 0, 0)"
+            || fieldStyle.backgroundColor === bodyStyle.backgroundColor,
+          hasNoOuterShadow: fieldStyle.boxShadow === "none",
           hasCompactFrameHeight: field.getBoundingClientRect().height >= 62
             && field.getBoundingClientRect().height <= 66,
           keepsGreenInputBoundary: parseFloat(inputPanelStyle.borderTopWidth) >= 1
@@ -3278,9 +3277,10 @@
             && !app.document.querySelector(".forecastCaseStepBtn"),
           hasNoCalculatorIcon: !app.document.querySelector(".forecastCaseCalculatorIcon")
         }), {
-          hasCardBorder: true,
-          hasModerateRoundedCorners: true,
-          differsFromPageBackground: true,
+          hasNoOuterBorder: true,
+          hasNoOuterRounding: true,
+          blendsIntoPageBackground: true,
+          hasNoOuterShadow: true,
           hasCompactFrameHeight: true,
           keepsGreenInputBoundary: true,
           hasNoHelp: true,
@@ -3289,7 +3289,7 @@
           keepsSimulationFramesLessRounded: true,
           hasNoStepper: true,
           hasNoCalculatorIcon: true
-        }, "収穫ケース数が参考画像どおりの入力カードになっていません");
+        }, "収穫ケース数の外枠が残っているか入力欄まで不明瞭になっています");
       });
 
       await runTest("パレット選択からの逆算中は収穫ケース数を逆算値と表示する", () => {
@@ -3472,8 +3472,7 @@
           const missingState = comparable({
             needsInput: details.classList.contains("casePlacementNeedsInput"),
             collapsedUsesCardSurface: app.getComputedStyle(detailsSummary).backgroundColor !== "rgba(0, 0, 0, 0)"
-              && app.getComputedStyle(detailsSummary.parentElement).backgroundColor
-                === app.getComputedStyle(app.document.querySelector(".forecastCaseField")).backgroundColor,
+              && app.getComputedStyle(detailsSummary.parentElement).backgroundColor !== "rgba(0, 0, 0, 0)",
             inputsKeepMissingColor: app.getComputedStyle(details).backgroundColor
               !== app.getComputedStyle(inputs.front.closest(".inputUnitWrap")).backgroundColor,
             summary: app.document.getElementById("casePlacementCompactSummary")?.textContent || ""
@@ -6899,18 +6898,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "54094d9e", elements: 2230, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "01dabf03", elements: 2299, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "848a8436", elements: 2299, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "1e2eb730", elements: 2231, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "ee9a4ad3", elements: 2231, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f70dac56", elements: 2314, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "ba95fed4", elements: 2329, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "a4ab4f0e", elements: 2329, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "c474f62e", elements: 2329, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "b0ebdb07", elements: 2329, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "bb4799f5", elements: 2329, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "ddb43afc", elements: 2329, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "1a4db094", elements: 2230, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "a1f80109", elements: 2299, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "94c76f9c", elements: 2299, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "f647bda6", elements: 2231, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "56ac45dd", elements: 2231, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "893afed8", elements: 2314, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "1e13b766", elements: 2329, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "b6a106ac", elements: 2329, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "d75a8678", elements: 2329, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "83fa86cd", elements: 2329, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "b89a2f68", elements: 2329, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "f076007a", elements: 2329, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
