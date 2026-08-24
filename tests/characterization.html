@@ -3168,6 +3168,74 @@
         }, "シミュの簡易ベッド表示が選択可能枚数になっていません");
       });
 
+      await runTest("ベッド詳細は短い見出しと一括選択ボタンを表示する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            building:currentBuilding,
+            mode:recordSelectionMode,
+            keys:[...harvestFillKeys]
+          };
+          const readCommon = () => {
+            const title = document.getElementById("bedDetailWindowTitle");
+            const body = document.getElementById("bedDetailWindowBody");
+            const button = body?.querySelector(".bedDetailBulkSelectBtn");
+            return {
+              title:title?.textContent || "",
+              noSelectionHint:!body?.querySelector(".bedDetailSelectionHint")
+                && !body?.textContent.includes("パレットをタップ、または指でなぞって"),
+              buttonText:button?.textContent || "",
+              buttonIsFirst:body?.firstElementChild === button,
+              hasPopup:button?.getAttribute("aria-haspopup") || "",
+              titleHasNoLongPress:!title?.onmousedown && !title?.ontouchstart
+            };
+          };
+          try{
+            currentBuilding = 2;
+            harvestFillKeys = [];
+            recordSelectionMode = "harvest";
+            openBedDetailWindow("forecast", "A");
+            const forecastCommon = readCommon();
+            document.querySelector("#bedDetailWindowBody .bedDetailBulkSelectBtn")?.click();
+            const forecast = {
+              ...forecastCommon,
+              opensExistingBulkMenu:document.getElementById("bedActionMenu")?.classList.contains("show")
+                && activeBedActionBed === "A"
+            };
+            hideBedActionMenu();
+            closeBedDetailWindow();
+
+            openBedDetailWindow("record", "B");
+            const recordCommon = readCommon();
+            document.querySelector("#bedDetailWindowBody .bedDetailBulkSelectBtn")?.click();
+            const record = {
+              ...recordCommon,
+              opensExistingBulkMenu:document.getElementById("recordBedActionMenu")?.classList.contains("show")
+                && activeRecordBedActionBed === "B"
+            };
+            return { forecast, record };
+          }finally{
+            hideBedActionMenu();
+            hideRecordBedActionMenu();
+            closeBedDetailWindow();
+            currentBuilding = previous.building;
+            recordSelectionMode = previous.mode;
+            harvestFillKeys = previous.keys;
+          }
+        })()`));
+        const commonExpected = {
+          noSelectionHint:true,
+          buttonText:"一括選択",
+          buttonIsFirst:true,
+          hasPopup:"dialog",
+          titleHasNoLongPress:true,
+          opensExistingBulkMenu:true
+        };
+        assertDeepEqual(state, {
+          forecast:{ title:"2-A", ...commonExpected },
+          record:{ title:"2-B", ...commonExpected }
+        }, "ベッド名の長押し操作を一括選択ボタンへ移せていません");
+      });
+
       await runTest("収穫ケース数を独立した入力カードとして強調する", () => {
         const field = app.document.querySelector(".forecastCaseField");
         const input = app.document.getElementById("casesInput");

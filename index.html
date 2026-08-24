@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260824-compact-result-bed-tap">
+<meta name="harvestnavi-version" content="20260824-bed-detail-bulk-button">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8434,13 +8434,18 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .simulationBedMapLegendSwatch.is-recorded{background:#9ca3af;}
 .simulationBedMapLegendSwatch.is-progress-completed{background:#14b8a6;}
 .simulationBedMapLegendSwatch.is-partial-harvest{background:#fbbf24;}
-.bedDetailSelectionHint{
+.bedDetailBulkSelectBtn{
+  width:100%;
+  min-height:38px;
   margin:0 0 9px;
-  color:#64748b;
-  font-size:11px;
-  font-weight:700;
-  line-height:1.45;
-  text-align:center;
+  padding:7px 12px;
+  border:0;
+  border-radius:10px;
+  background:var(--ui-accent);
+  color:#fff;
+  font-size:13px;
+  font-weight:780;
+  box-shadow:none;
 }
 
 /* Keep the normal simulation controls between the top chrome and the fixed action bar. */
@@ -11273,7 +11278,6 @@ html[data-theme="dark"] .dashboardHint,
 html[data-theme="dark"] .dashboardMetricsNote,
 html[data-theme="dark"] .dashboardCalendarMonthField,
 html[data-theme="dark"] .dashboardMetricLabel,
-html[data-theme="dark"] .bedDetailSelectionHint,
 html[data-theme="dark"] .simulationBedOverviewCounts{
   color:var(--ui-text-secondary);
 }
@@ -13899,7 +13903,6 @@ const ALLOWED_YIELDS = [20, 16, 12];
 const PLANTING_COUNT_BACKFILL_START_DATE = "2026-07-01";
 const PLANTING_COUNT_BACKFILL_END_DATE = "2026-07-31";
 const PLANTING_COUNT_BACKFILL_VALUE = 12;
-const BED_LONG_PRESS_MS = 450;
 const PRESET_ACCESS_PASSWORD = "1234";
 const DEFAULT_CASE_PLACEMENT = { front: "", middle: "", back: "" };
 const STANDARD_CASE_PLACEMENT = { front: "", middle: 80, back: 40 };
@@ -13938,8 +13941,6 @@ let activeSyncConflictId = "";
 let syncConflictBulkRunning = false;
 let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
-let bedLongPressTimer = null;
-let bedLongPressFired = false;
 let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let expandedForecastBed = null;
@@ -27778,20 +27779,6 @@ function clearSelectedBedFromMenu(){
   showToast(currentBuilding + "号棟 " + bed + "ベッドを全解除しました");
 }
 
-function handleBedTitlePressStart(bed){
-  bedLongPressFired = false;
-  clearTimeout(bedLongPressTimer);
-  bedLongPressTimer = setTimeout(() => {
-    bedLongPressFired = true;
-    showBedActionMenu(bed);
-  }, BED_LONG_PRESS_MS);
-}
-
-function handleBedDetailTitlePressEnd(){
-  clearTimeout(bedLongPressTimer);
-  bedLongPressFired = false;
-}
-
 function openBedDetailFromOverview(context, building, bed){
   if(context === "record"){
     handleRecordBuildingBedClick(building, bed);
@@ -28039,41 +28026,35 @@ function attachPalletDragHandlers(pallet, context, building, bed, number){
   pallet.onpointerdown = (event) => startPalletDrag(event, context, building, bed, number);
 }
 
+function openBedDetailBulkActions(){
+  if(!activeBedDetailBed) return;
+  if(activeBedDetailContext === "record"){
+    showRecordBedActionMenu(activeBedDetailBed);
+  }else{
+    showBedActionMenu(activeBedDetailBed);
+  }
+}
+
 function renderBedDetailWindow(){
   const body = document.getElementById("bedDetailWindowBody");
   const title = document.getElementById("bedDetailWindowTitle");
   if(!body || !title || !activeBedDetailBed) return;
 
-  title.textContent = `${currentBuilding}号棟 ${activeBedDetailBed}ベッド`;
-  title.onmousedown = () => {
-    if(activeBedDetailContext === "record"){
-      handleRecordBedTitlePressStart(activeBedDetailBed);
-    }else{
-      handleBedTitlePressStart(activeBedDetailBed);
-    }
-  };
-  title.onmouseup = handleBedDetailTitlePressEnd;
-  title.onmouseleave = handleBedDetailTitlePressEnd;
-  title.ontouchstart = (e) => {
-    e.preventDefault();
-    if(activeBedDetailContext === "record"){
-      handleRecordBedTitlePressStart(activeBedDetailBed);
-    }else{
-      handleBedTitlePressStart(activeBedDetailBed);
-    }
-  };
-  title.ontouchend = (e) => {
-    e.preventDefault();
-    handleBedDetailTitlePressEnd();
-  };
-  title.ontouchcancel = handleBedDetailTitlePressEnd;
+  title.textContent = `${currentBuilding}-${activeBedDetailBed}`;
+  title.onmousedown = null;
+  title.onmouseup = null;
+  title.onmouseleave = null;
+  title.ontouchstart = null;
+  title.ontouchend = null;
+  title.ontouchcancel = null;
   body.innerHTML = "";
-  if(activeBedDetailContext === "forecast"){
-    const hint = document.createElement("div");
-    hint.className = "bedDetailSelectionHint";
-    hint.textContent = "パレットをタップ、または指でなぞって選択・解除できます";
-    body.appendChild(hint);
-  }
+  const bulkSelectButton = document.createElement("button");
+  bulkSelectButton.type = "button";
+  bulkSelectButton.className = "bedDetailBulkSelectBtn";
+  bulkSelectButton.textContent = "一括選択";
+  bulkSelectButton.setAttribute("aria-haspopup", "dialog");
+  bulkSelectButton.onclick = openBedDetailBulkActions;
+  body.appendChild(bulkSelectButton);
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     const legend = document.createElement("div");
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";
@@ -28210,15 +28191,6 @@ function appendRecordBedDetail(container, b){
   bed.appendChild(grid);
   appendYieldSplitInfo(bed, splitInfo);
   container.appendChild(bed);
-}
-
-function handleRecordBedTitlePressStart(bed){
-  bedLongPressFired = false;
-  clearTimeout(bedLongPressTimer);
-  bedLongPressTimer = setTimeout(() => {
-    bedLongPressFired = true;
-    showRecordBedActionMenu(bed);
-  }, BED_LONG_PRESS_MS);
 }
 
 function clearHarvestPrediction(){

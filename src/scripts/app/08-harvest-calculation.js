@@ -1034,20 +1034,6 @@ function clearSelectedBedFromMenu(){
   showToast(currentBuilding + "号棟 " + bed + "ベッドを全解除しました");
 }
 
-function handleBedTitlePressStart(bed){
-  bedLongPressFired = false;
-  clearTimeout(bedLongPressTimer);
-  bedLongPressTimer = setTimeout(() => {
-    bedLongPressFired = true;
-    showBedActionMenu(bed);
-  }, BED_LONG_PRESS_MS);
-}
-
-function handleBedDetailTitlePressEnd(){
-  clearTimeout(bedLongPressTimer);
-  bedLongPressFired = false;
-}
-
 function openBedDetailFromOverview(context, building, bed){
   if(context === "record"){
     handleRecordBuildingBedClick(building, bed);
@@ -1295,41 +1281,35 @@ function attachPalletDragHandlers(pallet, context, building, bed, number){
   pallet.onpointerdown = (event) => startPalletDrag(event, context, building, bed, number);
 }
 
+function openBedDetailBulkActions(){
+  if(!activeBedDetailBed) return;
+  if(activeBedDetailContext === "record"){
+    showRecordBedActionMenu(activeBedDetailBed);
+  }else{
+    showBedActionMenu(activeBedDetailBed);
+  }
+}
+
 function renderBedDetailWindow(){
   const body = document.getElementById("bedDetailWindowBody");
   const title = document.getElementById("bedDetailWindowTitle");
   if(!body || !title || !activeBedDetailBed) return;
 
-  title.textContent = `${currentBuilding}号棟 ${activeBedDetailBed}ベッド`;
-  title.onmousedown = () => {
-    if(activeBedDetailContext === "record"){
-      handleRecordBedTitlePressStart(activeBedDetailBed);
-    }else{
-      handleBedTitlePressStart(activeBedDetailBed);
-    }
-  };
-  title.onmouseup = handleBedDetailTitlePressEnd;
-  title.onmouseleave = handleBedDetailTitlePressEnd;
-  title.ontouchstart = (e) => {
-    e.preventDefault();
-    if(activeBedDetailContext === "record"){
-      handleRecordBedTitlePressStart(activeBedDetailBed);
-    }else{
-      handleBedTitlePressStart(activeBedDetailBed);
-    }
-  };
-  title.ontouchend = (e) => {
-    e.preventDefault();
-    handleBedDetailTitlePressEnd();
-  };
-  title.ontouchcancel = handleBedDetailTitlePressEnd;
+  title.textContent = `${currentBuilding}-${activeBedDetailBed}`;
+  title.onmousedown = null;
+  title.onmouseup = null;
+  title.onmouseleave = null;
+  title.ontouchstart = null;
+  title.ontouchend = null;
+  title.ontouchcancel = null;
   body.innerHTML = "";
-  if(activeBedDetailContext === "forecast"){
-    const hint = document.createElement("div");
-    hint.className = "bedDetailSelectionHint";
-    hint.textContent = "パレットをタップ、または指でなぞって選択・解除できます";
-    body.appendChild(hint);
-  }
+  const bulkSelectButton = document.createElement("button");
+  bulkSelectButton.type = "button";
+  bulkSelectButton.className = "bedDetailBulkSelectBtn";
+  bulkSelectButton.textContent = "一括選択";
+  bulkSelectButton.setAttribute("aria-haspopup", "dialog");
+  bulkSelectButton.onclick = openBedDetailBulkActions;
+  body.appendChild(bulkSelectButton);
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     const legend = document.createElement("div");
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";
@@ -1466,15 +1446,6 @@ function appendRecordBedDetail(container, b){
   bed.appendChild(grid);
   appendYieldSplitInfo(bed, splitInfo);
   container.appendChild(bed);
-}
-
-function handleRecordBedTitlePressStart(bed){
-  bedLongPressFired = false;
-  clearTimeout(bedLongPressTimer);
-  bedLongPressTimer = setTimeout(() => {
-    bedLongPressFired = true;
-    showRecordBedActionMenu(bed);
-  }, BED_LONG_PRESS_MS);
 }
 
 function clearHarvestPrediction(){
