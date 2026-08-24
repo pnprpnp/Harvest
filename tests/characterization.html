@@ -2204,6 +2204,22 @@
             progress:document.getElementById("workflowProgressTrack").getAttribute("aria-valuenow"),
             fractionShown:/\\d\\s*\\/\\s*5/.test(document.getElementById("workflowBar").textContent)
           });
+          const readAlignment = () => {
+            const bar = document.getElementById("workflowBar");
+            const wasHidden = bar.hidden;
+            bar.hidden = false;
+            const row = document.querySelector(".workflowGuideRow").getBoundingClientRect();
+            const back = document.getElementById("workflowBackActionBtn").getBoundingClientRect();
+            const title = document.getElementById("workflowNextTitle").getBoundingClientRect();
+            const next = document.getElementById("workflowNextActionBtn").getBoundingClientRect();
+            const alignment = {
+              backAtLeft:Math.abs(back.left - row.left) < 1,
+              backBeforeTitle:back.right < title.left,
+              nextAtRight:Math.abs(next.right - row.right) < 1
+            };
+            bar.hidden = wasHidden;
+            return alignment;
+          };
           try{
             workflowGuideDate = getWorkflowGuideTodayKey();
             setWorkflowGuideStage(1, { force:true, resetFurthest:true });
@@ -2213,6 +2229,7 @@
             handleWorkflowPrimaryAction();
             updateWorkflowGuide();
             const secondBeforeCalculation = read();
+            const secondAlignment = readAlignment();
 
             harvestFillKeys = ["2-A-1"];
             const totalHarvest = Math.round(getCurrentHarvestTotal() * 10) / 10;
@@ -2259,6 +2276,7 @@
             return {
               first,
               secondBeforeCalculation,
+              secondAlignment,
               secondAfterReverseCalculation,
               third,
               returned,
@@ -2303,6 +2321,11 @@
           progress:"40",
           fractionShown:false
         }, "未計算の第2工程から進める状態になっています");
+        assertDeepEqual(state.secondAlignment, {
+          backAtLeft:true,
+          backBeforeTitle:true,
+          nextAtRight:true
+        }, "戻るボタン・案内文・進むボタンが左・中央・右に分かれていません");
         assertEqual(state.secondAfterReverseCalculation.actionDisabled, false, "配置図から逆算した後も次へ進めません");
         assertEqual(state.third.stage, 3, "逆算後の次へで第3工程へ進みません");
         assertEqual(state.third.action, "送信内容を確認", "第3工程の操作名が違います");
@@ -7235,18 +7258,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "27ff9a69", elements: 2209, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "11010766", elements: 2278, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "83e98eb7", elements: 2278, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "a6ed91b4", elements: 2210, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "c4583075", elements: 2210, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "118e067b", elements: 2293, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "3530527e", elements: 2308, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "3cfa3e52", elements: 2308, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "1dee3f26", elements: 2308, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "e7e6bb27", elements: 2308, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "2859d043", elements: 2308, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "68a9e4f6", elements: 2308, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "6a5b94e6", elements: 2209, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "34d50eaf", elements: 2278, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "1fdba2a2", elements: 2278, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "20a5fb29", elements: 2210, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "1ab730d6", elements: 2210, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "e7f5df40", elements: 2293, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "a4167047", elements: 2308, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "fe0355ff", elements: 2308, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "77a7a183", elements: 2308, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "8e5d4db0", elements: 2308, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "63960522", elements: 2308, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "903e3201", elements: 2308, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
