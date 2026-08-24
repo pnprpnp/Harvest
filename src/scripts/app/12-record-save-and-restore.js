@@ -177,6 +177,7 @@ function saveRecord(){
   harvestProgressState = null;
   harvestSelectionMode = "none";
   harvestProgressAvailable = false;
+  completeWorkflowGuideHarvestRecord();
   enterPlantingRecordMode(record);
   saveHarvestStateToStorage();
   scheduleRecordDataUiRefresh();
@@ -473,7 +474,7 @@ async function savePlantingRecord(){
   resetForecastCasesInput();
   captureRecordBaseSelection();
   clearRecordForm();
-  if(!getLatestPendingPlantingRecord()) showWorkflowCompletionCelebration();
+  if(!existingEvent) showWorkflowCompletionCelebration();
   saveHarvestStateToStorage();
   const sendQueued = queueGoogleSheetPlantingEventSend(event, {
     successMessage: existingEvent ? "苗植え記録を更新して送信しました" : "苗植え記録を送信しました",

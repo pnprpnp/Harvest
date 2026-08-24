@@ -2282,6 +2282,7 @@ function runHarvestPrediction(options = {}){
 
   if(!options.preserveManualSeedlingCount) manualSeedlingCount = null;
   refreshAfterHarvestSelectionChanged({ selectionChangeSource: "auto" });
+  completeWorkflowGuideCalculation();
   return selection;
 }
 

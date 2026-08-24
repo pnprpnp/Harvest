@@ -863,6 +863,7 @@ async function saveCurrentMonitorRemoteContent(){
       workflowHarvestRecordingActive = workflowPlanWasReady;
       renderMonitorTabControls();
       saveHarvestStateToStorage();
+      completeWorkflowGuideMonitorSend();
       updateWorkflowGuide();
       switchToRecordSaveCard({ focus: true });
     }

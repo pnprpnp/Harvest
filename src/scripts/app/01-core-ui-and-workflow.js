@@ -27,6 +27,7 @@ const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
 const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
 const WORKFLOW_BAR_VISIBILITY_KEY = "harvestForecastWorkflowBarVisible_v2";
 const WORKFLOW_TITLE_HINT_SHOWN_KEY = "harvestnaviWorkflowTitleHintShown_v1";
+const WORKFLOW_GUIDE_STATE_KEY = "harvestnaviWorkflowGuideState_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
@@ -333,8 +334,10 @@ let workflowMonitorCheckpointSignature = "";
 let workflowHarvestRecordingActive = false;
 let workflowPlantingSessionActive = false;
 let workflowGuideUpdateFrame = null;
-let workflowCompletionCelebrationUntil = 0;
-let workflowCompletionCelebrationTimer = null;
+let workflowGuideStage = 1;
+let workflowGuideFurthestStage = 1;
+let workflowGuideDate = "";
+let workflowGuideDayResetTimer = null;
 let appTopChromeResizeObserver = null;
 
 function deepClone(obj){
@@ -1222,6 +1225,9 @@ function updateEstimatedHarvestCasesFromSelection(currentHarvestTotal = null){
     : 0;
   casesInput.value = estimatedCases > 0 ? String(estimatedCases) : "";
   harvestCasesAutoEstimated = estimatedCases > 0;
+  if(harvestSummary){
+    harvestSummary.needHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
+  }
   updateHarvestCasesAutoEstimatedAppearance();
   syncRecordCasesFromMain(false);
   updateEmptyInputHighlight(casesInput);
@@ -1290,6 +1296,7 @@ function refreshAfterHarvestSelectionChanged(options = {}){
   updateRecordSeedlingDiffDisplay();
   updateRecordActualSeedlingDisplays();
   updateRecordPlantingCountPresetUi();
+  scheduleWorkflowGuideUpdate();
   scheduleHarvestStateSave();
 }
 
@@ -2760,12 +2767,34 @@ function switchTab(tabName){
   return true;
 }
 
-const WORKFLOW_STEP_DEFINITIONS = [
-  { id: "workflowStepPlan", key: "plan", label: "収穫計算" },
-  { id: "workflowStepMonitor", key: "monitor", label: "モニター送信" },
-  { id: "workflowStepHarvest", key: "harvest", label: "収穫記録" },
-  { id: "workflowStepPlanting", key: "planting", label: "苗植え記録" }
+const WORKFLOW_GUIDE_STAGES = [
+  {
+    key: "input",
+    title: "収穫ケース数とケース配置を入力してください",
+    actionLabel: "次へ"
+  },
+  {
+    key: "calculate",
+    title: "計算設定を確認し、計算してください",
+    actionLabel: "次へ"
+  },
+  {
+    key: "monitor",
+    title: "内容を確認し、モニターに送信してください",
+    actionLabel: "送信内容を確認"
+  },
+  {
+    key: "harvest",
+    title: "収穫が完了したら、収穫記録をしてください",
+    actionLabel: "収穫記録へ"
+  },
+  {
+    key: "planting",
+    title: "二次定植が完了したら、二次定植の記録をしてください",
+    actionLabel: "二次定植記録へ"
+  }
 ];
+const WORKFLOW_GUIDE_COMPLETE_STAGE = WORKFLOW_GUIDE_STAGES.length + 1;
 
 function getWorkflowPlanStatus(){
   const casePlan = getHarvestCasePlan();
@@ -2849,125 +2878,160 @@ function getWorkflowActivePendingRecord(){
   return activeRecord?.type === "fullHarvest" ? activeRecord : null;
 }
 
+function getWorkflowGuideTodayKey(date = new Date()){
+  const value = date instanceof Date ? date : new Date(date);
+  if(Number.isNaN(value.getTime())) return "";
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeWorkflowGuideStage(value, fallback = 1){
+  const stage = Math.trunc(Number(value));
+  if(stage >= 1 && stage <= WORKFLOW_GUIDE_COMPLETE_STAGE) return stage;
+  return fallback;
+}
+
+function inferInitialWorkflowGuideStage(){
+  if(getWorkflowActivePendingRecord()) return 5;
+  if(workflowHarvestRecordingActive && workflowMonitorCheckpointSignature) return 4;
+  if(getWorkflowPlanStatus().ready) return 3;
+  return 1;
+}
+
+function saveWorkflowGuideProgress(){
+  try{
+    harvestnaviLocalStorage.writeJson(WORKFLOW_GUIDE_STATE_KEY, {
+      date: workflowGuideDate || getWorkflowGuideTodayKey(),
+      stage: normalizeWorkflowGuideStage(workflowGuideStage),
+      furthestStage:normalizeWorkflowGuideStage(workflowGuideFurthestStage)
+    });
+  }catch(e){
+    console.warn("Failed to save workflow guide progress", e);
+  }
+}
+
+function scheduleWorkflowGuideDayReset(){
+  if(workflowGuideDayResetTimer !== null) clearTimeout(workflowGuideDayResetTimer);
+  const now = new Date();
+  const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 80);
+  workflowGuideDayResetTimer = setTimeout(() => {
+    workflowGuideDayResetTimer = null;
+    resetWorkflowGuideIfDayChanged();
+    scheduleWorkflowGuideDayReset();
+  }, Math.max(1000, nextDay.getTime() - now.getTime()));
+}
+
+function resetWorkflowGuideIfDayChanged(){
+  const today = getWorkflowGuideTodayKey();
+  if(workflowGuideDate === today) return false;
+  workflowGuideDate = today;
+  workflowGuideStage = 1;
+  workflowGuideFurthestStage = 1;
+  saveWorkflowGuideProgress();
+  scheduleWorkflowGuideUpdate();
+  return true;
+}
+
+function initializeWorkflowGuideProgress(){
+  const today = getWorkflowGuideTodayKey();
+  let saved = null;
+  try{
+    saved = harvestnaviLocalStorage.readJson(WORKFLOW_GUIDE_STATE_KEY, null);
+  }catch(e){
+    saved = null;
+  }
+  workflowGuideDate = today;
+  if(saved && String(saved.date || "") === today){
+    workflowGuideStage = normalizeWorkflowGuideStage(saved.stage);
+    workflowGuideFurthestStage = Math.max(
+      workflowGuideStage,
+      normalizeWorkflowGuideStage(saved.furthestStage, workflowGuideStage)
+    );
+  }else{
+    workflowGuideStage = saved ? 1 : inferInitialWorkflowGuideStage();
+    workflowGuideFurthestStage = workflowGuideStage;
+    saveWorkflowGuideProgress();
+  }
+  scheduleWorkflowGuideDayReset();
+  updateWorkflowGuide();
+}
+
+function setWorkflowGuideStage(stage, options = {}){
+  resetWorkflowGuideIfDayChanged();
+  const nextStage = normalizeWorkflowGuideStage(stage, workflowGuideStage);
+  if(nextStage === workflowGuideStage && options.force !== true && options.resetFurthest !== true){
+    scheduleWorkflowGuideUpdate();
+    return false;
+  }
+  workflowGuideStage = nextStage;
+  workflowGuideFurthestStage = options.resetFurthest === true
+    ? nextStage
+    : Math.max(workflowGuideFurthestStage, nextStage);
+  saveWorkflowGuideProgress();
+  scheduleWorkflowGuideUpdate();
+  return true;
+}
+
+function hasWorkflowCalculationResult(){
+  const selectedKeyCount = Array.isArray(harvestFillKeys) ? harvestFillKeys.length : 0;
+  const expectedNeedHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
+  const currentHarvestTotal = Math.round(getCurrentHarvestTotal() * 10) / 10;
+  const summaryHarvestTotal = Number(harvestSummary?.totalHarvest);
+  return expectedNeedHeads > 0
+    && selectedKeyCount > 0
+    && !!harvestSummary
+    && Number(harvestSummary.filledCount) === selectedKeyCount
+    && Number(harvestSummary.needHeads) === expectedNeedHeads
+    && Number.isFinite(summaryHarvestTotal)
+    && Math.abs(summaryHarvestTotal - currentHarvestTotal) < 0.11;
+}
+
 function getWorkflowGuideState(){
-  if(workflowCompletionCelebrationUntil){
-    if(Date.now() < workflowCompletionCelebrationUntil){
-      return {
-        currentIndex: 3,
-        key: "complete",
-        title: "お疲れ様でした！",
-        actionLabel: "最初へ戻る",
-        currentStatus: "完了",
-        completedIndices: [0, 1, 2, 3]
-      };
-    }
-    workflowCompletionCelebrationUntil = 0;
-  }
-
-  const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
-  if(editingRecord?.type === "fullHarvest"){
+  resetWorkflowGuideIfDayChanged();
+  if(workflowGuideStage === WORKFLOW_GUIDE_COMPLETE_STAGE){
     return {
-      currentIndex: 2,
-      key: "harvest",
-      title: "収穫記録を更新",
-      actionLabel: "収穫記録へ",
-      currentStatus: "編集中",
-      recordId: Number(editingRecord.id)
+      stage: WORKFLOW_GUIDE_COMPLETE_STAGE,
+      key: "complete",
+      title: "お疲れ様でした",
+      actionLabel: "最初に戻る",
+      actionEnabled: true,
+      showBack: false,
+      progress: 100
     };
   }
-
-  const pendingRecord = getWorkflowActivePendingRecord();
-  if(pendingRecord){
-    const monitorWasSent = !!workflowMonitorCheckpointSignature && workflowHarvestRecordingActive;
-    return {
-      currentIndex: 3,
-      key: "planting",
-      title: "苗植え場所を記録",
-      actionLabel: "苗植えへ",
-      currentStatus: "記録待ち",
-      completedIndices: monitorWasSent ? [0, 1, 2] : [0, 2],
-      skippedIndices: monitorWasSent ? [] : [1],
-      recordId: Number(pendingRecord.id)
-    };
-  }
-
-  if(workflowHarvestRecordingActive && workflowMonitorCheckpointSignature){
-    return {
-      currentIndex: 2,
-      key: "harvest",
-      title: "実際の収穫結果を記録",
-      actionLabel: "収穫記録へ",
-      currentStatus: "記録待ち"
-    };
-  }
-
-  const planStatus = getWorkflowPlanStatus();
-  if(!planStatus.ready){
-    let title = "収穫場所を計算";
-    let currentStatus = "計算待ち";
-    if(planStatus.casePlan.totalCases <= 0){
-      title = planStatus.casePlacementTotal <= 0
-        ? "収穫ケース数とケース配置を入力"
-        : "収穫ケース数を入力";
-      currentStatus = "未入力";
-    }else if(planStatus.casePlacementTotal <= 0){
-      title = "ケース配置を入力";
-      currentStatus = "未入力";
-    }else if(planStatus.casePlan.regularCases <= 0){
-      title = "順番収穫ケース数を確認";
-      currentStatus = "要確認";
-    }else if(planStatus.hasRecordedSelection){
-      title = "記録済みを除いて再計算";
-      currentStatus = "再計算";
-    }else if(!planStatus.progressSelectionEnough){
-      const shortageCases = Math.max(0, (planStatus.casePlan.regularCases * CASE_SIZE - getCurrentHarvestTotal()) / CASE_SIZE);
-      title = `あと約${Math.ceil(shortageCases)}ケース分を選択`;
-      currentStatus = "選択待ち";
-    }else if(planStatus.selectedKeyCount > 0 && !planStatus.summaryMatches){
-      title = "変更した条件で再計算";
-      currentStatus = "再計算";
-    }
-    return {
-      currentIndex: 0,
-      key: "plan",
-      title,
-      actionLabel: "計算をする",
-      currentStatus
-    };
-  }
-
-  const currentSignature = getWorkflowPlanFingerprint();
-  if(!workflowMonitorCheckpointSignature || workflowMonitorCheckpointSignature !== currentSignature){
-    const isMonitorTabActive = activeAppTab === "monitor";
-    return {
-      currentIndex: 1,
-      key: "monitor",
-      title: "計算をモニターへ送信",
-      actionLabel: isMonitorTabActive ? "確認して送信" : "モニターへ",
-      currentStatus: "送信待ち"
-    };
-  }
-
+  const stage = normalizeWorkflowGuideStage(workflowGuideStage);
+  const definition = WORKFLOW_GUIDE_STAGES[stage - 1];
+  const isCompletedReview = stage < workflowGuideFurthestStage;
   return {
-    currentIndex: 2,
-    key: "harvest",
-    title: "実際の収穫結果を記録",
-    actionLabel: "収穫記録へ",
-    currentStatus: "記録待ち"
+    stage,
+    ...definition,
+    actionLabel:isCompletedReview ? "次へ" : definition.actionLabel,
+    actionEnabled: isCompletedReview || stage !== 2 || hasWorkflowCalculationResult(),
+    showBack: stage > 1,
+    progress: stage * 20,
+    isCompletedReview
   };
 }
 
-function showWorkflowCompletionCelebration(duration = 2400){
-  workflowCompletionCelebrationUntil = Date.now() + Math.max(0, Number(duration) || 0);
-  if(workflowCompletionCelebrationTimer){
-    clearTimeout(workflowCompletionCelebrationTimer);
-  }
-  workflowCompletionCelebrationTimer = setTimeout(() => {
-    workflowCompletionCelebrationUntil = 0;
-    workflowCompletionCelebrationTimer = null;
-    scheduleWorkflowGuideUpdate();
-  }, Math.max(0, Number(duration) || 0));
-  scheduleWorkflowGuideUpdate();
+function completeWorkflowGuideCalculation(){
+  resetWorkflowGuideIfDayChanged();
+  if(workflowGuideStage <= 2) setWorkflowGuideStage(3);
+}
+
+function completeWorkflowGuideMonitorSend(){
+  resetWorkflowGuideIfDayChanged();
+  if(workflowGuideStage <= 3) setWorkflowGuideStage(4);
+}
+
+function completeWorkflowGuideHarvestRecord(){
+  resetWorkflowGuideIfDayChanged();
+  if(workflowGuideStage <= 4) setWorkflowGuideStage(5);
+}
+
+function showWorkflowCompletionCelebration(){
+  setWorkflowGuideStage(WORKFLOW_GUIDE_COMPLETE_STAGE);
 }
 
 function updateWorkflowGuide(){
@@ -2978,34 +3042,6 @@ function updateWorkflowGuide(){
   const bar = document.getElementById("workflowBar");
   if(!bar) return;
   const state = getWorkflowGuideState();
-
-  WORKFLOW_STEP_DEFINITIONS.forEach((definition, index) => {
-    const step = document.getElementById(definition.id);
-    if(!step) return;
-    const hasCustomCompletedSteps = Array.isArray(state.completedIndices);
-    const isCompleted = hasCustomCompletedSteps
-      ? state.completedIndices.includes(index)
-      : index < state.currentIndex;
-    const isCurrent = index === state.currentIndex;
-    const isSkipped = Array.isArray(state.skippedIndices) && state.skippedIndices.includes(index);
-    step.classList.toggle("is-completed", isCompleted);
-    step.classList.toggle("is-current", isCurrent);
-    step.classList.toggle("is-skipped", isSkipped);
-    step.classList.toggle("is-before-skipped", Array.isArray(state.skippedIndices) && state.skippedIndices.includes(index + 1));
-    step.classList.toggle("is-upcoming", !isCompleted && !isCurrent && !isSkipped);
-    if(isCurrent){
-      step.setAttribute("aria-current", "step");
-    }else{
-      step.removeAttribute("aria-current");
-    }
-    const marker = step.querySelector(".workflowStepMarker");
-    if(marker) marker.textContent = isCompleted ? "✓" : (isSkipped ? "!" : String(index + 1));
-    const stepState = step.querySelector(".workflowStepState");
-    const stateText = isCompleted ? "完了" : (isSkipped ? "未送信" : (isCurrent ? (state.currentStatus || "作業中") : "このあと"));
-    if(stepState) stepState.textContent = stateText;
-    step.setAttribute("aria-label", (index + 1) + ". " + definition.label + ": " + stateText);
-  });
-
   bar.dataset.currentStep = state.key;
   const title = document.getElementById("workflowNextTitle");
   if(title) title.textContent = state.title;
@@ -3013,16 +3049,29 @@ function updateWorkflowGuide(){
   if(actionLabel) actionLabel.textContent = state.actionLabel;
   const actionButton = document.getElementById("workflowNextActionBtn");
   if(actionButton){
-    actionButton.dataset.workflowAction = state.key;
-    actionButton.setAttribute("aria-label", "次の作業: " + state.title + "。" + state.actionLabel);
+    actionButton.disabled = state.actionEnabled === false;
+    actionButton.setAttribute("aria-label", state.actionLabel);
+    actionButton.title = state.actionEnabled === false ? "計算または配置図からの逆算を完了すると進めます" : "";
+  }
+  const backButton = document.getElementById("workflowBackActionBtn");
+  if(backButton){
+    backButton.hidden = !state.showBack;
+    backButton.setAttribute("aria-label", "前の工程へ戻る");
+  }
+  const progressTrack = document.getElementById("workflowProgressTrack");
+  if(progressTrack){
+    progressTrack.setAttribute("aria-valuenow", String(state.progress));
+    progressTrack.setAttribute("aria-valuetext", `今日の作業進捗 ${state.progress}%`);
+  }
+  const progressFill = document.getElementById("workflowProgressFill");
+  if(progressFill){
+    progressFill.style.width = `${state.progress}%`;
   }
   const liveRegion = document.getElementById("workflowLiveRegion");
   if(liveRegion){
-    const skippedLabels = Array.isArray(state.skippedIndices)
-      ? state.skippedIndices.map(index => WORKFLOW_STEP_DEFINITIONS[index]?.label).filter(Boolean)
-      : [];
-    const skippedAnnouncement = skippedLabels.length ? "。未完了: " + skippedLabels.join("、") : "";
-    const announcement = "現在の工程: " + WORKFLOW_STEP_DEFINITIONS[state.currentIndex].label + skippedAnnouncement + "。次の作業: " + state.title;
+    const announcement = state.key === "complete"
+      ? state.title
+      : "現在の作業: " + state.title;
     if(liveRegion.textContent !== announcement) liveRegion.textContent = announcement;
   }
 }
@@ -3157,48 +3206,14 @@ function focusWorkflowTarget(targetId){
   }
 }
 
-function openWorkflowNextAction(){
+function moveWorkflowGuideBack(){
   const state = getWorkflowGuideState();
-  if(state.key === "plan"){
-    const planStatus = getWorkflowPlanStatus();
-    const canCalculate = planStatus.casePlan.totalCases > 0
-      && planStatus.casePlacementTotal > 0
-      && planStatus.casePlan.regularCases > 0;
-    if(switchTab("forecast") === false) return;
-    if(canCalculate) runHarvestPrediction();
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      scrollToWorkflowTarget("forecastSimulationCard");
-      focusWorkflowTarget("forecastSimulationCard");
-    }));
-    return;
-  }
-  if(state.key === "monitor"){
-    const shouldOpenPreview = activeAppTab === "monitor";
-    if(switchTab("monitor") === false) return;
-    if(shouldOpenPreview){
-      requestAnimationFrame(() => saveCurrentMonitorRemoteContent());
-      return;
-    }
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      scrollToWorkflowTarget("monitorCard");
-      focusWorkflowTarget("monitorCard");
-    }));
-    return;
-  }
-  if(state.key === "complete"){
-    if(switchTab("forecast") === false) return;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      scrollToWorkflowTarget("forecastSimulationCard");
-      focusWorkflowTarget("forecastSimulationCard");
-    }));
-    return;
-  }
-  if(state.key === "harvest"){
-    switchToRecordSaveCard({ focus: true });
-    return;
-  }
+  if(state.stage <= 1 || state.stage >= WORKFLOW_GUIDE_COMPLETE_STAGE) return;
+  setWorkflowGuideStage(state.stage - 1);
+}
 
-  const pendingRecord = getRecordById(state.recordId) || getWorkflowActivePendingRecord();
+function openWorkflowPlantingRecord(){
+  const pendingRecord = getWorkflowActivePendingRecord() || getLatestPendingPlantingRecord();
   if(switchTab("record") === false) return;
   if(pendingRecord && (recordSelectionMode !== "planting" || Number(activePlantingRecordId) !== Number(pendingRecord.id))){
     resumePlantingRecord(pendingRecord.id);
@@ -3206,7 +3221,49 @@ function openWorkflowNextAction(){
     return;
   }
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    scrollToRecordActiveStage({ behavior: "smooth" });
+    scrollToRecordActiveStage({ behavior: "auto" });
     focusWorkflowTarget("recordPlantingStageSection");
+  }));
+}
+
+function handleWorkflowPrimaryAction(){
+  const state = getWorkflowGuideState();
+  if(state.isCompletedReview){
+    setWorkflowGuideStage(state.stage + 1);
+    return;
+  }
+  if(state.stage === 1){
+    setWorkflowGuideStage(2);
+    return;
+  }
+  if(state.stage === 2){
+    if(!hasWorkflowCalculationResult()){
+      showToast("計算するか、配置図から収穫場所を選択してください");
+      return;
+    }
+    setWorkflowGuideStage(3);
+    return;
+  }
+  if(state.stage === 3){
+    if(switchTab("monitor") === false) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      scrollToWorkflowTarget("monitorCard");
+      focusWorkflowTarget("monitorCard");
+    }));
+    return;
+  }
+  if(state.stage === 4){
+    switchToRecordSaveCard({ focus: true });
+    return;
+  }
+  if(state.stage === 5){
+    openWorkflowPlantingRecord();
+    return;
+  }
+  setWorkflowGuideStage(1, { resetFurthest:true });
+  if(switchTab("forecast") === false) return;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    scrollToWorkflowTarget("forecastSimulationCard", { behavior: "auto" });
+    focusWorkflowTarget("forecastSimulationCard");
   }));
 }

@@ -47,6 +47,7 @@ function initializeHarvestnaviApp(){
 
     const savedHarvestState = loadHarvestStateFromStorage();
     restoreHarvestStateAtStartup(savedHarvestState);
+    initializeWorkflowGuideProgress();
     initializeStartupViews(savedHarvestState);
     installStartupRecordFormEvents();
     resumeStartupPlantingRecord(savedHarvestState);
