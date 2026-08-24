@@ -797,6 +797,12 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
       const plantingCount = getPlantingCountForSelectedKey(key, options.plantingCountsByPallet);
       classes.push(`is-planting-count-${plantingCount}`);
       stateText = `選択済み、${plantingCount}植え`;
+      if(options.plantingFlowStage === "quality"){
+        const qualityMemo = normalizeOptionalQualityMemo(options.plantingQualityByPallet?.[key]);
+        const qualityTag = qualityMemo?.tags?.find(tag => RECORD_PLANTING_FLOW_QUALITY_TAGS.includes(tag)) || "unset";
+        classes.push(`is-planting-quality-${qualityTag}`);
+        stateText += qualityTag === "unset" ? "、品質未設定" : `、${getQualityTagLabel(qualityTag)}`;
+      }
     }else{
       classes.push("is-planting-selectable");
       stateText = "選択可能";
@@ -883,6 +889,26 @@ function applyRecordBedRange(action){
     return;
   }
 
+  if(isRecordPlantingFlowActive() && ["count", "quality"].includes(recordPlantingFlowStage)){
+    if(action !== "add"){
+      showToast("場所の変更は「場所選択に戻る」から行ってください");
+      return;
+    }
+    let assigned = 0;
+    for(let number = rangeStart; number <= rangeEnd; number++){
+      const key = getPalletKey(currentBuilding, bed, number);
+      if(applyRecordPlantingFlowAssignment(key, { silent: true }) === true) assigned++;
+    }
+    if(!assigned){
+      showToast("指定範囲に変更できる場所がありません");
+      return;
+    }
+    refreshAfterHarvestSelectionChanged();
+    refreshBedDetailWindow();
+    showToast(`${currentBuilding}号棟 ${bed}ベッドの${assigned}枚を設定しました`);
+    return;
+  }
+
   let changed = 0;
   let plantingCapacityReached = false;
   if(action === "add"){
@@ -900,7 +926,10 @@ function applyRecordBedRange(action){
       }
 
       harvestFillKeys.push(key);
-      if(recordSelectionMode === "planting") setRecordPlantingCountForKey(key);
+      if(recordSelectionMode === "planting"){
+        setRecordPlantingCountForKey(key);
+        markRecordPlantingFlowBuildingDirty(currentBuilding);
+      }
       changed++;
     }
   }else{
@@ -910,7 +939,11 @@ function applyRecordBedRange(action){
       if(fillIndex < 0) continue;
 
       harvestFillKeys.splice(fillIndex, 1);
-      if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
+      if(recordSelectionMode === "planting"){
+        removeRecordPlantingCountForKey(key);
+        removeRecordPlantingQualityForKey(key);
+        markRecordPlantingFlowBuildingDirty(currentBuilding);
+      }
       changed++;
     }
   }
@@ -936,6 +969,10 @@ function clearSelectedRecordBedFromMenu(){
   const bed = activeRecordBedActionBed;
   hideRecordBedActionMenu();
   if(!bed) return;
+  if(isRecordPlantingFlowActive() && ["count", "quality"].includes(recordPlantingFlowStage)){
+    showToast("場所の変更は「場所選択に戻る」から行ってください");
+    return;
+  }
 
   const beforeCount = harvestFillKeys.length;
   harvestFillKeys = harvestFillKeys.filter(key => {
@@ -946,6 +983,18 @@ function clearSelectedRecordBedFromMenu(){
   if(harvestFillKeys.length === beforeCount){
     showToast("このベッドに解除する選択がありません");
     return;
+  }
+
+  if(recordSelectionMode === "planting"){
+    const retainedSet = new Set(harvestFillKeys);
+    recordPlantingCountsByPallet = normalizePlantingCountsByPallet(recordPlantingCountsByPallet, harvestFillKeys);
+    if(plantingRecordDraft?.qualityMemoByPallet){
+      plantingRecordDraft.qualityMemoByPallet = normalizeQualityMemoByPallet(
+        plantingRecordDraft.qualityMemoByPallet,
+        [...retainedSet]
+      );
+    }
+    markRecordPlantingFlowBuildingDirty(currentBuilding);
   }
 
   refreshAfterHarvestSelectionChanged();
@@ -1133,6 +1182,9 @@ function applyRecordPalletDragChange(building, bed, number, mode){
   const key = getPalletKey(building, bed, number);
   const recordedSet = getRecordTabRecordedPalletSet();
 
+  const flowAssignmentChanged = applyRecordPlantingFlowAssignment(key, { drag: true });
+  if(flowAssignmentChanged !== null) return flowAssignmentChanged;
+
   if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key, { fast: true })){
     showPalletDragToast("苗植え場所は、今回収穫した場所か前回苗植えしなかった場所だけ選択できます");
     return false;
@@ -1147,7 +1199,11 @@ function applyRecordPalletDragChange(building, bed, number, mode){
   if(mode === "remove"){
     if(fillIndex < 0) return false;
     harvestFillKeys.splice(fillIndex, 1);
-    if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
+    if(recordSelectionMode === "planting"){
+      removeRecordPlantingCountForKey(key);
+      removeRecordPlantingQualityForKey(key);
+      markRecordPlantingFlowBuildingDirty(building);
+    }
     return true;
   }
 
@@ -1172,7 +1228,10 @@ function applyRecordPalletDragChange(building, bed, number, mode){
     return false;
   }
   harvestFillKeys.push(key);
-  if(recordSelectionMode === "planting") setRecordPlantingCountForKey(key);
+  if(recordSelectionMode === "planting"){
+    setRecordPlantingCountForKey(key);
+    markRecordPlantingFlowBuildingDirty(building);
+  }
   return true;
 }
 
@@ -1182,8 +1241,21 @@ function updatePalletElementForDrag(pallet, context, mode){
     pallet.classList.add("harvestFill");
     if(context === "record" && recordSelectionMode === "planting"){
       pallet.classList.remove("plantingSelectablePallet");
-      pallet.classList.remove("plantingCount12", "plantingCount16", "plantingCount20");
+      pallet.classList.remove(
+        "plantingCount12", "plantingCount16", "plantingCount20",
+        "plantingQualityLarge", "plantingQualityMedium", "plantingQualitySmall",
+        "plantingQualityElongated", "plantingQualityUnset"
+      );
       pallet.classList.add("plantingSelectedPallet", `plantingCount${recordPlantingCountPreset}`);
+      if(isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"){
+        const qualityClass = {
+          large: "plantingQualityLarge",
+          medium: "plantingQualityMedium",
+          small: "plantingQualitySmall",
+          elongated: "plantingQualityElongated"
+        }[recordPlantingQualityPreset];
+        if(qualityClass) pallet.classList.add(qualityClass);
+      }
     }
     return;
   }
@@ -1195,7 +1267,12 @@ function updatePalletElementForDrag(pallet, context, mode){
     "plantingSelectedPallet",
     "plantingCount12",
     "plantingCount16",
-    "plantingCount20"
+    "plantingCount20",
+    "plantingQualityLarge",
+    "plantingQualityMedium",
+    "plantingQualitySmall",
+    "plantingQualityElongated",
+    "plantingQualityUnset"
   );
   if(context === "record" && recordSelectionMode === "planting" && !pallet.classList.contains("plantingUnavailablePallet")){
     pallet.classList.add("plantingSelectablePallet");
@@ -1235,12 +1312,16 @@ function startPalletDrag(event, context, building, bed, number){
   const isSelected = harvestFillKeys.includes(key);
   const shouldOverwritePlantingCount = context === "record"
     && recordSelectionMode === "planting"
+    && !isRecordPlantingFlowActive()
     && isSelected
     && getPlantingCountForSelectedKey(key) !== recordPlantingCountPreset;
+  const isPlantingFlowAssignment = context === "record"
+    && isRecordPlantingFlowActive()
+    && ["count", "quality"].includes(recordPlantingFlowStage);
   palletDragState = {
     pointerId: event.pointerId,
     context,
-    mode: isSelected && !shouldOverwritePlantingCount ? "remove" : "add",
+    mode: isPlantingFlowAssignment ? "add" : (isSelected && !shouldOverwritePlantingCount ? "remove" : "add"),
     captureElement: event.currentTarget,
     touchedKeys: new Set(),
     toastMessages: new Set(),
@@ -1314,15 +1395,31 @@ function renderBedDetailWindow(){
     const legend = document.createElement("div");
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";
     legend.setAttribute("aria-label", "各パレットの色分け");
-    legend.innerHTML = `
-      <span class="recordLegendItem"><span class="recordLegendSwatch count12"></span>12植え</span>
-      <span class="recordLegendItem"><span class="recordLegendSwatch count16"></span>16植え</span>
-      <span class="recordLegendItem"><span class="recordLegendSwatch count20"></span>20植え</span>
-    `;
+    legend.innerHTML = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
+      ? `
+        <span class="recordLegendItem"><span class="recordLegendSwatch qualityLarge"></span>大きい</span>
+        <span class="recordLegendItem"><span class="recordLegendSwatch qualityMedium"></span>中</span>
+        <span class="recordLegendItem"><span class="recordLegendSwatch qualitySmall"></span>小さい</span>
+        <span class="recordLegendItem"><span class="recordLegendSwatch qualityElongated"></span>徒長</span>
+      `
+      : (isRecordPlantingFlowActive() && recordPlantingFlowStage === "location"
+        ? `
+          <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch selected"></span>苗植え場所</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+        `
+      : `
+        <span class="recordLegendItem"><span class="recordLegendSwatch count12"></span>12植え</span>
+        <span class="recordLegendItem"><span class="recordLegendSwatch count16"></span>16植え</span>
+        <span class="recordLegendItem"><span class="recordLegendSwatch count20"></span>20植え</span>
+      `);
     body.appendChild(legend);
   }
   const content = document.createElement("div");
   content.className = "bedDetailContent";
+  if(activeBedDetailContext === "record" && isRecordPlantingFlowActive()){
+    content.classList.add(`recordPlantingFlowStage-${recordPlantingFlowStage}`);
+  }
   if(activeBedDetailContext === "record"){
     appendRecordBedDetail(content, activeBedDetailBed);
   }else{
@@ -1394,6 +1491,9 @@ function appendRecordBedDetail(container, b){
   const splitInfo = getYieldSplitVisualInfo(b);
   const recordedSet = getRecordTabRecordedPalletSet();
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
+  const plantingQualityByPallet = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
+    ? getRecordPlantingFlowQualityByPallet()
+    : {};
 
   const grid = document.createElement("div");
   grid.className = "palletGrid";
@@ -1415,6 +1515,15 @@ function appendRecordBedDetail(container, b){
         }else if(isSelected){
           const plantingCount = getPlantingCountForSelectedKey(key);
           cls += ` plantingSelectedPallet plantingCount${plantingCount}`;
+          if(isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"){
+            const qualityClass = {
+              large: "plantingQualityLarge",
+              medium: "plantingQualityMedium",
+              small: "plantingQualitySmall",
+              elongated: "plantingQualityElongated"
+            }[normalizeOptionalQualityMemo(plantingQualityByPallet[key])?.tags?.find(tag => RECORD_PLANTING_FLOW_QUALITY_TAGS.includes(tag))] || "plantingQualityUnset";
+            cls += ` ${qualityClass}`;
+          }
         }else{
           cls += " plantingSelectablePallet";
         }
@@ -1432,6 +1541,11 @@ function appendRecordBedDetail(container, b){
         statusText = plantingAllowedSet.has(key)
           ? (isSelected ? ` 選択済み ${getPlantingCountForSelectedKey(key)}植え` : " 選択可能")
           : " 選択不可";
+        if(isSelected && isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"){
+          const qualityTag = normalizeOptionalQualityMemo(plantingQualityByPallet[key])?.tags
+            ?.find(tag => RECORD_PLANTING_FLOW_QUALITY_TAGS.includes(tag)) || "";
+          statusText += qualityTag ? ` ${getQualityTagLabel(qualityTag)}` : " 品質未設定";
+        }
       }
       pallet.title = `${currentBuilding}号棟 ${b}-${number}` + statusText + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
       pallet.style.gridRowStart = r + 1;

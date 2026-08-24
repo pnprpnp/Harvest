@@ -39,6 +39,11 @@ function resetInvalidStartupPlantingState(){
   plantingRecordDraft = null;
   recordPlantingCountPreset = 20;
   recordPlantingCountsByPallet = {};
+  recordPlantingFlowEnabled = false;
+  recordPlantingFlowStage = "building";
+  recordPlantingFlowBuilding = null;
+  recordPlantingCompletedBuildings = [];
+  recordPlantingQualityPreset = "medium";
   workflowPlantingSessionActive = false;
 }
 
@@ -72,6 +77,11 @@ function restoreHarvestStateAtStartup(savedHarvestState){
     savedHarvestState.recordPlantingCountsByPallet,
     savedHarvestState.harvestFillKeys
   );
+  recordPlantingFlowEnabled = savedHarvestState.recordPlantingFlowEnabled === true;
+  recordPlantingFlowStage = savedHarvestState.recordPlantingFlowStage || "building";
+  recordPlantingFlowBuilding = savedHarvestState.recordPlantingFlowBuilding;
+  recordPlantingCompletedBuildings = savedHarvestState.recordPlantingCompletedBuildings || [];
+  recordPlantingQualityPreset = savedHarvestState.recordPlantingQualityPreset || "medium";
   activePlantingRecordId = savedHarvestState.activePlantingRecordId;
   editingPlantingEventId = savedHarvestState.editingPlantingEventId;
   plantingRecordDraft = savedHarvestState.plantingRecordDraft;

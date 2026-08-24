@@ -5958,6 +5958,151 @@
         }, "植え付け数プリセットの選択状態が一致しません");
       });
 
+      await runTest("苗植え記録を棟ごとに場所・植え付け数・品質の順で設定する", () => {
+        const flowState = comparable(app.eval(`(() => {
+          const previous = {
+            mode: recordSelectionMode,
+            enabled: recordPlantingFlowEnabled,
+            stage: recordPlantingFlowStage,
+            building: recordPlantingFlowBuilding,
+            completed: [...recordPlantingCompletedBuildings],
+            qualityPreset: recordPlantingQualityPreset,
+            countPreset: recordPlantingCountPreset,
+            counts: { ...recordPlantingCountsByPallet },
+            keys: [...harvestFillKeys],
+            draft: plantingRecordDraft,
+            activeId: activePlantingRecordId,
+            currentBuilding,
+            activeRecord: getActivePlantingRecord,
+            candidates: getRecordPlantingFlowCandidateBuildings,
+            capacity: canPlantSeedlingKeysWithinCapacity,
+            drawRecord: drawRecordBeds,
+            draw: drawBeds,
+            updateLabel: updateBuildingLabel,
+            save: scheduleHarvestStateSave,
+            closeDetail: closeBedDetailWindow,
+            refreshDetail: refreshBedDetailWindow
+          };
+          try{
+            recordSelectionMode = "planting";
+            activePlantingRecordId = 991;
+            harvestFillKeys = ["2-A-1", "2-A-2", "3-B-1"];
+            recordPlantingCountsByPallet = {
+              "2-A-1": 20,
+              "2-A-2": 20,
+              "3-B-1": 20
+            };
+            plantingRecordDraft = {
+              recordId: 991,
+              keys: [...harvestFillKeys],
+              plantingCountPreset: 20,
+              plantingCountsByPallet: { ...recordPlantingCountsByPallet },
+              date: "2026-08-24",
+              actualSeedlingTrayCount: "3",
+              actualSeedlingCarryoverMode: "loss",
+              actualSeedlingUserEdited: false,
+              plantingSummaryInput: "",
+              recordPlantingSummaryEdited: false,
+              qualityMemo: null,
+              qualityMemoByPallet: {}
+            };
+            getActivePlantingRecord = () => ({ id:991, type:"fullHarvest" });
+            getRecordPlantingFlowCandidateBuildings = () => [2, 3];
+            canPlantSeedlingKeysWithinCapacity = () => true;
+            drawRecordBeds = () => renderRecordPlantingFlow();
+            drawBeds = () => {};
+            updateBuildingLabel = () => {};
+            scheduleHarvestStateSave = () => {};
+            closeBedDetailWindow = () => {};
+            refreshBedDetailWindow = () => {};
+
+            initializeRecordPlantingFlow();
+            renderRecordPlantingFlow();
+            const buildingButtons = [...document.querySelectorAll(".recordPlantingFlowBuildingBtn")]
+              .map(button => button.textContent.replace(/\\s+/g, " ").trim());
+            selectRecordPlantingFlowBuilding(2);
+            const locationStage = { stage:recordPlantingFlowStage, building:recordPlantingFlowBuilding };
+            moveRecordPlantingFlowToStage("count");
+            setRecordPlantingCountPreset(16);
+            const countChanged = applyRecordPlantingFlowAssignment("2-A-1");
+            const countState = {
+              changed:countChanged,
+              stillSelected:harvestFillKeys.includes("2-A-1"),
+              count:recordPlantingCountsByPallet["2-A-1"]
+            };
+            moveRecordPlantingFlowToStage("quality");
+            setRecordPlantingQualityPreset("large");
+            const qualityChanged = applyRecordPlantingFlowAssignment("2-A-1");
+            applyRecordPlantingQualityPresetToBuilding();
+            const qualityState = {
+              changed:qualityChanged,
+              first:getRecordPlantingQualityTagForKey("2-A-1"),
+              second:getRecordPlantingQualityTagForKey("2-A-2")
+            };
+            finishRecordPlantingFlowBuilding();
+            const afterFirstBuilding = {
+              stage:recordPlantingFlowStage,
+              building:recordPlantingFlowBuilding,
+              completed:[...recordPlantingCompletedBuildings],
+              incomplete:getIncompleteRecordPlantingFlowBuildings()
+            };
+            selectRecordPlantingFlowBuilding(3);
+            moveRecordPlantingFlowToStage("count");
+            moveRecordPlantingFlowToStage("quality");
+            finishRecordPlantingFlowBuilding();
+            return {
+              buildingButtons,
+              locationStage,
+              countState,
+              qualityState,
+              afterFirstBuilding,
+              finalIncomplete:getIncompleteRecordPlantingFlowBuildings(),
+              defaultQuality:getRecordPlantingQualityTagForKey("3-B-1")
+            };
+          }finally{
+            recordSelectionMode = previous.mode;
+            recordPlantingFlowEnabled = previous.enabled;
+            recordPlantingFlowStage = previous.stage;
+            recordPlantingFlowBuilding = previous.building;
+            recordPlantingCompletedBuildings = previous.completed;
+            recordPlantingQualityPreset = previous.qualityPreset;
+            recordPlantingCountPreset = previous.countPreset;
+            recordPlantingCountsByPallet = previous.counts;
+            harvestFillKeys = previous.keys;
+            plantingRecordDraft = previous.draft;
+            activePlantingRecordId = previous.activeId;
+            currentBuilding = previous.currentBuilding;
+            getActivePlantingRecord = previous.activeRecord;
+            getRecordPlantingFlowCandidateBuildings = previous.candidates;
+            canPlantSeedlingKeysWithinCapacity = previous.capacity;
+            drawRecordBeds = previous.drawRecord;
+            drawBeds = previous.draw;
+            updateBuildingLabel = previous.updateLabel;
+            scheduleHarvestStateSave = previous.save;
+            closeBedDetailWindow = previous.closeDetail;
+            refreshBedDetailWindow = previous.refreshDetail;
+            const panel = document.getElementById("recordPlantingFlowPanel");
+            const footer = document.getElementById("recordPlantingFlowFooter");
+            if(panel){ panel.hidden = true; panel.innerHTML = ""; }
+            if(footer){ footer.hidden = true; footer.innerHTML = ""; }
+          }
+        })()`));
+        assertDeepEqual(flowState, {
+          buildingButtons: ["2号棟2枚", "3号棟1枚"],
+          locationStage: { stage:"location", building:2 },
+          countState: { changed:true, stillSelected:true, count:16 },
+          qualityState: { changed:true, first:"large", second:"large" },
+          afterFirstBuilding: {
+            stage:"building",
+            building:null,
+            completed:[2],
+            incomplete:[3]
+          },
+          finalIncomplete:[],
+          defaultQuality:"medium"
+        }, "苗植え記録を棟ごとの工程で完了できません");
+      });
+
       await runTest("植え付け数を変えて選択済みパレットをタップすると上書きする", () => {
         const selectionState = comparable(app.eval(`(() => {
           const previous = {
@@ -6904,18 +7049,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "3c8d0248", elements: 2230, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "1bced455", elements: 2299, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "f4944f68", elements: 2299, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "97f26cf3", elements: 2231, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "6902cb02", elements: 2231, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "099aeaf1", elements: 2314, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "0a604e95", elements: 2329, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "c92b1d01", elements: 2329, visible: 298, viewport: "390x844" },
-          mobileSettings: { hash: "7b54e6a1", elements: 2329, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "68315584", elements: 2329, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "95fac2c4", elements: 2329, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "d38a37ed", elements: 2329, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "e7b48a45", elements: 2232, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "3606b732", elements: 2301, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "a73907cb", elements: 2301, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "00082cf6", elements: 2233, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "567b481d", elements: 2233, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "9c5a7dc4", elements: 2316, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "e7c40a93", elements: 2331, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "4a2796cb", elements: 2331, visible: 298, viewport: "390x844" },
+          mobileSettings: { hash: "842d7781", elements: 2331, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "7f0ad230", elements: 2331, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "4cf706e4", elements: 2331, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "fbff5351", elements: 2331, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

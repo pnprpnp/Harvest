@@ -265,6 +265,20 @@ async function savePlantingRecord(){
     showToast("苗植えした場所を選択してください");
     return;
   }
+  const incompleteFlowBuildings = noPlantingEvent ? [] : getIncompleteRecordPlantingFlowBuildings();
+  if(incompleteFlowBuildings.length){
+    const building = incompleteFlowBuildings[0];
+    recordPlantingFlowBuilding = building;
+    recordPlantingFlowStage = "location";
+    currentBuilding = building;
+    updateBuildingLabel();
+    drawBeds();
+    drawRecordBeds();
+    scheduleHarvestStateSave();
+    document.getElementById("recordPlantingFlowPanel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    showToast(`${building}号棟の設定を「この棟を終了」まで進めてください`);
+    return;
+  }
 
   const allowedSet = getPlantingAllowedPalletSet();
   const invalidKeys = harvestFillKeys.filter(key => !allowedSet.has(key));
@@ -336,11 +350,17 @@ async function savePlantingRecord(){
   const existingQualityMemoByPallet = existingEvent && samePlantingKeys
     ? normalizeQualityMemoByPallet(existingEvent.qualityMemoByPallet, existingEvent.plantingPalletKeys)
     : {};
-  const qualityMemoByPallet = Object.keys(existingQualityMemoByPallet).length
-    ? normalizeQualityMemoByPallet(existingQualityMemoByPallet, normalizedSelectedKeys)
+  const draftQualityMemoByPallet = normalizeQualityMemoByPallet(
+    plantingRecordDraft?.qualityMemoByPallet,
+    normalizedSelectedKeys
+  );
+  const qualityMemoByPallet = Object.keys(draftQualityMemoByPallet).length
+    ? draftQualityMemoByPallet
+    : (Object.keys(existingQualityMemoByPallet).length
+      ? normalizeQualityMemoByPallet(existingQualityMemoByPallet, normalizedSelectedKeys)
     : (qualityMemo
       ? Object.fromEntries(normalizedSelectedKeys.map(key => [key, qualityMemo]))
-      : {});
+      : {}));
   const plantingQualityMemo = getPlantingQualityMemoSummary({
     plantingPalletKeys: normalizedSelectedKeys,
     qualityMemo,
@@ -488,7 +508,7 @@ function resumePlantingRecord(id, options = {}){
   if(recordMemoInput) recordMemoInput.value = record.memo || "";
   editingPlantingEventId = null;
   invalidatePlantingAllowedPalletSetCache();
-  enterPlantingRecordMode(record);
+  enterPlantingRecordMode(record, { resumeFlow: options.auto === true });
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();
   saveHarvestStateToStorage();

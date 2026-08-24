@@ -135,10 +135,333 @@ function getRecordPlantingCountDistribution(keys = harvestFillKeys){
   return distribution;
 }
 
+const RECORD_PLANTING_FLOW_STAGES = ["building", "location", "count", "quality"];
+const RECORD_PLANTING_FLOW_QUALITY_TAGS = ["large", "medium", "small", "elongated"];
+
+function isRecordPlantingFlowActive(){
+  return recordSelectionMode === "planting" && recordPlantingFlowEnabled;
+}
+
+function initializeRecordPlantingFlow(){
+  recordPlantingFlowEnabled = true;
+  recordPlantingFlowStage = "building";
+  recordPlantingFlowBuilding = null;
+  recordPlantingCompletedBuildings = [];
+  recordPlantingQualityPreset = "medium";
+}
+
+function resetRecordPlantingFlow(){
+  recordPlantingFlowEnabled = false;
+  recordPlantingFlowStage = "building";
+  recordPlantingFlowBuilding = null;
+  recordPlantingCompletedBuildings = [];
+  recordPlantingQualityPreset = "medium";
+}
+
+function getRecordPlantingFlowKeys(building = recordPlantingFlowBuilding){
+  const normalizedBuilding = Number(building);
+  if(!BUILDINGS.includes(normalizedBuilding)) return [];
+  return harvestFillKeys.filter(key => parsePalletKey(key).building === normalizedBuilding);
+}
+
+function getRecordPlantingFlowCandidateBuildings(){
+  const allowedSet = getPlantingAllowedPalletSet({ fast: true });
+  return getRecordMapBuildings(allowedSet);
+}
+
+function getRecordPlantingFlowQualityByPallet(){
+  return normalizeQualityMemoByPallet(plantingRecordDraft?.qualityMemoByPallet, harvestFillKeys);
+}
+
+function getRecordPlantingQualityTagForKey(key){
+  const memo = normalizeOptionalQualityMemo(getRecordPlantingFlowQualityByPallet()[key]);
+  return memo?.tags?.find(tag => RECORD_PLANTING_FLOW_QUALITY_TAGS.includes(tag)) || "";
+}
+
+function getRecordPlantingDefaultQualityTag(){
+  const memo = normalizeOptionalQualityMemo(plantingRecordDraft?.qualityMemo);
+  return memo?.tags?.find(tag => RECORD_PLANTING_FLOW_QUALITY_TAGS.includes(tag)) || "medium";
+}
+
+function ensurePlantingDraftForFlow(){
+  if(getPlantingRecordDraftForRecord(getActivePlantingRecord())) return true;
+  capturePlantingRecordDraft();
+  return !!getPlantingRecordDraftForRecord(getActivePlantingRecord());
+}
+
+function setRecordPlantingQualityForKey(key, tag = recordPlantingQualityPreset){
+  const normalizedTag = normalizeQualityTag(tag);
+  if(!isValidPalletKeyString(key) || !RECORD_PLANTING_FLOW_QUALITY_TAGS.includes(normalizedTag)) return false;
+  if(!ensurePlantingDraftForFlow()) return false;
+  const qualityByPallet = getRecordPlantingFlowQualityByPallet();
+  qualityByPallet[key] = { tags: [normalizedTag], other: "" };
+  plantingRecordDraft.qualityMemoByPallet = qualityByPallet;
+  return true;
+}
+
+function removeRecordPlantingQualityForKey(key){
+  if(!plantingRecordDraft?.qualityMemoByPallet) return;
+  delete plantingRecordDraft.qualityMemoByPallet[key];
+}
+
+function markRecordPlantingFlowBuildingDirty(building){
+  const normalizedBuilding = Number(building);
+  recordPlantingCompletedBuildings = recordPlantingCompletedBuildings
+    .filter(item => Number(item) !== normalizedBuilding);
+}
+
+function selectRecordPlantingFlowBuilding(building){
+  if(!isRecordPlantingFlowActive()) return;
+  const normalizedBuilding = Number(building);
+  if(!getRecordPlantingFlowCandidateBuildings().includes(normalizedBuilding)) return;
+  recordPlantingFlowBuilding = normalizedBuilding;
+  recordPlantingFlowStage = "location";
+  currentBuilding = normalizedBuilding;
+  updateBuildingLabel();
+  drawBeds();
+  drawRecordBeds();
+  scheduleHarvestStateSave();
+}
+
+function moveRecordPlantingFlowToStage(stage){
+  if(!isRecordPlantingFlowActive()) return;
+  const normalizedStage = String(stage || "");
+  if(!RECORD_PLANTING_FLOW_STAGES.includes(normalizedStage)) return;
+  if(normalizedStage === "building"){
+    recordPlantingFlowStage = "building";
+    recordPlantingFlowBuilding = null;
+  }else{
+    if(!BUILDINGS.includes(Number(recordPlantingFlowBuilding))){
+      showToast("先に棟を選択してください");
+      return;
+    }
+    if(normalizedStage !== "location" && !getRecordPlantingFlowKeys().length){
+      showToast("先に苗植えした場所を選択してください");
+      return;
+    }
+    recordPlantingFlowStage = normalizedStage;
+  }
+  drawRecordBeds();
+  refreshBedDetailWindow();
+  scheduleHarvestStateSave();
+}
+
+function setRecordPlantingQualityPreset(tag){
+  const normalizedTag = normalizeQualityTag(tag);
+  if(!isRecordPlantingFlowActive() || recordPlantingFlowStage !== "quality"
+    || !RECORD_PLANTING_FLOW_QUALITY_TAGS.includes(normalizedTag)) return;
+  recordPlantingQualityPreset = normalizedTag;
+  renderRecordPlantingFlow();
+  scheduleHarvestStateSave();
+}
+
+function applyRecordPlantingQualityPresetToBuilding(){
+  if(!isRecordPlantingFlowActive() || recordPlantingFlowStage !== "quality") return;
+  const keys = getRecordPlantingFlowKeys();
+  if(!keys.length){
+    showToast("品質を設定する場所がありません");
+    return;
+  }
+  if(!ensurePlantingDraftForFlow()) return;
+  const qualityByPallet = getRecordPlantingFlowQualityByPallet();
+  keys.forEach(key => {
+    qualityByPallet[key] = { tags: [recordPlantingQualityPreset], other: "" };
+  });
+  plantingRecordDraft.qualityMemoByPallet = qualityByPallet;
+  markRecordPlantingFlowBuildingDirty(recordPlantingFlowBuilding);
+  drawRecordBeds();
+  refreshBedDetailWindow();
+  scheduleHarvestStateSave();
+  showToast(`${recordPlantingFlowBuilding}号棟を${getQualityTagLabel(recordPlantingQualityPreset)}に設定しました`);
+}
+
+function finishRecordPlantingFlowBuilding(){
+  if(!isRecordPlantingFlowActive() || recordPlantingFlowStage !== "quality") return;
+  const building = Number(recordPlantingFlowBuilding);
+  if(!getRecordPlantingFlowKeys(building).length){
+    showToast("苗植えした場所を選択してください");
+    return;
+  }
+  if(!ensurePlantingDraftForFlow()) return;
+  const qualityByPallet = getRecordPlantingFlowQualityByPallet();
+  const defaultQualityTag = getRecordPlantingDefaultQualityTag();
+  getRecordPlantingFlowKeys(building).forEach(key => {
+    if(!Object.prototype.hasOwnProperty.call(qualityByPallet, key)){
+      qualityByPallet[key] = { tags: [defaultQualityTag], other: "" };
+    }
+  });
+  plantingRecordDraft.qualityMemoByPallet = qualityByPallet;
+  recordPlantingCompletedBuildings = [...new Set([...recordPlantingCompletedBuildings, building])];
+  recordPlantingFlowStage = "building";
+  recordPlantingFlowBuilding = null;
+  closeBedDetailWindow();
+  drawRecordBeds();
+  scheduleHarvestStateSave();
+  showToast(`${building}号棟の設定を完了しました`);
+}
+
+function applyRecordPlantingFlowAssignment(key, options = {}){
+  if(!isRecordPlantingFlowActive() || !["count", "quality"].includes(recordPlantingFlowStage)) return null;
+  const pallet = parsePalletKey(key);
+  const notify = message => {
+    if(options.silent) return;
+    if(options.drag) showPalletDragToast(message);
+    else showToast(message);
+  };
+  if(pallet.building !== Number(recordPlantingFlowBuilding) || !harvestFillKeys.includes(key)){
+    notify("場所選択で選んだ場所だけ設定できます");
+    return false;
+  }
+  if(recordPlantingFlowStage === "count"){
+    if(getPlantingCountForSelectedKey(key) === recordPlantingCountPreset) return false;
+    const nextCounts = { ...recordPlantingCountsByPallet, [key]: recordPlantingCountPreset };
+    if(!canPlantSeedlingKeysWithinCapacity(harvestFillKeys, getActivePlantingRecord(), nextCounts)){
+      notify(getPlantingCapacityExceededMessage());
+      return false;
+    }
+    setRecordPlantingCountForKey(key);
+  }else{
+    if(getRecordPlantingQualityTagForKey(key) === recordPlantingQualityPreset) return false;
+    if(!setRecordPlantingQualityForKey(key)) return false;
+  }
+  markRecordPlantingFlowBuildingDirty(pallet.building);
+  return true;
+}
+
+function getIncompleteRecordPlantingFlowBuildings(){
+  if(!isRecordPlantingFlowActive()) return [];
+  const selectedBuildings = [...new Set(harvestFillKeys.map(key => parsePalletKey(key).building))]
+    .filter(building => BUILDINGS.includes(building));
+  const completedSet = new Set(recordPlantingCompletedBuildings.map(Number));
+  return selectedBuildings.filter(building => !completedSet.has(building));
+}
+
+function renderRecordPlantingFlow(){
+  const panel = document.getElementById("recordPlantingFlowPanel");
+  const footer = document.getElementById("recordPlantingFlowFooter");
+  const legend = document.getElementById("recordPlantingLegend");
+  const adjustBox = document.querySelector(".recordHarvestAdjustBox");
+  if(!panel || !footer) return;
+  const active = isRecordPlantingFlowActive();
+  panel.hidden = !active;
+  footer.hidden = !active || recordPlantingFlowStage === "building";
+  if(legend){
+    legend.hidden = active
+      ? recordPlantingFlowStage === "building"
+      : recordSelectionMode !== "planting";
+    if(active && recordPlantingFlowStage !== "building"){
+      legend.innerHTML = recordPlantingFlowStage === "quality"
+        ? `
+          <span class="recordLegendItem"><span class="recordLegendSwatch qualityLarge"></span>大きい</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch qualityMedium"></span>中</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch qualitySmall"></span>小さい</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch qualityElongated"></span>徒長</span>
+          <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+        `
+        : (recordPlantingFlowStage === "count"
+          ? `
+            <span class="recordLegendItem"><span class="recordLegendSwatch count12"></span>12植え</span>
+            <span class="recordLegendItem"><span class="recordLegendSwatch count16"></span>16植え</span>
+            <span class="recordLegendItem"><span class="recordLegendSwatch count20"></span>20植え</span>
+            <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+          `
+          : `
+            <span class="recordLegendItem"><span class="recordLegendSwatch selectable"></span>選択可能</span>
+            <span class="recordLegendItem"><span class="recordLegendSwatch selected"></span>苗植え場所</span>
+            <span class="recordLegendItem"><span class="recordLegendSwatch unavailable"></span>選択不可</span>
+          `);
+    }
+  }
+  RECORD_PLANTING_FLOW_STAGES.forEach(stage => adjustBox?.classList.toggle(`recordPlantingFlowStage-${stage}`, active && recordPlantingFlowStage === stage));
+  if(!active){
+    panel.innerHTML = "";
+    footer.innerHTML = "";
+    return;
+  }
+
+  const stepLabels = { building: "棟", location: "場所", count: "植え付け数", quality: "品質" };
+  const currentIndex = RECORD_PLANTING_FLOW_STAGES.indexOf(recordPlantingFlowStage);
+  const stepsHtml = RECORD_PLANTING_FLOW_STAGES.map((stage, index) => `
+    <span class="recordPlantingFlowStep${index === currentIndex ? " is-active" : ""}${index < currentIndex ? " is-done" : ""}">
+      <span>${index + 1}</span>${stepLabels[stage]}
+    </span>
+  `).join("");
+
+  let bodyHtml = "";
+  if(recordPlantingFlowStage === "building"){
+    const candidates = getRecordPlantingFlowCandidateBuildings();
+    const completedSet = new Set(recordPlantingCompletedBuildings.map(Number));
+    const buttons = candidates.map(building => {
+      const selectedCount = getRecordPlantingFlowKeys(building).length;
+      const completed = completedSet.has(building);
+      return `<button type="button" class="recordPlantingFlowBuildingBtn${completed ? " is-complete" : ""}"
+        data-ui-click="selectRecordPlantingFlowBuilding" data-ui-number="${building}">
+        <strong>${building}号棟</strong><span>${selectedCount}枚${completed ? " ・ 完了" : ""}</span>
+      </button>`;
+    }).join("");
+    bodyHtml = `
+      <div class="recordPlantingFlowHeading">苗植えする棟を選択</div>
+      <div class="recordPlantingFlowHint">棟ごとに、場所・植え付け数・品質を設定します</div>
+      <div class="recordPlantingFlowBuildings">${buttons || `<div class="recordPlantingFlowEmpty">苗植えできる棟がありません</div>`}</div>
+    `;
+  }else{
+    const building = Number(recordPlantingFlowBuilding);
+    const selectedCount = getRecordPlantingFlowKeys(building).length;
+    const headings = {
+      location: "苗植えした場所を選択",
+      count: "植え付け数を場所ごとに設定",
+      quality: "品質を場所ごとに設定"
+    };
+    const hints = {
+      location: "ベッドをタップし、実際に苗植えしたパレットを選びます",
+      count: "12植え・16植え・20植えを選び、変更する場所をタップします",
+      quality: `品質を選び、その品質の場所をタップします。未設定は「${getQualityTagLabel(getRecordPlantingDefaultQualityTag())}」で保存します`
+    };
+    const qualityHtml = recordPlantingFlowStage === "quality" ? `
+      <div class="recordPlantingFlowQualityButtons" role="group" aria-label="苗の品質">
+        ${RECORD_PLANTING_FLOW_QUALITY_TAGS.map(tag => `<button type="button" class="recordPlantingFlowQualityBtn quality-${tag}${recordPlantingQualityPreset === tag ? " is-active" : ""}"
+          data-ui-click="setRecordPlantingQualityPreset" data-ui-arg="${tag}" aria-pressed="${recordPlantingQualityPreset === tag}">${getQualityTagLabel(tag)}</button>`).join("")}
+      </div>
+      <button type="button" class="recordPlantingFlowApplyAllBtn" data-ui-click="applyRecordPlantingQualityPresetToBuilding">
+        ${building}号棟の選択場所すべてに適用
+      </button>
+    ` : "";
+    bodyHtml = `
+      <div class="recordPlantingFlowStageHeader"><strong>${building}号棟</strong><span>${selectedCount}枚選択</span></div>
+      <div class="recordPlantingFlowHeading">${headings[recordPlantingFlowStage]}</div>
+      <div class="recordPlantingFlowHint">${hints[recordPlantingFlowStage]}</div>
+      ${qualityHtml}
+    `;
+  }
+  panel.innerHTML = `<div class="recordPlantingFlowSteps" aria-label="苗植え記録の工程">${stepsHtml}</div><div class="recordPlantingFlowBody">${bodyHtml}</div>`;
+
+  const footerActions = {
+    location: ["building", "棟選択に戻る", "count", "植え付け数へ"],
+    count: ["location", "場所選択に戻る", "quality", "品質へ"],
+    quality: ["count", "植え付け数に戻る", "finish", "この棟を終了"]
+  }[recordPlantingFlowStage];
+  footer.innerHTML = footerActions ? `
+    <button type="button" class="recordPlantingFlowBackBtn" data-ui-click="moveRecordPlantingFlowToStage" data-ui-arg="${footerActions[0]}">${footerActions[1]}</button>
+    <button type="button" class="recordPlantingFlowNextBtn" data-ui-click="${footerActions[2] === "finish" ? "finishRecordPlantingFlowBuilding" : "moveRecordPlantingFlowToStage"}"
+      ${footerActions[2] === "finish" ? "" : `data-ui-arg="${footerActions[2]}"`}>${footerActions[3]}</button>
+  ` : "";
+}
+
 function updateRecordPlantingCountPresetUi(){
   const toolbar = document.getElementById("recordPlantingCountPreset");
   const isPlantingMode = recordSelectionMode === "planting";
-  if(toolbar) toolbar.hidden = !isPlantingMode;
+  const showToolbar = isPlantingMode && (!isRecordPlantingFlowActive() || recordPlantingFlowStage === "count");
+  if(toolbar) toolbar.hidden = !showToolbar;
+  const applyButton = toolbar?.querySelector(".recordPlantingCountApplyBtn");
+  if(applyButton) applyButton.hidden = isRecordPlantingFlowActive();
+  const title = toolbar?.querySelector(".recordPlantingCountPresetTitle");
+  const hint = toolbar?.querySelector(".recordPlantingCountPresetHint");
+  if(title) title.textContent = isRecordPlantingFlowActive()
+    ? "植え付け数を選択"
+    : "選ぶパレットの植え付け数";
+  if(hint) hint.textContent = isRecordPlantingFlowActive()
+    ? "株数を選び、配置図で変更する場所をタップ"
+    : "選択済みでも、別の株数でタップすると上書きできます";
   document.querySelectorAll("[data-record-planting-count]").forEach(button => {
     const active = Number(button.dataset.recordPlantingCount) === recordPlantingCountPreset;
     button.classList.toggle("active", active);
@@ -146,7 +469,9 @@ function updateRecordPlantingCountPresetUi(){
   });
   const summary = document.getElementById("recordPlantingCountSummary");
   if(summary){
-    const distribution = getRecordPlantingCountDistribution();
+    const distribution = getRecordPlantingCountDistribution(
+      isRecordPlantingFlowActive() ? getRecordPlantingFlowKeys() : harvestFillKeys
+    );
     const parts = [12, 16, 20]
       .filter(count => distribution[count] > 0)
       .map(count => `${count}植え×${distribution[count]}`);
@@ -1461,13 +1786,14 @@ function enterHarvestRecordMode(){
   plantingRecordDraft = null;
   recordPlantingCountPreset = 20;
   recordPlantingCountsByPallet = {};
+  resetRecordPlantingFlow();
   recordPlantingSummaryEdited = false;
   const input = document.getElementById("recordActualSeedlingTrayCountInput");
   if(input) delete input.dataset.userEdited;
   refreshRecordModeUi();
 }
 
-function enterPlantingRecordMode(record){
+function enterPlantingRecordMode(record, options = {}){
   if(!record) return;
   closeRecordFloatingUi();
   recordSelectionMode = "planting";
@@ -1476,6 +1802,7 @@ function enterPlantingRecordMode(record){
   recordPlantingSummaryEdited = false;
   editingHarvestRecordId = null;
   applyPlantingRecordDraft(record);
+  if(!options.resumeFlow || !recordPlantingFlowEnabled) initializeRecordPlantingFlow();
   if(harvestFillKeys.length){
     recalcHarvestSummary();
   }else{
@@ -1505,6 +1832,7 @@ function refreshRecordModeUi(){
   const plantingStageSection = document.getElementById("recordPlantingStageSection");
   const plantingActionCard = document.querySelector("#recordPlantingStageSection .plantingActionCard");
   const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
+  const qualityMemoSection = document.getElementById("recordQualityMemoSection");
   const qualityMemoLabel = document.getElementById("recordQualityMemoLabel");
   const qualityMemoMediumChoice = document.getElementById("qualityMemoMediumChoice");
   const qualityMemoChipChoice = document.getElementById("qualityMemoChipChoice");
@@ -1574,6 +1902,7 @@ function refreshRecordModeUi(){
   if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(plantingLegend) plantingLegend.hidden = !isPlantingMode;
   updateRecordPlantingCountPresetUi();
+  renderRecordPlantingFlow();
   renderRecordBuildingDisplayControls();
   if(discardEditButton) discardEditButton.hidden = !isEditing;
   if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
@@ -1584,7 +1913,7 @@ function refreshRecordModeUi(){
       ? (lockPlantingDate
           ? "長期履歴の繰越基準を保つため、日付以外を編集できます。"
           : "保存済みの苗植え記録を編集中です。")
-      : "実際に苗植えした場所を選択してください。";
+      : "棟を選び、場所・植え付け数・品質の順に設定してください。";
     if(button) button.textContent = editingPlantingEventId
       ? "苗植え記録を更新して送信する"
       : "苗植え場所を記録して送信する";
@@ -1592,6 +1921,7 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = true;
     if(plantingStageSection) plantingStageSection.hidden = false;
     if(harvestMemoSection) harvestMemoSection.hidden = true;
+    if(qualityMemoSection) qualityMemoSection.hidden = isRecordPlantingFlowActive();
     if(qualityMemoLabel) qualityMemoLabel.textContent = "苗の品質メモ（任意）";
     if(actualLossField) actualLossField.hidden = true;
     updateRecordSeedlingDiffDisplay();
@@ -1604,6 +1934,7 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
+    if(qualityMemoSection) qualityMemoSection.hidden = false;
     if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
     if(actualLossField) actualLossField.hidden = false;
   }

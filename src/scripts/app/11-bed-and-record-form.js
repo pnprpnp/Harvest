@@ -531,6 +531,21 @@ function toggleRecordPallet(building, bed, number){
   const key = getPalletKey(building, bed, number);
   const recordedSet = getRecordTabRecordedPalletSet();
 
+  const flowAssignmentChanged = applyRecordPlantingFlowAssignment(key);
+  if(flowAssignmentChanged !== null){
+    if(flowAssignmentChanged){
+      recalcHarvestSummary();
+      renderHarvestSelectionMapsForActiveTab();
+      renderForecastSummary();
+      syncRecordPlantingSummaryFromSelection();
+      updateRecordActualLoss();
+      updateRecordPlantingCountPresetUi();
+      renderRecordPlantingFlow();
+      scheduleHarvestStateSave();
+    }
+    return;
+  }
+
   if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key, { fast: true })){
     showToast("苗植え場所は、今回収穫した場所か前回苗植えしなかった場所だけ選択できます");
     return;
@@ -544,6 +559,7 @@ function toggleRecordPallet(building, bed, number){
   const fillIndex = harvestFillKeys.indexOf(key);
   if(fillIndex >= 0){
     if(recordSelectionMode === "planting"
+      && !isRecordPlantingFlowActive()
       && getPlantingCountForSelectedKey(key) !== recordPlantingCountPreset){
       const nextCounts = {
         ...recordPlantingCountsByPallet,
@@ -564,7 +580,11 @@ function toggleRecordPallet(building, bed, number){
       return;
     }
     harvestFillKeys.splice(fillIndex, 1);
-    if(recordSelectionMode === "planting") removeRecordPlantingCountForKey(key);
+    if(recordSelectionMode === "planting"){
+      removeRecordPlantingCountForKey(key);
+      removeRecordPlantingQualityForKey(key);
+      markRecordPlantingFlowBuildingDirty(building);
+    }
     recalcHarvestSummary();
     renderHarvestSelectionMapsForActiveTab();
     renderForecastSummary();
@@ -579,7 +599,10 @@ function toggleRecordPallet(building, bed, number){
       return;
     }
     harvestFillKeys.push(key);
-    if(recordSelectionMode === "planting") setRecordPlantingCountForKey(key);
+    if(recordSelectionMode === "planting"){
+      setRecordPlantingCountForKey(key);
+      markRecordPlantingFlowBuildingDirty(building);
+    }
     sortHarvestFillKeys();
     recalcHarvestSummary();
     renderHarvestSelectionMapsForActiveTab();
@@ -709,10 +732,16 @@ function drawRecordBeds(){
   if(!container) return;
   container.innerHTML = "";
   renderRecordBuildingDisplayControls();
+  renderRecordPlantingFlow();
   const recordedSet = getRecordTabRecordedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
-  const buildings = getRecordMapBuildings(plantingAllowedSet);
+  const allBuildings = getRecordMapBuildings(plantingAllowedSet);
+  const buildings = isRecordPlantingFlowActive()
+    ? (recordPlantingFlowStage !== "building" && allBuildings.includes(Number(recordPlantingFlowBuilding))
+        ? [Number(recordPlantingFlowBuilding)]
+        : [])
+    : allBuildings;
   const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
   const hasPartialHarvestRecords = recordSelectionMode !== "planting"
     && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
@@ -722,6 +751,7 @@ function drawRecordBeds(){
     : null;
 
   if(!buildings.length){
+    if(isRecordPlantingFlowActive() && recordPlantingFlowStage === "building") return;
     const empty = document.createElement("div");
     empty.className = "recordBuildingMapEmpty";
     empty.textContent = recordSelectionMode === "planting"
@@ -789,6 +819,8 @@ function drawRecordBeds(){
         recordedSet,
         plantingAllowedSet,
         plantingCountsByPallet: recordPlantingCountsByPallet,
+        plantingFlowStage: isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",
+        plantingQualityByPallet: getRecordPlantingFlowQualityByPallet(),
         hasPartialHarvestRecords,
         targetDate,
         partialHarvestSourceRecords,
@@ -805,9 +837,12 @@ function drawRecordBeds(){
         .filter(count => plantingDistribution[count] > 0)
         .map(count => `${count}×${plantingDistribution[count]}`)
         .join("/");
+      const qualityText = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
+        ? formatPlantingQualityDistribution(bedSelectedKeys, getRecordPlantingFlowQualityByPallet())
+        : "";
       counts.innerHTML = plantingAllowedSet
-        ? (plantingCountText
-            ? `<span class="recordBedOverviewCountBreakdown">${plantingCountText}</span>`
+        ? ((qualityText || plantingCountText)
+            ? `<span class="recordBedOverviewCountBreakdown">${escapeHtml(qualityText || plantingCountText)}</span>`
             : "")
         : `
           <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
@@ -1201,6 +1236,11 @@ async function handleRecordActualSeedlingTrayCountBlur(input){
         ...harvestFillKeys
       ];
       harvestFillKeys = getSequentialPlantingPalletKeysWithinCapacity(candidateKeys, record);
+      if(isRecordPlantingFlowActive()){
+        recordPlantingCompletedBuildings = [];
+        recordPlantingFlowStage = "building";
+        recordPlantingFlowBuilding = null;
+      }
       refreshAfterHarvestSelectionChanged();
       return;
     }

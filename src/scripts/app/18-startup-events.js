@@ -153,7 +153,7 @@ function resumeStartupPlantingRecord(savedHarvestState){
   const startupPlantingRecord = getStartupPlantingRecordToResume(savedHarvestState);
   if(!startupPlantingRecord) return;
   if(editingPlantingEventId){
-    enterPlantingRecordMode(startupPlantingRecord);
+    enterPlantingRecordMode(startupPlantingRecord, { resumeFlow: true });
     switchTab("record");
     showToast("編集中の苗植え記録を再開しました");
   }else{

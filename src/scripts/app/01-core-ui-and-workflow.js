@@ -249,6 +249,11 @@ let recordAdditionalBuildings = [];
 let recordSelectionMode = "harvest";
 let recordPlantingCountPreset = 20;
 let recordPlantingCountsByPallet = {};
+let recordPlantingFlowEnabled = false;
+let recordPlantingFlowStage = "building";
+let recordPlantingFlowBuilding = null;
+let recordPlantingCompletedBuildings = [];
+let recordPlantingQualityPreset = "medium";
 let activePlantingRecordId = null;
 let plantingRecordDraft = null;
 let plantingAllowedPalletSetCache = null;
@@ -1006,6 +1011,11 @@ function saveHarvestStateToStorage(options = {}){
     recordSelectionMode,
     recordPlantingCountPreset,
     recordPlantingCountsByPallet,
+    recordPlantingFlowEnabled,
+    recordPlantingFlowStage,
+    recordPlantingFlowBuilding,
+    recordPlantingCompletedBuildings,
+    recordPlantingQualityPreset,
     activePlantingRecordId,
     editingPlantingEventId,
     plantingRecordDraft,
@@ -1142,6 +1152,19 @@ function loadHarvestStateFromStorage(){
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
       recordPlantingCountPreset: normalizePlantingCountPreset(parsed.recordPlantingCountPreset),
       recordPlantingCountsByPallet: normalizePlantingCountsByPallet(parsed.recordPlantingCountsByPallet, parsed.harvestFillKeys),
+      recordPlantingFlowEnabled: parsed.recordPlantingFlowEnabled === true,
+      recordPlantingFlowStage: ["building", "location", "count", "quality"].includes(parsed.recordPlantingFlowStage)
+        ? parsed.recordPlantingFlowStage
+        : "building",
+      recordPlantingFlowBuilding: BUILDINGS.includes(Number(parsed.recordPlantingFlowBuilding))
+        ? Number(parsed.recordPlantingFlowBuilding)
+        : null,
+      recordPlantingCompletedBuildings: Array.isArray(parsed.recordPlantingCompletedBuildings)
+        ? [...new Set(parsed.recordPlantingCompletedBuildings.map(Number).filter(building => BUILDINGS.includes(building)))]
+        : [],
+      recordPlantingQualityPreset: ["large", "medium", "small", "elongated"].includes(normalizeQualityTag(parsed.recordPlantingQualityPreset))
+        ? normalizeQualityTag(parsed.recordPlantingQualityPreset)
+        : "medium",
       activePlantingRecordId: Number.isFinite(Number(parsed.activePlantingRecordId)) ? Number(parsed.activePlantingRecordId) : null,
       editingPlantingEventId: getSafePositiveRecordId(parsed.editingPlantingEventId),
       plantingRecordDraft: normalizePlantingRecordDraft(parsed.plantingRecordDraft),
@@ -1724,7 +1747,7 @@ function capturePlantingRecordDraft(){
     recordPlantingSummaryEdited,
     qualityMemo: normalizeOptionalQualityMemo(getSelectedQualityMemo()),
     qualityMemoByPallet: normalizeQualityMemoByPallet(
-      getActivePlantingRecord()?.qualityMemoByPallet,
+      plantingRecordDraft?.qualityMemoByPallet,
       harvestFillKeys
     )
   };
