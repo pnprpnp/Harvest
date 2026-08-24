@@ -343,6 +343,7 @@ function renderRecordPlantingFlow(){
   const adjustBox = document.querySelector(".recordHarvestAdjustBox");
   if(!panel || !footer) return;
   const active = isRecordPlantingFlowActive();
+  updateRecordPlantingCountPresetUi();
   panel.hidden = !active;
   footer.hidden = !active || recordPlantingFlowStage === "building";
   if(legend){
