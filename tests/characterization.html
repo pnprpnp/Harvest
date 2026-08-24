@@ -518,6 +518,9 @@
           "extractSpreadsheetId",
           "getSpreadsheet",
           "setupHarvestSpreadsheetId",
+          "buildWorkerCalculationSnapshot",
+          "setupHarvestWorkerApiToken",
+          "assertApiOperationAllowedForRole",
           "getAppsScriptContractSnapshot",
           "resetAppsScriptTestState"
         ];
@@ -611,6 +614,7 @@
 
         const operationCases = [
           [app.buildGoogleSheetUpdateCheckPayload(config, { syncRevision: 1 }), "checkUpdates"],
+          [app.buildGoogleSheetWorkerSnapshotPayload(config), "workerSnapshot"],
           [app.buildGoogleSheetCombinedSyncPayload(config, { syncRevision: 1 }), "syncAll"],
           [app.buildGoogleSheetRecordPayload(record, config), "saveRecord"],
           [app.buildGoogleSheetBatchPayload([record], config), "saveRecordBatch"],
@@ -631,6 +635,37 @@
             `${expectedOperation}のAPI操作が一致しません`
           );
         });
+      });
+
+      await runTest("作業者用トークンでは最小同期と日々の保存だけを許可する", () => {
+        [
+          "workerSnapshot",
+          "saveRecord",
+          "saveRecordBatch",
+          "savePlantingEvent",
+          "getMonitorContent",
+          "saveMonitorContent"
+        ].forEach(operation => {
+          appsScript.assertApiOperationAllowedForRole(operation, "worker");
+        });
+        [
+          "checkUpdates",
+          "syncAll",
+          "listRecords",
+          "listPlantingEvents",
+          "deleteRecord",
+          "restoreRecord",
+          "deletePlantingEvent",
+          "restorePlantingEvent",
+          "listMonitorHistory"
+        ].forEach(operation => {
+          assertThrows(
+            () => appsScript.assertApiOperationAllowedForRole(operation, "worker"),
+            "管理者だけ",
+            operation + "を作業者用トークンで許可しています"
+          );
+        });
+        appsScript.assertApiOperationAllowedForRole("syncAll", "admin");
       });
 
       await runTest("ブラウザーが送る収穫記録をApps Script側で正規化できる", () => {
@@ -2114,6 +2149,67 @@
         }, "メインタブの定義が違います");
         assertEqual(app.normalizeMainTabName("settings"), "forecast", "旧設定タブの移動先が変わりました");
         assertEqual(app.normalizeMainTabName("unknown"), "", "不明なタブを受け入れています");
+      });
+
+      await runTest("作業者モードでは日々の作業だけを表示し記録領域を分離する", () => {
+        const previous = comparable(app.eval(`({
+          role: appAccessRole,
+          unlocked: protectedAccessUnlocked,
+          storedRole: harvestnaviLocalStorage.getItem(APP_ACCESS_ROLE_KEY),
+          storedAuth: harvestnaviLocalStorage.getItem(PROTECTED_ACCESS_AUTH_KEY)
+        })`));
+        try{
+          const state = comparable(app.eval(`(() => {
+            setAppAccessRole(APP_ACCESS_ROLE_WORKER, { reloadData:false });
+            saveProtectedAccessAuth(true);
+            refreshProtectedAccessState();
+            return {
+              role: appAccessRole,
+              dashboardButtonHidden: document.getElementById("dashboardTabBtn").hidden,
+              dashboardMenuHidden: document.getElementById("dashboardStartDayMenuSetting").hidden,
+              dashboardRejected: normalizeMainTabName("dashboard") === "",
+              recordAccepted: normalizeMainTabName("record") === "record"
+                && ensureProtectedTabAccess("record"),
+              recordSaveAllowed: ensureProtectedOperationAccess("記録の保存", { workerAllowed:true }),
+              adminActionBlocked: !ensureProtectedOperationAccess("記録の編集"),
+              staleAdminUnlockIgnored: protectedAccessUnlocked === false,
+              dashboardPreloadSkipped: scheduleDashboardPreloadDuringIdle() === false,
+              recordsStorageSeparated: getActiveRecordsStorageKey() === WORKER_RECORDS_KEY
+                && getActiveRecordsStorageKey() !== RECORDS_KEY,
+              plantingStorageSeparated: getActivePlantingEventsStorageKey() === WORKER_PLANTING_EVENTS_KEY
+                && getActivePlantingEventsStorageKey() !== PLANTING_EVENTS_KEY
+            };
+          })()`));
+          assertDeepEqual(state, {
+            role: "worker",
+            dashboardButtonHidden: true,
+            dashboardMenuHidden: true,
+            dashboardRejected: true,
+            recordAccepted: true,
+            recordSaveAllowed: true,
+            adminActionBlocked: true,
+            staleAdminUnlockIgnored: true,
+            dashboardPreloadSkipped: true,
+            recordsStorageSeparated: true,
+            plantingStorageSeparated: true
+          }, "作業者モードの表示・権限・保存領域が正しくありません");
+        }finally{
+          app.eval(`
+            appAccessRole = normalizeAppAccessRole(${JSON.stringify(previous.role)});
+            protectedAccessUnlocked = ${previous.unlocked ? "true" : "false"};
+            if(${JSON.stringify(previous.storedRole)} === null){
+              harvestnaviLocalStorage.removeItem(APP_ACCESS_ROLE_KEY);
+            }else{
+              harvestnaviLocalStorage.setItem(APP_ACCESS_ROLE_KEY, ${JSON.stringify(previous.storedRole)});
+            }
+            if(${JSON.stringify(previous.storedAuth)} === null){
+              harvestnaviLocalStorage.removeItem(PROTECTED_ACCESS_AUTH_KEY);
+            }else{
+              harvestnaviLocalStorage.setItem(PROTECTED_ACCESS_AUTH_KEY, ${JSON.stringify(previous.storedAuth)});
+            }
+            applyAppAccessRoleUi();
+          `);
+        }
       });
 
       await runTest("選択中の全メインタブをシミュと同じ色で表示する", () => {
@@ -7590,18 +7686,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "3fda2656", elements: 2209, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "3c50631f", elements: 2278, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "b1f4e3d2", elements: 2278, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "d7c804ce", elements: 2210, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "28906e0f", elements: 2210, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f7192377", elements: 2293, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "abf97008", elements: 2308, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "58ddc42b", elements: 2308, visible: 279, viewport: "390x844" },
-          mobileSettings: { hash: "63b58542", elements: 2308, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "bcd6def3", elements: 2308, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "c4b8c0f7", elements: 2308, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "26aa9917", elements: 2308, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "1bc0cdf4", elements: 2223, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "f77b9ad7", elements: 2292, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "ab532576", elements: 2292, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "f091fe2e", elements: 2224, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "2d989069", elements: 2224, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "49ef7483", elements: 2307, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "e2d85136", elements: 2322, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "51f4db42", elements: 2322, visible: 287, viewport: "390x844" },
+          mobileSettings: { hash: "27ef62fa", elements: 2322, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "f05def69", elements: 2322, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "47240bcb", elements: 2322, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "11160047", elements: 2322, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

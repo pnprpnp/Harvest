@@ -82,7 +82,7 @@ function getPartialHarvestRemainingCaseEstimate(building, beds, cases, date, sou
 }
 
 async function savePartialHarvestRecord(){
-  if(!ensureProtectedOperationAccess("各パレット部分収穫の保存")) return;
+  if(!ensureProtectedOperationAccess("各パレット部分収穫の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("各パレット部分収穫を保存", { allowBackgroundSend: true })) return;
   const date = document.getElementById("recordDateInput").value;
   const cases = clampNumber(document.getElementById("partialHarvestCasesInput")?.value || 0, 0, 999999, 0);

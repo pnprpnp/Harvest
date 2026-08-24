@@ -1,4 +1,7 @@
 function populateSettingsForm(){
+  document.querySelectorAll('input[name="appAccessRole"]').forEach(input => {
+    input.checked = input.value === appAccessRole;
+  });
   document.getElementById("defaultLossRateInput").value = settings.defaultLossRate;
   document.getElementById("defaultYieldInput").value = String(settings.defaultYieldPerPallet);
   document.getElementById("defaultPlantingCountInput").value = String(settings.defaultPlantingCount);
@@ -228,6 +231,9 @@ function saveSettings(){
   }
   const previousSettings = deepClone(settings);
   const nextSettings = readSettingsForm();
+  const requestedAccessRole = normalizeAppAccessRole(
+    document.querySelector('input[name="appAccessRole"]:checked')?.value
+  );
   if(!hasPresetAccessPassword()){
     showToast("固定パスワードが未設定です");
     return false;
@@ -238,11 +244,23 @@ function saveSettings(){
   appendSettingsChangeMemo(previousSettings, nextSettings);
   settings = nextSettings;
   saveSettingsToStorage();
+  const accessRoleChanged = setAppAccessRole(requestedAccessRole);
   settingsDirty = false;
   clearHarvestPrediction();
   saveHarvestStateToStorage();
   populateSettingsForm();
-  if(unlockResult === true){
+  if(accessRoleChanged && isWorkerMode()){
+    syncAccessProtectionDetails({ forceClosed: true });
+    showToast("作業者モードへ切り替えました");
+    setTimeout(() => importRecordsFromGoogleSheet({
+      silentErrors: false,
+      silentNoChange: true,
+      emptyMessage: "作業用データを更新しました"
+    }), 0);
+  }else if(accessRoleChanged){
+    syncAccessProtectionDetails({ forceClosed: true });
+    showToast("管理者モードへ切り替えました");
+  }else if(unlockResult === true){
     syncAccessProtectionDetails({ forceClosed: true });
     showToast("設定を保存してロックを解除しました");
   }else if(unlockResult === false){

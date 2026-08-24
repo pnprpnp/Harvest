@@ -694,7 +694,7 @@ async function restoreDeletedRecord(id, recordUuid = ""){
     setGoogleSheetSyncStatus(restoredRecord, restoredState);
     if(!entry.sheetDeleted){
       // アプリだけで隠していた間のremote更新を取りこぼさないよう、次回は全差分を確認する。
-      harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+      harvestnaviLocalStorage.removeItem(getActiveGoogleSheetSyncRevisionStorageKey());
     }
     refreshRecordDataUi();
     showToast(entry.sheetDeleted ? "アプリとスプレッドシートに復元しました" : "記録を復元しました");

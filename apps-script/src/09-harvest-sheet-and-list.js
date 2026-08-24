@@ -1198,6 +1198,79 @@ function compactHarvestRecordForApi(record) {
   return compact;
 }
 
+function compactWorkerHarvestRecordForApi(record) {
+  const compact = compactHarvestRecordForApi(record);
+  delete compact.memo;
+  delete compact.qualityMemo;
+  delete compact.qualityText;
+  delete compact.plantingAge;
+  delete compact.plantingSummary;
+  delete compact.plantingCaseInstruction;
+  return compact;
+}
+
+function buildWorkerCalculationSnapshot(body) {
+  if (Number(body && body.lookbackDays) !== WORKER_CALCULATION_LOOKBACK_DAYS ||
+    Number(body && body.recentFullRecordCount) !== WORKER_RECENT_FULL_RECORD_COUNT) {
+    throw new Error("作業者用データの取得条件が一致しません");
+  }
+
+  // 計算側は「35日前」を含めるため、当日を含む日数指定では1日加算する。
+  const recentDays = WORKER_CALCULATION_LOOKBACK_DAYS + 1;
+  const recentRecords = listHarvestRecordsForSync(normalizeRecordListOptions({
+    recentDays,
+    limit: RECORD_LIST_LIMIT,
+    syncMode: false
+  })).records || [];
+  const latestCandidates = listHarvestRecordsForSync(normalizeRecordListOptions({
+    limit: RECORD_LIST_LIMIT,
+    syncMode: false
+  })).records || [];
+  const latestFullRecords = latestCandidates.filter(record => (
+    record && record.type === "fullHarvest" &&
+    getHarvestRecordPalletKeysForPlantingSource(record).length > 0
+  )).slice(0, WORKER_RECENT_FULL_RECORD_COUNT);
+
+  const recordsByIdentity = {};
+  recentRecords.concat(latestFullRecords).forEach(record => {
+    const recordUuid = String(record && record.recordUuid || "").trim().toLowerCase();
+    const identity = recordUuid || "id:" + String(record && record.id || "");
+    if (identity && identity !== "id:") recordsByIdentity[identity] = record;
+  });
+  const records = Object.keys(recordsByIdentity).map(identity => (
+    compactWorkerHarvestRecordForApi(recordsByIdentity[identity])
+  ));
+  const events = listPlantingEventsForApi({
+    recentDays,
+    limit: PLANTING_EVENT_LIST_LIMIT,
+    fallbackSeedlingLossRate: body.fallbackSeedlingLossRate,
+    fallbackSeedlingPattern: body.fallbackSeedlingPattern,
+    fallbackPlantingCountsByBed: body.fallbackPlantingCountsByBed
+  });
+  // 直近期間に苗植えがない場合も、1号棟の次回開始位置と苗の持越しを復元する。
+  if (!events.length) {
+    events.push.apply(events, listPlantingEventsForApi({
+      limit: 1,
+      fallbackSeedlingLossRate: body.fallbackSeedlingLossRate,
+      fallbackSeedlingPattern: body.fallbackSeedlingPattern,
+      fallbackPlantingCountsByBed: body.fallbackPlantingCountsByBed
+    }));
+  }
+
+  const response = {
+    snapshotMode: "worker",
+    lookbackDays: WORKER_CALCULATION_LOOKBACK_DAYS,
+    recentFullRecordCount: WORKER_RECENT_FULL_RECORD_COUNT,
+    generatedAt: new Date().toISOString(),
+    records,
+    events
+  };
+  if (JSON.stringify(response).length > COMBINED_SYNC_API_RESPONSE_CHAR_LIMIT) {
+    throw new Error("作業者用データの応答が大きすぎます");
+  }
+  return response;
+}
+
 function buildHarvestRecordListApiResult(syncResult) {
   const allRecords = (syncResult.records || []).map(compactHarvestRecordForApi);
   const deletedRecords = syncResult.deletedRecords || [];

@@ -1459,7 +1459,7 @@ function resetPlantingRecordChanges(){
     clearRecordForm();
     return;
   }
-  if(!ensureProtectedOperationAccess("収穫記録に戻る")) return;
+  if(!ensureProtectedOperationAccess("収穫記録に戻る", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("収穫記録に戻る操作を")) return;
 
   hideBedActionMenu();

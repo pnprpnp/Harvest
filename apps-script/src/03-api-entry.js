@@ -4,13 +4,14 @@ function doPost(e) {
   let apiStage = "リクエスト本文の確認中";
   try {
     const body = parseApiRequestBody(e);
+    apiStage = "操作の種類の確認中";
+    const operation = resolveApiOperation(body);
     apiStage = "連携トークンの確認中";
     const fastCheckPropertyValues = isHarvestRevisionFastCheckCandidate(body)
       ? PropertiesService.getScriptProperties().getProperties()
       : null;
-    assertApiAuthenticated(body.token, fastCheckPropertyValues);
-    apiStage = "操作の種類の確認中";
-    const operation = resolveApiOperation(body);
+    const accessRole = assertApiAuthenticated(body.token, fastCheckPropertyValues);
+    assertApiOperationAllowedForRole(operation, accessRole);
 
     if (operation === "checkUpdates") {
       apiStage = "同期番号の高速確認中";
@@ -62,6 +63,14 @@ function doPost(e) {
         deletedEventIds: includePlanting ? listDeletedPlantingEventIds() : [],
         plantingHasMore: plantingSyncResult ? plantingSyncResult.hasMore : false,
         plantingNextCursor: plantingSyncResult ? plantingSyncResult.nextCursor : null
+      });
+    }
+
+    if (operation === "workerSnapshot") {
+      apiStage = "作業者用の計算データを読み込み中";
+      return jsonResponse({
+        ok: true,
+        ...buildWorkerCalculationSnapshot(body)
       });
     }
 
@@ -318,6 +327,48 @@ function regenerateHarvestApiToken() {
   return setupHarvestApiToken(true);
 }
 
+/**
+ * 作業者端末用の制限トークンを発行します。
+ * Apps Script のエディタから一度だけ実行し、作業者端末の連携トークンへ設定してください。
+ */
+function setupHarvestWorkerApiToken(forceRegenerate) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const current = String(properties.getProperty(WORKER_API_TOKEN_PROPERTY_NAME) || "").trim();
+    if (!forceRegenerate && current.length >= API_TOKEN_MIN_LENGTH && current.length <= API_TOKEN_MAX_LENGTH) {
+      console.log(WORKER_API_TOKEN_PROPERTY_NAME + ": " + current);
+      return current;
+    }
+
+    const entropy = [
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      String(Date.now()),
+      String(Math.random())
+    ].join("|");
+    const bytes = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.SHA_256,
+      entropy,
+      Utilities.Charset.UTF_8
+    );
+    const token = Utilities.base64EncodeWebSafe(bytes).replace(/=+$/g, "");
+    properties.setProperty(WORKER_API_TOKEN_PROPERTY_NAME, token);
+    console.log(WORKER_API_TOKEN_PROPERTY_NAME + ": " + token);
+    return token;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function regenerateHarvestWorkerApiToken() {
+  return setupHarvestWorkerApiToken(true);
+}
+
 function parseApiRequestBody(e) {
   const postData = e && e.postData;
   const raw = postData && typeof postData.contents === "string" ? postData.contents : "";
@@ -350,6 +401,7 @@ function parseApiRequestBody(e) {
 function resolveApiOperation(body) {
   const operationByAction = {
     checkUpdates: "checkUpdates",
+    workerSnapshot: "workerSnapshot",
     syncAll: "syncAll",
     listRecords: "listRecords",
     deleteRecord: "deleteRecord",
@@ -364,6 +416,7 @@ function resolveApiOperation(body) {
   };
   const operationByType = {
     "harvest-update-check": "checkUpdates",
+    "harvest-worker-snapshot": "workerSnapshot",
     "harvest-sync-all": "syncAll",
     "harvest-record": "saveRecord",
     "harvest-record-batch": "saveRecordBatch",
@@ -424,15 +477,19 @@ function normalizeOptionalRequestSelector(value, label) {
 }
 
 function assertApiAuthenticated(providedToken, propertyValues) {
-  const expectedToken = getConfiguredApiToken(propertyValues);
+  const expectedAdminToken = getConfiguredApiToken(propertyValues);
   const hasValidFormat = typeof providedToken === "string" && providedToken.length <= API_TOKEN_MAX_LENGTH;
   const candidate = typeof providedToken === "string"
     ? providedToken.slice(0, API_TOKEN_MAX_LENGTH)
     : "";
-  const matches = constantTimeTokenEquals(candidate, expectedToken);
-  if (!hasValidFormat || !matches) {
-    throw new Error("認証できませんでした");
-  }
+  const adminMatches = constantTimeTokenEquals(candidate, expectedAdminToken);
+  if (hasValidFormat && adminMatches) return "admin";
+
+  const expectedWorkerToken = getConfiguredWorkerApiToken(propertyValues);
+  const workerMatches = constantTimeTokenEquals(candidate, expectedWorkerToken || expectedAdminToken)
+    && !!expectedWorkerToken;
+  if (!hasValidFormat || !workerMatches) throw new Error("認証できませんでした");
+  return "worker";
 }
 
 function getConfiguredApiToken(propertyValues) {
@@ -444,6 +501,33 @@ function getConfiguredApiToken(propertyValues) {
     throw new Error("サーバー認証が未設定です。setupHarvestApiTokenを手動実行してください");
   }
   return token;
+}
+
+function getConfiguredWorkerApiToken(propertyValues) {
+  const tokenValue = isPlainObject(propertyValues)
+    ? propertyValues[WORKER_API_TOKEN_PROPERTY_NAME]
+    : PropertiesService.getScriptProperties().getProperty(WORKER_API_TOKEN_PROPERTY_NAME);
+  const token = String(tokenValue || "").trim();
+  if (!token) return "";
+  if (token.length < API_TOKEN_MIN_LENGTH || token.length > API_TOKEN_MAX_LENGTH) {
+    throw new Error("作業者用のサーバー認証設定が正しくありません");
+  }
+  return token;
+}
+
+function assertApiOperationAllowedForRole(operation, accessRole) {
+  if (accessRole !== "worker") return;
+  const workerOperations = [
+    "workerSnapshot",
+    "saveRecord",
+    "saveRecordBatch",
+    "savePlantingEvent",
+    "getMonitorContent",
+    "saveMonitorContent"
+  ];
+  if (!workerOperations.includes(operation)) {
+    throw new Error("この操作は管理者だけが利用できます");
+  }
 }
 
 function constantTimeTokenEquals(left, right) {

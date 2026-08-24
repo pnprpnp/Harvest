@@ -1011,6 +1011,7 @@ function setAppUpdateAvailabilityNotice(available){
 }
 
 async function checkGoogleSheetUpdateAvailabilitySilently(){
+  if(isWorkerMode()) return;
   if(googleSheetSendState !== "idle" || googleSheetOperationOwner) return;
   const operationSequenceAtStart = googleSheetOperationSequence;
   const config = getValidatedGoogleSheetConfig({ silent: true });
@@ -1524,6 +1525,133 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
   throw new Error("一括同期ページ数が上限を超えています。記録をバックアップして管理者へ連絡してください");
 }
 
+async function fetchGoogleSheetWorkerCalculationSnapshot(config, signal){
+  const response = await fetchGoogleSheetReadRequest(config.url, {
+    method: "POST",
+    mode: "cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: buildValidatedGoogleSheetRequestBody(buildGoogleSheetWorkerSnapshotPayload(config)),
+    signal
+  });
+  const responseText = await response.text();
+  if(!isWithinGoogleSheetResponseLimits(responseText)){
+    throw new Error("作業用データの応答が大きすぎます");
+  }
+  let result;
+  try{
+    result = responseText ? JSON.parse(responseText) : {};
+  }catch(e){
+    throw new Error("作業用データの応答を読み込めません");
+  }
+  if(result.ok !== true){
+    throw new Error(result.message || "作業用データを読み込めませんでした");
+  }
+  if(result.snapshotMode !== "worker" || !Array.isArray(result.records) || !Array.isArray(result.events)){
+    throw new Error("Apps Scriptが作業者用データに対応していません");
+  }
+  if(result.records.length > GOOGLE_SHEET_MAX_LIST_RECORDS
+    || result.events.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS){
+    throw new Error("作業用データの件数が上限を超えています");
+  }
+  return result;
+}
+
+async function importWorkerCalculationSnapshotFromGoogleSheet(config, options = {}){
+  const silentErrors = !!options.silentErrors;
+  const operationOwner = beginGoogleSheetOperation("syncing");
+  if(!operationOwner){
+    if(!silentErrors) showToast(getGoogleSheetOperationBusyMessage("同期"));
+    return false;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_IMPORT_TIMEOUT_MS);
+  let snapshot = null;
+  try{
+    const result = await fetchGoogleSheetWorkerCalculationSnapshot(config, controller.signal);
+    const normalizedRemoteRecords = result.records.map((source, index) => (
+      normalizeImportedRecord(normalizeGoogleSheetRowRecord(source), index)
+    ));
+    if(normalizedRemoteRecords.some(record => !record)){
+      throw new Error("作業用の収穫記録に不正な値があります");
+    }
+    const normalizedRemoteEvents = result.events.map(normalizePlantingEvent);
+    if(normalizedRemoteEvents.some(event => !event)){
+      throw new Error("作業用の苗植え記録に不正な値があります");
+    }
+
+    snapshot = createBackupImportSnapshot();
+    const localRecordStatus = loadGoogleSheetSyncStatus();
+    const localPlantingStatus = loadPlantingEventSyncStatus();
+    const unsentRecordKeys = new Set(records
+      .filter(record => isGoogleSheetRecordUnsent(record, localRecordStatus))
+      .map(getHarvestRecordIdentityKey)
+      .filter(Boolean));
+    const unsentPlantingIds = new Set(plantingEvents
+      .filter(event => isPlantingEventUnsent(event, localPlantingStatus))
+      .map(event => getSafePositiveRecordId(event?.eventId))
+      .filter(value => value !== null));
+
+    const recordResult = reconcileGoogleSheetRecords(result.records, [], {
+      ...options,
+      workerSnapshot: true
+    });
+    const plantingResult = { conflictCount: 0 };
+    const importedEventCount = importPlantingEventsFromSource(result.events, {
+      fromGoogleSheetPaged: true,
+      openingCarryoverAuthoritative: true,
+      deferUiRefresh: true,
+      resultTracker: plantingResult
+    });
+
+    const remoteRecordKeys = new Set(normalizedRemoteRecords
+      .map(getHarvestRecordIdentityKey)
+      .filter(Boolean));
+    const remotePlantingIds = new Set(normalizedRemoteEvents
+      .map(event => getSafePositiveRecordId(event?.eventId))
+      .filter(value => value !== null));
+    records = records.filter(record => {
+      const key = getHarvestRecordIdentityKey(record);
+      return remoteRecordKeys.has(key) || unsentRecordKeys.has(key);
+    });
+    plantingEvents = plantingEvents.filter(event => {
+      const eventId = getSafePositiveRecordId(event?.eventId);
+      return eventId !== null && (remotePlantingIds.has(eventId) || unsentPlantingIds.has(eventId));
+    });
+    saveRecordsToStorage();
+    savePlantingEventsToStorage();
+    syncHarvestPlantingPendingFlags();
+    setRecordSyncAvailabilityNotice(false);
+    refreshRecordDataUi();
+
+    const changedCount = Number(recordResult.changedCount || 0) + Number(importedEventCount || 0);
+    if(!silentErrors && !options.silentNoChange){
+      showToast(options.emptyMessage || "作業用データを更新しました");
+    }
+    return changedCount > 0;
+  }catch(e){
+    if(snapshot){
+      try{
+        restoreBackupImportSnapshot(snapshot);
+      }catch(restoreError){
+        console.error("作業用データ同期失敗後の復元にも失敗しました", restoreError);
+      }
+    }
+    if(silentErrors){
+      console.warn("Worker calculation snapshot sync failed:", e);
+    }else{
+      showRecordImportError(
+        "作業用データを読み込めませんでした。記録は同期前の状態へ戻しています。\n\n詳細: "
+        + String(e?.message || e)
+      );
+    }
+    return false;
+  }finally{
+    clearTimeout(timer);
+    endGoogleSheetOperation(operationOwner);
+  }
+}
+
 async function importRecordsFromGoogleSheet(options = {}){
   const silentErrors = !!options.silentErrors;
   if(editingHarvestRecordId || editingPartialHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
@@ -1532,6 +1660,7 @@ async function importRecordsFromGoogleSheet(options = {}){
   }
   const config = getValidatedGoogleSheetConfig({ silent: silentErrors, showImportError: !silentErrors });
   if(!config) return false;
+  if(isWorkerMode()) return importWorkerCalculationSnapshotFromGoogleSheet(config, options);
   const operationOwner = beginGoogleSheetOperation("syncing");
   if(!operationOwner){
     if(!silentErrors) showToast(getGoogleSheetOperationBusyMessage("同期"));

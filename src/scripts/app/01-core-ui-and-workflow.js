@@ -28,6 +28,17 @@ const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
 const WORKFLOW_BAR_VISIBILITY_KEY = "harvestForecastWorkflowBarVisible_v2";
 const WORKFLOW_TITLE_HINT_SHOWN_KEY = "harvestnaviWorkflowTitleHintShown_v1";
 const WORKFLOW_GUIDE_STATE_KEY = "harvestnaviWorkflowGuideState_v1";
+const APP_ACCESS_ROLE_KEY = "harvestnaviAppAccessRole_v1";
+const APP_ACCESS_ROLE_ADMIN = "admin";
+const APP_ACCESS_ROLE_WORKER = "worker";
+const WORKER_RECORDS_KEY = "harvestnaviWorkerRecords_v1";
+const WORKER_PLANTING_EVENTS_KEY = "harvestnaviWorkerPlantingEvents_v1";
+const WORKER_PLANTING_EVENT_SYNC_STATUS_KEY = "harvestnaviWorkerPlantingEventSyncStatus_v1";
+const WORKER_PLANTING_EVENT_TRASH_KEY = "harvestnaviWorkerPlantingEventTrash_v1";
+const WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestnaviWorkerGoogleSheetSyncStatus_v1";
+const WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestnaviWorkerGoogleSheetSyncRevision_v1";
+const WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestnaviWorkerGoogleSheetSyncConflicts_v1";
+const WORKER_RECORD_TRASH_KEY = "harvestnaviWorkerRecordTrash_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
@@ -140,6 +151,39 @@ const PLANTING_COUNT_BACKFILL_VALUE = 12;
 const PRESET_ACCESS_PASSWORD = "1234";
 const DEFAULT_CASE_PLACEMENT = { front: "", middle: "", back: "" };
 const STANDARD_CASE_PLACEMENT = { front: "", middle: 80, back: 40 };
+
+function normalizeAppAccessRole(value){
+  return value === APP_ACCESS_ROLE_WORKER
+    ? APP_ACCESS_ROLE_WORKER
+    : APP_ACCESS_ROLE_ADMIN;
+}
+
+function loadAppAccessRole(){
+  try{
+    return normalizeAppAccessRole(harvestnaviLocalStorage.getItem(APP_ACCESS_ROLE_KEY));
+  }catch(e){
+    return APP_ACCESS_ROLE_ADMIN;
+  }
+}
+
+let appAccessRole = loadAppAccessRole();
+
+function isWorkerMode(){
+  return appAccessRole === APP_ACCESS_ROLE_WORKER;
+}
+
+function getRoleScopedStorageKey(adminKey, workerKey){
+  return isWorkerMode() ? workerKey : adminKey;
+}
+
+function getActiveRecordsStorageKey(){ return getRoleScopedStorageKey(RECORDS_KEY, WORKER_RECORDS_KEY); }
+function getActivePlantingEventsStorageKey(){ return getRoleScopedStorageKey(PLANTING_EVENTS_KEY, WORKER_PLANTING_EVENTS_KEY); }
+function getActivePlantingEventSyncStatusStorageKey(){ return getRoleScopedStorageKey(PLANTING_EVENT_SYNC_STATUS_KEY, WORKER_PLANTING_EVENT_SYNC_STATUS_KEY); }
+function getActivePlantingEventTrashStorageKey(){ return getRoleScopedStorageKey(PLANTING_EVENT_TRASH_KEY, WORKER_PLANTING_EVENT_TRASH_KEY); }
+function getActiveGoogleSheetSyncStatusStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_STATUS_KEY, WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY); }
+function getActiveGoogleSheetSyncRevisionStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_REVISION_KEY, WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY); }
+function getActiveGoogleSheetSyncConflictsStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_CONFLICTS_KEY, WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY); }
+function getActiveRecordTrashStorageKey(){ return getRoleScopedStorageKey(RECORD_TRASH_KEY, WORKER_RECORD_TRASH_KEY); }
 
 const defaultSettings = {
   defaultLossRate: 0,
@@ -374,6 +418,7 @@ function normalizeLossInput(value){
 }
 
 function isProtectedTab(tabName){
+  if(isWorkerMode()) return tabName === "dashboard";
   return tabName === "record" || tabName === "dashboard";
 }
 
@@ -406,6 +451,10 @@ function saveProtectedAccessAuth(isAuthorized){
 }
 
 function refreshProtectedAccessState(){
+  if(isWorkerMode()){
+    protectedAccessUnlocked = false;
+    return;
+  }
   protectedAccessUnlocked = hasPresetAccessPassword() && loadProtectedAccessAuth();
 }
 
@@ -431,9 +480,13 @@ function updateAccessProtectionStatus(){
     box.textContent = "固定パスワードが未設定です。コード内の PRESET_ACCESS_PASSWORD を設定してください。";
     return;
   }
-  box.textContent = protectedAccessUnlocked
-    ? "この端末では記録・集計のロックが解除済みです。"
-    : "この端末では記録・集計がロック中です。解除用パスワードを入力して保存してください。";
+  if(isWorkerMode()){
+    box.textContent = "この端末は日々の作業用表示です。管理者向けの操作には解除用パスワードが必要です。";
+  }else{
+    box.textContent = protectedAccessUnlocked
+      ? "この端末では管理者向け機能のロックが解除済みです。"
+      : "この端末では管理者向け機能がロック中です。解除用パスワードを入力して保存してください。";
+  }
   syncAccessProtectionDetails();
 }
 
@@ -460,11 +513,72 @@ function isAnyProtectedOperationEnabled(){
   return true;
 }
 
-function ensureProtectedOperationAccess(actionLabel){
+function ensureProtectedOperationAccess(actionLabel, options = {}){
+  if(isWorkerMode() && options.workerAllowed === true) return true;
   if(!isAnyProtectedOperationEnabled()) return true;
   if(protectedAccessUnlocked) return true;
-  showToast((actionLabel || "この操作") + "には解除用パスワードが必要です");
+  showToast(isWorkerMode()
+    ? (actionLabel || "この操作") + "は管理者だけが行えます"
+    : (actionLabel || "この操作") + "には解除用パスワードが必要です");
   return false;
+}
+
+function applyAppAccessRoleUi(){
+  const workerMode = isWorkerMode();
+  document.documentElement.dataset.appAccessRole = appAccessRole;
+  ["dashboardTabBtn", "dashboardStartDayMenuSetting"].forEach(id => {
+    const element = document.getElementById(id);
+    if(!element) return;
+    element.hidden = workerMode;
+    element.setAttribute("aria-hidden", workerMode ? "true" : "false");
+  });
+  const dashboardTab = document.getElementById("dashboardTab");
+  const googleRoleNote = document.querySelector("#googleSheetConfigDetails > .clusterNote");
+  if(googleRoleNote) googleRoleNote.textContent = workerMode
+    ? "Apps Script のURLと、作業者用トークンを設定してください。"
+    : "Apps Script のURLと、管理者用トークンを設定してください。";
+  if(dashboardTab){
+    dashboardTab.inert = workerMode;
+    if(workerMode) dashboardTab.style.display = "none";
+  }
+  if(workerMode && activeAppTab === "dashboard"){
+    activeAppTab = "forecast";
+    setMainTabSelection("forecast");
+  }
+  updateAccessProtectionStatus();
+}
+
+function reloadRoleScopedRecordData(){
+  records = loadRecords();
+  plantingEvents = loadPlantingEvents();
+  deletedPlantingEvents = loadDeletedPlantingEvents();
+  deletedRecords = loadDeletedRecords();
+  syncConflicts = loadSyncConflicts();
+  editingHarvestRecordId = null;
+  editingPartialHarvestRecordId = null;
+  editingPlantingEventId = null;
+  activePlantingRecordId = null;
+  plantingRecordDraft = null;
+  recordSelectionMode = "harvest";
+  invalidateRecordDerivedCaches({ harvestRecords: true });
+  syncHarvestPlantingPendingFlags();
+  refreshRecordDataUi();
+}
+
+function setAppAccessRole(nextRole, options = {}){
+  const normalized = normalizeAppAccessRole(nextRole);
+  const changed = normalized !== appAccessRole;
+  appAccessRole = normalized;
+  try{
+    harvestnaviLocalStorage.setItem(APP_ACCESS_ROLE_KEY, normalized);
+  }catch(e){}
+  if(changed && options.reloadData !== false) reloadRoleScopedRecordData();
+  if(normalized === APP_ACCESS_ROLE_WORKER){
+    resetProtectedAccessSession();
+    saveProtectedAccessAuth(false);
+  }
+  applyAppAccessRoleUi();
+  return changed;
 }
 
 function showToast(message){
@@ -1555,6 +1669,7 @@ function moveCalculationSettingsToForecast(){
 function installSettingsDirtyWatchers(){
   [
     "defaultLossRateInput","defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
+    "appAccessRoleAdminInput","appAccessRoleWorkerInput",
     "accessPasswordInput",
     "useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
     "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",
@@ -2581,6 +2696,7 @@ function preloadDashboardDuringWelcome(){
 }
 
 function scheduleDashboardPreloadDuringIdle(){
+  if(isWorkerMode()) return false;
   if(typeof window.requestIdleCallback !== "function") return false;
   window.requestIdleCallback(() => {
     const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
@@ -2605,6 +2721,7 @@ function renderDashboardIfVisible(){
 
 function normalizeMainTabName(tabName){
   const normalized = tabName === "settings" ? "forecast" : String(tabName || "");
+  if(isWorkerMode() && normalized === "dashboard") return "";
   return Object.prototype.hasOwnProperty.call(MAIN_TAB_DEFINITIONS, normalized)
     ? normalized
     : "";

@@ -721,31 +721,35 @@ function mergeBackupSyncConflicts(parsed, recordIdMap){
   });
 }
 
-const BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS = [
-  RECORDS_KEY,
-  PLANTING_EVENTS_KEY,
-  PLANTING_EVENT_TRASH_KEY,
-  GOOGLE_SHEET_SYNC_STATUS_KEY,
-  GOOGLE_SHEET_SYNC_REVISION_KEY,
-  GOOGLE_SHEET_SYNC_CONFLICTS_KEY,
-  PLANTING_EVENT_SYNC_STATUS_KEY,
-  RECORD_EXPORT_STATUS_KEY,
-  RECORD_TRASH_KEY
-];
+function getBackupImportRollbackStorageKeys(){
+  return [
+    getActiveRecordsStorageKey(),
+    getActivePlantingEventsStorageKey(),
+    getActivePlantingEventTrashStorageKey(),
+    getActiveGoogleSheetSyncStatusStorageKey(),
+    getActiveGoogleSheetSyncRevisionStorageKey(),
+    getActiveGoogleSheetSyncConflictsStorageKey(),
+    getActivePlantingEventSyncStatusStorageKey(),
+    RECORD_EXPORT_STATUS_KEY,
+    getActiveRecordTrashStorageKey()
+  ];
+}
 
 function createBackupImportSnapshot(){
+  const storageKeys = getBackupImportRollbackStorageKeys();
   return {
     records: deepClone(records),
     plantingEvents: deepClone(plantingEvents),
     deletedPlantingEvents: deepClone(deletedPlantingEvents),
     deletedRecords: deepClone(deletedRecords),
     syncConflicts: deepClone(syncConflicts),
-    storageValues: harvestnaviLocalStorage.snapshotItems(BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS)
+    storageKeys,
+    storageValues: harvestnaviLocalStorage.snapshotItems(storageKeys)
   };
 }
 
-function restoreBackupImportStorageSnapshot(storageValues){
-  harvestnaviLocalStorage.restoreItems(storageValues, BACKUP_IMPORT_ROLLBACK_STORAGE_KEYS);
+function restoreBackupImportStorageSnapshot(storageValues, storageKeys = getBackupImportRollbackStorageKeys()){
+  harvestnaviLocalStorage.restoreItems(storageValues, storageKeys);
 }
 
 function restoreBackupImportSnapshot(snapshot){
@@ -755,7 +759,7 @@ function restoreBackupImportSnapshot(snapshot){
   deletedPlantingEvents = deepClone(snapshot.deletedPlantingEvents || []);
   deletedRecords = deepClone(snapshot.deletedRecords || []);
   syncConflicts = deepClone(snapshot.syncConflicts || []);
-  restoreBackupImportStorageSnapshot(snapshot.storageValues || {});
+  restoreBackupImportStorageSnapshot(snapshot.storageValues || {}, snapshot.storageKeys);
 
   invalidateRecordDerivedCaches({ harvestRecords: true });
 

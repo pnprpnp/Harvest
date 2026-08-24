@@ -206,7 +206,7 @@ function saveGoogleSheetConfigToStorage(config){
   const previousUrl = String(loadGoogleSheetConfig().url || "").trim();
   const nextUrl = String(config?.url || "").trim();
   if(previousUrl && previousUrl !== nextUrl){
-    harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+    harvestnaviLocalStorage.removeItem(getActiveGoogleSheetSyncRevisionStorageKey());
   }
   harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_CONFIG_KEY, {
     url: nextUrl,
@@ -240,7 +240,7 @@ function normalizeGoogleSheetSyncRevision(value){
 
 function loadGoogleSheetSyncRevision(config){
   try{
-    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_REVISION_KEY, null);
+    const parsed = harvestnaviLocalStorage.readJson(getActiveGoogleSheetSyncRevisionStorageKey(), null);
     if(!parsed || String(parsed.url || "").trim() !== String(config?.url || "").trim()) return null;
     return normalizeGoogleSheetSyncRevision(parsed.revision);
   }catch(e){
@@ -251,10 +251,10 @@ function loadGoogleSheetSyncRevision(config){
 function saveGoogleSheetSyncRevision(config, revision){
   const normalized = normalizeGoogleSheetSyncRevision(revision);
   if(normalized === null){
-    harvestnaviLocalStorage.removeItem(GOOGLE_SHEET_SYNC_REVISION_KEY);
+    harvestnaviLocalStorage.removeItem(getActiveGoogleSheetSyncRevisionStorageKey());
     return;
   }
-  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_SYNC_REVISION_KEY, {
+  harvestnaviLocalStorage.writeJson(getActiveGoogleSheetSyncRevisionStorageKey(), {
     url: String(config?.url || "").trim(),
     revision: normalized
   });
@@ -288,8 +288,12 @@ function populateGoogleSheetConfigForm(){
   const validation = validateGoogleSheetConfig(config);
   const urlInput = document.getElementById("googleSheetUrlInput");
   const tokenInput = document.getElementById("googleSheetTokenInput");
+  const roleNote = document.querySelector("#googleSheetConfigDetails > .clusterNote");
   if(urlInput) urlInput.value = config.url;
   if(tokenInput) tokenInput.value = config.token;
+  if(roleNote) roleNote.textContent = isWorkerMode()
+    ? "Apps Script のURLと、作業者用トークンを設定してください。"
+    : "Apps Script のURLと、管理者用トークンを設定してください。";
   syncAccessProtectionDetails();
 }
 
@@ -321,7 +325,7 @@ function saveGoogleSheetConfig(){
 
 function loadGoogleSheetSyncStatus(){
   try{
-    const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_SYNC_STATUS_KEY, null);
+    const parsed = harvestnaviLocalStorage.readJson(getActiveGoogleSheetSyncStatusStorageKey(), null);
     if(!parsed) return {};
     return parsed && typeof parsed === "object" ? parsed : {};
   }catch(e){
@@ -330,7 +334,7 @@ function loadGoogleSheetSyncStatus(){
 }
 
 function saveGoogleSheetSyncStatus(status){
-  harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_SYNC_STATUS_KEY, status || {});
+  harvestnaviLocalStorage.writeJson(getActiveGoogleSheetSyncStatusStorageKey(), status || {});
 }
 
 function getGoogleSheetRecordSyncKeys(record){
@@ -1409,6 +1413,21 @@ function buildGoogleSheetCombinedSyncPayload(config, options = {}){
     fallbackPlantingCountsByBed: getPlantingEventFallbackPlantingCountsByBed(),
     limit: GOOGLE_SHEET_MAX_LIST_RECORDS,
     plantingLimit: GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS
+  };
+}
+
+function buildGoogleSheetWorkerSnapshotPayload(config){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-worker-snapshot",
+    action: "workerSnapshot",
+    version: 1,
+    token: config.token || "",
+    lookbackDays: CALCULATION_LOOKBACK_DAYS,
+    recentFullRecordCount: RECORDED_LOOKBACK_COUNT,
+    fallbackSeedlingLossRate: clampNumber(settings.seedlingLossRate, 0, 100, 0),
+    fallbackSeedlingPattern: getSpecialPalletPattern(settings.specialPallet60CountPer3),
+    fallbackPlantingCountsByBed: getPlantingEventFallbackPlantingCountsByBed()
   };
 }
 

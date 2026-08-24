@@ -12,6 +12,9 @@ const MONITOR_SHEET_NAME = "モニター設定";
 const MONITOR_HISTORY_SHEET_NAME = "モニター編集履歴";
 const MONITOR_HISTORY_LIMIT = 1000;
 const API_TOKEN_PROPERTY_NAME = "HARVEST_API_TOKEN";
+const WORKER_API_TOKEN_PROPERTY_NAME = "HARVEST_WORKER_API_TOKEN";
+const WORKER_CALCULATION_LOOKBACK_DAYS = 35;
+const WORKER_RECENT_FULL_RECORD_COUNT = 7;
 const HARVEST_RECORD_REPAIR_BACKUP_PROPERTY =
   "HARVEST_RECORD_REPAIR_BACKUP_V1_20260809";
 const SYNC_REVISION_PROPERTY_NAME = "HARVEST_SYNC_REVISION_V1";
@@ -29,7 +32,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-13-own-write-revision-ack";
+const API_BUILD_VERSION = "2026-08-24-worker-calculation-snapshot";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -769,13 +772,14 @@ function doPost(e) {
   let apiStage = "リクエスト本文の確認中";
   try {
     const body = parseApiRequestBody(e);
+    apiStage = "操作の種類の確認中";
+    const operation = resolveApiOperation(body);
     apiStage = "連携トークンの確認中";
     const fastCheckPropertyValues = isHarvestRevisionFastCheckCandidate(body)
       ? PropertiesService.getScriptProperties().getProperties()
       : null;
-    assertApiAuthenticated(body.token, fastCheckPropertyValues);
-    apiStage = "操作の種類の確認中";
-    const operation = resolveApiOperation(body);
+    const accessRole = assertApiAuthenticated(body.token, fastCheckPropertyValues);
+    assertApiOperationAllowedForRole(operation, accessRole);
 
     if (operation === "checkUpdates") {
       apiStage = "同期番号の高速確認中";
@@ -827,6 +831,14 @@ function doPost(e) {
         deletedEventIds: includePlanting ? listDeletedPlantingEventIds() : [],
         plantingHasMore: plantingSyncResult ? plantingSyncResult.hasMore : false,
         plantingNextCursor: plantingSyncResult ? plantingSyncResult.nextCursor : null
+      });
+    }
+
+    if (operation === "workerSnapshot") {
+      apiStage = "作業者用の計算データを読み込み中";
+      return jsonResponse({
+        ok: true,
+        ...buildWorkerCalculationSnapshot(body)
       });
     }
 
@@ -1083,6 +1095,48 @@ function regenerateHarvestApiToken() {
   return setupHarvestApiToken(true);
 }
 
+/**
+ * 作業者端末用の制限トークンを発行します。
+ * Apps Script のエディタから一度だけ実行し、作業者端末の連携トークンへ設定してください。
+ */
+function setupHarvestWorkerApiToken(forceRegenerate) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const properties = PropertiesService.getScriptProperties();
+    const current = String(properties.getProperty(WORKER_API_TOKEN_PROPERTY_NAME) || "").trim();
+    if (!forceRegenerate && current.length >= API_TOKEN_MIN_LENGTH && current.length <= API_TOKEN_MAX_LENGTH) {
+      console.log(WORKER_API_TOKEN_PROPERTY_NAME + ": " + current);
+      return current;
+    }
+
+    const entropy = [
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      Utilities.getUuid(),
+      String(Date.now()),
+      String(Math.random())
+    ].join("|");
+    const bytes = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.SHA_256,
+      entropy,
+      Utilities.Charset.UTF_8
+    );
+    const token = Utilities.base64EncodeWebSafe(bytes).replace(/=+$/g, "");
+    properties.setProperty(WORKER_API_TOKEN_PROPERTY_NAME, token);
+    console.log(WORKER_API_TOKEN_PROPERTY_NAME + ": " + token);
+    return token;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function regenerateHarvestWorkerApiToken() {
+  return setupHarvestWorkerApiToken(true);
+}
+
 function parseApiRequestBody(e) {
   const postData = e && e.postData;
   const raw = postData && typeof postData.contents === "string" ? postData.contents : "";
@@ -1115,6 +1169,7 @@ function parseApiRequestBody(e) {
 function resolveApiOperation(body) {
   const operationByAction = {
     checkUpdates: "checkUpdates",
+    workerSnapshot: "workerSnapshot",
     syncAll: "syncAll",
     listRecords: "listRecords",
     deleteRecord: "deleteRecord",
@@ -1129,6 +1184,7 @@ function resolveApiOperation(body) {
   };
   const operationByType = {
     "harvest-update-check": "checkUpdates",
+    "harvest-worker-snapshot": "workerSnapshot",
     "harvest-sync-all": "syncAll",
     "harvest-record": "saveRecord",
     "harvest-record-batch": "saveRecordBatch",
@@ -1189,15 +1245,19 @@ function normalizeOptionalRequestSelector(value, label) {
 }
 
 function assertApiAuthenticated(providedToken, propertyValues) {
-  const expectedToken = getConfiguredApiToken(propertyValues);
+  const expectedAdminToken = getConfiguredApiToken(propertyValues);
   const hasValidFormat = typeof providedToken === "string" && providedToken.length <= API_TOKEN_MAX_LENGTH;
   const candidate = typeof providedToken === "string"
     ? providedToken.slice(0, API_TOKEN_MAX_LENGTH)
     : "";
-  const matches = constantTimeTokenEquals(candidate, expectedToken);
-  if (!hasValidFormat || !matches) {
-    throw new Error("認証できませんでした");
-  }
+  const adminMatches = constantTimeTokenEquals(candidate, expectedAdminToken);
+  if (hasValidFormat && adminMatches) return "admin";
+
+  const expectedWorkerToken = getConfiguredWorkerApiToken(propertyValues);
+  const workerMatches = constantTimeTokenEquals(candidate, expectedWorkerToken || expectedAdminToken)
+    && !!expectedWorkerToken;
+  if (!hasValidFormat || !workerMatches) throw new Error("認証できませんでした");
+  return "worker";
 }
 
 function getConfiguredApiToken(propertyValues) {
@@ -1209,6 +1269,33 @@ function getConfiguredApiToken(propertyValues) {
     throw new Error("サーバー認証が未設定です。setupHarvestApiTokenを手動実行してください");
   }
   return token;
+}
+
+function getConfiguredWorkerApiToken(propertyValues) {
+  const tokenValue = isPlainObject(propertyValues)
+    ? propertyValues[WORKER_API_TOKEN_PROPERTY_NAME]
+    : PropertiesService.getScriptProperties().getProperty(WORKER_API_TOKEN_PROPERTY_NAME);
+  const token = String(tokenValue || "").trim();
+  if (!token) return "";
+  if (token.length < API_TOKEN_MIN_LENGTH || token.length > API_TOKEN_MAX_LENGTH) {
+    throw new Error("作業者用のサーバー認証設定が正しくありません");
+  }
+  return token;
+}
+
+function assertApiOperationAllowedForRole(operation, accessRole) {
+  if (accessRole !== "worker") return;
+  const workerOperations = [
+    "workerSnapshot",
+    "saveRecord",
+    "saveRecordBatch",
+    "savePlantingEvent",
+    "getMonitorContent",
+    "saveMonitorContent"
+  ];
+  if (!workerOperations.includes(operation)) {
+    throw new Error("この操作は管理者だけが利用できます");
+  }
 }
 
 function constantTimeTokenEquals(left, right) {
@@ -5705,6 +5792,79 @@ function compactHarvestRecordForApi(record) {
   delete compact.palletKeys;
   delete compact.plantingPalletKeys;
   return compact;
+}
+
+function compactWorkerHarvestRecordForApi(record) {
+  const compact = compactHarvestRecordForApi(record);
+  delete compact.memo;
+  delete compact.qualityMemo;
+  delete compact.qualityText;
+  delete compact.plantingAge;
+  delete compact.plantingSummary;
+  delete compact.plantingCaseInstruction;
+  return compact;
+}
+
+function buildWorkerCalculationSnapshot(body) {
+  if (Number(body && body.lookbackDays) !== WORKER_CALCULATION_LOOKBACK_DAYS ||
+    Number(body && body.recentFullRecordCount) !== WORKER_RECENT_FULL_RECORD_COUNT) {
+    throw new Error("作業者用データの取得条件が一致しません");
+  }
+
+  // 計算側は「35日前」を含めるため、当日を含む日数指定では1日加算する。
+  const recentDays = WORKER_CALCULATION_LOOKBACK_DAYS + 1;
+  const recentRecords = listHarvestRecordsForSync(normalizeRecordListOptions({
+    recentDays,
+    limit: RECORD_LIST_LIMIT,
+    syncMode: false
+  })).records || [];
+  const latestCandidates = listHarvestRecordsForSync(normalizeRecordListOptions({
+    limit: RECORD_LIST_LIMIT,
+    syncMode: false
+  })).records || [];
+  const latestFullRecords = latestCandidates.filter(record => (
+    record && record.type === "fullHarvest" &&
+    getHarvestRecordPalletKeysForPlantingSource(record).length > 0
+  )).slice(0, WORKER_RECENT_FULL_RECORD_COUNT);
+
+  const recordsByIdentity = {};
+  recentRecords.concat(latestFullRecords).forEach(record => {
+    const recordUuid = String(record && record.recordUuid || "").trim().toLowerCase();
+    const identity = recordUuid || "id:" + String(record && record.id || "");
+    if (identity && identity !== "id:") recordsByIdentity[identity] = record;
+  });
+  const records = Object.keys(recordsByIdentity).map(identity => (
+    compactWorkerHarvestRecordForApi(recordsByIdentity[identity])
+  ));
+  const events = listPlantingEventsForApi({
+    recentDays,
+    limit: PLANTING_EVENT_LIST_LIMIT,
+    fallbackSeedlingLossRate: body.fallbackSeedlingLossRate,
+    fallbackSeedlingPattern: body.fallbackSeedlingPattern,
+    fallbackPlantingCountsByBed: body.fallbackPlantingCountsByBed
+  });
+  // 直近期間に苗植えがない場合も、1号棟の次回開始位置と苗の持越しを復元する。
+  if (!events.length) {
+    events.push.apply(events, listPlantingEventsForApi({
+      limit: 1,
+      fallbackSeedlingLossRate: body.fallbackSeedlingLossRate,
+      fallbackSeedlingPattern: body.fallbackSeedlingPattern,
+      fallbackPlantingCountsByBed: body.fallbackPlantingCountsByBed
+    }));
+  }
+
+  const response = {
+    snapshotMode: "worker",
+    lookbackDays: WORKER_CALCULATION_LOOKBACK_DAYS,
+    recentFullRecordCount: WORKER_RECENT_FULL_RECORD_COUNT,
+    generatedAt: new Date().toISOString(),
+    records,
+    events
+  };
+  if (JSON.stringify(response).length > COMBINED_SYNC_API_RESPONSE_CHAR_LIMIT) {
+    throw new Error("作業者用データの応答が大きすぎます");
+  }
+  return response;
 }
 
 function buildHarvestRecordListApiResult(syncResult) {

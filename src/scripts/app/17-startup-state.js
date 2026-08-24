@@ -18,6 +18,7 @@ function hideWelcomeScreen(){
 function initializeStartupSettingsAndStorage(){
   monitorPreviewLayoutPreference = getStoredMonitorPreviewLayoutPreference()
     || monitorPreviewLayoutPreference;
+  applyAppAccessRoleUi();
   moveCalculationSettingsToForecast();
   populateSettingsForm();
   populateGoogleSheetConfigForm();

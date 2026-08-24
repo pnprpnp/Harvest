@@ -52,7 +52,7 @@ function confirmHarvestRecordWarnings(date, actualLoss, editingRecord = null){
 }
 
 function saveRecord(){
-  if(!ensureProtectedOperationAccess("記録の保存")) return;
+  if(!ensureProtectedOperationAccess("記録の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("記録を保存", { allowBackgroundSend: true })) return;
   const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
   const date = document.getElementById("recordDateInput").value;
@@ -246,7 +246,7 @@ function applyPlantingSelectionToRecord(targetRecord, keysToApply, options = {})
 }
 
 async function savePlantingRecord(){
-  if(!ensureProtectedOperationAccess("苗植え場所の保存")) return;
+  if(!ensureProtectedOperationAccess("苗植え場所の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("苗植え場所を保存", { allowBackgroundSend: true })) return;
   const record = getActivePlantingRecord();
   const plantingDate = document.getElementById("recordDateInput")?.value || record?.date || "";
