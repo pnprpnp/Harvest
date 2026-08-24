@@ -836,7 +836,9 @@ function fitMonitorHarvestLocationText(root = document){
     if(location.clientWidth <= 0) return;
     const fullText = String(location.dataset.fullLocation || "");
     const abbreviatedText = String(location.dataset.abbreviatedLocation || fullText);
-    const panel = location.closest(".monitorHarvestPanel");
+    const locationPanel = location.closest(".monitorHarvestLocationPanel");
+    const harvestPanel = location.closest(".monitorHarvestColumn")?.querySelector(".monitorHarvestPanel")
+      || location.closest(".monitorHarvestPanel");
     location.style.transform = "none";
     const isPreview2Location = location.classList.contains("monitorV2LocationValue");
     const minimumSize = isPreview2Location ? 10 : 12;
@@ -869,7 +871,8 @@ function fitMonitorHarvestLocationText(root = document){
     if(useAbbreviatedText){
       location.innerHTML = getMonitorHarvestLocationInlineHtmlFromText(abbreviatedText);
     }
-    panel?.classList.toggle("has-single-location-line", fullTextFitsOneLine);
+    locationPanel?.classList.toggle("has-single-location-line", fullTextFitsOneLine);
+    harvestPanel?.classList.toggle("has-single-location-line", fullTextFitsOneLine);
     const fitsAtSize = size => {
       location.style.fontSize = size + "px";
       return location.scrollWidth <= location.clientWidth + 1;
@@ -1074,19 +1077,26 @@ function buildMonitorDashboardHtml(content, options = {}){
           </div>
         </section>
       </div>
-      <section class="monitorPanel monitorHarvestPanel">
-        <div class="monitorPanelHeader">
-          <div class="monitorHarvestTitleGroup">
-            <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>
-            <div class="monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
+      <div class="monitorHarvestColumn">
+        <section class="monitorPanel monitorHarvestLocationPanel">
+          <div class="monitorPanelHeader">
+            <div class="monitorHarvestTitleGroup">
+              <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>
+              <div class="monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
+            </div>
           </div>
-          <div class="monitorMapLegend" aria-label="収穫場所の凡例">
-            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
-            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+        </section>
+        <section class="monitorPanel monitorHarvestPanel">
+          <div class="monitorPanelHeader monitorHarvestMapHeader">
+            <div class="monitorSectionTitle">配置図</div>
+            <div class="monitorMapLegend" aria-label="収穫場所の凡例">
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+            </div>
           </div>
-        </div>
-        <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
-      </section>
+          <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
+        </section>
+      </div>
     </main>
     <aside class="monitorPanel monitorMemoPanel">
       <div class="monitorPanelHeader">

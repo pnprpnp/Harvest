@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260824-bed-bulk-short-labels">
+<meta name="harvestnavi-version" content="20260824-preview1-separated-panels">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8672,12 +8672,8 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   grid-row:2;
   display:grid;
   grid-template-columns:minmax(0,.7fr) minmax(0,1fr) minmax(0,1.3fr);
-  gap:0;
-  overflow:hidden;
-  border:1px solid var(--ui-line);
-  border-radius:22px;
-  background:rgba(255,255,255,.92);
-  box-shadow:var(--ui-shadow-sm);
+  gap:12px;
+  overflow:visible;
 }
 .monitorMetricCard{
   min-width:0;
@@ -8691,13 +8687,10 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   overflow:hidden;
 }
 .monitorSummaryGrid > .monitorMetricCard{
-  border:0;
-  border-radius:0;
-  background:transparent;
-  box-shadow:none;
-}
-.monitorSummaryGrid > .monitorMetricCard + .monitorMetricCard{
-  border-left:1px solid var(--ui-line);
+  border:1px solid var(--ui-line);
+  border-radius:22px;
+  background:rgba(255,255,255,.92);
+  box-shadow:var(--ui-shadow-sm);
 }
 .monitorMetricLabel{
   min-width:max-content;
@@ -8871,20 +8864,34 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   background:rgba(255,255,255,.92);
   box-shadow:var(--ui-shadow-sm);
 }
-.monitorHarvestPanel{
+.monitorHarvestColumn{
   min-width:0;
   min-height:0;
   grid-column:1;
   grid-row:3;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  gap:12px;
+}
+.monitorHarvestLocationPanel{
+  min-width:0;
+  padding:12px 16px;
+  overflow:hidden;
+}
+.monitorHarvestLocationPanel > .monitorPanelHeader{
+  display:block;
+  min-height:68px;
+  margin:0;
+}
+.monitorHarvestPanel{
+  min-width:0;
+  min-height:0;
   padding:12px;
   overflow:hidden;
 }
 .monitorHarvestPanel > .monitorPanelHeader{
-  position:relative;
-  display:block;
-  min-height:100px;
+  min-height:28px;
 }
-.monitorHarvestPanel.has-single-location-line > .monitorPanelHeader{min-height:84px;}
 .monitorPanelHeader{
   flex:0 0 auto;
   display:flex;
@@ -8936,13 +8943,9 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   font-size:13px;
   font-weight:700;
 }
-.monitorHarvestPanel .monitorMapLegend{
-  position:absolute;
-  top:2px;
-  right:0;
-}
-.monitorHarvestPanel .monitorHarvestTitleGroup > .monitorSectionTitle{
-  padding-right:180px;
+.monitorHarvestMapHeader{
+  align-items:center;
+  margin-bottom:7px;
 }
 .monitorMapLegendChip{
   width:18px;
@@ -10989,7 +10992,6 @@ html[data-theme="dark"] .recordWeekdayDisplay{
 html[data-theme="dark"] .card,
 html[data-theme="dark"] .dashboardMetricCard,
 html[data-theme="dark"] .dashboardRangeBox,
-html[data-theme="dark"] .monitorSummaryGrid,
 html[data-theme="dark"] .monitorPanel{
   border-color:var(--ui-line);
   background:var(--ui-surface);
@@ -11525,7 +11527,6 @@ html[data-theme="dark"] .dashboardForecastApplyBtn:disabled{
 html[data-theme="dark"] .monitorModeOverlay{
   background:radial-gradient(circle at 7% 0,rgba(67,200,109,.12),transparent 34%),#0d1117;
 }
-html[data-theme="dark"] .monitorSummaryGrid,
 html[data-theme="dark"] .monitorPanel,
 html[data-theme="dark"] .monitorMemoDisplayItem,
 html[data-theme="dark"] .monitorModeBody .monitorEmpty,
@@ -31860,7 +31861,9 @@ function fitMonitorHarvestLocationText(root = document){
     if(location.clientWidth <= 0) return;
     const fullText = String(location.dataset.fullLocation || "");
     const abbreviatedText = String(location.dataset.abbreviatedLocation || fullText);
-    const panel = location.closest(".monitorHarvestPanel");
+    const locationPanel = location.closest(".monitorHarvestLocationPanel");
+    const harvestPanel = location.closest(".monitorHarvestColumn")?.querySelector(".monitorHarvestPanel")
+      || location.closest(".monitorHarvestPanel");
     location.style.transform = "none";
     const isPreview2Location = location.classList.contains("monitorV2LocationValue");
     const minimumSize = isPreview2Location ? 10 : 12;
@@ -31893,7 +31896,8 @@ function fitMonitorHarvestLocationText(root = document){
     if(useAbbreviatedText){
       location.innerHTML = getMonitorHarvestLocationInlineHtmlFromText(abbreviatedText);
     }
-    panel?.classList.toggle("has-single-location-line", fullTextFitsOneLine);
+    locationPanel?.classList.toggle("has-single-location-line", fullTextFitsOneLine);
+    harvestPanel?.classList.toggle("has-single-location-line", fullTextFitsOneLine);
     const fitsAtSize = size => {
       location.style.fontSize = size + "px";
       return location.scrollWidth <= location.clientWidth + 1;
@@ -32098,19 +32102,26 @@ function buildMonitorDashboardHtml(content, options = {}){
           </div>
         </section>
       </div>
-      <section class="monitorPanel monitorHarvestPanel">
-        <div class="monitorPanelHeader">
-          <div class="monitorHarvestTitleGroup">
-            <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>
-            <div class="monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
+      <div class="monitorHarvestColumn">
+        <section class="monitorPanel monitorHarvestLocationPanel">
+          <div class="monitorPanelHeader">
+            <div class="monitorHarvestTitleGroup">
+              <div class="monitorSectionTitle">収穫場所と配置コンテナ数</div>
+              <div class="monitorHarvestLocationText" data-full-location="${escapeHtml(fullHarvestLocationText)}" data-abbreviated-location="${escapeHtml(abbreviatedHarvestLocationText)}">${getMonitorHarvestLocationInlineHtmlFromText(fullHarvestLocationText)}</div>
+            </div>
           </div>
-          <div class="monitorMapLegend" aria-label="収穫場所の凡例">
-            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
-            <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+        </section>
+        <section class="monitorPanel monitorHarvestPanel">
+          <div class="monitorPanelHeader monitorHarvestMapHeader">
+            <div class="monitorSectionTitle">配置図</div>
+            <div class="monitorMapLegend" aria-label="収穫場所の凡例">
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+            </div>
           </div>
-        </div>
-        <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
-      </section>
+          <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
+        </section>
+      </div>
     </main>
     <aside class="monitorPanel monitorMemoPanel">
       <div class="monitorPanelHeader">

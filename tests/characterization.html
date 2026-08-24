@@ -4627,7 +4627,14 @@
                 "2号棟全部\\n3号棟 A 個別選択",
                 [getPalletKey(2, "A", 1), getPalletKey(3, "A", 1)]
               ),
-              harvestPanelTitle:dashboardHost.querySelector(".monitorHarvestPanel .monitorSectionTitle")?.textContent.trim() || "",
+              harvestPanelTitle:dashboardHost.querySelector(".monitorHarvestLocationPanel .monitorSectionTitle")?.textContent.trim() || "",
+              harvestMapPanelTitle:dashboardHost.querySelector(".monitorHarvestPanel .monitorSectionTitle")?.textContent.trim() || "",
+              harvestLocationAndMapSeparated:(() => {
+                const column = dashboardHost.querySelector(".monitorHarvestColumn");
+                const locationPanel = column?.querySelector(":scope > .monitorHarvestLocationPanel");
+                const mapPanel = column?.querySelector(":scope > .monitorHarvestPanel");
+                return !!column && !!locationPanel && !!mapPanel && locationPanel !== mapPanel;
+              })(),
               legend:[...dashboardHost.querySelectorAll(".monitorMapLegendItem")].map(item => item.textContent.trim()),
               legendFontSize:getComputedStyle(dashboardHost.querySelector(".monitorMapLegend")).fontSize,
               legendChipSize:(() => {
@@ -4637,7 +4644,7 @@
               })(),
               singleLineLayoutEnabled:dashboardHost.querySelector(".monitorHarvestPanel").classList.contains("has-single-location-line"),
               singleLineHeaderMinHeight:getComputedStyle(
-                dashboardHost.querySelector(".monitorHarvestPanel > .monitorPanelHeader")
+                dashboardHost.querySelector(".monitorHarvestLocationPanel > .monitorPanelHeader")
               ).minHeight,
               singleLineBuildingTitleFontSize:getComputedStyle(
                 dashboardHost.querySelector(".monitorBuildingTitle")
@@ -4647,7 +4654,7 @@
               ).gap,
               singleBuildingUsesRegularLayout:!dashboardHost.querySelector(".monitorHarvestMap").classList.contains("has-three-buildings"),
               multiLineLayoutKeepsDefaultHeight:!threeDashboardHost.querySelector(".monitorHarvestPanel").classList.contains("has-single-location-line")
-                && getComputedStyle(threeDashboardHost.querySelector(".monitorHarvestPanel > .monitorPanelHeader")).minHeight === "100px",
+                && getComputedStyle(threeDashboardHost.querySelector(".monitorHarvestLocationPanel > .monitorPanelHeader")).minHeight === "68px",
               multiLineLocationText:threeDashboardHost.querySelector(".monitorHarvestLocationText")?.textContent.trim() || "",
               threeBuildingLayoutEnabled:threeBuildingMap.classList.contains("has-three-buildings"),
               threeBuildingColumnCount:getComputedStyle(threeBuildingMap).gridTemplateColumns.trim().split(/\\s+/).length,
@@ -4696,11 +4703,13 @@
           mixedAbbreviatedLocationText:"（略）2号棟 C 前2ピンとる",
           wholeBuildingAbbreviatedLocationText:"（略）3号棟 A 個別選択",
           harvestPanelTitle:"収穫場所と配置コンテナ数",
+          harvestMapPanelTitle:"配置図",
+          harvestLocationAndMapSeparated:true,
           legend:["今回収穫", "収穫済み"],
           legendFontSize:"13px",
           legendChipSize:["18px", "12px"],
           singleLineLayoutEnabled:true,
-          singleLineHeaderMinHeight:"84px",
+          singleLineHeaderMinHeight:"68px",
           singleLineBuildingTitleFontSize:"25px",
           singleLineBuildingTitleGap:"20px",
           singleBuildingUsesRegularLayout:true,
@@ -4745,6 +4754,12 @@
                 card.querySelector(".monitorMetricLabelText")?.textContent.endsWith("： ")
               ),
               summaryColumns:getComputedStyle(host.querySelector(".monitorSummaryGrid")).gridTemplateColumns.trim().split(/\\s+/g).length,
+              summaryCardsAreSeparated:(() => {
+                const summaryStyle = getComputedStyle(host.querySelector(".monitorSummaryGrid"));
+                return parseFloat(summaryStyle.columnGap) > 0
+                  && summaryStyle.borderTopWidth === "0px"
+                  && cards.every(card => parseFloat(getComputedStyle(card).borderTopWidth) > 0);
+              })(),
               summaryCardsFollowContentWidths:Math.abs((cardWidths[0] / cardWidths[1]) - .7) <= .02
                 && Math.abs((cardWidths[2] / cardWidths[1]) - 1.3) <= .02,
               unplantedVisible:host.textContent.includes("未定植分"),
@@ -4812,6 +4827,7 @@
           labels:["苗：", "収穫：", ""],
           labelsUseHalfWidthSpace:true,
           summaryColumns:3,
+          summaryCardsAreSeparated:true,
           summaryCardsFollowContentWidths:true,
           unplantedVisible:false,
           allUseOneRow:true,
