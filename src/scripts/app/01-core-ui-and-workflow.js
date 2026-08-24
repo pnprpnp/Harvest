@@ -336,8 +336,6 @@ let workflowPlantingSessionActive = false;
 let workflowGuideUpdateFrame = null;
 let workflowGuideStage = 1;
 let workflowGuideFurthestStage = 1;
-let workflowGuideDate = "";
-let workflowGuideDayResetTimer = null;
 let appTopChromeResizeObserver = null;
 
 function deepClone(obj){
@@ -2878,15 +2876,6 @@ function getWorkflowActivePendingRecord(){
   return activeRecord?.type === "fullHarvest" ? activeRecord : null;
 }
 
-function getWorkflowGuideTodayKey(date = new Date()){
-  const value = date instanceof Date ? date : new Date(date);
-  if(Number.isNaN(value.getTime())) return "";
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function normalizeWorkflowGuideStage(value, fallback = 1){
   const stage = Math.trunc(Number(value));
   if(stage >= 1 && stage <= WORKFLOW_GUIDE_COMPLETE_STAGE) return stage;
@@ -2903,7 +2892,6 @@ function inferInitialWorkflowGuideStage(){
 function saveWorkflowGuideProgress(){
   try{
     harvestnaviLocalStorage.writeJson(WORKFLOW_GUIDE_STATE_KEY, {
-      date: workflowGuideDate || getWorkflowGuideTodayKey(),
       stage: normalizeWorkflowGuideStage(workflowGuideStage),
       furthestStage:normalizeWorkflowGuideStage(workflowGuideFurthestStage)
     });
@@ -2912,54 +2900,28 @@ function saveWorkflowGuideProgress(){
   }
 }
 
-function scheduleWorkflowGuideDayReset(){
-  if(workflowGuideDayResetTimer !== null) clearTimeout(workflowGuideDayResetTimer);
-  const now = new Date();
-  const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 80);
-  workflowGuideDayResetTimer = setTimeout(() => {
-    workflowGuideDayResetTimer = null;
-    resetWorkflowGuideIfDayChanged();
-    scheduleWorkflowGuideDayReset();
-  }, Math.max(1000, nextDay.getTime() - now.getTime()));
-}
-
-function resetWorkflowGuideIfDayChanged(){
-  const today = getWorkflowGuideTodayKey();
-  if(workflowGuideDate === today) return false;
-  workflowGuideDate = today;
-  workflowGuideStage = 1;
-  workflowGuideFurthestStage = 1;
-  saveWorkflowGuideProgress();
-  scheduleWorkflowGuideUpdate();
-  return true;
-}
-
 function initializeWorkflowGuideProgress(){
-  const today = getWorkflowGuideTodayKey();
   let saved = null;
   try{
     saved = harvestnaviLocalStorage.readJson(WORKFLOW_GUIDE_STATE_KEY, null);
   }catch(e){
     saved = null;
   }
-  workflowGuideDate = today;
-  if(saved && String(saved.date || "") === today){
+  if(saved){
     workflowGuideStage = normalizeWorkflowGuideStage(saved.stage);
     workflowGuideFurthestStage = Math.max(
       workflowGuideStage,
       normalizeWorkflowGuideStage(saved.furthestStage, workflowGuideStage)
     );
   }else{
-    workflowGuideStage = saved ? 1 : inferInitialWorkflowGuideStage();
+    workflowGuideStage = inferInitialWorkflowGuideStage();
     workflowGuideFurthestStage = workflowGuideStage;
     saveWorkflowGuideProgress();
   }
-  scheduleWorkflowGuideDayReset();
   updateWorkflowGuide();
 }
 
 function setWorkflowGuideStage(stage, options = {}){
-  resetWorkflowGuideIfDayChanged();
   const nextStage = normalizeWorkflowGuideStage(stage, workflowGuideStage);
   if(nextStage === workflowGuideStage && options.force !== true && options.resetFurthest !== true){
     scheduleWorkflowGuideUpdate();
@@ -2989,7 +2951,6 @@ function hasWorkflowCalculationResult(){
 }
 
 function getWorkflowGuideState(){
-  resetWorkflowGuideIfDayChanged();
   if(workflowGuideStage === WORKFLOW_GUIDE_COMPLETE_STAGE){
     return {
       stage: WORKFLOW_GUIDE_COMPLETE_STAGE,
@@ -3020,17 +2981,14 @@ function getWorkflowGuideState(){
 }
 
 function completeWorkflowGuideCalculation(){
-  resetWorkflowGuideIfDayChanged();
   if(workflowGuideStage <= 2) setWorkflowGuideStage(3);
 }
 
 function completeWorkflowGuideMonitorSend(){
-  resetWorkflowGuideIfDayChanged();
   if(workflowGuideStage <= 3) setWorkflowGuideStage(4);
 }
 
 function completeWorkflowGuideHarvestRecord(){
-  resetWorkflowGuideIfDayChanged();
   if(workflowGuideStage <= 4) setWorkflowGuideStage(5);
 }
 

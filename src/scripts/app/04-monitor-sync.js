@@ -865,7 +865,7 @@ async function saveCurrentMonitorRemoteContent(){
       saveHarvestStateToStorage();
       completeWorkflowGuideMonitorSend();
       updateWorkflowGuide();
-      switchToRecordSaveCard({ focus: true });
+      switchTab("forecast");
     }
   }catch(e){
     console.error("Failed to save current monitor content", e);

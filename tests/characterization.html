@@ -2187,7 +2187,6 @@
           const previous = {
             stage:workflowGuideStage,
             furthestStage:workflowGuideFurthestStage,
-            date:workflowGuideDate,
             fillKeys:[...harvestFillKeys],
             summary:harvestSummary ? {...harvestSummary} : null,
             cases:document.getElementById("casesInput")?.value || "",
@@ -2243,7 +2242,6 @@
             return layout;
           };
           try{
-            workflowGuideDate = getWorkflowGuideTodayKey();
             setWorkflowGuideStage(1, { force:true, resetFurthest:true });
             updateWorkflowGuide();
             const first = read();
@@ -2290,11 +2288,15 @@
             updateWorkflowGuide();
             const restarted = read();
 
-            workflowGuideDate = "2000-01-01";
-            workflowGuideStage = 5;
-            resetWorkflowGuideIfDayChanged();
-            updateWorkflowGuide();
-            const nextDay = read();
+            harvestnaviLocalStorage.writeJson(WORKFLOW_GUIDE_STATE_KEY, {
+              date:"2000-01-01",
+              stage:5,
+              furthestStage:5
+            });
+            workflowGuideStage = 1;
+            workflowGuideFurthestStage = 1;
+            initializeWorkflowGuideProgress();
+            const restoredFromPreviousDay = read();
 
             return {
               first,
@@ -2308,13 +2310,12 @@
               resumedAfterHarvestSave,
               completed,
               restarted,
-              nextDay,
+              restoredFromPreviousDay,
               recordsPreserved:records.length === previous.recordsLength
             };
           }finally{
             workflowGuideStage = previous.stage;
             workflowGuideFurthestStage = previous.furthestStage;
-            workflowGuideDate = previous.date;
             harvestFillKeys = previous.fillKeys;
             harvestSummary = previous.summary;
             document.getElementById("casesInput").value = previous.cases;
@@ -2380,7 +2381,8 @@
           fractionShown:false
         }, "完了後の表示が指定どおりではありません");
         assertEqual(state.restarted.stage, 1, "最初に戻るボタンで第1工程へ戻れません");
-        assertEqual(state.nextDay.stage, 1, "日付変更時に第1工程へ戻りません");
+        assertEqual(state.restoredFromPreviousDay.stage, 5, "前日に保存した工程が日付変更扱いでリセットされました");
+        assertEqual(state.restoredFromPreviousDay.title, "二次定植完了後、二次定植の記録へ", "前日の工程表示を引き継げません");
         assert(state.recordsPreserved, "最初に戻る操作で保存済み記録が変わりました");
       });
 
@@ -4710,6 +4712,63 @@
           cancelKeepsLastSentLayout:true,
           successfulSavePersists:true
         }, "前回送信したプレビュー方式が次回の初期選択として保存されていません");
+      });
+
+      await runTest("モニター送信後は記録ではなくシミュタブへ戻る", async () => {
+        const sendState = comparable(await app.eval(`(async () => {
+          const previous = {
+            showMonitorPreviewConfirm,
+            saveMonitorRemoteEditor,
+            switchTab,
+            workflowStage:workflowGuideStage,
+            workflowFurthest:workflowGuideFurthestStage,
+            checkpoint:workflowMonitorCheckpointSignature,
+            recordingActive:workflowHarvestRecordingActive,
+            memoDirty:monitorMemoInputsDirty,
+            saveInProgress:monitorCurrentSaveInProgress,
+            storedWorkflow:harvestnaviLocalStorage.getItem(WORKFLOW_GUIDE_STATE_KEY),
+            storedHarvest:harvestnaviLocalStorage.getItem(HARVEST_STATE_KEY)
+          };
+          let switchedTab = "";
+          try{
+            showMonitorPreviewConfirm = async () => "preview1";
+            saveMonitorRemoteEditor = async () => true;
+            switchTab = tabName => {
+              switchedTab = tabName;
+              return true;
+            };
+            workflowGuideStage = 3;
+            workflowGuideFurthestStage = 3;
+            monitorCurrentSaveInProgress = false;
+            await saveCurrentMonitorRemoteContent();
+            return {
+              switchedTab,
+              workflowStage:workflowGuideStage,
+              recordTabNotOpened:switchedTab !== "record"
+            };
+          }finally{
+            showMonitorPreviewConfirm = previous.showMonitorPreviewConfirm;
+            saveMonitorRemoteEditor = previous.saveMonitorRemoteEditor;
+            switchTab = previous.switchTab;
+            workflowGuideStage = previous.workflowStage;
+            workflowGuideFurthestStage = previous.workflowFurthest;
+            workflowMonitorCheckpointSignature = previous.checkpoint;
+            workflowHarvestRecordingActive = previous.recordingActive;
+            monitorMemoInputsDirty = previous.memoDirty;
+            monitorCurrentSaveInProgress = previous.saveInProgress;
+            if(previous.storedWorkflow === null) harvestnaviLocalStorage.removeItem(WORKFLOW_GUIDE_STATE_KEY);
+            else harvestnaviLocalStorage.setItem(WORKFLOW_GUIDE_STATE_KEY, previous.storedWorkflow);
+            if(previous.storedHarvest === null) harvestnaviLocalStorage.removeItem(HARVEST_STATE_KEY);
+            else harvestnaviLocalStorage.setItem(HARVEST_STATE_KEY, previous.storedHarvest);
+            setCurrentMonitorSaveLoading(false);
+            updateWorkflowGuide();
+          }
+        })()`));
+        assertDeepEqual(sendState, {
+          switchedTab:"forecast",
+          workflowStage:4,
+          recordTabNotOpened:true
+        }, "モニター送信後にシミュタブへ戻っていません");
       });
 
       await runTest("モニターはシミュと同じ2列39段の配置図で収穫場所を表示する", () => {
