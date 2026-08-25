@@ -613,6 +613,7 @@
         assert(record && event, "契約テスト用の記録を作成できません");
 
         const operationCases = [
+          [app.buildGoogleSheetAccessRolePayload(config), "identifyAccessRole"],
           [app.buildGoogleSheetUpdateCheckPayload(config, { syncRevision: 1 }), "checkUpdates"],
           [app.buildGoogleSheetWorkerSnapshotPayload(config), "workerSnapshot"],
           [app.buildGoogleSheetCombinedSyncPayload(config, { syncRevision: 1 }), "syncAll"],
@@ -637,8 +638,25 @@
         });
       });
 
+      await runTest("連携トークンの確認結果から利用モードを自動判定する", async () => {
+        const originalFetch = app.fetch;
+        try{
+          app.fetch = async () => ({
+            text: async () => JSON.stringify({ ok: true, accessRole: "worker" })
+          });
+          const role = await app.fetchGoogleSheetAccessRole({
+            url: "https://script.google.com/macros/s/test/exec",
+            token: "characterization-test-worker-token"
+          });
+          assertEqual(role, "worker", "作業者用トークンを作業者モードとして判定できません");
+        }finally{
+          app.fetch = originalFetch;
+        }
+      });
+
       await runTest("作業者用トークンでは最小同期と日々の保存だけを許可する", () => {
         [
+          "identifyAccessRole",
           "workerSnapshot",
           "saveRecord",
           "saveRecordBatch",
@@ -2165,6 +2183,9 @@
             refreshProtectedAccessState();
             return {
               role: appAccessRole,
+              roleStatus: document.getElementById("appAccessRoleStatus")?.textContent,
+              manualRoleControlsRemoved: !document.getElementById("appAccessRoleAdminInput")
+                && !document.getElementById("appAccessRoleWorkerInput"),
               dashboardButtonHidden: document.getElementById("dashboardTabBtn").hidden,
               dashboardMenuHidden: document.getElementById("dashboardStartDayMenuSetting").hidden,
               dashboardRejected: normalizeMainTabName("dashboard") === "",
@@ -2182,6 +2203,8 @@
           })()`));
           assertDeepEqual(state, {
             role: "worker",
+            roleStatus: "作業者",
+            manualRoleControlsRemoved: true,
             dashboardButtonHidden: true,
             dashboardMenuHidden: true,
             dashboardRejected: true,
@@ -7686,18 +7709,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "1bc0cdf4", elements: 2223, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "f77b9ad7", elements: 2292, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "ab532576", elements: 2292, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "f091fe2e", elements: 2224, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "2d989069", elements: 2224, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "49ef7483", elements: 2307, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "e2d85136", elements: 2322, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "51f4db42", elements: 2322, visible: 287, viewport: "390x844" },
-          mobileSettings: { hash: "27ef62fa", elements: 2322, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "f05def69", elements: 2322, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "47240bcb", elements: 2322, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "11160047", elements: 2322, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "47aa84fd", elements: 2212, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "0968f0a5", elements: 2281, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "fa5cd074", elements: 2281, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "49fffb77", elements: 2213, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "7d81e488", elements: 2213, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c41e65f1", elements: 2296, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "6f108f1e", elements: 2311, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "cb1216b6", elements: 2311, visible: 282, viewport: "390x844" },
+          mobileSettings: { hash: "21d4e6a6", elements: 2311, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "2815e797", elements: 2311, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "d2f2af1b", elements: 2311, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "28e69157", elements: 2311, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

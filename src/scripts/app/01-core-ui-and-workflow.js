@@ -533,10 +533,8 @@ function applyAppAccessRoleUi(){
     element.setAttribute("aria-hidden", workerMode ? "true" : "false");
   });
   const dashboardTab = document.getElementById("dashboardTab");
-  const googleRoleNote = document.querySelector("#googleSheetConfigDetails > .clusterNote");
-  if(googleRoleNote) googleRoleNote.textContent = workerMode
-    ? "Apps Script のURLと、作業者用トークンを設定してください。"
-    : "Apps Script のURLと、管理者用トークンを設定してください。";
+  const accessRoleStatus = document.getElementById("appAccessRoleStatus");
+  if(accessRoleStatus) accessRoleStatus.textContent = workerMode ? "作業者" : "管理者";
   if(dashboardTab){
     dashboardTab.inert = workerMode;
     if(workerMode) dashboardTab.style.display = "none";
@@ -1669,7 +1667,6 @@ function moveCalculationSettingsToForecast(){
 function installSettingsDirtyWatchers(){
   [
     "defaultLossRateInput","defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
-    "appAccessRoleAdminInput","appAccessRoleWorkerInput",
     "accessPasswordInput",
     "useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
     "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",

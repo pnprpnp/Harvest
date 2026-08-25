@@ -32,7 +32,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-24-worker-calculation-snapshot";
+const API_BUILD_VERSION = "2026-08-25-token-role-auto-detect";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -781,6 +781,13 @@ function doPost(e) {
     const accessRole = assertApiAuthenticated(body.token, fastCheckPropertyValues);
     assertApiOperationAllowedForRole(operation, accessRole);
 
+    if (operation === "identifyAccessRole") {
+      return jsonResponse({
+        ok: true,
+        accessRole: accessRole
+      });
+    }
+
     if (operation === "checkUpdates") {
       apiStage = "同期番号の高速確認中";
       const revisionCheck = getRevisionUpdateCheckResponse(body, fastCheckPropertyValues);
@@ -1168,6 +1175,7 @@ function parseApiRequestBody(e) {
 
 function resolveApiOperation(body) {
   const operationByAction = {
+    identifyAccessRole: "identifyAccessRole",
     checkUpdates: "checkUpdates",
     workerSnapshot: "workerSnapshot",
     syncAll: "syncAll",
@@ -1183,6 +1191,7 @@ function resolveApiOperation(body) {
     listMonitorHistory: "listMonitorHistory"
   };
   const operationByType = {
+    "harvest-access-role": "identifyAccessRole",
     "harvest-update-check": "checkUpdates",
     "harvest-worker-snapshot": "workerSnapshot",
     "harvest-sync-all": "syncAll",
@@ -1286,6 +1295,7 @@ function getConfiguredWorkerApiToken(propertyValues) {
 function assertApiOperationAllowedForRole(operation, accessRole) {
   if (accessRole !== "worker") return;
   const workerOperations = [
+    "identifyAccessRole",
     "workerSnapshot",
     "saveRecord",
     "saveRecordBatch",

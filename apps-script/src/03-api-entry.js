@@ -13,6 +13,13 @@ function doPost(e) {
     const accessRole = assertApiAuthenticated(body.token, fastCheckPropertyValues);
     assertApiOperationAllowedForRole(operation, accessRole);
 
+    if (operation === "identifyAccessRole") {
+      return jsonResponse({
+        ok: true,
+        accessRole: accessRole
+      });
+    }
+
     if (operation === "checkUpdates") {
       apiStage = "同期番号の高速確認中";
       const revisionCheck = getRevisionUpdateCheckResponse(body, fastCheckPropertyValues);
@@ -400,6 +407,7 @@ function parseApiRequestBody(e) {
 
 function resolveApiOperation(body) {
   const operationByAction = {
+    identifyAccessRole: "identifyAccessRole",
     checkUpdates: "checkUpdates",
     workerSnapshot: "workerSnapshot",
     syncAll: "syncAll",
@@ -415,6 +423,7 @@ function resolveApiOperation(body) {
     listMonitorHistory: "listMonitorHistory"
   };
   const operationByType = {
+    "harvest-access-role": "identifyAccessRole",
     "harvest-update-check": "checkUpdates",
     "harvest-worker-snapshot": "workerSnapshot",
     "harvest-sync-all": "syncAll",
@@ -518,6 +527,7 @@ function getConfiguredWorkerApiToken(propertyValues) {
 function assertApiOperationAllowedForRole(operation, accessRole) {
   if (accessRole !== "worker") return;
   const workerOperations = [
+    "identifyAccessRole",
     "workerSnapshot",
     "saveRecord",
     "saveRecordBatch",

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260824-worker-mode-minimal-sync">
+<meta name="harvestnavi-version" content="20260825-token-mode-auto-detect">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10412,29 +10412,22 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   font-weight:750;
 }
 .combinedSettingsSection > .clusterNote{margin-bottom:10px;}
-.appAccessRoleChoices{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:8px;
-}
-.appAccessRoleChoice{
+.appAccessRoleAutomatic{
   display:flex;
   align-items:center;
-  gap:9px;
+  justify-content:space-between;
+  gap:12px;
   min-width:0;
-  padding:11px 12px;
+  margin-bottom:8px;
+  padding:10px 12px;
   border:1px solid var(--ui-line);
-  border-radius:13px;
+  border-radius:11px;
   background:var(--ui-surface);
+  color:var(--ui-text-secondary);
+  font-size:13px;
+  font-weight:650;
 }
-.appAccessRoleChoice:has(input:checked){
-  border-color:var(--ui-accent);
-  background:var(--ui-accent-soft);
-}
-.appAccessRoleChoice input{flex:0 0 auto;margin:0;accent-color:var(--ui-accent);}
-.appAccessRoleChoiceCopy{display:flex;min-width:0;flex-direction:column;gap:2px;}
-.appAccessRoleChoiceCopy strong{color:var(--ui-text);font-size:14px;font-weight:760;}
-.appAccessRoleChoiceCopy small{color:var(--ui-text-secondary);font-size:11px;line-height:1.35;}
+.appAccessRoleAutomatic strong{color:var(--ui-accent-dark);font-size:14px;font-weight:760;}
 #dashboardTabBtn[hidden],#dashboardStartDayMenuSetting[hidden]{display:none;}
 .dashboardStartDayField{justify-content:space-between;}
 .dashboardStartDayField > label{
@@ -12741,20 +12734,6 @@ requestAnimationFrame(function(){
           </div>
         </summary>
         <div class="settingClusterDetailsBody">
-          <section id="appAccessRoleSetting" class="combinedSettingsSection" aria-labelledby="appAccessRoleSettingTitle">
-            <div id="appAccessRoleSettingTitle" class="combinedSettingsSectionTitle">利用モード</div>
-            <div class="clusterNote">管理者はすべての機能、作業者は日々の作業に必要な機能だけを表示します。</div>
-            <div class="appAccessRoleChoices" role="radiogroup" aria-label="利用モード">
-              <label class="appAccessRoleChoice">
-                <input id="appAccessRoleAdminInput" type="radio" name="appAccessRole" value="admin">
-                <span class="appAccessRoleChoiceCopy"><strong>管理者</strong><small>設定・確認を含むすべての機能</small></span>
-              </label>
-              <label class="appAccessRoleChoice">
-                <input id="appAccessRoleWorkerInput" type="radio" name="appAccessRole" value="worker">
-                <span class="appAccessRoleChoiceCopy"><strong>作業者</strong><small>シミュ・モニター・記録のみ</small></span>
-              </label>
-            </div>
-          </section>
           <section class="combinedSettingsSection" aria-labelledby="accessProtectionSectionTitle">
             <div id="accessProtectionSectionTitle" class="combinedSettingsSectionTitle">簡易アクセス制限</div>
             <label>解除用パスワード</label>
@@ -12763,7 +12742,11 @@ requestAnimationFrame(function(){
           </section>
           <section id="googleSheetConfigDetails" class="combinedSettingsSection" aria-labelledby="googleSheetConfigSectionTitle">
             <div id="googleSheetConfigSectionTitle" class="combinedSettingsSectionTitle">Google連携設定</div>
-            <div class="clusterNote">Apps Script のURLと連携トークンはどちらも必須です。</div>
+            <div class="appAccessRoleAutomatic" aria-live="polite">
+              <span>利用モード</span>
+              <strong id="appAccessRoleStatus">管理者</strong>
+            </div>
+            <div class="clusterNote">連携トークンを保存すると、管理者または作業者を自動判定します。</div>
             <label>Googleスプレッドシート連携URL</label>
             <input id="googleSheetUrlInput" type="url" placeholder="Apps ScriptのWebアプリURL" required autocomplete="url">
             <label>連携トークン（必須）</label>
@@ -14448,10 +14431,8 @@ function applyAppAccessRoleUi(){
     element.setAttribute("aria-hidden", workerMode ? "true" : "false");
   });
   const dashboardTab = document.getElementById("dashboardTab");
-  const googleRoleNote = document.querySelector("#googleSheetConfigDetails > .clusterNote");
-  if(googleRoleNote) googleRoleNote.textContent = workerMode
-    ? "Apps Script のURLと、作業者用トークンを設定してください。"
-    : "Apps Script のURLと、管理者用トークンを設定してください。";
+  const accessRoleStatus = document.getElementById("appAccessRoleStatus");
+  if(accessRoleStatus) accessRoleStatus.textContent = workerMode ? "作業者" : "管理者";
   if(dashboardTab){
     dashboardTab.inert = workerMode;
     if(workerMode) dashboardTab.style.display = "none";
@@ -15584,7 +15565,6 @@ function moveCalculationSettingsToForecast(){
 function installSettingsDirtyWatchers(){
   [
     "defaultLossRateInput","defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
-    "appAccessRoleAdminInput","appAccessRoleWorkerInput",
     "accessPasswordInput",
     "useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
     "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",
@@ -19400,12 +19380,9 @@ function populateGoogleSheetConfigForm(){
   const validation = validateGoogleSheetConfig(config);
   const urlInput = document.getElementById("googleSheetUrlInput");
   const tokenInput = document.getElementById("googleSheetTokenInput");
-  const roleNote = document.querySelector("#googleSheetConfigDetails > .clusterNote");
   if(urlInput) urlInput.value = config.url;
   if(tokenInput) tokenInput.value = config.token;
-  if(roleNote) roleNote.textContent = isWorkerMode()
-    ? "Apps Script のURLと、作業者用トークンを設定してください。"
-    : "Apps Script のURLと、管理者用トークンを設定してください。";
+  applyAppAccessRoleUi();
   syncAccessProtectionDetails();
 }
 
@@ -19416,8 +19393,54 @@ function readGoogleSheetConfigForm(){
   };
 }
 
-function saveGoogleSheetConfig(){
+function buildGoogleSheetAccessRolePayload(config){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-access-role",
+    action: "identifyAccessRole",
+    version: 1,
+    token: config.token || ""
+  };
+}
+
+async function fetchGoogleSheetAccessRole(config){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_IMPORT_TIMEOUT_MS);
+  try{
+    const response = await fetchGoogleSheetReadRequest(config.url, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: buildValidatedGoogleSheetRequestBody(buildGoogleSheetAccessRolePayload(config)),
+      signal: controller.signal
+    });
+    const responseText = await response.text();
+    if(!isWithinGoogleSheetResponseLimits(responseText)){
+      throw new Error("利用モード確認の応答が大きすぎます");
+    }
+    let result;
+    try{
+      result = responseText ? JSON.parse(responseText) : {};
+    }catch(e){
+      throw new Error("利用モード確認の応答を読み込めません");
+    }
+    if(result.ok !== true){
+      throw new Error(result.message || "連携トークンを確認できませんでした");
+    }
+    if(result.accessRole !== APP_ACCESS_ROLE_ADMIN && result.accessRole !== APP_ACCESS_ROLE_WORKER){
+      throw new Error("Apps Scriptが利用モードの自動判定に対応していません");
+    }
+    return result.accessRole;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+let googleSheetConfigSaving = false;
+
+async function saveGoogleSheetConfig(){
   if(!ensureGoogleSheetLocalMutationAllowed("Google連携設定を保存")) return;
+  if(googleSheetConfigSaving) return;
   const config = readGoogleSheetConfigForm();
   const validation = validateGoogleSheetConfig(config);
   if(!validation.ok){
@@ -19426,13 +19449,43 @@ function saveGoogleSheetConfig(){
     showToast(validation.message);
     return;
   }
-  saveGoogleSheetConfigToStorage(validation.config);
-  populateGoogleSheetConfigForm();
-  updateGoogleSheetResendButtonState();
-  if(isMonitorModeOpen){
-    startMonitorRemoteUpdates();
+  const saveButton = document.getElementById("googleSheetConfigSaveBtn");
+  const previousButtonText = saveButton?.textContent || "Google連携設定を保存";
+  googleSheetConfigSaving = true;
+  if(saveButton){
+    saveButton.disabled = true;
+    saveButton.textContent = "トークンを確認中...";
   }
-  showToast("Google連携設定を保存しました");
+  try{
+    const accessRole = await fetchGoogleSheetAccessRole(validation.config);
+    saveGoogleSheetConfigToStorage(validation.config);
+    const accessRoleChanged = setAppAccessRole(accessRole);
+    populateGoogleSheetConfigForm();
+    updateGoogleSheetResendButtonState();
+    if(isMonitorModeOpen){
+      startMonitorRemoteUpdates();
+    }
+    const roleLabel = accessRole === APP_ACCESS_ROLE_WORKER ? "作業者" : "管理者";
+    showToast(`Google連携設定を保存し、${roleLabel}モードに設定しました`);
+    if(accessRole === APP_ACCESS_ROLE_WORKER){
+      setTimeout(() => importRecordsFromGoogleSheet({
+        silentErrors: false,
+        silentNoChange: true,
+        emptyMessage: accessRoleChanged ? "作業用データを読み込みました" : "作業用データを更新しました"
+      }), 0);
+    }
+  }catch(e){
+    const message = e?.name === "AbortError"
+      ? "連携トークンの確認がタイムアウトしました"
+      : String(e?.message || e || "連携トークンを確認できませんでした");
+    showToast(message);
+  }finally{
+    googleSheetConfigSaving = false;
+    if(saveButton){
+      saveButton.disabled = false;
+      saveButton.textContent = previousButtonText;
+    }
+  }
 }
 
 function loadGoogleSheetSyncStatus(){
@@ -23668,9 +23721,6 @@ function importRecentRecordsFromGoogleSheetOnStartup(){
 }
 
 function populateSettingsForm(){
-  document.querySelectorAll('input[name="appAccessRole"]').forEach(input => {
-    input.checked = input.value === appAccessRole;
-  });
   document.getElementById("defaultLossRateInput").value = settings.defaultLossRate;
   document.getElementById("defaultYieldInput").value = String(settings.defaultYieldPerPallet);
   document.getElementById("defaultPlantingCountInput").value = String(settings.defaultPlantingCount);
@@ -23900,9 +23950,6 @@ function saveSettings(){
   }
   const previousSettings = deepClone(settings);
   const nextSettings = readSettingsForm();
-  const requestedAccessRole = normalizeAppAccessRole(
-    document.querySelector('input[name="appAccessRole"]:checked')?.value
-  );
   if(!hasPresetAccessPassword()){
     showToast("固定パスワードが未設定です");
     return false;
@@ -23913,23 +23960,11 @@ function saveSettings(){
   appendSettingsChangeMemo(previousSettings, nextSettings);
   settings = nextSettings;
   saveSettingsToStorage();
-  const accessRoleChanged = setAppAccessRole(requestedAccessRole);
   settingsDirty = false;
   clearHarvestPrediction();
   saveHarvestStateToStorage();
   populateSettingsForm();
-  if(accessRoleChanged && isWorkerMode()){
-    syncAccessProtectionDetails({ forceClosed: true });
-    showToast("作業者モードへ切り替えました");
-    setTimeout(() => importRecordsFromGoogleSheet({
-      silentErrors: false,
-      silentNoChange: true,
-      emptyMessage: "作業用データを更新しました"
-    }), 0);
-  }else if(accessRoleChanged){
-    syncAccessProtectionDetails({ forceClosed: true });
-    showToast("管理者モードへ切り替えました");
-  }else if(unlockResult === true){
+  if(unlockResult === true){
     syncAccessProtectionDetails({ forceClosed: true });
     showToast("設定を保存してロックを解除しました");
   }else if(unlockResult === false){

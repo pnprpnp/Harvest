@@ -288,12 +288,9 @@ function populateGoogleSheetConfigForm(){
   const validation = validateGoogleSheetConfig(config);
   const urlInput = document.getElementById("googleSheetUrlInput");
   const tokenInput = document.getElementById("googleSheetTokenInput");
-  const roleNote = document.querySelector("#googleSheetConfigDetails > .clusterNote");
   if(urlInput) urlInput.value = config.url;
   if(tokenInput) tokenInput.value = config.token;
-  if(roleNote) roleNote.textContent = isWorkerMode()
-    ? "Apps Script のURLと、作業者用トークンを設定してください。"
-    : "Apps Script のURLと、管理者用トークンを設定してください。";
+  applyAppAccessRoleUi();
   syncAccessProtectionDetails();
 }
 
@@ -304,8 +301,54 @@ function readGoogleSheetConfigForm(){
   };
 }
 
-function saveGoogleSheetConfig(){
+function buildGoogleSheetAccessRolePayload(config){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-access-role",
+    action: "identifyAccessRole",
+    version: 1,
+    token: config.token || ""
+  };
+}
+
+async function fetchGoogleSheetAccessRole(config){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_IMPORT_TIMEOUT_MS);
+  try{
+    const response = await fetchGoogleSheetReadRequest(config.url, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: buildValidatedGoogleSheetRequestBody(buildGoogleSheetAccessRolePayload(config)),
+      signal: controller.signal
+    });
+    const responseText = await response.text();
+    if(!isWithinGoogleSheetResponseLimits(responseText)){
+      throw new Error("利用モード確認の応答が大きすぎます");
+    }
+    let result;
+    try{
+      result = responseText ? JSON.parse(responseText) : {};
+    }catch(e){
+      throw new Error("利用モード確認の応答を読み込めません");
+    }
+    if(result.ok !== true){
+      throw new Error(result.message || "連携トークンを確認できませんでした");
+    }
+    if(result.accessRole !== APP_ACCESS_ROLE_ADMIN && result.accessRole !== APP_ACCESS_ROLE_WORKER){
+      throw new Error("Apps Scriptが利用モードの自動判定に対応していません");
+    }
+    return result.accessRole;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+let googleSheetConfigSaving = false;
+
+async function saveGoogleSheetConfig(){
   if(!ensureGoogleSheetLocalMutationAllowed("Google連携設定を保存")) return;
+  if(googleSheetConfigSaving) return;
   const config = readGoogleSheetConfigForm();
   const validation = validateGoogleSheetConfig(config);
   if(!validation.ok){
@@ -314,13 +357,43 @@ function saveGoogleSheetConfig(){
     showToast(validation.message);
     return;
   }
-  saveGoogleSheetConfigToStorage(validation.config);
-  populateGoogleSheetConfigForm();
-  updateGoogleSheetResendButtonState();
-  if(isMonitorModeOpen){
-    startMonitorRemoteUpdates();
+  const saveButton = document.getElementById("googleSheetConfigSaveBtn");
+  const previousButtonText = saveButton?.textContent || "Google連携設定を保存";
+  googleSheetConfigSaving = true;
+  if(saveButton){
+    saveButton.disabled = true;
+    saveButton.textContent = "トークンを確認中...";
   }
-  showToast("Google連携設定を保存しました");
+  try{
+    const accessRole = await fetchGoogleSheetAccessRole(validation.config);
+    saveGoogleSheetConfigToStorage(validation.config);
+    const accessRoleChanged = setAppAccessRole(accessRole);
+    populateGoogleSheetConfigForm();
+    updateGoogleSheetResendButtonState();
+    if(isMonitorModeOpen){
+      startMonitorRemoteUpdates();
+    }
+    const roleLabel = accessRole === APP_ACCESS_ROLE_WORKER ? "作業者" : "管理者";
+    showToast(`Google連携設定を保存し、${roleLabel}モードに設定しました`);
+    if(accessRole === APP_ACCESS_ROLE_WORKER){
+      setTimeout(() => importRecordsFromGoogleSheet({
+        silentErrors: false,
+        silentNoChange: true,
+        emptyMessage: accessRoleChanged ? "作業用データを読み込みました" : "作業用データを更新しました"
+      }), 0);
+    }
+  }catch(e){
+    const message = e?.name === "AbortError"
+      ? "連携トークンの確認がタイムアウトしました"
+      : String(e?.message || e || "連携トークンを確認できませんでした");
+    showToast(message);
+  }finally{
+    googleSheetConfigSaving = false;
+    if(saveButton){
+      saveButton.disabled = false;
+      saveButton.textContent = previousButtonText;
+    }
+  }
 }
 
 function loadGoogleSheetSyncStatus(){
