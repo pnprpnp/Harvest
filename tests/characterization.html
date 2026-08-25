@@ -521,6 +521,8 @@
           "buildWorkerCalculationSnapshot",
           "setupHarvestWorkerApiToken",
           "assertApiOperationAllowedForRole",
+          "analyzePlantingEventTrashHeaders",
+          "migratePlantingEventTrashSheetHeaders",
           "getAppsScriptContractSnapshot",
           "resetAppsScriptTestState"
         ];
@@ -684,6 +686,93 @@
           );
         });
         appsScript.assertApiOperationAllowedForRole("syncAll", "admin");
+      });
+
+      await runTest("古い削除済み苗植えシートは不足列だけを安全に補完する", () => {
+        const legacyHeaders = comparable(appsScript.eval(`PLANTING_EVENT_FIELD_KEYS
+          .filter(key => ![
+            "plantingCountsByPallet",
+            "seedlingHousePalletKeys",
+            "seedlingHousePrimaryPlantingDate",
+            "seedlingHouseNextStartKey",
+            "qualityMemoByPallet"
+          ].includes(key))
+          .map(key => PLANTING_EVENT_HEADER_LABELS[key])
+          .concat(["削除日時", "復元期限"])`));
+        const analysis = comparable(appsScript.analyzePlantingEventTrashHeaders(legacyHeaders));
+        assertDeepEqual(analysis.missingKeys, [
+          "plantingCountsByPallet",
+          "seedlingHousePalletKeys",
+          "seedlingHousePrimaryPlantingDate",
+          "seedlingHouseNextStartKey",
+          "qualityMemoByPallet"
+        ], "旧シートの不足列を正しく判定できません");
+        const rows = [
+          [...legacyHeaders],
+          legacyHeaders.map((header, index) => `${index + 1}:${header}`)
+        ];
+        const legacyDeletedAt = rows[1][rows[1].length - 2];
+        const legacyExpiresAt = rows[1][rows[1].length - 1];
+        const sheet = {
+          getLastRow(){ return rows.length; },
+          getLastColumn(){ return rows[0].length; },
+          insertColumnBefore(column){
+            rows.forEach(row => row.splice(column - 1, 0, ""));
+          },
+          getRange(row, column, rowCount = 1, columnCount = 1){
+            return {
+              getValues(){
+                return rows.slice(row - 1, row - 1 + rowCount)
+                  .map(values => values.slice(column - 1, column - 1 + columnCount));
+              },
+              setValue(value){
+                rows[row - 1][column - 1] = value;
+                return this;
+              },
+              setValues(values){
+                values.forEach((sourceRow, rowIndex) => {
+                  sourceRow.forEach((value, columnIndex) => {
+                    rows[row - 1 + rowIndex][column - 1 + columnIndex] = value;
+                  });
+                });
+                return this;
+              }
+            };
+          }
+        };
+        assertEqual(
+          appsScript.migratePlantingEventTrashSheetHeaders(sheet),
+          true,
+          "旧シートの不足列を補完できません"
+        );
+        const expectedHeaders = comparable(appsScript.eval("[...PLANTING_EVENT_TRASH_HEADERS]"));
+        assertDeepEqual(rows[0], expectedHeaders, "旧シートを現在の見出し順へ更新できません");
+        assertEqual(rows[1][rows[1].length - 2], legacyDeletedAt, "削除日時が移動時に失われました");
+        assertEqual(rows[1][rows[1].length - 1], legacyExpiresAt, "復元期限が移動時に失われました");
+        analysis.missingKeys.forEach(key => {
+          const column = appsScript.eval(
+            `PLANTING_EVENT_FIELD_KEYS.indexOf(${JSON.stringify(key)})`
+          );
+          assertEqual(rows[1][column], "", `${key}の追加列が空欄ではありません`);
+        });
+        assertThrows(
+          () => appsScript.analyzePlantingEventTrashHeaders([
+            ...legacyHeaders.slice(0, 2),
+            "確認できない列",
+            ...legacyHeaders.slice(2)
+          ]),
+          "確認できない見出し",
+          "不明な列があるシートを自動補完しようとしています"
+        );
+        assertThrows(
+          () => appsScript.analyzePlantingEventTrashHeaders([
+            legacyHeaders[1],
+            legacyHeaders[0],
+            ...legacyHeaders.slice(2)
+          ]),
+          "見出し順",
+          "列順が異なるシートを自動補完しようとしています"
+        );
       });
 
       await runTest("ブラウザーが送る収穫記録をApps Script側で正規化できる", () => {

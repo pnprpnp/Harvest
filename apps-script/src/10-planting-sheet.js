@@ -739,57 +739,93 @@ function remapPlantingEventRow(sourceHeaders, sourceRow, targetHeaders) {
 
 function validatePlantingEventTrashSheetHeaders(sheet) {
   if (!sheet || sheet.getLastRow() === 0) return;
-  if (sheet.getLastColumn() < PLANTING_EVENT_TRASH_HEADERS.length) {
-    throw new Error(
-      "削除済み苗植えイベントシートの見出しが現在の形式と異なります。データ保護のため処理を中止しました。"
-    );
-  }
   const headers = sheet
-    .getRange(1, 1, 1, PLANTING_EVENT_TRASH_HEADERS.length)
-    .getValues()[0];
+    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
+    .getValues()[0]
+    .map(value => String(value || "").trim());
+  const analysis = analyzePlantingEventTrashHeaders(headers);
   const matches = PLANTING_EVENT_TRASH_HEADERS.every(
     (header, index) => String(headers[index] || "").trim() === header
   );
-  if (!matches) {
+  if (analysis.missingKeys.length || headers.length !== PLANTING_EVENT_TRASH_HEADERS.length || !matches) {
     throw new Error(
       "削除済み苗植えイベントシートの見出しが現在の形式と異なります。データ保護のため処理を中止しました。"
     );
   }
 }
 
-function migratePlantingEventTrashSheetPlantingCountsColumn(sheet) {
+function analyzePlantingEventTrashHeaders(headers) {
+  const values = Array.isArray(headers)
+    ? headers.map(value => String(value || "").trim())
+    : [];
+  const deletedAtKey = "__deletedAt";
+  const expiresAtKey = "__expiresAt";
+  const keys = values.map(header => {
+    if (header === "削除日時") return deletedAtKey;
+    if (header === "復元期限") return expiresAtKey;
+    return getPlantingEventHeaderKey(header);
+  });
+  if (keys.some(key => !key)) {
+    throw new Error(
+      "削除済み苗植えイベントシートに確認できない見出しがあります。データ保護のため処理を中止しました。"
+    );
+  }
+  const seenKeys = new Set();
+  keys.forEach((key, index) => {
+    if (seenKeys.has(key)) {
+      throw new Error(
+        "削除済み苗植えイベントシートに同じ意味の見出しが重複しています: " + values[index]
+      );
+    }
+    seenKeys.add(key);
+  });
+  const requiredKeys = ["eventId", "plantingDate", deletedAtKey, expiresAtKey];
+  if (requiredKeys.some(key => !seenKeys.has(key))) {
+    throw new Error(
+      "削除済み苗植えイベントシートに必須の見出しがありません。データ保護のため処理を中止しました。"
+    );
+  }
+  const expectedExistingKeys = PLANTING_EVENT_FIELD_KEYS
+    .filter(key => seenKeys.has(key))
+    .concat([deletedAtKey, expiresAtKey]);
+  if (keys.length !== expectedExistingKeys.length || keys.some(
+    (key, index) => key !== expectedExistingKeys[index]
+  )) {
+    throw new Error(
+      "削除済み苗植えイベントシートの見出し順が確認できません。データ保護のため処理を中止しました。"
+    );
+  }
+  return {
+    keys: keys,
+    missingKeys: PLANTING_EVENT_FIELD_KEYS.filter(key => !seenKeys.has(key))
+  };
+}
+
+function migratePlantingEventTrashSheetHeaders(sheet) {
   if (!sheet || sheet.getLastRow() === 0) return false;
-  const missingKeys = ["plantingCountsByPallet", "qualityMemoByPallet"]
-    .filter(key => getPlantingEventHeaderColumn(
-      getPlantingEventHeaderValues(sheet),
-      key
-    ) <= 0);
-  if (!missingKeys.length) return false;
-  const legacyHeaders = PLANTING_EVENT_FIELD_KEYS
-    .filter(key => !missingKeys.includes(key))
-    .map(key => PLANTING_EVENT_HEADER_LABELS[key])
-    .concat(["削除日時", "復元期限"]);
-  if (sheet.getLastColumn() < legacyHeaders.length) return false;
   const currentHeaders = sheet
-    .getRange(1, 1, 1, legacyHeaders.length)
+    .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
     .getValues()[0]
     .map(value => String(value || "").trim());
-  if (!legacyHeaders.every((header, index) => currentHeaders[index] === header)) return false;
-
-  [...missingKeys]
-    .sort((left, right) => (
-      PLANTING_EVENT_FIELD_KEYS.indexOf(left) - PLANTING_EVENT_FIELD_KEYS.indexOf(right)
-    ))
-    .forEach(key => {
-      const insertColumn = PLANTING_EVENT_FIELD_KEYS.indexOf(key) + 1;
-      sheet.insertColumnBefore(insertColumn);
-      sheet.getRange(1, insertColumn).setValue(PLANTING_EVENT_HEADER_LABELS[key]);
-    });
-  return true;
+  const analysis = analyzePlantingEventTrashHeaders(currentHeaders);
+  analysis.missingKeys.forEach(key => {
+    const insertColumn = PLANTING_EVENT_FIELD_KEYS.indexOf(key) + 1;
+    sheet.insertColumnBefore(insertColumn);
+    sheet.getRange(1, insertColumn).setValue(PLANTING_EVENT_HEADER_LABELS[key]);
+  });
+  const headerNamesMatch = currentHeaders.length === PLANTING_EVENT_TRASH_HEADERS.length
+    && PLANTING_EVENT_TRASH_HEADERS.every((header, index) => currentHeaders[index] === header);
+  if (analysis.missingKeys.length || !headerNamesMatch) {
+    sheet
+      .getRange(1, 1, 1, PLANTING_EVENT_TRASH_HEADERS.length)
+      .setValues([PLANTING_EVENT_TRASH_HEADERS]);
+    return true;
+  }
+  return false;
 }
 
 function ensurePlantingEventTrashSheet(sheet) {
-  migratePlantingEventTrashSheetPlantingCountsColumn(sheet);
+  const headersMigrated = migratePlantingEventTrashSheetHeaders(sheet);
   if (sheet.getMaxColumns() < PLANTING_EVENT_TRASH_HEADERS.length) {
     sheet.insertColumnsAfter(
       sheet.getMaxColumns(),
@@ -804,6 +840,7 @@ function ensurePlantingEventTrashSheet(sheet) {
     return;
   }
   validatePlantingEventTrashSheetHeaders(sheet);
+  if (headersMigrated) applyPlantingEventTrashSheetLayout(sheet);
 }
 
 function applyPlantingEventTrashSheetLayout(sheet) {
