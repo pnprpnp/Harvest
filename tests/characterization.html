@@ -4593,6 +4593,41 @@
         }
       });
 
+      await runTest("記録の読み込みをアプリメニューから開ける", () => {
+        try{
+          app.openAppMenuWindow();
+          const state = comparable(app.eval(`(() => {
+            const menuBody = document.getElementById("appMenuWindowBody");
+            const choice = document.querySelector(".recordImportChoice");
+            const button = document.getElementById("recordImportChoiceBtn");
+            button?.click();
+            return {
+              choiceInMenu: choice?.parentElement === menuBody,
+              buttonInRecordTab: !!document.querySelector("#recordTab #recordImportChoiceBtn"),
+              buttonText: button?.textContent.trim() || "",
+              importMenuOpen: document.getElementById("recordImportMenu")?.classList.contains("show") || false,
+              importChoiceCount: document.querySelectorAll("#recordImportChoiceBtn").length
+            };
+          })()`));
+          assertDeepEqual(state, {
+            choiceInMenu: true,
+            buttonInRecordTab: false,
+            buttonText: "記録を読み込む",
+            importMenuOpen: true,
+            importChoiceCount: 1
+          }, "記録の読み込み操作がアプリメニューへ移動していません");
+          app.closeAppMenuWindow();
+          app.openAppMenuWindow();
+          assert(
+            !app.document.getElementById("recordImportMenu")?.classList.contains("show"),
+            "アプリメニューを閉じた後も読み込み選択画面が残っています"
+          );
+        }finally{
+          app.hideRecordImportMenu();
+          app.closeAppMenuWindow();
+        }
+      });
+
       await runTest("表示テーマを端末・ライト・ダークから選び、端末内へ保存できる", async () => {
         const previousPreference = app.eval("themePreference");
         let reloadFrame = null;
@@ -8129,18 +8164,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "192b74d4", elements: 2254, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "25dd0607", elements: 2323, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "5ff7e106", elements: 2323, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "68b4065c", elements: 2255, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "e32b6f2b", elements: 2255, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "24540846", elements: 2338, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "d013422f", elements: 2353, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "0d53202f", elements: 2353, visible: 282, viewport: "390x844" },
-          mobileSettings: { hash: "2e543eaf", elements: 2353, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "612d4e16", elements: 2353, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "e267f022", elements: 2353, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "33926dbe", elements: 2353, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "996f027e", elements: 2254, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "ffcc0e09", elements: 2323, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "5a8ca618", elements: 2323, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "7f5ebabb", elements: 2255, visible: 110, viewport: "390x844" },
+          mobileDashboard: { hash: "8e7a6659", elements: 2255, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "13ceb8a6", elements: 2338, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "68db9525", elements: 2353, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "3d5ca9f3", elements: 2353, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "c3a16b4b", elements: 2353, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "a1e5d078", elements: 2353, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "f818a884", elements: 2353, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "1dd54840", elements: 2353, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

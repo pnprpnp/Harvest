@@ -836,6 +836,7 @@ function openAppMenuWindow(){
 
 function closeAppMenuWindow(){
   const modal = document.getElementById("appMenuModal");
+  hideRecordImportMenu();
   if(settingsDirty){
     const shouldSave = confirm("設定が変更されています。保存しますか？");
     if(shouldSave){

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260828-fast-batch-send">
+<meta name="harvestnavi-version" content="20260828-record-import-menu">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10508,6 +10508,8 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   box-shadow:var(--ui-shadow-float);
 }
 .appMenuWindow{width:100%;max-width:620px;box-sizing:border-box;padding:18px;}
+.appMenuRecordImportChoice{margin:0 0 14px;}
+.appMenuRecordImportChoice > #recordImportChoiceBtn{margin-top:0;}
 .forecastSettingsWindowHeader,.appMenuWindowHeader,.bedDetailWindowHeader,.plantingAgeWindowHeader,.recordDetailWindowHeader,.monitorEditorWindowHeader{
   padding:14px 16px;
   border-color:var(--ui-line);
@@ -13015,16 +13017,6 @@ requestAnimationFrame(function(){
             <div id="recordTrashList" class="recordToggleBody smallText">削除済みの記録はありません。</div>
           </details>
         </div>
-        <div class="recordImportChoice">
-          <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" data-ui-click="toggleRecordImportMenu">記録を読み込む</button>
-          <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
-            <div id="recordImportTitle" class="recordImportTitle">記録を読み込む</div>
-            <button id="googleSheetImportBtn" class="actionBtn thirdBtn" data-ui-click="importRecordsFromGoogleSheet" data-ui-before="hideRecordImportMenu">スプレッドシートから読み込む</button>
-            <button class="actionBtn secondaryBtn" data-ui-click="triggerImportRecords" data-ui-before="hideRecordImportMenu">JSONファイルを読み込む</button>
-            <button class="actionBtn secondaryBtn" data-ui-click="hideRecordImportMenu">キャンセル</button>
-          </div>
-        </div>
-        <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
         <details id="recordHelpDetails" class="recordToggleWrap">
           <summary class="recordToggleSummary">ヘルプ</summary>
           <div class="recordToggleBody">
@@ -13554,6 +13546,16 @@ requestAnimationFrame(function(){
           <span id="appUpdateCheckStatus" class="headerLatestRefreshSub"></span>
         </span>
       </button>
+      <div class="recordImportChoice appMenuRecordImportChoice">
+        <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" data-ui-click="toggleRecordImportMenu">記録を読み込む</button>
+        <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
+          <div id="recordImportTitle" class="recordImportTitle">記録を読み込む</div>
+          <button id="googleSheetImportBtn" class="actionBtn thirdBtn" data-ui-click="importRecordsFromGoogleSheet" data-ui-before="hideRecordImportMenu">スプレッドシートから読み込む</button>
+          <button class="actionBtn secondaryBtn" data-ui-click="triggerImportRecords" data-ui-before="hideRecordImportMenu">JSONファイルを読み込む</button>
+          <button class="actionBtn secondaryBtn" data-ui-click="hideRecordImportMenu">キャンセル</button>
+        </div>
+      </div>
+      <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
       <div id="dashboardStartDayMenuSetting" class="settingCluster dashboardStartDayMenuSetting">
         <div class="dashboardStartDayField">
           <label for="dashboardStartDayInput">集計の基準日</label>
@@ -14829,6 +14831,7 @@ function openAppMenuWindow(){
 
 function closeAppMenuWindow(){
   const modal = document.getElementById("appMenuModal");
+  hideRecordImportMenu();
   if(settingsDirty){
     const shouldSave = confirm("設定が変更されています。保存しますか？");
     if(shouldSave){
