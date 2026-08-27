@@ -537,6 +537,36 @@ async function sendGoogleSheetBatchChunk(recordSnapshots, config){
   }
 }
 
+function splitGoogleSheetRecordBatchChunks(recordSnapshots, config){
+  const chunks = [];
+  const oversizedRecords = [];
+  let currentChunk = [];
+
+  const fitsRequestLimits = chunk => {
+    const payloadText = JSON.stringify(buildGoogleSheetBatchPayload(chunk, config));
+    return isWithinGoogleSheetTextLimits(payloadText);
+  };
+
+  (Array.isArray(recordSnapshots) ? recordSnapshots : []).forEach(record => {
+    const candidate = [...currentChunk, record];
+    if(candidate.length <= GOOGLE_SHEET_MAX_BATCH_RECORDS && fitsRequestLimits(candidate)){
+      currentChunk = candidate;
+      return;
+    }
+
+    if(currentChunk.length) chunks.push(currentChunk);
+    if(fitsRequestLimits([record])){
+      currentChunk = [record];
+    }else{
+      currentChunk = [];
+      oversizedRecords.push(record);
+    }
+  });
+
+  if(currentChunk.length) chunks.push(currentChunk);
+  return { chunks, oversizedRecords };
+}
+
 async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
   const list = Array.isArray(recordsToSend) ? recordsToSend : [];
   const showFailureDialog = options.showFailureDialog !== false;
@@ -566,9 +596,19 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
     }
   });
 
-  const totals = { successCount: 0, updatedCount: 0, duplicateCount: 0, failCount: invalidCount };
-  for(let start = 0; start < validSnapshots.length; start += GOOGLE_SHEET_MAX_BATCH_RECORDS){
-    const chunk = validSnapshots.slice(start, start + GOOGLE_SHEET_MAX_BATCH_RECORDS);
+  const batchPlan = splitGoogleSheetRecordBatchChunks(validSnapshots, config);
+  batchPlan.oversizedRecords.forEach(record => setGoogleSheetSyncStatus(record, "failed"));
+  if(batchPlan.oversizedRecords.length){
+    firstError ||= "送信できる大きさを超えた収穫記録があります";
+  }
+  const totals = {
+    successCount: 0,
+    updatedCount: 0,
+    duplicateCount: 0,
+    failCount: invalidCount + batchPlan.oversizedRecords.length
+  };
+  for(let chunkIndex = 0; chunkIndex < batchPlan.chunks.length; chunkIndex++){
+    const chunk = batchPlan.chunks[chunkIndex];
     try{
       const chunkTotals = await sendGoogleSheetBatchChunk(chunk, config);
       Object.keys(totals).forEach(key => { totals[key] += chunkTotals[key] || 0; });
@@ -576,7 +616,7 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
     }catch(e){
       firstError ||= String(e?.name === "AbortError" ? "スプレッドシートとの通信がタイムアウトしました" : (e?.message || e));
       totals.failCount += chunk.length;
-      const remaining = validSnapshots.slice(start + chunk.length);
+      const remaining = batchPlan.chunks.slice(chunkIndex + 1).flat();
       remaining.forEach(record => setGoogleSheetSyncStatus(record, "failed"));
       totals.failCount += remaining.length;
       break;

@@ -123,6 +123,50 @@
       `);
     }
 
+    async function withBackgroundSendTestState(app, nextRecords, body, nextPlantingEvents = []){
+      const previousRecords = comparable(app.eval("records"));
+      const previousPlantingEvents = comparable(app.eval("plantingEvents"));
+      const previousStorage = snapshotStorage(app.localStorage);
+      const originalFetch = app.fetch;
+      const originalSchedule = app.scheduleGoogleSheetBackgroundSend;
+      try{
+        app.eval(`
+          if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
+          googleSheetBackgroundSendTimer = null;
+          googleSheetBackgroundRecordQueue.clear();
+          googleSheetBackgroundPlantingQueue.clear();
+          googleSheetBackgroundSendRunning = false;
+          googleSheetOperationOwner = null;
+          googleSheetSendState = "idle";
+        `);
+        app.scheduleGoogleSheetBackgroundSend = () => {};
+        app.saveGoogleSheetConfigToStorage({
+          url: "https://script.google.com/macros/s/characterization-test/exec",
+          token: "characterization-test-token-0000000000000000"
+        });
+        const testConfig = app.loadGoogleSheetConfig();
+        app.saveGoogleSheetSyncRevision(testConfig, 0);
+        app.eval("saveGoogleSheetSyncStatus({}); savePlantingEventSyncStatus({});");
+        replaceAppHistory(app, nextRecords, nextPlantingEvents);
+        await body();
+      }finally{
+        app.fetch = originalFetch;
+        app.scheduleGoogleSheetBackgroundSend = originalSchedule;
+        app.eval(`
+          if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
+          googleSheetBackgroundSendTimer = null;
+          googleSheetBackgroundRecordQueue.clear();
+          googleSheetBackgroundPlantingQueue.clear();
+          googleSheetBackgroundSendRunning = false;
+          googleSheetOperationOwner = null;
+          googleSheetSendState = "idle";
+          updateGoogleSheetOperationControls();
+        `);
+        restoreStorage(app.localStorage, previousStorage);
+        replaceAppHistory(app, previousRecords, previousPlantingEvents);
+      }
+    }
+
     function finish(iframes){
       if(finished) return;
       finished = true;
@@ -325,6 +369,18 @@
       const visualFrame = await loadVisualAppFrame(390, 844);
       const app = visualFrame.contentWindow;
       try{
+        app.eval(`(() => {
+          const NativeDate = Date;
+          const fixedNow = new NativeDate(2026, 7, 27, 12, 0, 0, 0).getTime();
+          function FixedDate(...args){
+            if(!new.target) return new NativeDate(fixedNow).toString();
+            return args.length ? new NativeDate(...args) : new NativeDate(fixedNow);
+          }
+          FixedDate.prototype = NativeDate.prototype;
+          Object.setPrototypeOf(FixedDate, NativeDate);
+          FixedDate.now = () => fixedNow;
+          globalThis.Date = FixedDate;
+        })()`);
         app.eval("protectedAccessUnlocked = true");
         const stabilityStyle = app.document.createElement("style");
         stabilityStyle.textContent = "*,*::before,*::after{transition:none!important;animation:none!important;}";
@@ -408,6 +464,7 @@
         "buildGoogleSheetCombinedSyncPayload",
         "buildGoogleSheetUpdateCheckPayload",
         "buildGoogleSheetBatchPayload",
+        "splitGoogleSheetRecordBatchChunks",
         "buildGoogleSheetRecordDeletePayload",
         "buildGoogleSheetRecordRestorePayload",
         "buildGoogleSheetPlantingEventPayload",
@@ -425,6 +482,9 @@
         "buildRecordConsistencyAudit",
         "getHarvestRecordSyncContentSignature",
         "getSyncConflictLookupKey",
+        "queueGoogleSheetRecordSend",
+        "runGoogleSheetBackgroundSendQueue",
+        "getGoogleSheetRecordSyncState",
         "showPageBlockingUi",
         "hidePageBlockingUi",
         "normalizeMainTabName",
@@ -448,6 +508,34 @@
         "loadDashboardRecordCalendarMonth",
         "shiftDashboardRecordCalendarMonth"
       ];
+      const createBackgroundPartialRecord = (index, cases = 10, memo = "") => {
+        const record = app.normalizeRecordSnapshot({
+          palletNumberingVersion: 2,
+          id: 30000000000000 + index,
+          recordUuid: `44444444-4444-4444-8444-${index.toString(16).padStart(12, "0")}`,
+          type: "partialHarvest",
+          date: `2026-08-${String(10 + ((index - 1) % 18)).padStart(2, "0")}`,
+          cases,
+          memo,
+          targets: [{
+            building: 2,
+            bed: "A",
+            start: index,
+            end: index,
+            plantsPerPallet: 5
+          }],
+          palletKeys: []
+        });
+        assert(record, "背景送信テスト用の部分収穫記録を作成できません");
+        return record;
+      };
+      const createBackgroundServerRecord = record => ({
+        ...record,
+        syncSchemaVersion: app.eval("RECORD_SYNC_SCHEMA_VERSION"),
+        syncProvidedFields: ["actualSeedlingCarryoverMode"],
+        createdAt: record.createdAt || "2026-08-27T00:00:00.000Z",
+        updatedAt: "2026-08-27T00:00:01.000Z"
+      });
 
       await runTest("主要な計算関数を読み込める", () => {
         const missing = requiredFunctions.filter(name => typeof app[name] !== "function");
@@ -636,6 +724,153 @@
             appsScript.resolveApiOperation(comparable(payload)),
             expectedOperation,
             `${expectedOperation}のAPI操作が一致しません`
+          );
+        });
+      });
+
+      await runTest("背景送信は複数の収穫記録を1回の一括APIへまとめる", async () => {
+        const firstRecord = createBackgroundPartialRecord(1, 10);
+        const secondRecord = createBackgroundPartialRecord(2, 12);
+        await withBackgroundSendTestState(app, [firstRecord, secondRecord], async () => {
+          const payloads = [];
+          app.fetch = async (_url, options) => {
+            const payload = JSON.parse(options.body);
+            payloads.push(payload);
+            return {
+              text: async () => JSON.stringify({
+                ok: true,
+                previousSyncRevision: payload.syncRevision,
+                syncRevision: payload.syncRevision + 1,
+                results: payload.records.map((record, index) => ({
+                  index,
+                  ok: true,
+                  record: createBackgroundServerRecord(record)
+                }))
+              })
+            };
+          };
+
+          const currentFirst = app.getRecordByUuid(firstRecord.recordUuid);
+          const currentSecond = app.getRecordByUuid(secondRecord.recordUuid);
+          assert(app.queueGoogleSheetRecordSend(currentFirst), "1件目を背景送信へ追加できません");
+          assert(app.queueGoogleSheetRecordSend(currentSecond), "2件目を背景送信へ追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+
+          assertEqual(payloads.length, 1, "収穫記録ごとに通信しています");
+          assertEqual(payloads[0].type, "harvest-record-batch", "一括保存APIを使用していません");
+          assertDeepEqual(
+            payloads[0].records.map(record => record.recordUuid),
+            [firstRecord.recordUuid, secondRecord.recordUuid],
+            "一括送信した収穫記録が一致しません"
+          );
+          assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(firstRecord.recordUuid)), "confirmed", "1件目が送信済みになりません");
+          assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(secondRecord.recordUuid)), "confirmed", "2件目が送信済みになりません");
+          assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "完了した背景送信がキューに残っています");
+        });
+      });
+
+      await runTest("一括送信中に再編集した収穫記録は最新版を次便で送る", async () => {
+        const originalRecord = createBackgroundPartialRecord(3, 10);
+        await withBackgroundSendTestState(app, [originalRecord], async () => {
+          const payloads = [];
+          let notifyFirstRequest;
+          let releaseFirstRequest;
+          const firstRequestStarted = new Promise(resolve => { notifyFirstRequest = resolve; });
+          app.fetch = async (_url, options) => {
+            const payload = JSON.parse(options.body);
+            payloads.push(payload);
+            if(payloads.length === 1){
+              notifyFirstRequest();
+              await new Promise(resolve => { releaseFirstRequest = resolve; });
+            }
+            return {
+              text: async () => JSON.stringify({
+                ok: true,
+                previousSyncRevision: payload.syncRevision,
+                syncRevision: payload.syncRevision + 1,
+                results: payload.records.map((record, index) => ({
+                  index,
+                  ok: true,
+                  record: createBackgroundServerRecord(record)
+                }))
+              })
+            };
+          };
+
+          const currentRecord = app.getRecordByUuid(originalRecord.recordUuid);
+          assert(app.queueGoogleSheetRecordSend(currentRecord), "編集前の記録を背景送信へ追加できません");
+          const sendPromise = app.runGoogleSheetBackgroundSendQueue();
+          await firstRequestStarted;
+          currentRecord.cases = 11;
+          currentRecord.duplicateKey = `${currentRecord.date}__11`;
+          assert(app.queueGoogleSheetRecordSend(currentRecord), "送信中の最新版を背景送信へ追加できません");
+          releaseFirstRequest();
+          await sendPromise;
+
+          assertDeepEqual(
+            payloads.map(payload => payload.records.map(record => record.cases)),
+            [[10], [11]],
+            "送信中の再編集を最新版として再送していません"
+          );
+          assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(originalRecord.recordUuid)), "confirmed", "最新版が送信済みになりません");
+          assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "最新版の送信ジョブが残っています");
+        });
+      });
+
+      await runTest("一括送信の一部失敗は失敗分だけ未送信に残す", async () => {
+        const successRecord = createBackgroundPartialRecord(4, 14);
+        const failedRecord = createBackgroundPartialRecord(5, 15);
+        await withBackgroundSendTestState(app, [successRecord, failedRecord], async () => {
+          let fetchCount = 0;
+          app.fetch = async (_url, options) => {
+            fetchCount++;
+            const payload = JSON.parse(options.body);
+            return {
+              text: async () => JSON.stringify({
+                ok: true,
+                previousSyncRevision: payload.syncRevision,
+                syncRevision: payload.syncRevision + 1,
+                results: [
+                  { index: 0, ok: true, record: createBackgroundServerRecord(payload.records[0]) },
+                  { index: 1, ok: false, message: "characterization failure" }
+                ]
+              })
+            };
+          };
+
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(successRecord.recordUuid)), "成功側を背景送信へ追加できません");
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(failedRecord.recordUuid)), "失敗側を背景送信へ追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+
+          assertEqual(fetchCount, 1, "一部失敗を即時に無限再試行しています");
+          assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(successRecord.recordUuid)), "confirmed", "成功した記録が送信済みになりません");
+          assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(failedRecord.recordUuid)), "failed", "失敗した記録が未送信状態になりません");
+          assertDeepEqual(
+            app.getGoogleSheetUnsentRecords().map(record => record.recordUuid),
+            [failedRecord.recordUuid],
+            "失敗した記録だけを未送信一覧へ残していません"
+          );
+          assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "失敗ジョブが背景キューで即時再試行されます");
+        });
+      });
+
+      await runTest("大きい一括送信は通信上限内の複数便へ自動分割する", () => {
+        const recordsForBatch = Array.from({ length: 60 }, (_, index) => (
+          createBackgroundPartialRecord(index + 1, 10, "あ".repeat(10000))
+        ));
+        const config = {
+          url: "https://script.google.com/macros/s/characterization-test/exec",
+          token: "characterization-test-token-0000000000000000"
+        };
+        const plan = app.splitGoogleSheetRecordBatchChunks(recordsForBatch, config);
+        assert(plan.chunks.length > 1, "大きい一括送信を分割していません");
+        assertEqual(plan.oversizedRecords.length, 0, "単独なら送れる記録を大きすぎると判定しています");
+        assertEqual(plan.chunks.flat().length, recordsForBatch.length, "分割時に収穫記録が欠落しています");
+        plan.chunks.forEach(chunk => {
+          assert(chunk.length <= app.eval("GOOGLE_SHEET_MAX_BATCH_RECORDS"), "1便の記録件数が上限を超えています");
+          assert(
+            app.isWithinGoogleSheetTextLimits(JSON.stringify(app.buildGoogleSheetBatchPayload(chunk, config))),
+            "1便の送信本文が通信上限を超えています"
           );
         });
       });

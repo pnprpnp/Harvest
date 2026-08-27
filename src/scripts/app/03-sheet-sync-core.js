@@ -643,6 +643,72 @@ function scheduleGoogleSheetBackgroundSend(delay = 0){
   }, Math.max(0, Number(delay) || 0));
 }
 
+function collectGoogleSheetBackgroundRecordBatch(){
+  const batch = [];
+  for(const [key, job] of googleSheetBackgroundRecordQueue){
+    if(batch.length >= GOOGLE_SHEET_MAX_BATCH_RECORDS) break;
+    const record = findGoogleSheetBackgroundRecord(job);
+    if(!record){
+      if(googleSheetBackgroundRecordQueue.get(key) === job){
+        googleSheetBackgroundRecordQueue.delete(key);
+      }
+      continue;
+    }
+    batch.push({ key, job, record });
+  }
+  return batch;
+}
+
+async function sendGoogleSheetBackgroundRecordBatch(){
+  const batch = collectGoogleSheetBackgroundRecordBatch();
+  if(!batch.length) return false;
+
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner) return false;
+
+  try{
+    try{
+      await sendRecordsBatchToGoogleSheet(
+        batch.map(item => item.record),
+        { showFailureDialog: false, showConfigNotice: false }
+      );
+    }catch(error){
+      // 通常の通信失敗は一括送信側で処理される。想定外の例外でも即時再試行を
+      // 繰り返さず、「修正・未送信」から安全に再送できる状態へ戻す。
+      console.error("Background Google Sheet batch send failed", error);
+      batch.forEach(({ key, job }) => {
+        if(googleSheetBackgroundRecordQueue.get(key) !== job) return;
+        const currentRecord = findGoogleSheetBackgroundRecord(job);
+        if(currentRecord) setGoogleSheetSyncStatus(currentRecord, "failed");
+      });
+    }
+
+    let successMessage = "";
+    let failureMessage = "";
+    batch.forEach(({ key, job }) => {
+      // 送信中に同じ記録が編集された場合、Map内には新しいjobが入っている。
+      // 古い送信完了で最新版のjobを消さず、次の一括送信へ残す。
+      if(googleSheetBackgroundRecordQueue.get(key) !== job) return;
+      googleSheetBackgroundRecordQueue.delete(key);
+      const currentRecord = findGoogleSheetBackgroundRecord(job);
+      if(currentRecord && getGoogleSheetRecordSyncState(currentRecord) === "confirmed"){
+        if(job.successMessage) successMessage = job.successMessage;
+      }else if(job.failureMessage && !failureMessage){
+        failureMessage = job.failureMessage;
+      }
+    });
+
+    if(failureMessage){
+      showToast(failureMessage);
+    }else if(successMessage){
+      showToast(successMessage);
+    }
+    return true;
+  }finally{
+    endGoogleSheetOperation(operationOwner);
+  }
+}
+
 async function runGoogleSheetBackgroundSendQueue(){
   if(googleSheetBackgroundSendRunning) return;
   if(googleSheetSendState !== "idle" || googleSheetOperationOwner) return;
@@ -650,26 +716,9 @@ async function runGoogleSheetBackgroundSendQueue(){
 
   try{
     while(googleSheetSendState === "idle" && !googleSheetOperationOwner){
-      const recordEntry = googleSheetBackgroundRecordQueue.entries().next();
-      if(!recordEntry.done){
-        const [key, job] = recordEntry.value;
-        const record = findGoogleSheetBackgroundRecord(job);
-        if(!record){
-          if(googleSheetBackgroundRecordQueue.get(key) === job){
-            googleSheetBackgroundRecordQueue.delete(key);
-          }
-          continue;
-        }
-        const sent = await sendRecordToGoogleSheet(record);
-        const isCurrentJob = googleSheetBackgroundRecordQueue.get(key) === job;
-        if(isCurrentJob){
-          googleSheetBackgroundRecordQueue.delete(key);
-          if(sent){
-            if(job.successMessage) showToast(job.successMessage);
-          }else if(job.failureMessage){
-            showToast(job.failureMessage);
-          }
-        }
+      if(googleSheetBackgroundRecordQueue.size){
+        const batchProcessed = await sendGoogleSheetBackgroundRecordBatch();
+        if(!batchProcessed) break;
         continue;
       }
 
