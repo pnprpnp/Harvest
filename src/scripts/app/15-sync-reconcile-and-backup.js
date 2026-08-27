@@ -157,6 +157,7 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   if(Number(activePlantingRecordId) === safeOldId) activePlantingRecordId = safeNewId;
   if(Number(editingHarvestRecordId) === safeOldId) editingHarvestRecordId = safeNewId;
   if(Number(editingPartialHarvestRecordId) === safeOldId) editingPartialHarvestRecordId = safeNewId;
+  if(Number(splittingHarvestRecordId) === safeOldId) splittingHarvestRecordId = safeNewId;
   if(Number(plantingRecordDraft?.recordId) === safeOldId) plantingRecordDraft.recordId = safeNewId;
 
   if(status?.["id:" + safeOldId] && !status["id:" + safeNewId]){
@@ -284,6 +285,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
     if(!local || (!tombstone.recordUuid && normalizeRecordUuid(local.recordUuid))) return;
     const isBeingEdited = Number(editingHarvestRecordId) === Number(local.id)
       || Number(editingPartialHarvestRecordId) === Number(local.id)
+      || Number(splittingHarvestRecordId) === Number(local.id)
       || Number(activePlantingRecordId) === Number(local.id);
     const dependencies = local.type === "fullHarvest" ? getPlantingEventsForHarvest(local.id) : [];
     const hasLocalChange = hasPendingGoogleSheetRecordChange(local, status);
@@ -438,6 +440,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
       && local.updatedAt === canonicalIncoming.updatedAt;
     const isBeingEdited = Number(editingHarvestRecordId) === oldId
       || Number(editingPartialHarvestRecordId) === oldId
+      || Number(splittingHarvestRecordId) === oldId
       || Number(activePlantingRecordId) === oldId;
 
     if(!sameContent && isBeingEdited){

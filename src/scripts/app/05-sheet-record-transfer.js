@@ -591,7 +591,7 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
 
 async function sendPendingRecordsToGoogleSheet(){
   if(!ensureProtectedOperationAccess("スプレッドシートへの送信")) return;
-  if(editingHarvestRecordId || editingPartialHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
+  if(editingHarvestRecordId || editingPartialHarvestRecordId || splittingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
     showToast("編集中の記録を保存またはクリアしてから送信してください");
     return;
   }
@@ -1654,7 +1654,7 @@ async function importWorkerCalculationSnapshotFromGoogleSheet(config, options = 
 
 async function importRecordsFromGoogleSheet(options = {}){
   const silentErrors = !!options.silentErrors;
-  if(editingHarvestRecordId || editingPartialHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
+  if(editingHarvestRecordId || editingPartialHarvestRecordId || splittingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
     if(!silentErrors) showToast("編集中の記録を保存またはクリアしてから同期してください");
     return false;
   }

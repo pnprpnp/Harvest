@@ -877,13 +877,15 @@ function syncRecordCasesFromMain(force = false){
   updateRecordAutoValueNotes();
 }
 
-function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRecords = records){
-  if(!harvestFillKeys.length || cases <= 0) return "";
+function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, sourceRecords = records){
+  const normalizedKeys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])]
+    .filter(key => isValidPalletKeyString(String(key || "")));
+  if(!normalizedKeys.length || cases <= 0) return "";
 
   let plantedTotal = 0;
   let partialHarvestTotal = 0;
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
-  harvestFillKeys.forEach(key => {
+  normalizedKeys.forEach(key => {
     const p = parsePalletKey(key);
     plantedTotal += getHarvestPlantCountForPallet(p.building, p.bed, p.number, targetDay);
     partialHarvestTotal += getPartialHarvestCountForPallet(
@@ -902,6 +904,10 @@ function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRe
   const actualLossRate = 100 - actualHarvestRate;
 
   return (Math.round(actualLossRate * 10) / 10).toFixed(1);
+}
+
+function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRecords = records){
+  return getActualLossRateForPalletKeys(harvestFillKeys, cases, targetDate, sourceRecords);
 }
 
 function updateRecordActualLoss(){
@@ -1084,7 +1090,7 @@ function getRecordSeedlingDiffSummaryText(record = getActivePlantingRecord()){
   return lines.join("\n");
 }
 
-function getRemainingHarvestableCaseInstruction(record){
+function getRemainingHarvestableCaseInstruction(record, sourceRecords = records){
   if(!record || record.type !== "fullHarvest") return "対象の収穫記録がありません";
   const recordKeys = Array.isArray(record.palletKeys)
     ? record.palletKeys
@@ -1095,12 +1101,15 @@ function getRemainingHarvestableCaseInstruction(record){
   if(!targetBuildings.length) return "対象の号棟がありません";
 
   const referenceDate = parseDateOnlyString(record.date) || new Date();
-  const recordedSet = getRecordedPalletSet(referenceDate);
+  const recordedSet = getRecordedPalletSetFromRecords(
+    getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords)
+  );
   const lines = targetBuildings.map(building => {
     const remainingCases = getRemainingHarvestableCasesForBuilding(building, {
       referenceDate,
       recordedSet,
-      excludedPalletKeys: recordKeys
+      excludedPalletKeys: recordKeys,
+      sourceRecords
     });
     if(remainingCases <= 0) return "";
     return `${building}号棟：${formatDashboardMetricNumber(remainingCases)}ケース`;

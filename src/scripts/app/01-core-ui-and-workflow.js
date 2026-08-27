@@ -238,6 +238,7 @@ let recordDetailDayContext = null;
 let recordDetailDayLocationView = "harvest";
 let recordDetailLoadToken = 0;
 let partialHarvestEditReturnFocus = null;
+let harvestPartialSplitReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
 let dashboardForecastInfoReturnFocus = null;
 let dashboardCalendarInfoReturnFocus = null;
@@ -320,6 +321,7 @@ let recordHistoryCache = null;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
 let editingPartialHarvestRecordId = null;
+let splittingHarvestRecordId = null;
 let editingHarvestSelectionKeys = null;
 let forecastSelectionState = null;
 let settingsDirty = false;
@@ -554,6 +556,7 @@ function reloadRoleScopedRecordData(){
   syncConflicts = loadSyncConflicts();
   editingHarvestRecordId = null;
   editingPartialHarvestRecordId = null;
+  splittingHarvestRecordId = null;
   editingPlantingEventId = null;
   activePlantingRecordId = null;
   plantingRecordDraft = null;
@@ -603,6 +606,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "bedDetailModal",
   "recordDetailModal",
   "partialHarvestEditModal",
+  "harvestPartialSplitModal",
   "syncConflictPanel"
 ]);
 
@@ -2611,6 +2615,7 @@ function closeRecordFloatingUi(){
   }
   closeRecordDetailWindow({ restoreFocus: false });
   closePartialHarvestEditWindow({ restoreFocus: false });
+  closeHarvestPartialSplitWindow({ restoreFocus: false });
   closeBedDetailWindow();
   hideBedActionMenu();
   hideRecordBedActionMenu();

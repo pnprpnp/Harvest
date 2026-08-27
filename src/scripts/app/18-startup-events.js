@@ -272,6 +272,11 @@ function handleStartupEscapeKey(event){
     closePartialHarvestEditWindow();
     return;
   }
+  const harvestPartialSplitModal = document.getElementById("harvestPartialSplitModal");
+  if(harvestPartialSplitModal?.classList.contains("show")){
+    closeHarvestPartialSplitWindow();
+    return;
+  }
   const appMenuModal = document.getElementById("appMenuModal");
   if(appMenuModal?.classList.contains("show")){
     closeAppMenuWindow();

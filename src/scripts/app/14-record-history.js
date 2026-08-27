@@ -13,6 +13,7 @@ function deleteRecord(id, options = {}){
   const deletingActivePlantingRecord = Number(activePlantingRecordId) === Number(id);
   const deletingEditedRecord = Number(editingHarvestRecordId) === Number(id);
   const deletingEditedPartialRecord = Number(editingPartialHarvestRecordId) === Number(id);
+  const deletingSplitRecord = Number(splittingHarvestRecordId) === Number(id);
   const recordForTrash = normalizeStoredRecord(options.deletedRecordOverride) || deletedRecord;
   addRecordToTrash(recordForTrash, { sheetDeleted: !!options.sheetDeleted });
   records = records.filter(r => Number(r.id) !== Number(id));
@@ -35,6 +36,8 @@ function deleteRecord(id, options = {}){
     clearRecordForm();
   }else if(deletingEditedPartialRecord){
     closePartialHarvestEditWindow();
+  }else if(deletingSplitRecord){
+    closeHarvestPartialSplitWindow();
   }
   refreshRecordDataUi();
   showToast(options.sheetDeleted ? "アプリとスプレッドシートから削除しました" : "アプリから削除しました");
@@ -1743,6 +1746,7 @@ ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309
       <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="harvest" data-ui-number="${safeRecordId}">詳細</button>
       <div class="recordActions">
         <button class="thirdBtn" data-ui-click="editHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
+        <button class="thirdBtn recordSplitPartialBtn" data-ui-click="openHarvestPartialSplitWindow" data-ui-number="${safeRecordId}">ケース数の一部を部分収穫へ分ける</button>
         <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
       </div>
     </div>

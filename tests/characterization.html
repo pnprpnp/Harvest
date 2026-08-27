@@ -2231,6 +2231,7 @@
           "bedDetailModal",
           "recordDetailModal",
           "partialHarvestEditModal",
+          "harvestPartialSplitModal",
           "syncConflictPanel"
         ];
         const registeredIds = comparable(app.eval("[...PAGE_BLOCKING_UI_IDS]"));
@@ -7626,6 +7627,101 @@
         assertEqual(Object.prototype.hasOwnProperty.call(serialized, "palletRanges"), false, "途中収穫へ通常収穫の範囲が混入しました");
       });
 
+      await runTest("通常収穫の合計を保ったまま一部を部分収穫へ分け、影響するロス率を警告する", () => {
+        replaceAppHistory(app, [
+          {
+            palletNumberingVersion: 2,
+            id: 9101,
+            recordUuid: "91010000-0000-4000-8000-000000000001",
+            type: "fullHarvest",
+            date: "2026-08-01",
+            cases: 100,
+            actualLoss: "40.0",
+            plantingCaseInstruction: "変更前の案内",
+            palletRanges: ["2-A-1-1"],
+            plantingPending: true
+          },
+          {
+            palletNumberingVersion: 2,
+            id: 9102,
+            recordUuid: "91020000-0000-4000-8000-000000000002",
+            type: "fullHarvest",
+            date: "2026-08-02",
+            cases: 1,
+            actualLoss: "40.0",
+            plantingCaseInstruction: "変更前の案内",
+            palletRanges: ["2-B-1-1"],
+            plantingPending: true
+          }
+        ]);
+        const source = app.getRecordById(9101);
+        const partial = {
+          palletNumberingVersion: 2,
+          id: 9199,
+          recordUuid: "91990000-0000-4000-8000-000000000099",
+          type: "partialHarvest",
+          date: source.date,
+          cases: 10,
+          memo: "通常収穫から訂正",
+          targets: app.buildPartialHarvestTargets(2, ["B"], 10),
+          palletKeys: []
+        };
+        const plan = app.buildHarvestPartialSplitPlan(source, partial);
+        assert(plan.ok, plan.message || "通常収穫を分ける計画を作れません");
+        assertEqual(plan.totalCases, 100, "合計ケース数が変わりました");
+        assertEqual(plan.regularCases, 90, "通常収穫分のケース数が違います");
+        assertEqual(plan.partialCases, 10, "部分収穫分のケース数が違います");
+        assertEqual(plan.records.find(record => record.id === 9101)?.cases, 90, "元の通常収穫を減らせていません");
+        assertEqual(plan.records.find(record => record.id === 9199)?.cases, 10, "部分収穫記録を追加できていません");
+        const laterChange = plan.recordChanges.find(change => change.id === 9102);
+        assert(laterChange?.actualLossChange, "後日の通常収穫ロス率への影響を検出できていません");
+        const confirmation = app.formatHarvestPartialSplitConfirmation(plan);
+        assert(confirmation.includes("この記録分の合計: 100ケース（変わりません）"), "合計維持の説明が警告にありません");
+        assert(confirmation.includes("別の通常収穫記録 1件のロス率を更新します"), "他の記録のロス率変更が警告にありません");
+        assert(
+          app.renderRecordItemHtml(source).includes('data-ui-click="openHarvestPartialSplitWindow"'),
+          "通常収穫の一覧に部分収穫へ分ける操作がありません"
+        );
+        assert(app.document.getElementById("harvestPartialSplitModal"), "部分収穫へ分ける確認画面がありません");
+
+        const originalProtectedCheck = app.ensureProtectedOperationAccess;
+        const originalMutationCheck = app.ensureGoogleSheetLocalMutationAllowed;
+        const originalConflictCheck = app.ensureSyncConflictResolvedBeforeChange;
+        const originalQueue = app.queueGoogleSheetRecordSend;
+        const originalConfirm = app.confirm;
+        let shownConfirmation = "";
+        try{
+          app.ensureProtectedOperationAccess = () => true;
+          app.ensureGoogleSheetLocalMutationAllowed = () => true;
+          app.ensureSyncConflictResolvedBeforeChange = () => true;
+          app.queueGoogleSheetRecordSend = () => true;
+          app.confirm = message => {
+            shownConfirmation = message;
+            return true;
+          };
+          app.eval("splittingHarvestRecordId = 9101");
+          app.document.getElementById("harvestPartialSplitCasesInput").value = "10";
+          app.document.getElementById("harvestPartialSplitBuildingInput").value = "2";
+          app.document.querySelector('input[name="harvestPartialSplitBed"][value="B"]').checked = true;
+          app.saveHarvestPartialSplit();
+        }finally{
+          app.ensureProtectedOperationAccess = originalProtectedCheck;
+          app.ensureGoogleSheetLocalMutationAllowed = originalMutationCheck;
+          app.ensureSyncConflictResolvedBeforeChange = originalConflictCheck;
+          app.queueGoogleSheetRecordSend = originalQueue;
+          app.confirm = originalConfirm;
+        }
+        assert(shownConfirmation.includes("この変更を進めますか？"), "保存前に影響警告を表示していません");
+        const savedSplit = comparable(app.eval(`({
+          regularCases: getRecordById(9101)?.cases,
+          partialCases: records.find(record => record.id !== 9101 && record.type === "partialHarvest")?.cases,
+          laterLoss: getRecordById(9102)?.actualLoss
+        })`));
+        assertEqual(savedSplit.regularCases, 90, "確認後に通常収穫分を保存できていません");
+        assertEqual(savedSplit.partialCases, 10, "確認後に部分収穫分を保存できていません");
+        assert(savedSplit.laterLoss !== "40.0", "確認後に影響する別記録のロス率を更新できていません");
+      });
+
       await runTest("同じ日の通常収穫と途中収穫を現在の表示規則で集計する", () => {
         const full = { id: 1, type: "fullHarvest", date: "2026-08-02", cases: 100 };
         const partial = { id: 2, type: "partialHarvest", date: "2026-08-02", cases: 20 };
@@ -7798,18 +7894,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "47aa84fd", elements: 2212, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "0968f0a5", elements: 2281, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "fa5cd074", elements: 2281, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "49fffb77", elements: 2213, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "7d81e488", elements: 2213, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "c41e65f1", elements: 2296, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "6f108f1e", elements: 2311, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "cb1216b6", elements: 2311, visible: 282, viewport: "390x844" },
-          mobileSettings: { hash: "21d4e6a6", elements: 2311, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "2815e797", elements: 2311, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "d2f2af1b", elements: 2311, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "28e69157", elements: 2311, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "192b74d4", elements: 2254, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "25dd0607", elements: 2323, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "5ff7e106", elements: 2323, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "68b4065c", elements: 2255, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "e32b6f2b", elements: 2255, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "24540846", elements: 2338, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "d013422f", elements: 2353, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "0d53202f", elements: 2353, visible: 282, viewport: "390x844" },
+          mobileSettings: { hash: "2e543eaf", elements: 2353, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "612d4e16", elements: 2353, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "e267f022", elements: 2353, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "33926dbe", elements: 2353, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
