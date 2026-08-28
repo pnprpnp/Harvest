@@ -212,6 +212,7 @@ function saveGoogleSheetConfigToStorage(config){
     url: nextUrl,
     token: String(config?.token || "").trim()
   });
+  googleSheetDayBatchSupportState = "unknown";
 }
 
 function normalizeGoogleSheetSyncCursor(value){

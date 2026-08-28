@@ -1186,6 +1186,71 @@
         );
       });
 
+      await runTest("未デプロイの当日一括APIは既存の送信方法へ自動で切り替える", async () => {
+        const today = app.formatDateOnlyString(new Date());
+        const fullRecord = createBackgroundFullRecord(3, today);
+        const plantingEvent = createBackgroundPlantingEvent(3, fullRecord, today);
+        await withBackgroundSendTestState(app, [fullRecord], async () => {
+          const payloads = [];
+          app.fetch = async (_url, options) => {
+            const payload = JSON.parse(options.body);
+            payloads.push(payload);
+            if(payload.type === "harvest-day-batch"){
+              return { text: async () => JSON.stringify({ ok: false, message: "許可されていない操作です" }) };
+            }
+            if(payload.type === "harvest-record-batch"){
+              return {
+                text: async () => JSON.stringify({
+                  ok: true,
+                  previousSyncRevision: payload.syncRevision,
+                  syncRevision: payload.syncRevision + 1,
+                  results: payload.records.map((record, index) => ({
+                    index,
+                    ok: true,
+                    updated: false,
+                    duplicate: false,
+                    record: createBackgroundServerRecord(record)
+                  }))
+                })
+              };
+            }
+            if(payload.type === "planting-event"){
+              return {
+                text: async () => JSON.stringify({
+                  ok: true,
+                  previousSyncRevision: payload.syncRevision,
+                  syncRevision: payload.syncRevision + 1,
+                  updated: false,
+                  event: {
+                    ...payload.event,
+                    createdAt: "2026-08-29T00:00:00.000Z",
+                    updatedAt: "2026-08-29T00:00:01.000Z"
+                  }
+                })
+              };
+            }
+            throw new Error("想定外の送信形式です: " + String(payload.type));
+          };
+
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(fullRecord.recordUuid)), "通常収穫を背景送信へ追加できません");
+          assert(app.queueGoogleSheetPlantingEventSend(app.getPlantingEventById(plantingEvent.eventId)), "苗植えを背景送信へ追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+
+          assertDeepEqual(
+            payloads.map(payload => payload.type),
+            ["harvest-day-batch", "harvest-record-batch", "planting-event"],
+            "未対応サーバーで既存の安全な送信方法へ切り替えていません"
+          );
+          assertEqual(app.eval("googleSheetDayBatchSupportState"), "unsupported", "未対応APIの判定を保持していません");
+          assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(fullRecord.recordUuid)), "confirmed", "互換送信した収穫が送信済みになりません");
+          assertEqual(
+            app.isPlantingEventUnsent(app.getPlantingEventById(plantingEvent.eventId), app.loadPlantingEventSyncStatus()),
+            false,
+            "互換送信した苗植えが送信済みになりません"
+          );
+        }, [plantingEvent]);
+      });
+
       await runTest("一括送信中に再編集した収穫記録は最新版を次便で送る", async () => {
         const originalRecord = createBackgroundPartialRecord(3, 10);
         await withBackgroundSendTestState(app, [originalRecord], async () => {

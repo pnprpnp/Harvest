@@ -771,6 +771,13 @@ function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEve
   return true;
 }
 
+function isGoogleSheetDayBatchUnsupportedMessage(message){
+  const text = String(message || "");
+  return text.includes("許可されていない操作")
+    || text.includes("actionとtypeの組み合わせ")
+    || text.includes("対応していないリクエスト形式");
+}
+
 async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapshots, config){
   const sentRecordSignatures = recordSnapshots.map(record => getGoogleSheetRecordSendSignature(record, config));
   markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots);
@@ -794,7 +801,16 @@ async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapsh
     }catch(e){
       throw new Error("スプレッドシートの応答を読み込めません");
     }
-    if(result.ok !== true) throw new Error(result.message || "当日の記録を一括送信できませんでした");
+    if(result.ok !== true){
+      const message = result.message || "当日の記録を一括送信できませんでした";
+      const error = new Error(message);
+      if(isGoogleSheetDayBatchUnsupportedMessage(message)){
+        googleSheetDayBatchSupportState = "unsupported";
+        error.googleSheetDayBatchUnsupported = true;
+      }
+      throw error;
+    }
+    googleSheetDayBatchSupportState = "supported";
     if(!Array.isArray(result.recordResults) || result.recordResults.length > recordSnapshots.length
       || !Array.isArray(result.plantingResults) || result.plantingResults.length > plantingEventSnapshots.length){
       throw new Error("当日の記録の一括応答件数が正しくありません");
@@ -894,6 +910,46 @@ async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapsh
   }finally{
     clearTimeout(timer);
   }
+}
+
+async function sendGoogleSheetLegacyMixedBatches(recordSnapshots, plantingEventSnapshots){
+  const totals = {
+    successCount: 0,
+    updatedCount: 0,
+    duplicateCount: 0,
+    failCount: 0,
+    plantingSuccessCount: 0,
+    plantingUpdatedCount: 0,
+    plantingFailCount: 0
+  };
+  let firstError = "";
+  const recordResult = await sendRecordsBatchToGoogleSheet(recordSnapshots, {
+    showFailureDialog: false,
+    showConfigNotice: false
+  });
+  totals.successCount += recordResult.successCount || 0;
+  totals.updatedCount += recordResult.updatedCount || 0;
+  totals.duplicateCount += recordResult.duplicateCount || 0;
+  totals.failCount += recordResult.failCount || 0;
+  firstError ||= String(recordResult.errorMessage || "").trim();
+
+  for(const eventSnapshot of plantingEventSnapshots){
+    const currentEvent = getPlantingEventById(eventSnapshot.eventId);
+    if(!currentEvent){
+      totals.plantingFailCount++;
+      firstError ||= "送信する苗植え記録がアプリ内にありません";
+      continue;
+    }
+    const result = await syncPlantingEventWithSources(currentEvent, { manageSendState: false });
+    if(result.ok){
+      totals.plantingSuccessCount++;
+      if(result.updated) totals.plantingUpdatedCount++;
+    }else{
+      totals.plantingFailCount++;
+      firstError ||= String(result.message || "苗植え記録を送信できませんでした");
+    }
+  }
+  return { ...totals, errorMessage: firstError };
 }
 
 function includeUnsentPlantingSourceRecords(recordsToSend, plantingEventsToSend){
@@ -1000,6 +1056,23 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
     firstError ||= "送信できる大きさを超えた記録があります";
   }
 
+  const sendWithLegacyApi = async () => {
+    const legacyResult = await sendGoogleSheetLegacyMixedBatches(
+      batchPlan.chunks.flatMap(chunk => chunk.records),
+      batchPlan.chunks.flatMap(chunk => chunk.plantingEvents)
+    );
+    Object.keys(totals).forEach(key => { totals[key] += legacyResult[key] || 0; });
+    firstError ||= String(legacyResult.errorMessage || "").trim();
+  };
+
+  if(googleSheetDayBatchSupportState === "unsupported"){
+    await sendWithLegacyApi();
+    if(firstError && showFailureDialog){
+      showRecordImportError("記録の送信に失敗しました。\n\n詳細: " + firstError, "送信失敗");
+    }
+    return { ...totals, errorMessage: firstError };
+  }
+
   for(let chunkIndex = 0; chunkIndex < batchPlan.chunks.length; chunkIndex++){
     const chunk = batchPlan.chunks[chunkIndex];
     try{
@@ -1016,6 +1089,10 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
         });
       });
     }catch(e){
+      if(e?.googleSheetDayBatchUnsupported && chunkIndex === 0){
+        await sendWithLegacyApi();
+        break;
+      }
       firstError ||= String(e?.name === "AbortError"
         ? "スプレッドシートとの通信がタイムアウトしました"
         : (e?.message || e));

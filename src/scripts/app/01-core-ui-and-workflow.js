@@ -339,6 +339,7 @@ const googleSheetBackgroundRecordQueue = new Map();
 const googleSheetBackgroundPlantingQueue = new Map();
 let googleSheetBackgroundSendRunning = false;
 let googleSheetBackgroundSendTimer = null;
+let googleSheetDayBatchSupportState = "unknown";
 let googleSheetStartupImportStarted = false;
 let dashboardFilter = loadDashboardFilter();
 let protectedAccessUnlocked = false;
