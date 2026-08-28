@@ -24,6 +24,12 @@ Apps Script側も機能別ソースから生成するため、両方をまとめ
 python3 tools/build_all.py
 ```
 
+## UI調整モード
+
+アプリのURLに `?ui-tuner=1` を付けて開くと、実際の画面上でUI要素を選び、大きさや余白などをスライダーで調整できます。例: `index.html?ui-tuner=1`
+
+調整値は端末内に一時保存できますが、通常モードの表示には反映されません。「CSSをコピー」で取得した内容を正式なデザイン修正に使用します。
+
 ## Firebaseによるモニター更新通知
 
 モニターの内容は従来どおりGoogle Apps Scriptに保存します。Firebase Realtime Databaseには内容を保存せず、変更を知らせる短い更新番号と時刻だけを保存します。

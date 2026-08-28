@@ -16,6 +16,7 @@ python3 tools/build_index.py
 - `scripts/browser-storage.js`: 端末内・一時保存の読み込み、保存、削除、退避・復元をまとめた共通窓口
 - `scripts/app-update.js`: アプリ本体の更新と前バージョンへの復元
 - `scripts/welcome-paint.js`: 起動画面の初回描画
+- `scripts/ui-tuner.js` / `styles/ui-tuner.css`: `?ui-tuner=1` のときだけ表示する、実画面のUI調整モード
 - `scripts/app/01-*.js` から `19-*.js`: 本体処理。番号は現在の実行順でもあるため、並びを変更しない
 
 本体処理は、共通画面と作業ナビ、端末データ、スプレッドシート同期、モニター、集計、収穫計算、記録、バックアップ、共通操作イベント、起動時の状態復元、機能別イベント、最終起動処理の順に分かれています。

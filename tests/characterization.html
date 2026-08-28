@@ -4628,6 +4628,90 @@
         }
       });
 
+      await runTest("UI調整モードで実画面を調整し、値を保存・復元できる", async () => {
+        assertEqual(app.harvestnaviUiTuner?.enabled, false, "通常モードでUI調整機能が有効になっています");
+        assert(!app.document.getElementById("uiTunerPanel"), "通常モードにUI調整パネルが表示されています");
+
+        localStorage.removeItem("harvestnaviUiTunerDraft_v1");
+        let tunerFrame = null;
+        let reloadedTunerFrame = null;
+        try{
+          tunerFrame = await loadVisualAppFrame(
+            390,
+            844,
+            `../index.html?ui-tuner=1&tuner-characterization=${Date.now()}`
+          );
+          const tunerApp = tunerFrame.contentWindow;
+          const panel = tunerApp.document.getElementById("uiTunerPanel");
+          const selectButton = tunerApp.document.getElementById("uiTunerSelectBtn");
+          const titleButton = tunerApp.document.getElementById("workflowVisibilityBtn");
+          const titleText = titleButton?.querySelector(".appTitle");
+          assertEqual(tunerApp.harvestnaviUiTuner?.enabled, true, "URL指定でUI調整モードが起動しません");
+          assert(panel && selectButton && titleButton && titleText, "UI調整に必要な画面要素がありません");
+          const panelRect = panel.getBoundingClientRect();
+          assert(
+            panelRect.left >= 0 && panelRect.top >= 0
+              && panelRect.right <= tunerApp.innerWidth && panelRect.bottom <= tunerApp.innerHeight,
+            "UI調整パネルがスマートフォン画面からはみ出しています"
+          );
+          const panelBody = panel.querySelector(".uiTunerPanelBody");
+          assert(
+            panelBody.clientHeight <= panelRect.height - panel.querySelector(".uiTunerPanelHeader").getBoundingClientRect().height,
+            "UI調整パネルの操作内容が外枠からはみ出しています"
+          );
+          assertEqual(panel.querySelectorAll("[data-ui-tuner-control]").length, 8, "UI調整用のスライダー数が違います");
+
+          selectButton.click();
+          assert(tunerApp.document.body.classList.contains("uiTunerSelecting"), "対象選択モードに切り替わりません");
+          titleText.click();
+          assertEqual(
+            tunerApp.document.getElementById("uiTunerTargetSelector")?.textContent,
+            "#workflowVisibilityBtn",
+            "ボタン内の文字ではなく、ボタン全体を選択できません"
+          );
+          assert(
+            tunerApp.document.getElementById("workflowBar")?.hidden,
+            "対象選択中に元のボタン操作まで実行されています"
+          );
+          assert(!tunerApp.document.getElementById("uiTunerParentBtn")?.disabled, "選択後に親要素へ移動できません");
+
+          const fontSizeInput = panel.querySelector('[data-ui-tuner-control="fontSize"]');
+          fontSizeInput.value = "18";
+          fontSizeInput.dispatchEvent(new tunerApp.Event("input", { bubbles:true }));
+          assertEqual(titleButton.style.fontSize, "18px", "スライダーの値が実画面へ反映されません");
+          assert(
+            tunerApp.harvestnaviUiTuner.getCss().includes("font-size: 18px;"),
+            "調整値をCSSとして取得できません"
+          );
+          tunerApp.document.getElementById("uiTunerSaveBtn").click();
+          const stored = JSON.parse(localStorage.getItem("harvestnaviUiTunerDraft_v1") || "null");
+          assertEqual(stored?.changes?.["#workflowVisibilityBtn"]?.properties?.fontSize, 18, "調整値が端末内へ保存されません");
+
+          tunerFrame.remove();
+          tunerFrame = null;
+          reloadedTunerFrame = await loadVisualAppFrame(
+            390,
+            844,
+            `../index.html?ui-tuner=1&tuner-reload=${Date.now()}`
+          );
+          const reloadedApp = reloadedTunerFrame.contentWindow;
+          assertEqual(
+            reloadedApp.document.getElementById("workflowVisibilityBtn")?.style.fontSize,
+            "18px",
+            "保存した調整値を次回の調整モードへ復元できません"
+          );
+          reloadedApp.harvestnaviUiTuner.reset();
+          assertEqual(reloadedApp.document.getElementById("workflowVisibilityBtn")?.style.fontSize, "", "元のデザインへ戻せません");
+          assertEqual(localStorage.getItem("harvestnaviUiTunerDraft_v1"), null, "元に戻した後も保存値が残っています");
+        }finally{
+          tunerFrame?.contentWindow?.harvestnaviUiTuner?.reset?.();
+          reloadedTunerFrame?.contentWindow?.harvestnaviUiTuner?.reset?.();
+          tunerFrame?.remove();
+          reloadedTunerFrame?.remove();
+          localStorage.removeItem("harvestnaviUiTunerDraft_v1");
+        }
+      });
+
       await runTest("表示テーマを端末・ライト・ダークから選び、端末内へ保存できる", async () => {
         const previousPreference = app.eval("themePreference");
         let reloadFrame = null;
