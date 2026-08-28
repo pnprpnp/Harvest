@@ -228,10 +228,11 @@ function createHarvestnaviUiTunerPanel(){
     <div class="uiTunerPanelHeader">
       <div class="uiTunerPanelTitle">UI調整</div>
       <span class="uiTunerModeLabel">調整モード</span>
+      <button id="uiTunerPositionBtn" type="button" class="uiTunerHeaderButton" aria-label="調整パネルの位置を切り替える">位置</button>
       <button id="uiTunerCollapseBtn" type="button" class="uiTunerHeaderButton" aria-expanded="true">たたむ</button>
     </div>
     <div class="uiTunerPanelBody">
-      <p class="uiTunerLead">対象を選んでスライダーを動かすと、実際の画面にすぐ反映します。</p>
+      <p class="uiTunerLead">対象を選んでスライダーを動かすと、実際の画面にすぐ反映します。操作中はパネルが薄くなります。</p>
       <div class="uiTunerSelectionActions">
         <button id="uiTunerSelectBtn" type="button" class="uiTunerButton uiTunerButtonPrimary">画面から対象を選ぶ</button>
         <button id="uiTunerParentBtn" type="button" class="uiTunerButton" disabled>親要素へ</button>
@@ -283,6 +284,23 @@ function positionHarvestnaviUiTunerHighlight(state, element = state.selectedElem
   highlight.classList.add("show");
 }
 
+function placeHarvestnaviUiTunerPanelAwayFromElement(state, element = state.selectedElement){
+  if(!element || !element.isConnected) return;
+  const rect = element.getBoundingClientRect();
+  const useAlternatePosition = window.matchMedia("(max-width: 430px)").matches
+    ? rect.top + rect.height / 2 > window.innerHeight / 2
+    : rect.left + rect.width / 2 > window.innerWidth / 2;
+  state.panel.classList.toggle("is-alternate-position", useAlternatePosition);
+}
+
+function toggleHarvestnaviUiTunerPanelPosition(state){
+  const alternate = state.panel.classList.toggle("is-alternate-position");
+  const mobile = window.matchMedia("(max-width: 430px)").matches;
+  setHarvestnaviUiTunerStatus(state, mobile
+    ? `調整パネルを画面の${alternate ? "上" : "下"}へ移動しました。`
+    : `調整パネルを画面の${alternate ? "左" : "右"}へ移動しました。`);
+}
+
 function setHarvestnaviUiTunerStatus(state, message){
   state.panel.querySelector("#uiTunerStatus").textContent = String(message || "");
 }
@@ -326,6 +344,7 @@ function selectHarvestnaviUiTunerElement(state, element){
   state.panel.querySelector("#uiTunerTargetName").textContent = getHarvestnaviUiTunerTargetName(element);
   state.panel.querySelector("#uiTunerTargetSelector").textContent = selector;
   state.panel.querySelector("#uiTunerParentBtn").disabled = !isHarvestnaviUiTunerSelectableElement(element.parentElement);
+  placeHarvestnaviUiTunerPanelAwayFromElement(state, element);
   refreshHarvestnaviUiTunerControls(state);
   positionHarvestnaviUiTunerHighlight(state);
   setHarvestnaviUiTunerStatus(state, "対象を選択しました。スライダーで調整できます。");
@@ -433,6 +452,7 @@ function installHarvestnaviUiTunerEvents(state){
       selectHarvestnaviUiTunerElement(state, state.selectedElement.parentElement);
     }
   });
+  panel.querySelector("#uiTunerPositionBtn").addEventListener("click", () => toggleHarvestnaviUiTunerPanelPosition(state));
   panel.querySelector("#uiTunerCollapseBtn").addEventListener("click", () => {
     if(state.selecting){
       cancelHarvestnaviUiTunerSelection(state);
@@ -448,7 +468,13 @@ function installHarvestnaviUiTunerEvents(state){
   panel.querySelector("#uiTunerExitBtn").addEventListener("click", exitHarvestnaviUiTuner);
   panel.querySelectorAll("[data-ui-tuner-control]").forEach(input => {
     input.addEventListener("input", () => updateHarvestnaviUiTunerProperty(state, input.dataset.uiTunerControl, input.value));
+    input.addEventListener("pointerdown", () => panel.classList.add("is-adjusting"));
+    input.addEventListener("pointerup", () => panel.classList.remove("is-adjusting"));
+    input.addEventListener("pointercancel", () => panel.classList.remove("is-adjusting"));
+    input.addEventListener("blur", () => panel.classList.remove("is-adjusting"));
   });
+  document.addEventListener("pointerup", () => panel.classList.remove("is-adjusting"), true);
+  document.addEventListener("pointercancel", () => panel.classList.remove("is-adjusting"), true);
 
   document.addEventListener("pointermove", event => {
     if(!state.selecting) return;
@@ -472,7 +498,10 @@ function installHarvestnaviUiTunerEvents(state){
       cancelHarvestnaviUiTunerSelection(state);
     }
   }, true);
-  window.addEventListener("resize", () => positionHarvestnaviUiTunerHighlight(state));
+  window.addEventListener("resize", () => {
+    placeHarvestnaviUiTunerPanelAwayFromElement(state);
+    positionHarvestnaviUiTunerHighlight(state);
+  });
   window.addEventListener("scroll", () => positionHarvestnaviUiTunerHighlight(state), { passive:true, capture:true });
 }
 
