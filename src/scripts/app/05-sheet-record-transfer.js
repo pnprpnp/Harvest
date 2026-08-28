@@ -629,6 +629,415 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
   return { ...totals, errorMessage: firstError };
 }
 
+function cloneGoogleSheetPlantingEventForSend(event){
+  return JSON.parse(JSON.stringify(getPlantingEventForGoogleTransfer(event)));
+}
+
+function getGoogleSheetDayBatchOrderedItems(recordSnapshots, plantingEventSnapshots, referenceDate = new Date()){
+  const today = formatDateOnlyString(referenceDate);
+  const recordsById = new Map();
+  (Array.isArray(recordSnapshots) ? recordSnapshots : []).forEach(record => {
+    const id = getSafePositiveRecordId(record?.id);
+    if(id !== null) recordsById.set(String(id), record);
+  });
+
+  const ordered = [];
+  const addedRecordKeys = new Set();
+  const addRecord = record => {
+    const key = getHarvestRecordIdentityKey(record);
+    if(!record || !key || addedRecordKeys.has(key)) return;
+    addedRecordKeys.add(key);
+    ordered.push({ type: "record", value: record });
+  };
+  const addEventWithSources = event => {
+    (event?.sourceAllocations || []).forEach(allocation => {
+      const source = recordsById.get(String(getSafePositiveRecordId(allocation?.harvestRecordId)));
+      if(source) addRecord(source);
+    });
+    ordered.push({ type: "planting", value: event });
+  };
+  const recordsForToday = recordSnapshots.filter(record => String(record?.date || "") === today);
+  const otherRecords = recordSnapshots.filter(record => String(record?.date || "") !== today);
+  const eventsForToday = plantingEventSnapshots.filter(event => String(event?.plantingDate || "") === today);
+  const otherEvents = plantingEventSnapshots.filter(event => String(event?.plantingDate || "") !== today);
+
+  // 今日の通常収穫・部分収穫・苗植えを最初の便へ優先して詰める。
+  // 苗植え元が別日の未送信記録でも、イベントより先へ移して依存順を守る。
+  recordsForToday.forEach(addRecord);
+  eventsForToday.forEach(addEventWithSources);
+  otherRecords.forEach(addRecord);
+  otherEvents.forEach(addEventWithSources);
+  return ordered;
+}
+
+function splitGoogleSheetDayBatchChunks(recordSnapshots, plantingEventSnapshots, config){
+  const chunks = [];
+  const oversizedRecords = [];
+  const oversizedPlantingEvents = [];
+  let currentChunk = { records: [], plantingEvents: [] };
+  const itemCount = chunk => chunk.records.length + chunk.plantingEvents.length;
+  const fitsRequestLimits = chunk => {
+    const payloadText = JSON.stringify(
+      buildGoogleSheetDayBatchPayload(chunk.records, chunk.plantingEvents, config)
+    );
+    return isWithinGoogleSheetTextLimits(payloadText);
+  };
+  const pushCurrentChunk = () => {
+    if(itemCount(currentChunk)) chunks.push(currentChunk);
+    currentChunk = { records: [], plantingEvents: [] };
+  };
+
+  getGoogleSheetDayBatchOrderedItems(recordSnapshots, plantingEventSnapshots).forEach(item => {
+    const candidate = {
+      records: [...currentChunk.records],
+      plantingEvents: [...currentChunk.plantingEvents]
+    };
+    if(item.type === "record") candidate.records.push(item.value);
+    else candidate.plantingEvents.push(item.value);
+
+    if(itemCount(candidate) <= GOOGLE_SHEET_MAX_BATCH_RECORDS && fitsRequestLimits(candidate)){
+      currentChunk = candidate;
+      return;
+    }
+
+    pushCurrentChunk();
+    const single = item.type === "record"
+      ? { records: [item.value], plantingEvents: [] }
+      : { records: [], plantingEvents: [item.value] };
+    if(fitsRequestLimits(single)){
+      currentChunk = single;
+    }else if(item.type === "record"){
+      oversizedRecords.push(item.value);
+    }else{
+      oversizedPlantingEvents.push(item.value);
+    }
+  });
+
+  pushCurrentChunk();
+  return { chunks, oversizedRecords, oversizedPlantingEvents };
+}
+
+function remapGoogleSheetDayBatchPlantingSnapshots(eventSnapshots, oldId, newId){
+  const safeOldId = getSafePositiveRecordId(oldId);
+  const safeNewId = getSafePositiveRecordId(newId);
+  if(safeOldId === null || safeNewId === null || safeOldId === safeNewId) return;
+  (Array.isArray(eventSnapshots) ? eventSnapshots : []).forEach(event => {
+    (event?.sourceAllocations || []).forEach(allocation => {
+      if(Number(allocation?.harvestRecordId) === safeOldId){
+        allocation.harvestRecordId = safeNewId;
+      }
+    });
+  });
+}
+
+function markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots){
+  markGoogleSheetRecordsSynced(recordSnapshots, "pending");
+  const plantingStatus = loadPlantingEventSyncStatus();
+  const updatedAt = new Date().toISOString();
+  plantingEventSnapshots.forEach(event => {
+    const eventId = getSafePositiveRecordId(event?.eventId);
+    if(eventId !== null) plantingStatus[String(eventId)] = { state: "pending", updatedAt };
+  });
+  savePlantingEventSyncStatus(plantingStatus);
+  updateGoogleSheetResendButtonState();
+}
+
+function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEvent = null){
+  const eventId = getSafePositiveRecordId(eventSnapshot?.eventId);
+  const current = eventId === null ? null : getPlantingEventById(eventId);
+  if(!current) return false;
+  if(getPlantingEventSendSignature(current) !== getPlantingEventSendSignature(eventSnapshot)){
+    setPlantingEventSyncStatus(current, "edited");
+    return false;
+  }
+
+  let eventForStatus = current;
+  if(state === "confirmed" && serverEvent){
+    const normalizedServerEvent = normalizePlantingEvent(serverEvent);
+    if(!normalizedServerEvent || Number(normalizedServerEvent.eventId) !== Number(eventId)) return false;
+    const index = plantingEvents.findIndex(item => Number(item.eventId) === Number(eventId));
+    if(index < 0) return false;
+    eventForStatus = {
+      ...normalizedServerEvent,
+      openingCarryoverBefore: normalizedServerEvent.openingCarryoverBefore
+        ?? current.openingCarryoverBefore
+        ?? null
+    };
+    plantingEvents[index] = eventForStatus;
+    savePlantingEventsToStorage();
+    syncHarvestPlantingPendingFlags();
+  }
+  setPlantingEventSyncStatus(eventForStatus, state);
+  return true;
+}
+
+async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapshots, config){
+  const sentRecordSignatures = recordSnapshots.map(record => getGoogleSheetRecordSendSignature(record, config));
+  markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_BATCH_TIMEOUT_MS);
+
+  try{
+    const payloadObject = buildGoogleSheetDayBatchPayload(recordSnapshots, plantingEventSnapshots, config);
+    const response = await fetch(config.url, {
+      method: "POST",
+      mode: "cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: buildValidatedGoogleSheetRequestBody(payloadObject),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("スプレッドシートの応答が大きすぎます");
+    let result = {};
+    try{
+      result = text ? JSON.parse(text) : {};
+    }catch(e){
+      throw new Error("スプレッドシートの応答を読み込めません");
+    }
+    if(result.ok !== true) throw new Error(result.message || "当日の記録を一括送信できませんでした");
+    if(!Array.isArray(result.recordResults) || result.recordResults.length > recordSnapshots.length
+      || !Array.isArray(result.plantingResults) || result.plantingResults.length > plantingEventSnapshots.length){
+      throw new Error("当日の記録の一括応答件数が正しくありません");
+    }
+    acknowledgeGoogleSheetMutationRevision(config, payloadObject.syncRevision, result);
+
+    const totals = {
+      successCount: 0,
+      updatedCount: 0,
+      duplicateCount: 0,
+      failCount: 0,
+      plantingSuccessCount: 0,
+      plantingUpdatedCount: 0,
+      plantingFailCount: 0
+    };
+    const recordIdMappings = [];
+    const handledRecordIndexes = new Set();
+    let firstError = "";
+
+    result.recordResults.forEach(item => {
+      const index = Number(item?.index);
+      if(!Number.isSafeInteger(index) || index < 0 || index >= recordSnapshots.length
+        || handledRecordIndexes.has(index)) return;
+      handledRecordIndexes.add(index);
+      const snapshot = recordSnapshots[index];
+      if(item?.ok === true){
+        const oldId = snapshot.id;
+        const serverId = getSafePositiveRecordId(item?.record?.id);
+        if(serverId !== null && Number(oldId) !== serverId){
+          recordIdMappings.push({ oldId, newId: serverId });
+          remapGoogleSheetDayBatchPlantingSnapshots(plantingEventSnapshots, oldId, serverId);
+        }
+        const applied = setGoogleSheetSyncStatusAfterSend(
+          snapshot,
+          sentRecordSignatures[index],
+          config,
+          "confirmed",
+          item.record
+        );
+        if(applied){
+          if(item.duplicate === true) totals.duplicateCount++;
+          else{
+            totals.successCount++;
+            if(item.updated === true) totals.updatedCount++;
+          }
+        }else{
+          totals.failCount++;
+          firstError ||= "送信先には保存されましたが、アプリ内の収穫記録との照合に失敗しました";
+        }
+      }else{
+        totals.failCount++;
+        firstError ||= String(item?.message || "収穫記録を保存できませんでした").trim();
+        setGoogleSheetSyncStatusAfterSend(snapshot, sentRecordSignatures[index], config, "failed");
+      }
+    });
+    recordSnapshots.forEach((record, index) => {
+      if(handledRecordIndexes.has(index)) return;
+      totals.failCount++;
+      firstError ||= "一括応答に収穫記録の結果がありません";
+      setGoogleSheetSyncStatusAfterSend(record, sentRecordSignatures[index], config, "failed");
+    });
+
+    const handledPlantingIndexes = new Set();
+    result.plantingResults.forEach(item => {
+      const index = Number(item?.index);
+      if(!Number.isSafeInteger(index) || index < 0 || index >= plantingEventSnapshots.length
+        || handledPlantingIndexes.has(index)) return;
+      handledPlantingIndexes.add(index);
+      const snapshot = plantingEventSnapshots[index];
+      if(item?.ok === true){
+        if(setPlantingEventSyncStatusAfterDayBatch(snapshot, "confirmed", item.event)){
+          totals.plantingSuccessCount++;
+          if(item.updated === true) totals.plantingUpdatedCount++;
+        }else{
+          totals.plantingFailCount++;
+          firstError ||= "送信先には保存されましたが、アプリ内の苗植え記録との照合に失敗しました";
+        }
+      }else{
+        totals.plantingFailCount++;
+        firstError ||= String(item?.message || "苗植え記録を保存できませんでした").trim();
+        setPlantingEventSyncStatusAfterDayBatch(snapshot, "failed");
+      }
+    });
+    plantingEventSnapshots.forEach((event, index) => {
+      if(handledPlantingIndexes.has(index)) return;
+      totals.plantingFailCount++;
+      firstError ||= "一括応答に苗植え記録の結果がありません";
+      setPlantingEventSyncStatusAfterDayBatch(event, "failed");
+    });
+    return { ...totals, recordIdMappings, errorMessage: firstError };
+  }catch(e){
+    recordSnapshots.forEach((record, index) => {
+      setGoogleSheetSyncStatusAfterSend(record, sentRecordSignatures[index], config, "failed");
+    });
+    plantingEventSnapshots.forEach(event => setPlantingEventSyncStatusAfterDayBatch(event, "failed"));
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+function includeUnsentPlantingSourceRecords(recordsToSend, plantingEventsToSend){
+  const combined = [...(Array.isArray(recordsToSend) ? recordsToSend : [])];
+  const identities = new Set(combined.map(getHarvestRecordIdentityKey).filter(Boolean));
+  const status = loadGoogleSheetSyncStatus();
+  (Array.isArray(plantingEventsToSend) ? plantingEventsToSend : []).forEach(event => {
+    getPlantingEventSourceRecords(event).forEach(record => {
+      const identity = getHarvestRecordIdentityKey(record);
+      if(!identity || identities.has(identity) || isGoogleSheetRecordConfirmed(record, status)) return;
+      identities.add(identity);
+      combined.push(record);
+    });
+  });
+  return combined;
+}
+
+function validateGoogleSheetPlantingEventSourcesForSend(event){
+  const allocations = Array.isArray(event?.sourceAllocations) ? event.sourceAllocations : [];
+  for(const allocation of allocations){
+    const source = records.find(record => Number(record.id) === Number(allocation?.harvestRecordId));
+    if(!source){
+      return { ok: false, message: "苗植え元の収穫記録がアプリ内にありません" };
+    }
+    if(source.type !== "fullHarvest"){
+      return { ok: false, message: "部分収穫記録は苗植え元として送信できません" };
+    }
+    if(hasSyncConflictForEntity("record", source)){
+      return { ok: false, message: "苗植え元の収穫記録に同期の競合があります" };
+    }
+  }
+  return { ok: true, message: "" };
+}
+
+async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEventsToSend, options = {}){
+  const requestedPlantingList = Array.isArray(plantingEventsToSend) ? plantingEventsToSend : [];
+  const plantingDependencyFailures = [];
+  const sendablePlantingEvents = requestedPlantingList.filter(event => {
+    const validation = validateGoogleSheetPlantingEventSourcesForSend(event);
+    if(validation.ok) return true;
+    plantingDependencyFailures.push({ event, message: validation.message });
+    setPlantingEventSyncStatus(event, "failed");
+    return false;
+  });
+  const sourceRecordsIncluded = includeUnsentPlantingSourceRecords(recordsToSend, sendablePlantingEvents);
+  const recordList = Array.isArray(sourceRecordsIncluded) ? sourceRecordsIncluded : [];
+  const plantingList = sendablePlantingEvents;
+  const showFailureDialog = options.showFailureDialog !== false;
+  const showConfigNotice = options.showConfigNotice !== false;
+  const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
+  const totals = {
+    successCount: 0,
+    updatedCount: 0,
+    duplicateCount: 0,
+    failCount: 0,
+    plantingSuccessCount: 0,
+    plantingUpdatedCount: 0,
+    plantingFailCount: plantingDependencyFailures.length
+  };
+  if(!configValidation.ok){
+    if(showConfigNotice) showToast(configValidation.message);
+    return {
+      ...totals,
+      failCount: recordList.length,
+      plantingFailCount: requestedPlantingList.length,
+      errorMessage: plantingDependencyFailures[0]?.message || configValidation.message
+    };
+  }
+  if(!recordList.length && !plantingList.length){
+    return { ...totals, errorMessage: plantingDependencyFailures[0]?.message || "" };
+  }
+  const config = configValidation.config;
+  const recordSnapshots = [];
+  const plantingEventSnapshots = [];
+  let firstError = plantingDependencyFailures[0]?.message || "";
+
+  recordList.forEach(record => {
+    const snapshot = cloneGoogleSheetRecordForSend(record);
+    const validation = validateRecordForGoogleTransfer(snapshot, { enforceDuplicateKey: false });
+    if(validation.ok){
+      recordSnapshots.push(snapshot);
+    }else{
+      totals.failCount++;
+      firstError ||= validation.message;
+      setGoogleSheetSyncStatus(record, "failed");
+    }
+  });
+  plantingList.forEach(event => {
+    try{
+      plantingEventSnapshots.push(cloneGoogleSheetPlantingEventForSend(event));
+    }catch(e){
+      totals.plantingFailCount++;
+      firstError ||= String(e?.message || e);
+      setPlantingEventSyncStatus(event, "failed");
+    }
+  });
+
+  const batchPlan = splitGoogleSheetDayBatchChunks(recordSnapshots, plantingEventSnapshots, config);
+  batchPlan.oversizedRecords.forEach(record => setGoogleSheetSyncStatus(record, "failed"));
+  batchPlan.oversizedPlantingEvents.forEach(event => setPlantingEventSyncStatus(event, "failed"));
+  totals.failCount += batchPlan.oversizedRecords.length;
+  totals.plantingFailCount += batchPlan.oversizedPlantingEvents.length;
+  if(batchPlan.oversizedRecords.length || batchPlan.oversizedPlantingEvents.length){
+    firstError ||= "送信できる大きさを超えた記録があります";
+  }
+
+  for(let chunkIndex = 0; chunkIndex < batchPlan.chunks.length; chunkIndex++){
+    const chunk = batchPlan.chunks[chunkIndex];
+    try{
+      const chunkTotals = await sendGoogleSheetDayBatchChunk(
+        chunk.records,
+        chunk.plantingEvents,
+        config
+      );
+      Object.keys(totals).forEach(key => { totals[key] += chunkTotals[key] || 0; });
+      firstError ||= String(chunkTotals.errorMessage || "").trim();
+      (chunkTotals.recordIdMappings || []).forEach(mapping => {
+        batchPlan.chunks.slice(chunkIndex + 1).forEach(nextChunk => {
+          remapGoogleSheetDayBatchPlantingSnapshots(nextChunk.plantingEvents, mapping.oldId, mapping.newId);
+        });
+      });
+    }catch(e){
+      firstError ||= String(e?.name === "AbortError"
+        ? "スプレッドシートとの通信がタイムアウトしました"
+        : (e?.message || e));
+      totals.failCount += chunk.records.length;
+      totals.plantingFailCount += chunk.plantingEvents.length;
+      const remaining = batchPlan.chunks.slice(chunkIndex + 1);
+      remaining.forEach(nextChunk => {
+        nextChunk.records.forEach(record => setGoogleSheetSyncStatus(record, "failed"));
+        nextChunk.plantingEvents.forEach(event => setPlantingEventSyncStatus(event, "failed"));
+        totals.failCount += nextChunk.records.length;
+        totals.plantingFailCount += nextChunk.plantingEvents.length;
+      });
+      break;
+    }
+  }
+
+  if(firstError && showFailureDialog){
+    showRecordImportError("当日の記録の一括送信に失敗しました。\n\n詳細: " + firstError, "送信失敗");
+  }
+  return { ...totals, errorMessage: firstError };
+}
+
 async function sendPendingRecordsToGoogleSheet(){
   if(!ensureProtectedOperationAccess("スプレッドシートへの送信")) return;
   if(editingHarvestRecordId || editingPartialHarvestRecordId || splittingHarvestRecordId || editingPlantingEventId || activePlantingRecordId){
@@ -658,7 +1067,12 @@ async function sendPendingRecordsToGoogleSheet(){
       return;
     }
 
-    const recordsToSend = [...unsentRecords].reverse();
+    const today = formatDateOnlyString(new Date());
+    const recordsInExistingOrder = [...unsentRecords].reverse();
+    const recordsToSend = [
+      ...recordsInExistingOrder.filter(record => String(record?.date || "") === today),
+      ...recordsInExistingOrder.filter(record => String(record?.date || "") !== today)
+    ];
     const plantingLines = unsentPlantingEvents.slice(0, 20).map((event, index) => (
       `${index + 1}. ${event.plantingDate} 苗植え ${event.plantingPalletKeys.length}パレット`
     ));
@@ -674,22 +1088,22 @@ async function sendPendingRecordsToGoogleSheet(){
 
     changeGoogleSheetOperationState(operationOwner, "sending");
 
-    const { successCount, updatedCount, duplicateCount, failCount } = await sendRecordsBatchToGoogleSheet(recordsToSend);
+    const sendResult = unsentPlantingEvents.length
+      ? await sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, unsentPlantingEvents)
+      : await sendRecordsBatchToGoogleSheet(recordsToSend);
+    const {
+      successCount,
+      updatedCount,
+      duplicateCount,
+      failCount,
+      plantingSuccessCount = 0,
+      plantingFailCount = 0
+    } = sendResult;
     const addedCount = Math.max(0, successCount - updatedCount);
-    let plantingSuccessCount = 0;
-    let plantingFailCount = 0;
-    const plantingFailureDetails = [];
-    for(const event of unsentPlantingEvents){
-      const result = await syncPlantingEventWithSources(event, { manageSendState: false });
-      if(result.ok) plantingSuccessCount++;
-      else{
-        plantingFailCount++;
-        plantingFailureDetails.push(
-          String(event.plantingDate || "日付なし") + "（ID: " + String(event.eventId) + "）: " +
-          String(result.message || "更新できませんでした")
-        );
-      }
-    }
+    const plantingFailureDetails = plantingFailCount && sendResult.errorMessage
+      ? [String(sendResult.errorMessage)]
+      : [];
+    pruneConfirmedGoogleSheetBackgroundSendJobs();
 
     if(failCount > 0 || plantingFailCount > 0){
       showToast("送信完了: 収穫 追加" + addedCount + "・更新" + updatedCount + "・重複" + duplicateCount + "・失敗" + failCount + " / 苗植え 成功" + plantingSuccessCount + "・失敗" + plantingFailCount);

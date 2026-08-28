@@ -244,6 +244,24 @@ function doPost(e) {
       });
     }
 
+    if (operation === "saveDayBatch") {
+      apiStage = "当日の収穫・苗植え記録の一括保存中";
+      const result = saveHarvestDayBatch(body.records, body.plantingEvents);
+      const revisionAcknowledgement = recordHarvestSyncChangesSafely(
+        buildHarvestDayBatchSyncChanges(result)
+      );
+      apiStage = "当日の収穫・苗植え記録の応答作成中";
+      return jsonResponse({
+        ok: true,
+        ...result,
+        ...revisionAcknowledgement,
+        recordResults: result.recordResults.map(item => ({
+          ...item,
+          record: item.record ? compactHarvestRecordForApi(item.record) : item.record
+        }))
+      });
+    }
+
     if (operation === "saveRecordBatch") {
       apiStage = "収穫記録の一括保存中";
       const result = saveHarvestRecordsBatch(body.records);
@@ -420,7 +438,8 @@ function resolveApiOperation(body) {
     restorePlantingEvent: "restorePlantingEvent",
     getMonitorContent: "getMonitorContent",
     saveMonitorContent: "saveMonitorContent",
-    listMonitorHistory: "listMonitorHistory"
+    listMonitorHistory: "listMonitorHistory",
+    saveDayBatch: "saveDayBatch"
   };
   const operationByType = {
     "harvest-access-role": "identifyAccessRole",
@@ -429,6 +448,7 @@ function resolveApiOperation(body) {
     "harvest-sync-all": "syncAll",
     "harvest-record": "saveRecord",
     "harvest-record-batch": "saveRecordBatch",
+    "harvest-day-batch": "saveDayBatch",
     "harvest-record-list": "listRecords",
     "harvest-record-delete": "deleteRecord",
     "harvest-record-restore": "restoreRecord",
@@ -469,6 +489,17 @@ function resolveApiOperation(body) {
     if (!Array.isArray(body.records)) throw new Error("recordsが配列ではありません");
     if (body.records.length > API_BATCH_RECORD_LIMIT) {
       throw new Error("一度に送信できる記録は" + API_BATCH_RECORD_LIMIT + "件までです");
+    }
+  }
+  if (operation === "saveDayBatch") {
+    if (!Array.isArray(body.records)) throw new Error("recordsが配列ではありません");
+    if (!Array.isArray(body.plantingEvents)) {
+      throw new Error("plantingEventsが配列ではありません");
+    }
+    const itemCount = body.records.length + body.plantingEvents.length;
+    if (itemCount < 1) throw new Error("送信する記録がありません");
+    if (body.records.length > API_BATCH_RECORD_LIMIT || itemCount > API_DAY_BATCH_ITEM_LIMIT) {
+      throw new Error("一度に送信できる当日の記録は" + API_DAY_BATCH_ITEM_LIMIT + "件までです");
     }
   }
   if (operation === "saveMonitorContent" && !isPlainObject(body.content)) {
@@ -531,6 +562,7 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
     "workerSnapshot",
     "saveRecord",
     "saveRecordBatch",
+    "saveDayBatch",
     "savePlantingEvent",
     "getMonitorContent",
     "saveMonitorContent"
@@ -538,6 +570,67 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
   if (!workerOperations.includes(operation)) {
     throw new Error("この操作は管理者だけが利用できます");
   }
+}
+
+function saveHarvestDayBatch(records, plantingEvents) {
+  return withRecordWriteLock(() => {
+    const recordBatch = records.length
+      ? saveHarvestRecordsBatchUnlocked(records)
+      : { total: 0, saved: 0, updated: 0, duplicate: 0, failed: 0, results: [] };
+    const plantingBatch = savePlantingEventsBatchUnlocked(
+      plantingEvents,
+      records,
+      recordBatch.results
+    );
+    return {
+      total: recordBatch.total + plantingBatch.total,
+      saved: recordBatch.saved + plantingBatch.saved,
+      updated: recordBatch.updated + plantingBatch.updated,
+      duplicate: recordBatch.duplicate + plantingBatch.duplicate,
+      unchanged: plantingBatch.unchanged,
+      failed: recordBatch.failed + plantingBatch.failed,
+      recordResults: recordBatch.results,
+      plantingResults: plantingBatch.results
+    };
+  });
+}
+
+function buildHarvestDayBatchSyncChanges(result) {
+  const changes = [];
+  const changedRecordIds = new Set();
+  const changedRecordUuids = new Set();
+  (result && Array.isArray(result.recordResults) ? result.recordResults : [])
+    .forEach(item => {
+      if (!item || item.ok !== true || item.duplicate || !item.record) return;
+      const recordUuid = String(item.record.recordUuid || "").trim().toLowerCase();
+      const recordId = Number(item.record.id);
+      if (recordUuid && changedRecordUuids.has(recordUuid)) return;
+      if (Number.isSafeInteger(recordId) && recordId > 0 && changedRecordIds.has(recordId)) return;
+      changes.push({
+        entityType: "record",
+        recordUuid,
+        entityId: recordId,
+        action: "upsert"
+      });
+      if (recordUuid) changedRecordUuids.add(recordUuid);
+      if (Number.isSafeInteger(recordId) && recordId > 0) changedRecordIds.add(recordId);
+    });
+  (result && Array.isArray(result.plantingResults) ? result.plantingResults : [])
+    .forEach(item => {
+      if (!item || item.ok !== true || item.unchanged || !item.event) return;
+      changes.push({
+        entityType: "planting",
+        entityId: item.event.eventId,
+        action: "upsert"
+      });
+    });
+  requestScopedChangedHarvestRecordIds.forEach(entityId => {
+    const recordId = Number(entityId);
+    if (!Number.isSafeInteger(recordId) || recordId <= 0 || changedRecordIds.has(recordId)) return;
+    changes.push({ entityType: "record", entityId: recordId, action: "upsert" });
+    changedRecordIds.add(recordId);
+  });
+  return changes;
 }
 
 function constantTimeTokenEquals(left, right) {

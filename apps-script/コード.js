@@ -38,6 +38,7 @@ const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
 const API_MAX_BODY_BYTES = 1000000;
 const API_BATCH_RECORD_LIMIT = 100;
+const API_DAY_BATCH_ITEM_LIMIT = 100;
 const RECORD_CASES_LIMIT = 999999;
 const RECORD_SEEDLING_TRAY_LIMIT = 999999;
 const RECORD_PALLET_KEY_LIMIT = 3744;
@@ -1012,6 +1013,24 @@ function doPost(e) {
       });
     }
 
+    if (operation === "saveDayBatch") {
+      apiStage = "当日の収穫・苗植え記録の一括保存中";
+      const result = saveHarvestDayBatch(body.records, body.plantingEvents);
+      const revisionAcknowledgement = recordHarvestSyncChangesSafely(
+        buildHarvestDayBatchSyncChanges(result)
+      );
+      apiStage = "当日の収穫・苗植え記録の応答作成中";
+      return jsonResponse({
+        ok: true,
+        ...result,
+        ...revisionAcknowledgement,
+        recordResults: result.recordResults.map(item => ({
+          ...item,
+          record: item.record ? compactHarvestRecordForApi(item.record) : item.record
+        }))
+      });
+    }
+
     if (operation === "saveRecordBatch") {
       apiStage = "収穫記録の一括保存中";
       const result = saveHarvestRecordsBatch(body.records);
@@ -1188,7 +1207,8 @@ function resolveApiOperation(body) {
     restorePlantingEvent: "restorePlantingEvent",
     getMonitorContent: "getMonitorContent",
     saveMonitorContent: "saveMonitorContent",
-    listMonitorHistory: "listMonitorHistory"
+    listMonitorHistory: "listMonitorHistory",
+    saveDayBatch: "saveDayBatch"
   };
   const operationByType = {
     "harvest-access-role": "identifyAccessRole",
@@ -1197,6 +1217,7 @@ function resolveApiOperation(body) {
     "harvest-sync-all": "syncAll",
     "harvest-record": "saveRecord",
     "harvest-record-batch": "saveRecordBatch",
+    "harvest-day-batch": "saveDayBatch",
     "harvest-record-list": "listRecords",
     "harvest-record-delete": "deleteRecord",
     "harvest-record-restore": "restoreRecord",
@@ -1237,6 +1258,17 @@ function resolveApiOperation(body) {
     if (!Array.isArray(body.records)) throw new Error("recordsが配列ではありません");
     if (body.records.length > API_BATCH_RECORD_LIMIT) {
       throw new Error("一度に送信できる記録は" + API_BATCH_RECORD_LIMIT + "件までです");
+    }
+  }
+  if (operation === "saveDayBatch") {
+    if (!Array.isArray(body.records)) throw new Error("recordsが配列ではありません");
+    if (!Array.isArray(body.plantingEvents)) {
+      throw new Error("plantingEventsが配列ではありません");
+    }
+    const itemCount = body.records.length + body.plantingEvents.length;
+    if (itemCount < 1) throw new Error("送信する記録がありません");
+    if (body.records.length > API_BATCH_RECORD_LIMIT || itemCount > API_DAY_BATCH_ITEM_LIMIT) {
+      throw new Error("一度に送信できる当日の記録は" + API_DAY_BATCH_ITEM_LIMIT + "件までです");
     }
   }
   if (operation === "saveMonitorContent" && !isPlainObject(body.content)) {
@@ -1299,6 +1331,7 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
     "workerSnapshot",
     "saveRecord",
     "saveRecordBatch",
+    "saveDayBatch",
     "savePlantingEvent",
     "getMonitorContent",
     "saveMonitorContent"
@@ -1306,6 +1339,67 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
   if (!workerOperations.includes(operation)) {
     throw new Error("この操作は管理者だけが利用できます");
   }
+}
+
+function saveHarvestDayBatch(records, plantingEvents) {
+  return withRecordWriteLock(() => {
+    const recordBatch = records.length
+      ? saveHarvestRecordsBatchUnlocked(records)
+      : { total: 0, saved: 0, updated: 0, duplicate: 0, failed: 0, results: [] };
+    const plantingBatch = savePlantingEventsBatchUnlocked(
+      plantingEvents,
+      records,
+      recordBatch.results
+    );
+    return {
+      total: recordBatch.total + plantingBatch.total,
+      saved: recordBatch.saved + plantingBatch.saved,
+      updated: recordBatch.updated + plantingBatch.updated,
+      duplicate: recordBatch.duplicate + plantingBatch.duplicate,
+      unchanged: plantingBatch.unchanged,
+      failed: recordBatch.failed + plantingBatch.failed,
+      recordResults: recordBatch.results,
+      plantingResults: plantingBatch.results
+    };
+  });
+}
+
+function buildHarvestDayBatchSyncChanges(result) {
+  const changes = [];
+  const changedRecordIds = new Set();
+  const changedRecordUuids = new Set();
+  (result && Array.isArray(result.recordResults) ? result.recordResults : [])
+    .forEach(item => {
+      if (!item || item.ok !== true || item.duplicate || !item.record) return;
+      const recordUuid = String(item.record.recordUuid || "").trim().toLowerCase();
+      const recordId = Number(item.record.id);
+      if (recordUuid && changedRecordUuids.has(recordUuid)) return;
+      if (Number.isSafeInteger(recordId) && recordId > 0 && changedRecordIds.has(recordId)) return;
+      changes.push({
+        entityType: "record",
+        recordUuid,
+        entityId: recordId,
+        action: "upsert"
+      });
+      if (recordUuid) changedRecordUuids.add(recordUuid);
+      if (Number.isSafeInteger(recordId) && recordId > 0) changedRecordIds.add(recordId);
+    });
+  (result && Array.isArray(result.plantingResults) ? result.plantingResults : [])
+    .forEach(item => {
+      if (!item || item.ok !== true || item.unchanged || !item.event) return;
+      changes.push({
+        entityType: "planting",
+        entityId: item.event.eventId,
+        action: "upsert"
+      });
+    });
+  requestScopedChangedHarvestRecordIds.forEach(entityId => {
+    const recordId = Number(entityId);
+    if (!Number.isSafeInteger(recordId) || recordId <= 0 || changedRecordIds.has(recordId)) return;
+    changes.push({ entityType: "record", entityId: recordId, action: "upsert" });
+    changedRecordIds.add(recordId);
+  });
+  return changes;
 }
 
 function constantTimeTokenEquals(left, right) {
@@ -3348,7 +3442,7 @@ function savePlantingEvent(event) {
   return withRecordWriteLock(() => savePlantingEventUnlocked(normalizedEvent));
 }
 
-function savePlantingEventUnlocked(event) {
+function savePlantingEventUnlocked(event, options) {
   let sheet;
   let headers;
   try {
@@ -3444,7 +3538,7 @@ function savePlantingEventUnlocked(event) {
     }
     if (existingEvent &&
       getPlantingEventContentSignature(event) === getPlantingEventContentSignature(existingEvent)) {
-      syncRecordSheetPlantingLocationSummaries(affectedHarvestRecordIds);
+      syncOrDeferPlantingLocationSummaries(affectedHarvestRecordIds, options);
       return { updated: true, unchanged: true, event: existingEvent };
     }
     if (existingEvent && event.updatedAt && existingEvent.updatedAt && event.updatedAt !== existingEvent.updatedAt) {
@@ -3474,13 +3568,140 @@ function savePlantingEventUnlocked(event) {
     throw new Error("苗植えイベント行の更新中に失敗しました: " + String(err && err.message || err));
   }
   try {
-    syncRecordSheetPlantingLocationSummaries(affectedHarvestRecordIds);
+    syncOrDeferPlantingLocationSummaries(affectedHarvestRecordIds, options);
   } catch (err) {
     throw new Error("記録シートの苗植え場所への反映中に失敗しました: " + String(err && err.message || err));
   }
   return {
     updated: existingRowNumber > 0,
     event: eventToWrite
+  };
+}
+
+function syncOrDeferPlantingLocationSummaries(harvestRecordIds, options) {
+  const deferredIds = options && options.deferredHarvestRecordIds;
+  if (deferredIds instanceof Set) {
+    Array.from(harvestRecordIds || []).forEach(id => deferredIds.add(id));
+    return 0;
+  }
+  return syncRecordSheetPlantingLocationSummaries(harvestRecordIds);
+}
+
+function buildHarvestDayBatchRecordIdMappings(records, recordResults) {
+  const candidatesByRequestedId = new Map();
+  (Array.isArray(records) ? records : []).forEach((record, index) => {
+    const requestedId = Number(record && record.id);
+    if (!Number.isSafeInteger(requestedId) || requestedId <= 0) return;
+    if (!candidatesByRequestedId.has(requestedId)) {
+      candidatesByRequestedId.set(requestedId, []);
+    }
+    candidatesByRequestedId.get(requestedId).push({
+      index,
+      result: Array.isArray(recordResults) ? recordResults[index] : null
+    });
+  });
+
+  const mappings = new Map();
+  candidatesByRequestedId.forEach((candidates, requestedId) => {
+    const failed = candidates.find(candidate => !candidate.result || candidate.result.ok !== true);
+    const canonicalIds = new Set(candidates
+      .filter(candidate => candidate.result && candidate.result.ok === true)
+      .map(candidate => Number(
+        candidate.result.record && candidate.result.record.id || candidate.result.id
+      ))
+      .filter(id => Number.isSafeInteger(id) && id > 0));
+    if (failed) {
+      mappings.set(requestedId, {
+        ok: false,
+        message: "収穫記録" + (failed.index + 1) + "件目の保存に失敗したため、関連する苗植え記録を保存できません"
+      });
+      return;
+    }
+    if (canonicalIds.size !== 1) {
+      mappings.set(requestedId, {
+        ok: false,
+        message: "同じ収穫記録IDの保存結果を1件に特定できないため、関連する苗植え記録を保存できません"
+      });
+      return;
+    }
+    mappings.set(requestedId, {
+      ok: true,
+      canonicalId: Array.from(canonicalIds)[0]
+    });
+  });
+  return mappings;
+}
+
+function remapHarvestDayBatchPlantingEvent(event, recordIdMappings) {
+  if (!isPlainObject(event) || !Array.isArray(event.sourceAllocations)) return event;
+  return {
+    ...event,
+    sourceAllocations: event.sourceAllocations.map(allocation => {
+      if (!isPlainObject(allocation)) return allocation;
+      const requestedId = Number(allocation.harvestRecordId);
+      const mapping = recordIdMappings && recordIdMappings.get(requestedId);
+      if (!mapping) return { ...allocation };
+      if (!mapping.ok) throw new Error(mapping.message);
+      return {
+        ...allocation,
+        harvestRecordId: mapping.canonicalId
+      };
+    })
+  };
+}
+
+function savePlantingEventsBatchUnlocked(events, records, recordResults) {
+  if (!Array.isArray(events)) throw new Error("plantingEventsが配列ではありません");
+  const recordIdMappings = buildHarvestDayBatchRecordIdMappings(records, recordResults);
+  const deferredHarvestRecordIds = new Set();
+  const results = events.map((event, index) => {
+    try {
+      const remappedEvent = remapHarvestDayBatchPlantingEvent(event, recordIdMappings);
+      const normalizedEvent = normalizePlantingEvent(remappedEvent);
+      const result = savePlantingEventUnlocked(normalizedEvent, {
+        deferredHarvestRecordIds
+      });
+      return {
+        index,
+        eventId: result.event && result.event.eventId || normalizedEvent.eventId,
+        ok: true,
+        duplicate: false,
+        updated: result.updated === true,
+        unchanged: result.unchanged === true,
+        event: result.event || normalizedEvent,
+        message: result.unchanged
+          ? "保存済みの苗植えイベントです"
+          : (result.updated ? "苗植えイベントを更新しました" : "苗植えイベントを保存しました")
+      };
+    } catch (err) {
+      return {
+        index,
+        eventId: event && event.eventId,
+        ok: false,
+        duplicate: false,
+        updated: false,
+        message: String(err && err.message ? err.message : err)
+      };
+    }
+  });
+
+  if (deferredHarvestRecordIds.size) {
+    try {
+      syncRecordSheetPlantingLocationSummaries(deferredHarvestRecordIds);
+    } catch (err) {
+      throw new Error("苗植え記録の収穫元への一括反映中に失敗しました: " +
+        String(err && err.message || err));
+    }
+  }
+
+  return {
+    total: events.length,
+    saved: results.filter(result => result.ok && !result.unchanged).length,
+    updated: results.filter(result => result.ok && result.updated && !result.unchanged).length,
+    duplicate: 0,
+    unchanged: results.filter(result => result.ok && result.unchanged).length,
+    failed: results.filter(result => !result.ok).length,
+    results
   };
 }
 
@@ -4958,10 +5179,17 @@ function writeRecordRow(
 }
 
 function hasCompletedRecordWrite(sheet, rowNumber, headers) {
+  return getCompletedRecordWriteStates(sheet, rowNumber, 1, headers)[0] === true;
+}
+
+function getCompletedRecordWriteStates(sheet, startRow, rowCount, headers) {
   const receivedAtColumn = getHeaderColumn(headers, "receivedAt");
-  if (receivedAtColumn <= 0) return false;
-  const value = sheet.getRange(rowNumber, receivedAtColumn).getValue();
-  return isCommittedWriteTimestamp(value);
+  if (!Number.isSafeInteger(rowCount) || rowCount <= 0) return [];
+  if (receivedAtColumn <= 0) return Array(rowCount).fill(false);
+  return sheet
+    .getRange(startRow, receivedAtColumn, rowCount, 1)
+    .getValues()
+    .map(row => isCommittedWriteTimestamp(row && row[0]));
 }
 
 function appendRecordRow(
@@ -4998,10 +5226,16 @@ function appendKnownRecordRows(sheet, headers, rows, writeMarkers) {
       String(err && err.message || err));
   }
   writeKnownRecordRows(sheet, startRow, headers, rows, writeMarkers);
-  for (let index = 0; index < rows.length; index++) {
-    if (!hasCompletedRecordWrite(sheet, startRow + index, headers)) {
-      throw new Error("収穫記録行が完了状態になっていません: 行" + (startRow + index));
-    }
+  const completionStates = getCompletedRecordWriteStates(
+    sheet,
+    startRow,
+    rows.length,
+    headers
+  );
+  const incompleteIndex = completionStates.findIndex(completed => !completed);
+  if (incompleteIndex >= 0) {
+    throw new Error("収穫記録行が完了状態になっていません: 行" +
+      (startRow + incompleteIndex));
   }
 }
 
@@ -5089,15 +5323,26 @@ function writeKnownRecordRows(sheet, startRow, headers, rows, writeMarkers) {
     }
   }
 
-  knownColumns
-    .filter(item => item.key !== "receivedAt")
-    .forEach(item => {
-      writeColumn(
-        item,
-        safeRows.map(row => [row[item.index]]),
-        "更新"
-      );
-    });
+  getKnownRecordColumnSegments(headers).forEach(segment => {
+    const firstKey = getHeaderKey(headers[segment.startIndex]);
+    const lastKey = getHeaderKey(headers[segment.startIndex + segment.length - 1]);
+    const firstLabel = HEADER_LABELS[firstKey] || firstKey;
+    const lastLabel = HEADER_LABELS[lastKey] || lastKey;
+    const segmentLabel = segment.length === 1
+      ? firstLabel
+      : firstLabel + "～" + lastLabel;
+    setHarvestRecordRangeValuesWithValidationRecovery(
+      sheet,
+      startRow,
+      segment.startIndex + 1,
+      safeRows.map(row => row.slice(
+        segment.startIndex,
+        segment.startIndex + segment.length
+      )),
+      segmentLabel,
+      "更新"
+    );
+  });
 
   if (receivedAtColumn) {
     writeColumn(
@@ -5126,14 +5371,48 @@ function setHarvestRecordColumnValuesWithValidationRecovery(
   columnLabel,
   actionLabel
 ) {
-  const normalizedValues = values.map(row => [normalizeHarvestRecordCellValue(row[0])]);
+  return setHarvestRecordRangeValuesWithValidationRecovery(
+    sheet,
+    startRow,
+    column,
+    values.map(row => [row && row[0]]),
+    columnLabel,
+    actionLabel
+  );
+}
+
+function setHarvestRecordRangeValuesWithValidationRecovery(
+  sheet,
+  startRow,
+  startColumn,
+  values,
+  rangeLabel,
+  actionLabel
+) {
+  const normalizedValues = values.map(row => (
+    (Array.isArray(row) ? row : []).map(normalizeHarvestRecordCellValue)
+  ));
+  const columnCount = normalizedValues[0] ? normalizedValues[0].length : 0;
+  const rangeDescription = columnCount === 1
+    ? "列「" + rangeLabel + "」"
+    : "列範囲「" + rangeLabel + "」";
+  if (!normalizedValues.length || columnCount <= 0 ||
+    normalizedValues.some(row => row.length !== columnCount)) {
+    throw new Error(rangeDescription + "の書き込み値が正しくありません");
+  }
   let targetRange;
   try {
-    targetRange = sheet.getRange(startRow, column, normalizedValues.length, 1);
+    targetRange = sheet.getRange(
+      startRow,
+      startColumn,
+      normalizedValues.length,
+      columnCount
+    );
   } catch (err) {
     throw new Error(
-      "列「" + columnLabel + "」の書き込み範囲の作成に失敗しました" +
-      "（開始行: " + startRow + "、件数: " + normalizedValues.length + "、列: " + column + "）: " +
+      rangeDescription + "の書き込み範囲の作成に失敗しました" +
+      "（開始行: " + startRow + "、件数: " + normalizedValues.length +
+      "、開始列: " + startColumn + "、列数: " + columnCount + "）: " +
       String(err && err.message || err)
     );
   }
@@ -5145,11 +5424,13 @@ function setHarvestRecordColumnValuesWithValidationRecovery(
     // アプリが管理する列に限り入力規則を解除して再試行する。
     try {
       targetRange.clearDataValidations();
-      if (normalizedValues.length === 1) targetRange.setValue(normalizedValues[0][0]);
+      if (normalizedValues.length === 1 && columnCount === 1) {
+        targetRange.setValue(normalizedValues[0][0]);
+      }
       else targetRange.setValues(normalizedValues);
     } catch (retryErr) {
       throw new Error(
-        "列「" + columnLabel + "」の" + actionLabel + "に失敗しました: " +
+        rangeDescription + "の" + actionLabel + "に失敗しました: " +
         String(retryErr && retryErr.message || retryErr) +
         "（初回: " + String(err && err.message || err) + "）"
       );

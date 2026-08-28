@@ -352,10 +352,17 @@ function writeRecordRow(
 }
 
 function hasCompletedRecordWrite(sheet, rowNumber, headers) {
+  return getCompletedRecordWriteStates(sheet, rowNumber, 1, headers)[0] === true;
+}
+
+function getCompletedRecordWriteStates(sheet, startRow, rowCount, headers) {
   const receivedAtColumn = getHeaderColumn(headers, "receivedAt");
-  if (receivedAtColumn <= 0) return false;
-  const value = sheet.getRange(rowNumber, receivedAtColumn).getValue();
-  return isCommittedWriteTimestamp(value);
+  if (!Number.isSafeInteger(rowCount) || rowCount <= 0) return [];
+  if (receivedAtColumn <= 0) return Array(rowCount).fill(false);
+  return sheet
+    .getRange(startRow, receivedAtColumn, rowCount, 1)
+    .getValues()
+    .map(row => isCommittedWriteTimestamp(row && row[0]));
 }
 
 function appendRecordRow(
@@ -392,10 +399,16 @@ function appendKnownRecordRows(sheet, headers, rows, writeMarkers) {
       String(err && err.message || err));
   }
   writeKnownRecordRows(sheet, startRow, headers, rows, writeMarkers);
-  for (let index = 0; index < rows.length; index++) {
-    if (!hasCompletedRecordWrite(sheet, startRow + index, headers)) {
-      throw new Error("収穫記録行が完了状態になっていません: 行" + (startRow + index));
-    }
+  const completionStates = getCompletedRecordWriteStates(
+    sheet,
+    startRow,
+    rows.length,
+    headers
+  );
+  const incompleteIndex = completionStates.findIndex(completed => !completed);
+  if (incompleteIndex >= 0) {
+    throw new Error("収穫記録行が完了状態になっていません: 行" +
+      (startRow + incompleteIndex));
   }
 }
 
@@ -483,15 +496,26 @@ function writeKnownRecordRows(sheet, startRow, headers, rows, writeMarkers) {
     }
   }
 
-  knownColumns
-    .filter(item => item.key !== "receivedAt")
-    .forEach(item => {
-      writeColumn(
-        item,
-        safeRows.map(row => [row[item.index]]),
-        "更新"
-      );
-    });
+  getKnownRecordColumnSegments(headers).forEach(segment => {
+    const firstKey = getHeaderKey(headers[segment.startIndex]);
+    const lastKey = getHeaderKey(headers[segment.startIndex + segment.length - 1]);
+    const firstLabel = HEADER_LABELS[firstKey] || firstKey;
+    const lastLabel = HEADER_LABELS[lastKey] || lastKey;
+    const segmentLabel = segment.length === 1
+      ? firstLabel
+      : firstLabel + "～" + lastLabel;
+    setHarvestRecordRangeValuesWithValidationRecovery(
+      sheet,
+      startRow,
+      segment.startIndex + 1,
+      safeRows.map(row => row.slice(
+        segment.startIndex,
+        segment.startIndex + segment.length
+      )),
+      segmentLabel,
+      "更新"
+    );
+  });
 
   if (receivedAtColumn) {
     writeColumn(
@@ -520,14 +544,48 @@ function setHarvestRecordColumnValuesWithValidationRecovery(
   columnLabel,
   actionLabel
 ) {
-  const normalizedValues = values.map(row => [normalizeHarvestRecordCellValue(row[0])]);
+  return setHarvestRecordRangeValuesWithValidationRecovery(
+    sheet,
+    startRow,
+    column,
+    values.map(row => [row && row[0]]),
+    columnLabel,
+    actionLabel
+  );
+}
+
+function setHarvestRecordRangeValuesWithValidationRecovery(
+  sheet,
+  startRow,
+  startColumn,
+  values,
+  rangeLabel,
+  actionLabel
+) {
+  const normalizedValues = values.map(row => (
+    (Array.isArray(row) ? row : []).map(normalizeHarvestRecordCellValue)
+  ));
+  const columnCount = normalizedValues[0] ? normalizedValues[0].length : 0;
+  const rangeDescription = columnCount === 1
+    ? "列「" + rangeLabel + "」"
+    : "列範囲「" + rangeLabel + "」";
+  if (!normalizedValues.length || columnCount <= 0 ||
+    normalizedValues.some(row => row.length !== columnCount)) {
+    throw new Error(rangeDescription + "の書き込み値が正しくありません");
+  }
   let targetRange;
   try {
-    targetRange = sheet.getRange(startRow, column, normalizedValues.length, 1);
+    targetRange = sheet.getRange(
+      startRow,
+      startColumn,
+      normalizedValues.length,
+      columnCount
+    );
   } catch (err) {
     throw new Error(
-      "列「" + columnLabel + "」の書き込み範囲の作成に失敗しました" +
-      "（開始行: " + startRow + "、件数: " + normalizedValues.length + "、列: " + column + "）: " +
+      rangeDescription + "の書き込み範囲の作成に失敗しました" +
+      "（開始行: " + startRow + "、件数: " + normalizedValues.length +
+      "、開始列: " + startColumn + "、列数: " + columnCount + "）: " +
       String(err && err.message || err)
     );
   }
@@ -539,11 +597,13 @@ function setHarvestRecordColumnValuesWithValidationRecovery(
     // アプリが管理する列に限り入力規則を解除して再試行する。
     try {
       targetRange.clearDataValidations();
-      if (normalizedValues.length === 1) targetRange.setValue(normalizedValues[0][0]);
+      if (normalizedValues.length === 1 && columnCount === 1) {
+        targetRange.setValue(normalizedValues[0][0]);
+      }
       else targetRange.setValues(normalizedValues);
     } catch (retryErr) {
       throw new Error(
-        "列「" + columnLabel + "」の" + actionLabel + "に失敗しました: " +
+        rangeDescription + "の" + actionLabel + "に失敗しました: " +
         String(retryErr && retryErr.message || retryErr) +
         "（初回: " + String(err && err.message || err) + "）"
       );
