@@ -2958,6 +2958,28 @@
         assertDeepEqual(missingElements, [], "一覧に対応する画面要素がありません");
       });
 
+      await runTest("ベッド詳細を開いていても通知テロップを手前に表示する", () => {
+        const state = comparable(app.eval(`(() => {
+          const modal = document.getElementById("bedDetailModal");
+          const toast = document.getElementById("toast");
+          modal.classList.add("show");
+          showToast("選択内容を確認してください");
+          const result = {
+            modalZIndex:Number(getComputedStyle(modal).zIndex),
+            toastZIndex:Number(getComputedStyle(toast).zIndex),
+            toastVisible:toast.classList.contains("show"),
+            toastText:toast.textContent
+          };
+          clearTimeout(showToast._timer);
+          toast.classList.remove("show");
+          modal.classList.remove("show");
+          return result;
+        })()`));
+        assert(state.toastZIndex > state.modalZIndex, "通知テロップがベッド詳細の背景ぼかしより後ろにあります");
+        assertEqual(state.toastVisible, true, "ベッド詳細表示中に通知テロップが見えていません");
+        assertEqual(state.toastText, "選択内容を確認してください", "通知テロップの文が変わっています");
+      });
+
       await runTest("4つのメインタブを一つの定義表で管理する", () => {
         const definitions = comparable(app.eval(`Object.fromEntries(
           MAIN_TAB_NAMES.map(name => [name, {
