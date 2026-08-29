@@ -126,6 +126,7 @@ function saveRecord(){
       failureMessage: "収穫記録は更新済みです。スプレッドシートは未送信です"
     });
     harvestProgressState = null;
+    harvestOverageKeys = [];
     harvestSelectionMode = "none";
     harvestProgressAvailable = false;
     if(editingRecord.plantingPending){
@@ -175,6 +176,7 @@ function saveRecord(){
     failureMessage: "収穫記録は保存済みです。スプレッドシートは未送信です"
   });
   harvestProgressState = null;
+  harvestOverageKeys = [];
   harvestSelectionMode = "none";
   harvestProgressAvailable = false;
   completeWorkflowGuideHarvestRecord();

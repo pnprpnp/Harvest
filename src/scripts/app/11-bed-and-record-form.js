@@ -3,10 +3,14 @@ function updatePartialHarvestDeductionNote(casePlan = getHarvestCasePlan()){
   if(!note) return;
   const partialCases = clampNumber(casePlan?.partialCases, 0, 999999, 0);
   const regularCases = clampNumber(casePlan?.regularCases, 0, 999999, 0);
-  note.hidden = partialCases <= 0;
-  note.textContent = partialCases > 0
-    ? `うち部分収穫済み: ${partialCases}ケース\n通常順で収穫する分: ${regularCases}ケース`
-    : "";
+  const overageCases = getHarvestSelectionOverageCases();
+  const lines = partialCases > 0
+    ? [`うち部分収穫済み: ${partialCases}ケース`, `通常順で収穫する分: ${regularCases}ケース`]
+    : [];
+  if(overageCases > 0) lines.push(`${formatHarvestProgressCases(overageCases)}ケース超過`);
+  note.hidden = !lines.length;
+  note.textContent = lines.join("\n");
+  note.classList.toggle("has-overage", overageCases > 0);
 }
 
 function updateRecordPartialHarvestIncludedNote(){
@@ -475,6 +479,7 @@ function drawBeds(){
   container.innerHTML = "";
   const recordedSet = getRecordedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
+  const overageSet = getHarvestOverageKeySet();
   const progressCompletedSet = getAppliedHarvestProgressCompletedKeySet();
   const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
   const hasPartialHarvestRecords = partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
@@ -504,6 +509,7 @@ function drawBeds(){
       selectedSet,
       recordedSet,
       progressCompletedSet,
+      overageSet,
       hasPartialHarvestRecords,
       targetDate,
       partialHarvestSourceRecords,
@@ -585,7 +591,10 @@ function toggleRecordPallet(building, bed, number){
       removeRecordPlantingCountForKey(key);
       removeRecordPlantingQualityForKey(key);
       markRecordPlantingFlowBuildingDirty(building);
+    }else{
+      removeHarvestSelectionOverage(key);
     }
+    reconcileHarvestSelectionOverage();
     recalcHarvestSummary();
     renderHarvestSelectionMapsForActiveTab();
     renderForecastSummary();
@@ -599,10 +608,15 @@ function toggleRecordPallet(building, bed, number){
       showToast(getPlantingCapacityExceededMessage());
       return;
     }
+    const nextTotal = recordSelectionMode === "harvest"
+      ? getCurrentHarvestTotalRaw() + getPredictedHarvestForPallet(building, bed, number)
+      : 0;
     harvestFillKeys.push(key);
     if(recordSelectionMode === "planting"){
       setRecordPlantingCountForKey(key);
       markRecordPlantingFlowBuildingDirty(building);
+    }else{
+      markHarvestSelectionOverage(key, nextTotal);
     }
     sortHarvestFillKeys();
     recalcHarvestSummary();
@@ -817,6 +831,7 @@ function drawRecordBeds(){
       appendBedOverviewMap(bed, building, b, {
         context: "record",
         selectedSet,
+        overageSet: recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set(),
         recordedSet,
         plantingAllowedSet,
         plantingCountsByPallet: recordPlantingCountsByPallet,

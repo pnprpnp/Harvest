@@ -4405,6 +4405,125 @@
         }, "逆算時の途中経過が未選択パレットを巻き込むか、残りの選択場所を変えています");
       });
 
+      await runTest("指定ケース数を超えて手動選択し、超過分だけを別色で表示する", () => {
+        const overage = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            getRecorded:getRecordedPalletSet,
+            getPredicted:getPredictedHarvestForPallet,
+            activeTab:activeAppTab,
+            currentBuilding,
+            casePlacementBuilding,
+            keys:[...harvestFillKeys],
+            overageKeys:[...harvestOverageKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            casesInput:document.getElementById("casesInput")?.value || "",
+            autoEstimated:harvestCasesAutoEstimated,
+            storedHarvestState:localStorage.getItem(HARVEST_STATE_KEY)
+          };
+          try{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = () => ({
+              date:"2026-08-29",
+              totalCases:2,
+              partialCases:0,
+              recordedPartialCases:0,
+              regularCases:2
+            });
+            getRecordedPalletSet = () => new Set();
+            getPredictedHarvestForPallet = () => 12;
+            activeAppTab = "forecast";
+            currentBuilding = 2;
+            casePlacementBuilding = 2;
+            harvestFillKeys = ["2-A-1", "2-A-2"];
+            harvestOverageKeys = [];
+            harvestSummary = { start:"2-A-1", end:"2-A-2", filledCount:2, totalHarvest:24, needHeads:24 };
+            harvestSelectionMode = "auto";
+            harvestProgressState = null;
+            harvestProgressAvailable = true;
+            harvestCasesAutoEstimated = false;
+            document.getElementById("casesInput").value = "2";
+            renderForecastSummary();
+
+            togglePallet(2, "A", 3);
+            openBedDetailWindow("forecast", "A");
+            saveHarvestStateToStorage();
+            const saved = JSON.parse(localStorage.getItem(HARVEST_STATE_KEY) || "{}");
+            const added = {
+              selected:harvestFillKeys.includes("2-A-3"),
+              selectionMode:harvestSelectionMode,
+              overageKeys:[...harvestOverageKeys],
+              overageCases:getHarvestSelectionOverageCases(),
+              noteText:document.getElementById("partialHarvestDeductionNote")?.textContent.trim() || "",
+              noteVisible:!document.getElementById("partialHarvestDeductionNote")?.hidden,
+              overviewOverageCount:document.querySelectorAll("#beds .simulationBedMapCell.is-overage").length,
+              detailHasOverageColor:document.querySelector('.bedDetailContent .pallet[data-pallet-key="2-A-3"]')
+                ?.classList.contains("harvestOveragePallet") || false,
+              detailColor:getComputedStyle(
+                document.querySelector('.bedDetailContent .pallet[data-pallet-key="2-A-3"]')
+              ).backgroundColor,
+              legendLabel:document.querySelector("#forecastTab .simulationBedMapLegendSwatch.is-overage")
+                ?.parentElement?.textContent.trim() || "",
+              savedOverageKeys:saved.harvestOverageKeys || []
+            };
+
+            closeBedDetailWindow();
+            togglePallet(2, "A", 3);
+            const removed = {
+              selected:harvestFillKeys.includes("2-A-3"),
+              overageKeys:[...harvestOverageKeys],
+              overageCases:getHarvestSelectionOverageCases(),
+              noteHidden:document.getElementById("partialHarvestDeductionNote")?.hidden || false
+            };
+            return { added, removed };
+          }finally{
+            cancelPendingHarvestStateSave();
+            closeBedDetailWindow();
+            getHarvestCasePlan = previous.getPlan;
+            getRecordedPalletSet = previous.getRecorded;
+            getPredictedHarvestForPallet = previous.getPredicted;
+            activeAppTab = previous.activeTab;
+            currentBuilding = previous.currentBuilding;
+            casePlacementBuilding = previous.casePlacementBuilding;
+            harvestFillKeys = previous.keys;
+            harvestOverageKeys = previous.overageKeys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            harvestCasesAutoEstimated = previous.autoEstimated;
+            document.getElementById("casesInput").value = previous.casesInput;
+            if(previous.storedHarvestState === null) localStorage.removeItem(HARVEST_STATE_KEY);
+            else localStorage.setItem(HARVEST_STATE_KEY, previous.storedHarvestState);
+            renderForecastSummary();
+          }
+        })()`));
+        assertDeepEqual(overage, {
+          added:{
+            selected:true,
+            selectionMode:"manual",
+            overageKeys:["2-A-3"],
+            overageCases:1,
+            noteText:"1ケース超過",
+            noteVisible:true,
+            overviewOverageCount:1,
+            detailHasOverageColor:true,
+            detailColor:"rgb(249, 115, 22)",
+            legendLabel:"超過分",
+            savedOverageKeys:["2-A-3"]
+          },
+          removed:{
+            selected:false,
+            overageKeys:[],
+            overageCases:0,
+            noteHidden:true
+          }
+        }, "指定ケース数を超えた手動選択を追加できないか、超過表示が正しくありません");
+      });
+
       await runTest("計算ボタンは未入力時と計算済み時だけ目立たなくする", () => {
         const buttonState = comparable(app.eval(`(() => {
           const previous = {
@@ -8874,18 +8993,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "996f027e", elements: 2254, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "ffcc0e09", elements: 2323, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "5a8ca618", elements: 2323, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "7f5ebabb", elements: 2255, visible: 110, viewport: "390x844" },
-          mobileDashboard: { hash: "8e7a6659", elements: 2255, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "13ceb8a6", elements: 2338, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "68db9525", elements: 2353, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "3d5ca9f3", elements: 2353, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "c3a16b4b", elements: 2353, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "a1e5d078", elements: 2353, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "f818a884", elements: 2353, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "1dd54840", elements: 2353, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "ff60f206", elements: 2258, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "a7b2db0d", elements: 2327, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "bf13f030", elements: 2327, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "89cadfb4", elements: 2259, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "d0f45d2f", elements: 2259, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "e5189a28", elements: 2342, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "508be225", elements: 2357, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "8797fcc3", elements: 2357, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "50d030f3", elements: 2357, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "f33ebed0", elements: 2357, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "4d43b20a", elements: 2357, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "46e57254", elements: 2357, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

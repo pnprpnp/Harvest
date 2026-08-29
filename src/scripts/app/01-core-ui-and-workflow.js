@@ -210,6 +210,7 @@ let settings = loadSettings();
 let currentBuilding = 2;
 let casePlacementBuilding = 2;
 let harvestFillKeys = [];
+let harvestOverageKeys = [];
 let harvestSummary = null;
 let records = loadRecords();
 let plantingEvents = loadPlantingEvents();
@@ -1100,6 +1101,7 @@ function saveHarvestStateToStorage(options = {}){
     currentBuilding,
     casePlacementBuilding,
     harvestFillKeys,
+    harvestOverageKeys,
     harvestSummary,
     manualSeedlingCount,
     casesInput: document.getElementById("casesInput")?.value || "",
@@ -1231,6 +1233,7 @@ function loadHarvestStateFromStorage(){
       currentBuilding: BUILDINGS.includes(Number(parsed.currentBuilding)) ? Number(parsed.currentBuilding) : 2,
       casePlacementBuilding: BUILDINGS.includes(Number(parsed.casePlacementBuilding)) ? Number(parsed.casePlacementBuilding) : null,
       harvestFillKeys: Array.isArray(parsed.harvestFillKeys) ? parsed.harvestFillKeys.filter(v => typeof v === "string") : [],
+      harvestOverageKeys: normalizeHarvestOverageKeys(parsed.harvestOverageKeys, parsed.harvestFillKeys),
       harvestSummary: parsed.harvestSummary && typeof parsed.harvestSummary === "object" ? parsed.harvestSummary : null,
       manualSeedlingCount: normalizeManualSeedlingCount(parsed.manualSeedlingCount),
       casesInput: parsed.casesInput ?? "",
@@ -1378,10 +1381,48 @@ function getManualHarvestNeedHeads(){
   return getHarvestCasePlan().regularCases * CASE_SIZE;
 }
 
-function canAddHarvestSelectionTotal(currentTotal, nextTotal, needHeads){
-  if(needHeads === null) return true;
-  if(nextTotal <= needHeads) return true;
-  return hasAppliedHarvestProgress() && currentTotal < needHeads;
+function normalizeHarvestOverageKeys(value, selectedKeys = harvestFillKeys){
+  const selectedSet = new Set(Array.isArray(selectedKeys) ? selectedKeys : []);
+  return Array.isArray(value)
+    ? [...new Set(value
+      .filter(key => typeof key === "string" && isValidPalletKeyString(key) && selectedSet.has(key)))]
+    : [];
+}
+
+function getHarvestOverageKeySet(){
+  return new Set(normalizeHarvestOverageKeys(harvestOverageKeys));
+}
+
+function isHarvestOveragePallet(key){
+  return harvestOverageKeys.includes(String(key || ""));
+}
+
+function markHarvestSelectionOverage(key, nextTotal, needHeads = getManualHarvestNeedHeads()){
+  const normalizedKey = String(key || "");
+  if(!normalizedKey || needHeads === null || Number(nextTotal) <= Number(needHeads)) return false;
+  if(!harvestOverageKeys.includes(normalizedKey)) harvestOverageKeys.push(normalizedKey);
+  return true;
+}
+
+function removeHarvestSelectionOverage(key){
+  const normalizedKey = String(key || "");
+  harvestOverageKeys = harvestOverageKeys.filter(item => item !== normalizedKey);
+}
+
+function reconcileHarvestSelectionOverage(){
+  harvestOverageKeys = normalizeHarvestOverageKeys(harvestOverageKeys);
+  const needHeads = getManualHarvestNeedHeads();
+  if(needHeads === null || !harvestSummary || getCurrentHarvestTotalRaw() <= needHeads){
+    harvestOverageKeys = [];
+  }
+  return harvestOverageKeys;
+}
+
+function getHarvestSelectionOverageCases(){
+  const needHeads = getManualHarvestNeedHeads();
+  if(needHeads === null || !harvestSummary) return 0;
+  const excessHeads = Math.max(0, getCurrentHarvestTotalRaw() - needHeads);
+  return Math.round((excessHeads / CASE_SIZE) * 10) / 10;
 }
 
 function renderHarvestSelectionMapsForActiveTab(){
@@ -1407,6 +1448,7 @@ function refreshAfterHarvestSelectionChanged(options = {}){
       markForecastHarvestSelectionAsManual();
     }
   }
+  reconcileHarvestSelectionOverage();
 
   const currentHarvestTotal = Number.isFinite(Number(options.currentHarvestTotal))
     ? Math.round(Number(options.currentHarvestTotal) * 10) / 10
@@ -1964,6 +2006,7 @@ function normalizeForecastSelectionState(value){
   if(!value || typeof value !== "object") return null;
   return {
     keys: Array.isArray(value.keys) ? value.keys.filter(key => typeof key === "string") : [],
+    overageKeys: normalizeHarvestOverageKeys(value.overageKeys, value.keys),
     summary: value.summary && typeof value.summary === "object" ? value.summary : null,
     manualSeedlingCount: normalizeManualSeedlingCount(value.manualSeedlingCount)
   };
@@ -2657,6 +2700,7 @@ function resetHarvestProgress(options = {}){
 
 function handleHarvestCasesInputChange(){
   markHarvestCasesAsManuallyEdited();
+  harvestOverageKeys = [];
   harvestProgressAvailable = false;
   if(harvestProgressState){
     resetHarvestProgress({ restorePlan: true, silent: true, save: false });
@@ -2671,6 +2715,7 @@ function handleHarvestCasesInputChange(){
 function captureForecastSelectionState(){
   forecastSelectionState = {
     keys: [...harvestFillKeys],
+    overageKeys: [...harvestOverageKeys],
     summary: harvestSummary ? { ...harvestSummary } : null,
     manualSeedlingCount
   };
@@ -2680,6 +2725,7 @@ function restoreForecastSelectionState(options = {}){
   const state = normalizeForecastSelectionState(forecastSelectionState);
   if(!state) return false;
   harvestFillKeys = [...state.keys];
+  harvestOverageKeys = [...state.overageKeys];
   harvestSummary = state.summary;
   manualSeedlingCount = state.manualSeedlingCount;
   if(options.render !== false){

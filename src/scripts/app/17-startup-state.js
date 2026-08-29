@@ -53,6 +53,10 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   currentBuilding = savedHarvestState.currentBuilding;
   casePlacementBuilding = savedHarvestState.casePlacementBuilding || savedHarvestState.currentBuilding;
   harvestFillKeys = savedHarvestState.harvestFillKeys;
+  harvestOverageKeys = normalizeHarvestOverageKeys(
+    savedHarvestState.harvestOverageKeys,
+    savedHarvestState.harvestFillKeys
+  );
   harvestSummary = savedHarvestState.harvestSummary;
   manualSeedlingCount = savedHarvestState.manualSeedlingCount;
   harvestCasesAutoEstimated = !!savedHarvestState.harvestCasesAutoEstimated;
