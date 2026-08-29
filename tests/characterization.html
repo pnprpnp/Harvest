@@ -4133,6 +4133,7 @@
               appliedBedCannotBeRemoved,
               secondInputIsAdditional,
               second,
+              entryLines:getHarvestProgressEntryDisplayLines(),
               migratedOldStateInput,
               fieldLabel:document.querySelector(".harvestProgressCaseField label")?.textContent.trim() || "",
               applyLabel:document.querySelector(".harvestProgressActions .actionBtn")?.textContent.trim() || ""
@@ -4169,10 +4170,127 @@
             appliedBedCount:2,
             selectionText:"新たに完了したベッドを選択してください"
           },
+          entryLines:["2号棟A：70ケース", "2号棟B：75ケース"],
           migratedOldStateInput:"",
           fieldLabel:"選択場所で収穫したケース数",
           applyLabel:"追加して反映する"
         }, "途中経過を70ケースと75ケースに分けて追加できません");
+      });
+
+      await runTest("部分収穫を追加しても途中経過と入力履歴を残す", () => {
+        const preserved = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            getRecorded:getRecordedPalletSet,
+            calculate:calculateHarvestSelectionFromRecords,
+            refresh:refreshAfterHarvestSelectionChanged,
+            complete:completeWorkflowGuideCalculation,
+            updateProgress:updateHarvestProgressUi,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            currentBuilding,
+            casePlacementBuilding,
+            recordDate:document.getElementById("recordDateInput")?.value || ""
+          };
+          let excludedKeys = [];
+          let refreshSource = "";
+          try{
+            getHarvestCasePlan = () => ({ totalCases:100, regularCases:90, date:"2026-08-25" });
+            getRecordedPalletSet = () => new Set();
+            calculateHarvestSelectionFromRecords = options => {
+              excludedKeys = [...(options.additionalExcludedPalletKeys || [])];
+              return {
+                palletKeys:["6-B-1"],
+                start:"6-B-1",
+                end:"6-B-1",
+                totalHarvest:600,
+                hasEnough:true,
+                needHeads:600,
+                startBuilding:6
+              };
+            };
+            refreshAfterHarvestSelectionChanged = options => {
+              refreshSource = options.selectionChangeSource || "";
+            };
+            completeWorkflowGuideCalculation = () => {};
+            updateHarvestProgressUi = () => {};
+            document.getElementById("recordDateInput").value = "2026-08-25";
+            currentBuilding = 6;
+            casePlacementBuilding = 6;
+            harvestFillKeys = ["5-A-1", "5-C-1", "6-B-1"];
+            harvestSummary = { start:"5-A-1", end:"6-B-1", filledCount:3, totalHarvest:36, needHeads:1200 };
+            harvestSelectionMode = "auto";
+            harvestProgressAvailable = true;
+            harvestProgressState = {
+              inputMode:"incremental",
+              baseSelectionMode:"auto",
+              fixedReversePlan:false,
+              planKeys:[...harvestFillKeys],
+              selectedBeds:["5-A", "5-C"],
+              appliedSelectedBeds:["5-A", "5-C"],
+              actualCasesInput:"",
+              appliedActualCases:40,
+              entries:[{
+                type:"regular",
+                bedKeys:["5-A", "5-C"],
+                cases:40,
+                recordedAt:1
+              }],
+              targetDate:"2026-08-25",
+              targetCases:100
+            };
+            appendHarvestProgressEntry("partial", ["6-C"], 10);
+            const result = recalculateHarvestPredictionAfterPartialHarvest(["2026-08-25"]);
+            return {
+              result,
+              entryLines:getHarvestProgressEntryDisplayLines(),
+              appliedActualCases:harvestProgressState?.appliedActualCases,
+              appliedBeds:[...(harvestProgressState?.appliedSelectedBeds || [])],
+              selectedBeds:[...(harvestProgressState?.selectedBeds || [])],
+              progressEntryCount:harvestProgressState?.entries?.length || 0,
+              planKeyCount:harvestProgressState?.planKeys?.length || 0,
+              excludedKeyCount:excludedKeys.length,
+              excludesCompletedBeds:excludedKeys.includes("5-A-1") && excludedKeys.includes("5-C-78"),
+              keepsCompletedAndRemaining:harvestFillKeys.includes("5-A-1")
+                && harvestFillKeys.includes("5-C-78")
+                && harvestFillKeys.includes("6-B-1"),
+              available:harvestProgressAvailable,
+              refreshSource
+            };
+          }finally{
+            getHarvestCasePlan = previous.getPlan;
+            getRecordedPalletSet = previous.getRecorded;
+            calculateHarvestSelectionFromRecords = previous.calculate;
+            refreshAfterHarvestSelectionChanged = previous.refresh;
+            completeWorkflowGuideCalculation = previous.complete;
+            updateHarvestProgressUi = previous.updateProgress;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            currentBuilding = previous.currentBuilding;
+            casePlacementBuilding = previous.casePlacementBuilding;
+            document.getElementById("recordDateInput").value = previous.recordDate;
+          }
+        })()`));
+        assertDeepEqual(preserved, {
+          result:{ attempted:true, recalculated:true, changed:true, hasEnough:true },
+          entryLines:["5号棟AC：40ケース", "6号棟C：部分収穫10ケース"],
+          appliedActualCases:40,
+          appliedBeds:["5-A", "5-C"],
+          selectedBeds:["5-A", "5-C"],
+          progressEntryCount:2,
+          planKeyCount:157,
+          excludedKeyCount:156,
+          excludesCompletedBeds:true,
+          keepsCompletedAndRemaining:true,
+          available:true,
+          refreshSource:"progress-auto"
+        }, "部分収穫後に途中経過が初期化されるか、入力内容を表示できません");
       });
 
       await runTest("逆算時の途中経過は最初の選択場所を固定して反映する", () => {
@@ -4282,7 +4400,7 @@
           selectionKeys:["2-A-1", "2-A-2", "2-B-1"],
           reverseBedKeys:["2-A-1", "2-A-2"],
           autoBedKeyCount:78,
-          resultText:"実績 1ケース / 逆算予測 3ケース\n残りの選択場所は変更していません（残り予測 約1ケース）",
+          resultText:"入力済み\n2号棟A：1ケース\n\n実績 1ケース / 逆算予測 3ケース\n残りの選択場所は変更していません（残り予測 約1ケース）",
           applyLabel:"追加して反映する"
         }, "逆算時の途中経過が未選択パレットを巻き込むか、残りの選択場所を変えています");
       });

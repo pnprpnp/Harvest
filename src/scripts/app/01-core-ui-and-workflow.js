@@ -108,6 +108,7 @@ const HARVEST_CYCLE_GAP_DAYS = 7;
 const RECORD_LIST_DISPLAY_LIMIT = 30;
 const DASHBOARD_RECORD_FILTER_DELAY_MS = 180;
 const HARVEST_STATE_SAVE_DELAY_MS = 250;
+const HARVEST_PROGRESS_MAX_ENTRIES = 100;
 const HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT = 24;
 const RECORD_EXPORT_PROMPT_COUNT = 300;
 const RECORD_BACKUP_MAX_ITEMS = 10000;
@@ -1992,6 +1993,23 @@ function normalizeHarvestProgressBedKey(value){
     : "";
 }
 
+function normalizeHarvestProgressEntry(value){
+  if(!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const type = value.type === "partial" ? "partial" : "regular";
+  const bedKeys = Array.isArray(value.bedKeys)
+    ? [...new Set(value.bedKeys.map(normalizeHarvestProgressBedKey).filter(Boolean))]
+    : [];
+  const cases = clampNumber(value.cases, 0, 999999, 0);
+  if(!bedKeys.length || cases <= 0) return null;
+  const recordedAt = Number(value.recordedAt);
+  return {
+    type,
+    bedKeys,
+    cases,
+    recordedAt: Number.isSafeInteger(recordedAt) && recordedAt > 0 ? recordedAt : 0
+  };
+}
+
 function normalizeHarvestProgressState(value){
   if(!value || typeof value !== "object" || Array.isArray(value)) return null;
   const planKeys = Array.isArray(value.planKeys)
@@ -2017,6 +2035,12 @@ function normalizeHarvestProgressState(value){
   }
   const targetDate = String(value.targetDate || "").trim();
   const baseSelectionMode = normalizeHarvestSelectionMode(value.baseSelectionMode) === "auto" ? "auto" : "manual";
+  const entries = Array.isArray(value.entries)
+    ? value.entries
+      .map(normalizeHarvestProgressEntry)
+      .filter(Boolean)
+      .slice(-HARVEST_PROGRESS_MAX_ENTRIES)
+    : [];
 
   return {
     inputMode: "incremental",
@@ -2027,6 +2051,7 @@ function normalizeHarvestProgressState(value){
     appliedSelectedBeds,
     actualCasesInput,
     appliedActualCases,
+    entries,
     targetDate: parseDateOnlyString(targetDate) ? targetDate : "",
     targetCases: clampNumber(value.targetCases, 0, 999999, 0)
   };
@@ -2049,6 +2074,7 @@ function ensureHarvestProgressState(){
     appliedSelectedBeds: [],
     actualCasesInput: "",
     appliedActualCases: null,
+    entries: [],
     targetDate: casePlan.date,
     targetCases: casePlan.totalCases
   };
@@ -2176,6 +2202,55 @@ function formatHarvestProgressBedSelection(bedKeys){
     if(beds.length) parts.push(`${building}号棟 ${beds.join("・")}ベッド`);
   });
   return parts.join(" / ");
+}
+
+function formatHarvestProgressEntryLocation(bedKeys){
+  const selectedSet = new Set(
+    (Array.isArray(bedKeys) ? bedKeys : [])
+      .map(normalizeHarvestProgressBedKey)
+      .filter(Boolean)
+  );
+  const parts = [];
+  BUILDINGS.forEach(building => {
+    const beds = bedOrder.filter(bed => selectedSet.has(getHarvestProgressBedKey(building, bed)));
+    if(beds.length) parts.push(`${building}号棟${beds.join("")}`);
+  });
+  return parts.join(" / ");
+}
+
+function appendHarvestProgressEntry(type, bedKeys, cases){
+  const state = ensureHarvestProgressState();
+  const entry = normalizeHarvestProgressEntry({
+    type,
+    bedKeys,
+    cases,
+    recordedAt: Date.now()
+  });
+  if(!state || !entry || !isHarvestProgressContextCurrent(state)) return false;
+  state.entries = [...state.entries, entry].slice(-HARVEST_PROGRESS_MAX_ENTRIES);
+  harvestProgressState = state;
+  return true;
+}
+
+function getHarvestProgressEntryDisplayLines(state = harvestProgressState){
+  const normalized = normalizeHarvestProgressState(state);
+  if(!normalized) return [];
+  let entries = normalized.entries;
+  if(!entries.length
+    && normalized.appliedSelectedBeds.length
+    && normalized.appliedActualCases !== null){
+    entries = [{
+      type: "regular",
+      bedKeys: normalized.appliedSelectedBeds,
+      cases: normalized.appliedActualCases,
+      recordedAt: 0
+    }];
+  }
+  return entries.map(entry => {
+    const location = formatHarvestProgressEntryLocation(entry.bedKeys);
+    const typeLabel = entry.type === "partial" ? "部分収穫" : "";
+    return `${location}：${typeLabel}${formatHarvestProgressCases(entry.cases)}ケース`;
+  });
 }
 
 function renderHarvestProgressBeds(){
@@ -2343,8 +2418,10 @@ function updateHarvestProgressUi(){
   const result = document.getElementById("harvestProgressResult");
   if(result){
     const model = getHarvestProgressResultModel();
-    result.textContent = model.text;
-    result.hidden = !model.text;
+    const entryLines = getHarvestProgressEntryDisplayLines(state);
+    const entryText = entryLines.length ? `入力済み\n${entryLines.join("\n")}` : "";
+    result.textContent = [entryText, model.text].filter(Boolean).join("\n\n");
+    result.hidden = !result.textContent;
     result.classList.toggle("needs-selection", model.className === "needs-selection");
     result.classList.toggle("is-complete", model.className === "is-complete");
   }
@@ -2532,6 +2609,7 @@ function recalculateFromHarvestProgress(){
   state.appliedActualCases = actualCases;
   state.appliedSelectedBeds = [...state.selectedBeds];
   harvestProgressState = state;
+  appendHarvestProgressEntry("regular", pendingBedKeys, additionalActualCases);
   casesInput.value = "";
   harvestFillKeys = [...new Set([...completedKeys, ...remainingKeys])]
     .sort((left, right) => getOrderIndexFromKey(left) - getOrderIndexFromKey(right));

@@ -2223,40 +2223,66 @@ function alertIfPreviousBuildingHasLeftovers(building = currentBuilding){
 }
 
 function runHarvestPrediction(options = {}){
-  harvestProgressAvailable = false;
-  updateHarvestProgressVisibility();
-  if(harvestProgressState){
+  const preservedProgressState = options.preserveHarvestProgress
+    ? normalizeHarvestProgressState(harvestProgressState)
+    : null;
+  const shouldPreserveProgress = !!preservedProgressState
+    && isHarvestProgressContextCurrent(preservedProgressState);
+  const completedProgressKeys = shouldPreserveProgress
+    ? getHarvestProgressKeysForBeds(preservedProgressState.appliedSelectedBeds, preservedProgressState)
+    : [];
+  const completedProgressCases = shouldPreserveProgress
+    && preservedProgressState.appliedActualCases !== null
+    ? clampNumber(preservedProgressState.appliedActualCases, 0, 999999, 0)
+    : 0;
+  if(!shouldPreserveProgress){
+    harvestProgressAvailable = false;
+    updateHarvestProgressVisibility();
+  }
+  if(harvestProgressState && !shouldPreserveProgress){
     resetHarvestProgress({ restorePlan: true, silent: true, render: true, save: false });
   }
   const silent = !!options.silent;
   const casePlan = getHarvestCasePlan();
-  const needHeads = casePlan.regularCases * CASE_SIZE;
+  const needHeads = Math.max(0, casePlan.regularCases - completedProgressCases) * CASE_SIZE;
 
   if(casePlan.totalCases <= 0){
     if(!silent) showToast("収穫ケースを入力してください");
     return null;
   }
-  if(needHeads <= 0){
+  if(needHeads <= 0 && !shouldPreserveProgress){
     if(!silent) showToast("各パレット部分収穫だけで今回の収穫ケース数に達しています");
     return null;
   }
 
-  const selection = calculateHarvestSelectionFromRecords({
-    referenceDate: new Date(),
-    sourceRecords: records,
-    needHeads,
-    partialTargetDate: getHarvestTargetDate()
-  });
+  const selection = needHeads > 0
+    ? calculateHarvestSelectionFromRecords({
+        referenceDate: new Date(),
+        sourceRecords: records,
+        needHeads,
+        partialTargetDate: getHarvestTargetDate(),
+        additionalExcludedPalletKeys: completedProgressKeys
+      })
+    : {
+        palletKeys: [],
+        start: null,
+        end: null,
+        totalHarvest: 0,
+        hasEnough: true,
+        needHeads: 0,
+        startBuilding: currentBuilding
+      };
   if(!options.skipLeftoverAlert) alertIfPreviousBuildingHasLeftovers(selection.startBuilding);
 
   const autoStartKey = selection.start;
-  if(!autoStartKey){
+  if(!autoStartKey && needHeads > 0){
     if(!silent) showToast("未収穫パレットがありません");
     return null;
   }
 
-  const resolvedStartBuilding = parsePalletKey(autoStartKey).building;
-  if(currentBuilding !== resolvedStartBuilding || casePlacementBuilding !== resolvedStartBuilding){
+  const resolvedStartBuilding = autoStartKey ? parsePalletKey(autoStartKey).building : null;
+  if(resolvedStartBuilding
+    && (currentBuilding !== resolvedStartBuilding || casePlacementBuilding !== resolvedStartBuilding)){
     syncCurrentCasePlacementFromInputs();
     currentBuilding = resolvedStartBuilding;
     casePlacementBuilding = resolvedStartBuilding;
@@ -2265,23 +2291,31 @@ function runHarvestPrediction(options = {}){
     populateCasePlacementInputs();
   }
 
-  harvestFillKeys = [...selection.palletKeys];
+  harvestFillKeys = [...new Set([...completedProgressKeys, ...selection.palletKeys])]
+    .sort((left, right) => getOrderIndexFromKey(left) - getOrderIndexFromKey(right));
   harvestSummary = {
-    start: autoStartKey,
-    end: selection.end || "-",
+    start: autoStartKey || harvestFillKeys[0] || null,
+    end: selection.end || harvestFillKeys[harvestFillKeys.length - 1] || "-",
     filledCount: harvestFillKeys.length,
     totalHarvest: selection.totalHarvest,
-    needHeads
+    needHeads: casePlan.regularCases * CASE_SIZE
   };
   harvestSelectionMode = "auto";
   harvestProgressAvailable = true;
+  if(shouldPreserveProgress){
+    preservedProgressState.planKeys = [...harvestFillKeys];
+    harvestProgressState = preservedProgressState;
+  }
 
   if(!selection.hasEnough && !silent){
     showToast("記録済みを除外して1周分見ても必要個数に届きませんでした");
   }
 
   if(!options.preserveManualSeedlingCount) manualSeedlingCount = null;
-  refreshAfterHarvestSelectionChanged({ selectionChangeSource: "auto" });
+  refreshAfterHarvestSelectionChanged({
+    selectionChangeSource: shouldPreserveProgress ? "progress-auto" : "auto"
+  });
+  if(shouldPreserveProgress) updateHarvestProgressUi();
   completeWorkflowGuideCalculation();
   return selection;
 }
@@ -2316,10 +2350,27 @@ function recalculateHarvestPredictionAfterPartialHarvest(affectedDates){
   }
 
   const previousSignature = getHarvestPredictionResultSignature();
+  const progressState = normalizeHarvestProgressState(harvestProgressState);
+  const shouldPreserveProgress = !!progressState && isHarvestProgressContextCurrent(progressState);
+  if(shouldPreserveProgress && progressState.baseSelectionMode !== "auto"){
+    refreshAfterHarvestSelectionChanged({ selectionChangeSource: "progress-manual" });
+    harvestProgressState = progressState;
+    harvestProgressAvailable = true;
+    updateHarvestProgressUi();
+    return {
+      attempted: true,
+      recalculated: true,
+      changed: previousSignature !== getHarvestPredictionResultSignature(),
+      hasEnough: getHarvestProgressActualCases()
+        + getHarvestProgressSelectedRemainingHeads() / CASE_SIZE
+        >= getHarvestCasePlan().regularCases
+    };
+  }
   const selection = runHarvestPrediction({
     silent: true,
     skipLeftoverAlert: true,
-    preserveManualSeedlingCount: true
+    preserveManualSeedlingCount: true,
+    preserveHarvestProgress: shouldPreserveProgress
   });
   if(!selection){
     return {

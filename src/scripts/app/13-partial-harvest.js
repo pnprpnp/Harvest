@@ -544,6 +544,11 @@ async function savePartialHarvestRecord(){
   };
   record.duplicateKey = getRecordDuplicateKey(record);
 
+  appendHarvestProgressEntry(
+    "partial",
+    beds.map(bed => getHarvestProgressBedKey(building, bed)),
+    cases
+  );
   records.unshift(record);
   saveRecordsToStorage();
   maybePromptRecordExport();
