@@ -1327,6 +1327,7 @@ function getDashboardDayRecordDetailInfoRows(context){
     const text = formatPlantingAgeForRecordDetailDisplay(record);
     return text ? `${fullRecords.length > 1 ? `${index + 1}件目: ` : ""}${text}` : "";
   }).filter(Boolean).join("\n") || "-";
+  const hasEstimatedHarvestLoss = fullRecords.some(record => isHarvestLossEstimatedForRecord(record));
   const memoText = harvestRecords.map(record => {
     const memo = String(record?.memo || "").trim();
     return memo ? `${getDashboardRecordTypeLabel(record)}: ${memo}` : "";
@@ -1336,7 +1337,7 @@ function getDashboardDayRecordDetailInfoRows(context){
   )))];
   return [
     { label: "収穫ケース数", value: `${totalCases}ケース` },
-    { label: "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
+    { label: hasEstimatedHarvestLoss ? "推定収穫ロス率" : "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
     { label: "収穫内訳", value: harvestBreakdown },
     { label: "収穫品質メモ", value: harvestQualityText },
     { label: "定植日数の詳細", value: plantingAgeText },
@@ -1474,7 +1475,7 @@ function openRecordDetailWindow(kind, id){
     locationTitle = "収穫場所";
     infoRows = [
       { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
-      { label: "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
+      { label: isHarvestLossEstimatedForRecord(record) ? "推定ロス率" : "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
       { label: "収穫場所", value: harvestLocationText },
       { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
       { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
@@ -1724,6 +1725,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
 
   const actualLossNumber = getFiniteNumberInRange(r?.actualLoss, -999999, 100);
   const safeActualLoss = actualLossNumber === null ? "-" : escapeHtml(String(actualLossNumber));
+  const harvestLossLabel = isHarvestLossEstimatedForRecord(r) ? "推定ロス率" : "ロス率";
   const harvestBuildingText = [...new Set(
     getPalletKeysFromRecord(r)
       .map(key => parsePalletKey(String(key || "")).building)
@@ -1736,7 +1738,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
       <div class="recordTitle"><span class="recordTitleHarvest">収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}
-ロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
+${harvestLossLabel}: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
 収穫場所: ${escapeHtml(harvestBuildingText)}
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}

@@ -207,7 +207,7 @@ function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, act
     "",
     `日付: ${plantingDate || "-"}`,
     `収穫ケース数: ${getHarvestRecordCaseDisplayText(record)}ケース`,
-    `実際のロス率: ${actualLossText ? actualLossText + "%" : "-"}`,
+    `${isHarvestLossEstimatedForRecord(record) ? "推定ロス率" : "実際のロス率"}: ${actualLossText ? actualLossText + "%" : "-"}`,
     `品質メモ: ${qualityText}`,
     `メモ: ${memoText}`,
     "",

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260829-toast-above-bed-detail">
+<meta name="harvestnavi-version" content="20260829-estimated-harvest-loss">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10069,6 +10069,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   color:var(--ui-accent-dark);
 }
 .recordLossDisplay.empty{border:0;background:var(--ui-surface-muted);color:var(--ui-text-tertiary);}
+.recordLossDisplay.estimated{background:#fff7ed;color:#c2410c;}
 .recordPlantingCountPreset{
   display:grid;
   gap:10px;
@@ -11347,6 +11348,10 @@ html[data-theme="dark"] .recordLossDisplay,
 html[data-theme="dark"] .resultBox{
   background:var(--ui-accent-soft);
   color:var(--ui-accent-dark);
+}
+html[data-theme="dark"] .recordLossDisplay.estimated{
+  background:#3b2514;
+  color:#fdba74;
 }
 
 html[data-theme="dark"] .bed.bedCollapsed.simulationBedOverview{
@@ -13414,7 +13419,7 @@ requestAnimationFrame(function(){
                   <div class="calculationHelpItem">
                     <div class="calculationHelpLabel">実際の収穫ロス率</div>
                     <span class="calculationHelpFormula">実際の収穫ロス率 ＝ 100 −｛（通常収穫ケース数 × 12株 ＋ 選択場所の部分収穫済み株数）÷ 選択場所の設定株数合計 × 100｝</span>
-                    <p class="calculationHelpText">小数第2位を四捨五入し、小数第1位まで表示します。</p>
+                    <p class="calculationHelpText">小数第2位を四捨五入し、小数第1位まで表示します。部分収穫場所の割り振りによる誤差幅が5ポイント以上の場合は「推定ロス率」と表示します。</p>
                   </div>
                   <div class="calculationHelpItem">
                     <div class="calculationHelpLabel">実際に取った苗の株数</div>
@@ -14399,6 +14404,7 @@ const GOOGLE_SHEET_STARTUP_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const GOOGLE_SHEET_HEADER_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const CASE_SIZE = 12;
 const CALCULATION_LOOKBACK_DAYS = 35;
+const HARVEST_LOSS_ESTIMATE_THRESHOLD_POINTS = 5;
 const HARVEST_CYCLE_GAP_DAYS = 7;
 const RECORD_LIST_DISPLAY_LIMIT = 30;
 const DASHBOARD_RECORD_FILTER_DELAY_MS = 180;
@@ -35456,6 +35462,106 @@ function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRe
   return getActualLossRateForPalletKeys(harvestFillKeys, cases, targetDate, sourceRecords);
 }
 
+function getHarvestLossPartialAllocationUncertaintyPoints(
+  palletKeys,
+  targetDate = null,
+  sourceRecords = records
+){
+  const selectedKeys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])]
+    .map(key => String(key || ""))
+    .filter(isValidPalletKeyString);
+  if(!selectedKeys.length) return 0;
+
+  const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
+  const selectedSet = new Set(selectedKeys);
+  const timelineRecords = getActiveHarvestTimelineRecords(sourceRecords);
+  const lookup = getHarvestRecordLookup(targetDay, timelineRecords);
+  const plantedTotal = selectedKeys.reduce((total, key) => {
+    const pallet = parsePalletKey(key);
+    return total + getHarvestPlantCountForPallet(
+      pallet.building,
+      pallet.bed,
+      pallet.number,
+      targetDay
+    );
+  }, 0);
+  if(plantedTotal <= 0) return 0;
+
+  let uncertainHeads = 0;
+  timelineRecords.forEach(record => {
+    if(record?.type !== "partialHarvest") return;
+    const recordDate = parseDateOnlyString(record.date);
+    if(!recordDate) return;
+    const recordDay = startOfLocalDay(recordDate);
+    const diffDays = getLocalDayDiff(recordDay, targetDay);
+    if(diffDays < 0 || diffDays > CALCULATION_LOOKBACK_DAYS) return;
+
+    const targetKeys = new Set();
+    normalizePartialHarvestTargets(record.targets).forEach(target => {
+      for(let number = target.start; number <= target.end; number++){
+        targetKeys.add(getPalletKey(target.building, target.bed, number));
+      }
+    });
+    if(!targetKeys.size) return;
+
+    let hasActiveSelectedTarget = false;
+    let hasOtherTarget = false;
+    targetKeys.forEach(key => {
+      const latestFullHarvestDate = getLatestFullHarvestDateForPallet(
+        key,
+        targetDay,
+        timelineRecords,
+        { lookup }
+      );
+      const belongsToCurrentCycle = !latestFullHarvestDate
+        || recordDay.getTime() > latestFullHarvestDate.getTime();
+      if(belongsToCurrentCycle && selectedSet.has(key)){
+        hasActiveSelectedTarget = true;
+      }else{
+        hasOtherTarget = true;
+      }
+    });
+
+    if(hasActiveSelectedTarget && hasOtherTarget){
+      uncertainHeads += clampNumber(record.cases, 0, 999999, 0) * CASE_SIZE;
+    }
+  });
+
+  return Math.round((uncertainHeads / plantedTotal) * 1000) / 10;
+}
+
+function getHarvestLossEstimateStatus(palletKeys, targetDate = null, sourceRecords = records){
+  const uncertaintyPoints = getHarvestLossPartialAllocationUncertaintyPoints(
+    palletKeys,
+    targetDate,
+    sourceRecords
+  );
+  return {
+    isEstimated: uncertaintyPoints >= HARVEST_LOSS_ESTIMATE_THRESHOLD_POINTS,
+    uncertaintyPoints
+  };
+}
+
+function getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords = records){
+  if(!record || record.type !== "fullHarvest") return sourceRecords;
+  const recordIdentityKey = getHarvestRecordIdentityKey(record);
+  return (Array.isArray(sourceRecords) ? sourceRecords : []).filter(candidate => (
+    getHarvestRecordIdentityKey(candidate) !== recordIdentityKey
+    && compareRecordsByDateDesc(candidate, record) > 0
+  ));
+}
+
+function isHarvestLossEstimatedForRecord(record, sourceRecords = records){
+  if(!record || record.type !== "fullHarvest") return false;
+  const targetDate = parseDateOnlyString(record.date);
+  if(!targetDate) return false;
+  return getHarvestLossEstimateStatus(
+    getPalletKeysFromRecord(record),
+    targetDate,
+    getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords)
+  ).isEstimated;
+}
+
 function updateRecordActualLoss(){
   const display = document.getElementById("recordActualLossInput");
   if(!display) return;
@@ -35472,9 +35578,24 @@ function updateRecordActualLoss(){
     getRegularHarvestCases(cases, date),
     targetDate
   );
+  const estimateStatus = getHarvestLossEstimateStatus(harvestFillKeys, targetDate);
+  const isEstimated = value !== "" && estimateStatus.isEstimated;
+  const label = document.querySelector(".recordActualLossField > label");
+  if(label) label.textContent = isEstimated ? "推定ロス率" : "実際のロス率";
   display.dataset.value = value === "" ? "" : value;
+  display.dataset.uncertaintyPoints = String(estimateStatus.uncertaintyPoints);
   display.textContent = value === "" ? "--" : value + "%";
   display.classList.toggle("empty", value === "");
+  display.classList.toggle("estimated", isEstimated);
+  display.title = isEstimated
+    ? `部分収穫場所による誤差幅が約${estimateStatus.uncertaintyPoints}ポイントあるため推定値です`
+    : "";
+  display.setAttribute(
+    "aria-label",
+    value === ""
+      ? "ロス率を計算できません"
+      : `${isEstimated ? "推定ロス率" : "実際のロス率"} ${value}%`
+  );
   updateRecordInputGuides();
 }
 
@@ -36238,7 +36359,7 @@ function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, act
     "",
     `日付: ${plantingDate || "-"}`,
     `収穫ケース数: ${getHarvestRecordCaseDisplayText(record)}ケース`,
-    `実際のロス率: ${actualLossText ? actualLossText + "%" : "-"}`,
+    `${isHarvestLossEstimatedForRecord(record) ? "推定ロス率" : "実際のロス率"}: ${actualLossText ? actualLossText + "%" : "-"}`,
     `品質メモ: ${qualityText}`,
     `メモ: ${memoText}`,
     "",
@@ -38985,6 +39106,7 @@ function getDashboardDayRecordDetailInfoRows(context){
     const text = formatPlantingAgeForRecordDetailDisplay(record);
     return text ? `${fullRecords.length > 1 ? `${index + 1}件目: ` : ""}${text}` : "";
   }).filter(Boolean).join("\n") || "-";
+  const hasEstimatedHarvestLoss = fullRecords.some(record => isHarvestLossEstimatedForRecord(record));
   const memoText = harvestRecords.map(record => {
     const memo = String(record?.memo || "").trim();
     return memo ? `${getDashboardRecordTypeLabel(record)}: ${memo}` : "";
@@ -38994,7 +39116,7 @@ function getDashboardDayRecordDetailInfoRows(context){
   )))];
   return [
     { label: "収穫ケース数", value: `${totalCases}ケース` },
-    { label: "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
+    { label: hasEstimatedHarvestLoss ? "推定収穫ロス率" : "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
     { label: "収穫内訳", value: harvestBreakdown },
     { label: "収穫品質メモ", value: harvestQualityText },
     { label: "定植日数の詳細", value: plantingAgeText },
@@ -39132,7 +39254,7 @@ function openRecordDetailWindow(kind, id){
     locationTitle = "収穫場所";
     infoRows = [
       { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
-      { label: "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
+      { label: isHarvestLossEstimatedForRecord(record) ? "推定ロス率" : "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
       { label: "収穫場所", value: harvestLocationText },
       { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
       { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
@@ -39382,6 +39504,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
 
   const actualLossNumber = getFiniteNumberInRange(r?.actualLoss, -999999, 100);
   const safeActualLoss = actualLossNumber === null ? "-" : escapeHtml(String(actualLossNumber));
+  const harvestLossLabel = isHarvestLossEstimatedForRecord(r) ? "推定ロス率" : "ロス率";
   const harvestBuildingText = [...new Set(
     getPalletKeysFromRecord(r)
       .map(key => parsePalletKey(String(key || "")).building)
@@ -39394,7 +39517,7 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
       <div class="recordTitle"><span class="recordTitleHarvest">収穫</span></div>
       <div class="recordMeta">収穫ケース数: ${safeCases}
-ロス率: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
+${harvestLossLabel}: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
 収穫場所: ${escapeHtml(harvestBuildingText)}
 品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}

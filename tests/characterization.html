@@ -4546,6 +4546,124 @@
         }, "指定ケース数を超えた手動選択を追加できないか、超過表示が正しくありません");
       });
 
+      await runTest("部分収穫場所による誤差幅が5ポイント以上なら推定ロス率と表示する", () => {
+        const result = comparable(app.eval(`(() => {
+          const previous = {
+            records:[...records],
+            keys:[...harvestFillKeys],
+            activeTab:activeAppTab,
+            selectionMode:recordSelectionMode,
+            editingId:editingHarvestRecordId,
+            getPlantCount:getHarvestPlantCountForPallet,
+            date:document.getElementById("recordDateInput")?.value || "",
+            cases:document.getElementById("recordCasesInput")?.value || ""
+          };
+          const rangeKeys = (building, bed, start, end) => {
+            const keys = [];
+            for(let number = start; number <= end; number++){
+              keys.push(getPalletKey(building, bed, number));
+            }
+            return keys;
+          };
+          try{
+            getHarvestPlantCountForPallet = () => 12;
+            activeAppTab = "record";
+            recordSelectionMode = "harvest";
+            editingHarvestRecordId = null;
+            harvestFillKeys = [
+              ...rangeKeys(4, "A", 1, 22),
+              ...rangeKeys(4, "C", 1, 78),
+              ...rangeKeys(4, "E", 1, 78),
+              ...rangeKeys(5, "A", 18, 78),
+              ...rangeKeys(5, "C", 1, 52)
+            ];
+            records = [
+              { id:106, type:"partialHarvest", date:"2026-08-29", cases:8, targets:buildPartialHarvestTargets(5, ["C", "D"], 8) },
+              { id:105, type:"partialHarvest", date:"2026-08-29", cases:80, targets:buildPartialHarvestTargets(5, ["B", "C"], 80) },
+              { id:104, type:"partialHarvest", date:"2026-08-29", cases:40, targets:buildPartialHarvestTargets(6, ["A", "C"], 40) },
+              { id:103, type:"partialHarvest", date:"2026-08-29", cases:7, targets:buildPartialHarvestTargets(7, ["A"], 7) },
+              { id:102, type:"partialHarvest", date:"2026-08-28", cases:55, targets:buildPartialHarvestTargets(4, ["A", "C", "E"], 55) },
+              { id:101, type:"partialHarvest", date:"2026-08-28", cases:9, targets:buildPartialHarvestTargets(5, ["C"], 9) }
+            ];
+            invalidateHarvestRecordLookupCache();
+            document.getElementById("recordDateInput").value = "2026-08-29";
+            document.getElementById("recordCasesInput").value = "228";
+            updateRecordActualLoss();
+            const highUncertainty = {
+              value:document.getElementById("recordActualLossInput").dataset.value,
+              uncertainty:Number(document.getElementById("recordActualLossInput").dataset.uncertaintyPoints),
+              label:document.querySelector(".recordActualLossField > label")?.textContent || "",
+              estimatedClass:document.getElementById("recordActualLossInput").classList.contains("estimated"),
+              savedRecordEstimated:isHarvestLossEstimatedForRecord({
+                id:200,
+                type:"fullHarvest",
+                date:"2026-08-29",
+                cases:93,
+                palletKeys:[...harvestFillKeys]
+              }, records)
+            };
+
+            const threshold = getHarvestLossEstimateStatus(
+              rangeKeys(5, "C", 1, 20),
+              parseDateOnlyString("2026-08-29"),
+              [{
+                id:109,
+                type:"partialHarvest",
+                date:"2026-08-29",
+                cases:1,
+                targets:buildPartialHarvestTargets(5, ["B", "C"], 1)
+              }]
+            );
+
+            records = [{
+              id:110,
+              type:"partialHarvest",
+              date:"2026-08-29",
+              cases:1,
+              targets:buildPartialHarvestTargets(5, ["B", "C"], 1)
+            }];
+            invalidateHarvestRecordLookupCache();
+            document.getElementById("recordCasesInput").value = "94";
+            updateRecordActualLoss();
+            const lowUncertainty = {
+              uncertainty:Number(document.getElementById("recordActualLossInput").dataset.uncertaintyPoints),
+              label:document.querySelector(".recordActualLossField > label")?.textContent || "",
+              estimatedClass:document.getElementById("recordActualLossInput").classList.contains("estimated")
+            };
+            return { highUncertainty, threshold, lowUncertainty };
+          }finally{
+            records = previous.records;
+            harvestFillKeys = previous.keys;
+            activeAppTab = previous.activeTab;
+            recordSelectionMode = previous.selectionMode;
+            editingHarvestRecordId = previous.editingId;
+            getHarvestPlantCountForPallet = previous.getPlantCount;
+            document.getElementById("recordDateInput").value = previous.date;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            invalidateHarvestRecordLookupCache();
+            updateRecordActualLoss();
+          }
+        })()`));
+        assertDeepEqual(result, {
+          highUncertainty:{
+            value:"41.5",
+            uncertainty:52.2,
+            label:"推定ロス率",
+            estimatedClass:true,
+            savedRecordEstimated:true
+          },
+          threshold:{
+            isEstimated:true,
+            uncertaintyPoints:5
+          },
+          lowUncertainty:{
+            uncertainty:0.3,
+            label:"実際のロス率",
+            estimatedClass:false
+          }
+        }, "部分収穫による誤差幅に応じてロス率の表示を切り替えられません");
+      });
+
       await runTest("計算ボタンは未入力時と計算済み時だけ目立たなくする", () => {
         const buttonState = comparable(app.eval(`(() => {
           const previous = {
@@ -9022,7 +9140,7 @@
           mobileDashboard: { hash: "d0f45d2f", elements: 2259, visible: 104, viewport: "390x844" },
           mobileDashboardRecord: { hash: "e5189a28", elements: 2342, visible: 168, viewport: "390x844" },
           mobileDashboardResultsGraph: { hash: "508be225", elements: 2357, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "8797fcc3", elements: 2357, visible: 284, viewport: "390x844" },
+          mobileMenu: { hash: "743d6ee2", elements: 2357, visible: 284, viewport: "390x844" },
           mobileSettings: { hash: "50d030f3", elements: 2357, visible: 180, viewport: "390x844" },
           mobileMonitor: { hash: "f33ebed0", elements: 2357, visible: 101, viewport: "390x844" },
           wideForecast: { hash: "4d43b20a", elements: 2357, visible: 606, viewport: "1024x900" },

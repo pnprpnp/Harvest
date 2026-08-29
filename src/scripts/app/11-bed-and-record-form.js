@@ -925,6 +925,106 @@ function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRe
   return getActualLossRateForPalletKeys(harvestFillKeys, cases, targetDate, sourceRecords);
 }
 
+function getHarvestLossPartialAllocationUncertaintyPoints(
+  palletKeys,
+  targetDate = null,
+  sourceRecords = records
+){
+  const selectedKeys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])]
+    .map(key => String(key || ""))
+    .filter(isValidPalletKeyString);
+  if(!selectedKeys.length) return 0;
+
+  const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
+  const selectedSet = new Set(selectedKeys);
+  const timelineRecords = getActiveHarvestTimelineRecords(sourceRecords);
+  const lookup = getHarvestRecordLookup(targetDay, timelineRecords);
+  const plantedTotal = selectedKeys.reduce((total, key) => {
+    const pallet = parsePalletKey(key);
+    return total + getHarvestPlantCountForPallet(
+      pallet.building,
+      pallet.bed,
+      pallet.number,
+      targetDay
+    );
+  }, 0);
+  if(plantedTotal <= 0) return 0;
+
+  let uncertainHeads = 0;
+  timelineRecords.forEach(record => {
+    if(record?.type !== "partialHarvest") return;
+    const recordDate = parseDateOnlyString(record.date);
+    if(!recordDate) return;
+    const recordDay = startOfLocalDay(recordDate);
+    const diffDays = getLocalDayDiff(recordDay, targetDay);
+    if(diffDays < 0 || diffDays > CALCULATION_LOOKBACK_DAYS) return;
+
+    const targetKeys = new Set();
+    normalizePartialHarvestTargets(record.targets).forEach(target => {
+      for(let number = target.start; number <= target.end; number++){
+        targetKeys.add(getPalletKey(target.building, target.bed, number));
+      }
+    });
+    if(!targetKeys.size) return;
+
+    let hasActiveSelectedTarget = false;
+    let hasOtherTarget = false;
+    targetKeys.forEach(key => {
+      const latestFullHarvestDate = getLatestFullHarvestDateForPallet(
+        key,
+        targetDay,
+        timelineRecords,
+        { lookup }
+      );
+      const belongsToCurrentCycle = !latestFullHarvestDate
+        || recordDay.getTime() > latestFullHarvestDate.getTime();
+      if(belongsToCurrentCycle && selectedSet.has(key)){
+        hasActiveSelectedTarget = true;
+      }else{
+        hasOtherTarget = true;
+      }
+    });
+
+    if(hasActiveSelectedTarget && hasOtherTarget){
+      uncertainHeads += clampNumber(record.cases, 0, 999999, 0) * CASE_SIZE;
+    }
+  });
+
+  return Math.round((uncertainHeads / plantedTotal) * 1000) / 10;
+}
+
+function getHarvestLossEstimateStatus(palletKeys, targetDate = null, sourceRecords = records){
+  const uncertaintyPoints = getHarvestLossPartialAllocationUncertaintyPoints(
+    palletKeys,
+    targetDate,
+    sourceRecords
+  );
+  return {
+    isEstimated: uncertaintyPoints >= HARVEST_LOSS_ESTIMATE_THRESHOLD_POINTS,
+    uncertaintyPoints
+  };
+}
+
+function getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords = records){
+  if(!record || record.type !== "fullHarvest") return sourceRecords;
+  const recordIdentityKey = getHarvestRecordIdentityKey(record);
+  return (Array.isArray(sourceRecords) ? sourceRecords : []).filter(candidate => (
+    getHarvestRecordIdentityKey(candidate) !== recordIdentityKey
+    && compareRecordsByDateDesc(candidate, record) > 0
+  ));
+}
+
+function isHarvestLossEstimatedForRecord(record, sourceRecords = records){
+  if(!record || record.type !== "fullHarvest") return false;
+  const targetDate = parseDateOnlyString(record.date);
+  if(!targetDate) return false;
+  return getHarvestLossEstimateStatus(
+    getPalletKeysFromRecord(record),
+    targetDate,
+    getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords)
+  ).isEstimated;
+}
+
 function updateRecordActualLoss(){
   const display = document.getElementById("recordActualLossInput");
   if(!display) return;
@@ -941,9 +1041,24 @@ function updateRecordActualLoss(){
     getRegularHarvestCases(cases, date),
     targetDate
   );
+  const estimateStatus = getHarvestLossEstimateStatus(harvestFillKeys, targetDate);
+  const isEstimated = value !== "" && estimateStatus.isEstimated;
+  const label = document.querySelector(".recordActualLossField > label");
+  if(label) label.textContent = isEstimated ? "推定ロス率" : "実際のロス率";
   display.dataset.value = value === "" ? "" : value;
+  display.dataset.uncertaintyPoints = String(estimateStatus.uncertaintyPoints);
   display.textContent = value === "" ? "--" : value + "%";
   display.classList.toggle("empty", value === "");
+  display.classList.toggle("estimated", isEstimated);
+  display.title = isEstimated
+    ? `部分収穫場所による誤差幅が約${estimateStatus.uncertaintyPoints}ポイントあるため推定値です`
+    : "";
+  display.setAttribute(
+    "aria-label",
+    value === ""
+      ? "ロス率を計算できません"
+      : `${isEstimated ? "推定ロス率" : "実際のロス率"} ${value}%`
+  );
   updateRecordInputGuides();
 }
 
