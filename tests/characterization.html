@@ -7502,6 +7502,17 @@
             date: "2026-08-23",
             cases: 2,
             targets: [{ building: 2, bed: "A", start: 3, end: 3, plantsPerPallet: 12 }]
+          }, {
+            palletNumberingVersion: 2,
+            id: 20000000000073,
+            recordUuid: "73737373-7373-4373-8373-737373737373",
+            type: "partialHarvest",
+            date: "2026-08-23",
+            cases: 3,
+            targets: [
+              { building: 5, bed: "C", start: 1, end: 78, plantsPerPallet: 0.769231 },
+              { building: 5, bed: "D", start: 1, end: 78, plantsPerPallet: 0.769231 }
+            ]
           }], [{
             palletNumberingVersion: 2,
             eventId: 20000000000072,
@@ -7534,6 +7545,11 @@
                 .map(column => [...column.querySelectorAll(".recordTitle")].map(item => item.textContent.trim())),
               partialTitles:[...group.querySelectorAll(".recordDatePartialColumn .recordTitle")]
                 .map(item => item.textContent.trim()),
+              partialCardCount:group.querySelectorAll(".recordDatePartialColumn > .recordItem").length,
+              partialEntryCount:group.querySelectorAll(".partialHarvestDayEntry").length,
+              partialTotal:group.querySelector(".partialHarvestDayTotal")?.textContent.trim() || "",
+              partialEntries:[...group.querySelectorAll(".partialHarvestDayEntryMain")]
+                .map(item => item.textContent.replace(/\\s+/g, " ").trim()),
               repeatedDates:[...group.querySelectorAll(".recordItem .recordTitle")]
                 .filter(item => item.textContent.includes("2026-08-23")).length,
               editButtonCount:group.querySelectorAll('.recordActions [data-ui-click^="edit"]').length,
@@ -7544,13 +7560,17 @@
             groupCount:1,
             heading:"8/23（日）の記録",
             types:["収穫", "苗植え", "部分"],
-            itemTitles:["収穫", "苗植え", "部分"],
+            itemTitles:["収穫", "苗植え", "部分収穫まとめ2件"],
             primaryDisplay:"grid",
             primaryColumns:[["収穫"], ["苗植え"]],
-            partialTitles:["部分"],
+            partialTitles:["部分収穫まとめ2件"],
+            partialCardCount:1,
+            partialEntryCount:2,
+            partialTotal:"合計: 5ケース",
+            partialEntries:["5号棟CD 3ケース", "2号棟A 2ケース"],
             repeatedDates:0,
-            editButtonCount:3,
-            deleteButtonCount:3
+            editButtonCount:4,
+            deleteButtonCount:4
           }, "同日の記録が日付見出しの下へ種類順にまとまっていません");
         }finally{
           replaceAppHistory(app, previousRecords, previousEvents);

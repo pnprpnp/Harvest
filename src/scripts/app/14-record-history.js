@@ -443,7 +443,9 @@ function renderRecordList(){
     return [...groups.values()].map(group => {
       const harvestHtml = group.harvest.map(renderHistoryItem).join("");
       const plantingHtml = group.planting.map(renderHistoryItem).join("");
-      const partialHtml = group.partial.map(renderHistoryItem).join("");
+      const partialHtml = group.partial.length
+        ? renderPartialHarvestDaySummaryHtml(group.partial, consistencyAudit)
+        : "";
       const typeBadges = [
         harvestHtml ? '<span class="recordDateGroupType is-harvest">収穫</span>' : "",
         plantingHtml ? '<span class="recordDateGroupType is-planting">苗植え</span>' : "",
@@ -1690,27 +1692,97 @@ function renderRecordItemConsistencyHtml(kind, entity, issue){
   `;
 }
 
+function formatPartialHarvestCompactLocation(targets){
+  const locationGroups = new Map();
+  normalizePartialHarvestTargets(targets).forEach(target => {
+    if(!locationGroups.has(target.building)) locationGroups.set(target.building, new Set());
+    locationGroups.get(target.building).add(target.bed);
+  });
+  return [...locationGroups.entries()]
+    .sort((a, b) => BUILDINGS.indexOf(a[0]) - BUILDINGS.indexOf(b[0]))
+    .map(([building, beds]) => (
+      `${building}号棟${bedOrder.filter(bed => beds.has(bed)).join("")}`
+    ))
+    .join("・") || "場所不明";
+}
+
+function getHarvestRecordSyncWarningText(record, syncConflict = null){
+  if(syncConflict) return "";
+  const syncState = getGoogleSheetRecordSyncState(record);
+  if(syncState === "remoteDeleted"){
+    return "同期注意: 別端末で削除されています。使用中の苗植え履歴を確認してください";
+  }
+  if(syncState === "dependencyConflict"){
+    return "同期注意: 苗植え履歴を保護するため別端末の更新を保留しています";
+  }
+  if(syncState === "conflict") return "同期注意: 別端末の更新を保留しています";
+  return "";
+}
+
+function renderPartialHarvestDaySummaryHtml(items, consistencyAudit){
+  const partialItems = (Array.isArray(items) ? items : []).filter(item => (
+    item?.value?.type === "partialHarvest"
+  ));
+  if(!partialItems.length) return "";
+
+  const totalCases = partialItems.reduce((sum, item) => (
+    sum + clampNumber(item.value?.cases, 0, 999999, 0)
+  ), 0);
+  const hasSyncConflict = partialItems.some(item => getSyncConflictForEntity("record", item.value));
+  const hasConsistencyIssue = partialItems.some(item => (
+    consistencyAudit?.issueByKey?.has(getRecordConsistencyIssueKey("harvest", item.id))
+  ));
+  const detailHtml = partialItems.map(item => {
+    const record = item.value;
+    const safeRecordId = getSafePositiveRecordId(record?.id) ?? 0;
+    const cases = clampNumber(record?.cases, 0, 999999, 0);
+    const location = formatPartialHarvestCompactLocation(record?.targets);
+    const syncConflict = getSyncConflictForEntity("record", record);
+    const consistencyIssue = consistencyAudit?.issueByKey?.get(
+      getRecordConsistencyIssueKey("harvest", item.id)
+    ) || null;
+    const syncWarningText = getHarvestRecordSyncWarningText(record, syncConflict);
+    return `
+      <div class="partialHarvestDayEntry${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}" data-partial-harvest-record-id="${safeRecordId}">
+        <div class="partialHarvestDayEntryMain">
+          <span class="partialHarvestDayLocation">${escapeHtml(location)}</span>
+          <span class="partialHarvestDayCases">${escapeHtml(String(cases))}ケース</span>
+        </div>
+        <div class="partialHarvestDayTargetDetail">${escapeHtml(formatPartialHarvestSummary(record?.targets))}</div>
+        ${syncWarningText ? `<div class="smallText partialHarvestDayWarning">${escapeHtml(syncWarningText)}</div>` : ""}
+        ${renderRecordItemSyncConflictHtml("record", record)}
+        ${renderRecordItemConsistencyHtml("harvest", record, consistencyIssue)}
+        ${record?.memo ? `<div class="smallText partialHarvestDayMemo">メモ: ${escapeHtml(record.memo)}</div>` : ""}
+        <div class="recordActions partialHarvestDayActions">
+          <button class="thirdBtn" data-ui-click="editPartialHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
+          <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="recordItem partialHarvestDaySummary${hasSyncConflict ? " hasSyncConflict" : ""}${hasConsistencyIssue ? " hasConsistencyIssue" : ""}">
+      <div class="recordTitle partialHarvestDayTitle"><span class="recordTitlePartial">部分収穫まとめ</span><span class="partialHarvestDayCount">${partialItems.length}件</span></div>
+      <div class="recordMeta partialHarvestDayTotal">合計: ${escapeHtml(String(totalCases))}ケース</div>
+      <div class="partialHarvestDayEntries">${detailHtml}</div>
+    </div>
+  `;
+}
+
 function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssue = null){
   const safeRecordId = getSafePositiveRecordId(r?.id) ?? 0;
   const safeCases = escapeHtml(getHarvestRecordCaseDisplayText(r, harvestCaseTotalsByDate));
   const syncConflict = getSyncConflictForEntity("record", r);
   const conflictHtml = renderRecordItemSyncConflictHtml("record", r);
   const consistencyHtml = renderRecordItemConsistencyHtml("harvest", r, consistencyIssue);
-  const syncState = getGoogleSheetRecordSyncState(r);
-  const syncWarningText = syncConflict
-    ? ""
-    : (syncState === "remoteDeleted"
-      ? "\n同期注意: 別端末で削除されています。使用中の苗植え履歴を確認してください"
-      : (syncState === "dependencyConflict"
-        ? "\n同期注意: 苗植え履歴を保護するため別端末の更新を保留しています"
-        : (syncState === "conflict"
-          ? "\n同期注意: 別端末の更新を保留しています"
-          : "")));
+  const syncWarningText = getHarvestRecordSyncWarningText(r, syncConflict);
   if(r.type === "partialHarvest"){
     return `
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle"><span class="recordTitleHarvest">部分</span></div>
-      <div class="recordMeta">収穫ケース数: ${safeCases}${escapeHtml(syncWarningText)}</div>
+      <div class="recordTitle"><span class="recordTitlePartial">部分</span></div>
+      <div class="recordMeta">収穫ケース数: ${safeCases}</div>
+      ${syncWarningText ? `<div class="smallText partialHarvestDayWarning">${escapeHtml(syncWarningText)}</div>` : ""}
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${conflictHtml}
       ${consistencyHtml}
