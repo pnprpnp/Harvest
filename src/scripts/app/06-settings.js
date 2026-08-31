@@ -377,6 +377,9 @@ function updateBuildingLabel(){
   const partialBuildingInput = document.getElementById("partialHarvestBuildingInput");
   if(mainBtn) mainBtn.textContent = currentBuilding + "号棟";
   if(partialBuildingInput) partialBuildingInput.value = String(currentBuilding);
+  if(typeof refreshPartialHarvestRemainingEstimator === "function"){
+    refreshPartialHarvestRemainingEstimator();
+  }
   updateBuildingLastHarvestInfo();
 }
 

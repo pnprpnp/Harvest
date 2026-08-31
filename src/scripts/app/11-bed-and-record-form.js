@@ -1528,6 +1528,7 @@ function updateRecordWeekdayDisplay(){
 
 function refreshRecordDateDependentUi(){
   updateRecordWeekdayDisplay();
+  refreshPartialHarvestRemainingEstimator();
   renderRecordList();
   renderForecastSummary();
   updateRecordActualLoss();
@@ -1586,6 +1587,7 @@ function clearRecordForm(){
   document.querySelectorAll('input[name="partialHarvestBed"]').forEach(input => {
     input.checked = false;
   });
+  resetPartialHarvestRemainingEstimator();
   setSelectedQualityMemo(null);
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();

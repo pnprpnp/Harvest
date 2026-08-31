@@ -40,6 +40,296 @@ function buildPartialHarvestTargets(building, beds, cases){
   }));
 }
 
+function getPartialHarvestRemainingPlantsValue(value){
+  if(value === null || value === undefined || String(value).trim() === "") return null;
+  return getStrictDecimalInRange(String(value), 0, 999);
+}
+
+function getSelectedPartialHarvestBeds(){
+  return bedOrder.filter(bed => (
+    !!document.querySelector(`input[name="partialHarvestBed"][value="${bed}"]:checked`)
+  ));
+}
+
+function getPartialHarvestRemainingPlantsByBed(){
+  const values = {};
+  bedOrder.forEach(bed => {
+    const input = document.querySelector(`[data-partial-harvest-remaining-bed="${bed}"]`);
+    values[bed] = input?.value ?? "";
+  });
+  return values;
+}
+
+function estimatePartialHarvestFromRemainingPlants(
+  building,
+  beds,
+  remainingPlantsByBed,
+  date,
+  sourceRecords = records,
+  predictionGetter = getPredictedHarvestForPallet
+){
+  const normalizedBuilding = Number(building);
+  const normalizedBeds = bedOrder.filter(bed => Array.isArray(beds) && beds.includes(bed));
+  const targetDate = parseDateOnlyString(date);
+  if(!BUILDINGS.includes(normalizedBuilding)){
+    return { ok:false, status:"invalid-building", message:"号棟を選択してください", bedEstimates:[] };
+  }
+  if(!normalizedBeds.length){
+    return { ok:false, status:"no-beds", message:"先に部分収穫したベッドを選択してください", bedEstimates:[] };
+  }
+  if(!targetDate){
+    return { ok:false, status:"invalid-date", message:"収穫日を入力してください", bedEstimates:[] };
+  }
+
+  const normalizedRemainingPlantsByBed = {};
+  const missingBeds = [];
+  normalizedBeds.forEach(bed => {
+    const remainingPlants = getPartialHarvestRemainingPlantsValue(remainingPlantsByBed?.[bed]);
+    if(remainingPlants === null) missingBeds.push(bed);
+    else normalizedRemainingPlantsByBed[bed] = remainingPlants;
+  });
+  if(missingBeds.length){
+    return {
+      ok:false,
+      status:"missing-remaining-plants",
+      message:`${missingBeds.join("・")}ベッドの残り株数を入力してください`,
+      missingBeds,
+      bedEstimates:[]
+    };
+  }
+
+  const bedEstimates = normalizedBeds.map(bed => {
+    let predictedHeadsBefore = 0;
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      predictedHeadsBefore += Math.max(0, Number(
+        predictionGetter(normalizedBuilding, bed, number, targetDate, sourceRecords)
+      ) || 0);
+    }
+    const remainingPlantsPerPallet = normalizedRemainingPlantsByBed[bed];
+    const remainingHeads = remainingPlantsPerPallet * PALLETS_PER_BED;
+    return {
+      bed,
+      predictedHeadsBefore,
+      predictedPlantsPerPallet: predictedHeadsBefore / PALLETS_PER_BED,
+      remainingPlantsPerPallet,
+      remainingHeads,
+      estimatedHarvestedHeads: predictedHeadsBefore - remainingHeads
+    };
+  });
+
+  const overPrediction = bedEstimates.find(estimate => estimate.estimatedHarvestedHeads < -0.01);
+  if(overPrediction){
+    return {
+      ok:false,
+      status:"remaining-over-prediction",
+      message:`${overPrediction.bed}ベッドの残り株数が、収穫前予測の平均${overPrediction.predictedPlantsPerPallet.toFixed(1)}株を上回っています`,
+      bedEstimates
+    };
+  }
+
+  const noHarvest = bedEstimates.find(estimate => estimate.estimatedHarvestedHeads <= 0.01);
+  if(noHarvest){
+    return {
+      ok:false,
+      status:"no-estimated-harvest",
+      message:`${noHarvest.bed}ベッドは収穫した株数を予想できません。残り株数を確認してください`,
+      bedEstimates
+    };
+  }
+
+  const estimatedHarvestedHeads = bedEstimates.reduce((total, estimate) => (
+    total + estimate.estimatedHarvestedHeads
+  ), 0);
+  const estimatedCases = estimatedHarvestedHeads / CASE_SIZE;
+  const suggestedCases = Math.max(0, Math.round(estimatedCases));
+  const signature = JSON.stringify({
+    building:normalizedBuilding,
+    date:formatDateOnlyString(targetDate),
+    beds:bedEstimates.map(estimate => [
+      estimate.bed,
+      Math.round(estimate.remainingPlantsPerPallet * 10000) / 10000,
+      Math.round(estimate.predictedHeadsBefore * 10000) / 10000
+    ])
+  });
+  if(suggestedCases < 1){
+    return {
+      ok:false,
+      status:"under-one-case",
+      message:`予想は約${estimatedCases.toFixed(1)}ケースです。1ケース未満のためケース数へ反映できません`,
+      bedEstimates,
+      estimatedHarvestedHeads,
+      estimatedCases,
+      suggestedCases,
+      signature
+    };
+  }
+  return {
+    ok:true,
+    status:"ready",
+    building:normalizedBuilding,
+    beds:normalizedBeds,
+    date:formatDateOnlyString(targetDate),
+    bedEstimates,
+    estimatedHarvestedHeads,
+    estimatedCases,
+    suggestedCases,
+    signature
+  };
+}
+
+function buildPartialHarvestTargetsFromRemainingEstimate(building, estimate, cases){
+  const normalizedBuilding = Number(building);
+  const normalizedCases = getStrictIntegerInRange(cases, 1, RECORD_MAX_CASES);
+  const bedEstimates = estimate?.ok && Array.isArray(estimate.bedEstimates)
+    ? estimate.bedEstimates.filter(item => bedOrder.includes(item?.bed) && item.estimatedHarvestedHeads > 0)
+    : [];
+  const estimatedHarvestedHeads = bedEstimates.reduce((total, item) => (
+    total + item.estimatedHarvestedHeads
+  ), 0);
+  if(!BUILDINGS.includes(normalizedBuilding) || normalizedCases === null || estimatedHarvestedHeads <= 0) return [];
+
+  const confirmedHarvestedHeads = normalizedCases * CASE_SIZE;
+  return bedEstimates.map(item => ({
+    building:normalizedBuilding,
+    bed:item.bed,
+    start:1,
+    end:PALLETS_PER_BED,
+    plantsPerPallet:Math.round((
+      confirmedHarvestedHeads
+      * item.estimatedHarvestedHeads
+      / estimatedHarvestedHeads
+      / PALLETS_PER_BED
+    ) * 1000000) / 1000000
+  }));
+}
+
+function getCurrentPartialHarvestRemainingEstimate(sourceRecords = records){
+  return estimatePartialHarvestFromRemainingPlants(
+    document.getElementById("partialHarvestBuildingInput")?.value || currentBuilding,
+    getSelectedPartialHarvestBeds(),
+    getPartialHarvestRemainingPlantsByBed(),
+    document.getElementById("recordDateInput")?.value || "",
+    sourceRecords
+  );
+}
+
+function getPartialHarvestTargetsForCurrentRemainingEstimate(building, beds, cases, date, sourceRecords = records){
+  const fallbackTargets = buildPartialHarvestTargets(building, beds, cases);
+  const casesInput = document.getElementById("partialHarvestCasesInput");
+  const appliedSignature = casesInput?.dataset.remainingEstimateSignature || "";
+  if(!appliedSignature) return { targets:fallbackTargets, usedRemainingEstimate:false, estimate:null };
+
+  const estimate = estimatePartialHarvestFromRemainingPlants(
+    building,
+    beds,
+    getPartialHarvestRemainingPlantsByBed(),
+    date,
+    sourceRecords
+  );
+  if(!estimate.ok || estimate.signature !== appliedSignature){
+    return { targets:fallbackTargets, usedRemainingEstimate:false, estimate };
+  }
+  const targets = buildPartialHarvestTargetsFromRemainingEstimate(building, estimate, cases);
+  return {
+    targets:targets.length === beds.length ? targets : fallbackTargets,
+    usedRemainingEstimate:targets.length === beds.length,
+    estimate
+  };
+}
+
+function getPartialHarvestRemainingEstimateBreakdown(estimate){
+  if(!Array.isArray(estimate?.bedEstimates) || !estimate.bedEstimates.length) return "";
+  return estimate.bedEstimates.map(item => (
+    `${item.bed}: 収穫前 平均${item.predictedPlantsPerPallet.toFixed(1)}株 → 残り${item.remainingPlantsPerPallet.toFixed(1)}株`
+  )).join(" ／ ");
+}
+
+function handlePartialHarvestCasesInput(){
+  const applyButton = document.getElementById("partialHarvestApplyRemainingEstimateBtn");
+  const casesInput = document.getElementById("partialHarvestCasesInput");
+  const suggestedCases = getStrictIntegerInRange(
+    applyButton?.dataset.suggestedCases || "",
+    1,
+    RECORD_MAX_CASES
+  );
+  const estimateSignature = applyButton?.dataset.remainingEstimateSignature || "";
+  if(!applyButton || suggestedCases === null || !estimateSignature) return;
+  const currentCases = getStrictIntegerInRange(casesInput?.value || "", 1, RECORD_MAX_CASES);
+  const alreadyApplied = casesInput?.dataset.remainingEstimateSignature === estimateSignature
+    && currentCases === suggestedCases;
+  applyButton.disabled = alreadyApplied;
+  applyButton.textContent = alreadyApplied
+    ? `${suggestedCases}ケースを入力済み`
+    : `${suggestedCases}ケースを入力する`;
+}
+
+function refreshPartialHarvestRemainingEstimator(){
+  const details = document.getElementById("partialHarvestRemainingEstimator");
+  const result = document.getElementById("partialHarvestRemainingEstimateResult");
+  const primary = document.getElementById("partialHarvestRemainingEstimatePrimary");
+  const breakdown = document.getElementById("partialHarvestRemainingEstimateBreakdown");
+  const applyButton = document.getElementById("partialHarvestApplyRemainingEstimateBtn");
+  const casesInput = document.getElementById("partialHarvestCasesInput");
+  if(!details || !result || !primary || !breakdown || !applyButton) return null;
+
+  const selectedBeds = new Set(getSelectedPartialHarvestBeds());
+  document.querySelectorAll("[data-partial-harvest-remaining-row]").forEach(row => {
+    row.hidden = !selectedBeds.has(row.dataset.partialHarvestRemainingRow);
+  });
+  if(!details.open){
+    result.hidden = true;
+    applyButton.disabled = true;
+    applyButton.textContent = "ケース数を予想する";
+    delete applyButton.dataset.suggestedCases;
+    delete applyButton.dataset.remainingEstimateSignature;
+    return null;
+  }
+
+  const estimate = getCurrentPartialHarvestRemainingEstimate();
+  result.hidden = false;
+  result.classList.toggle("is-ready", estimate.ok);
+  result.classList.toggle("has-warning", !estimate.ok);
+  breakdown.textContent = getPartialHarvestRemainingEstimateBreakdown(estimate);
+  if(!estimate.ok){
+    primary.textContent = estimate.message || "残り株数を確認してください";
+    applyButton.disabled = true;
+    applyButton.textContent = "ケース数を予想する";
+    delete applyButton.dataset.suggestedCases;
+    delete applyButton.dataset.remainingEstimateSignature;
+    return estimate;
+  }
+
+  primary.textContent = `予想 約${estimate.estimatedCases.toFixed(1)}ケース（入力候補 ${estimate.suggestedCases}ケース）`;
+  applyButton.dataset.suggestedCases = String(estimate.suggestedCases);
+  applyButton.dataset.remainingEstimateSignature = estimate.signature;
+  handlePartialHarvestCasesInput();
+  return estimate;
+}
+
+function applyPartialHarvestRemainingEstimate(){
+  const estimate = getCurrentPartialHarvestRemainingEstimate();
+  if(!estimate.ok){
+    refreshPartialHarvestRemainingEstimator();
+    showToast(estimate.message || "残り株数を確認してください");
+    return;
+  }
+  const casesInput = document.getElementById("partialHarvestCasesInput");
+  if(!casesInput) return;
+  casesInput.value = String(estimate.suggestedCases);
+  casesInput.dataset.remainingEstimateSignature = estimate.signature;
+  refreshPartialHarvestRemainingEstimator();
+  scheduleHarvestStateSave();
+}
+
+function resetPartialHarvestRemainingEstimator(){
+  document.querySelectorAll("[data-partial-harvest-remaining-bed]").forEach(input => {
+    input.value = "";
+  });
+  const casesInput = document.getElementById("partialHarvestCasesInput");
+  if(casesInput) delete casesInput.dataset.remainingEstimateSignature;
+  refreshPartialHarvestRemainingEstimator();
+}
+
 function getPartialHarvestEditFormModel(record){
   if(!record || record.type !== "partialHarvest") return null;
   const targets = normalizePartialHarvestTargets(record.targets);
@@ -507,7 +797,8 @@ async function savePartialHarvestRecord(){
   if(!ensureProtectedOperationAccess("各パレット部分収穫の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("各パレット部分収穫を保存", { allowBackgroundSend: true })) return;
   const date = document.getElementById("recordDateInput").value;
-  const cases = clampNumber(document.getElementById("partialHarvestCasesInput")?.value || 0, 0, 999999, 0);
+  const casesInput = document.getElementById("partialHarvestCasesInput");
+  const cases = getStrictIntegerInRange(casesInput?.value || "", 1, RECORD_MAX_CASES);
   const building = clampNumber(document.getElementById("partialHarvestBuildingInput")?.value || currentBuilding, MIN_BUILDING, MAX_BUILDING, NaN);
   const beds = Array.from(document.querySelectorAll('input[name="partialHarvestBed"]:checked'))
     .map(input => input.value)
@@ -522,12 +813,18 @@ async function savePartialHarvestRecord(){
     showToast("各パレットから部分収穫した号棟とベッドを入力してください");
     return;
   }
-  if(cases <= 0){
-    showToast("各パレット部分収穫で取れたケース数を入力してください");
+  if(cases === null){
+    showToast("各パレット部分収穫で取れたケース数を1以上の整数で入力してください");
     return;
   }
 
-  const targets = buildPartialHarvestTargets(building, beds, cases);
+  const targetResult = getPartialHarvestTargetsForCurrentRemainingEstimate(
+    building,
+    beds,
+    cases,
+    date
+  );
+  const targets = targetResult.targets;
   const remainingEstimate = getPartialHarvestRemainingCaseEstimate(building, beds, cases, date);
   const memo = appendAutoMemo(enteredMemo, `部分収穫後の残り予想: 約${remainingEstimate}ケース（目安）`);
 
@@ -567,7 +864,8 @@ async function savePartialHarvestRecord(){
     })
   });
   refreshRecordDataUi({ actualLoss: true });
-  document.getElementById("partialHarvestCasesInput").value = "";
+  casesInput.value = "";
+  resetPartialHarvestRemainingEstimator();
   showToast(getPartialHarvestSaveToastMessage({
     sendQueued,
     remainingEstimate,

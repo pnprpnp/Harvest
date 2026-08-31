@@ -8970,6 +8970,132 @@
         ], "途中収穫場所の正規化結果が違います");
       });
 
+      await runTest("ベッドの残り株数からケース数とベッド別配分を予想する", () => {
+        const estimate = app.estimatePartialHarvestFromRemainingPlants(
+          2,
+          ["A", "B"],
+          { A:"18", B:"12" },
+          "2026-08-30",
+          [],
+          (_building, bed) => bed === "A" ? 20 : 16
+        );
+        assert(estimate.ok, estimate.message || "残り株数から予想できません");
+        assertEqual(estimate.estimatedHarvestedHeads, 468, "予想した収穫株数が違います");
+        assertEqual(estimate.estimatedCases, 39, "予想したケース数が違います");
+        assertEqual(estimate.suggestedCases, 39, "ケース数の入力候補が違います");
+
+        const targets = app.buildPartialHarvestTargetsFromRemainingEstimate(2, estimate, 45);
+        assertEqual(targets.length, 2, "予想をベッド別の保存場所へ変換できません");
+        assert(
+          Math.abs(targets[1].plantsPerPallet / targets[0].plantsPerPallet - 2) < 0.00001,
+          "推定収穫株数の比率をベッド別配分へ反映できていません"
+        );
+        const allocatedHeads = targets.reduce((total, target) => (
+          total + target.plantsPerPallet * 78
+        ), 0);
+        assert(Math.abs(allocatedHeads - 45 * 12) < 0.001, "確定ケース数と保存する株数の合計が一致しません");
+
+        const invalid = app.estimatePartialHarvestFromRemainingPlants(
+          2,
+          ["A"],
+          { A:"21" },
+          "2026-08-30",
+          [],
+          () => 20
+        );
+        assertEqual(invalid.status, "remaining-over-prediction", "予測を上回る残り株数を検出できません");
+      });
+
+      await runTest("残り株数の予想は確認操作で反映し、手入力したケース数を上書きしない", () => {
+        const details = app.document.getElementById("partialHarvestRemainingEstimator");
+        const dateInput = app.document.getElementById("recordDateInput");
+        const buildingInput = app.document.getElementById("partialHarvestBuildingInput");
+        const casesInput = app.document.getElementById("partialHarvestCasesInput");
+        const applyButton = app.document.getElementById("partialHarvestApplyRemainingEstimateBtn");
+        const remainingA = app.document.getElementById("partialHarvestRemainingPlants_A");
+        const remainingB = app.document.getElementById("partialHarvestRemainingPlants_B");
+        const bedInputs = [...app.document.querySelectorAll('input[name="partialHarvestBed"]')];
+        const originalState = {
+          detailsOpen:details.open,
+          date:dateInput.value,
+          building:buildingInput.value,
+          cases:casesInput.value,
+          signature:casesInput.dataset.remainingEstimateSignature || "",
+          beds:bedInputs.map(input => input.checked),
+          remainingA:remainingA.value,
+          remainingB:remainingB.value
+        };
+        app.eval("globalThis.__partialHarvestPredictionGetterForTest = getPredictedHarvestForPallet; globalThis.__partialHarvestPredictionCallCount = 0; getPredictedHarvestForPallet = () => { globalThis.__partialHarvestPredictionCallCount++; return 20; };");
+        try{
+          details.open = true;
+          dateInput.value = "2026-08-30";
+          buildingInput.value = "2";
+          bedInputs.forEach(input => { input.checked = ["A", "B"].includes(input.value); });
+          remainingA.value = "18";
+          remainingB.value = "16";
+          casesInput.value = "";
+          delete casesInput.dataset.remainingEstimateSignature;
+          const estimate = app.refreshPartialHarvestRemainingEstimator();
+          assert(estimate?.ok, estimate?.message || "入力画面でケース数を予想できません");
+          assertEqual(estimate.suggestedCases, 39, "入力画面のケース数候補が違います");
+          assertEqual(casesInput.value, "", "確認前にケース数を自動入力しています");
+
+          applyButton.click();
+          assertEqual(casesInput.value, "39", "確認ボタンからケース数へ反映できません");
+          assert(!!casesInput.dataset.remainingEstimateSignature, "反映した予想条件を保持できていません");
+
+          casesInput.value = "45";
+          const predictionCallsBeforeCaseInput = app.eval("globalThis.__partialHarvestPredictionCallCount");
+          casesInput.dispatchEvent(new app.Event("input", { bubbles:true }));
+          assertEqual(
+            app.eval("globalThis.__partialHarvestPredictionCallCount"),
+            predictionCallsBeforeCaseInput,
+            "確定ケース数の手入力だけで残り株数の予想を計算し直しています"
+          );
+          const weighted = app.getPartialHarvestTargetsForCurrentRemainingEstimate(
+            2,
+            ["A", "B"],
+            45,
+            "2026-08-30",
+            []
+          );
+          assert(weighted.usedRemainingEstimate, "確認済みの予想比率を保存処理へ渡せません");
+          assert(
+            Math.abs(weighted.targets[1].plantsPerPallet / weighted.targets[0].plantsPerPallet - 2) < 0.00001,
+            "手入力でケース数を調整した後にベッド別比率が失われました"
+          );
+
+          remainingB.value = "15";
+          remainingB.dispatchEvent(new app.Event("input", { bubbles:true }));
+          assertEqual(casesInput.value, "45", "残り株数の変更で手入力したケース数を上書きしています");
+          const stale = app.getPartialHarvestTargetsForCurrentRemainingEstimate(
+            2,
+            ["A", "B"],
+            45,
+            "2026-08-30",
+            []
+          );
+          assertEqual(stale.usedRemainingEstimate, false, "変更前の予想比率を保存処理で再使用しています");
+          assertEqual(
+            stale.targets[0].plantsPerPallet,
+            stale.targets[1].plantsPerPallet,
+            "未確認の条件では従来の均等配分へ戻っていません"
+          );
+        }finally{
+          app.eval("getPredictedHarvestForPallet = globalThis.__partialHarvestPredictionGetterForTest; delete globalThis.__partialHarvestPredictionGetterForTest; delete globalThis.__partialHarvestPredictionCallCount;");
+          details.open = originalState.detailsOpen;
+          dateInput.value = originalState.date;
+          buildingInput.value = originalState.building;
+          casesInput.value = originalState.cases;
+          if(originalState.signature) casesInput.dataset.remainingEstimateSignature = originalState.signature;
+          else delete casesInput.dataset.remainingEstimateSignature;
+          bedInputs.forEach((input, index) => { input.checked = originalState.beds[index]; });
+          remainingA.value = originalState.remainingA;
+          remainingB.value = originalState.remainingB;
+          app.refreshPartialHarvestRemainingEstimator();
+        }
+      });
+
       await runTest("保存済みの収穫場所を読み込み、同じ範囲形式で保存できる", () => {
         const record = app.normalizeStoredRecord({
           palletNumberingVersion: 2,
@@ -9422,18 +9548,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "012a10b0", elements: 2241, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "8ffc875b", elements: 2310, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "f9de2fc6", elements: 2310, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "192fdb04", elements: 2242, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "d0f45d2f", elements: 2259, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "e5189a28", elements: 2342, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "508be225", elements: 2357, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "743d6ee2", elements: 2357, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "50d030f3", elements: 2357, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "f33ebed0", elements: 2357, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "4d43b20a", elements: 2357, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "46e57254", elements: 2357, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "eea4c100", elements: 2280, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "012dd2ed", elements: 2349, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "7c3898a0", elements: 2349, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "c66b23c9", elements: 2281, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "e02ad8e6", elements: 2298, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "ac4fe6da", elements: 2381, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "09874b39", elements: 2396, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "1ff4dd4a", elements: 2396, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "f0e91e17", elements: 2396, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "68cb9ad0", elements: 2396, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "c78abdbc", elements: 2396, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "c55088fe", elements: 2396, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
