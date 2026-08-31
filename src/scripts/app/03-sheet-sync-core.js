@@ -1782,14 +1782,28 @@ function buildGoogleSheetPlantingEventPayload(event, config, operation = "save")
 }
 
 function getPlantingEventFallbackPlantingCountsByBed(){
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  if(
+    plantingEventFallbackCountsCache
+    && plantingEventFallbackCountsCacheSource === normalizedSettings
+  ){
+    return plantingEventFallbackCountsCache;
+  }
+
   const countsByBed = {};
   bedOrder.forEach(bed => {
-    countsByBed[bed] = Array.from(
+    const profile = normalizedSettings.beds[bed]?.planting;
+    const frontCount = profile?.frontCount ?? PALLETS_PER_BED;
+    const front = profile?.front ?? normalizedSettings.defaultPlantingCount;
+    const back = profile?.back ?? normalizedSettings.defaultPlantingCount;
+    countsByBed[bed] = Object.freeze(Array.from(
       { length: PALLETS_PER_BED },
-      (_, index) => getPlantingCountForPallet(bed, index + 1)
-    );
+      (_, index) => index < frontCount ? front : back
+    ));
   });
-  return countsByBed;
+  plantingEventFallbackCountsCacheSource = normalizedSettings;
+  plantingEventFallbackCountsCache = Object.freeze(countsByBed);
+  return plantingEventFallbackCountsCache;
 }
 
 function buildGoogleSheetPlantingEventListPayload(config, options = {}){

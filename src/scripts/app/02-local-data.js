@@ -40,6 +40,7 @@ function loadSettings(){
 
 function saveSettingsToStorage(){
   harvestnaviLocalStorage.writeJson(SETTINGS_KEY, settings);
+  invalidateNormalizedBedCalculationSettings();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
 }

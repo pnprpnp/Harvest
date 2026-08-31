@@ -209,6 +209,10 @@ const defaultSettings = {
 };
 
 let settings = loadSettings();
+let normalizedBedCalculationSettingsCache = null;
+let normalizedBedCalculationSettingsCacheSource = null;
+let plantingEventFallbackCountsCache = null;
+let plantingEventFallbackCountsCacheSource = null;
 let currentBuilding = 2;
 let casePlacementBuilding = 2;
 let harvestFillKeys = [];
@@ -2832,34 +2836,6 @@ function scheduleDashboardRenderAfterTabSelection(){
       setDashboardLoadingState(false);
     }
   });
-}
-
-function preloadDashboardDuringWelcome(){
-  try{
-    renderDashboard();
-    return true;
-  }catch(error){
-    dashboardRenderedDayKey = "";
-    console.warn("ウェルカム画面中に集計を準備できませんでした", error);
-    return false;
-  }
-}
-
-function scheduleDashboardPreloadDuringIdle(){
-  if(isWorkerMode()) return false;
-  if(typeof window.requestIdleCallback !== "function") return false;
-  window.requestIdleCallback(() => {
-    const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
-    if(
-      activeAppTab === "dashboard"
-      || (
-        dashboardRenderedDayKey === formatDateOnlyString(new Date())
-        && dashboardRenderedSubtabs.has(activeSubtab)
-      )
-    ) return;
-    preloadDashboardDuringWelcome();
-  });
-  return true;
 }
 
 function renderDashboardIfVisible(){

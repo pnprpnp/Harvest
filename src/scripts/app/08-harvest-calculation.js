@@ -1620,22 +1620,10 @@ function clearHarvestPrediction(){
 }
 
 function getConfiguredHarvestPlantCountForPallet(bed, number){
-  const bedSettings = settings?.beds?.[bed] || {};
-  if(!settings?.useBedYieldSettings){
-    return normalizeYield(settings?.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
-  }
-  const raw = bedSettings.yield;
-  const baseYield = normalizeYield(raw, settings.defaultYieldPerPallet);
-
-  if(!bedSettings.yieldUseFrontBack){
-    return baseYield;
-  }
-
-  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
-  const frontYield = normalizeYield(bedSettings.yieldFront, baseYield);
-  const backYield = normalizeYield(bedSettings.yieldBack, baseYield);
-
-  return Number(number) <= frontCount ? frontYield : backYield;
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  const profile = normalizedSettings.beds[bed]?.harvest;
+  if(!profile) return normalizedSettings.defaultHarvestPlantCount;
+  return Number(number) <= profile.frontCount ? profile.front : profile.back;
 }
 
 function getHarvestPlantCountForPallet(building, bed, number, targetDate = null){
@@ -1651,12 +1639,10 @@ function getHarvestPlantCountForPallet(building, bed, number, targetDate = null)
 }
 
 function getYieldSplitVisualInfo(bed){
-  const bedSettings = settings?.beds?.[bed] || {};
-  const useBedYield = !!settings?.useBedYieldSettings;
-  const useSplit = !!bedSettings.yieldUseFrontBack;
-  if(!useBedYield || !useSplit) return null;
+  const profile = getNormalizedBedCalculationSettings().beds[bed]?.harvest;
+  if(!profile?.useFrontBack) return null;
 
-  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
+  const frontCount = profile.frontCount;
   const backCount = Math.max(0, PALLETS_PER_BED - frontCount);
 
   return {
@@ -1681,14 +1667,8 @@ function appendYieldSplitInfo(bedElement, splitInfo){
 }
 
 function getAppliedLossRateForBed(bed){
-  if(!settings?.useBedLossSettings){
-    return clampNumber(settings.defaultLossRate, 0, 100, 0);
-  }
-  const bedLoss = settings?.beds?.[bed]?.lossRate;
-  if(bedLoss === "" || bedLoss === null || typeof bedLoss === "undefined"){
-    return clampNumber(settings.defaultLossRate, 0, 100, 0);
-  }
-  return clampNumber(bedLoss, 0, 100, clampNumber(settings.defaultLossRate, 0, 100, 0));
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  return normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
 }
 
 function getPredictedHarvestForBed(building, bed, number, targetDate = null){

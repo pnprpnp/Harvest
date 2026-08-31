@@ -656,6 +656,7 @@
           "getSpreadsheet",
           "setupHarvestSpreadsheetId",
           "buildWorkerCalculationSnapshot",
+          "getWorkerSnapshotHarvestRecordGroups",
           "getCompletedRecordWriteStates",
           "getKnownRecordColumnSegments",
           "setHarvestRecordRangeValuesWithValidationRecovery",
@@ -807,6 +808,76 @@
           states: [true, false, true],
           rangeCalls: [{ row: 8, column: 25, rowCount: 3, columnCount: 1 }]
         }, "完了状態が行ごとに読み込まれています");
+      });
+
+      await runTest("作業者用の収穫記録をシートから一度に選び出す", () => {
+        const result = comparable(appsScript.eval(`(() => {
+          const previousWithRecordReadLock = withRecordReadLock;
+          const previousGetExistingRecordSheet = getExistingRecordSheet;
+          const previousGetRecordHeadersForRead = getRecordHeadersForRead;
+          const rangeReads = [];
+          const toDateText = date => [
+            date.getFullYear(),
+            String(date.getMonth() + 1).padStart(2, "0"),
+            String(date.getDate()).padStart(2, "0")
+          ].join("-");
+          const today = startOfScriptDay(new Date());
+          const makeRow = (id, type, dayOffset, palletKeys) => {
+            const date = toDateText(addScriptDays(today, dayOffset));
+            const record = {
+              id,
+              recordUuid: "aaaaaaaa-aaaa-4aaa-8aaa-" + String(id).padStart(12, "0"),
+              type,
+              date,
+              cases: 10,
+              palletKeys,
+              plantingPalletKeys: [],
+              targets: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            return buildRecordRow(HEADERS, record, makeDuplicateKey(record), new Date());
+          };
+          const rows = [
+            makeRow(1, "fullHarvest", -100, ["2-A-1"]),
+            makeRow(2, "partialHarvest", -1, []),
+            makeRow(3, "fullHarvest", 0, ["2-A-2"])
+          ];
+          const sheet = {
+            getLastRow(){ return rows.length + 1; },
+            getRange(row, column, rowCount, columnCount){
+              rangeReads.push({ row, column, rowCount, columnCount });
+              return {
+                getValues(){
+                  return Array.from({ length: rowCount }, (_, rowIndex) => (
+                    rows[row - 2 + rowIndex].slice(column - 1, column - 1 + columnCount)
+                  ));
+                }
+              };
+            }
+          };
+          try{
+            withRecordReadLock = operation => operation();
+            getExistingRecordSheet = () => sheet;
+            getRecordHeadersForRead = () => HEADERS.slice();
+            const groups = getWorkerSnapshotHarvestRecordGroups(
+              WORKER_CALCULATION_LOOKBACK_DAYS + 1
+            );
+            return {
+              recentIds: groups.recentRecords.map(record => Number(record.id)),
+              latestIds: groups.latestCandidates.map(record => Number(record.id)),
+              rangeReads
+            };
+          }finally{
+            withRecordReadLock = previousWithRecordReadLock;
+            getExistingRecordSheet = previousGetExistingRecordSheet;
+            getRecordHeadersForRead = previousGetRecordHeadersForRead;
+          }
+        })()`));
+
+        assertDeepEqual(result.recentIds, [3, 2], "直近期間の収穫記録が変わりました");
+        assertDeepEqual(result.latestIds, [3, 2, 1], "最新の通常収穫候補が変わりました");
+        assertEqual(result.rangeReads.length, 2, "同じ収穫シートを重複して読み込んでいます");
       });
 
       await runTest("ブラウザー側とApps Script側の同期上限・項目を一致させる", () => {
@@ -2158,6 +2229,70 @@
         }
       });
 
+      await runTest("ベッド設定の正規化結果を設定変更まで再利用する", () => {
+        const previousSettings = comparable(app.eval("settings"));
+        const previousNormalizeYield = app.normalizeYield;
+        let normalizeCount = 0;
+        try{
+          app.normalizeYield = (...args) => {
+            normalizeCount++;
+            return previousNormalizeYield(...args);
+          };
+          app.eval(`
+            settings = {
+              ...settings,
+              useBedYieldSettings: true,
+              useBedPlantSettings: true,
+              useBedLossSettings: true,
+              beds: {
+                ...settings.beds,
+                A: {
+                  ...settings.beds.A,
+                  yield: 20,
+                  yieldUseFrontBack: true,
+                  yieldFrontCount: 39,
+                  yieldFront: 12,
+                  yieldBack: 20,
+                  plant: 20,
+                  plantUseFrontBack: true,
+                  plantFrontCount: 39,
+                  plantFront: 16,
+                  plantBack: 12,
+                  lossRate: 5
+                }
+              }
+            };
+            invalidateNormalizedBedCalculationSettings();
+          `);
+
+          assertEqual(app.getConfiguredHarvestPlantCountForPallet("A", 1), 12, "手前の収穫個数が違います");
+          assertEqual(app.getConfiguredHarvestPlantCountForPallet("A", 78), 20, "奥の収穫個数が違います");
+          assertEqual(app.getPlantingCountForPallet("A", 1), 16, "手前の苗個数が違います");
+          assertEqual(app.getPlantingCountForPallet("A", 78), 12, "奥の苗個数が違います");
+          assertEqual(app.getAppliedLossRateForBed("A"), 5, "ベッド別ロス率が違います");
+          const firstNormalizeCount = normalizeCount;
+          for(let number = 1; number <= app.eval("PALLETS_PER_BED"); number++){
+            app.getConfiguredHarvestPlantCountForPallet("A", number);
+            app.getPlantingCountForPallet("A", number);
+            app.getAppliedLossRateForBed("A");
+          }
+          assertEqual(
+            normalizeCount,
+            firstNormalizeCount,
+            "パレットごとに同じベッド設定を正規化し直しています"
+          );
+
+          const firstFallback = app.getPlantingEventFallbackPlantingCountsByBed();
+          const secondFallback = app.getPlantingEventFallbackPlantingCountsByBed();
+          assertEqual(firstFallback, secondFallback, "苗個数のベッド別配列を作り直しています");
+          assertEqual(firstFallback.A[0], 16, "苗個数の手前側キャッシュが違います");
+          assertEqual(firstFallback.A[77], 12, "苗個数の奥側キャッシュが違います");
+        }finally{
+          app.normalizeYield = previousNormalizeYield;
+          app.eval(`settings = ${JSON.stringify(previousSettings)}; invalidateNormalizedBedCalculationSettings();`);
+        }
+      });
+
       await runTest("苗植え実績を次回収穫の理想株数として設定より優先する", () => {
         const originalSettings = comparable(app.eval("settings"));
         try{
@@ -2999,6 +3134,19 @@
         assertEqual(app.normalizeMainTabName("unknown"), "", "不明なタブを受け入れています");
       });
 
+      await runTest("集計は起動時に先読みせず選択後に読み込む", () => {
+        assertEqual(
+          typeof app.scheduleDashboardPreloadDuringIdle,
+          "undefined",
+          "起動時の集計先読み処理が残っています"
+        );
+        assertEqual(
+          typeof app.eval("MAIN_TAB_DEFINITIONS.dashboard.afterSelection"),
+          "function",
+          "集計を選択した後の読み込み処理がありません"
+        );
+      });
+
       await runTest("作業者モードでは日々の作業だけを表示し記録領域を分離する", () => {
         const previous = comparable(app.eval(`({
           role: appAccessRole,
@@ -3024,7 +3172,7 @@
               recordSaveAllowed: ensureProtectedOperationAccess("記録の保存", { workerAllowed:true }),
               adminActionBlocked: !ensureProtectedOperationAccess("記録の編集"),
               staleAdminUnlockIgnored: protectedAccessUnlocked === false,
-              dashboardPreloadSkipped: scheduleDashboardPreloadDuringIdle() === false,
+              dashboardPreloadRemoved: typeof scheduleDashboardPreloadDuringIdle === "undefined",
               recordsStorageSeparated: getActiveRecordsStorageKey() === WORKER_RECORDS_KEY
                 && getActiveRecordsStorageKey() !== RECORDS_KEY,
               plantingStorageSeparated: getActivePlantingEventsStorageKey() === WORKER_PLANTING_EVENTS_KEY
@@ -3042,7 +3190,7 @@
             recordSaveAllowed: true,
             adminActionBlocked: true,
             staleAdminUnlockIgnored: true,
-            dashboardPreloadSkipped: true,
+            dashboardPreloadRemoved: true,
             recordsStorageSeparated: true,
             plantingStorageSeparated: true
           }, "作業者モードの表示・権限・保存領域が正しくありません");
@@ -9274,10 +9422,10 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "ff60f206", elements: 2258, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "a7b2db0d", elements: 2327, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "bf13f030", elements: 2327, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "89cadfb4", elements: 2259, visible: 112, viewport: "390x844" },
+          mobileForecast: { hash: "012a10b0", elements: 2241, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "8ffc875b", elements: 2310, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "f9de2fc6", elements: 2310, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "192fdb04", elements: 2242, visible: 112, viewport: "390x844" },
           mobileDashboard: { hash: "d0f45d2f", elements: 2259, visible: 104, viewport: "390x844" },
           mobileDashboardRecord: { hash: "e5189a28", elements: 2342, visible: 168, viewport: "390x844" },
           mobileDashboardResultsGraph: { hash: "508be225", elements: 2357, visible: 89, viewport: "390x844" },

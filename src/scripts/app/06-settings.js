@@ -57,6 +57,96 @@ function readSettingsForm(){
   return next;
 }
 
+function invalidateNormalizedBedCalculationSettings(){
+  normalizedBedCalculationSettingsCache = null;
+  normalizedBedCalculationSettingsCacheSource = null;
+  plantingEventFallbackCountsCache = null;
+  plantingEventFallbackCountsCacheSource = null;
+}
+
+function getNormalizedBedCalculationSettings(){
+  if(
+    normalizedBedCalculationSettingsCache
+    && normalizedBedCalculationSettingsCacheSource === settings
+  ){
+    return normalizedBedCalculationSettingsCache;
+  }
+
+  const defaultHarvestPlantCount = normalizeYield(
+    settings?.defaultYieldPerPallet,
+    defaultSettings.defaultYieldPerPallet
+  );
+  const defaultPlantingCount = normalizeYield(
+    settings?.defaultPlantingCount,
+    defaultSettings.defaultPlantingCount
+  );
+  const defaultLossRate = clampNumber(settings?.defaultLossRate, 0, 100, 0);
+  const useBedYieldSettings = !!settings?.useBedYieldSettings;
+  const useBedPlantSettings = !!settings?.useBedPlantSettings;
+  const useBedLossSettings = !!settings?.useBedLossSettings;
+  const beds = {};
+
+  bedOrder.forEach(bed => {
+    const bedSettings = settings?.beds?.[bed] || {};
+    const harvestBase = useBedYieldSettings
+      ? normalizeYield(bedSettings.yield, defaultHarvestPlantCount)
+      : defaultHarvestPlantCount;
+    const harvestUseFrontBack = useBedYieldSettings && !!bedSettings.yieldUseFrontBack;
+    const harvestFrontCount = harvestUseFrontBack
+      ? clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39)
+      : PALLETS_PER_BED;
+    const plantingBase = useBedPlantSettings
+      ? normalizeYield(bedSettings.plant, defaultPlantingCount)
+      : defaultPlantingCount;
+    const plantingUseFrontBack = useBedPlantSettings && !!bedSettings.plantUseFrontBack;
+    const plantingFrontCount = plantingUseFrontBack
+      ? clampNumber(bedSettings.plantFrontCount, 0, PALLETS_PER_BED, 39)
+      : PALLETS_PER_BED;
+    const rawLossRate = bedSettings.lossRate;
+    const lossRate = useBedLossSettings
+      && rawLossRate !== ""
+      && rawLossRate !== null
+      && typeof rawLossRate !== "undefined"
+      ? clampNumber(rawLossRate, 0, 100, defaultLossRate)
+      : defaultLossRate;
+
+    beds[bed] = {
+      harvest: {
+        base: harvestBase,
+        useFrontBack: harvestUseFrontBack,
+        frontCount: harvestFrontCount,
+        front: harvestUseFrontBack
+          ? normalizeYield(bedSettings.yieldFront, harvestBase)
+          : harvestBase,
+        back: harvestUseFrontBack
+          ? normalizeYield(bedSettings.yieldBack, harvestBase)
+          : harvestBase
+      },
+      planting: {
+        base: plantingBase,
+        useFrontBack: plantingUseFrontBack,
+        frontCount: plantingFrontCount,
+        front: plantingUseFrontBack
+          ? normalizeYield(bedSettings.plantFront, plantingBase)
+          : plantingBase,
+        back: plantingUseFrontBack
+          ? normalizeYield(bedSettings.plantBack, plantingBase)
+          : plantingBase
+      },
+      lossRate
+    };
+  });
+
+  normalizedBedCalculationSettingsCacheSource = settings;
+  normalizedBedCalculationSettingsCache = {
+    defaultHarvestPlantCount,
+    defaultPlantingCount,
+    defaultLossRate,
+    beds
+  };
+  return normalizedBedCalculationSettingsCache;
+}
+
 function clampNumber(value, min, max, fallback){
   const n = Number(value);
   if(!Number.isFinite(n)) return fallback;

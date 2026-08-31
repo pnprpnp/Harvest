@@ -13,7 +13,6 @@ function finalizeHarvestnaviStartup(){
       : "アプリを最新版に更新しました");
   }
   hideWelcomeScreen();
-  scheduleDashboardPreloadDuringIdle();
 }
 
 function showHarvestnaviStartupFailure(error){

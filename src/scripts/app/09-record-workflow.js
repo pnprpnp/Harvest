@@ -28,22 +28,10 @@ function switchToRecordSaveCard(options = {}){
 
 
 function getPlantingCountForPallet(bed, number){
-  const bedSettings = settings?.beds?.[bed] || {};
-  if(!settings?.useBedPlantSettings){
-    return normalizeYield(settings?.defaultPlantingCount, defaultSettings.defaultPlantingCount);
-  }
-  const raw = bedSettings.plant;
-  const basePlant = normalizeYield(raw, settings.defaultPlantingCount);
-
-  if(!bedSettings.plantUseFrontBack){
-    return basePlant;
-  }
-
-  const frontCount = clampNumber(bedSettings.plantFrontCount, 0, PALLETS_PER_BED, 39);
-  const frontPlant = normalizeYield(bedSettings.plantFront, basePlant);
-  const backPlant = normalizeYield(bedSettings.plantBack, basePlant);
-
-  return Number(number) <= frontCount ? frontPlant : backPlant;
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  const profile = normalizedSettings.beds[bed]?.planting;
+  if(!profile) return normalizedSettings.defaultPlantingCount;
+  return Number(number) <= profile.frontCount ? profile.front : profile.back;
 }
 
 function normalizePlantingCountPreset(value, fallback = 20){

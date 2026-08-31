@@ -5973,6 +5973,21 @@ function listRecords(options) {
   return listHarvestRecordsForSync(normalizedOptions).records;
 }
 
+function getListableHarvestRecord(headers, row) {
+  if (!isCommittedHarvestRecordRow(headers, row)) return null;
+  const record = rowToRecord(headers, row);
+  const hasId = String(record.id == null ? "" : record.id).trim() !== "";
+  const hasDateAndCases = String(record.date || "").trim() !== "" &&
+    String(record.cases == null ? "" : record.cases).trim() !== "";
+  return hasId || hasDateAndCases ? record : null;
+}
+
+function getListableHarvestRecords(headers, rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map(row => getListableHarvestRecord(headers, row))
+    .filter(Boolean);
+}
+
 function listHarvestRecordsForSync(normalizedOptions) {
   return withRecordReadLock(() => {
     const sheet = getExistingRecordSheet();
@@ -5990,15 +6005,7 @@ function listHarvestRecordsForSync(normalizedOptions) {
         rows = getRecordRowsForList(sheet, headers, normalizedOptions);
       }
     }
-    const records = rows
-      .filter(row => isCommittedHarvestRecordRow(headers, row))
-      .map(row => rowToRecord(headers, row))
-      .filter(record => {
-        const hasId = String(record.id == null ? "" : record.id).trim() !== "";
-        const hasDateAndCases = String(record.date || "").trim() !== "" &&
-          String(record.cases == null ? "" : record.cases).trim() !== "";
-        return hasId || hasDateAndCases;
-      });
+    const records = getListableHarvestRecords(headers, rows);
     return {
       records,
       deletedRecords: listDeletedHarvestRecordTombstonesUnlocked(),
@@ -6096,6 +6103,70 @@ function compactWorkerHarvestRecordForApi(record) {
   return compact;
 }
 
+function getWorkerSnapshotHarvestRecordGroups(recentDays) {
+  return withRecordReadLock(() => {
+    const sheet = getExistingRecordSheet();
+    const headers = getRecordHeadersForRead(sheet);
+    if (!sheet || !headers.length || sheet.getLastRow() < 2) {
+      return { recentRecords: [], latestCandidates: [] };
+    }
+
+    const lastRow = sheet.getLastRow();
+    const rowCount = lastRow - 1;
+    const dateColumn = getHeaderColumn(headers, "date");
+    let recentRowNumbers = [];
+    let latestRowNumbers = [];
+
+    if (dateColumn > 0) {
+      const today = startOfScriptDay(new Date());
+      const startDate = addScriptDays(today, -Math.max(0, Math.floor(recentDays) - 1));
+      const endDate = addScriptDays(today, 1);
+      const rowItems = sheet.getRange(2, dateColumn, rowCount, 1).getValues()
+        .map((row, index) => {
+          const date = parseRecordDateValue(row[0]);
+          if (!date) return null;
+          return {
+            rowNumber: index + 2,
+            time: startOfScriptDay(date).getTime()
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+          if (a.time !== b.time) return b.time - a.time;
+          return b.rowNumber - a.rowNumber;
+        });
+      latestRowNumbers = rowItems
+        .slice(0, RECORD_LIST_LIMIT)
+        .map(item => item.rowNumber);
+      recentRowNumbers = rowItems
+        .filter(item => item.time >= startDate.getTime() && item.time < endDate.getTime())
+        .slice(0, RECORD_LIST_LIMIT)
+        .map(item => item.rowNumber);
+    } else {
+      latestRowNumbers = Array.from(
+        { length: Math.min(RECORD_LIST_LIMIT, rowCount) },
+        (_, index) => lastRow - index
+      );
+      recentRowNumbers = latestRowNumbers.slice();
+    }
+
+    const selectedRowNumbers = Array.from(
+      new Set(recentRowNumbers.concat(latestRowNumbers))
+    ).sort((a, b) => a - b);
+    const selectedRows = getRowsByRowNumbers(sheet, selectedRowNumbers, headers.length);
+    const recordsByRowNumber = {};
+    selectedRowNumbers.forEach((rowNumber, index) => {
+      const record = getListableHarvestRecord(headers, selectedRows[index]);
+      if (record) recordsByRowNumber[rowNumber] = record;
+    });
+
+    return {
+      recentRecords: recentRowNumbers.map(rowNumber => recordsByRowNumber[rowNumber]).filter(Boolean),
+      latestCandidates: latestRowNumbers.map(rowNumber => recordsByRowNumber[rowNumber]).filter(Boolean)
+    };
+  });
+}
+
 function buildWorkerCalculationSnapshot(body) {
   if (Number(body && body.lookbackDays) !== WORKER_CALCULATION_LOOKBACK_DAYS ||
     Number(body && body.recentFullRecordCount) !== WORKER_RECENT_FULL_RECORD_COUNT) {
@@ -6104,15 +6175,9 @@ function buildWorkerCalculationSnapshot(body) {
 
   // 計算側は「35日前」を含めるため、当日を含む日数指定では1日加算する。
   const recentDays = WORKER_CALCULATION_LOOKBACK_DAYS + 1;
-  const recentRecords = listHarvestRecordsForSync(normalizeRecordListOptions({
-    recentDays,
-    limit: RECORD_LIST_LIMIT,
-    syncMode: false
-  })).records || [];
-  const latestCandidates = listHarvestRecordsForSync(normalizeRecordListOptions({
-    limit: RECORD_LIST_LIMIT,
-    syncMode: false
-  })).records || [];
+  const recordGroups = getWorkerSnapshotHarvestRecordGroups(recentDays);
+  const recentRecords = recordGroups.recentRecords;
+  const latestCandidates = recordGroups.latestCandidates;
   const latestFullRecords = latestCandidates.filter(record => (
     record && record.type === "fullHarvest" &&
     getHarvestRecordPalletKeysForPlantingSource(record).length > 0

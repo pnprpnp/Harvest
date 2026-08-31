@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260831-reduce-repeat-work">
+<meta name="harvestnavi-version" content="20260831-reduce-remaining-work">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -14592,6 +14592,10 @@ const defaultSettings = {
 };
 
 let settings = loadSettings();
+let normalizedBedCalculationSettingsCache = null;
+let normalizedBedCalculationSettingsCacheSource = null;
+let plantingEventFallbackCountsCache = null;
+let plantingEventFallbackCountsCacheSource = null;
 let currentBuilding = 2;
 let casePlacementBuilding = 2;
 let harvestFillKeys = [];
@@ -17217,34 +17221,6 @@ function scheduleDashboardRenderAfterTabSelection(){
   });
 }
 
-function preloadDashboardDuringWelcome(){
-  try{
-    renderDashboard();
-    return true;
-  }catch(error){
-    dashboardRenderedDayKey = "";
-    console.warn("ウェルカム画面中に集計を準備できませんでした", error);
-    return false;
-  }
-}
-
-function scheduleDashboardPreloadDuringIdle(){
-  if(isWorkerMode()) return false;
-  if(typeof window.requestIdleCallback !== "function") return false;
-  window.requestIdleCallback(() => {
-    const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
-    if(
-      activeAppTab === "dashboard"
-      || (
-        dashboardRenderedDayKey === formatDateOnlyString(new Date())
-        && dashboardRenderedSubtabs.has(activeSubtab)
-      )
-    ) return;
-    preloadDashboardDuringWelcome();
-  });
-  return true;
-}
-
 function renderDashboardIfVisible(){
   const dashboardTab = document.getElementById("dashboardTab");
   if(dashboardTab && dashboardTab.style.display === "block"){
@@ -18013,6 +17989,7 @@ function loadSettings(){
 
 function saveSettingsToStorage(){
   harvestnaviLocalStorage.writeJson(SETTINGS_KEY, settings);
+  invalidateNormalizedBedCalculationSettings();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
 }
@@ -21512,14 +21489,28 @@ function buildGoogleSheetPlantingEventPayload(event, config, operation = "save")
 }
 
 function getPlantingEventFallbackPlantingCountsByBed(){
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  if(
+    plantingEventFallbackCountsCache
+    && plantingEventFallbackCountsCacheSource === normalizedSettings
+  ){
+    return plantingEventFallbackCountsCache;
+  }
+
   const countsByBed = {};
   bedOrder.forEach(bed => {
-    countsByBed[bed] = Array.from(
+    const profile = normalizedSettings.beds[bed]?.planting;
+    const frontCount = profile?.frontCount ?? PALLETS_PER_BED;
+    const front = profile?.front ?? normalizedSettings.defaultPlantingCount;
+    const back = profile?.back ?? normalizedSettings.defaultPlantingCount;
+    countsByBed[bed] = Object.freeze(Array.from(
       { length: PALLETS_PER_BED },
-      (_, index) => getPlantingCountForPallet(bed, index + 1)
-    );
+      (_, index) => index < frontCount ? front : back
+    ));
   });
-  return countsByBed;
+  plantingEventFallbackCountsCacheSource = normalizedSettings;
+  plantingEventFallbackCountsCache = Object.freeze(countsByBed);
+  return plantingEventFallbackCountsCache;
 }
 
 function buildGoogleSheetPlantingEventListPayload(config, options = {}){
@@ -25139,6 +25130,96 @@ function readSettingsForm(){
   });
 
   return next;
+}
+
+function invalidateNormalizedBedCalculationSettings(){
+  normalizedBedCalculationSettingsCache = null;
+  normalizedBedCalculationSettingsCacheSource = null;
+  plantingEventFallbackCountsCache = null;
+  plantingEventFallbackCountsCacheSource = null;
+}
+
+function getNormalizedBedCalculationSettings(){
+  if(
+    normalizedBedCalculationSettingsCache
+    && normalizedBedCalculationSettingsCacheSource === settings
+  ){
+    return normalizedBedCalculationSettingsCache;
+  }
+
+  const defaultHarvestPlantCount = normalizeYield(
+    settings?.defaultYieldPerPallet,
+    defaultSettings.defaultYieldPerPallet
+  );
+  const defaultPlantingCount = normalizeYield(
+    settings?.defaultPlantingCount,
+    defaultSettings.defaultPlantingCount
+  );
+  const defaultLossRate = clampNumber(settings?.defaultLossRate, 0, 100, 0);
+  const useBedYieldSettings = !!settings?.useBedYieldSettings;
+  const useBedPlantSettings = !!settings?.useBedPlantSettings;
+  const useBedLossSettings = !!settings?.useBedLossSettings;
+  const beds = {};
+
+  bedOrder.forEach(bed => {
+    const bedSettings = settings?.beds?.[bed] || {};
+    const harvestBase = useBedYieldSettings
+      ? normalizeYield(bedSettings.yield, defaultHarvestPlantCount)
+      : defaultHarvestPlantCount;
+    const harvestUseFrontBack = useBedYieldSettings && !!bedSettings.yieldUseFrontBack;
+    const harvestFrontCount = harvestUseFrontBack
+      ? clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39)
+      : PALLETS_PER_BED;
+    const plantingBase = useBedPlantSettings
+      ? normalizeYield(bedSettings.plant, defaultPlantingCount)
+      : defaultPlantingCount;
+    const plantingUseFrontBack = useBedPlantSettings && !!bedSettings.plantUseFrontBack;
+    const plantingFrontCount = plantingUseFrontBack
+      ? clampNumber(bedSettings.plantFrontCount, 0, PALLETS_PER_BED, 39)
+      : PALLETS_PER_BED;
+    const rawLossRate = bedSettings.lossRate;
+    const lossRate = useBedLossSettings
+      && rawLossRate !== ""
+      && rawLossRate !== null
+      && typeof rawLossRate !== "undefined"
+      ? clampNumber(rawLossRate, 0, 100, defaultLossRate)
+      : defaultLossRate;
+
+    beds[bed] = {
+      harvest: {
+        base: harvestBase,
+        useFrontBack: harvestUseFrontBack,
+        frontCount: harvestFrontCount,
+        front: harvestUseFrontBack
+          ? normalizeYield(bedSettings.yieldFront, harvestBase)
+          : harvestBase,
+        back: harvestUseFrontBack
+          ? normalizeYield(bedSettings.yieldBack, harvestBase)
+          : harvestBase
+      },
+      planting: {
+        base: plantingBase,
+        useFrontBack: plantingUseFrontBack,
+        frontCount: plantingFrontCount,
+        front: plantingUseFrontBack
+          ? normalizeYield(bedSettings.plantFront, plantingBase)
+          : plantingBase,
+        back: plantingUseFrontBack
+          ? normalizeYield(bedSettings.plantBack, plantingBase)
+          : plantingBase
+      },
+      lossRate
+    };
+  });
+
+  normalizedBedCalculationSettingsCacheSource = settings;
+  normalizedBedCalculationSettingsCache = {
+    defaultHarvestPlantCount,
+    defaultPlantingCount,
+    defaultLossRate,
+    beds
+  };
+  return normalizedBedCalculationSettingsCache;
 }
 
 function clampNumber(value, min, max, fallback){
@@ -30327,22 +30408,10 @@ function clearHarvestPrediction(){
 }
 
 function getConfiguredHarvestPlantCountForPallet(bed, number){
-  const bedSettings = settings?.beds?.[bed] || {};
-  if(!settings?.useBedYieldSettings){
-    return normalizeYield(settings?.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
-  }
-  const raw = bedSettings.yield;
-  const baseYield = normalizeYield(raw, settings.defaultYieldPerPallet);
-
-  if(!bedSettings.yieldUseFrontBack){
-    return baseYield;
-  }
-
-  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
-  const frontYield = normalizeYield(bedSettings.yieldFront, baseYield);
-  const backYield = normalizeYield(bedSettings.yieldBack, baseYield);
-
-  return Number(number) <= frontCount ? frontYield : backYield;
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  const profile = normalizedSettings.beds[bed]?.harvest;
+  if(!profile) return normalizedSettings.defaultHarvestPlantCount;
+  return Number(number) <= profile.frontCount ? profile.front : profile.back;
 }
 
 function getHarvestPlantCountForPallet(building, bed, number, targetDate = null){
@@ -30358,12 +30427,10 @@ function getHarvestPlantCountForPallet(building, bed, number, targetDate = null)
 }
 
 function getYieldSplitVisualInfo(bed){
-  const bedSettings = settings?.beds?.[bed] || {};
-  const useBedYield = !!settings?.useBedYieldSettings;
-  const useSplit = !!bedSettings.yieldUseFrontBack;
-  if(!useBedYield || !useSplit) return null;
+  const profile = getNormalizedBedCalculationSettings().beds[bed]?.harvest;
+  if(!profile?.useFrontBack) return null;
 
-  const frontCount = clampNumber(bedSettings.yieldFrontCount, 0, PALLETS_PER_BED, 39);
+  const frontCount = profile.frontCount;
   const backCount = Math.max(0, PALLETS_PER_BED - frontCount);
 
   return {
@@ -30388,14 +30455,8 @@ function appendYieldSplitInfo(bedElement, splitInfo){
 }
 
 function getAppliedLossRateForBed(bed){
-  if(!settings?.useBedLossSettings){
-    return clampNumber(settings.defaultLossRate, 0, 100, 0);
-  }
-  const bedLoss = settings?.beds?.[bed]?.lossRate;
-  if(bedLoss === "" || bedLoss === null || typeof bedLoss === "undefined"){
-    return clampNumber(settings.defaultLossRate, 0, 100, 0);
-  }
-  return clampNumber(bedLoss, 0, 100, clampNumber(settings.defaultLossRate, 0, 100, 0));
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  return normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
 }
 
 function getPredictedHarvestForBed(building, bed, number, targetDate = null){
@@ -31207,22 +31268,10 @@ function switchToRecordSaveCard(options = {}){
 
 
 function getPlantingCountForPallet(bed, number){
-  const bedSettings = settings?.beds?.[bed] || {};
-  if(!settings?.useBedPlantSettings){
-    return normalizeYield(settings?.defaultPlantingCount, defaultSettings.defaultPlantingCount);
-  }
-  const raw = bedSettings.plant;
-  const basePlant = normalizeYield(raw, settings.defaultPlantingCount);
-
-  if(!bedSettings.plantUseFrontBack){
-    return basePlant;
-  }
-
-  const frontCount = clampNumber(bedSettings.plantFrontCount, 0, PALLETS_PER_BED, 39);
-  const frontPlant = normalizeYield(bedSettings.plantFront, basePlant);
-  const backPlant = normalizeYield(bedSettings.plantBack, basePlant);
-
-  return Number(number) <= frontCount ? frontPlant : backPlant;
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  const profile = normalizedSettings.beds[bed]?.planting;
+  if(!profile) return normalizedSettings.defaultPlantingCount;
+  return Number(number) <= profile.frontCount ? profile.front : profile.back;
 }
 
 function normalizePlantingCountPreset(value, fallback = 20){
@@ -41527,7 +41576,6 @@ function finalizeHarvestnaviStartup(){
       : "アプリを最新版に更新しました");
   }
   hideWelcomeScreen();
-  scheduleDashboardPreloadDuringIdle();
 }
 
 function showHarvestnaviStartupFailure(error){
