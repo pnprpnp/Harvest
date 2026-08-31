@@ -502,15 +502,37 @@ function updateMonitorTodayDisplays(){
   });
 }
 
+function getMonitorTodayRefreshDelay(now = new Date()){
+  const nextDay = new Date(now.getTime());
+  nextDay.setHours(24, 0, 0, 0);
+  return Math.max(1000, nextDay.getTime() - now.getTime() + 1000);
+}
+
+function handleMonitorTodayVisibilityChange(){
+  if(document.visibilityState !== "visible" || !isMonitorModeOpen) return;
+  startMonitorTodayRefreshTimer();
+}
+
+function installMonitorTodayVisibilityRefresh(){
+  if(monitorTodayVisibilityRefreshInstalled) return;
+  monitorTodayVisibilityRefreshInstalled = true;
+  document.addEventListener("visibilitychange", handleMonitorTodayVisibilityChange);
+}
+
 function startMonitorTodayRefreshTimer(){
   stopMonitorTodayRefreshTimer();
+  installMonitorTodayVisibilityRefresh();
   updateMonitorTodayDisplays();
-  monitorTodayRefreshTimer = setInterval(updateMonitorTodayDisplays, 60000);
+  monitorTodayRefreshTimer = setTimeout(() => {
+    monitorTodayRefreshTimer = null;
+    if(!isMonitorModeOpen) return;
+    startMonitorTodayRefreshTimer();
+  }, getMonitorTodayRefreshDelay());
 }
 
 function stopMonitorTodayRefreshTimer(){
   if(!monitorTodayRefreshTimer) return;
-  clearInterval(monitorTodayRefreshTimer);
+  clearTimeout(monitorTodayRefreshTimer);
   monitorTodayRefreshTimer = null;
 }
 

@@ -1617,6 +1617,22 @@ function markAppUpdateCheckStarted(at = Date.now()){
   }catch(e){}
 }
 
+function getLastRecordAvailabilityCheckAt(){
+  let storedAt = 0;
+  try{
+    const value = Number(harvestnaviLocalStorage.getItem(RECORD_AVAILABILITY_CHECK_AT_KEY));
+    storedAt = Number.isFinite(value) && value > 0 ? value : 0;
+  }catch(e){}
+  return Math.max(recordAvailabilityCheckLastStartedAt, storedAt);
+}
+
+function markRecordAvailabilityCheckStarted(at = Date.now()){
+  recordAvailabilityCheckLastStartedAt = at;
+  try{
+    harvestnaviLocalStorage.setItem(RECORD_AVAILABILITY_CHECK_AT_KEY, String(at));
+  }catch(e){}
+}
+
 function runAvailabilityChecksIfDue(){
   if(document.visibilityState === "hidden") return Promise.resolve();
   if(typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
@@ -1624,8 +1640,8 @@ function runAvailabilityChecksIfDue(){
   if(availabilityCheckPromise) return availabilityCheckPromise;
 
   const checks = [];
-  if(now - recordAvailabilityCheckLastStartedAt >= RECORD_AVAILABILITY_CHECK_INTERVAL_MS){
-    recordAvailabilityCheckLastStartedAt = now;
+  if(now - getLastRecordAvailabilityCheckAt() >= RECORD_AVAILABILITY_CHECK_INTERVAL_MS){
+    markRecordAvailabilityCheckStarted(now);
     checks.push(checkGoogleSheetUpdateAvailabilitySilently());
   }
   if(now - getLastAutomaticAppUpdateCheckAt() >= APP_UPDATE_AUTO_CHECK_INTERVAL_MS){

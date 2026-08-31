@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260831-group-daily-partial-harvest">
+<meta name="harvestnavi-version" content="20260831-reduce-repeat-work">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -14422,6 +14422,7 @@ const WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestnaviWorkerGoogleSheetSyncSta
 const WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestnaviWorkerGoogleSheetSyncRevision_v1";
 const WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestnaviWorkerGoogleSheetSyncConflicts_v1";
 const WORKER_RECORD_TRASH_KEY = "harvestnaviWorkerRecordTrash_v1";
+const RECORD_AVAILABILITY_CHECK_AT_KEY = "harvestnaviRecordAvailabilityCheckAt_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
@@ -14763,6 +14764,7 @@ let monitorPreviewContent = null;
 let monitorPreviewSelectedLayout = "preview1";
 let monitorPreviewLayoutPreference = "preview1";
 let monitorTodayRefreshTimer = null;
+let monitorTodayVisibilityRefreshInstalled = false;
 let workflowMonitorCheckpointSignature = "";
 let workflowHarvestRecordingActive = false;
 let workflowPlantingSessionActive = false;
@@ -15474,6 +15476,20 @@ function cancelPendingHarvestStateSave(){
   pendingHarvestStateSaveOptions = null;
 }
 
+function getHarvestStatePayloadWithoutSavedAt(payload){
+  if(!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const { savedAt, ...statePayload } = payload;
+  return statePayload;
+}
+
+function hasSameHarvestStateStored(payload){
+  const savedPayload = harvestnaviLocalStorage.readJson(HARVEST_STATE_KEY, null);
+  const currentState = getHarvestStatePayloadWithoutSavedAt(payload);
+  const savedState = getHarvestStatePayloadWithoutSavedAt(savedPayload);
+  if(!currentState || !savedState) return false;
+  return JSON.stringify(savedState) === JSON.stringify(currentState);
+}
+
 function saveHarvestStateToStorage(options = {}){
   cancelPendingHarvestStateSave();
   syncCurrentCasePlacementFromInputs();
@@ -15531,8 +15547,13 @@ function saveHarvestStateToStorage(options = {}){
     workflowPlantingSessionActive,
     savedAt: new Date().toISOString()
   };
+  if(options.skipUnchanged && hasSameHarvestStateStored(payload)){
+    scheduleWorkflowGuideUpdate();
+    return false;
+  }
   harvestnaviLocalStorage.writeJson(HARVEST_STATE_KEY, payload);
   scheduleWorkflowGuideUpdate();
+  return true;
 }
 
 function scheduleHarvestStateSave(options = {}){
@@ -19912,14 +19933,21 @@ function findHarvestRecordByIdentity(identity, sourceRecords = records){
 }
 
 function saveGoogleSheetConfigToStorage(config){
-  const previousUrl = String(loadGoogleSheetConfig().url || "").trim();
+  const previousConfig = loadGoogleSheetConfig();
+  const previousUrl = String(previousConfig.url || "").trim();
+  const previousToken = String(previousConfig.token || "").trim();
   const nextUrl = String(config?.url || "").trim();
+  const nextToken = String(config?.token || "").trim();
   if(previousUrl && previousUrl !== nextUrl){
     harvestnaviLocalStorage.removeItem(getActiveGoogleSheetSyncRevisionStorageKey());
   }
+  if(previousUrl !== nextUrl || previousToken !== nextToken){
+    harvestnaviLocalStorage.removeItem(RECORD_AVAILABILITY_CHECK_AT_KEY);
+    recordAvailabilityCheckLastStartedAt = 0;
+  }
   harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_CONFIG_KEY, {
     url: nextUrl,
-    token: String(config?.token || "").trim()
+    token: nextToken
   });
   googleSheetDayBatchSupportState = "unknown";
 }
@@ -24368,6 +24396,22 @@ function markAppUpdateCheckStarted(at = Date.now()){
   }catch(e){}
 }
 
+function getLastRecordAvailabilityCheckAt(){
+  let storedAt = 0;
+  try{
+    const value = Number(harvestnaviLocalStorage.getItem(RECORD_AVAILABILITY_CHECK_AT_KEY));
+    storedAt = Number.isFinite(value) && value > 0 ? value : 0;
+  }catch(e){}
+  return Math.max(recordAvailabilityCheckLastStartedAt, storedAt);
+}
+
+function markRecordAvailabilityCheckStarted(at = Date.now()){
+  recordAvailabilityCheckLastStartedAt = at;
+  try{
+    harvestnaviLocalStorage.setItem(RECORD_AVAILABILITY_CHECK_AT_KEY, String(at));
+  }catch(e){}
+}
+
 function runAvailabilityChecksIfDue(){
   if(document.visibilityState === "hidden") return Promise.resolve();
   if(typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
@@ -24375,8 +24419,8 @@ function runAvailabilityChecksIfDue(){
   if(availabilityCheckPromise) return availabilityCheckPromise;
 
   const checks = [];
-  if(now - recordAvailabilityCheckLastStartedAt >= RECORD_AVAILABILITY_CHECK_INTERVAL_MS){
-    recordAvailabilityCheckLastStartedAt = now;
+  if(now - getLastRecordAvailabilityCheckAt() >= RECORD_AVAILABILITY_CHECK_INTERVAL_MS){
+    markRecordAvailabilityCheckStarted(now);
     checks.push(checkGoogleSheetUpdateAvailabilitySilently());
   }
   if(now - getLastAutomaticAppUpdateCheckAt() >= APP_UPDATE_AUTO_CHECK_INTERVAL_MS){
@@ -33992,15 +34036,37 @@ function updateMonitorTodayDisplays(){
   });
 }
 
+function getMonitorTodayRefreshDelay(now = new Date()){
+  const nextDay = new Date(now.getTime());
+  nextDay.setHours(24, 0, 0, 0);
+  return Math.max(1000, nextDay.getTime() - now.getTime() + 1000);
+}
+
+function handleMonitorTodayVisibilityChange(){
+  if(document.visibilityState !== "visible" || !isMonitorModeOpen) return;
+  startMonitorTodayRefreshTimer();
+}
+
+function installMonitorTodayVisibilityRefresh(){
+  if(monitorTodayVisibilityRefreshInstalled) return;
+  monitorTodayVisibilityRefreshInstalled = true;
+  document.addEventListener("visibilitychange", handleMonitorTodayVisibilityChange);
+}
+
 function startMonitorTodayRefreshTimer(){
   stopMonitorTodayRefreshTimer();
+  installMonitorTodayVisibilityRefresh();
   updateMonitorTodayDisplays();
-  monitorTodayRefreshTimer = setInterval(updateMonitorTodayDisplays, 60000);
+  monitorTodayRefreshTimer = setTimeout(() => {
+    monitorTodayRefreshTimer = null;
+    if(!isMonitorModeOpen) return;
+    startMonitorTodayRefreshTimer();
+  }, getMonitorTodayRefreshDelay());
 }
 
 function stopMonitorTodayRefreshTimer(){
   if(!monitorTodayRefreshTimer) return;
-  clearInterval(monitorTodayRefreshTimer);
+  clearTimeout(monitorTodayRefreshTimer);
   monitorTodayRefreshTimer = null;
 }
 
@@ -41447,7 +41513,7 @@ function installStartupGlobalEvents(){
   document.getElementById("recordDetailModal")?.addEventListener("keydown", handleRecordDetailFocusTrap);
 }
 function finalizeHarvestnaviStartup(){
-  saveHarvestStateToStorage();
+  saveHarvestStateToStorage({ skipUnchanged: true });
   refreshProtectedAccessState();
   updateAccessProtectionStatus();
   refreshEmptyInputHighlights();

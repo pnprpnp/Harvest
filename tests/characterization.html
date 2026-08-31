@@ -7228,6 +7228,127 @@
         }
       });
 
+      await runTest("記録の更新確認を再読み込み後も30分間省く", async () => {
+        const previousStorage = snapshotStorage(app.localStorage);
+        const previousRecordCheck = app.checkGoogleSheetUpdateAvailabilitySilently;
+        const previousAppCheck = app.checkAppUpdateAvailabilitySilently;
+        const previousLastStartedAt = app.eval("recordAvailabilityCheckLastStartedAt");
+        let recordCheckCount = 0;
+        try{
+          app.checkGoogleSheetUpdateAvailabilitySilently = async () => {
+            recordCheckCount++;
+          };
+          app.checkAppUpdateAvailabilitySilently = async () => {};
+          const checkedAt = Date.now();
+          app.markRecordAvailabilityCheckStarted(checkedAt);
+          app.markAppUpdateCheckStarted(checkedAt);
+
+          app.eval("recordAvailabilityCheckLastStartedAt = 0; availabilityCheckPromise = null;");
+          assertEqual(
+            app.getLastRecordAvailabilityCheckAt(),
+            checkedAt,
+            "端末内に保存した確認時刻を読み戻せません"
+          );
+          await app.runAvailabilityChecksIfDue();
+          assertEqual(recordCheckCount, 0, "30分以内なのに記録の更新確認が再実行されました");
+
+          const dueAt = checkedAt - app.eval("RECORD_AVAILABILITY_CHECK_INTERVAL_MS") - 1;
+          app.localStorage.setItem(app.eval("RECORD_AVAILABILITY_CHECK_AT_KEY"), String(dueAt));
+          app.eval("recordAvailabilityCheckLastStartedAt = 0; availabilityCheckPromise = null;");
+          await app.runAvailabilityChecksIfDue();
+          assertEqual(recordCheckCount, 1, "30分を過ぎても記録の更新確認が実行されません");
+        }finally{
+          app.checkGoogleSheetUpdateAvailabilitySilently = previousRecordCheck;
+          app.checkAppUpdateAvailabilitySilently = previousAppCheck;
+          app.eval(`recordAvailabilityCheckLastStartedAt = ${JSON.stringify(previousLastStartedAt)}; availabilityCheckPromise = null;`);
+          restoreStorage(app.localStorage, previousStorage);
+        }
+      });
+
+      await runTest("モニターの日付更新を日付変更時だけ予約する", () => {
+        const previousSetTimeout = app.setTimeout;
+        const previousClearTimeout = app.clearTimeout;
+        const previousSetInterval = app.setInterval;
+        const previousMonitorModeOpen = app.eval("isMonitorModeOpen");
+        const previousTimer = app.eval("monitorTodayRefreshTimer");
+        const previousVisibilityInstalled = app.eval("monitorTodayVisibilityRefreshInstalled");
+        let scheduledDelay = null;
+        let intervalCount = 0;
+        try{
+          assertEqual(
+            app.getMonitorTodayRefreshDelay(new app.Date(2026, 7, 31, 23, 59, 30)),
+            31000,
+            "翌日0時までの待ち時間が正しくありません"
+          );
+          app.setTimeout = (callback, delay) => {
+            scheduledDelay = delay;
+            return 987654;
+          };
+          app.clearTimeout = () => {};
+          app.setInterval = () => {
+            intervalCount++;
+            return 123456;
+          };
+          app.eval("isMonitorModeOpen = true; monitorTodayRefreshTimer = null;");
+          app.startMonitorTodayRefreshTimer();
+          assert(
+            scheduledDelay >= 1000 && scheduledDelay <= 86401000,
+            "次の日付変更までのタイマーが予約されません"
+          );
+          assertEqual(intervalCount, 0, "毎分の繰り返しタイマーが残っています");
+        }finally{
+          app.setTimeout = previousSetTimeout;
+          app.clearTimeout = previousClearTimeout;
+          app.setInterval = previousSetInterval;
+          app.eval(`
+            isMonitorModeOpen = ${JSON.stringify(previousMonitorModeOpen)};
+            monitorTodayRefreshTimer = ${previousTimer === null ? "null" : JSON.stringify(previousTimer)};
+            monitorTodayVisibilityRefreshInstalled = ${JSON.stringify(previousVisibilityInstalled)};
+          `);
+          if(!previousVisibilityInstalled){
+            app.document.removeEventListener("visibilitychange", app.handleMonitorTodayVisibilityChange);
+          }
+        }
+      });
+
+      await runTest("起動時の途中状態が同じなら保存し直さない", () => {
+        const previousStorage = snapshotStorage(app.localStorage);
+        const memoInput = app.document.getElementById("recordMemoInput");
+        const previousMemo = memoInput?.value || "";
+        try{
+          assert(memoInput, "記録メモ入力欄がありません");
+          app.saveHarvestStateToStorage({ skipPlantingDraftCapture: true });
+          const storageKey = app.eval("HARVEST_STATE_KEY");
+          const firstSavedValue = app.localStorage.getItem(storageKey);
+          assertEqual(
+            app.saveHarvestStateToStorage({
+              skipPlantingDraftCapture: true,
+              skipUnchanged: true
+            }),
+            false,
+            "同じ途中状態を保存対象から除外できません"
+          );
+          assertEqual(
+            app.localStorage.getItem(storageKey),
+            firstSavedValue,
+            "同じ途中状態なのに端末内保存が書き換わりました"
+          );
+
+          memoInput.value = `${previousMemo}characterization-change`;
+          assertEqual(
+            app.saveHarvestStateToStorage({
+              skipPlantingDraftCapture: true,
+              skipUnchanged: true
+            }),
+            true,
+            "途中状態を変更しても保存されません"
+          );
+        }finally{
+          if(memoInput) memoInput.value = previousMemo;
+          restoreStorage(app.localStorage, previousStorage);
+        }
+      });
+
       await runTest("すべてのボタンを影なしの単色で表示する", () => {
         const flatButtonState = comparable(app.eval(`(() => {
           const root = document.documentElement;

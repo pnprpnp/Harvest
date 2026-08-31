@@ -1,5 +1,5 @@
 function finalizeHarvestnaviStartup(){
-  saveHarvestStateToStorage();
+  saveHarvestStateToStorage({ skipUnchanged: true });
   refreshProtectedAccessState();
   updateAccessProtectionStatus();
   refreshEmptyInputHighlights();

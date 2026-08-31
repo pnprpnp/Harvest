@@ -39,6 +39,7 @@ const WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestnaviWorkerGoogleSheetSyncSta
 const WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestnaviWorkerGoogleSheetSyncRevision_v1";
 const WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestnaviWorkerGoogleSheetSyncConflicts_v1";
 const WORKER_RECORD_TRASH_KEY = "harvestnaviWorkerRecordTrash_v1";
+const RECORD_AVAILABILITY_CHECK_AT_KEY = "harvestnaviRecordAvailabilityCheckAt_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
@@ -380,6 +381,7 @@ let monitorPreviewContent = null;
 let monitorPreviewSelectedLayout = "preview1";
 let monitorPreviewLayoutPreference = "preview1";
 let monitorTodayRefreshTimer = null;
+let monitorTodayVisibilityRefreshInstalled = false;
 let workflowMonitorCheckpointSignature = "";
 let workflowHarvestRecordingActive = false;
 let workflowPlantingSessionActive = false;
@@ -1091,6 +1093,20 @@ function cancelPendingHarvestStateSave(){
   pendingHarvestStateSaveOptions = null;
 }
 
+function getHarvestStatePayloadWithoutSavedAt(payload){
+  if(!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const { savedAt, ...statePayload } = payload;
+  return statePayload;
+}
+
+function hasSameHarvestStateStored(payload){
+  const savedPayload = harvestnaviLocalStorage.readJson(HARVEST_STATE_KEY, null);
+  const currentState = getHarvestStatePayloadWithoutSavedAt(payload);
+  const savedState = getHarvestStatePayloadWithoutSavedAt(savedPayload);
+  if(!currentState || !savedState) return false;
+  return JSON.stringify(savedState) === JSON.stringify(currentState);
+}
+
 function saveHarvestStateToStorage(options = {}){
   cancelPendingHarvestStateSave();
   syncCurrentCasePlacementFromInputs();
@@ -1148,8 +1164,13 @@ function saveHarvestStateToStorage(options = {}){
     workflowPlantingSessionActive,
     savedAt: new Date().toISOString()
   };
+  if(options.skipUnchanged && hasSameHarvestStateStored(payload)){
+    scheduleWorkflowGuideUpdate();
+    return false;
+  }
   harvestnaviLocalStorage.writeJson(HARVEST_STATE_KEY, payload);
   scheduleWorkflowGuideUpdate();
+  return true;
 }
 
 function scheduleHarvestStateSave(options = {}){

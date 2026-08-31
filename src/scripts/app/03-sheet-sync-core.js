@@ -203,14 +203,21 @@ function findHarvestRecordByIdentity(identity, sourceRecords = records){
 }
 
 function saveGoogleSheetConfigToStorage(config){
-  const previousUrl = String(loadGoogleSheetConfig().url || "").trim();
+  const previousConfig = loadGoogleSheetConfig();
+  const previousUrl = String(previousConfig.url || "").trim();
+  const previousToken = String(previousConfig.token || "").trim();
   const nextUrl = String(config?.url || "").trim();
+  const nextToken = String(config?.token || "").trim();
   if(previousUrl && previousUrl !== nextUrl){
     harvestnaviLocalStorage.removeItem(getActiveGoogleSheetSyncRevisionStorageKey());
   }
+  if(previousUrl !== nextUrl || previousToken !== nextToken){
+    harvestnaviLocalStorage.removeItem(RECORD_AVAILABILITY_CHECK_AT_KEY);
+    recordAvailabilityCheckLastStartedAt = 0;
+  }
   harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_CONFIG_KEY, {
     url: nextUrl,
-    token: String(config?.token || "").trim()
+    token: nextToken
   });
   googleSheetDayBatchSupportState = "unknown";
 }
