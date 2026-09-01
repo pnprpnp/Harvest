@@ -478,8 +478,8 @@ function drawBeds(){
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const targetDate = getHarvestTargetDate();
-  const recordedSet = getHarvestedPalletSet(targetDate);
-  const replantedSet = getReplantedPalletSet(targetDate);
+  const availabilityState = getHarvestAvailabilityState(targetDate);
+  const recordedSet = availabilityState.unavailableSet;
   const selectedSet = new Set(harvestFillKeys || []);
   const overageSet = getHarvestOverageKeySet();
   const progressCompletedSet = getAppliedHarvestProgressCompletedKeySet();
@@ -509,7 +509,8 @@ function drawBeds(){
     appendBedOverviewMap(bed, currentBuilding, b, {
       selectedSet,
       recordedSet,
-      replantedSet,
+      unplantedSet:availabilityState.unplantedSet,
+      plantingLockInfoByPallet:availabilityState.replantingInfoByPallet,
       progressCompletedSet,
       overageSet,
       hasPartialHarvestRecords,
@@ -538,7 +539,8 @@ function drawBeds(){
 
 function toggleRecordPallet(building, bed, number){
   const key = getPalletKey(building, bed, number);
-  const recordedSet = getRecordTabRecordedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
 
   const flowAssignmentChanged = applyRecordPlantingFlowAssignment(key);
   if(flowAssignmentChanged !== null){
@@ -561,7 +563,7 @@ function toggleRecordPallet(building, bed, number){
   }
 
   if(recordSelectionMode !== "planting" && isRecorded(building, bed, number, { recordedSet, context: "record" })){
-    showToast("記録済みパレットは調整できません");
+    showToast(getHarvestUnavailableReason(key, availabilityState));
     return;
   }
 
@@ -750,10 +752,8 @@ function drawRecordBeds(){
   container.innerHTML = "";
   renderRecordBuildingDisplayControls();
   renderRecordPlantingFlow();
-  const recordedSet = getRecordTabRecordedPalletSet();
-  const replantedSet = recordSelectionMode === "planting"
-    ? new Set()
-    : getRecordTabReplantedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const allBuildings = getRecordMapBuildings(plantingAllowedSet);
@@ -838,7 +838,10 @@ function drawRecordBeds(){
         selectedSet,
         overageSet: recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set(),
         recordedSet,
-        replantedSet,
+        unplantedSet:recordSelectionMode === "planting" ? new Set() : availabilityState.unplantedSet,
+        plantingLockInfoByPallet:recordSelectionMode === "planting"
+          ? new Map()
+          : availabilityState.replantingInfoByPallet,
         plantingAllowedSet,
         plantingCountsByPallet: recordPlantingCountsByPallet,
         plantingFlowStage: isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",
@@ -868,7 +871,7 @@ function drawRecordBeds(){
             : "")
         : `
           <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-          <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
+          <span class="simulationBedOverviewCountRecorded">収穫不可 ${summaryCounts.recorded}</span>
         `;
       bed.appendChild(counts);
       attachBedDetailOpenTapHandler(bed, "record", building, b);
@@ -876,7 +879,7 @@ function drawRecordBeds(){
         "aria-label",
         plantingAllowedSet
           ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
-          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。タップで拡大してパレットを選択`
+          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、収穫不可能 ${summaryCounts.recorded}パレット。タップで拡大してパレットを選択`
       );
       beds.appendChild(bed);
     });

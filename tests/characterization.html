@@ -456,6 +456,8 @@
         "formatPalletSummary",
         "parsePalletSummaryToKeys",
         "normalizePartialHarvestTargets",
+        "getHarvestAvailabilityStateFromRecords",
+        "getHarvestAvailabilityState",
         "getReplantedPalletSetFromRecords",
         "getHarvestedPalletSetFromRecords",
         "getHarvestedPalletSet",
@@ -1741,7 +1743,7 @@
         );
       });
 
-      await runTest("苗植え済みパレットは収穫済み表示だけを解除し自動選択順を維持する", () => {
+      await runTest("定植後10日未満を選択不可にし10日後も自動選択順を維持する", () => {
         const harvestRecord = {
           palletNumberingVersion: 2,
           id: 20000000000050,
@@ -1794,16 +1796,18 @@
           app.cancelPendingHarvestStateSave();
           const state = comparable(app.eval(`(() => {
             const sameDay = new Date(2026, 7, 10);
-            const nextDay = new Date(2026, 7, 11);
-            const futureDay = new Date(2026, 7, 12);
+            const day9 = new Date(2026, 7, 19);
+            const day10 = new Date(2026, 7, 20);
+            const allUnlockedDay = new Date(2026, 7, 22);
             const cycleSameDay = [...getRecordedPalletSet(sameDay)].sort();
-            const harvestedSameDay = [...getHarvestedPalletSet(sameDay)].sort();
+            const unavailableSameDay = [...getHarvestedPalletSet(sameDay)].sort();
             const replantedSameDay = [...getReplantedPalletSet(sameDay)].sort();
-            const harvestedNextDay = [...getHarvestedPalletSet(nextDay)].sort();
-            const harvestedFutureDay = [...getHarvestedPalletSet(futureDay)].sort();
+            const unavailableDay9 = [...getHarvestedPalletSet(day9)].sort();
+            const unavailableDay10 = [...getHarvestedPalletSet(day10)].sort();
+            const unavailableAllUnlocked = [...getHarvestedPalletSet(allUnlockedDay)].sort();
             const automatic = calculateHarvestSelectionFromRecords({
-              referenceDate:sameDay,
-              partialTargetDate:sameDay,
+              referenceDate:day10,
+              partialTargetDate:day10,
               sourceRecords:records,
               needHeads:1,
               harvestRate:1
@@ -1815,59 +1819,83 @@
             harvestSelectionMode = "manual";
             harvestProgressState = null;
             drawBeds();
-            const replantedCell = document.querySelector("#beds .simulationBedMapCell.is-replanted");
+            const lockedCell = document.querySelector("#beds .simulationBedMapCell.is-recorded:not(.is-unplanted)");
+            const unplantedCell = document.querySelector("#beds .simulationBedMapCell.is-unplanted");
             const mapState = {
-              replantedCount:document.querySelectorAll("#beds .simulationBedMapCell.is-replanted").length,
+              harvestableCount:document.querySelectorAll("#beds .simulationBedMapCell.is-harvest-available").length,
               recordedCount:document.querySelectorAll("#beds .simulationBedMapCell.is-recorded").length,
-              replantedTitle:replantedCell?.getAttribute("title") || "",
+              unplantedCount:document.querySelectorAll("#beds .simulationBedMapCell.is-unplanted").length,
+              lockedTitle:(lockedCell?.getAttribute("title") || "").split(" ").slice(1).join(" "),
+              unplantedTitle:(unplantedCell?.getAttribute("title") || "").split(" ").slice(1).join(" "),
               legend:[...document.querySelectorAll("#forecastTab .simulationBedMapLegendItem")]
                 .map(item => item.textContent.trim())
             };
-            const manualSelectable = !isRecorded(2, "A", 1);
+            const manualSelectableSameDay = !isRecorded(2, "A", 1);
             const previousRefreshAfterSelection = refreshAfterHarvestSelectionChanged;
-            let manualSelected = false;
+            let manualSelectedSameDay = false;
             try{
               refreshAfterHarvestSelectionChanged = () => {};
               togglePallet(2, "A", 1);
-              manualSelected = harvestFillKeys.includes("2-A-1");
+              manualSelectedSameDay = harvestFillKeys.includes("2-A-1");
+            }finally{
+              refreshAfterHarvestSelectionChanged = previousRefreshAfterSelection;
+            }
+
+            document.getElementById("recordDateInput").value = "2026-08-20";
+            const manualSelectableDay10 = !isRecorded(2, "A", 1);
+            let manualSelectedDay10 = false;
+            try{
+              refreshAfterHarvestSelectionChanged = () => {};
+              togglePallet(2, "A", 1);
+              manualSelectedDay10 = harvestFillKeys.includes("2-A-1");
             }finally{
               refreshAfterHarvestSelectionChanged = previousRefreshAfterSelection;
             }
 
             const savedEvents = plantingEvents;
             plantingEvents = [];
-            const harvestedAfterPlantingDeletion = [...getHarvestedPalletSet(sameDay)].sort();
+            const unavailableAfterPlantingDeletion = [...getHarvestedPalletSet(sameDay)].sort();
             plantingEvents = savedEvents;
             return {
               cycleSameDay,
-              harvestedSameDay,
+              unavailableSameDay,
               replantedSameDay,
-              harvestedNextDay,
-              harvestedFutureDay,
+              unavailableDay9,
+              unavailableDay10,
+              unavailableAllUnlocked,
               automaticStart:automatic?.palletKeys?.[0] || "",
-              manualSelectable,
-              manualSelected,
-              harvestedAfterPlantingDeletion,
+              automaticCursor:automatic?.startCursorKey || "",
+              manualSelectableSameDay,
+              manualSelectedSameDay,
+              manualSelectableDay10,
+              manualSelectedDay10,
+              unavailableAfterPlantingDeletion,
               mapState
             };
           })()`));
           assertDeepEqual(state, {
             cycleSameDay:["2-A-1", "2-A-2", "2-A-3"],
-            harvestedSameDay:["2-A-2", "2-A-3"],
+            unavailableSameDay:["2-A-1", "2-A-2", "2-A-3"],
             replantedSameDay:["2-A-1"],
-            harvestedNextDay:["2-A-3"],
-            harvestedFutureDay:[],
+            unavailableDay9:["2-A-1", "2-A-2", "2-A-3"],
+            unavailableDay10:["2-A-2", "2-A-3"],
+            unavailableAllUnlocked:[],
             automaticStart:"2-A-4",
-            manualSelectable:true,
-            manualSelected:true,
-            harvestedAfterPlantingDeletion:["2-A-1", "2-A-2", "2-A-3"],
+            automaticCursor:"2-A-4",
+            manualSelectableSameDay:false,
+            manualSelectedSameDay:false,
+            manualSelectableDay10:true,
+            manualSelectedDay10:true,
+            unavailableAfterPlantingDeletion:["2-A-1", "2-A-2", "2-A-3"],
             mapState:{
-              replantedCount:1,
-              recordedCount:2,
-              replantedTitle:"1番 定植済み",
-              legend:["選択中", "超過分", "記録済み", "定植済み", "途中経過完了", "部分収穫"]
+              harvestableCount:465,
+              recordedCount:3,
+              unplantedCount:2,
+              lockedTitle:"収穫不可能、定植から0日、あと10日",
+              unplantedTitle:"収穫不可能、未定植",
+              legend:["収穫可能", "選択中", "超過分", "収穫不可能", "未定植", "途中経過完了", "部分収穫"]
             }
-          }, "苗植え後の収穫済み解除または自動選択の除外順が違います");
+          }, "定植後10日の境界、未定植表示、または自動選択の開始順が違います");
 
           replaceAppHistory(app, [{
             ...harvestRecord,
@@ -1879,9 +1907,9 @@
           }, harvestRecord], plantingEventsForTest);
           app.invalidatePlantingEventStateCache();
           assertDeepEqual(
-            comparable(app.eval(`[...getHarvestedPalletSet(new Date(2026, 7, 11))].sort()`)),
-            ["2-A-1", "2-A-3"],
-            "古い苗植え記録が次巡回の通常収穫済み判定まで解除しています"
+            comparable(app.eval(`[...getHarvestedPalletSet(new Date(2026, 7, 20))].sort()`)),
+            ["2-A-1", "2-A-2", "2-A-3"],
+            "古い苗植え記録が後の通常収穫による収穫不可能判定まで解除しています"
           );
           const reasons = comparable(app.buildRecordConsistencyAudit().orderedIssues)
             .flatMap(issue => issue.reasons);
@@ -5189,14 +5217,18 @@
           const previous = {
             building: currentBuilding,
             keys: [...harvestFillKeys],
-            getHarvested: getHarvestedPalletSet
+            getAvailability: getHarvestAvailabilityState
           };
           try{
             currentBuilding = 2;
             harvestFillKeys = [];
-            getHarvestedPalletSet = () => new Set(
-              Array.from({ length: 5 }, (_, index) => getPalletKey(2, "F", index + 1))
-            );
+            const buildAvailabilityState = count => ({
+              unavailableSet:new Set(Array.from({ length: count }, (_, index) => getPalletKey(2, "F", index + 1))),
+              unplantedSet:new Set(),
+              plantingLockedSet:new Set(),
+              replantingInfoByPallet:new Map()
+            });
+            getHarvestAvailabilityState = () => buildAvailabilityState(5);
             drawBeds();
             const firstBed = document.querySelector("#beds .simulationBedOverview");
             const countText = firstBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
@@ -5206,9 +5238,7 @@
               && activeBedDetailContext === "forecast"
               && activeBedDetailBed === "F";
             closeBedDetailWindow();
-            getHarvestedPalletSet = () => new Set(
-              Array.from({ length: 78 }, (_, index) => getPalletKey(2, "F", index + 1))
-            );
+            getHarvestAvailabilityState = () => buildAvailabilityState(78);
             drawBeds();
             const unavailableBed = document.querySelector("#beds .simulationBedOverview");
             const unavailableCountText = unavailableBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
@@ -5225,7 +5255,7 @@
           }finally{
             currentBuilding = previous.building;
             harvestFillKeys = previous.keys;
-            getHarvestedPalletSet = previous.getHarvested;
+            getHarvestAvailabilityState = previous.getAvailability;
             drawBeds();
           }
         })()`));
@@ -6768,7 +6798,7 @@
 
       await runTest("モニターはシミュと同じ2列39段の配置図で収穫場所を表示する", () => {
         const monitorState = comparable(app.eval(`(() => {
-          const previousGetRecorded = getRecordedPalletSet;
+          const previousGetAvailability = getHarvestAvailabilityState;
           const selectedKeys = [
             getPalletKey(2, "F", 1),
             getPalletKey(2, "F", 2),
@@ -6788,7 +6818,12 @@
           const dashboardHost = document.createElement("div");
           const threeDashboardHost = document.createElement("div");
           try{
-            getRecordedPalletSet = () => recordedSet;
+            getHarvestAvailabilityState = () => ({
+              unavailableSet:recordedSet,
+              unplantedSet:new Set([getPalletKey(2, "A", 1), getPalletKey(2, "A", 2)]),
+              plantingLockedSet:new Set(),
+              replantingInfoByPallet:new Map()
+            });
             host.innerHTML = getMonitorSelectionMapHtml(selectedKeys, "2号棟 配置: 48ケース");
             document.body.appendChild(host);
             dashboardHost.innerHTML = buildMonitorDashboardHtml({
@@ -6852,6 +6887,7 @@
               cellCount:host.querySelectorAll(".monitorBedMapCell").length,
               selectedCount:host.querySelectorAll(".monitorBedMapCell.is-selected").length,
               recordedCount:host.querySelectorAll(".monitorBedMapCell.is-recorded").length,
+              unplantedCount:host.querySelectorAll(".monitorBedMapCell.is-unplanted").length,
               zeroHarvestableBedFilled:(() => {
                 const bedCard = cards.find(card => card.querySelector(".monitorBedName")?.textContent.trim() === "B");
                 const grid = bedCard?.querySelector(".monitorBedPalletMapGrid");
@@ -6949,7 +6985,7 @@
             host.remove();
             dashboardHost.remove();
             threeDashboardHost.remove();
-            getRecordedPalletSet = previousGetRecorded;
+            getHarvestAvailabilityState = previousGetAvailability;
           }
         })()`));
         assertDeepEqual(monitorState, {
@@ -6965,6 +7001,7 @@
           cellCount:468,
           selectedCount:3,
           recordedCount:157,
+          unplantedCount:2,
           zeroHarvestableBedFilled:true,
           allRemainingBedFilled:true,
           partialHarvestCount:0,
@@ -6985,7 +7022,7 @@
           harvestMapPanelTitle:"配置コンテナ数",
           harvestLocationAndMapSeparated:true,
           memoBackgroundIsSolid:true,
-          legend:["今回収穫", "収穫済み"],
+          legend:["収穫可能", "今回収穫", "収穫不可能", "未定植"],
           legendFontSize:"13px",
           legendChipSize:["18px", "12px"],
           singleLineLayoutEnabled:true,
@@ -8124,7 +8161,7 @@
           plantingSelectable: 1,
           plantingUnavailable: 76,
           role: "button",
-          label: "2号棟 Fベッド。選択 0パレット、記録済み 0パレット。タップで拡大してパレットを選択"
+          label: "2号棟 Fベッド。選択 0パレット、収穫不可能 0パレット。タップで拡大してパレットを選択"
         }, "記録タブの縦型パレット配置図がシミュと一致しません");
       });
 
@@ -9916,18 +9953,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "fe1d703d", elements: 2299, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "85eab2c7", elements: 2368, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "66e99376", elements: 2368, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "35bcb87c", elements: 2300, visible: 114, viewport: "390x844" },
-          mobileDashboard: { hash: "41449c30", elements: 2317, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "0fb420aa", elements: 2400, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "0c849e02", elements: 2415, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "84c95739", elements: 2415, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "89085a78", elements: 2415, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "1294dbaf", elements: 2415, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "a5aa1f35", elements: 2415, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "90052245", elements: 2415, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "c9617923", elements: 2303, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "85bcc1eb", elements: 2372, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "60188f24", elements: 2372, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "d98d8374", elements: 2304, visible: 116, viewport: "390x844" },
+          mobileDashboard: { hash: "bbc492bb", elements: 2321, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "2ccb6fb0", elements: 2404, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "53b9ea06", elements: 2419, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "50d74359", elements: 2419, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "02b2921e", elements: 2419, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "234ce161", elements: 2419, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "ea374757", elements: 2419, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "e53312ed", elements: 2419, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -105,6 +105,7 @@ const GOOGLE_SHEET_STARTUP_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const GOOGLE_SHEET_HEADER_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const CASE_SIZE = 12;
 const CALCULATION_LOOKBACK_DAYS = 35;
+const HARVEST_SELECTION_PLANTING_LOCK_DAYS = 10;
 const HARVEST_LOSS_ESTIMATE_THRESHOLD_POINTS = 5;
 const HARVEST_CYCLE_GAP_DAYS = 7;
 const RECORD_LIST_DISPLAY_LIMIT = 30;
@@ -2180,7 +2181,7 @@ function getHarvestProgressKeysForBeds(bedKeys, state = harvestProgressState){
   const reversePlanSet = isReverseHarvestProgressState(normalizedState)
     ? new Set(normalizedState.planKeys)
     : null;
-  const recordedSet = getRecordedPalletSet(getHarvestTargetDate());
+  const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
   const keys = [];
   BUILDINGS.forEach(building => {
     bedOrder.forEach(bed => {
@@ -2338,7 +2339,7 @@ function renderHarvestProgressBeds(){
   const state = normalizeHarvestProgressState(harvestProgressState);
   const selectedBedSet = new Set(state?.selectedBeds || []);
   const planSet = new Set(harvestFillKeys || []);
-  const recordedSet = getRecordedPalletSet(getHarvestTargetDate());
+  const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
 
   bedMap.forEach(bedName => {
     const bedKey = getHarvestProgressBedKey(harvestProgressBuilding, bedName);
@@ -2669,7 +2670,7 @@ function recalculateFromHarvestProgress(){
     }
     harvestSelectionMode = "auto";
   }else{
-    const recordedSet = getRecordedPalletSet(getHarvestTargetDate());
+    const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
     remainingKeys = state.planKeys.filter(key => !completedSet.has(key) && !recordedSet.has(key));
     harvestSelectionMode = "manual";
   }
@@ -3134,9 +3135,7 @@ function getWorkflowPlanStatus(){
   const expectedNeedHeads = casePlan.regularCases * CASE_SIZE;
   const selectedKeyCount = Array.isArray(harvestFillKeys) ? harvestFillKeys.length : 0;
   const recordedSet = selectedKeyCount > 0
-    ? (harvestSelectionMode === "manual"
-      ? getHarvestedPalletSet(getHarvestTargetDate())
-      : getRecordedPalletSet())
+    ? getHarvestedPalletSet(getHarvestTargetDate())
     : new Set();
   const hasRecordedSelection = selectedKeyCount > 0 && harvestFillKeys.some(key => recordedSet.has(key));
   const currentHarvestTotal = Math.round(getCurrentHarvestTotal() * 10) / 10;

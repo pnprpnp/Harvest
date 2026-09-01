@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260901-clear-harvested-after-planting">
+<meta name="harvestnavi-version" content="20260901-lock-harvest-after-planting">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8136,6 +8136,11 @@ button.forecastClearBtn{border-radius:10px;}
 }
 .pallet.multiple8Pair{background:#93c5fd;}
 .pallet.centerStrong{background:#7c3aed;color:#fff;font-weight:bold;}
+.pallet.harvestAvailablePallet{
+  background:#dcfce7;
+  color:#166534;
+  border-color:#86efac;
+}
 .pallet.harvestFill{background:#22c55e;color:#fff;font-weight:bold;}
 .pallet.harvestStart{background:#16a34a;color:#fff;font-weight:bold;}
 .pallet.harvestEnd{background:#ef4444;color:#fff;font-weight:bold;}
@@ -8146,10 +8151,15 @@ button.forecastClearBtn{border-radius:10px;}
   opacity:.95;
   cursor:not-allowed;
 }
-.pallet.replantedPallet:not(.partialHarvestPallet):not(.harvestFill):not(.harvestStart):not(.harvestEnd){
-  background:#bae6fd;
-  color:#075985;
-  border-color:#38bdf8;
+.pallet.unplantedPallet:not(.harvestFill):not(.harvestStart):not(.harvestEnd){
+  background-color:#9ca3af;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(55,65,81,.18) 0,
+    rgba(55,65,81,.18) 2px,
+    transparent 2px,
+    transparent 5px
+  );
 }
 .pallet.partialHarvestPallet{
   background:#fde68a;
@@ -8502,8 +8512,13 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   height:140px;
 }
 .simulationBedOverview .simulationBedMapCell{
-  background:#eef0f3;
+  background:#dcfce7;
+  border-color:#86efac;
   border-bottom-color:rgba(100,116,139,.11);
+}
+.simulationBedOverview .simulationBedMapCell.is-harvest-available{
+  background:#dcfce7;
+  border-color:#86efac;
 }
 .simulationBedOverview .simulationBedMapCell.is-selected{
   background:#22c55e;
@@ -8524,9 +8539,15 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .simulationBedOverview .simulationBedMapCell.is-recorded{
   background:#9ca3af;
 }
-.simulationBedOverview .simulationBedMapCell.is-replanted:not(.is-selected):not(.is-partial-harvest):not(.is-progress-completed){
-  background:#bae6fd;
-  border-color:#38bdf8;
+.simulationBedOverview .simulationBedMapCell.is-unplanted:not(.is-selected):not(.is-progress-completed){
+  background-color:#9ca3af;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(55,65,81,.18) 0,
+    rgba(55,65,81,.18) 1px,
+    transparent 1px,
+    transparent 3px
+  );
 }
 .recordBedOverview .simulationBedMapCell.is-planting-selectable{
   background:#fef08a;
@@ -8621,10 +8642,20 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   border-radius:3px;
   background:#dbeafe;
 }
+.simulationBedMapLegendSwatch.is-harvest-available{background:#dcfce7;border-color:#86efac;}
 .simulationBedMapLegendSwatch.is-selected{background:#22c55e;}
 .simulationBedMapLegendSwatch.is-overage{background:#f97316;}
 .simulationBedMapLegendSwatch.is-recorded{background:#9ca3af;}
-.simulationBedMapLegendSwatch.is-replanted{background:#bae6fd;border-color:#38bdf8;}
+.simulationBedMapLegendSwatch.is-unplanted{
+  background-color:#9ca3af;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(55,65,81,.24) 0,
+    rgba(55,65,81,.24) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+}
 .simulationBedMapLegendSwatch.is-progress-completed{background:#14b8a6;}
 .simulationBedMapLegendSwatch.is-partial-harvest{background:#fbbf24;}
 .bedDetailWindowTitleRow{display:flex;align-items:center;gap:9px;min-width:0;}
@@ -9147,6 +9178,19 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   height:12px;
   border:0;
 }
+.monitorMapLegendChip.available{background:#dcfce7;box-shadow:inset 0 0 0 1px #86efac;}
+.monitorMapLegendChip.selected{background:#22c55e;}
+.monitorMapLegendChip.recorded{background:#9ca3af;}
+.monitorMapLegendChip.unplanted{
+  background-color:#9ca3af;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(55,65,81,.24) 0,
+    rgba(55,65,81,.24) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+}
 .monitorHarvestMap{
   grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
   grid-auto-rows:minmax(0,1fr);
@@ -9272,11 +9316,12 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   flex:1 1 auto;
   grid-template-rows:repeat(39,minmax(1px,1fr));
   border-color:var(--ui-line-strong);
-  background:#eef0f3;
+  background:#dcfce7;
   border-radius:4px;
 }
 .monitorBedPalletMap .monitorBedMapCell{
-  background:#eef0f3;
+  background:#dcfce7;
+  border-color:#86efac;
   border-bottom-color:rgba(100,116,139,.11);
 }
 .monitorBedPalletMap .monitorBedMapCell.is-selected,
@@ -9284,7 +9329,17 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   background:var(--ui-accent-bright);
 }
 .monitorBedPalletMap .monitorBedMapCell.is-recorded:not(.is-selected){background:#a7adb5;}
-.monitorBedPalletMap .monitorBedMapCell.is-partial-harvest{background:#eef0f3;}
+.monitorBedPalletMap .monitorBedMapCell.is-unplanted:not(.is-selected){
+  background-color:#a7adb5;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(55,65,81,.18) 0,
+    rgba(55,65,81,.18) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+.monitorBedPalletMap .monitorBedMapCell.is-partial-harvest{background:#dcfce7;}
 .monitorBedCard.is-no-harvestable .monitorBedPalletMapGrid{
   border-color:var(--ui-text-secondary);
   background:var(--ui-text-tertiary);
@@ -11601,9 +11656,20 @@ html[data-theme="dark"] .simulationBedOverview .simulationBedMapCell.is-recorded
   border-color:#626d7b;
   background:#737e8d;
 }
-html[data-theme="dark"] .simulationBedOverview .simulationBedMapCell.is-replanted:not(.is-selected):not(.is-partial-harvest):not(.is-progress-completed){
-  border-color:#0e7490;
-  background:#155e75;
+html[data-theme="dark"] .simulationBedOverview .simulationBedMapCell.is-harvest-available:not(.is-selected):not(.is-partial-harvest):not(.is-progress-completed){
+  border-color:#3f7652;
+  background:#254a34;
+}
+html[data-theme="dark"] .simulationBedOverview .simulationBedMapCell.is-unplanted:not(.is-selected):not(.is-progress-completed){
+  border-color:#626d7b;
+  background-color:#737e8d;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(226,232,240,.14) 0,
+    rgba(226,232,240,.14) 1px,
+    transparent 1px,
+    transparent 3px
+  );
 }
 html[data-theme="dark"] .bedMiniStat,
 html[data-theme="dark"] .bedZoneInfo,
@@ -11630,13 +11696,23 @@ html[data-theme="dark"] .monitorBedPalletMapGrid,
 html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell,
 html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-partial-harvest{
   border-color:#4b5664;
-  background:#2a3039;
+  background:#254a34;
 }
 html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-selected,
 html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-selected.is-partial-harvest{
   background:var(--ui-accent-bright);
 }
 html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-recorded:not(.is-selected){background:#697382;}
+html[data-theme="dark"] .monitorBedPalletMap .monitorBedMapCell.is-unplanted:not(.is-selected){
+  background-color:#697382;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(226,232,240,.14) 0,
+    rgba(226,232,240,.14) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
 html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMapGrid,
 html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell,
 html[data-theme="dark"] .monitorBedCard.is-no-harvestable .monitorBedPalletMap .monitorBedMapCell.is-selected,
@@ -12189,9 +12265,20 @@ html[data-theme="dark"] .simulationBedMapLegendSwatch.is-recorded{
   border-color:#697482;
   background:#59626d;
 }
-html[data-theme="dark"] .simulationBedMapLegendSwatch.is-replanted{
-  border-color:#0e7490;
-  background:#155e75;
+html[data-theme="dark"] .simulationBedMapLegendSwatch.is-harvest-available{
+  border-color:#3f7652;
+  background:#254a34;
+}
+html[data-theme="dark"] .simulationBedMapLegendSwatch.is-unplanted{
+  border-color:#697482;
+  background-color:#59626d;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(226,232,240,.18) 0,
+    rgba(226,232,240,.18) 2px,
+    transparent 2px,
+    transparent 5px
+  );
 }
 html[data-theme="dark"] .recordBedOverview .simulationBedMapCell.is-planting-selectable,
 html[data-theme="dark"] .recordBedOverview .simulationBedMapCell.is-planting-unavailable{
@@ -12262,10 +12349,22 @@ html[data-theme="dark"] .pallet.plantingUnavailablePallet{
   background:#414954;
   color:#b6beca;
 }
-html[data-theme="dark"] .pallet.replantedPallet:not(.partialHarvestPallet):not(.harvestFill):not(.harvestStart):not(.harvestEnd){
-  border-color:#0e7490;
-  background:#155e75;
-  color:#cffafe;
+html[data-theme="dark"] .pallet.harvestAvailablePallet:not(.harvestFill):not(.harvestStart):not(.harvestEnd){
+  border-color:#3f7652;
+  background:#254a34;
+  color:#dcfce7;
+}
+html[data-theme="dark"] .pallet.unplantedPallet:not(.harvestFill):not(.harvestStart):not(.harvestEnd){
+  border-color:#596371;
+  background-color:#414954;
+  background-image:repeating-linear-gradient(
+    135deg,
+    rgba(226,232,240,.14) 0,
+    rgba(226,232,240,.14) 2px,
+    transparent 2px,
+    transparent 5px
+  );
+  color:#cbd5e1;
 }
 html[data-theme="dark"] .pallet.plantingSelectablePallet{
   border-color:#5a6471;
@@ -12986,10 +13085,11 @@ requestAnimationFrame(function(){
           <div id="beds" class="bedWrap"></div>
         </div>
         <div class="simulationBedMapLegend" aria-label="ベッド配置図の色分け">
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-harvest-available"></span>収穫可能</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-overage"></span>超過分</span>
-          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>記録済み</span>
-          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-replanted"></span>定植済み</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>収穫不可能</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-unplanted"></span>未定植</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-progress-completed"></span>途中経過完了</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-partial-harvest"></span>部分収穫</span>
         </div>
@@ -13471,10 +13571,11 @@ requestAnimationFrame(function(){
           </div>
         </div>
         <div id="recordHarvestMapLegend" class="simulationBedMapLegend" aria-label="収穫場所配置図の色分け">
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-harvest-available"></span>収穫可能</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-overage"></span>超過分</span>
-          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>記録済み</span>
-          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-replanted"></span>定植済み</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>収穫不可能</span>
+          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-unplanted"></span>未定植</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-partial-harvest"></span>部分収穫</span>
         </div>
         <div id="recordPlantingLegend" class="recordPlantingLegend" hidden>
@@ -13573,7 +13674,7 @@ requestAnimationFrame(function(){
                   <div class="calculationHelpItem">
                     <div class="calculationHelpLabel">収穫場所の選択</div>
                     <span class="calculationHelpFormula">選択場所の予想収穫株数 ＝ 選択した各パレットの予想収穫株数の合計</span>
-                    <p class="calculationHelpText">直近7件の通常収穫で記録済みのパレットを除き、収穫順に合計して、必要株数へ達するまでを収穫場所として選びます。合計は小数第2位を四捨五入し、小数第1位まで扱います。</p>
+                    <p class="calculationHelpText">直近7件の通常収穫から次に進む位置を求め、収穫可能なパレットだけを収穫順に合計します。未定植と定植後10日未満は飛ばし、必要株数へ達するまでを選びます。合計は小数第2位を四捨五入し、小数第1位まで扱います。</p>
                   </div>
                   <div class="calculationHelpItem">
                     <div class="calculationHelpLabel">パレット選択から求めるケース数</div>
@@ -13666,7 +13767,7 @@ requestAnimationFrame(function(){
                   <h4 id="calculationHelpRemainingTitle" class="calculationHelpTitle">残り収穫可能ケース数</h4>
                   <div class="calculationHelpItem">
                     <span class="calculationHelpFormula">残りケース数 ＝ 切り捨て｛未収穫パレットの予想収穫株数合計 ÷ 12 × 10｝÷ 10</span>
-                    <p class="calculationHelpText">記録済みのパレットと今回収穫したパレットを除き、部分収穫済み株数も差し引いて、0.1ケース単位で表示します。</p>
+                    <p class="calculationHelpText">収穫不可能なパレットと今回収穫したパレットを除き、部分収穫済み株数も差し引いて、0.1ケース単位で表示します。</p>
                   </div>
                 </section>
 
@@ -14668,6 +14769,7 @@ const GOOGLE_SHEET_STARTUP_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const GOOGLE_SHEET_HEADER_IMPORT_LIMIT = RECORDED_LOOKBACK_COUNT;
 const CASE_SIZE = 12;
 const CALCULATION_LOOKBACK_DAYS = 35;
+const HARVEST_SELECTION_PLANTING_LOCK_DAYS = 10;
 const HARVEST_LOSS_ESTIMATE_THRESHOLD_POINTS = 5;
 const HARVEST_CYCLE_GAP_DAYS = 7;
 const RECORD_LIST_DISPLAY_LIMIT = 30;
@@ -16743,7 +16845,7 @@ function getHarvestProgressKeysForBeds(bedKeys, state = harvestProgressState){
   const reversePlanSet = isReverseHarvestProgressState(normalizedState)
     ? new Set(normalizedState.planKeys)
     : null;
-  const recordedSet = getRecordedPalletSet(getHarvestTargetDate());
+  const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
   const keys = [];
   BUILDINGS.forEach(building => {
     bedOrder.forEach(bed => {
@@ -16901,7 +17003,7 @@ function renderHarvestProgressBeds(){
   const state = normalizeHarvestProgressState(harvestProgressState);
   const selectedBedSet = new Set(state?.selectedBeds || []);
   const planSet = new Set(harvestFillKeys || []);
-  const recordedSet = getRecordedPalletSet(getHarvestTargetDate());
+  const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
 
   bedMap.forEach(bedName => {
     const bedKey = getHarvestProgressBedKey(harvestProgressBuilding, bedName);
@@ -17232,7 +17334,7 @@ function recalculateFromHarvestProgress(){
     }
     harvestSelectionMode = "auto";
   }else{
-    const recordedSet = getRecordedPalletSet(getHarvestTargetDate());
+    const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
     remainingKeys = state.planKeys.filter(key => !completedSet.has(key) && !recordedSet.has(key));
     harvestSelectionMode = "manual";
   }
@@ -17697,9 +17799,7 @@ function getWorkflowPlanStatus(){
   const expectedNeedHeads = casePlan.regularCases * CASE_SIZE;
   const selectedKeyCount = Array.isArray(harvestFillKeys) ? harvestFillKeys.length : 0;
   const recordedSet = selectedKeyCount > 0
-    ? (harvestSelectionMode === "manual"
-      ? getHarvestedPalletSet(getHarvestTargetDate())
-      : getRecordedPalletSet())
+    ? getHarvestedPalletSet(getHarvestTargetDate())
     : new Set();
   const hasRecordedSelection = selectedKeyCount > 0 && harvestFillKeys.some(key => recordedSet.has(key));
   const currentHarvestTotal = Math.round(getCurrentHarvestTotal() * 10) / 10;
@@ -29504,7 +29604,14 @@ function getRecordedPalletSetFromRecords(sourceRecords){
   return set;
 }
 
-function getLatestFullHarvestInfoByPallet(sourceRecords){
+function getLatestFullHarvestInfoByPallet(sourceRecords, referenceDate = null){
+  const referenceDay = referenceDate === null
+    ? null
+    : startOfLocalDay(
+        referenceDate instanceof Date
+          ? referenceDate
+          : (parseDateOnlyString(String(referenceDate || "")) || new Date())
+      );
   const latestInfoByPallet = new Map();
   [...(Array.isArray(sourceRecords) ? sourceRecords : [])]
     .filter(record => record?.type !== "partialHarvest")
@@ -29513,18 +29620,20 @@ function getLatestFullHarvestInfoByPallet(sourceRecords){
       const recordId = getSafePositiveRecordId(record?.id);
       const harvestDate = parseDateOnlyString(record?.date);
       if(recordId === null || !harvestDate) return;
+      const harvestDay = startOfLocalDay(harvestDate);
+      if(referenceDay && harvestDay.getTime() > referenceDay.getTime()) return;
       getPalletKeysFromRecord(record).forEach(key => {
         if(latestInfoByPallet.has(key)) return;
         latestInfoByPallet.set(key, {
           recordId,
-          harvestDay:startOfLocalDay(harvestDate)
+          harvestDay
         });
       });
     });
   return latestInfoByPallet;
 }
 
-function getReplantedPalletSetFromRecords(
+function getLatestReplantingInfoByPalletFromRecords(
   sourceRecords,
   referenceDate = new Date(),
   sourcePlantingEvents = plantingEvents,
@@ -29535,9 +29644,9 @@ function getReplantedPalletSetFromRecords(
     : startOfLocalDay(parseDateOnlyString(String(referenceDate || "")) || new Date());
   const latestHarvestInfo = latestHarvestInfoByPallet instanceof Map
     ? latestHarvestInfoByPallet
-    : getLatestFullHarvestInfoByPallet(sourceRecords);
+    : getLatestFullHarvestInfoByPallet(sourceRecords, referenceDay);
 
-  const replantedSet = new Set();
+  const replantingInfoByPallet = new Map();
   (Array.isArray(sourcePlantingEvents) ? sourcePlantingEvents : []).forEach(event => {
     const plantingDate = parseDateOnlyString(event?.plantingDate);
     if(!plantingDate) return;
@@ -29549,28 +29658,98 @@ function getReplantedPalletSetFromRecords(
         const harvestInfo = latestHarvestInfo.get(key);
         if(!harvestInfo || harvestInfo.recordId !== harvestRecordId) return;
         if(plantingDay.getTime() < harvestInfo.harvestDay.getTime()) return;
-        replantedSet.add(key);
+        const eventId = Number(event?.eventId) || 0;
+        const current = replantingInfoByPallet.get(key);
+        if(current
+          && (current.plantingDay.getTime() > plantingDay.getTime()
+            || (current.plantingDay.getTime() === plantingDay.getTime() && current.eventId > eventId))){
+          return;
+        }
+        const ageDays = getLocalDayDiff(plantingDay, referenceDay);
+        replantingInfoByPallet.set(key, {
+          eventId,
+          harvestRecordId,
+          plantingDay,
+          ageDays,
+          remainingLockDays:Math.max(0, HARVEST_SELECTION_PLANTING_LOCK_DAYS - ageDays),
+          isSelectionLocked:ageDays < HARVEST_SELECTION_PLANTING_LOCK_DAYS
+        });
       });
     });
   });
-  return replantedSet;
+  return replantingInfoByPallet;
+}
+
+function getReplantedPalletSetFromRecords(
+  sourceRecords,
+  referenceDate = new Date(),
+  sourcePlantingEvents = plantingEvents,
+  latestHarvestInfoByPallet = null
+){
+  return new Set(getLatestReplantingInfoByPalletFromRecords(
+    sourceRecords,
+    referenceDate,
+    sourcePlantingEvents,
+    latestHarvestInfoByPallet
+  ).keys());
+}
+
+function getHarvestAvailabilityStateFromRecords(
+  recentHarvestRecords,
+  referenceDate = new Date(),
+  sourcePlantingEvents = plantingEvents,
+  lifecycleSourceRecords = recentHarvestRecords
+){
+  const referenceDay = referenceDate instanceof Date
+    ? startOfLocalDay(referenceDate)
+    : startOfLocalDay(parseDateOnlyString(String(referenceDate || "")) || new Date());
+  const cycleRecordedSet = getRecordedPalletSetFromRecords(recentHarvestRecords);
+  const latestHarvestInfo = getLatestFullHarvestInfoByPallet(lifecycleSourceRecords, referenceDay);
+  const replantingInfoByPallet = getLatestReplantingInfoByPalletFromRecords(
+    lifecycleSourceRecords,
+    referenceDay,
+    sourcePlantingEvents,
+    latestHarvestInfo
+  );
+  const unavailableSet = new Set(cycleRecordedSet);
+  const plantingLockedSet = new Set();
+
+  replantingInfoByPallet.forEach((info, key) => {
+    if(info.isSelectionLocked){
+      unavailableSet.add(key);
+      plantingLockedSet.add(key);
+    }else{
+      unavailableSet.delete(key);
+    }
+  });
+
+  const unplantedSet = new Set();
+  cycleRecordedSet.forEach(key => {
+    if(!replantingInfoByPallet.has(key)) unplantedSet.add(key);
+  });
+
+  return {
+    referenceDay,
+    cycleRecordedSet,
+    unavailableSet,
+    unplantedSet,
+    plantingLockedSet,
+    replantingInfoByPallet
+  };
 }
 
 function getHarvestedPalletSetFromRecords(
   sourceRecords,
   referenceDate = new Date(),
-  sourcePlantingEvents = plantingEvents
+  sourcePlantingEvents = plantingEvents,
+  lifecycleSourceRecords = sourceRecords
 ){
-  const latestHarvestInfo = getLatestFullHarvestInfoByPallet(sourceRecords);
-  const harvestedSet = new Set(latestHarvestInfo.keys());
-  getReplantedPalletSetFromRecords(
+  return getHarvestAvailabilityStateFromRecords(
     sourceRecords,
     referenceDate,
     sourcePlantingEvents,
-    latestHarvestInfo
-  )
-    .forEach(key => harvestedSet.delete(key));
-  return harvestedSet;
+    lifecycleSourceRecords
+  ).unavailableSet;
 }
 
 function getRecordedPalletSet(referenceDate = new Date()){
@@ -29578,20 +29757,32 @@ function getRecordedPalletSet(referenceDate = new Date()){
 }
 
 function getReplantedPalletSet(referenceDate = new Date()){
-  const recentRecords = getRecentHarvestRecordsByCount(referenceDate);
-  return getReplantedPalletSetFromRecords(recentRecords, referenceDate);
+  return new Set(getHarvestAvailabilityState(referenceDate).replantingInfoByPallet.keys());
 }
 
 function getHarvestedPalletSet(referenceDate = new Date()){
-  const recentRecords = getRecentHarvestRecordsByCount(referenceDate);
-  return getHarvestedPalletSetFromRecords(recentRecords, referenceDate);
+  return getHarvestAvailabilityState(referenceDate).unavailableSet;
+}
+
+function getHarvestAvailabilityState(referenceDate = new Date(), sourceRecords = getActiveHarvestTimelineRecords(records)){
+  const recentRecords = getRecentHarvestRecordsByCount(
+    referenceDate,
+    RECORDED_LOOKBACK_COUNT,
+    sourceRecords
+  );
+  return getHarvestAvailabilityStateFromRecords(
+    recentRecords,
+    referenceDate,
+    plantingEvents,
+    sourceRecords
+  );
 }
 
 function getRecordEditingReferenceDate(){
   return parseDateOnlyString(document.getElementById("recordDateInput")?.value || "") || new Date();
 }
 
-function getRecordTabRecordedPalletSet(){
+function getRecordTabHarvestAvailabilityState(){
   const referenceDate = getRecordEditingReferenceDate();
   const sourceRecords = getActiveHarvestTimelineRecords(records);
   const recentRecords = getRecentHarvestRecordsByCount(
@@ -29599,18 +29790,40 @@ function getRecordTabRecordedPalletSet(){
     RECORDED_LOOKBACK_COUNT,
     sourceRecords
   );
-  return getHarvestedPalletSetFromRecords(recentRecords, referenceDate);
+  return getHarvestAvailabilityStateFromRecords(
+    recentRecords,
+    referenceDate,
+    plantingEvents,
+    sourceRecords
+  );
+}
+
+function getRecordTabRecordedPalletSet(){
+  return getRecordTabHarvestAvailabilityState().unavailableSet;
 }
 
 function getRecordTabReplantedPalletSet(){
-  const referenceDate = getRecordEditingReferenceDate();
-  const sourceRecords = getActiveHarvestTimelineRecords(records);
-  const recentRecords = getRecentHarvestRecordsByCount(
-    referenceDate,
-    RECORDED_LOOKBACK_COUNT,
-    sourceRecords
-  );
-  return getReplantedPalletSetFromRecords(recentRecords, referenceDate);
+  return new Set(getRecordTabHarvestAvailabilityState().replantingInfoByPallet.keys());
+}
+
+function getHarvestUnavailableReason(key, availabilityState){
+  const state = availabilityState || getHarvestAvailabilityState(getHarvestTargetDate());
+  if(state.unplantedSet.has(key)) return "未定植のため収穫できません";
+  const plantingInfo = state.replantingInfoByPallet.get(key);
+  if(plantingInfo?.isSelectionLocked){
+    return `定植から${plantingInfo.ageDays}日です。あと${plantingInfo.remainingLockDays}日で選択できます`;
+  }
+  return state.unavailableSet.has(key) ? "収穫不可能なパレットです" : "";
+}
+
+function getHarvestAvailabilityLabel(key, availabilityState){
+  const state = availabilityState || getHarvestAvailabilityState(getHarvestTargetDate());
+  if(state.unplantedSet.has(key)) return "収穫不可能 未定植";
+  const plantingInfo = state.replantingInfoByPallet.get(key);
+  if(plantingInfo?.isSelectionLocked){
+    return `収穫不可能 定植から${plantingInfo.ageDays}日 あと${plantingInfo.remainingLockDays}日`;
+  }
+  return state.unavailableSet.has(key) ? "収穫不可能" : "収穫可能";
 }
 
 function isRecorded(building, bed, number, options = {}){
@@ -29663,13 +29876,14 @@ function getCurrentHarvestTotal(){
 
 function togglePallet(building, bed, number){
   const key = getPalletKey(building, bed, number);
+  const availabilityState = getHarvestAvailabilityState(getHarvestTargetDate());
 
   if(isHarvestProgressCompletedPallet(key)){
     showToast("途中経過で完了にしたベッドです。変更は途中経過から行ってください");
     return;
   }
-  if(isRecorded(building, bed, number)){
-    showToast("記録済みパレットは選択できません");
+  if(availabilityState.unavailableSet.has(key)){
+    showToast(getHarvestUnavailableReason(key, availabilityState));
     return;
   }
 
@@ -29862,7 +30076,10 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
   const key = getPalletKey(building, bed, number);
   const selectedSet = options.selectedSet || new Set();
   const recordedSet = options.recordedSet || new Set();
-  const replantedSet = options.replantedSet instanceof Set ? options.replantedSet : new Set();
+  const unplantedSet = options.unplantedSet instanceof Set ? options.unplantedSet : new Set();
+  const plantingLockInfoByPallet = options.plantingLockInfoByPallet instanceof Map
+    ? options.plantingLockInfoByPallet
+    : new Map();
   const progressCompletedSet = options.progressCompletedSet || new Set();
   const overageSet = options.overageSet instanceof Set ? options.overageSet : new Set();
   const seedlingSkippedSet = options.seedlingSkippedSet instanceof Set
@@ -29912,6 +30129,9 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     }
   }else{
     const isSelected = selectedSet.has(key);
+    const isUnavailable = recordedSet.has(key);
+    classes.push(isUnavailable ? "is-harvest-unavailable" : "is-harvest-available");
+    if(unplantedSet.has(key)) classes.push("is-unplanted");
     if(isSelected){
       classes.push("is-selected");
       stateText = "選択中";
@@ -29930,10 +30150,6 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
         }
       }
     }
-    if(replantedSet.has(key)){
-      classes.push("is-replanted");
-      if(!isSelected) stateText = "定植済み";
-    }
     if(seedlingSkippedSet.has(key)){
       classes.push("is-seedling-skipped");
       stateText = "飛ばして残す";
@@ -29950,9 +30166,16 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
       classes.push("is-progress-completed");
       stateText = "途中経過で完了";
     }
-    if(recordedSet.has(key)){
+    if(isUnavailable){
       classes.push("is-recorded");
-      stateText = "記録済み";
+      const plantingInfo = plantingLockInfoByPallet.get(key);
+      stateText = unplantedSet.has(key)
+        ? "収穫不可能、未定植"
+        : (plantingInfo?.isSelectionLocked
+            ? `収穫不可能、定植から${plantingInfo.ageDays}日、あと${plantingInfo.remainingLockDays}日`
+            : "収穫不可能");
+    }else if(!isSelected && partialHarvestCount <= 0 && !progressCompletedSet.has(key)){
+      stateText = "収穫可能";
     }
   }
   if(sectionStart) classes.push("is-section-start");
@@ -30273,13 +30496,14 @@ function showPalletDragToast(message){
 function applyForecastPalletDragChange(building, bed, number, mode){
   const key = getPalletKey(building, bed, number);
   const fillIndex = harvestFillKeys.indexOf(key);
+  const availabilityState = getHarvestAvailabilityState(getHarvestTargetDate());
 
   if(isHarvestProgressCompletedPallet(key)){
     showPalletDragToast("途中経過で完了にしたベッドです。変更は途中経過から行ってください");
     return false;
   }
-  if(isRecorded(building, bed, number)){
-    showPalletDragToast("記録済みパレットは選択できません");
+  if(availabilityState.unavailableSet.has(key)){
+    showPalletDragToast(getHarvestUnavailableReason(key, availabilityState));
     return false;
   }
 
@@ -30303,7 +30527,8 @@ function applyForecastPalletDragChange(building, bed, number, mode){
 
 function applyRecordPalletDragChange(building, bed, number, mode){
   const key = getPalletKey(building, bed, number);
-  const recordedSet = getRecordTabRecordedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
 
   const flowAssignmentChanged = applyRecordPlantingFlowAssignment(key, { drag: true });
   if(flowAssignmentChanged !== null) return flowAssignmentChanged;
@@ -30314,7 +30539,7 @@ function applyRecordPalletDragChange(building, bed, number, mode){
   }
 
   if(recordSelectionMode !== "planting" && isRecorded(building, bed, number, { recordedSet, context: "record" })){
-    showPalletDragToast("記録済みパレットは調整できません");
+    showPalletDragToast(getHarvestUnavailableReason(key, availabilityState));
     return false;
   }
 
@@ -30573,8 +30798,9 @@ function appendForecastBedDetail(container, b){
   bed.className = "bed bedExpanded";
   const splitInfo = getYieldSplitVisualInfo(b);
   const targetDate = getHarvestTargetDate();
-  const recordedSet = getHarvestedPalletSet(targetDate);
-  const replantedSet = getReplantedPalletSet(targetDate);
+  const availabilityState = getHarvestAvailabilityState(targetDate);
+  const recordedSet = availabilityState.unavailableSet;
+  const unplantedSet = availabilityState.unplantedSet;
   const selectedSet = new Set(harvestFillKeys || []);
   const progressCompletedSet = getAppliedHarvestProgressCompletedKeySet();
   const overageSet = getHarvestOverageKeySet();
@@ -30594,8 +30820,9 @@ function appendForecastBedDetail(container, b){
       if(partialHarvestCount > 0) cls += " partialHarvestPallet";
       if(selectedSet.has(key)) cls += " harvestFill";
       if(overageSet.has(key)) cls += " harvestOveragePallet";
-      if(recordedSet.has(key)) cls += " recordedPallet";
-      if(replantedSet.has(key)) cls += " replantedPallet";
+      if(recordedSet.has(key)) cls += " recordedPallet harvestUnavailablePallet";
+      else cls += " harvestAvailablePallet";
+      if(unplantedSet.has(key)) cls += " unplantedPallet";
       if(progressCompletedSet.has(key)) cls += " harvestProgressCompletedPallet";
 
       if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
@@ -30604,7 +30831,7 @@ function appendForecastBedDetail(container, b){
       pallet.className = cls;
       pallet.textContent = number;
       pallet.title = `${currentBuilding}号棟 ${b}-${number}`
-        + (replantedSet.has(key) ? " 定植済み" : "")
+        + ` ${getHarvestAvailabilityLabel(key, availabilityState)}`
         + (overageSet.has(key) ? " 超過分" : "")
         + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
@@ -30625,8 +30852,9 @@ function appendRecordBedDetail(container, b){
   const bed = document.createElement("div");
   bed.className = "bed bedExpanded";
   const splitInfo = getYieldSplitVisualInfo(b);
-  const recordedSet = getRecordTabRecordedPalletSet();
-  const replantedSet = getRecordTabReplantedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
+  const unplantedSet = availabilityState.unplantedSet;
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const plantingQualityByPallet = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
     ? getRecordPlantingFlowQualityByPallet()
@@ -30667,9 +30895,10 @@ function appendRecordBedDetail(container, b){
           cls += " plantingSelectablePallet";
         }
       }else if(recordedSet.has(key)){
-        cls += " recordedPallet";
-      }else if(replantedSet.has(key)){
-        cls += " replantedPallet";
+        cls += " recordedPallet harvestUnavailablePallet";
+        if(unplantedSet.has(key)) cls += " unplantedPallet";
+      }else{
+        cls += " harvestAvailablePallet";
       }
 
       if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
@@ -30690,7 +30919,7 @@ function appendRecordBedDetail(container, b){
       }
       pallet.title = `${currentBuilding}号棟 ${b}-${number}`
         + statusText
-        + (recordSelectionMode !== "planting" && replantedSet.has(key) ? " 定植済み" : "")
+        + (recordSelectionMode !== "planting" ? ` ${getHarvestAvailabilityLabel(key, availabilityState)}` : "")
         + (overageSet.has(key) ? " 超過分" : "")
         + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
@@ -31135,6 +31364,20 @@ function findFirstAvailableInHarvestOrder(startBuilding, recordedSet = getRecord
   return null;
 }
 
+function findFirstAvailableFromPalletKey(startKey, unavailableSet){
+  if(!isValidPalletKeyString(String(startKey || ""))) return null;
+  const blockedSet = unavailableSet instanceof Set ? unavailableSet : new Set();
+  let current = parsePalletKey(startKey);
+  const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
+
+  for(let offset = 0; offset < maxLoop; offset++){
+    const key = getPalletKey(current.building, current.bed, current.number);
+    if(!blockedSet.has(key)) return key;
+    current = getNextPallet(current.building, current.bed, current.number);
+  }
+  return null;
+}
+
 function getPreviousBuilding(building){
   const index = BUILDINGS.indexOf(building);
   if(index < 0) return null;
@@ -31266,25 +31509,39 @@ function calculateHarvestSelectionFromRecords(options = {}){
       ? options.additionalExcludedPalletKeys
       : []
   );
-  const buildSelectionRecordedSet = harvestRecords => {
+  const buildProgressRecordedSet = harvestRecords => {
     const set = getRecordedPalletSetFromRecords(harvestRecords);
     additionalExcludedSet.forEach(key => set.add(key));
     return set;
   };
+  const buildSelectionUnavailableSet = harvestRecords => {
+    const state = getHarvestAvailabilityStateFromRecords(
+      harvestRecords,
+      referenceDate,
+      plantingEvents,
+      sourceRecords
+    );
+    additionalExcludedSet.forEach(key => state.unavailableSet.add(key));
+    return state.unavailableSet;
+  };
   let recentRecords = getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords);
-  let recordedSet = buildSelectionRecordedSet(recentRecords);
+  let progressRecordedSet = buildProgressRecordedSet(recentRecords);
+  let recordedSet = buildSelectionUnavailableSet(recentRecords);
   let startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
-  let autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+  let startCursorKey = findFirstAvailableInHarvestOrder(startBuilding, progressRecordedSet);
+  let autoStartKey = findFirstAvailableFromPalletKey(startCursorKey, recordedSet);
   let releasedRecordCount = 0;
 
-  while(!autoStartKey && options.releaseOldestIfBlocked && recentRecords.length){
+  while((!startCursorKey || !autoStartKey) && options.releaseOldestIfBlocked && recentRecords.length){
     // 直近の参照件数だけで全パレットが埋まる特殊な状態でも予想を止めない。
     // 仮想記録が1件増えるたび、本来この順で外れる古い記録から解放する。
     recentRecords = recentRecords.slice(0, -1);
     releasedRecordCount++;
-    recordedSet = buildSelectionRecordedSet(recentRecords);
+    progressRecordedSet = buildProgressRecordedSet(recentRecords);
+    recordedSet = buildSelectionUnavailableSet(recentRecords);
     startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
-    autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+    startCursorKey = findFirstAvailableInHarvestOrder(startBuilding, progressRecordedSet);
+    autoStartKey = findFirstAvailableFromPalletKey(startCursorKey, recordedSet);
   }
 
   if(!autoStartKey || needHeads <= 0){
@@ -31298,6 +31555,8 @@ function calculateHarvestSelectionFromRecords(options = {}){
       startBuilding,
       recentRecords,
       recordedSet,
+      progressRecordedSet,
+      startCursorKey,
       releasedRecordCount
     };
   }
@@ -31341,6 +31600,8 @@ function calculateHarvestSelectionFromRecords(options = {}){
     startBuilding,
     recentRecords,
     recordedSet,
+    progressRecordedSet,
+    startCursorKey,
     releasedRecordCount
   };
 }
@@ -31391,7 +31652,7 @@ function runHarvestPrediction(options = {}){
 
   const selection = needHeads > 0
     ? calculateHarvestSelectionFromRecords({
-        referenceDate: new Date(),
+        referenceDate: getHarvestTargetDate(),
         sourceRecords: records,
         needHeads,
         partialTargetDate: getHarvestTargetDate(),
@@ -32346,7 +32607,7 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
   const sourceRecords = Array.isArray(options.sourceRecords) ? options.sourceRecords : records;
   const recordedSet = options.recordedSet instanceof Set
     ? options.recordedSet
-    : getRecordedPalletSet(referenceDate);
+    : getHarvestedPalletSet(referenceDate);
   const excludedSet = new Set(Array.isArray(options.excludedPalletKeys) ? options.excludedPalletKeys : []);
   const hasPartialHarvestRecords = sourceRecords.some(record => record.type === "partialHarvest");
   let remainingHeads = 0;
@@ -32367,7 +32628,7 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
 
 function getRemainingCasesForCurrentBuilding(){
   return getRemainingHarvestableCasesForBuilding(currentBuilding, {
-    recordedSet: getRecordedPalletSet(),
+    recordedSet: getHarvestedPalletSet(getHarvestTargetDate()),
     excludedPalletKeys: harvestFillKeys
   });
 }
@@ -33001,9 +33262,7 @@ function formatHarvestLocationInstruction(keys = harvestFillKeys, referenceDate 
   if(!selectedKeys.length) return "収穫場所: -";
 
   const groups = {};
-  const recordedSet = harvestSelectionMode === "manual"
-    ? getHarvestedPalletSet(referenceDate)
-    : getRecordedPalletSet(referenceDate);
+  const recordedSet = getHarvestedPalletSet(referenceDate);
   const selectedKeySet = new Set(selectedKeys);
   selectedKeys.forEach(key => {
     const p = parsePalletKey(key);
@@ -34235,7 +34494,7 @@ function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCou
   });
 }
 
-function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet){
+function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, unplantedSet = new Set()){
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
@@ -34247,9 +34506,13 @@ function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet){
       const recorded = recordedSet.has(key);
       const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell", "monitorBedMapCell"];
       if(selected) classes.push("is-selected");
-      if(recorded) classes.push("is-recorded");
+      if(recorded) classes.push("is-recorded", "is-harvest-unavailable");
+      else classes.push("is-harvest-available");
+      if(unplantedSet.has(key)) classes.push("is-unplanted");
       if(sectionStart) classes.push("is-section-start");
-      const state = selected ? "今回収穫" : (recorded ? "収穫済み" : "未選択");
+      const state = selected
+        ? "今回収穫"
+        : (unplantedSet.has(key) ? "収穫不可能、未定植" : (recorded ? "収穫不可能" : "収穫可能"));
       cells.push(`<span class="${classes.join(" ")}" title="${number}番 ${state}"></span>`);
     });
   }
@@ -34304,9 +34567,9 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
   if(!sourceKeys.length){
     return `<div class="monitorEmpty">収穫場所が未選択です。</div>`;
   }
-  const recordedSet = harvestSelectionMode === "manual"
-    ? getHarvestedPalletSet(getHarvestTargetDate())
-    : getRecordedPalletSet();
+  const availabilityState = getHarvestAvailabilityState(getHarvestTargetDate());
+  const recordedSet = availabilityState.unavailableSet;
+  const unplantedSet = availabilityState.unplantedSet;
   const casePlacementCounts = getMonitorCasePlacementCounts(casePlacementValue);
 
   const grouped = {};
@@ -34365,7 +34628,7 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
                     <div class="monitorBedName">${bed}</div>
                     <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
                   </div>
-                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet)}
+                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, unplantedSet)}
                 </div>
               `;
             }).join("")}
@@ -34951,8 +35214,10 @@ function buildMonitorPreview2DashboardHtml(normalized, fields){
             <div class="monitorV2PanelHeader">
               <div class="monitorV2PanelTitle"><span class="monitorV2PanelIcon">${getMonitorPreview2IconHtml("map")}</span><span>収穫場所（配置図）</span></div>
               <div class="monitorMapLegend" aria-label="収穫場所の凡例">
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip available"></span>収穫可能</span>
                 <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
-                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫不可能</span>
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip unplanted"></span>未定植</span>
               </div>
             </div>
             <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
@@ -35027,8 +35292,10 @@ function buildMonitorDashboardHtml(content, options = {}){
           <div class="monitorPanelHeader monitorHarvestMapHeader">
             <div class="monitorSectionTitle">配置コンテナ数</div>
             <div class="monitorMapLegend" aria-label="収穫場所の凡例">
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip available"></span>収穫可能</span>
               <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
-              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫不可能</span>
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip unplanted"></span>未定植</span>
             </div>
           </div>
           <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
@@ -35545,8 +35812,8 @@ function drawBeds(){
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const targetDate = getHarvestTargetDate();
-  const recordedSet = getHarvestedPalletSet(targetDate);
-  const replantedSet = getReplantedPalletSet(targetDate);
+  const availabilityState = getHarvestAvailabilityState(targetDate);
+  const recordedSet = availabilityState.unavailableSet;
   const selectedSet = new Set(harvestFillKeys || []);
   const overageSet = getHarvestOverageKeySet();
   const progressCompletedSet = getAppliedHarvestProgressCompletedKeySet();
@@ -35576,7 +35843,8 @@ function drawBeds(){
     appendBedOverviewMap(bed, currentBuilding, b, {
       selectedSet,
       recordedSet,
-      replantedSet,
+      unplantedSet:availabilityState.unplantedSet,
+      plantingLockInfoByPallet:availabilityState.replantingInfoByPallet,
       progressCompletedSet,
       overageSet,
       hasPartialHarvestRecords,
@@ -35605,7 +35873,8 @@ function drawBeds(){
 
 function toggleRecordPallet(building, bed, number){
   const key = getPalletKey(building, bed, number);
-  const recordedSet = getRecordTabRecordedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
 
   const flowAssignmentChanged = applyRecordPlantingFlowAssignment(key);
   if(flowAssignmentChanged !== null){
@@ -35628,7 +35897,7 @@ function toggleRecordPallet(building, bed, number){
   }
 
   if(recordSelectionMode !== "planting" && isRecorded(building, bed, number, { recordedSet, context: "record" })){
-    showToast("記録済みパレットは調整できません");
+    showToast(getHarvestUnavailableReason(key, availabilityState));
     return;
   }
 
@@ -35817,10 +36086,8 @@ function drawRecordBeds(){
   container.innerHTML = "";
   renderRecordBuildingDisplayControls();
   renderRecordPlantingFlow();
-  const recordedSet = getRecordTabRecordedPalletSet();
-  const replantedSet = recordSelectionMode === "planting"
-    ? new Set()
-    : getRecordTabReplantedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const allBuildings = getRecordMapBuildings(plantingAllowedSet);
@@ -35905,7 +36172,10 @@ function drawRecordBeds(){
         selectedSet,
         overageSet: recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set(),
         recordedSet,
-        replantedSet,
+        unplantedSet:recordSelectionMode === "planting" ? new Set() : availabilityState.unplantedSet,
+        plantingLockInfoByPallet:recordSelectionMode === "planting"
+          ? new Map()
+          : availabilityState.replantingInfoByPallet,
         plantingAllowedSet,
         plantingCountsByPallet: recordPlantingCountsByPallet,
         plantingFlowStage: isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",
@@ -35935,7 +36205,7 @@ function drawRecordBeds(){
             : "")
         : `
           <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-          <span class="simulationBedOverviewCountRecorded">記録済 ${summaryCounts.recorded}</span>
+          <span class="simulationBedOverviewCountRecorded">収穫不可 ${summaryCounts.recorded}</span>
         `;
       bed.appendChild(counts);
       attachBedDetailOpenTapHandler(bed, "record", building, b);
@@ -35943,7 +36213,7 @@ function drawRecordBeds(){
         "aria-label",
         plantingAllowedSet
           ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
-          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、記録済み ${summaryCounts.recorded}パレット。タップで拡大してパレットを選択`
+          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、収穫不可能 ${summaryCounts.recorded}パレット。タップで拡大してパレットを選択`
       );
       beds.appendChild(bed);
     });

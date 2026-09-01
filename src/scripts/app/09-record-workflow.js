@@ -778,7 +778,7 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
   const sourceRecords = Array.isArray(options.sourceRecords) ? options.sourceRecords : records;
   const recordedSet = options.recordedSet instanceof Set
     ? options.recordedSet
-    : getRecordedPalletSet(referenceDate);
+    : getHarvestedPalletSet(referenceDate);
   const excludedSet = new Set(Array.isArray(options.excludedPalletKeys) ? options.excludedPalletKeys : []);
   const hasPartialHarvestRecords = sourceRecords.some(record => record.type === "partialHarvest");
   let remainingHeads = 0;
@@ -799,7 +799,7 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
 
 function getRemainingCasesForCurrentBuilding(){
   return getRemainingHarvestableCasesForBuilding(currentBuilding, {
-    recordedSet: getRecordedPalletSet(),
+    recordedSet: getHarvestedPalletSet(getHarvestTargetDate()),
     excludedPalletKeys: harvestFillKeys
   });
 }
@@ -1433,9 +1433,7 @@ function formatHarvestLocationInstruction(keys = harvestFillKeys, referenceDate 
   if(!selectedKeys.length) return "収穫場所: -";
 
   const groups = {};
-  const recordedSet = harvestSelectionMode === "manual"
-    ? getHarvestedPalletSet(referenceDate)
-    : getRecordedPalletSet(referenceDate);
+  const recordedSet = getHarvestedPalletSet(referenceDate);
   const selectedKeySet = new Set(selectedKeys);
   selectedKeys.forEach(key => {
     const p = parsePalletKey(key);

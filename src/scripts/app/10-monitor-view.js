@@ -322,7 +322,7 @@ function buildMonitorBedSegments(numbers, building, bed, recordedSet, segmentCou
   });
 }
 
-function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet){
+function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, unplantedSet = new Set()){
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
@@ -334,9 +334,13 @@ function getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet){
       const recorded = recordedSet.has(key);
       const classes = ["dashboardSeedlingBedMapCell", "simulationBedMapCell", "monitorBedMapCell"];
       if(selected) classes.push("is-selected");
-      if(recorded) classes.push("is-recorded");
+      if(recorded) classes.push("is-recorded", "is-harvest-unavailable");
+      else classes.push("is-harvest-available");
+      if(unplantedSet.has(key)) classes.push("is-unplanted");
       if(sectionStart) classes.push("is-section-start");
-      const state = selected ? "今回収穫" : (recorded ? "収穫済み" : "未選択");
+      const state = selected
+        ? "今回収穫"
+        : (unplantedSet.has(key) ? "収穫不可能、未定植" : (recorded ? "収穫不可能" : "収穫可能"));
       cells.push(`<span class="${classes.join(" ")}" title="${number}番 ${state}"></span>`);
     });
   }
@@ -391,9 +395,9 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
   if(!sourceKeys.length){
     return `<div class="monitorEmpty">収穫場所が未選択です。</div>`;
   }
-  const recordedSet = harvestSelectionMode === "manual"
-    ? getHarvestedPalletSet(getHarvestTargetDate())
-    : getRecordedPalletSet();
+  const availabilityState = getHarvestAvailabilityState(getHarvestTargetDate());
+  const recordedSet = availabilityState.unavailableSet;
+  const unplantedSet = availabilityState.unplantedSet;
   const casePlacementCounts = getMonitorCasePlacementCounts(casePlacementValue);
 
   const grouped = {};
@@ -452,7 +456,7 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
                     <div class="monitorBedName">${bed}</div>
                     <div class="monitorBedCount">${selectedCount ? `${selectedCount}枚` : ""}</div>
                   </div>
-                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet)}
+                  ${getMonitorBedPalletMapHtml(building, bed, selectedSet, recordedSet, unplantedSet)}
                 </div>
               `;
             }).join("")}
@@ -1038,8 +1042,10 @@ function buildMonitorPreview2DashboardHtml(normalized, fields){
             <div class="monitorV2PanelHeader">
               <div class="monitorV2PanelTitle"><span class="monitorV2PanelIcon">${getMonitorPreview2IconHtml("map")}</span><span>収穫場所（配置図）</span></div>
               <div class="monitorMapLegend" aria-label="収穫場所の凡例">
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip available"></span>収穫可能</span>
                 <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
-                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫不可能</span>
+                <span class="monitorMapLegendItem"><span class="monitorMapLegendChip unplanted"></span>未定植</span>
               </div>
             </div>
             <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>
@@ -1114,8 +1120,10 @@ function buildMonitorDashboardHtml(content, options = {}){
           <div class="monitorPanelHeader monitorHarvestMapHeader">
             <div class="monitorSectionTitle">配置コンテナ数</div>
             <div class="monitorMapLegend" aria-label="収穫場所の凡例">
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip available"></span>収穫可能</span>
               <span class="monitorMapLegendItem"><span class="monitorMapLegendChip selected"></span>今回収穫</span>
-              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫済み</span>
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip recorded"></span>収穫不可能</span>
+              <span class="monitorMapLegendItem"><span class="monitorMapLegendChip unplanted"></span>未定植</span>
             </div>
           </div>
           <div class="monitorHarvestMap${harvestMapClass}">${getMonitorSelectionMapHtml(monitorHarvestKeys, fields.remainingCases)}</div>

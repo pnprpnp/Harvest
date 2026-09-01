@@ -497,7 +497,14 @@ function getRecordedPalletSetFromRecords(sourceRecords){
   return set;
 }
 
-function getLatestFullHarvestInfoByPallet(sourceRecords){
+function getLatestFullHarvestInfoByPallet(sourceRecords, referenceDate = null){
+  const referenceDay = referenceDate === null
+    ? null
+    : startOfLocalDay(
+        referenceDate instanceof Date
+          ? referenceDate
+          : (parseDateOnlyString(String(referenceDate || "")) || new Date())
+      );
   const latestInfoByPallet = new Map();
   [...(Array.isArray(sourceRecords) ? sourceRecords : [])]
     .filter(record => record?.type !== "partialHarvest")
@@ -506,18 +513,20 @@ function getLatestFullHarvestInfoByPallet(sourceRecords){
       const recordId = getSafePositiveRecordId(record?.id);
       const harvestDate = parseDateOnlyString(record?.date);
       if(recordId === null || !harvestDate) return;
+      const harvestDay = startOfLocalDay(harvestDate);
+      if(referenceDay && harvestDay.getTime() > referenceDay.getTime()) return;
       getPalletKeysFromRecord(record).forEach(key => {
         if(latestInfoByPallet.has(key)) return;
         latestInfoByPallet.set(key, {
           recordId,
-          harvestDay:startOfLocalDay(harvestDate)
+          harvestDay
         });
       });
     });
   return latestInfoByPallet;
 }
 
-function getReplantedPalletSetFromRecords(
+function getLatestReplantingInfoByPalletFromRecords(
   sourceRecords,
   referenceDate = new Date(),
   sourcePlantingEvents = plantingEvents,
@@ -528,9 +537,9 @@ function getReplantedPalletSetFromRecords(
     : startOfLocalDay(parseDateOnlyString(String(referenceDate || "")) || new Date());
   const latestHarvestInfo = latestHarvestInfoByPallet instanceof Map
     ? latestHarvestInfoByPallet
-    : getLatestFullHarvestInfoByPallet(sourceRecords);
+    : getLatestFullHarvestInfoByPallet(sourceRecords, referenceDay);
 
-  const replantedSet = new Set();
+  const replantingInfoByPallet = new Map();
   (Array.isArray(sourcePlantingEvents) ? sourcePlantingEvents : []).forEach(event => {
     const plantingDate = parseDateOnlyString(event?.plantingDate);
     if(!plantingDate) return;
@@ -542,28 +551,98 @@ function getReplantedPalletSetFromRecords(
         const harvestInfo = latestHarvestInfo.get(key);
         if(!harvestInfo || harvestInfo.recordId !== harvestRecordId) return;
         if(plantingDay.getTime() < harvestInfo.harvestDay.getTime()) return;
-        replantedSet.add(key);
+        const eventId = Number(event?.eventId) || 0;
+        const current = replantingInfoByPallet.get(key);
+        if(current
+          && (current.plantingDay.getTime() > plantingDay.getTime()
+            || (current.plantingDay.getTime() === plantingDay.getTime() && current.eventId > eventId))){
+          return;
+        }
+        const ageDays = getLocalDayDiff(plantingDay, referenceDay);
+        replantingInfoByPallet.set(key, {
+          eventId,
+          harvestRecordId,
+          plantingDay,
+          ageDays,
+          remainingLockDays:Math.max(0, HARVEST_SELECTION_PLANTING_LOCK_DAYS - ageDays),
+          isSelectionLocked:ageDays < HARVEST_SELECTION_PLANTING_LOCK_DAYS
+        });
       });
     });
   });
-  return replantedSet;
+  return replantingInfoByPallet;
+}
+
+function getReplantedPalletSetFromRecords(
+  sourceRecords,
+  referenceDate = new Date(),
+  sourcePlantingEvents = plantingEvents,
+  latestHarvestInfoByPallet = null
+){
+  return new Set(getLatestReplantingInfoByPalletFromRecords(
+    sourceRecords,
+    referenceDate,
+    sourcePlantingEvents,
+    latestHarvestInfoByPallet
+  ).keys());
+}
+
+function getHarvestAvailabilityStateFromRecords(
+  recentHarvestRecords,
+  referenceDate = new Date(),
+  sourcePlantingEvents = plantingEvents,
+  lifecycleSourceRecords = recentHarvestRecords
+){
+  const referenceDay = referenceDate instanceof Date
+    ? startOfLocalDay(referenceDate)
+    : startOfLocalDay(parseDateOnlyString(String(referenceDate || "")) || new Date());
+  const cycleRecordedSet = getRecordedPalletSetFromRecords(recentHarvestRecords);
+  const latestHarvestInfo = getLatestFullHarvestInfoByPallet(lifecycleSourceRecords, referenceDay);
+  const replantingInfoByPallet = getLatestReplantingInfoByPalletFromRecords(
+    lifecycleSourceRecords,
+    referenceDay,
+    sourcePlantingEvents,
+    latestHarvestInfo
+  );
+  const unavailableSet = new Set(cycleRecordedSet);
+  const plantingLockedSet = new Set();
+
+  replantingInfoByPallet.forEach((info, key) => {
+    if(info.isSelectionLocked){
+      unavailableSet.add(key);
+      plantingLockedSet.add(key);
+    }else{
+      unavailableSet.delete(key);
+    }
+  });
+
+  const unplantedSet = new Set();
+  cycleRecordedSet.forEach(key => {
+    if(!replantingInfoByPallet.has(key)) unplantedSet.add(key);
+  });
+
+  return {
+    referenceDay,
+    cycleRecordedSet,
+    unavailableSet,
+    unplantedSet,
+    plantingLockedSet,
+    replantingInfoByPallet
+  };
 }
 
 function getHarvestedPalletSetFromRecords(
   sourceRecords,
   referenceDate = new Date(),
-  sourcePlantingEvents = plantingEvents
+  sourcePlantingEvents = plantingEvents,
+  lifecycleSourceRecords = sourceRecords
 ){
-  const latestHarvestInfo = getLatestFullHarvestInfoByPallet(sourceRecords);
-  const harvestedSet = new Set(latestHarvestInfo.keys());
-  getReplantedPalletSetFromRecords(
+  return getHarvestAvailabilityStateFromRecords(
     sourceRecords,
     referenceDate,
     sourcePlantingEvents,
-    latestHarvestInfo
-  )
-    .forEach(key => harvestedSet.delete(key));
-  return harvestedSet;
+    lifecycleSourceRecords
+  ).unavailableSet;
 }
 
 function getRecordedPalletSet(referenceDate = new Date()){
@@ -571,20 +650,32 @@ function getRecordedPalletSet(referenceDate = new Date()){
 }
 
 function getReplantedPalletSet(referenceDate = new Date()){
-  const recentRecords = getRecentHarvestRecordsByCount(referenceDate);
-  return getReplantedPalletSetFromRecords(recentRecords, referenceDate);
+  return new Set(getHarvestAvailabilityState(referenceDate).replantingInfoByPallet.keys());
 }
 
 function getHarvestedPalletSet(referenceDate = new Date()){
-  const recentRecords = getRecentHarvestRecordsByCount(referenceDate);
-  return getHarvestedPalletSetFromRecords(recentRecords, referenceDate);
+  return getHarvestAvailabilityState(referenceDate).unavailableSet;
+}
+
+function getHarvestAvailabilityState(referenceDate = new Date(), sourceRecords = getActiveHarvestTimelineRecords(records)){
+  const recentRecords = getRecentHarvestRecordsByCount(
+    referenceDate,
+    RECORDED_LOOKBACK_COUNT,
+    sourceRecords
+  );
+  return getHarvestAvailabilityStateFromRecords(
+    recentRecords,
+    referenceDate,
+    plantingEvents,
+    sourceRecords
+  );
 }
 
 function getRecordEditingReferenceDate(){
   return parseDateOnlyString(document.getElementById("recordDateInput")?.value || "") || new Date();
 }
 
-function getRecordTabRecordedPalletSet(){
+function getRecordTabHarvestAvailabilityState(){
   const referenceDate = getRecordEditingReferenceDate();
   const sourceRecords = getActiveHarvestTimelineRecords(records);
   const recentRecords = getRecentHarvestRecordsByCount(
@@ -592,18 +683,40 @@ function getRecordTabRecordedPalletSet(){
     RECORDED_LOOKBACK_COUNT,
     sourceRecords
   );
-  return getHarvestedPalletSetFromRecords(recentRecords, referenceDate);
+  return getHarvestAvailabilityStateFromRecords(
+    recentRecords,
+    referenceDate,
+    plantingEvents,
+    sourceRecords
+  );
+}
+
+function getRecordTabRecordedPalletSet(){
+  return getRecordTabHarvestAvailabilityState().unavailableSet;
 }
 
 function getRecordTabReplantedPalletSet(){
-  const referenceDate = getRecordEditingReferenceDate();
-  const sourceRecords = getActiveHarvestTimelineRecords(records);
-  const recentRecords = getRecentHarvestRecordsByCount(
-    referenceDate,
-    RECORDED_LOOKBACK_COUNT,
-    sourceRecords
-  );
-  return getReplantedPalletSetFromRecords(recentRecords, referenceDate);
+  return new Set(getRecordTabHarvestAvailabilityState().replantingInfoByPallet.keys());
+}
+
+function getHarvestUnavailableReason(key, availabilityState){
+  const state = availabilityState || getHarvestAvailabilityState(getHarvestTargetDate());
+  if(state.unplantedSet.has(key)) return "未定植のため収穫できません";
+  const plantingInfo = state.replantingInfoByPallet.get(key);
+  if(plantingInfo?.isSelectionLocked){
+    return `定植から${plantingInfo.ageDays}日です。あと${plantingInfo.remainingLockDays}日で選択できます`;
+  }
+  return state.unavailableSet.has(key) ? "収穫不可能なパレットです" : "";
+}
+
+function getHarvestAvailabilityLabel(key, availabilityState){
+  const state = availabilityState || getHarvestAvailabilityState(getHarvestTargetDate());
+  if(state.unplantedSet.has(key)) return "収穫不可能 未定植";
+  const plantingInfo = state.replantingInfoByPallet.get(key);
+  if(plantingInfo?.isSelectionLocked){
+    return `収穫不可能 定植から${plantingInfo.ageDays}日 あと${plantingInfo.remainingLockDays}日`;
+  }
+  return state.unavailableSet.has(key) ? "収穫不可能" : "収穫可能";
 }
 
 function isRecorded(building, bed, number, options = {}){
@@ -656,13 +769,14 @@ function getCurrentHarvestTotal(){
 
 function togglePallet(building, bed, number){
   const key = getPalletKey(building, bed, number);
+  const availabilityState = getHarvestAvailabilityState(getHarvestTargetDate());
 
   if(isHarvestProgressCompletedPallet(key)){
     showToast("途中経過で完了にしたベッドです。変更は途中経過から行ってください");
     return;
   }
-  if(isRecorded(building, bed, number)){
-    showToast("記録済みパレットは選択できません");
+  if(availabilityState.unavailableSet.has(key)){
+    showToast(getHarvestUnavailableReason(key, availabilityState));
     return;
   }
 
@@ -855,7 +969,10 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
   const key = getPalletKey(building, bed, number);
   const selectedSet = options.selectedSet || new Set();
   const recordedSet = options.recordedSet || new Set();
-  const replantedSet = options.replantedSet instanceof Set ? options.replantedSet : new Set();
+  const unplantedSet = options.unplantedSet instanceof Set ? options.unplantedSet : new Set();
+  const plantingLockInfoByPallet = options.plantingLockInfoByPallet instanceof Map
+    ? options.plantingLockInfoByPallet
+    : new Map();
   const progressCompletedSet = options.progressCompletedSet || new Set();
   const overageSet = options.overageSet instanceof Set ? options.overageSet : new Set();
   const seedlingSkippedSet = options.seedlingSkippedSet instanceof Set
@@ -905,6 +1022,9 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     }
   }else{
     const isSelected = selectedSet.has(key);
+    const isUnavailable = recordedSet.has(key);
+    classes.push(isUnavailable ? "is-harvest-unavailable" : "is-harvest-available");
+    if(unplantedSet.has(key)) classes.push("is-unplanted");
     if(isSelected){
       classes.push("is-selected");
       stateText = "選択中";
@@ -923,10 +1043,6 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
         }
       }
     }
-    if(replantedSet.has(key)){
-      classes.push("is-replanted");
-      if(!isSelected) stateText = "定植済み";
-    }
     if(seedlingSkippedSet.has(key)){
       classes.push("is-seedling-skipped");
       stateText = "飛ばして残す";
@@ -943,9 +1059,16 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
       classes.push("is-progress-completed");
       stateText = "途中経過で完了";
     }
-    if(recordedSet.has(key)){
+    if(isUnavailable){
       classes.push("is-recorded");
-      stateText = "記録済み";
+      const plantingInfo = plantingLockInfoByPallet.get(key);
+      stateText = unplantedSet.has(key)
+        ? "収穫不可能、未定植"
+        : (plantingInfo?.isSelectionLocked
+            ? `収穫不可能、定植から${plantingInfo.ageDays}日、あと${plantingInfo.remainingLockDays}日`
+            : "収穫不可能");
+    }else if(!isSelected && partialHarvestCount <= 0 && !progressCompletedSet.has(key)){
+      stateText = "収穫可能";
     }
   }
   if(sectionStart) classes.push("is-section-start");
@@ -1266,13 +1389,14 @@ function showPalletDragToast(message){
 function applyForecastPalletDragChange(building, bed, number, mode){
   const key = getPalletKey(building, bed, number);
   const fillIndex = harvestFillKeys.indexOf(key);
+  const availabilityState = getHarvestAvailabilityState(getHarvestTargetDate());
 
   if(isHarvestProgressCompletedPallet(key)){
     showPalletDragToast("途中経過で完了にしたベッドです。変更は途中経過から行ってください");
     return false;
   }
-  if(isRecorded(building, bed, number)){
-    showPalletDragToast("記録済みパレットは選択できません");
+  if(availabilityState.unavailableSet.has(key)){
+    showPalletDragToast(getHarvestUnavailableReason(key, availabilityState));
     return false;
   }
 
@@ -1296,7 +1420,8 @@ function applyForecastPalletDragChange(building, bed, number, mode){
 
 function applyRecordPalletDragChange(building, bed, number, mode){
   const key = getPalletKey(building, bed, number);
-  const recordedSet = getRecordTabRecordedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
 
   const flowAssignmentChanged = applyRecordPlantingFlowAssignment(key, { drag: true });
   if(flowAssignmentChanged !== null) return flowAssignmentChanged;
@@ -1307,7 +1432,7 @@ function applyRecordPalletDragChange(building, bed, number, mode){
   }
 
   if(recordSelectionMode !== "planting" && isRecorded(building, bed, number, { recordedSet, context: "record" })){
-    showPalletDragToast("記録済みパレットは調整できません");
+    showPalletDragToast(getHarvestUnavailableReason(key, availabilityState));
     return false;
   }
 
@@ -1566,8 +1691,9 @@ function appendForecastBedDetail(container, b){
   bed.className = "bed bedExpanded";
   const splitInfo = getYieldSplitVisualInfo(b);
   const targetDate = getHarvestTargetDate();
-  const recordedSet = getHarvestedPalletSet(targetDate);
-  const replantedSet = getReplantedPalletSet(targetDate);
+  const availabilityState = getHarvestAvailabilityState(targetDate);
+  const recordedSet = availabilityState.unavailableSet;
+  const unplantedSet = availabilityState.unplantedSet;
   const selectedSet = new Set(harvestFillKeys || []);
   const progressCompletedSet = getAppliedHarvestProgressCompletedKeySet();
   const overageSet = getHarvestOverageKeySet();
@@ -1587,8 +1713,9 @@ function appendForecastBedDetail(container, b){
       if(partialHarvestCount > 0) cls += " partialHarvestPallet";
       if(selectedSet.has(key)) cls += " harvestFill";
       if(overageSet.has(key)) cls += " harvestOveragePallet";
-      if(recordedSet.has(key)) cls += " recordedPallet";
-      if(replantedSet.has(key)) cls += " replantedPallet";
+      if(recordedSet.has(key)) cls += " recordedPallet harvestUnavailablePallet";
+      else cls += " harvestAvailablePallet";
+      if(unplantedSet.has(key)) cls += " unplantedPallet";
       if(progressCompletedSet.has(key)) cls += " harvestProgressCompletedPallet";
 
       if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
@@ -1597,7 +1724,7 @@ function appendForecastBedDetail(container, b){
       pallet.className = cls;
       pallet.textContent = number;
       pallet.title = `${currentBuilding}号棟 ${b}-${number}`
-        + (replantedSet.has(key) ? " 定植済み" : "")
+        + ` ${getHarvestAvailabilityLabel(key, availabilityState)}`
         + (overageSet.has(key) ? " 超過分" : "")
         + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
@@ -1618,8 +1745,9 @@ function appendRecordBedDetail(container, b){
   const bed = document.createElement("div");
   bed.className = "bed bedExpanded";
   const splitInfo = getYieldSplitVisualInfo(b);
-  const recordedSet = getRecordTabRecordedPalletSet();
-  const replantedSet = getRecordTabReplantedPalletSet();
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const recordedSet = availabilityState.unavailableSet;
+  const unplantedSet = availabilityState.unplantedSet;
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const plantingQualityByPallet = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
     ? getRecordPlantingFlowQualityByPallet()
@@ -1660,9 +1788,10 @@ function appendRecordBedDetail(container, b){
           cls += " plantingSelectablePallet";
         }
       }else if(recordedSet.has(key)){
-        cls += " recordedPallet";
-      }else if(replantedSet.has(key)){
-        cls += " replantedPallet";
+        cls += " recordedPallet harvestUnavailablePallet";
+        if(unplantedSet.has(key)) cls += " unplantedPallet";
+      }else{
+        cls += " harvestAvailablePallet";
       }
 
       if(harvestSummary && harvestSummary.start === key) cls += " harvestStart";
@@ -1683,7 +1812,7 @@ function appendRecordBedDetail(container, b){
       }
       pallet.title = `${currentBuilding}号棟 ${b}-${number}`
         + statusText
-        + (recordSelectionMode !== "planting" && replantedSet.has(key) ? " 定植済み" : "")
+        + (recordSelectionMode !== "planting" ? ` ${getHarvestAvailabilityLabel(key, availabilityState)}` : "")
         + (overageSet.has(key) ? " 超過分" : "")
         + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
@@ -2128,6 +2257,20 @@ function findFirstAvailableInHarvestOrder(startBuilding, recordedSet = getRecord
   return null;
 }
 
+function findFirstAvailableFromPalletKey(startKey, unavailableSet){
+  if(!isValidPalletKeyString(String(startKey || ""))) return null;
+  const blockedSet = unavailableSet instanceof Set ? unavailableSet : new Set();
+  let current = parsePalletKey(startKey);
+  const maxLoop = BUILDINGS.length * bedOrder.length * PALLETS_PER_BED;
+
+  for(let offset = 0; offset < maxLoop; offset++){
+    const key = getPalletKey(current.building, current.bed, current.number);
+    if(!blockedSet.has(key)) return key;
+    current = getNextPallet(current.building, current.bed, current.number);
+  }
+  return null;
+}
+
 function getPreviousBuilding(building){
   const index = BUILDINGS.indexOf(building);
   if(index < 0) return null;
@@ -2259,25 +2402,39 @@ function calculateHarvestSelectionFromRecords(options = {}){
       ? options.additionalExcludedPalletKeys
       : []
   );
-  const buildSelectionRecordedSet = harvestRecords => {
+  const buildProgressRecordedSet = harvestRecords => {
     const set = getRecordedPalletSetFromRecords(harvestRecords);
     additionalExcludedSet.forEach(key => set.add(key));
     return set;
   };
+  const buildSelectionUnavailableSet = harvestRecords => {
+    const state = getHarvestAvailabilityStateFromRecords(
+      harvestRecords,
+      referenceDate,
+      plantingEvents,
+      sourceRecords
+    );
+    additionalExcludedSet.forEach(key => state.unavailableSet.add(key));
+    return state.unavailableSet;
+  };
   let recentRecords = getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords);
-  let recordedSet = buildSelectionRecordedSet(recentRecords);
+  let progressRecordedSet = buildProgressRecordedSet(recentRecords);
+  let recordedSet = buildSelectionUnavailableSet(recentRecords);
   let startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
-  let autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+  let startCursorKey = findFirstAvailableInHarvestOrder(startBuilding, progressRecordedSet);
+  let autoStartKey = findFirstAvailableFromPalletKey(startCursorKey, recordedSet);
   let releasedRecordCount = 0;
 
-  while(!autoStartKey && options.releaseOldestIfBlocked && recentRecords.length){
+  while((!startCursorKey || !autoStartKey) && options.releaseOldestIfBlocked && recentRecords.length){
     // 直近の参照件数だけで全パレットが埋まる特殊な状態でも予想を止めない。
     // 仮想記録が1件増えるたび、本来この順で外れる古い記録から解放する。
     recentRecords = recentRecords.slice(0, -1);
     releasedRecordCount++;
-    recordedSet = buildSelectionRecordedSet(recentRecords);
+    progressRecordedSet = buildProgressRecordedSet(recentRecords);
+    recordedSet = buildSelectionUnavailableSet(recentRecords);
     startBuilding = getStartupHarvestBuildingFromRecentRecords(recentRecords);
-    autoStartKey = findFirstAvailableInHarvestOrder(startBuilding, recordedSet);
+    startCursorKey = findFirstAvailableInHarvestOrder(startBuilding, progressRecordedSet);
+    autoStartKey = findFirstAvailableFromPalletKey(startCursorKey, recordedSet);
   }
 
   if(!autoStartKey || needHeads <= 0){
@@ -2291,6 +2448,8 @@ function calculateHarvestSelectionFromRecords(options = {}){
       startBuilding,
       recentRecords,
       recordedSet,
+      progressRecordedSet,
+      startCursorKey,
       releasedRecordCount
     };
   }
@@ -2334,6 +2493,8 @@ function calculateHarvestSelectionFromRecords(options = {}){
     startBuilding,
     recentRecords,
     recordedSet,
+    progressRecordedSet,
+    startCursorKey,
     releasedRecordCount
   };
 }
@@ -2384,7 +2545,7 @@ function runHarvestPrediction(options = {}){
 
   const selection = needHeads > 0
     ? calculateHarvestSelectionFromRecords({
-        referenceDate: new Date(),
+        referenceDate: getHarvestTargetDate(),
         sourceRecords: records,
         needHeads,
         partialTargetDate: getHarvestTargetDate(),
