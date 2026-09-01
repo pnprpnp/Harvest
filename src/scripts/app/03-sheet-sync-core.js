@@ -592,28 +592,60 @@ function findGoogleSheetBackgroundRecord(job){
   );
 }
 
-function queueGoogleSheetRecordSend(record, options = {}){
-  const key = getGoogleSheetBackgroundRecordKey(record);
-  if(!key) return false;
-  if(hasSyncConflictForEntity("record", record)){
-    setGoogleSheetSyncStatus(record, "conflict");
-    return false;
-  }
+function setGoogleSheetRecordBatchSyncStatus(recordsToUpdate, state){
+  const normalizedRecords = Array.isArray(recordsToUpdate) ? recordsToUpdate : [];
+  if(!normalizedRecords.length) return;
+  const status = loadGoogleSheetSyncStatus();
+  const updatedAt = new Date().toISOString();
+  normalizedRecords.forEach(record => {
+    getGoogleSheetRecordSyncKeys(record).forEach(key => {
+      status[key] = { state, updatedAt };
+    });
+  });
+  saveGoogleSheetSyncStatus(status);
+  updateGoogleSheetResendButtonState();
+}
+
+function queueGoogleSheetRecordBatchSend(recordsToQueue, options = {}){
+  const uniqueRecords = new Map();
+  (Array.isArray(recordsToQueue) ? recordsToQueue : []).forEach(record => {
+    const key = getGoogleSheetBackgroundRecordKey(record);
+    if(key) uniqueRecords.set(key, record);
+  });
+  if(!uniqueRecords.size) return 0;
+
+  const conflictedRecords = [];
+  const queueableRecords = [];
+  uniqueRecords.forEach((record, key) => {
+    if(hasSyncConflictForEntity("record", record)) conflictedRecords.push(record);
+    else queueableRecords.push({ key, record });
+  });
+  setGoogleSheetRecordBatchSyncStatus(conflictedRecords, "conflict");
+  if(!queueableRecords.length) return 0;
+
   const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
   if(!validation.ok){
-    setGoogleSheetSyncStatus(record, "failed");
-    return false;
+    setGoogleSheetRecordBatchSyncStatus(queueableRecords.map(item => item.record), "failed");
+    return 0;
   }
-  const job = {
-    recordUuid: normalizeRecordUuid(record?.recordUuid),
-    recordId: getSafePositiveRecordId(record?.id),
-    successMessage: String(options.successMessage || ""),
-    failureMessage: String(options.failureMessage || "記録は端末内に保存されています。スプレッドシートは未送信です")
-  };
-  setGoogleSheetSyncStatus(record, "edited");
-  googleSheetBackgroundRecordQueue.set(key, job);
+
+  setGoogleSheetRecordBatchSyncStatus(queueableRecords.map(item => item.record), "edited");
+  queueableRecords.forEach(({ key, record }, index) => {
+    googleSheetBackgroundRecordQueue.set(key, {
+      recordUuid: normalizeRecordUuid(record?.recordUuid),
+      recordId: getSafePositiveRecordId(record?.id),
+      successMessage: index === queueableRecords.length - 1
+        ? String(options.successMessage || "")
+        : "",
+      failureMessage: String(options.failureMessage || "記録は端末内に保存されています。スプレッドシートは未送信です")
+    });
+  });
   scheduleGoogleSheetBackgroundSend();
-  return true;
+  return queueableRecords.length;
+}
+
+function queueGoogleSheetRecordSend(record, options = {}){
+  return queueGoogleSheetRecordBatchSend([record], options) === 1;
 }
 
 function queueGoogleSheetPlantingEventSend(event, options = {}){

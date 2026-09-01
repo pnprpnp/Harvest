@@ -159,7 +159,7 @@ function initializeStartupViews(savedHarvestState){
     harvestFillKeys: getHarvestProgressRemainingSelectionKeys()
   });
   setTodayToRecordDate();
-  refreshPartialHarvestRemainingEstimator();
+  refreshAllPartialHarvestRemainingEstimators();
   syncDashboardStartDayInputs(dashboardFilter.startDay || getDefaultDashboardStartDay());
 
   const dashboardCasesGranularityInput = document.getElementById("dashboardCasesGranularityInput");

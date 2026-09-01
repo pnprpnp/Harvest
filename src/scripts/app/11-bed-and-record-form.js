@@ -1528,7 +1528,7 @@ function updateRecordWeekdayDisplay(){
 
 function refreshRecordDateDependentUi(){
   updateRecordWeekdayDisplay();
-  refreshPartialHarvestRemainingEstimator();
+  refreshAllPartialHarvestRemainingEstimators();
   renderRecordList();
   renderForecastSummary();
   updateRecordActualLoss();
@@ -1582,12 +1582,7 @@ function clearRecordForm(){
     delete actualSeedlingTrayCountInput.dataset.userEdited;
   }
   setRecordSeedlingCarryoverMode("loss", { silent: true });
-  const partialCasesInput = document.getElementById("partialHarvestCasesInput");
-  if(partialCasesInput) partialCasesInput.value = "";
-  document.querySelectorAll('input[name="partialHarvestBed"]').forEach(input => {
-    input.checked = false;
-  });
-  resetPartialHarvestRemainingEstimator();
+  resetPartialHarvestBatchEntries();
   setSelectedQualityMemo(null);
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();

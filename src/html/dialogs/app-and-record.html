@@ -115,53 +115,73 @@
           <summary>各パレットの一部だけ収穫したい</summary>
           <div class="partialHarvestBody">
             <div class="smallText harvestProgressPartialHarvestLead">今回の収穫のうち、通常の順番ではないベッドの各パレットから少しずつ取ったときに記録します。
-株数やロス率の入力は不要です。ケース数から各パレットの平均収穫株数を自動計算し、その場所の順番が来たときの予測から差し引きます。パレット自体は収穫済みにしません。</div>
-            <div class="partialHarvestGrid harvestProgressPartialHarvestGrid">
-              <div>
-                <label for="partialHarvestBuildingInput">号棟</label>
-                <select id="partialHarvestBuildingInput" data-ui-change="refreshPartialHarvestRemainingEstimator">
-                  <option value="2">2号棟</option>
-                  <option value="3">3号棟</option>
-                  <option value="4">4号棟</option>
-                  <option value="5">5号棟</option>
-                  <option value="6">6号棟</option>
-                  <option value="7">7号棟</option>
-                  <option value="8">8号棟</option>
-                  <option value="9">9号棟</option>
-                </select>
-              </div>
-            </div>
-            <label>ベッド</label>
-            <div class="partialBedChoiceRow harvestProgressPartialBedChoiceRow">
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="A" data-ui-change="refreshPartialHarvestRemainingEstimator">A</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="B" data-ui-change="refreshPartialHarvestRemainingEstimator">B</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="C" data-ui-change="refreshPartialHarvestRemainingEstimator">C</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="D" data-ui-change="refreshPartialHarvestRemainingEstimator">D</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="E" data-ui-change="refreshPartialHarvestRemainingEstimator">E</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="F" data-ui-change="refreshPartialHarvestRemainingEstimator">F</label>
-            </div>
-            <details id="partialHarvestRemainingEstimator" class="partialHarvestRemainingEstimator" data-ui-toggle="refreshPartialHarvestRemainingEstimator">
-              <summary>残り株数からケース数を予想</summary>
-              <div class="partialHarvestRemainingEstimatorBody">
-                <div class="smallText partialHarvestRemainingEstimatorLead">選択したベッドごとに、収穫後の「1パレット平均の残り株数」を入力してください。</div>
-                <div id="partialHarvestRemainingRows" class="partialHarvestRemainingRows">
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="A" hidden><span>Aベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_A" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="A" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="B" hidden><span>Bベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_B" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="B" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="C" hidden><span>Cベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_C" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="C" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="D" hidden><span>Dベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_D" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="D" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="E" hidden><span>Eベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_E" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="E" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="F" hidden><span>Fベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_F" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="F" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
+ケース数から各パレットの平均収穫株数を自動計算し、その場所の順番が来たときの予測から差し引きます。複数の場所は「場所を追加」でまとめて記録できます。</div>
+            <div id="partialHarvestBatchEntries" class="partialHarvestBatchEntries">
+              <section id="partialHarvestBatchEntryPrimary" class="partialHarvestBatchEntry" data-partial-harvest-entry-id="primary">
+                <div class="partialHarvestBatchEntryHeader">
+                  <strong class="partialHarvestBatchEntryTitle">場所 1</strong>
+                  <button type="button" class="secondaryBtn partialHarvestBatchRemoveBtn" data-ui-click="removePartialHarvestBatchEntry" data-ui-arg="primary" hidden>この場所を削除</button>
                 </div>
-                <div id="partialHarvestRemainingEstimateResult" class="partialHarvestRemainingEstimateResult" role="status" aria-live="polite" hidden>
-                  <div id="partialHarvestRemainingEstimatePrimary" class="partialHarvestRemainingEstimatePrimary"></div>
-                  <div id="partialHarvestRemainingEstimateBreakdown" class="partialHarvestRemainingEstimateBreakdown"></div>
+                <div class="partialHarvestGrid harvestProgressPartialHarvestGrid">
+                  <div>
+                    <label for="partialHarvestBuildingInput">号棟</label>
+                    <select id="partialHarvestBuildingInput" data-partial-harvest-role="building" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">
+                      <option value="2">2号棟</option>
+                      <option value="3">3号棟</option>
+                      <option value="4">4号棟</option>
+                      <option value="5">5号棟</option>
+                      <option value="6">6号棟</option>
+                      <option value="7">7号棟</option>
+                      <option value="8">8号棟</option>
+                      <option value="9">9号棟</option>
+                    </select>
+                  </div>
                 </div>
-                <button id="partialHarvestApplyRemainingEstimateBtn" type="button" class="actionBtn secondaryBtn partialHarvestApplyRemainingEstimateBtn" data-ui-click="applyPartialHarvestRemainingEstimate" disabled>ケース数を予想する</button>
-              </div>
-            </details>
-            <label for="partialHarvestCasesInput">今回の総ケースのうち、この場所から取れたケース数（確定値）</label>
-            <input id="partialHarvestCasesInput" type="number" min="1" step="1" inputmode="numeric" data-ui-input="handlePartialHarvestCasesInput">
-            <button class="actionBtn thirdBtn harvestProgressPartialHarvestSaveBtn" data-ui-click="savePartialHarvestRecord">各パレット部分収穫を記録する</button>
+                <label>ベッド</label>
+                <div class="partialBedChoiceRow harvestProgressPartialBedChoiceRow">
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="A" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">A</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="B" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">B</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="C" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">C</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="D" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">D</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="E" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">E</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="F" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">F</label>
+                </div>
+                <details id="partialHarvestRemainingEstimator" class="partialHarvestRemainingEstimator" data-ui-toggle="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">
+                  <summary>ケース数が分からないとき</summary>
+                  <div class="partialHarvestRemainingEstimatorBody">
+                    <div class="smallText partialHarvestRemainingEstimatorLead">収穫後に残った株を数えると、取れたケース数の目安を出せます。</div>
+                    <ol class="partialHarvestRemainingSteps">
+                      <li>上で部分収穫したベッドを選ぶ</li>
+                      <li>各ベッドの「1パレットに平均何株残ったか」を入力する</li>
+                      <li>表示されたケース数を確認して、入力ボタンを押す</li>
+                    </ol>
+                    <div class="smallText partialHarvestRemainingExample">例：3パレットの残りが17株・18株・19株なら、平均の18株を入力します。</div>
+                    <div id="partialHarvestRemainingRows" class="partialHarvestRemainingRows">
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="A" hidden><span>Aベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_A" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="A" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="B" hidden><span>Bベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_B" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="B" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="C" hidden><span>Cベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_C" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="C" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="D" hidden><span>Dベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_D" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="D" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="E" hidden><span>Eベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_E" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="E" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="F" hidden><span>Fベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_F" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="F" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                    </div>
+                    <div id="partialHarvestRemainingEstimateResult" class="partialHarvestRemainingEstimateResult" role="status" aria-live="polite" hidden>
+                      <div id="partialHarvestRemainingEstimatePrimary" class="partialHarvestRemainingEstimatePrimary"></div>
+                      <div id="partialHarvestRemainingEstimateBreakdown" class="partialHarvestRemainingEstimateBreakdown"></div>
+                    </div>
+                    <button id="partialHarvestApplyRemainingEstimateBtn" type="button" class="actionBtn secondaryBtn partialHarvestApplyRemainingEstimateBtn" data-ui-click="applyPartialHarvestRemainingEstimate" data-ui-arg="primary" disabled>予想をケース数へ入力する</button>
+                  </div>
+                </details>
+                <label for="partialHarvestCasesInput">この場所で実際に取れたケース数</label>
+                <div class="smallText partialHarvestCasesHelp">ケース数が分かっている場合は、そのまま入力してください。</div>
+                <span class="partialHarvestCasesInputWrap">
+                  <input id="partialHarvestCasesInput" type="number" min="1" step="1" inputmode="numeric" data-partial-harvest-role="cases" data-ui-input="handlePartialHarvestCasesInput" data-ui-arg="primary">
+                  <span>ケース</span>
+                </span>
+              </section>
+            </div>
+            <button id="partialHarvestAddEntryBtn" type="button" class="secondaryBtn partialHarvestAddEntryBtn" data-ui-click="addPartialHarvestBatchEntry">＋ 場所を追加</button>
+            <div id="partialHarvestBatchSummary" class="partialHarvestBatchSummary" aria-live="polite">1か所を入力できます</div>
+            <button id="partialHarvestBatchSaveBtn" type="button" class="actionBtn thirdBtn harvestProgressPartialHarvestSaveBtn" data-ui-click="savePartialHarvestRecord">この場所を記録する</button>
           </div>
         </details>
       </div>

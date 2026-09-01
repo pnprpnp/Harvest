@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260831-estimate-partial-harvest">
+<meta name="harvestnavi-version" content="20260901-batch-partial-harvest">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8312,6 +8312,30 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   white-space:pre-line;
   line-height:1.6;
 }
+.partialHarvestBatchEntries{display:grid;gap:12px;}
+.partialHarvestBatchEntry{
+  min-width:0;
+  padding:12px;
+  border:1px solid var(--ui-line);
+  border-radius:13px;
+  background:var(--ui-surface-solid);
+}
+.partialHarvestBatchEntryHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:10px;
+}
+.partialHarvestBatchEntryTitle{font-size:14px;color:var(--ui-text);}
+.partialHarvestBatchRemoveBtn{
+  width:auto;
+  min-height:34px;
+  margin:0;
+  padding:6px 10px;
+  color:var(--ui-red);
+  font-size:11px;
+}
 .harvestProgressPartialHarvestGrid{margin-bottom:10px;}
 .harvestProgressPartialBedChoiceRow{margin-bottom:10px;}
 .partialHarvestRemainingEstimator{
@@ -8328,10 +8352,21 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 .partialHarvestRemainingEstimator[open] > summary{border-bottom:1px solid var(--ui-line);}
 .partialHarvestRemainingEstimatorBody{padding:12px;}
 .partialHarvestRemainingEstimatorLead{margin-bottom:10px;line-height:1.55;}
+.partialHarvestRemainingSteps{
+  margin:0 0 9px;
+  padding:9px 9px 9px 29px;
+  border-radius:9px;
+  background:var(--ui-surface-tint);
+  color:var(--ui-text);
+  font-size:12px;
+  font-weight:650;
+  line-height:1.65;
+}
+.partialHarvestRemainingExample{margin-bottom:10px;line-height:1.55;}
 .partialHarvestRemainingRows{display:grid;gap:8px;}
 .partialHarvestRemainingRow{
   display:grid;
-  grid-template-columns:minmax(58px,.7fr) minmax(180px,1.3fr);
+  grid-template-columns:minmax(88px,.9fr) minmax(116px,1.1fr);
   align-items:center;
   gap:8px;
   font-size:13px;
@@ -8368,11 +8403,39 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   min-height:44px;
   margin:10px 0 0;
 }
-.harvestProgressPartialHarvestBox #partialHarvestCasesInput{
+.partialHarvestCasesHelp{margin:3px 0 6px;line-height:1.45;}
+.partialHarvestCasesInputWrap{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:7px;
+  color:var(--ui-muted);
+  font-size:12px;
+  font-weight:700;
+}
+.harvestProgressPartialHarvestBox [data-partial-harvest-role="cases"]{
   width:100%;
   height:46px;
   box-sizing:border-box;
-  margin:6px 0 10px;
+  margin:0;
+}
+.partialHarvestAddEntryBtn{
+  width:100%;
+  min-height:43px;
+  margin:10px 0 0;
+  border:1px dashed var(--ui-line-strong);
+  background:transparent;
+  color:var(--ui-accent-dark);
+}
+.partialHarvestBatchSummary{
+  margin:10px 0;
+  padding:9px 11px;
+  border-radius:10px;
+  background:var(--ui-surface-tint);
+  color:var(--ui-accent-dark);
+  font-size:13px;
+  font-weight:750;
+  text-align:center;
 }
 .harvestProgressPartialHarvestSaveBtn{
   width:100%;
@@ -14089,53 +14152,73 @@ requestAnimationFrame(function(){
           <summary>各パレットの一部だけ収穫したい</summary>
           <div class="partialHarvestBody">
             <div class="smallText harvestProgressPartialHarvestLead">今回の収穫のうち、通常の順番ではないベッドの各パレットから少しずつ取ったときに記録します。
-株数やロス率の入力は不要です。ケース数から各パレットの平均収穫株数を自動計算し、その場所の順番が来たときの予測から差し引きます。パレット自体は収穫済みにしません。</div>
-            <div class="partialHarvestGrid harvestProgressPartialHarvestGrid">
-              <div>
-                <label for="partialHarvestBuildingInput">号棟</label>
-                <select id="partialHarvestBuildingInput" data-ui-change="refreshPartialHarvestRemainingEstimator">
-                  <option value="2">2号棟</option>
-                  <option value="3">3号棟</option>
-                  <option value="4">4号棟</option>
-                  <option value="5">5号棟</option>
-                  <option value="6">6号棟</option>
-                  <option value="7">7号棟</option>
-                  <option value="8">8号棟</option>
-                  <option value="9">9号棟</option>
-                </select>
-              </div>
-            </div>
-            <label>ベッド</label>
-            <div class="partialBedChoiceRow harvestProgressPartialBedChoiceRow">
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="A" data-ui-change="refreshPartialHarvestRemainingEstimator">A</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="B" data-ui-change="refreshPartialHarvestRemainingEstimator">B</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="C" data-ui-change="refreshPartialHarvestRemainingEstimator">C</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="D" data-ui-change="refreshPartialHarvestRemainingEstimator">D</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="E" data-ui-change="refreshPartialHarvestRemainingEstimator">E</label>
-              <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="F" data-ui-change="refreshPartialHarvestRemainingEstimator">F</label>
-            </div>
-            <details id="partialHarvestRemainingEstimator" class="partialHarvestRemainingEstimator" data-ui-toggle="refreshPartialHarvestRemainingEstimator">
-              <summary>残り株数からケース数を予想</summary>
-              <div class="partialHarvestRemainingEstimatorBody">
-                <div class="smallText partialHarvestRemainingEstimatorLead">選択したベッドごとに、収穫後の「1パレット平均の残り株数」を入力してください。</div>
-                <div id="partialHarvestRemainingRows" class="partialHarvestRemainingRows">
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="A" hidden><span>Aベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_A" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="A" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="B" hidden><span>Bベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_B" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="B" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="C" hidden><span>Cベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_C" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="C" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="D" hidden><span>Dベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_D" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="D" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="E" hidden><span>Eベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_E" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="E" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
-                  <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="F" hidden><span>Fベッド</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_F" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="F" data-ui-input="refreshPartialHarvestRemainingEstimator"><span>株／パレット</span></span></label>
+ケース数から各パレットの平均収穫株数を自動計算し、その場所の順番が来たときの予測から差し引きます。複数の場所は「場所を追加」でまとめて記録できます。</div>
+            <div id="partialHarvestBatchEntries" class="partialHarvestBatchEntries">
+              <section id="partialHarvestBatchEntryPrimary" class="partialHarvestBatchEntry" data-partial-harvest-entry-id="primary">
+                <div class="partialHarvestBatchEntryHeader">
+                  <strong class="partialHarvestBatchEntryTitle">場所 1</strong>
+                  <button type="button" class="secondaryBtn partialHarvestBatchRemoveBtn" data-ui-click="removePartialHarvestBatchEntry" data-ui-arg="primary" hidden>この場所を削除</button>
                 </div>
-                <div id="partialHarvestRemainingEstimateResult" class="partialHarvestRemainingEstimateResult" role="status" aria-live="polite" hidden>
-                  <div id="partialHarvestRemainingEstimatePrimary" class="partialHarvestRemainingEstimatePrimary"></div>
-                  <div id="partialHarvestRemainingEstimateBreakdown" class="partialHarvestRemainingEstimateBreakdown"></div>
+                <div class="partialHarvestGrid harvestProgressPartialHarvestGrid">
+                  <div>
+                    <label for="partialHarvestBuildingInput">号棟</label>
+                    <select id="partialHarvestBuildingInput" data-partial-harvest-role="building" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">
+                      <option value="2">2号棟</option>
+                      <option value="3">3号棟</option>
+                      <option value="4">4号棟</option>
+                      <option value="5">5号棟</option>
+                      <option value="6">6号棟</option>
+                      <option value="7">7号棟</option>
+                      <option value="8">8号棟</option>
+                      <option value="9">9号棟</option>
+                    </select>
+                  </div>
                 </div>
-                <button id="partialHarvestApplyRemainingEstimateBtn" type="button" class="actionBtn secondaryBtn partialHarvestApplyRemainingEstimateBtn" data-ui-click="applyPartialHarvestRemainingEstimate" disabled>ケース数を予想する</button>
-              </div>
-            </details>
-            <label for="partialHarvestCasesInput">今回の総ケースのうち、この場所から取れたケース数（確定値）</label>
-            <input id="partialHarvestCasesInput" type="number" min="1" step="1" inputmode="numeric" data-ui-input="handlePartialHarvestCasesInput">
-            <button class="actionBtn thirdBtn harvestProgressPartialHarvestSaveBtn" data-ui-click="savePartialHarvestRecord">各パレット部分収穫を記録する</button>
+                <label>ベッド</label>
+                <div class="partialBedChoiceRow harvestProgressPartialBedChoiceRow">
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="A" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">A</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="B" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">B</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="C" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">C</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="D" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">D</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="E" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">E</label>
+                  <label class="partialBedChoice"><input type="checkbox" name="partialHarvestBed" value="F" data-partial-harvest-role="bed" data-ui-change="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">F</label>
+                </div>
+                <details id="partialHarvestRemainingEstimator" class="partialHarvestRemainingEstimator" data-ui-toggle="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary">
+                  <summary>ケース数が分からないとき</summary>
+                  <div class="partialHarvestRemainingEstimatorBody">
+                    <div class="smallText partialHarvestRemainingEstimatorLead">収穫後に残った株を数えると、取れたケース数の目安を出せます。</div>
+                    <ol class="partialHarvestRemainingSteps">
+                      <li>上で部分収穫したベッドを選ぶ</li>
+                      <li>各ベッドの「1パレットに平均何株残ったか」を入力する</li>
+                      <li>表示されたケース数を確認して、入力ボタンを押す</li>
+                    </ol>
+                    <div class="smallText partialHarvestRemainingExample">例：3パレットの残りが17株・18株・19株なら、平均の18株を入力します。</div>
+                    <div id="partialHarvestRemainingRows" class="partialHarvestRemainingRows">
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="A" hidden><span>Aベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_A" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="A" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="B" hidden><span>Bベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_B" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="B" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="C" hidden><span>Cベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_C" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="C" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="D" hidden><span>Dベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_D" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="D" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="E" hidden><span>Eベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_E" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="E" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                      <label class="partialHarvestRemainingRow" data-partial-harvest-remaining-row="F" hidden><span>Fベッドの平均</span><span class="partialHarvestRemainingInputWrap"><input id="partialHarvestRemainingPlants_F" type="number" min="0" max="999" step="0.1" inputmode="decimal" data-partial-harvest-remaining-bed="F" data-ui-input="refreshPartialHarvestRemainingEstimator" data-ui-arg="primary"><span>株</span></span></label>
+                    </div>
+                    <div id="partialHarvestRemainingEstimateResult" class="partialHarvestRemainingEstimateResult" role="status" aria-live="polite" hidden>
+                      <div id="partialHarvestRemainingEstimatePrimary" class="partialHarvestRemainingEstimatePrimary"></div>
+                      <div id="partialHarvestRemainingEstimateBreakdown" class="partialHarvestRemainingEstimateBreakdown"></div>
+                    </div>
+                    <button id="partialHarvestApplyRemainingEstimateBtn" type="button" class="actionBtn secondaryBtn partialHarvestApplyRemainingEstimateBtn" data-ui-click="applyPartialHarvestRemainingEstimate" data-ui-arg="primary" disabled>予想をケース数へ入力する</button>
+                  </div>
+                </details>
+                <label for="partialHarvestCasesInput">この場所で実際に取れたケース数</label>
+                <div class="smallText partialHarvestCasesHelp">ケース数が分かっている場合は、そのまま入力してください。</div>
+                <span class="partialHarvestCasesInputWrap">
+                  <input id="partialHarvestCasesInput" type="number" min="1" step="1" inputmode="numeric" data-partial-harvest-role="cases" data-ui-input="handlePartialHarvestCasesInput" data-ui-arg="primary">
+                  <span>ケース</span>
+                </span>
+              </section>
+            </div>
+            <button id="partialHarvestAddEntryBtn" type="button" class="secondaryBtn partialHarvestAddEntryBtn" data-ui-click="addPartialHarvestBatchEntry">＋ 場所を追加</button>
+            <div id="partialHarvestBatchSummary" class="partialHarvestBatchSummary" aria-live="polite">1か所を入力できます</div>
+            <button id="partialHarvestBatchSaveBtn" type="button" class="actionBtn thirdBtn harvestProgressPartialHarvestSaveBtn" data-ui-click="savePartialHarvestRecord">この場所を記録する</button>
           </div>
         </details>
       </div>
@@ -20375,28 +20458,60 @@ function findGoogleSheetBackgroundRecord(job){
   );
 }
 
-function queueGoogleSheetRecordSend(record, options = {}){
-  const key = getGoogleSheetBackgroundRecordKey(record);
-  if(!key) return false;
-  if(hasSyncConflictForEntity("record", record)){
-    setGoogleSheetSyncStatus(record, "conflict");
-    return false;
-  }
+function setGoogleSheetRecordBatchSyncStatus(recordsToUpdate, state){
+  const normalizedRecords = Array.isArray(recordsToUpdate) ? recordsToUpdate : [];
+  if(!normalizedRecords.length) return;
+  const status = loadGoogleSheetSyncStatus();
+  const updatedAt = new Date().toISOString();
+  normalizedRecords.forEach(record => {
+    getGoogleSheetRecordSyncKeys(record).forEach(key => {
+      status[key] = { state, updatedAt };
+    });
+  });
+  saveGoogleSheetSyncStatus(status);
+  updateGoogleSheetResendButtonState();
+}
+
+function queueGoogleSheetRecordBatchSend(recordsToQueue, options = {}){
+  const uniqueRecords = new Map();
+  (Array.isArray(recordsToQueue) ? recordsToQueue : []).forEach(record => {
+    const key = getGoogleSheetBackgroundRecordKey(record);
+    if(key) uniqueRecords.set(key, record);
+  });
+  if(!uniqueRecords.size) return 0;
+
+  const conflictedRecords = [];
+  const queueableRecords = [];
+  uniqueRecords.forEach((record, key) => {
+    if(hasSyncConflictForEntity("record", record)) conflictedRecords.push(record);
+    else queueableRecords.push({ key, record });
+  });
+  setGoogleSheetRecordBatchSyncStatus(conflictedRecords, "conflict");
+  if(!queueableRecords.length) return 0;
+
   const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
   if(!validation.ok){
-    setGoogleSheetSyncStatus(record, "failed");
-    return false;
+    setGoogleSheetRecordBatchSyncStatus(queueableRecords.map(item => item.record), "failed");
+    return 0;
   }
-  const job = {
-    recordUuid: normalizeRecordUuid(record?.recordUuid),
-    recordId: getSafePositiveRecordId(record?.id),
-    successMessage: String(options.successMessage || ""),
-    failureMessage: String(options.failureMessage || "記録は端末内に保存されています。スプレッドシートは未送信です")
-  };
-  setGoogleSheetSyncStatus(record, "edited");
-  googleSheetBackgroundRecordQueue.set(key, job);
+
+  setGoogleSheetRecordBatchSyncStatus(queueableRecords.map(item => item.record), "edited");
+  queueableRecords.forEach(({ key, record }, index) => {
+    googleSheetBackgroundRecordQueue.set(key, {
+      recordUuid: normalizeRecordUuid(record?.recordUuid),
+      recordId: getSafePositiveRecordId(record?.id),
+      successMessage: index === queueableRecords.length - 1
+        ? String(options.successMessage || "")
+        : "",
+      failureMessage: String(options.failureMessage || "記録は端末内に保存されています。スプレッドシートは未送信です")
+    });
+  });
   scheduleGoogleSheetBackgroundSend();
-  return true;
+  return queueableRecords.length;
+}
+
+function queueGoogleSheetRecordSend(record, options = {}){
+  return queueGoogleSheetRecordBatchSend([record], options) === 1;
 }
 
 function queueGoogleSheetPlantingEventSend(event, options = {}){
@@ -25528,8 +25643,8 @@ function updateBuildingLabel(){
   const partialBuildingInput = document.getElementById("partialHarvestBuildingInput");
   if(mainBtn) mainBtn.textContent = currentBuilding + "号棟";
   if(partialBuildingInput) partialBuildingInput.value = String(currentBuilding);
-  if(typeof refreshPartialHarvestRemainingEstimator === "function"){
-    refreshPartialHarvestRemainingEstimator();
+  if(typeof refreshAllPartialHarvestRemainingEstimators === "function"){
+    refreshAllPartialHarvestRemainingEstimators();
   }
   updateBuildingLastHarvestInfo();
 }
@@ -36342,7 +36457,7 @@ function updateRecordWeekdayDisplay(){
 
 function refreshRecordDateDependentUi(){
   updateRecordWeekdayDisplay();
-  refreshPartialHarvestRemainingEstimator();
+  refreshAllPartialHarvestRemainingEstimators();
   renderRecordList();
   renderForecastSummary();
   updateRecordActualLoss();
@@ -36396,12 +36511,7 @@ function clearRecordForm(){
     delete actualSeedlingTrayCountInput.dataset.userEdited;
   }
   setRecordSeedlingCarryoverMode("loss", { silent: true });
-  const partialCasesInput = document.getElementById("partialHarvestCasesInput");
-  if(partialCasesInput) partialCasesInput.value = "";
-  document.querySelectorAll('input[name="partialHarvestBed"]').forEach(input => {
-    input.checked = false;
-  });
-  resetPartialHarvestRemainingEstimator();
+  resetPartialHarvestBatchEntries();
   setSelectedQualityMemo(null);
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();
@@ -37333,6 +37443,9 @@ async function restoreDeletedPlantingEvent(eventId){
 }
 
 // ===== 部分収穫：保存・編集 =====
+const PARTIAL_HARVEST_BATCH_MAX_ENTRIES = 20;
+let partialHarvestBatchEntrySequence = 0;
+
 function formatPartialHarvestSummary(targets){
   const normalized = normalizePartialHarvestTargets(targets);
   if(!normalized.length) return "";
@@ -37379,16 +37492,31 @@ function getPartialHarvestRemainingPlantsValue(value){
   return getStrictDecimalInRange(String(value), 0, 999);
 }
 
-function getSelectedPartialHarvestBeds(){
+function getPartialHarvestBatchEntries(){
+  return Array.from(document.querySelectorAll("[data-partial-harvest-entry-id]"));
+}
+
+function getPartialHarvestBatchEntry(entryId = "primary"){
+  const normalizedEntryId = String(entryId || "primary");
+  return getPartialHarvestBatchEntries().find(entry => (
+    entry.dataset.partialHarvestEntryId === normalizedEntryId
+  )) || null;
+}
+
+function getSelectedPartialHarvestBeds(entryId = "primary"){
+  const entry = getPartialHarvestBatchEntry(entryId);
+  if(!entry) return [];
   return bedOrder.filter(bed => (
-    !!document.querySelector(`input[name="partialHarvestBed"][value="${bed}"]:checked`)
+    !!Array.from(entry.querySelectorAll('[data-partial-harvest-role="bed"]:checked'))
+      .find(input => input.value === bed)
   ));
 }
 
-function getPartialHarvestRemainingPlantsByBed(){
+function getPartialHarvestRemainingPlantsByBed(entryId = "primary"){
+  const entry = getPartialHarvestBatchEntry(entryId);
   const values = {};
   bedOrder.forEach(bed => {
-    const input = document.querySelector(`[data-partial-harvest-remaining-bed="${bed}"]`);
+    const input = entry?.querySelector(`[data-partial-harvest-remaining-bed="${bed}"]`);
     values[bed] = input?.value ?? "";
   });
   return values;
@@ -37537,26 +37665,35 @@ function buildPartialHarvestTargetsFromRemainingEstimate(building, estimate, cas
   }));
 }
 
-function getCurrentPartialHarvestRemainingEstimate(sourceRecords = records){
+function getCurrentPartialHarvestRemainingEstimate(sourceRecords = records, entryId = "primary"){
+  const entry = getPartialHarvestBatchEntry(entryId);
   return estimatePartialHarvestFromRemainingPlants(
-    document.getElementById("partialHarvestBuildingInput")?.value || currentBuilding,
-    getSelectedPartialHarvestBeds(),
-    getPartialHarvestRemainingPlantsByBed(),
+    entry?.querySelector('[data-partial-harvest-role="building"]')?.value || currentBuilding,
+    getSelectedPartialHarvestBeds(entryId),
+    getPartialHarvestRemainingPlantsByBed(entryId),
     document.getElementById("recordDateInput")?.value || "",
     sourceRecords
   );
 }
 
-function getPartialHarvestTargetsForCurrentRemainingEstimate(building, beds, cases, date, sourceRecords = records){
+function getPartialHarvestTargetsForCurrentRemainingEstimate(
+  building,
+  beds,
+  cases,
+  date,
+  sourceRecords = records,
+  entryId = "primary"
+){
   const fallbackTargets = buildPartialHarvestTargets(building, beds, cases);
-  const casesInput = document.getElementById("partialHarvestCasesInput");
+  const entry = getPartialHarvestBatchEntry(entryId);
+  const casesInput = entry?.querySelector('[data-partial-harvest-role="cases"]');
   const appliedSignature = casesInput?.dataset.remainingEstimateSignature || "";
   if(!appliedSignature) return { targets:fallbackTargets, usedRemainingEstimate:false, estimate:null };
 
   const estimate = estimatePartialHarvestFromRemainingPlants(
     building,
     beds,
-    getPartialHarvestRemainingPlantsByBed(),
+    getPartialHarvestRemainingPlantsByBed(entryId),
     date,
     sourceRecords
   );
@@ -37578,48 +37715,55 @@ function getPartialHarvestRemainingEstimateBreakdown(estimate){
   )).join(" ／ ");
 }
 
-function handlePartialHarvestCasesInput(){
-  const applyButton = document.getElementById("partialHarvestApplyRemainingEstimateBtn");
-  const casesInput = document.getElementById("partialHarvestCasesInput");
+function handlePartialHarvestCasesInput(entryId = "primary"){
+  const entry = getPartialHarvestBatchEntry(entryId);
+  const applyButton = entry?.querySelector(".partialHarvestApplyRemainingEstimateBtn");
+  const casesInput = entry?.querySelector('[data-partial-harvest-role="cases"]');
   const suggestedCases = getStrictIntegerInRange(
     applyButton?.dataset.suggestedCases || "",
     1,
     RECORD_MAX_CASES
   );
   const estimateSignature = applyButton?.dataset.remainingEstimateSignature || "";
-  if(!applyButton || suggestedCases === null || !estimateSignature) return;
+  if(!applyButton || suggestedCases === null || !estimateSignature){
+    updatePartialHarvestBatchSummary();
+    return;
+  }
   const currentCases = getStrictIntegerInRange(casesInput?.value || "", 1, RECORD_MAX_CASES);
   const alreadyApplied = casesInput?.dataset.remainingEstimateSignature === estimateSignature
     && currentCases === suggestedCases;
   applyButton.disabled = alreadyApplied;
   applyButton.textContent = alreadyApplied
     ? `${suggestedCases}ケースを入力済み`
-    : `${suggestedCases}ケースを入力する`;
+    : `予想の${suggestedCases}ケースを入力する`;
+  updatePartialHarvestBatchSummary();
 }
 
-function refreshPartialHarvestRemainingEstimator(){
-  const details = document.getElementById("partialHarvestRemainingEstimator");
-  const result = document.getElementById("partialHarvestRemainingEstimateResult");
-  const primary = document.getElementById("partialHarvestRemainingEstimatePrimary");
-  const breakdown = document.getElementById("partialHarvestRemainingEstimateBreakdown");
-  const applyButton = document.getElementById("partialHarvestApplyRemainingEstimateBtn");
-  const casesInput = document.getElementById("partialHarvestCasesInput");
+function refreshPartialHarvestRemainingEstimator(entryId = "primary"){
+  const entry = getPartialHarvestBatchEntry(entryId);
+  const details = entry?.querySelector(".partialHarvestRemainingEstimator");
+  const result = entry?.querySelector(".partialHarvestRemainingEstimateResult");
+  const primary = entry?.querySelector(".partialHarvestRemainingEstimatePrimary");
+  const breakdown = entry?.querySelector(".partialHarvestRemainingEstimateBreakdown");
+  const applyButton = entry?.querySelector(".partialHarvestApplyRemainingEstimateBtn");
+  const casesInput = entry?.querySelector('[data-partial-harvest-role="cases"]');
   if(!details || !result || !primary || !breakdown || !applyButton) return null;
 
-  const selectedBeds = new Set(getSelectedPartialHarvestBeds());
-  document.querySelectorAll("[data-partial-harvest-remaining-row]").forEach(row => {
+  const selectedBeds = new Set(getSelectedPartialHarvestBeds(entryId));
+  entry.querySelectorAll("[data-partial-harvest-remaining-row]").forEach(row => {
     row.hidden = !selectedBeds.has(row.dataset.partialHarvestRemainingRow);
   });
   if(!details.open){
     result.hidden = true;
     applyButton.disabled = true;
-    applyButton.textContent = "ケース数を予想する";
+    applyButton.textContent = "予想をケース数へ入力する";
     delete applyButton.dataset.suggestedCases;
     delete applyButton.dataset.remainingEstimateSignature;
+    updatePartialHarvestBatchSummary();
     return null;
   }
 
-  const estimate = getCurrentPartialHarvestRemainingEstimate();
+  const estimate = getCurrentPartialHarvestRemainingEstimate(records, entryId);
   result.hidden = false;
   result.classList.toggle("is-ready", estimate.ok);
   result.classList.toggle("has-warning", !estimate.ok);
@@ -37627,41 +37771,296 @@ function refreshPartialHarvestRemainingEstimator(){
   if(!estimate.ok){
     primary.textContent = estimate.message || "残り株数を確認してください";
     applyButton.disabled = true;
-    applyButton.textContent = "ケース数を予想する";
+    applyButton.textContent = "予想をケース数へ入力する";
     delete applyButton.dataset.suggestedCases;
     delete applyButton.dataset.remainingEstimateSignature;
+    updatePartialHarvestBatchSummary();
     return estimate;
   }
 
-  primary.textContent = `予想 約${estimate.estimatedCases.toFixed(1)}ケース（入力候補 ${estimate.suggestedCases}ケース）`;
+  primary.textContent = `予想：${estimate.suggestedCases}ケース（計算上は約${estimate.estimatedCases.toFixed(1)}ケース）`;
   applyButton.dataset.suggestedCases = String(estimate.suggestedCases);
   applyButton.dataset.remainingEstimateSignature = estimate.signature;
-  handlePartialHarvestCasesInput();
+  handlePartialHarvestCasesInput(entryId);
   return estimate;
 }
 
-function applyPartialHarvestRemainingEstimate(){
-  const estimate = getCurrentPartialHarvestRemainingEstimate();
+function refreshAllPartialHarvestRemainingEstimators(){
+  getPartialHarvestBatchEntries().forEach(entry => {
+    refreshPartialHarvestRemainingEstimator(entry.dataset.partialHarvestEntryId);
+  });
+}
+
+function applyPartialHarvestRemainingEstimate(entryId = "primary"){
+  const estimate = getCurrentPartialHarvestRemainingEstimate(records, entryId);
   if(!estimate.ok){
-    refreshPartialHarvestRemainingEstimator();
+    refreshPartialHarvestRemainingEstimator(entryId);
     showToast(estimate.message || "残り株数を確認してください");
     return;
   }
-  const casesInput = document.getElementById("partialHarvestCasesInput");
+  const entry = getPartialHarvestBatchEntry(entryId);
+  const casesInput = entry?.querySelector('[data-partial-harvest-role="cases"]');
   if(!casesInput) return;
   casesInput.value = String(estimate.suggestedCases);
   casesInput.dataset.remainingEstimateSignature = estimate.signature;
-  refreshPartialHarvestRemainingEstimator();
+  refreshPartialHarvestRemainingEstimator(entryId);
   scheduleHarvestStateSave();
 }
 
-function resetPartialHarvestRemainingEstimator(){
-  document.querySelectorAll("[data-partial-harvest-remaining-bed]").forEach(input => {
+function resetPartialHarvestRemainingEstimator(entryId = "primary"){
+  const entry = getPartialHarvestBatchEntry(entryId);
+  entry?.querySelectorAll("[data-partial-harvest-remaining-bed]").forEach(input => {
     input.value = "";
   });
-  const casesInput = document.getElementById("partialHarvestCasesInput");
+  const casesInput = entry?.querySelector('[data-partial-harvest-role="cases"]');
   if(casesInput) delete casesInput.dataset.remainingEstimateSignature;
-  refreshPartialHarvestRemainingEstimator();
+  refreshPartialHarvestRemainingEstimator(entryId);
+}
+
+function updatePartialHarvestBatchEntryTitles(){
+  getPartialHarvestBatchEntries().forEach((entry, index) => {
+    const title = entry.querySelector(".partialHarvestBatchEntryTitle");
+    if(title) title.textContent = `場所 ${index + 1}`;
+  });
+}
+
+function updatePartialHarvestBatchSummary(){
+  const entries = getPartialHarvestBatchEntries();
+  const summary = document.getElementById("partialHarvestBatchSummary");
+  const saveButton = document.getElementById("partialHarvestBatchSaveBtn");
+  const validCases = entries.map(entry => getStrictIntegerInRange(
+    entry.querySelector('[data-partial-harvest-role="cases"]')?.value || "",
+    1,
+    RECORD_MAX_CASES
+  ));
+  const enteredCount = validCases.filter(value => value !== null).length;
+  const totalCases = validCases.reduce((total, value) => total + (value || 0), 0);
+  if(summary){
+    if(entries.length === 1 && enteredCount === 0){
+      summary.textContent = "1か所を入力できます";
+    }else{
+      summary.textContent = `${enteredCount}／${entries.length}か所入力済み　合計 ${totalCases}ケース`;
+    }
+  }
+  if(saveButton){
+    saveButton.textContent = entries.length === 1
+      ? "この場所を記録する"
+      : `${entries.length}か所をまとめて記録する`;
+  }
+}
+
+function bindPartialHarvestBatchEntryEvents(entry){
+  entry.querySelectorAll("[data-ui-input]").forEach(element => {
+    element.addEventListener("input", handleStaticUiInput);
+  });
+  entry.querySelectorAll("[data-ui-change]").forEach(element => {
+    element.addEventListener("change", handleStaticUiChange);
+  });
+  entry.querySelectorAll("[data-ui-toggle]").forEach(element => {
+    element.addEventListener("toggle", event => {
+      runStaticUiAction(element, event, "data-ui-toggle");
+    });
+  });
+}
+
+function createPartialHarvestBatchEntry(entryId, building){
+  const primary = getPartialHarvestBatchEntry("primary");
+  if(!primary) return null;
+  const entry = primary.cloneNode(true);
+  entry.id = `partialHarvestBatchEntry_${entryId}`;
+  entry.dataset.partialHarvestEntryId = entryId;
+
+  const idMap = new Map();
+  entry.querySelectorAll("[id]").forEach(element => {
+    const previousId = element.id;
+    const nextId = `${previousId}_${entryId}`;
+    idMap.set(previousId, nextId);
+    element.id = nextId;
+  });
+  entry.querySelectorAll("label[for]").forEach(label => {
+    const nextId = idMap.get(label.htmlFor);
+    if(nextId) label.htmlFor = nextId;
+  });
+  entry.querySelectorAll("[data-ui-arg]").forEach(element => {
+    element.dataset.uiArg = entryId;
+  });
+
+  const removeButton = entry.querySelector(".partialHarvestBatchRemoveBtn");
+  if(removeButton) removeButton.hidden = false;
+  const buildingInput = entry.querySelector('[data-partial-harvest-role="building"]');
+  if(buildingInput) buildingInput.value = String(BUILDINGS.includes(Number(building)) ? Number(building) : currentBuilding);
+  entry.querySelectorAll('[data-partial-harvest-role="bed"]').forEach(input => {
+    input.checked = false;
+    input.name = `partialHarvestBed_${entryId}`;
+  });
+  entry.querySelectorAll('[data-partial-harvest-remaining-bed]').forEach(input => {
+    input.value = "";
+  });
+  entry.querySelectorAll('[data-partial-harvest-remaining-row]').forEach(row => {
+    row.hidden = true;
+  });
+  const casesInput = entry.querySelector('[data-partial-harvest-role="cases"]');
+  if(casesInput){
+    casesInput.value = "";
+    delete casesInput.dataset.remainingEstimateSignature;
+  }
+  const estimator = entry.querySelector(".partialHarvestRemainingEstimator");
+  if(estimator) estimator.open = false;
+  const result = entry.querySelector(".partialHarvestRemainingEstimateResult");
+  if(result){
+    result.hidden = true;
+    result.classList.remove("is-ready", "has-warning");
+  }
+  const primaryResult = entry.querySelector(".partialHarvestRemainingEstimatePrimary");
+  const breakdown = entry.querySelector(".partialHarvestRemainingEstimateBreakdown");
+  if(primaryResult) primaryResult.textContent = "";
+  if(breakdown) breakdown.textContent = "";
+  const applyButton = entry.querySelector(".partialHarvestApplyRemainingEstimateBtn");
+  if(applyButton){
+    applyButton.disabled = true;
+    applyButton.textContent = "予想をケース数へ入力する";
+    delete applyButton.dataset.suggestedCases;
+    delete applyButton.dataset.remainingEstimateSignature;
+  }
+  bindPartialHarvestBatchEntryEvents(entry);
+  return entry;
+}
+
+function addPartialHarvestBatchEntry(){
+  const container = document.getElementById("partialHarvestBatchEntries");
+  const entries = getPartialHarvestBatchEntries();
+  if(!container) return;
+  if(entries.length >= PARTIAL_HARVEST_BATCH_MAX_ENTRIES){
+    showToast(`一度に記録できる場所は${PARTIAL_HARVEST_BATCH_MAX_ENTRIES}か所までです`);
+    return;
+  }
+  const previousBuilding = entries[entries.length - 1]
+    ?.querySelector('[data-partial-harvest-role="building"]')?.value;
+  const entryId = `entry${++partialHarvestBatchEntrySequence}`;
+  const entry = createPartialHarvestBatchEntry(entryId, previousBuilding);
+  if(!entry) return;
+  container.appendChild(entry);
+  updatePartialHarvestBatchEntryTitles();
+  updatePartialHarvestBatchSummary();
+  entry.querySelector('[data-partial-harvest-role="building"]')?.focus();
+}
+
+function removePartialHarvestBatchEntry(entryId){
+  const normalizedEntryId = String(entryId || "");
+  if(!normalizedEntryId || normalizedEntryId === "primary") return;
+  const entry = getPartialHarvestBatchEntry(normalizedEntryId);
+  if(!entry) return;
+  entry.remove();
+  updatePartialHarvestBatchEntryTitles();
+  updatePartialHarvestBatchSummary();
+}
+
+function resetPartialHarvestBatchEntries(){
+  getPartialHarvestBatchEntries().forEach(entry => {
+    if(entry.dataset.partialHarvestEntryId !== "primary") entry.remove();
+  });
+  const primary = getPartialHarvestBatchEntry("primary");
+  if(!primary) return;
+  const buildingInput = primary.querySelector('[data-partial-harvest-role="building"]');
+  if(buildingInput) buildingInput.value = String(currentBuilding);
+  primary.querySelectorAll('[data-partial-harvest-role="bed"]').forEach(input => {
+    input.checked = false;
+  });
+  const casesInput = primary.querySelector('[data-partial-harvest-role="cases"]');
+  if(casesInput) casesInput.value = "";
+  const estimator = primary.querySelector(".partialHarvestRemainingEstimator");
+  if(estimator) estimator.open = false;
+  resetPartialHarvestRemainingEstimator("primary");
+  updatePartialHarvestBatchEntryTitles();
+  updatePartialHarvestBatchSummary();
+}
+
+function validatePartialHarvestBatchEntries(date, sourceRecords = records){
+  if(!date) return { ok:false, message:"日付を入力してください", entries:[] };
+  const seenLocations = new Map();
+  const normalizedEntries = [];
+  const entryElements = getPartialHarvestBatchEntries();
+  for(let index = 0; index < entryElements.length; index++){
+    const entry = entryElements[index];
+    const entryId = entry.dataset.partialHarvestEntryId || "primary";
+    const building = Number(entry.querySelector('[data-partial-harvest-role="building"]')?.value);
+    const beds = getSelectedPartialHarvestBeds(entryId);
+    const cases = getStrictIntegerInRange(
+      entry.querySelector('[data-partial-harvest-role="cases"]')?.value || "",
+      1,
+      RECORD_MAX_CASES
+    );
+    const positionLabel = `場所 ${index + 1}`;
+    if(!BUILDINGS.includes(building) || !beds.length){
+      return { ok:false, message:`${positionLabel}の号棟とベッドを入力してください`, entries:[] };
+    }
+    if(cases === null){
+      return { ok:false, message:`${positionLabel}のケース数を1以上の整数で入力してください`, entries:[] };
+    }
+    for(const bed of beds){
+      const locationKey = `${building}-${bed}`;
+      if(seenLocations.has(locationKey)){
+        return {
+          ok:false,
+          message:`${building}号棟${bed}ベッドが「${seenLocations.get(locationKey)}」と「${positionLabel}」に重複しています`,
+          entries:[]
+        };
+      }
+      seenLocations.set(locationKey, positionLabel);
+    }
+    const targetResult = getPartialHarvestTargetsForCurrentRemainingEstimate(
+      building,
+      beds,
+      cases,
+      date,
+      sourceRecords,
+      entryId
+    );
+    normalizedEntries.push({
+      entryId,
+      building,
+      beds,
+      cases,
+      targets:targetResult.targets,
+      remainingEstimate:getPartialHarvestRemainingCaseEstimate(building, beds, cases, date, sourceRecords)
+    });
+  }
+  return {
+    ok:true,
+    entries:normalizedEntries,
+    totalCases:normalizedEntries.reduce((total, entry) => total + entry.cases, 0)
+  };
+}
+
+function getNextLocalHarvestRecordIds(count, sourceRecords = records){
+  const reservedRecords = [];
+  for(let index = 0; index < count; index++){
+    const id = getNextLocalHarvestRecordId([
+      ...(Array.isArray(sourceRecords) ? sourceRecords : []),
+      ...reservedRecords
+    ]);
+    if(id === null) return [];
+    reservedRecords.push({ id });
+  }
+  return reservedRecords.map(record => record.id);
+}
+
+function getPartialHarvestBatchSaveToastMessage(options = {}){
+  const count = Math.max(1, Number(options.count) || 1);
+  const totalCases = Math.max(0, Number(options.totalCases) || 0);
+  const sendText = String(options.syncState || (options.sendQueued ? "送信中" : "未送信"));
+  const predictionUpdate = options.predictionUpdate || {};
+  const savedText = `${count}か所・合計${totalCases}ケースの部分収穫を記録しました`;
+  if(predictionUpdate.recalculated){
+    const resultText = predictionUpdate.changed
+      ? "収穫予想が変わったため、収穫場所を確認してください"
+      : "収穫予想を再確認しました";
+    return `${savedText}。${resultText}（${sendText}）`;
+  }
+  if(predictionUpdate.attempted){
+    return `${savedText}。収穫予想を更新できなかったため、「計算する」を押してください（${sendText}）`;
+  }
+  return `${savedText}（${sendText}）`;
 }
 
 function getPartialHarvestEditFormModel(record){
@@ -38131,78 +38530,70 @@ async function savePartialHarvestRecord(){
   if(!ensureProtectedOperationAccess("各パレット部分収穫の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("各パレット部分収穫を保存", { allowBackgroundSend: true })) return;
   const date = document.getElementById("recordDateInput").value;
-  const casesInput = document.getElementById("partialHarvestCasesInput");
-  const cases = getStrictIntegerInRange(casesInput?.value || "", 1, RECORD_MAX_CASES);
-  const building = clampNumber(document.getElementById("partialHarvestBuildingInput")?.value || currentBuilding, MIN_BUILDING, MAX_BUILDING, NaN);
-  const beds = Array.from(document.querySelectorAll('input[name="partialHarvestBed"]:checked'))
-    .map(input => input.value)
-    .filter(bed => bedOrder.includes(bed));
   const enteredMemo = document.getElementById("recordMemoInput")?.value.trim() || "";
-
-  if(!date){
-    showToast("日付を入力してください");
-    return;
-  }
-  if(!BUILDINGS.includes(building) || !beds.length){
-    showToast("各パレットから部分収穫した号棟とベッドを入力してください");
-    return;
-  }
-  if(cases === null){
-    showToast("各パレット部分収穫で取れたケース数を1以上の整数で入力してください");
+  const batch = validatePartialHarvestBatchEntries(date);
+  if(!batch.ok){
+    showToast(batch.message || "部分収穫の入力内容を確認してください");
     return;
   }
 
-  const targetResult = getPartialHarvestTargetsForCurrentRemainingEstimate(
-    building,
-    beds,
-    cases,
-    date
-  );
-  const targets = targetResult.targets;
-  const remainingEstimate = getPartialHarvestRemainingCaseEstimate(building, beds, cases, date);
-  const memo = appendAutoMemo(enteredMemo, `部分収穫後の残り予想: 約${remainingEstimate}ケース（目安）`);
+  const recordIds = getNextLocalHarvestRecordIds(batch.entries.length);
+  if(recordIds.length !== batch.entries.length){
+    showToast("部分収穫記録の番号を作成できませんでした");
+    return;
+  }
+  const newRecords = batch.entries.map((entry, index) => {
+    const memo = appendAutoMemo(
+      enteredMemo,
+      `部分収穫後の残り予想: 約${entry.remainingEstimate}ケース（目安）`
+    );
+    const record = {
+      ...getCurrentRecordSyncMetadata(),
+      palletNumberingVersion:CURRENT_PALLET_NUMBERING_VERSION,
+      id:recordIds[index],
+      type:"partialHarvest",
+      date,
+      cases:entry.cases,
+      memo,
+      targets:entry.targets,
+      palletKeys:[]
+    };
+    record.duplicateKey = getRecordDuplicateKey(record);
+    return record;
+  });
 
-  const record = {
-    ...getCurrentRecordSyncMetadata(),
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-    id: Date.now(),
-    type: "partialHarvest",
-    date,
-    cases,
-    memo,
-    targets,
-    palletKeys: []
-  };
-  record.duplicateKey = getRecordDuplicateKey(record);
-
-  appendHarvestProgressEntry(
-    "partial",
-    beds.map(bed => getHarvestProgressBedKey(building, bed)),
-    cases
-  );
-  records.unshift(record);
+  batch.entries.forEach(entry => {
+    appendHarvestProgressEntry(
+      "partial",
+      entry.beds.map(bed => getHarvestProgressBedKey(entry.building, bed)),
+      entry.cases
+    );
+  });
+  records.unshift(...newRecords);
   saveRecordsToStorage();
   maybePromptRecordExport();
   clearCasePlacement();
   const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([date]);
-  const sendQueued = queueGoogleSheetRecordSend(record, {
-    successMessage: getPartialHarvestSaveToastMessage({
+  const queuedCount = queueGoogleSheetRecordBatchSend(newRecords, {
+    successMessage:getPartialHarvestBatchSaveToastMessage({
+      count:newRecords.length,
+      totalCases:batch.totalCases,
       syncState: "送信済み",
-      remainingEstimate,
       predictionUpdate
     }),
-    failureMessage: getPartialHarvestSaveToastMessage({
+    failureMessage:getPartialHarvestBatchSaveToastMessage({
+      count:newRecords.length,
+      totalCases:batch.totalCases,
       syncState: "未送信",
-      remainingEstimate,
       predictionUpdate
     })
   });
   refreshRecordDataUi({ actualLoss: true });
-  casesInput.value = "";
-  resetPartialHarvestRemainingEstimator();
-  showToast(getPartialHarvestSaveToastMessage({
-    sendQueued,
-    remainingEstimate,
+  resetPartialHarvestBatchEntries();
+  showToast(getPartialHarvestBatchSaveToastMessage({
+    count:newRecords.length,
+    totalCases:batch.totalCases,
+    sendQueued:queuedCount === newRecords.length,
     predictionUpdate
   }));
 }
@@ -41543,7 +41934,7 @@ function initializeStartupViews(savedHarvestState){
     harvestFillKeys: getHarvestProgressRemainingSelectionKeys()
   });
   setTodayToRecordDate();
-  refreshPartialHarvestRemainingEstimator();
+  refreshAllPartialHarvestRemainingEstimators();
   syncDashboardStartDayInputs(dashboardFilter.startDay || getDefaultDashboardStartDay());
 
   const dashboardCasesGranularityInput = document.getElementById("dashboardCasesGranularityInput");

@@ -4124,6 +4124,9 @@
             partialHarvestStartsCollapsed: !app.document.getElementById("harvestProgressPartialHarvest")?.open,
             partialHarvestSaveAction: app.document.querySelector("#harvestProgressPartialHarvest [data-ui-click=\"savePartialHarvestRecord\"]")
               ?.textContent.trim() || "",
+            partialHarvestAddAction: app.document.getElementById("partialHarvestAddEntryBtn")
+              ?.textContent.trim() || "",
+            partialHarvestEntryCount: app.document.querySelectorAll("#partialHarvestBatchEntries [data-partial-harvest-entry-id]").length,
             partialHarvestBedCount: app.document.querySelectorAll("#harvestProgressPartialHarvest input[name=\"partialHarvestBed\"]").length,
             swipeInstalled: app.eval("harvestProgressBuildingSwipeInstalled")
           }), {
@@ -4144,7 +4147,9 @@
             partialHarvestBelowProgressActions: true,
             partialHarvestSummary: "各パレットの一部だけ収穫したい",
             partialHarvestStartsCollapsed: true,
-            partialHarvestSaveAction: "各パレット部分収穫を記録する",
+            partialHarvestSaveAction: "この場所を記録する",
+            partialHarvestAddAction: "＋ 場所を追加",
+            partialHarvestEntryCount: 1,
             partialHarvestBedCount: 6,
             swipeInstalled: true
           }, "途中経過モーダル内へ部分収穫機能を正しく移動できていません");
@@ -9096,6 +9101,152 @@
         }
       });
 
+      await runTest("複数号棟・ベッドの部分収穫を一度の保存と再計算でまとめて記録する", async () => {
+        const dateInput = app.document.getElementById("recordDateInput");
+        const memoInput = app.document.getElementById("recordMemoInput");
+        const originalDate = dateInput.value;
+        const originalMemo = memoInput.value;
+        const progressModal = app.document.getElementById("harvestProgressModal");
+        const progressPanel = app.document.getElementById("harvestProgressPanel");
+        const partialHarvestBox = app.document.getElementById("harvestProgressPartialHarvest");
+        const previousFrameWidth = iframe.style.width;
+        const previousModalOpen = progressModal.classList.contains("show");
+        const previousPanelHidden = progressPanel.hidden;
+        const previousPartialBoxOpen = partialHarvestBox.open;
+        const originalFunctions = {
+          ensureProtectedOperationAccess:app.ensureProtectedOperationAccess,
+          ensureGoogleSheetLocalMutationAllowed:app.ensureGoogleSheetLocalMutationAllowed,
+          saveRecordsToStorage:app.saveRecordsToStorage,
+          maybePromptRecordExport:app.maybePromptRecordExport,
+          clearCasePlacement:app.clearCasePlacement,
+          recalculateHarvestPredictionAfterPartialHarvest:app.recalculateHarvestPredictionAfterPartialHarvest,
+          queueGoogleSheetRecordBatchSend:app.queueGoogleSheetRecordBatchSend,
+          refreshRecordDataUi:app.refreshRecordDataUi,
+          appendHarvestProgressEntry:app.appendHarvestProgressEntry,
+          showToast:app.showToast
+        };
+        let storageSaveCount = 0;
+        let predictionRecalculationCount = 0;
+        let recordUiRefreshCount = 0;
+        let queueBatchCount = 0;
+        let queuedRecords = [];
+        let toastMessage = "";
+        let createdIds = [];
+        const setEntry = (entry, building, bed, cases) => {
+          entry.querySelector('[data-partial-harvest-role="building"]').value = String(building);
+          entry.querySelectorAll('[data-partial-harvest-role="bed"]').forEach(input => {
+            input.checked = input.value === bed;
+          });
+          entry.querySelector('[data-partial-harvest-role="cases"]').value = String(cases);
+        };
+        try{
+          app.resetPartialHarvestBatchEntries();
+          dateInput.value = "2026-09-01";
+          memoInput.value = "まとめて入力";
+          app.addPartialHarvestBatchEntry();
+          app.addPartialHarvestBatchEntry();
+          const entries = app.getPartialHarvestBatchEntries();
+          assertEqual(entries.length, 3, "部分収穫の入力場所を追加できません");
+          setEntry(entries[0], 6, "A", 12);
+          setEntry(entries[1], 6, "B", 10);
+          setEntry(entries[2], 7, "C", 8);
+          app.updatePartialHarvestBatchSummary();
+          assertEqual(
+            app.document.getElementById("partialHarvestBatchSummary").textContent.trim(),
+            "3／3か所入力済み　合計 30ケース",
+            "まとめ入力の件数・ケース数合計が違います"
+          );
+
+          iframe.style.width = "320px";
+          progressPanel.hidden = false;
+          progressModal.classList.add("show");
+          partialHarvestBox.open = true;
+          entries[0].querySelector(".partialHarvestRemainingEstimator").open = true;
+          app.refreshPartialHarvestRemainingEstimator("primary");
+          await new Promise(resolve => app.requestAnimationFrame(() => app.requestAnimationFrame(resolve)));
+          assert(
+            entries.every(entry => entry.scrollWidth <= entry.clientWidth + 1),
+            "320px幅で部分収穫のまとめ入力欄が横にはみ出しています"
+          );
+          iframe.style.width = previousFrameWidth;
+          progressPanel.hidden = previousPanelHidden;
+          progressModal.classList.toggle("show", previousModalOpen);
+          partialHarvestBox.open = previousPartialBoxOpen;
+
+          setEntry(entries[2], 6, "B", 8);
+          const duplicate = app.validatePartialHarvestBatchEntries("2026-09-01", []);
+          assertEqual(duplicate.ok, false, "同じ号棟・ベッドの重複を許可しています");
+          assert(duplicate.message.includes("6号棟Bベッド"), "重複場所を警告に表示していません");
+          setEntry(entries[2], 7, "C", 8);
+
+          app.ensureProtectedOperationAccess = () => true;
+          app.ensureGoogleSheetLocalMutationAllowed = () => true;
+          app.saveRecordsToStorage = () => {
+            storageSaveCount++;
+            return originalFunctions.saveRecordsToStorage();
+          };
+          app.maybePromptRecordExport = () => {};
+          app.clearCasePlacement = () => {};
+          app.recalculateHarvestPredictionAfterPartialHarvest = () => {
+            predictionRecalculationCount++;
+            return { attempted:false, recalculated:false, changed:false, hasEnough:true };
+          };
+          app.queueGoogleSheetRecordBatchSend = recordsToQueue => {
+            queueBatchCount++;
+            queuedRecords = [...recordsToQueue];
+            return queuedRecords.length;
+          };
+          app.refreshRecordDataUi = () => { recordUiRefreshCount++; };
+          app.appendHarvestProgressEntry = () => true;
+          app.showToast = message => { toastMessage = String(message || ""); };
+
+          await app.savePartialHarvestRecord();
+          createdIds = queuedRecords.map(record => Number(record.id));
+          assertDeepEqual(
+            comparable(queuedRecords.map(record => ({
+              building:record.targets[0]?.building,
+              bed:record.targets[0]?.bed,
+              cases:record.cases,
+              memo:record.memo.includes("まとめて入力")
+            }))),
+            [
+              { building:6, bed:"A", cases:12, memo:true },
+              { building:6, bed:"B", cases:10, memo:true },
+              { building:7, bed:"C", cases:8, memo:true }
+            ],
+            "入力行を場所ごとの部分収穫記録へ変換できていません"
+          );
+          assertEqual(storageSaveCount, 1, "複数の部分収穫で端末保存を繰り返しています");
+          assertEqual(predictionRecalculationCount, 1, "複数の部分収穫で収穫予想を繰り返し再計算しています");
+          assertEqual(recordUiRefreshCount, 1, "複数の部分収穫で記録画面を繰り返し更新しています");
+          assertEqual(queueBatchCount, 1, "複数の部分収穫を一括送信準備へ渡せていません");
+          assertEqual(app.getPartialHarvestBatchEntries().length, 1, "保存後にまとめ入力欄を初期状態へ戻せません");
+          assert(toastMessage.includes("3か所・合計30ケース"), "保存結果に件数と合計ケース数がありません");
+        }finally{
+          app.ensureProtectedOperationAccess = originalFunctions.ensureProtectedOperationAccess;
+          app.ensureGoogleSheetLocalMutationAllowed = originalFunctions.ensureGoogleSheetLocalMutationAllowed;
+          app.saveRecordsToStorage = originalFunctions.saveRecordsToStorage;
+          app.maybePromptRecordExport = originalFunctions.maybePromptRecordExport;
+          app.clearCasePlacement = originalFunctions.clearCasePlacement;
+          app.recalculateHarvestPredictionAfterPartialHarvest = originalFunctions.recalculateHarvestPredictionAfterPartialHarvest;
+          app.queueGoogleSheetRecordBatchSend = originalFunctions.queueGoogleSheetRecordBatchSend;
+          app.refreshRecordDataUi = originalFunctions.refreshRecordDataUi;
+          app.appendHarvestProgressEntry = originalFunctions.appendHarvestProgressEntry;
+          app.showToast = originalFunctions.showToast;
+          if(createdIds.length){
+            app.eval(`records = records.filter(record => !${JSON.stringify(createdIds)}.includes(Number(record.id)))`);
+            originalFunctions.saveRecordsToStorage();
+          }
+          app.resetPartialHarvestBatchEntries();
+          dateInput.value = originalDate;
+          memoInput.value = originalMemo;
+          iframe.style.width = previousFrameWidth;
+          progressPanel.hidden = previousPanelHidden;
+          progressModal.classList.toggle("show", previousModalOpen);
+          partialHarvestBox.open = previousPartialBoxOpen;
+        }
+      });
+
       await runTest("保存済みの収穫場所を読み込み、同じ範囲形式で保存できる", () => {
         const record = app.normalizeStoredRecord({
           palletNumberingVersion: 2,
@@ -9548,18 +9699,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "eea4c100", elements: 2280, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "012dd2ed", elements: 2349, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "7c3898a0", elements: 2349, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "c66b23c9", elements: 2281, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "e02ad8e6", elements: 2298, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "ac4fe6da", elements: 2381, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "09874b39", elements: 2396, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "1ff4dd4a", elements: 2396, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "f0e91e17", elements: 2396, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "68cb9ad0", elements: 2396, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "c78abdbc", elements: 2396, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "c55088fe", elements: 2396, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "e9f59fd7", elements: 2295, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "3c66cb11", elements: 2364, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "0b5b74b0", elements: 2364, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "3f55c9a4", elements: 2296, visible: 112, viewport: "390x844" },
+          mobileDashboard: { hash: "96791d60", elements: 2313, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "7f4067b2", elements: 2396, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "0adc373e", elements: 2411, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "53a5c409", elements: 2411, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "40ee23f4", elements: 2411, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "b38b09c7", elements: 2411, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "b62ccdc3", elements: 2411, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "7d762d8d", elements: 2411, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
