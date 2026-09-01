@@ -1719,10 +1719,40 @@ function getHarvestRecordSyncWarningText(record, syncConflict = null){
   return "";
 }
 
+function getPartialHarvestRecordLocationOrder(record){
+  const firstTarget = normalizePartialHarvestTargets(record?.targets)
+    .sort((a, b) => {
+      const buildingDifference = BUILDINGS.indexOf(a.building) - BUILDINGS.indexOf(b.building);
+      if(buildingDifference !== 0) return buildingDifference;
+      const bedDifference = bedOrder.indexOf(a.bed) - bedOrder.indexOf(b.bed);
+      if(bedDifference !== 0) return bedDifference;
+      if(a.start !== b.start) return a.start - b.start;
+      return a.end - b.end;
+    })[0];
+  if(!firstTarget) return [BUILDINGS.length, bedOrder.length, Infinity, Infinity];
+  return [
+    BUILDINGS.indexOf(firstTarget.building),
+    bedOrder.indexOf(firstTarget.bed),
+    firstTarget.start,
+    firstTarget.end
+  ];
+}
+
+function comparePartialHarvestDayItemsByLocation(a, b){
+  const orderA = getPartialHarvestRecordLocationOrder(a?.value);
+  const orderB = getPartialHarvestRecordLocationOrder(b?.value);
+  for(let index = 0; index < orderA.length; index++){
+    if(orderA[index] !== orderB[index]) return orderA[index] - orderB[index];
+  }
+  const idA = getSafePositiveRecordId(a?.id) ?? Number.MAX_SAFE_INTEGER;
+  const idB = getSafePositiveRecordId(b?.id) ?? Number.MAX_SAFE_INTEGER;
+  return idA - idB;
+}
+
 function renderPartialHarvestDaySummaryHtml(items, consistencyAudit){
   const partialItems = (Array.isArray(items) ? items : []).filter(item => (
     item?.value?.type === "partialHarvest"
-  ));
+  )).sort(comparePartialHarvestDayItemsByLocation);
   if(!partialItems.length) return "";
 
   const totalCases = partialItems.reduce((sum, item) => (
