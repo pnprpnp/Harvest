@@ -1752,7 +1752,6 @@ function renderPartialHarvestDaySummaryHtml(items, consistencyAudit){
         ${syncWarningText ? `<div class="smallText partialHarvestDayWarning">${escapeHtml(syncWarningText)}</div>` : ""}
         ${renderRecordItemSyncConflictHtml("record", record)}
         ${renderRecordItemConsistencyHtml("harvest", record, consistencyIssue)}
-        ${record?.memo ? `<div class="smallText partialHarvestDayMemo">メモ: ${escapeHtml(record.memo)}</div>` : ""}
         <div class="recordActions partialHarvestDayActions">
           <button class="thirdBtn" data-ui-click="editPartialHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
           <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
@@ -1786,7 +1785,6 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
       <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${conflictHtml}
       ${consistencyHtml}
-      ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
       <div class="recordActions">
         <button class="thirdBtn" data-ui-click="editPartialHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
         <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>

@@ -7775,6 +7775,7 @@
             type: "partialHarvest",
             date: "2026-08-23",
             cases: 2,
+            memo: "現場メモ\n部分収穫後の残り予想: 約18ケース（目安）",
             targets: [{ building: 2, bed: "A", start: 3, end: 3, plantsPerPallet: 12 }]
           }, {
             palletNumberingVersion: 2,
@@ -7783,6 +7784,7 @@
             type: "partialHarvest",
             date: "2026-08-23",
             cases: 3,
+            memo: "別のメモ\n部分収穫後の残り予想: 約22ケース（目安）",
             targets: [
               { building: 5, bed: "C", start: 1, end: 78, plantsPerPallet: 0.769231 },
               { building: 5, bed: "D", start: 1, end: 78, plantsPerPallet: 0.769231 }
@@ -7809,6 +7811,14 @@
           app.renderRecordList();
           const state = comparable(app.eval(`(() => {
             const group = document.querySelector('#recordList [data-record-history-date="2026-08-23"]');
+            const partialColumnText = group?.querySelector(".recordDatePartialColumn")?.textContent || "";
+            const fallbackPartialHtml = renderRecordItemHtml({
+              id:20000000000074,
+              type:"partialHarvest",
+              cases:1,
+              memo:"単独表示メモ\\n部分収穫後の残り予想: 約9ケース（目安）",
+              targets:[{ building:2, bed:"B", start:1, end:1, plantsPerPallet:12 }]
+            });
             return {
               groupCount:document.querySelectorAll("#recordList .recordDateGroup").length,
               heading:group?.querySelector(".recordDateGroupTitle")?.textContent.trim() || "",
@@ -7824,6 +7834,13 @@
               partialTotal:group.querySelector(".partialHarvestDayTotal")?.textContent.trim() || "",
               partialEntries:[...group.querySelectorAll(".partialHarvestDayEntryMain")]
                 .map(item => item.textContent.replace(/\\s+/g, " ").trim()),
+              partialMemoHidden:!["現場メモ", "別のメモ", "部分収穫後の残り予想"]
+                .some(text => partialColumnText.includes(text)),
+              fallbackPartialMemoHidden:!["単独表示メモ", "部分収穫後の残り予想"]
+                .some(text => fallbackPartialHtml.includes(text)),
+              storedPartialMemos:records
+                .filter(record => record.type === "partialHarvest")
+                .map(record => record.memo),
               repeatedDates:[...group.querySelectorAll(".recordItem .recordTitle")]
                 .filter(item => item.textContent.includes("2026-08-23")).length,
               editButtonCount:group.querySelectorAll('.recordActions [data-ui-click^="edit"]').length,
@@ -7842,6 +7859,12 @@
             partialEntryCount:2,
             partialTotal:"合計: 5ケース",
             partialEntries:["5号棟CD 3ケース", "2号棟A 2ケース"],
+            partialMemoHidden:true,
+            fallbackPartialMemoHidden:true,
+            storedPartialMemos:[
+              "現場メモ\n部分収穫後の残り予想: 約18ケース（目安）",
+              "別のメモ\n部分収穫後の残り予想: 約22ケース（目安）"
+            ],
             repeatedDates:0,
             editButtonCount:4,
             deleteButtonCount:4
