@@ -456,6 +456,9 @@
         "formatPalletSummary",
         "parsePalletSummaryToKeys",
         "normalizePartialHarvestTargets",
+        "getReplantedPalletSetFromRecords",
+        "getHarvestedPalletSetFromRecords",
+        "getHarvestedPalletSet",
         "normalizeStoredRecord",
         "normalizeRecordSnapshot",
         "normalizeImportedRecord",
@@ -1736,6 +1739,175 @@
           "パレットがありません",
           "Apps Script側が1枚以上・場所なしの記録を受け付けました"
         );
+      });
+
+      await runTest("苗植え済みパレットは収穫済み表示だけを解除し自動選択順を維持する", () => {
+        const harvestRecord = {
+          palletNumberingVersion: 2,
+          id: 20000000000050,
+          recordUuid: "50505050-5050-4050-8050-505050505050",
+          type: "fullHarvest",
+          date: "2026-08-10",
+          cases: 3,
+          palletRanges: ["2-A-1-3"],
+          plantingPending: false
+        };
+        const makePlantingEvent = (eventId, plantingDate, palletKey) => ({
+          palletNumberingVersion: 2,
+          eventId,
+          plantingDate,
+          sourceAllocations: [{ harvestRecordId: harvestRecord.id, palletKeys: [palletKey] }],
+          plantingPalletKeys: [palletKey],
+          plantingCountsByPallet: { [palletKey]: 20 },
+          actualSeedlingTrayCount: 1,
+          actualTakenSeedlingCount: 120,
+          actualPlantedSeedlingCount: 20,
+          actualSeedlingCarryoverMode: "loss",
+          actualSeedlingLossRate: "0",
+          qualityMemo: null,
+          detailsUnknown: false
+        });
+        const plantingEventsForTest = [
+          makePlantingEvent(20000000000051, "2026-08-10", "2-A-1"),
+          makePlantingEvent(20000000000052, "2026-08-11", "2-A-2"),
+          makePlantingEvent(20000000000053, "2026-08-12", "2-A-3")
+        ];
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previousDate = app.document.getElementById("recordDateInput")?.value || "";
+        const previousCases = app.document.getElementById("casesInput")?.value || "";
+        const harvestStateKey = app.eval("HARVEST_STATE_KEY");
+        const previousHarvestState = app.localStorage.getItem(harvestStateKey);
+        const previousSelection = comparable(app.eval(`({
+          building:currentBuilding,
+          keys:[...harvestFillKeys],
+          overageKeys:[...harvestOverageKeys],
+          summary:harvestSummary,
+          mode:harvestSelectionMode,
+          progress:harvestProgressState
+        })`));
+        try{
+          replaceAppHistory(app, [harvestRecord], plantingEventsForTest);
+          app.invalidatePlantingEventStateCache();
+          app.document.getElementById("recordDateInput").value = "2026-08-10";
+          app.document.getElementById("casesInput").value = "";
+          app.cancelPendingHarvestStateSave();
+          const state = comparable(app.eval(`(() => {
+            const sameDay = new Date(2026, 7, 10);
+            const nextDay = new Date(2026, 7, 11);
+            const futureDay = new Date(2026, 7, 12);
+            const cycleSameDay = [...getRecordedPalletSet(sameDay)].sort();
+            const harvestedSameDay = [...getHarvestedPalletSet(sameDay)].sort();
+            const replantedSameDay = [...getReplantedPalletSet(sameDay)].sort();
+            const harvestedNextDay = [...getHarvestedPalletSet(nextDay)].sort();
+            const harvestedFutureDay = [...getHarvestedPalletSet(futureDay)].sort();
+            const automatic = calculateHarvestSelectionFromRecords({
+              referenceDate:sameDay,
+              partialTargetDate:sameDay,
+              sourceRecords:records,
+              needHeads:1,
+              harvestRate:1
+            });
+
+            currentBuilding = 2;
+            harvestFillKeys = [];
+            harvestSummary = null;
+            harvestSelectionMode = "manual";
+            harvestProgressState = null;
+            drawBeds();
+            const replantedCell = document.querySelector("#beds .simulationBedMapCell.is-replanted");
+            const mapState = {
+              replantedCount:document.querySelectorAll("#beds .simulationBedMapCell.is-replanted").length,
+              recordedCount:document.querySelectorAll("#beds .simulationBedMapCell.is-recorded").length,
+              replantedTitle:replantedCell?.getAttribute("title") || "",
+              legend:[...document.querySelectorAll("#forecastTab .simulationBedMapLegendItem")]
+                .map(item => item.textContent.trim())
+            };
+            const manualSelectable = !isRecorded(2, "A", 1);
+            const previousRefreshAfterSelection = refreshAfterHarvestSelectionChanged;
+            let manualSelected = false;
+            try{
+              refreshAfterHarvestSelectionChanged = () => {};
+              togglePallet(2, "A", 1);
+              manualSelected = harvestFillKeys.includes("2-A-1");
+            }finally{
+              refreshAfterHarvestSelectionChanged = previousRefreshAfterSelection;
+            }
+
+            const savedEvents = plantingEvents;
+            plantingEvents = [];
+            const harvestedAfterPlantingDeletion = [...getHarvestedPalletSet(sameDay)].sort();
+            plantingEvents = savedEvents;
+            return {
+              cycleSameDay,
+              harvestedSameDay,
+              replantedSameDay,
+              harvestedNextDay,
+              harvestedFutureDay,
+              automaticStart:automatic?.palletKeys?.[0] || "",
+              manualSelectable,
+              manualSelected,
+              harvestedAfterPlantingDeletion,
+              mapState
+            };
+          })()`));
+          assertDeepEqual(state, {
+            cycleSameDay:["2-A-1", "2-A-2", "2-A-3"],
+            harvestedSameDay:["2-A-2", "2-A-3"],
+            replantedSameDay:["2-A-1"],
+            harvestedNextDay:["2-A-3"],
+            harvestedFutureDay:[],
+            automaticStart:"2-A-4",
+            manualSelectable:true,
+            manualSelected:true,
+            harvestedAfterPlantingDeletion:["2-A-1", "2-A-2", "2-A-3"],
+            mapState:{
+              replantedCount:1,
+              recordedCount:2,
+              replantedTitle:"1番 定植済み",
+              legend:["選択中", "超過分", "記録済み", "定植済み", "途中経過完了", "部分収穫"]
+            }
+          }, "苗植え後の収穫済み解除または自動選択の除外順が違います");
+
+          replaceAppHistory(app, [{
+            ...harvestRecord,
+            id:20000000000054,
+            recordUuid:"54545454-5454-4054-8054-545454545454",
+            date:"2026-08-11",
+            cases:1,
+            palletRanges:["2-A-1-1"]
+          }, harvestRecord], plantingEventsForTest);
+          app.invalidatePlantingEventStateCache();
+          assertDeepEqual(
+            comparable(app.eval(`[...getHarvestedPalletSet(new Date(2026, 7, 11))].sort()`)),
+            ["2-A-1", "2-A-3"],
+            "古い苗植え記録が次巡回の通常収穫済み判定まで解除しています"
+          );
+          const reasons = comparable(app.buildRecordConsistencyAudit().orderedIssues)
+            .flatMap(issue => issue.reasons);
+          assert(
+            !reasons.some(reason => reason.includes("収穫済みの場所と重複")),
+            "苗植え後の再収穫を収穫済み場所の重複として警告しています"
+          );
+        }finally{
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.invalidatePlantingEventStateCache();
+          app.document.getElementById("recordDateInput").value = previousDate;
+          app.document.getElementById("casesInput").value = previousCases;
+          app.cancelPendingHarvestStateSave();
+          if(previousHarvestState === null) app.localStorage.removeItem(harvestStateKey);
+          else app.localStorage.setItem(harvestStateKey, previousHarvestState);
+          app.eval(`(() => {
+            const state=${JSON.stringify(previousSelection)};
+            currentBuilding=state.building;
+            harvestFillKeys=state.keys;
+            harvestOverageKeys=state.overageKeys;
+            harvestSummary=state.summary;
+            harvestSelectionMode=state.mode;
+            harvestProgressState=state.progress;
+            refreshHarvestMapViews();
+          })()`);
+        }
       });
 
       await runTest("以前の未定植警告を収穫日と苗植え日で判定する", () => {
@@ -5017,12 +5189,12 @@
           const previous = {
             building: currentBuilding,
             keys: [...harvestFillKeys],
-            getRecorded: getRecordedPalletSet
+            getHarvested: getHarvestedPalletSet
           };
           try{
             currentBuilding = 2;
             harvestFillKeys = [];
-            getRecordedPalletSet = () => new Set(
+            getHarvestedPalletSet = () => new Set(
               Array.from({ length: 5 }, (_, index) => getPalletKey(2, "F", index + 1))
             );
             drawBeds();
@@ -5034,7 +5206,7 @@
               && activeBedDetailContext === "forecast"
               && activeBedDetailBed === "F";
             closeBedDetailWindow();
-            getRecordedPalletSet = () => new Set(
+            getHarvestedPalletSet = () => new Set(
               Array.from({ length: 78 }, (_, index) => getPalletKey(2, "F", index + 1))
             );
             drawBeds();
@@ -5053,7 +5225,7 @@
           }finally{
             currentBuilding = previous.building;
             harvestFillKeys = previous.keys;
-            getRecordedPalletSet = previous.getRecorded;
+            getHarvestedPalletSet = previous.getHarvested;
             drawBeds();
           }
         })()`));
@@ -9744,18 +9916,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e9f59fd7", elements: 2295, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "3c66cb11", elements: 2364, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "0b5b74b0", elements: 2364, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "3f55c9a4", elements: 2296, visible: 112, viewport: "390x844" },
-          mobileDashboard: { hash: "96791d60", elements: 2313, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "7f4067b2", elements: 2396, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "0adc373e", elements: 2411, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "53a5c409", elements: 2411, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "40ee23f4", elements: 2411, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "b38b09c7", elements: 2411, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "b62ccdc3", elements: 2411, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "7d762d8d", elements: 2411, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "fe1d703d", elements: 2299, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "85eab2c7", elements: 2368, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "66e99376", elements: 2368, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "35bcb87c", elements: 2300, visible: 114, viewport: "390x844" },
+          mobileDashboard: { hash: "41449c30", elements: 2317, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "0fb420aa", elements: 2400, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "0c849e02", elements: 2415, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "84c95739", elements: 2415, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "89085a78", elements: 2415, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "1294dbaf", elements: 2415, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "a5aa1f35", elements: 2415, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "90052245", elements: 2415, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

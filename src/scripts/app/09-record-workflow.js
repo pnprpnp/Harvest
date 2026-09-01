@@ -1433,7 +1433,9 @@ function formatHarvestLocationInstruction(keys = harvestFillKeys, referenceDate 
   if(!selectedKeys.length) return "収穫場所: -";
 
   const groups = {};
-  const recordedSet = getRecordedPalletSet(referenceDate);
+  const recordedSet = harvestSelectionMode === "manual"
+    ? getHarvestedPalletSet(referenceDate)
+    : getRecordedPalletSet(referenceDate);
   const selectedKeySet = new Set(selectedKeys);
   selectedKeys.forEach(key => {
     const p = parsePalletKey(key);

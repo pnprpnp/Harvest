@@ -3133,7 +3133,11 @@ function getWorkflowPlanStatus(){
   const casePlacementTotal = getTotalCasePlacementCount();
   const expectedNeedHeads = casePlan.regularCases * CASE_SIZE;
   const selectedKeyCount = Array.isArray(harvestFillKeys) ? harvestFillKeys.length : 0;
-  const recordedSet = selectedKeyCount > 0 ? getRecordedPalletSet() : new Set();
+  const recordedSet = selectedKeyCount > 0
+    ? (harvestSelectionMode === "manual"
+      ? getHarvestedPalletSet(getHarvestTargetDate())
+      : getRecordedPalletSet())
+    : new Set();
   const hasRecordedSelection = selectedKeyCount > 0 && harvestFillKeys.some(key => recordedSet.has(key));
   const currentHarvestTotal = Math.round(getCurrentHarvestTotal() * 10) / 10;
   const summaryHarvestTotal = Number(harvestSummary?.totalHarvest);

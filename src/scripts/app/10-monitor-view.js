@@ -391,7 +391,9 @@ function getMonitorSelectionMapHtml(keysOverride, casePlacementValue = ""){
   if(!sourceKeys.length){
     return `<div class="monitorEmpty">収穫場所が未選択です。</div>`;
   }
-  const recordedSet = getRecordedPalletSet();
+  const recordedSet = harvestSelectionMode === "manual"
+    ? getHarvestedPalletSet(getHarvestTargetDate())
+    : getRecordedPalletSet();
   const casePlacementCounts = getMonitorCasePlacementCounts(casePlacementValue);
 
   const grouped = {};

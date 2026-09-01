@@ -477,13 +477,14 @@ function renderForecastSummary(){
 function drawBeds(){
   const container = document.getElementById("beds");
   container.innerHTML = "";
-  const recordedSet = getRecordedPalletSet();
+  const targetDate = getHarvestTargetDate();
+  const recordedSet = getHarvestedPalletSet(targetDate);
+  const replantedSet = getReplantedPalletSet(targetDate);
   const selectedSet = new Set(harvestFillKeys || []);
   const overageSet = getHarvestOverageKeySet();
   const progressCompletedSet = getAppliedHarvestProgressCompletedKeySet();
   const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
   const hasPartialHarvestRecords = partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
-  const targetDate = getHarvestTargetDate();
   const partialHarvestLookup = hasPartialHarvestRecords
     ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
     : null;
@@ -508,6 +509,7 @@ function drawBeds(){
     appendBedOverviewMap(bed, currentBuilding, b, {
       selectedSet,
       recordedSet,
+      replantedSet,
       progressCompletedSet,
       overageSet,
       hasPartialHarvestRecords,
@@ -749,6 +751,9 @@ function drawRecordBeds(){
   renderRecordBuildingDisplayControls();
   renderRecordPlantingFlow();
   const recordedSet = getRecordTabRecordedPalletSet();
+  const replantedSet = recordSelectionMode === "planting"
+    ? new Set()
+    : getRecordTabReplantedPalletSet();
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const allBuildings = getRecordMapBuildings(plantingAllowedSet);
@@ -833,6 +838,7 @@ function drawRecordBeds(){
         selectedSet,
         overageSet: recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set(),
         recordedSet,
+        replantedSet,
         plantingAllowedSet,
         plantingCountsByPallet: recordPlantingCountsByPallet,
         plantingFlowStage: isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",

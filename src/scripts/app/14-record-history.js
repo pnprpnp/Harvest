@@ -243,12 +243,36 @@ function buildRecordConsistencyAudit(){
     }
   });
 
+  const plantingTimeByHarvestLot = new Map();
+  plantingEvents.forEach(event => {
+    const plantingTime = parseDateOnlyString(event?.plantingDate)?.getTime();
+    if(!Number.isFinite(plantingTime)) return;
+    (Array.isArray(event?.sourceAllocations) ? event.sourceAllocations : []).forEach(allocation => {
+      const harvestRecordId = getSafePositiveRecordId(allocation?.harvestRecordId);
+      if(harvestRecordId === null) return;
+      (Array.isArray(allocation?.palletKeys) ? allocation.palletKeys : []).forEach(key => {
+        const lotKey = getPlantingLotKey(harvestRecordId, key);
+        const previousTime = plantingTimeByHarvestLot.get(lotKey);
+        if(!Number.isFinite(previousTime) || plantingTime < previousTime){
+          plantingTimeByHarvestLot.set(lotKey, plantingTime);
+        }
+      });
+    });
+  });
+
   const recentFullRecords = [];
-  const harvestedPalletCounts = new Map();
   chronologicalRecords.forEach(record => {
     if(record?.type !== "fullHarvest") return;
+    const recordTime = parseDateOnlyString(record?.date)?.getTime();
     const palletKeys = [...new Set(getPalletKeysFromRecord(record))];
-    const duplicatedPalletKeys = palletKeys.filter(key => (harvestedPalletCounts.get(key) || 0) > 0);
+    const duplicatedPalletKeys = palletKeys.filter(key => recentFullRecords.some(previous => {
+      if(!previous.palletKeys.has(key)) return false;
+      const plantingTime = plantingTimeByHarvestLot.get(getPlantingLotKey(previous.id, key));
+      const wasReplanted = Number.isFinite(plantingTime)
+        && plantingTime >= previous.recordTime
+        && plantingTime <= recordTime;
+      return !wasReplanted;
+    }));
     if(duplicatedPalletKeys.length){
       addIssue(
         "harvest",
@@ -257,15 +281,13 @@ function buildRecordConsistencyAudit(){
       );
     }
 
-    recentFullRecords.push(palletKeys);
-    palletKeys.forEach(key => harvestedPalletCounts.set(key, (harvestedPalletCounts.get(key) || 0) + 1));
+    recentFullRecords.push({
+      id:Number(record.id),
+      recordTime:Number.isFinite(recordTime) ? recordTime : Infinity,
+      palletKeys:new Set(palletKeys)
+    });
     if(recentFullRecords.length > RECORDED_LOOKBACK_COUNT){
-      const expiredKeys = recentFullRecords.shift() || [];
-      expiredKeys.forEach(key => {
-        const nextCount = (harvestedPalletCounts.get(key) || 0) - 1;
-        if(nextCount > 0) harvestedPalletCounts.set(key, nextCount);
-        else harvestedPalletCounts.delete(key);
-      });
+      recentFullRecords.shift();
     }
   });
 
