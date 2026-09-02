@@ -118,6 +118,10 @@ function editHarvestRecord(id, options = {}){
   if(switchTab("record") === false) return;
   if(!wasAlreadyEditingHarvestRecord && !options.skipForecastCapture) captureForecastSelectionState();
   enterHarvestRecordMode();
+  recordViewMode = "entry";
+  recordHarvestStage = "confirm";
+  recordHarvestActiveBuilding = null;
+  recordHarvestVisitedBuildings = [];
   editingHarvestRecordId = Number(record.id);
   recordSelectionMode = "harvest";
   activePlantingRecordId = null;

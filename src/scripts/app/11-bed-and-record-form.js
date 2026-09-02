@@ -693,9 +693,96 @@ function renderRecordBuildingDisplayControls(){
   }
   if(summary){
     summary.textContent = displayedBuildings.length
-      ? `表示中: ${displayedBuildings.map(building => `${building}号棟`).join("・")}`
+      ? `${displayedBuildings.length}棟を選択中`
       : "表示中の号棟はありません";
   }
+  if(!displayedBuildings.length && chooser && openButton){
+    chooser.hidden = false;
+    openButton.setAttribute("aria-expanded", "true");
+  }
+}
+
+function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
+  const pager = document.getElementById("recordHarvestBuildingPager");
+  if(!pager) return;
+  pager.innerHTML = "";
+  const normalizedBuildings = [...new Set((buildings || []).map(Number).filter(building => BUILDINGS.includes(building)))];
+  if(recordSelectionMode === "planting" || normalizedBuildings.length <= 1){
+    pager.hidden = true;
+    return;
+  }
+
+  const activeBuilding = normalizedBuildings.includes(Number(recordHarvestActiveBuilding))
+    ? Number(recordHarvestActiveBuilding)
+    : normalizedBuildings[0];
+  const activeIndex = normalizedBuildings.indexOf(activeBuilding);
+  const targetSet = new Set(getRecordHarvestTargetBuildings());
+  const visitedSet = new Set((recordHarvestVisitedBuildings || []).map(Number));
+  const previousButton = document.createElement("button");
+  previousButton.type = "button";
+  previousButton.className = "recordHarvestBuildingArrow";
+  previousButton.textContent = "‹";
+  previousButton.dataset.uiClick = "shiftRecordHarvestBuilding";
+  previousButton.dataset.uiNumber = "-1";
+  previousButton.disabled = activeIndex <= 0;
+  previousButton.setAttribute("aria-label", "前の号棟を表示");
+
+  const tabs = document.createElement("div");
+  tabs.className = "recordHarvestBuildingTabs";
+  normalizedBuildings.forEach(building => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "recordHarvestBuildingTab" + (building === activeBuilding ? " is-active" : "");
+    button.dataset.uiClick = "setRecordHarvestBuilding";
+    button.dataset.uiNumber = String(building);
+    button.setAttribute("aria-pressed", String(building === activeBuilding));
+    const selectedCount = (harvestFillKeys || []).filter(key => parsePalletKey(key).building === building).length;
+    const title = document.createElement("strong");
+    title.textContent = `${building}号棟`;
+    const count = document.createElement("span");
+    count.textContent = `${selectedCount}枚`;
+    button.append(title, count);
+    if(targetSet.has(building) && !visitedSet.has(building)){
+      const dot = document.createElement("i");
+      dot.className = "recordHarvestBuildingNoticeDot";
+      dot.setAttribute("aria-label", "未確認");
+      button.appendChild(dot);
+    }
+    tabs.appendChild(button);
+  });
+
+  const nextButton = document.createElement("button");
+  nextButton.type = "button";
+  nextButton.className = "recordHarvestBuildingArrow";
+  nextButton.textContent = "›";
+  nextButton.dataset.uiClick = "shiftRecordHarvestBuilding";
+  nextButton.dataset.uiNumber = "1";
+  nextButton.disabled = activeIndex < 0 || activeIndex >= normalizedBuildings.length - 1;
+  nextButton.setAttribute("aria-label", "次の号棟を表示");
+  pager.append(previousButton, tabs, nextButton);
+  pager.hidden = false;
+}
+
+function setRecordHarvestBuilding(building){
+  if(recordSelectionMode === "planting") return;
+  const normalizedBuilding = Number(building);
+  if(!getRecordMapBuildings().includes(normalizedBuilding)) return;
+  recordHarvestActiveBuilding = normalizedBuilding;
+  if(recordHarvestStage === "location" && !recordHarvestVisitedBuildings.includes(normalizedBuilding)){
+    recordHarvestVisitedBuildings.push(normalizedBuilding);
+  }
+  drawRecordBeds();
+  scheduleHarvestStateSave();
+}
+
+function shiftRecordHarvestBuilding(direction){
+  if(recordSelectionMode === "planting") return;
+  const buildings = getRecordMapBuildings();
+  if(buildings.length <= 1) return;
+  const activeIndex = buildings.indexOf(Number(recordHarvestActiveBuilding));
+  const nextIndex = Math.max(0, Math.min(buildings.length - 1, activeIndex + Number(direction || 0)));
+  if(nextIndex === activeIndex) return;
+  setRecordHarvestBuilding(buildings[nextIndex]);
 }
 
 function toggleRecordBuildingAddChooser(){
@@ -714,6 +801,10 @@ function addRecordBuildingDisplay(building){
   if(!BUILDINGS.includes(normalizedBuilding)) return;
   if(getRecordMapBuildings().includes(normalizedBuilding)) return;
   recordAdditionalBuildings.push(normalizedBuilding);
+  recordHarvestActiveBuilding = normalizedBuilding;
+  if(recordHarvestStage === "location" && !recordHarvestVisitedBuildings.includes(normalizedBuilding)){
+    recordHarvestVisitedBuildings.push(normalizedBuilding);
+  }
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
   if(chooser) chooser.hidden = true;
@@ -729,10 +820,15 @@ function removeRecordBuildingDisplay(building){
   if(!recordAdditionalBuildings.includes(normalizedBuilding)) return;
 
   recordAdditionalBuildings = recordAdditionalBuildings.filter(item => Number(item) !== normalizedBuilding);
+  recordHarvestVisitedBuildings = recordHarvestVisitedBuildings.filter(item => Number(item) !== normalizedBuilding);
   const previousKeyCount = harvestFillKeys.length;
   harvestFillKeys = harvestFillKeys.filter(key => parsePalletKey(key).building !== normalizedBuilding);
   const removedSelectionCount = previousKeyCount - harvestFillKeys.length;
 
+  const remainingBuildings = getRecordMapBuildings();
+  if(Number(recordHarvestActiveBuilding) === normalizedBuilding){
+    recordHarvestActiveBuilding = remainingBuildings[0] || null;
+  }
   if(removedSelectionCount > 0){
     refreshAfterHarvestSelectionChanged();
     if(activeAppTab !== "record") drawRecordBeds();
@@ -768,11 +864,28 @@ function drawRecordBeds(){
   const selectedSet = new Set(harvestFillKeys || []);
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const allBuildings = getRecordMapBuildings(plantingAllowedSet);
+  if(recordSelectionMode !== "planting"){
+    if(!allBuildings.includes(Number(recordHarvestActiveBuilding))){
+      recordHarvestActiveBuilding = allBuildings[0] || null;
+    }
+    if(recordHarvestStage === "location"
+      && recordViewMode === "entry"
+      && BUILDINGS.includes(Number(recordHarvestActiveBuilding))
+      && !recordHarvestVisitedBuildings.includes(Number(recordHarvestActiveBuilding))){
+      recordHarvestVisitedBuildings.push(Number(recordHarvestActiveBuilding));
+    }
+    renderRecordHarvestBuildingPager(allBuildings);
+    renderRecordHarvestFixedNavigation();
+  }else{
+    renderRecordHarvestBuildingPager([]);
+  }
   const buildings = isRecordPlantingFlowActive()
     ? (recordPlantingFlowStage !== "building" && allBuildings.includes(Number(recordPlantingFlowBuilding))
         ? [Number(recordPlantingFlowBuilding)]
         : [])
-    : allBuildings;
+    : (recordSelectionMode === "planting"
+        ? allBuildings
+        : (BUILDINGS.includes(Number(recordHarvestActiveBuilding)) ? [Number(recordHarvestActiveBuilding)] : []));
   const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
   const hasPartialHarvestRecords = recordSelectionMode !== "planting"
     && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
@@ -1079,6 +1192,9 @@ function updateRecordActualLoss(){
       ? "ロス率を計算できません"
       : `${isEstimated ? "推定ロス率" : "実際のロス率"} ${value}%`
   );
+  updateRecordHarvestLocationSummary();
+  if(recordHarvestStage === "confirm") renderRecordHarvestConfirmation();
+  renderRecordHarvestFixedNavigation();
   updateRecordInputGuides();
 }
 
@@ -1548,6 +1664,7 @@ function updateRecordWeekdayDisplay(){
 
 function refreshRecordDateDependentUi(){
   updateRecordWeekdayDisplay();
+  updateRecordPastDateNotice();
   refreshAllPartialHarvestRemainingEstimators();
   renderRecordList();
   renderForecastSummary();
@@ -1587,6 +1704,10 @@ function clearRecordForm(){
   }
   editingHarvestRecordId = null;
   editingHarvestSelectionKeys = null;
+  recordHarvestStage = "cases";
+  recordHarvestActiveBuilding = null;
+  recordHarvestVisitedBuildings = [];
+  recordViewMode = "entry";
   enterHarvestRecordMode();
   restoreRecordSelectionToBase();
   setTodayToRecordDate();

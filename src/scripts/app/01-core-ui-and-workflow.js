@@ -304,6 +304,11 @@ const tabScrollPositions = {
 let recordBaseFillKeys = [];
 let recordAdditionalBuildings = [];
 let recordSelectionMode = "harvest";
+const RECORD_HARVEST_STAGES = Object.freeze(["cases", "location", "quality", "confirm"]);
+let recordHarvestStage = "cases";
+let recordHarvestActiveBuilding = null;
+let recordHarvestVisitedBuildings = [];
+let recordViewMode = "entry";
 let recordPlantingCountPreset = 20;
 let recordPlantingCountsByPallet = {};
 let recordPlantingFlowEnabled = false;
@@ -1161,6 +1166,10 @@ function saveHarvestStateToStorage(options = {}){
     recordPlantingSummaryEdited,
     recordAdditionalBuildings: [...recordAdditionalBuildings],
     recordSelectionMode,
+    recordHarvestStage,
+    recordHarvestActiveBuilding,
+    recordHarvestVisitedBuildings: [...recordHarvestVisitedBuildings],
+    recordViewMode,
     recordPlantingCountPreset,
     recordPlantingCountsByPallet,
     recordPlantingFlowEnabled,

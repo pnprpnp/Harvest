@@ -78,6 +78,16 @@ function restoreHarvestStateAtStartup(savedHarvestState){
     ? [...new Set(savedHarvestState.recordAdditionalBuildings.filter(building => BUILDINGS.includes(Number(building))).map(Number))]
     : [];
   recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
+  recordHarvestStage = RECORD_HARVEST_STAGES.includes(savedHarvestState.recordHarvestStage)
+    ? savedHarvestState.recordHarvestStage
+    : "cases";
+  recordHarvestActiveBuilding = BUILDINGS.includes(Number(savedHarvestState.recordHarvestActiveBuilding))
+    ? Number(savedHarvestState.recordHarvestActiveBuilding)
+    : null;
+  recordHarvestVisitedBuildings = Array.isArray(savedHarvestState.recordHarvestVisitedBuildings)
+    ? [...new Set(savedHarvestState.recordHarvestVisitedBuildings.map(Number).filter(building => BUILDINGS.includes(building)))]
+    : [];
+  recordViewMode = savedHarvestState.recordViewMode === "history" ? "history" : "entry";
   recordPlantingCountPreset = normalizePlantingCountPreset(savedHarvestState.recordPlantingCountPreset);
   recordPlantingCountsByPallet = normalizePlantingCountsByPallet(
     savedHarvestState.recordPlantingCountsByPallet,

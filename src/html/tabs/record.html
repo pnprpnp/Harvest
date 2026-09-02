@@ -11,14 +11,26 @@
           <span id="recordModePlantingStepText">苗植え記録</span>
         </div>
       </div>
-      <div class="recordDateField">
-        <label class="fieldAccentLabel">日付</label>
-        <div class="recordDateInputRow">
-          <input id="recordDateInput" type="date">
-          <div id="recordWeekdayDisplay" class="recordWeekdayDisplay">（--）</div>
+      <div class="recordInputUtilityRow">
+        <div class="recordDateField">
+          <label class="fieldAccentLabel">日付</label>
+          <div class="recordDateInputRow">
+            <input id="recordDateInput" type="date">
+            <div id="recordWeekdayDisplay" class="recordWeekdayDisplay">（--）</div>
+          </div>
         </div>
+        <button id="recordHistoryOpenBtn" class="recordHistoryToggleBtn" type="button" data-ui-click="showRecordHistoryView">記録一覧</button>
       </div>
+      <div id="recordPastDateNotice" class="recordPastDateNotice" role="status" hidden>過去の日付を記録中</div>
       <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
+
+      <div id="recordHarvestWorkflowProgress" class="recordHarvestWorkflowProgress" role="status" aria-live="polite">
+        <div class="recordHarvestWorkflowProgressCopy">
+          <span id="recordHarvestWorkflowProgressCount">1/4</span>
+          <strong id="recordHarvestWorkflowProgressTitle">ケース数</strong>
+        </div>
+        <div class="recordHarvestWorkflowTrack" aria-hidden="true"><span id="recordHarvestWorkflowTrackValue"></span></div>
+      </div>
 
       <div id="recordHarvestStageSection" class="recordStageSection">
         <div class="recordActualRow recordActualCasesRow">
@@ -102,7 +114,34 @@
       <label class="hiddenRecordField">実際に苗植えした場所</label>
       <textarea id="recordPlantingSummaryInput" class="hiddenRecordField" readonly placeholder="収穫を記録した後、表で苗植え場所を選ぶと入ります"></textarea>
 
-      <div class="recordHarvestAdjustBox">
+      <div id="recordHarvestLocationSection">
+        <div id="recordHarvestLocationSummary" class="recordHarvestLocationSummary">
+          <button class="recordHarvestLocationMetric is-action" type="button" data-ui-click="openRecordHarvestStage" data-ui-arg="cases">
+            <span>ケース数</span>
+            <strong id="recordHarvestLocationCases">--</strong>
+          </button>
+          <div class="recordHarvestLocationMetric">
+            <span>選択</span>
+            <strong id="recordHarvestLocationPallets">0枚</strong>
+          </div>
+          <div class="recordHarvestLocationMetric">
+            <span id="recordHarvestLocationLossLabel">実際のロス率</span>
+            <strong id="recordHarvestLocationLoss">--</strong>
+          </div>
+        </div>
+        <div id="recordBuildingDisplayControls" class="recordBuildingDisplayControls" hidden>
+          <div class="recordBuildingDisplayHeader">
+            <button id="recordBuildingAddOpenBtn" class="recordBuildingAddOpenBtn" type="button"
+              data-ui-click="toggleRecordBuildingAddChooser" aria-expanded="false" aria-controls="recordBuildingAddChooser">＋号棟</button>
+            <div id="recordBuildingDisplaySummary" class="recordBuildingDisplaySummary">表示中の号棟はありません</div>
+          </div>
+          <div id="recordBuildingAddChooser" class="recordBuildingAddChooser" hidden>
+            <div class="recordBuildingDisplayHint">追加する号棟を押してください</div>
+            <div id="recordBuildingAddOptions" class="recordBuildingAddOptions" role="group" aria-label="追加する号棟"></div>
+          </div>
+        </div>
+        <div id="recordHarvestBuildingPager" class="recordHarvestBuildingPager" hidden></div>
+        <div class="recordHarvestAdjustBox">
         <div id="recordEditNotice" class="recordEditNotice">実際の収穫場所に調整してください。</div>
         <div id="recordPlantingFlowPanel" class="recordPlantingFlowPanel" hidden></div>
         <div id="recordPlantingCountPreset" class="recordPlantingCountPreset" hidden>
@@ -121,17 +160,6 @@
           <div id="recordPlantingCountSummary" class="recordPlantingCountSummary">パレットを選択してください</div>
         </div>
         <div id="recordBeds" class="recordBuildingMapList"></div>
-        <div id="recordBuildingDisplayControls" class="recordBuildingDisplayControls" hidden>
-          <div class="recordBuildingDisplayHeader">
-            <button id="recordBuildingAddOpenBtn" class="recordBuildingAddOpenBtn" type="button"
-              data-ui-click="toggleRecordBuildingAddChooser" aria-expanded="false" aria-controls="recordBuildingAddChooser">＋ 号棟を追加</button>
-            <div id="recordBuildingDisplaySummary" class="recordBuildingDisplaySummary">表示中の号棟はありません</div>
-          </div>
-          <div id="recordBuildingAddChooser" class="recordBuildingAddChooser" hidden>
-            <div class="recordBuildingDisplayHint">追加する号棟を押してください</div>
-            <div id="recordBuildingAddOptions" class="recordBuildingAddOptions" role="group" aria-label="追加する号棟"></div>
-          </div>
-        </div>
         <div id="recordHarvestMapLegend" class="simulationBedMapLegend" aria-label="収穫場所配置図の色分け">
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-harvest-available"></span>収穫可能</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
@@ -149,11 +177,12 @@
         </div>
         <div class="bedDetailOpenHint">ベッドをタップすると拡大し、パレットを選択できます</div>
         <div id="recordPlantingFlowFooter" class="recordPlantingFlowFooter" hidden></div>
-      </div>
+        </div>
 
-      <div class="recordActualLossField">
-        <label>実際のロス率</label>
-        <div id="recordActualLossInput" class="recordLossDisplay empty" data-value="">--</div>
+        <div class="recordActualLossField" hidden>
+          <label>実際のロス率</label>
+          <div id="recordActualLossInput" class="recordLossDisplay empty" data-value="">--</div>
+        </div>
       </div>
 
       <div id="recordQualityMemoSection" class="recordHarvestMemoSection">
@@ -169,19 +198,32 @@
         <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他" hidden>
       </div>
 
-      <div id="recordHarvestMemoSection" class="recordHarvestMemoSection">
-        <label class="fieldAccentLabel">メモ</label>
-        <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
+      <div id="recordHarvestConfirmSection" class="recordHarvestConfirmSection" hidden>
+        <div id="recordHarvestConfirmSummary" class="recordHarvestConfirmSummary"></div>
+        <details id="recordHarvestMemoDetails" class="recordHarvestMemoDetails">
+          <summary>メモを追加</summary>
+          <div id="recordHarvestMemoSection" class="recordHarvestMemoSection">
+            <label class="fieldAccentLabel">メモ</label>
+            <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
+          </div>
+        </details>
       </div>
-      <div class="recordFormActionRow">
+      <div id="recordFormActionRow" class="recordFormActionRow">
         <button id="recordDiscardEditBtn" class="actionBtn secondaryBtn" data-ui-click="discardRecordEditChanges" hidden>編集を破棄して戻る</button>
         <button id="recordClearActionBtn" class="actionBtn secondaryBtn recordClearBtn" data-ui-click="handleRecordClearAction">クリア</button>
         <button id="recordPrimaryActionBtn" class="actionBtn thirdBtn" data-ui-click="handleRecordPrimaryAction">収穫場所を記録する</button>
       </div>
+      <div id="recordHarvestFixedNav" class="recordHarvestFixedNav" hidden>
+        <button id="recordHarvestBackBtn" class="recordHarvestBackBtn" type="button" data-ui-click="handleRecordHarvestBack">クリア</button>
+        <button id="recordHarvestNextBtn" class="recordHarvestNextBtn" type="button" data-ui-click="handleRecordHarvestNext">次へ</button>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="sectionTitle">記録一覧</div>
+    <div id="recordHistoryCard" class="card" hidden>
+      <div class="recordHistoryHeader">
+        <div class="sectionTitle">記録一覧</div>
+        <button class="recordHistoryToggleBtn" type="button" data-ui-click="showRecordEntryView">入力へ戻る</button>
+      </div>
       <div id="syncConflictAlert" class="syncConflictAlert" role="status" aria-live="polite" hidden>
         <div class="syncConflictAlertCopy">
           <div id="syncConflictAlertTitle" class="syncConflictAlertTitle">競合する記録があります</div>

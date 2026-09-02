@@ -6046,7 +6046,7 @@
           monitorActions: document.querySelectorAll('#monitorCard [data-ui-click="openMonitorMode"], #monitorCard [data-ui-click="openMonitorEditorWindow"]').length,
           recordStatusExists: !!document.getElementById("recordTodayRecordedStatus"),
           recordModeStatusIsFirst: document.getElementById("recordSaveCard")?.firstElementChild?.id === "recordModeStatus",
-          recordDateFollowsStatus: document.getElementById("recordModeStatus")?.nextElementSibling?.classList.contains("recordDateField") || false,
+          recordUtilityFollowsStatus: document.getElementById("recordModeStatus")?.nextElementSibling?.classList.contains("recordInputUtilityRow") || false,
           recordStepIndicatorExists: !!document.getElementById("recordStepIndicator"),
           recordStageCaptionCount: document.querySelectorAll("#recordSaveCard .recordStageCaption").length
         }))()`));
@@ -6057,7 +6057,7 @@
           monitorActions: 2,
           recordStatusExists: true,
           recordModeStatusIsFirst: true,
-          recordDateFollowsStatus: true,
+          recordUtilityFollowsStatus: true,
           recordStepIndicatorExists: false,
           recordStageCaptionCount: 0
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
@@ -8256,6 +8256,266 @@
         }, "記録タブ上部の工程表示が現在の記録モードに追従していません");
       });
 
+      await runTest("収穫記録を4工程で進め、対象棟の確認後だけ固定ボタンで保存へ進める", () => {
+        const state = comparable(app.eval(`(() => {
+          const recordTab = document.getElementById("recordTab");
+          const previous = {
+            display:recordTab.style.display,
+            activeTab:activeAppTab,
+            mode:recordSelectionMode,
+            view:recordViewMode,
+            stage:recordHarvestStage,
+            activeBuilding:recordHarvestActiveBuilding,
+            visited:[...recordHarvestVisitedBuildings],
+            keys:[...harvestFillKeys],
+            additional:[...recordAdditionalBuildings],
+            date:document.getElementById("recordDateInput").value,
+            cases:document.getElementById("recordCasesInput").value,
+            memo:document.getElementById("recordMemoInput").value
+          };
+          try{
+            recordTab.style.display = "block";
+            activeAppTab = "record";
+            recordSelectionMode = "harvest";
+            recordViewMode = "entry";
+            recordHarvestStage = "cases";
+            recordHarvestActiveBuilding = null;
+            recordHarvestVisitedBuildings = [];
+            harvestFillKeys = ["2-A-1", "3-A-1"];
+            recordAdditionalBuildings = [];
+            document.getElementById("recordDateInput").value = formatDateOnlyString(new Date());
+            document.getElementById("recordCasesInput").value = "1";
+            document.getElementById("recordMemoInput").value = "入力途中";
+            recalcHarvestSummary();
+            document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+            updateRecordActualLoss();
+            refreshRecordModeUi();
+
+            const nav = document.getElementById("recordHarvestFixedNav");
+            const tabBar = document.querySelector(".tabBar");
+            const casesState = {
+              progress:document.getElementById("recordHarvestWorkflowProgressCount").textContent,
+              title:document.getElementById("recordHarvestWorkflowProgressTitle").textContent,
+              casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
+              locationHidden:document.getElementById("recordHarvestLocationSection").hidden,
+              navPosition:getComputedStyle(nav).position,
+              navTouchesTabBar:Math.round(nav.getBoundingClientRect().bottom) === Math.round(tabBar.getBoundingClientRect().top),
+              nextLabel:document.getElementById("recordHarvestNextBtn").textContent
+            };
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            document.getElementById("recordDateInput").value = formatDateOnlyString(yesterday);
+            updateRecordPastDateNotice();
+            const pastDateNotice = {
+              visible:!document.getElementById("recordPastDateNotice").hidden,
+              text:document.getElementById("recordPastDateNotice").textContent.trim()
+            };
+
+            openRecordHarvestStage("location");
+            const locationBefore = {
+              progress:document.getElementById("recordHarvestWorkflowProgressCount").textContent,
+              title:document.getElementById("recordHarvestWorkflowProgressTitle").textContent,
+              headings:[...document.querySelectorAll("#recordBeds .recordBuildingMapTitleText")].map(item => item.textContent.trim()),
+              visited:[...recordHarvestVisitedBuildings],
+              noticeDots:document.querySelectorAll("#recordHarvestBuildingPager .recordHarvestBuildingNoticeDot").length,
+              nextDisabled:document.getElementById("recordHarvestNextBtn").disabled
+            };
+            setRecordHarvestBuilding(3);
+            const locationAfter = {
+              headings:[...document.querySelectorAll("#recordBeds .recordBuildingMapTitleText")].map(item => item.textContent.trim()),
+              visited:[...recordHarvestVisitedBuildings],
+              noticeDots:document.querySelectorAll("#recordHarvestBuildingPager .recordHarvestBuildingNoticeDot").length,
+              nextDisabled:document.getElementById("recordHarvestNextBtn").disabled
+            };
+            handleRecordHarvestNext();
+            const qualityState = {
+              stage:recordHarvestStage,
+              qualityVisible:!document.getElementById("recordQualityMemoSection").hidden,
+              nextLabel:document.getElementById("recordHarvestNextBtn").textContent
+            };
+            handleRecordHarvestNext();
+            const confirmState = {
+              stage:recordHarvestStage,
+              summaryItems:document.querySelectorAll("#recordHarvestConfirmSummary .recordHarvestConfirmItem").length,
+              finalLabel:document.getElementById("recordHarvestNextBtn").textContent,
+              memoCollapsed:!document.getElementById("recordHarvestMemoDetails").open
+            };
+            showRecordHistoryView();
+            const historyState = {
+              saveHidden:document.getElementById("recordSaveCard").hidden,
+              historyVisible:!document.getElementById("recordHistoryCard").hidden,
+              navHidden:document.getElementById("recordHarvestFixedNav").hidden
+            };
+            showRecordEntryView();
+            const restoredMemo = document.getElementById("recordMemoInput").value;
+            return { casesState, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
+          }finally{
+            recordTab.style.display = previous.display;
+            activeAppTab = previous.activeTab;
+            recordSelectionMode = previous.mode;
+            recordViewMode = previous.view;
+            recordHarvestStage = previous.stage;
+            recordHarvestActiveBuilding = previous.activeBuilding;
+            recordHarvestVisitedBuildings = previous.visited;
+            harvestFillKeys = previous.keys;
+            recordAdditionalBuildings = previous.additional;
+            document.getElementById("recordDateInput").value = previous.date;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            document.getElementById("recordMemoInput").value = previous.memo;
+            refreshRecordModeUi();
+            cancelPendingHarvestStateSave();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          casesState:{
+            progress:"1/4",
+            title:"ケース数",
+            casesVisible:true,
+            locationHidden:true,
+            navPosition:"fixed",
+            navTouchesTabBar:true,
+            nextLabel:"次へ"
+          },
+          pastDateNotice:{visible:true,text:"過去の日付を記録中"},
+          locationBefore:{
+            progress:"2/4",
+            title:"収穫場所",
+            headings:["2号棟"],
+            visited:[2],
+            noticeDots:1,
+            nextDisabled:true
+          },
+          locationAfter:{
+            headings:["3号棟"],
+            visited:[2,3],
+            noticeDots:0,
+            nextDisabled:false
+          },
+          qualityState:{stage:"quality",qualityVisible:true,nextLabel:"次へ"},
+          confirmState:{stage:"confirm",summaryItems:5,finalLabel:"保存",memoCollapsed:true},
+          historyState:{saveHidden:true,historyVisible:true,navHidden:true},
+          restoredMemo:"入力途中"
+        }, "収穫記録の工程表示・号棟確認・固定操作・確認画面が連動していません");
+      });
+
+      await runTest("保存済み収穫記録の更新後は苗植えへ移らず元の日付の一覧へ戻る", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            records,
+            editingHarvestRecordId,
+            keys:[...harvestFillKeys],
+            mode:recordSelectionMode,
+            view:recordViewMode,
+            date:document.getElementById("recordDateInput").value,
+            cases:document.getElementById("recordCasesInput").value,
+            summary:document.getElementById("recordPalletSummaryInput").value,
+            ensureAccess:ensureProtectedOperationAccess,
+            ensureMutation:ensureGoogleSheetLocalMutationAllowed,
+            warnings:confirmHarvestRecordWarnings,
+            dependencies:getRemotePlantingEventDependenciesForHarvest,
+            saveStorage:saveRecordsToStorage,
+            syncPending:syncHarvestPlantingPendingFlags,
+            queue:queueGoogleSheetRecordSend,
+            clear:clearRecordForm,
+            history:showRecordHistoryView,
+            refreshDate:refreshRecordDateDependentUi,
+            saveState:saveHarvestStateToStorage,
+            scheduleRefresh:scheduleRecordDataUiRefresh,
+            toast:showToast,
+            planting:enterPlantingRecordMode,
+            loss:getRecordActualLossValue
+          };
+          let plantingCalls = 0;
+          let clearCalls = 0;
+          let historyDate = "";
+          try{
+            records = [{
+              id:20000000000991,
+              type:"fullHarvest",
+              date:"2026-08-18",
+              cases:1,
+              palletSummary:"2号棟A:1",
+              palletKeys:["2-A-1"],
+              plantingPending:true,
+              plantingPalletKeys:[]
+            }];
+            editingHarvestRecordId = 20000000000991;
+            harvestFillKeys = ["2-A-1"];
+            recordSelectionMode = "harvest";
+            recordViewMode = "entry";
+            document.getElementById("recordDateInput").value = "2026-08-18";
+            document.getElementById("recordCasesInput").value = "1";
+            document.getElementById("recordPalletSummaryInput").value = "2号棟A:1";
+            ensureProtectedOperationAccess = () => true;
+            ensureGoogleSheetLocalMutationAllowed = () => true;
+            confirmHarvestRecordWarnings = () => true;
+            getRemotePlantingEventDependenciesForHarvest = () => [];
+            saveRecordsToStorage = () => {};
+            syncHarvestPlantingPendingFlags = () => {};
+            queueGoogleSheetRecordSend = () => false;
+            getRecordActualLossValue = () => "0";
+            clearRecordForm = () => {
+              clearCalls++;
+              editingHarvestRecordId = null;
+              recordSelectionMode = "harvest";
+              recordViewMode = "entry";
+            };
+            showRecordHistoryView = options => {
+              historyDate = options?.date || "";
+              recordViewMode = "history";
+            };
+            refreshRecordDateDependentUi = () => {};
+            saveHarvestStateToStorage = () => {};
+            scheduleRecordDataUiRefresh = () => {};
+            showToast = () => {};
+            enterPlantingRecordMode = () => { plantingCalls++; };
+            saveRecord();
+            return {
+              plantingCalls,
+              clearCalls,
+              historyDate,
+              view:recordViewMode,
+              mode:recordSelectionMode,
+              editingId:editingHarvestRecordId,
+              updatedDate:records[0].date
+            };
+          }finally{
+            records = previous.records;
+            editingHarvestRecordId = previous.editingHarvestRecordId;
+            harvestFillKeys = previous.keys;
+            recordSelectionMode = previous.mode;
+            recordViewMode = previous.view;
+            document.getElementById("recordDateInput").value = previous.date;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            document.getElementById("recordPalletSummaryInput").value = previous.summary;
+            ensureProtectedOperationAccess = previous.ensureAccess;
+            ensureGoogleSheetLocalMutationAllowed = previous.ensureMutation;
+            confirmHarvestRecordWarnings = previous.warnings;
+            getRemotePlantingEventDependenciesForHarvest = previous.dependencies;
+            saveRecordsToStorage = previous.saveStorage;
+            syncHarvestPlantingPendingFlags = previous.syncPending;
+            queueGoogleSheetRecordSend = previous.queue;
+            clearRecordForm = previous.clear;
+            showRecordHistoryView = previous.history;
+            refreshRecordDateDependentUi = previous.refreshDate;
+            saveHarvestStateToStorage = previous.saveState;
+            scheduleRecordDataUiRefresh = previous.scheduleRefresh;
+            showToast = previous.toast;
+            enterPlantingRecordMode = previous.planting;
+            getRecordActualLossValue = previous.loss;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          plantingCalls:0,
+          clearCalls:1,
+          historyDate:"2026-08-18",
+          view:"history",
+          mode:"harvest",
+          editingId:null,
+          updatedDate:"2026-08-18"
+        }, "収穫記録の更新後に苗植えへ移るか、元の日付の記録一覧へ戻れていません");
+      });
+
       await runTest("記録の工程表示をヘッダー直下へ配置する", () => {
         const layoutState = comparable(app.eval(`(() => {
           const previousTab = activeAppTab;
@@ -8485,7 +8745,7 @@
         }, "記録タブの縦型パレット配置図がシミュと一致しません");
       });
 
-      await runTest("収穫記録で計算対象外の号棟を追加表示して選択できる", () => {
+      await runTest("収穫記録で号棟を追加し配置図を1棟ずつ切り替えられる", () => {
         const state = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");
           const previous = {
@@ -8503,6 +8763,7 @@
             harvestFillKeys = ["8-A-1", "8-A-2"];
             recordAdditionalBuildings = [];
             getRecordTabRecordedPalletSet = () => new Set();
+            document.getElementById("recordBuildingAddChooser").hidden = true;
             drawRecordBeds();
             const recordBeds = document.getElementById("recordBeds");
             const controls = document.getElementById("recordBuildingDisplayControls");
@@ -8529,7 +8790,7 @@
             removeRecordBuildingDisplay(2);
             return {
               controlsVisible: !controls.hidden,
-              controlsAfterMaps: controls.previousElementSibling === recordBeds,
+              controlsBeforeMaps: !!(controls.compareDocumentPosition(recordBeds) & Node.DOCUMENT_POSITION_FOLLOWING),
               openButtonText: openButton.textContent.trim(),
               chooserHiddenBeforeOpen,
               chooserVisibleAfterOpen,
@@ -8558,18 +8819,18 @@
         })()`));
         assertDeepEqual(state, {
           controlsVisible: true,
-          controlsAfterMaps: true,
-          openButtonText: "＋ 号棟を追加",
+          controlsBeforeMaps: true,
+          openButtonText: "＋号棟",
           chooserHiddenBeforeOpen: true,
           chooserVisibleAfterOpen: true,
           hasBuildingOption: true,
           chooserHiddenAfterAdd: true,
           addedState: {
-            headings: ["8号棟", "2号棟"],
-            baseHasRemoveButton: false,
+            headings: ["2号棟"],
+            baseHasRemoveButton: true,
             addedRemoveLabel: "2号棟の追加表示を削除",
             selectedExtraBuilding: true,
-            selectedCount: 3
+            selectedCount: 1
           },
           removedState: {
             headings: ["8号棟"],
@@ -8578,7 +8839,7 @@
             selectedCount: 2,
             canAddAgain: true
           }
-        }, "計算対象外の号棟を既存配置図の下へ追加できません");
+        }, "計算対象外の号棟を追加し、1棟ずつ切り替えて選択できません");
       });
 
       await runTest("実際に取った苗の変更時に場所を再選択するか確認する", async () => {
@@ -10282,18 +10543,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "2d49e509", elements: 2297, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "6c23746f", elements: 2366, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "4331bfc8", elements: 2366, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "be5a1708", elements: 2298, visible: 116, viewport: "390x844" },
-          mobileDashboard: { hash: "ef13c284", elements: 2315, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "db20b15c", elements: 2398, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "2faac358", elements: 2413, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "15963e6f", elements: 2413, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "535f26a8", elements: 2413, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "88ea4f53", elements: 2413, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "1f9b3911", elements: 2413, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "ef0d2c33", elements: 2413, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "cc7fd7da", elements: 2327, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "efac5964", elements: 2396, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "2f9ca31f", elements: 2396, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "4ada8d81", elements: 2328, visible: 76, viewport: "390x844" },
+          mobileDashboard: { hash: "0f004f16", elements: 2345, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c62ff8db", elements: 2428, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "6b35d142", elements: 2443, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "01a2283d", elements: 2443, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "ddccb99c", elements: 2443, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "1b851d8f", elements: 2443, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "49d9d1c7", elements: 2443, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "123e376d", elements: 2443, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

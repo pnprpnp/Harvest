@@ -1804,6 +1804,7 @@ function enterHarvestRecordMode(){
 function enterPlantingRecordMode(record, options = {}){
   if(!record) return;
   closeRecordFloatingUi();
+  recordViewMode = "entry";
   recordSelectionMode = "planting";
   activePlantingRecordId = Number(record.id);
   workflowPlantingSessionActive = true;
@@ -1830,8 +1831,249 @@ function isRecordEditMode(){
   return !!editingHarvestRecordId || !!editingPlantingEventId;
 }
 
+function normalizeRecordHarvestStage(value){
+  return RECORD_HARVEST_STAGES.includes(value) ? value : "cases";
+}
+
+function getRecordHarvestStageIndex(){
+  return RECORD_HARVEST_STAGES.indexOf(normalizeRecordHarvestStage(recordHarvestStage));
+}
+
+function getRecordHarvestTargetBuildings(){
+  return [...new Set((harvestFillKeys || []).map(key => parsePalletKey(key).building))]
+    .filter(building => BUILDINGS.includes(building))
+    .sort((a, b) => a - b);
+}
+
+function getRecordHarvestUnvisitedTargetBuildings(){
+  const visited = new Set((recordHarvestVisitedBuildings || []).map(Number));
+  return getRecordHarvestTargetBuildings().filter(building => !visited.has(building));
+}
+
+function updateRecordPastDateNotice(){
+  const notice = document.getElementById("recordPastDateNotice");
+  if(!notice) return;
+  const selectedDate = document.getElementById("recordDateInput")?.value || "";
+  const today = formatDateOnlyString(new Date());
+  notice.hidden = !selectedDate || selectedDate >= today;
+}
+
+function updateRecordHarvestLocationSummary(){
+  const cases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
+  const lossDisplay = document.getElementById("recordActualLossInput");
+  const casesDisplay = document.getElementById("recordHarvestLocationCases");
+  const palletsDisplay = document.getElementById("recordHarvestLocationPallets");
+  const lossLabel = document.getElementById("recordHarvestLocationLossLabel");
+  const lossValue = document.getElementById("recordHarvestLocationLoss");
+  if(casesDisplay) casesDisplay.textContent = cases > 0 ? `${cases}ケース` : "--";
+  if(palletsDisplay) palletsDisplay.textContent = `${harvestFillKeys.length}枚`;
+  if(lossLabel) lossLabel.textContent = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
+  if(lossValue){
+    lossValue.textContent = lossDisplay?.textContent || "--";
+    lossValue.classList.toggle("is-estimated", !!lossDisplay?.classList.contains("estimated"));
+  }
+}
+
+function appendRecordHarvestConfirmItem(container, label, value, stage){
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "recordHarvestConfirmItem";
+  button.dataset.uiClick = "openRecordHarvestStage";
+  button.dataset.uiArg = stage;
+  const labelElement = document.createElement("span");
+  labelElement.textContent = label;
+  const valueElement = document.createElement("strong");
+  valueElement.textContent = value || "未入力";
+  const editElement = document.createElement("span");
+  editElement.className = "recordHarvestConfirmEdit";
+  editElement.textContent = "変更";
+  button.append(labelElement, valueElement, editElement);
+  container.appendChild(button);
+}
+
+function renderRecordHarvestConfirmation(){
+  const container = document.getElementById("recordHarvestConfirmSummary");
+  if(!container) return;
+  container.innerHTML = "";
+  const date = document.getElementById("recordDateInput")?.value || "";
+  const cases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
+  const location = document.getElementById("recordPalletSummaryInput")?.value.trim() || "";
+  const lossDisplay = document.getElementById("recordActualLossInput");
+  const lossLabel = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
+  const quality = formatQualityMemo(getSelectedQualityMemo()) || "選択なし";
+  appendRecordHarvestConfirmItem(container, "日付", date || "未入力", "cases");
+  appendRecordHarvestConfirmItem(container, "ケース数", cases > 0 ? `${cases}ケース` : "未入力", "cases");
+  appendRecordHarvestConfirmItem(container, "収穫場所", location || "未選択", "location");
+  appendRecordHarvestConfirmItem(container, lossLabel, lossDisplay?.textContent || "--", "location");
+  appendRecordHarvestConfirmItem(container, "品質", quality, "quality");
+}
+
+function renderRecordHarvestFixedNavigation(){
+  const nav = document.getElementById("recordHarvestFixedNav");
+  const backButton = document.getElementById("recordHarvestBackBtn");
+  const nextButton = document.getElementById("recordHarvestNextBtn");
+  const isVisible = recordSelectionMode === "harvest" && recordViewMode === "entry";
+  if(nav) nav.hidden = !isVisible;
+  if(!isVisible || !backButton || !nextButton) return;
+
+  const stage = normalizeRecordHarvestStage(recordHarvestStage);
+  const isEditing = !!editingHarvestRecordId;
+  backButton.textContent = stage === "cases"
+    ? (isEditing ? "確認へ戻る" : "クリア")
+    : (isEditing && stage === "confirm" ? "編集を破棄" : "戻る");
+  nextButton.textContent = stage === "confirm" ? (isEditing ? "更新" : "保存") : "次へ";
+  const unvisited = getRecordHarvestUnvisitedTargetBuildings();
+  nextButton.disabled = stage === "location" && (!harvestFillKeys.length || unvisited.length > 0);
+  nextButton.title = stage === "location" && unvisited.length
+    ? `${unvisited.map(building => `${building}号棟`).join("・")}の配置図を確認してください`
+    : "";
+}
+
+function renderRecordHarvestWorkflowUi(){
+  recordHarvestStage = normalizeRecordHarvestStage(recordHarvestStage);
+  const isHarvestMode = recordSelectionMode === "harvest";
+  const stage = recordHarvestStage;
+  const stageIndex = getRecordHarvestStageIndex();
+  const labels = { cases:"ケース数", location:"収穫場所", quality:"品質", confirm:"内容確認・保存" };
+  const progress = document.getElementById("recordHarvestWorkflowProgress");
+  const progressCount = document.getElementById("recordHarvestWorkflowProgressCount");
+  const progressTitle = document.getElementById("recordHarvestWorkflowProgressTitle");
+  const progressValue = document.getElementById("recordHarvestWorkflowTrackValue");
+  const casesSection = document.getElementById("recordHarvestStageSection");
+  const locationSection = document.getElementById("recordHarvestLocationSection");
+  const locationSummary = document.getElementById("recordHarvestLocationSummary");
+  const qualitySection = document.getElementById("recordQualityMemoSection");
+  const confirmSection = document.getElementById("recordHarvestConfirmSection");
+  const legacyActionRow = document.getElementById("recordFormActionRow");
+  const modeStatus = document.getElementById("recordModeStatus");
+
+  if(progress) progress.hidden = !isHarvestMode;
+  if(progressCount) progressCount.textContent = `${stageIndex + 1}/4`;
+  if(progressTitle) progressTitle.textContent = labels[stage];
+  if(progressValue) progressValue.style.width = `${(stageIndex + 1) * 25}%`;
+  if(modeStatus) modeStatus.hidden = isHarvestMode;
+  if(casesSection) casesSection.hidden = !isHarvestMode || stage !== "cases";
+  if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
+  if(locationSummary) locationSummary.hidden = !isHarvestMode;
+  if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
+  if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
+  if(legacyActionRow) legacyActionRow.hidden = isHarvestMode;
+  if(stage === "confirm") renderRecordHarvestConfirmation();
+  updateRecordPastDateNotice();
+  updateRecordHarvestLocationSummary();
+  renderRecordHarvestFixedNavigation();
+}
+
+function openRecordHarvestStage(stage){
+  if(recordSelectionMode !== "harvest") return;
+  const normalizedStage = normalizeRecordHarvestStage(stage);
+  recordHarvestStage = normalizedStage;
+  if(normalizedStage === "location"){
+    drawRecordBeds();
+  }
+  renderRecordHarvestWorkflowUi();
+  scheduleHarvestStateSave();
+  document.getElementById(normalizedStage === "location" ? "recordHarvestLocationSection" : "recordSaveCard")
+    ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+}
+
+function validateRecordHarvestCasesStep(){
+  const date = document.getElementById("recordDateInput")?.value || "";
+  const totalCases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
+  if(!date){
+    showToast("日付を入力してください");
+    return false;
+  }
+  if(totalCases <= 0){
+    showToast("収穫ケース数を入力してください");
+    document.getElementById("recordCasesInput")?.focus();
+    return false;
+  }
+  if(getRegularHarvestCases(totalCases, date) <= 0){
+    showToast("各パレット部分収穫だけで今回の収穫ケース数に達しています");
+    return false;
+  }
+  return true;
+}
+
+function validateRecordHarvestLocationStep(){
+  if(!harvestFillKeys.length){
+    showToast("収穫した場所を選択してください");
+    return false;
+  }
+  const unvisited = getRecordHarvestUnvisitedTargetBuildings();
+  if(unvisited.length){
+    showToast(`${unvisited.map(building => `${building}号棟`).join("・")}の配置図を確認してください`);
+    return false;
+  }
+  if(getRecordActualLossValue() === ""){
+    showToast("実際のロス率を計算できません");
+    return false;
+  }
+  return true;
+}
+
+function handleRecordHarvestNext(){
+  const stage = normalizeRecordHarvestStage(recordHarvestStage);
+  if(stage === "confirm"){
+    handleRecordPrimaryAction();
+    return;
+  }
+  if(stage === "cases" && !validateRecordHarvestCasesStep()) return;
+  if(stage === "location" && !validateRecordHarvestLocationStep()) return;
+  if(editingHarvestRecordId){
+    openRecordHarvestStage("confirm");
+    return;
+  }
+  openRecordHarvestStage(RECORD_HARVEST_STAGES[getRecordHarvestStageIndex() + 1]);
+}
+
+function handleRecordHarvestBack(){
+  const stage = normalizeRecordHarvestStage(recordHarvestStage);
+  if(editingHarvestRecordId){
+    if(stage === "confirm") discardRecordEditChanges();
+    else openRecordHarvestStage("confirm");
+    return;
+  }
+  if(stage === "cases"){
+    handleRecordClearAction();
+    return;
+  }
+  openRecordHarvestStage(RECORD_HARVEST_STAGES[getRecordHarvestStageIndex() - 1]);
+}
+
+function showRecordHistoryView(options = {}){
+  recordViewMode = "history";
+  const saveCard = document.getElementById("recordSaveCard");
+  const historyCard = document.getElementById("recordHistoryCard");
+  if(saveCard) saveCard.hidden = true;
+  if(historyCard) historyCard.hidden = false;
+  renderRecordList();
+  renderRecordHarvestFixedNavigation();
+  scheduleHarvestStateSave();
+  const targetDate = typeof options === "object" ? options.date : "";
+  requestAnimationFrame(() => {
+    const target = targetDate
+      ? [...document.querySelectorAll("#recordList [data-record-history-date]")]
+          .find(element => element.dataset.recordHistoryDate === targetDate)
+      : historyCard;
+    target?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+  });
+}
+
+function showRecordEntryView(){
+  recordViewMode = "entry";
+  const saveCard = document.getElementById("recordSaveCard");
+  const historyCard = document.getElementById("recordHistoryCard");
+  if(saveCard) saveCard.hidden = false;
+  if(historyCard) historyCard.hidden = true;
+  refreshRecordModeUi();
+  scheduleHarvestStateSave();
+  requestAnimationFrame(() => document.getElementById("recordSaveCard")?.scrollIntoView({ block:"start" }));
+}
+
 function refreshRecordModeUi(){
-  const actionRow = document.querySelector(".recordFormActionRow");
+  const actionRow = document.getElementById("recordFormActionRow");
   const discardEditButton = document.getElementById("recordDiscardEditBtn");
   const notice = document.getElementById("recordEditNotice");
   const button = document.getElementById("recordPrimaryActionBtn");
@@ -1856,6 +2098,8 @@ function refreshRecordModeUi(){
   const plantingModeStepText = document.getElementById("recordModePlantingStepText");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
+  const saveCard = document.getElementById("recordSaveCard");
+  const historyCard = document.getElementById("recordHistoryCard");
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
   const lockPlantingDate = isPlantingMode
     && editingEvent?.openingCarryoverBefore !== null
@@ -1887,6 +2131,7 @@ function refreshRecordModeUi(){
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
   if(modeStatus){
+    modeStatus.hidden = !isPlantingMode;
     modeStatus.classList.toggle("is-harvest", !isPlantingMode);
     modeStatus.classList.toggle("is-planting", isPlantingMode);
     modeStatus.setAttribute("aria-label", `全2段階。現在は${isPlantingMode ? "苗植え記録中" : "収穫記録中"}`);
@@ -1913,7 +2158,10 @@ function refreshRecordModeUi(){
   renderRecordPlantingFlow();
   renderRecordBuildingDisplayControls();
   if(discardEditButton) discardEditButton.hidden = !isEditing;
-  if(actionRow) actionRow.classList.toggle("isEditing", isEditing);
+  if(actionRow){
+    actionRow.hidden = !isPlantingMode;
+    actionRow.classList.toggle("isEditing", isEditing);
+  }
   if(plantingActionCard) plantingActionCard.hidden = !!editingPlantingEventId;
 
   if(isPlantingMode){
@@ -1944,8 +2192,11 @@ function refreshRecordModeUi(){
     if(harvestMemoSection) harvestMemoSection.hidden = false;
     if(qualityMemoSection) qualityMemoSection.hidden = false;
     if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
-    if(actualLossField) actualLossField.hidden = false;
+    if(actualLossField) actualLossField.hidden = true;
   }
+  if(saveCard) saveCard.hidden = recordViewMode === "history";
+  if(historyCard) historyCard.hidden = recordViewMode !== "history";
+  renderRecordHarvestWorkflowUi();
   updateRecordAutoValueNotes();
   scheduleWorkflowGuideUpdate();
 }
@@ -1960,8 +2211,15 @@ function handleRecordClearAction(){
 
 function discardRecordEditChanges(){
   if(!isRecordEditMode()) return;
+  const editingDate = editingHarvestRecordId ? getRecordById(editingHarvestRecordId)?.date || "" : "";
   closeRecordFloatingUi();
   clearRecordForm();
+  if(editingDate){
+    const dateInput = document.getElementById("recordDateInput");
+    if(dateInput) dateInput.value = editingDate;
+    refreshRecordDateDependentUi();
+    showRecordHistoryView({ date:editingDate });
+  }
   showToast("編集内容を破棄して戻りました");
 }
 

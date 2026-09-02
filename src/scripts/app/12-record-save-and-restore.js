@@ -96,6 +96,7 @@ function saveRecord(){
   }
 
   if(editingRecord && editingRecord.type === "fullHarvest"){
+    const editedRecordDate = date;
     const allocatedKeys = getRemotePlantingEventDependenciesForHarvest(editingRecord.id)
       .flatMap(event => event.sourceAllocations
         .filter(allocation => Number(allocation.harvestRecordId) === Number(editingRecord.id))
@@ -129,13 +130,11 @@ function saveRecord(){
     harvestOverageKeys = [];
     harvestSelectionMode = "none";
     harvestProgressAvailable = false;
-    if(editingRecord.plantingPending){
-      editingHarvestRecordId = null;
-      editingHarvestSelectionKeys = null;
-      enterPlantingRecordMode(editingRecord);
-    }else{
-      clearRecordForm();
-    }
+    clearRecordForm();
+    const dateInput = document.getElementById("recordDateInput");
+    if(dateInput) dateInput.value = editedRecordDate;
+    refreshRecordDateDependentUi();
+    showRecordHistoryView({ date:editedRecordDate });
     saveHarvestStateToStorage();
     scheduleRecordDataUiRefresh();
     showToast(sendQueued

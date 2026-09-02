@@ -11,6 +11,7 @@ function installStartupViewportEvents(){
 
 let casePlacementBuildingSwipeInstalled = false;
 let harvestProgressBuildingSwipeInstalled = false;
+let recordHarvestBuildingSwipeInstalled = false;
 const CASE_PLACEMENT_BUILDING_SWIPE_THRESHOLD_PX = 32;
 const CASE_PLACEMENT_BUILDING_SWIPE_DIRECTION_RATIO = 1.15;
 
@@ -84,6 +85,12 @@ function installCasePlacementBuildingSwipe(){
     harvestProgressBuildingSwipeInstalled = installSimulationBuildingPagerSwipe(
       "harvestProgressBuildingPager",
       direction => shiftHarvestProgressBuilding(direction)
+    );
+  }
+  if(!recordHarvestBuildingSwipeInstalled){
+    recordHarvestBuildingSwipeInstalled = installSimulationBuildingPagerSwipe(
+      "recordHarvestBuildingPager",
+      direction => shiftRecordHarvestBuilding(direction)
     );
   }
 }
