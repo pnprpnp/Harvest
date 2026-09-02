@@ -503,6 +503,7 @@ function drawBeds(){
       partialHarvestSourceRecords,
       partialHarvestLookup
     });
+    const displayedHarvestableCases = Math.round(summaryCounts.harvestableCases);
     const collapsedStateClass = isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)
       ? " bedCollapsedFull"
       : "";
@@ -533,14 +534,14 @@ function drawBeds(){
     counts.innerHTML = summaryCounts.selectable > 0
       ? `
         <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-        <span class="simulationBedOverviewCountHarvestable">収穫可 ${formatHarvestProgressCases(summaryCounts.harvestableCases)}</span>
+        <span class="simulationBedOverviewCountHarvestable">収穫可 ${displayedHarvestableCases}</span>
       `
       : "";
     bed.appendChild(counts);
     attachBedDetailOpenTapHandler(bed, "forecast", currentBuilding, b);
     bed.setAttribute(
       "aria-label",
-      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、収穫可能 ${formatHarvestProgressCases(summaryCounts.harvestableCases)}ケース。タップで拡大してパレットを選択`
+      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、収穫可能 ${displayedHarvestableCases}ケース。タップで拡大してパレットを選択`
     );
     container.appendChild(bed);
   });
