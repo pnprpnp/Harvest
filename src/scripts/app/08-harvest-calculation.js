@@ -1942,7 +1942,6 @@ function applyForecastBedDetailBulkSelection(){
     sortHarvestFillKeys();
     refreshAfterHarvestSelectionChanged();
     refreshBedDetailWindow();
-    showToast(`${building}号棟 ${bed}ベッドを全解除しました`);
     return;
   }
 
@@ -1959,10 +1958,10 @@ function applyForecastBedDetailBulkSelection(){
   sortHarvestFillKeys();
   refreshAfterHarvestSelectionChanged({ currentHarvestTotal:runningHarvestTotal });
   refreshBedDetailWindow();
-  const actionText = model.label === "全選択"
-    ? "全選択"
-    : (model.direction === "back" ? "78番から選択" : "1番から選択");
-  showToast(`${building}号棟 ${bed}ベッドを${actionText}しました`);
+  if(model.label !== "全選択"){
+    const actionText = model.direction === "back" ? "78番から選択" : "1番から選択";
+    showToast(`${building}号棟 ${bed}ベッドを${actionText}しました`);
+  }
 }
 
 function openBedDetailFromOverview(context, building, bed){
