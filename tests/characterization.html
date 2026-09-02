@@ -5343,6 +5343,16 @@
             const plantingStateLookupCountAfterFirstDraw = plantingStateLookupCount;
             const firstBed = document.querySelector("#beds .simulationBedOverview");
             const countText = firstBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
+            const centerDivider = firstBed?.querySelector(".simulationBedMapCell:nth-child(odd)");
+            const sectionDivider = firstBed?.querySelector(".simulationBedMapCell.is-section-start");
+            const centerDividerColor = centerDivider ? getComputedStyle(centerDivider).borderRightColor : "";
+            const sectionDividerColor = sectionDivider ? getComputedStyle(sectionDivider).borderTopColor : "";
+            const previousTheme = document.documentElement.getAttribute("data-theme");
+            document.documentElement.setAttribute("data-theme", "dark");
+            const darkCenterDividerColor = centerDivider ? getComputedStyle(centerDivider).borderRightColor : "";
+            const darkSectionDividerColor = sectionDivider ? getComputedStyle(sectionDivider).borderTopColor : "";
+            if(previousTheme === null) document.documentElement.removeAttribute("data-theme");
+            else document.documentElement.setAttribute("data-theme", previousTheme);
             const hasTapHandler = typeof firstBed?.onclick === "function" && !firstBed?.onpointerdown;
             firstBed?.click();
             const opensDetailOnTap = document.getElementById("bedDetailModal")?.classList.contains("show")
@@ -5359,6 +5369,12 @@
               hidesSelectableCount: !countText.includes("選択可"),
               hidesRecordedCount: !countText.includes("記録済"),
               plantingStateLookupCountAfterFirstDraw,
+              centerDividerCellCount: firstBed?.querySelectorAll(".simulationBedMapCell:nth-child(odd)").length || 0,
+              sectionDividerCellCount: firstBed?.querySelectorAll(".simulationBedMapCell.is-section-start").length || 0,
+              centerDividerColor,
+              sectionDividerColor,
+              darkCenterDividerColor,
+              darkSectionDividerColor,
               hasTapHandler,
               opensDetailOnTap,
               unavailableCountText,
@@ -5382,6 +5398,12 @@
           hidesSelectableCount: true,
           hidesRecordedCount: true,
           plantingStateLookupCountAfterFirstDraw: 1,
+          centerDividerCellCount: 39,
+          sectionDividerCellCount: 10,
+          centerDividerColor: "rgba(15, 23, 42, 0.24)",
+          sectionDividerColor: "rgba(15, 23, 42, 0.5)",
+          darkCenterDividerColor: "rgba(226, 232, 240, 0.28)",
+          darkSectionDividerColor: "rgba(226, 232, 240, 0.5)",
           hasTapHandler: true,
           opensDetailOnTap: true,
           unavailableCountText: "",
@@ -10081,18 +10103,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "ff5721c5", elements: 2303, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "ce07da0d", elements: 2372, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "f86cac86", elements: 2372, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "0b90f3da", elements: 2304, visible: 116, viewport: "390x844" },
-          mobileDashboard: { hash: "c0bba309", elements: 2321, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "fbf08812", elements: 2404, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "db613a88", elements: 2419, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "709a4a1f", elements: 2419, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "a255ccec", elements: 2419, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "45f8c94b", elements: 2419, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "ee3daf01", elements: 2419, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "fe8a0099", elements: 2419, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "2feb592f", elements: 2303, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "f04bb467", elements: 2372, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "7c1b1eb0", elements: 2372, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "4c2d6c9a", elements: 2304, visible: 116, viewport: "390x844" },
+          mobileDashboard: { hash: "2eedd689", elements: 2321, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "79365fc6", elements: 2404, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "74c9cc7c", elements: 2419, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "9e873c9f", elements: 2419, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "599db76c", elements: 2419, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "c4fb428b", elements: 2419, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "6e70998f", elements: 2419, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "b4998295", elements: 2419, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
