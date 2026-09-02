@@ -1617,7 +1617,6 @@ function resetPlantingRecordChanges(){
   if(!ensureProtectedOperationAccess("収穫記録に戻る", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("収穫記録に戻る操作を")) return;
 
-  hideBedActionMenu();
   hideRecordBedActionMenu();
   plantingRecordDraft = null;
   editingPlantingEventId = null;

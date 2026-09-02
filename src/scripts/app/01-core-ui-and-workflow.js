@@ -231,7 +231,6 @@ let activeSyncConflictId = "";
 let syncConflictBulkRunning = false;
 let workflowPendingRecordCache = null;
 let workflowPendingRecordCacheReady = false;
-let activeBedActionBed = null;
 let activeRecordBedActionBed = null;
 let expandedForecastBed = null;
 let expandedRecordBed = null;
@@ -2779,7 +2778,6 @@ function closeRecordFloatingUi(){
   closePartialHarvestEditWindow({ restoreFocus: false });
   closeHarvestPartialSplitWindow({ restoreFocus: false });
   closeBedDetailWindow();
-  hideBedActionMenu();
   hideRecordBedActionMenu();
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();

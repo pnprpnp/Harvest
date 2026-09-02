@@ -401,7 +401,6 @@ function syncCurrentBuildingToCasePlacement(options = {}){
 
   if(changed){
     closeBedDetailWindow();
-    hideBedActionMenu();
     hideRecordBedActionMenu();
     expandedForecastBed = null;
     expandedRecordBed = null;

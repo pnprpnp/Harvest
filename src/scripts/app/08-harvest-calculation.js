@@ -1290,10 +1290,10 @@ function isBedFullyFilledInCurrentBuilding(
   return hasTarget;
 }
 
-function getCurrentHarvestTotalRaw(keys = harvestFillKeys){
+function getCurrentHarvestTotalRaw(keys = harvestFillKeys, options = {}){
   const sourceKeys = Array.isArray(keys) ? keys : [];
   const useProgressActual = recordSelectionMode !== "planting"
-    && sourceKeys === harvestFillKeys
+    && (sourceKeys === harvestFillKeys || options.includeProgressActual)
     && hasAppliedHarvestProgress();
   const completedSet = useProgressActual
     ? getAppliedHarvestProgressCompletedKeySet()
@@ -1391,23 +1391,7 @@ function addOrRemoveWholeBed(bed){
   showToast(currentBuilding + "号棟 " + bed + "ベッドを一括追加しました");
 }
 
-function showBedActionMenu(bed){
-  hideRecordBedActionMenu();
-  activeBedActionBed = bed;
-  const menu = document.getElementById("bedActionMenu");
-  const title = document.getElementById("bedActionTitle");
-  if(title) title.textContent = currentBuilding + "号棟 " + bed + "ベッドの操作";
-  if(menu) menu.classList.add("show");
-}
-
-function hideBedActionMenu(){
-  const menu = document.getElementById("bedActionMenu");
-  if(menu) menu.classList.remove("show");
-  activeBedActionBed = null;
-}
-
 function showRecordBedActionMenu(bed){
-  hideBedActionMenu();
   activeRecordBedActionBed = bed;
   const menu = document.getElementById("recordBedActionMenu");
   const title = document.getElementById("recordBedActionTitle");
@@ -1814,93 +1798,171 @@ function clearSelectedRecordBedFromMenu(){
   showToast(currentBuilding + "号棟 " + bed + "ベッドを全解除しました");
 }
 
-function selectBedToNeed(direction){
-  const bed = activeBedActionBed;
-  hideBedActionMenu();
-  if(!bed) return;
-  if(isHarvestProgressCompletedBed(currentBuilding, bed)){
-    showToast("途中経過で完了にしたベッドです。変更は途中経過から行ってください");
+function getForecastBedSelectedKeys(building, bed, sourceKeys = harvestFillKeys){
+  return (Array.isArray(sourceKeys) ? sourceKeys : []).filter(key => {
+    const pallet = parsePalletKey(String(key || ""));
+    return pallet.building === Number(building) && pallet.bed === bed;
+  });
+}
+
+function arePalletKeySetsEqual(leftKeys, rightKeys){
+  const leftSet = new Set(Array.isArray(leftKeys) ? leftKeys : []);
+  const rightSet = new Set(Array.isArray(rightKeys) ? rightKeys : []);
+  if(leftSet.size !== rightSet.size) return false;
+  return [...leftSet].every(key => rightSet.has(key));
+}
+
+function getForecastBedBulkSelectionModel(building = currentBuilding, bed = activeBedDetailBed){
+  const normalizedBuilding = Number(building);
+  const normalizedBed = bedOrder.includes(bed) ? bed : null;
+  if(!BUILDINGS.includes(normalizedBuilding) || !normalizedBed){
+    return { action:"disabled", label:"変更不可", disabled:true, targetNumbers:[] };
+  }
+  if(isHarvestProgressCompletedBed(normalizedBuilding, normalizedBed)){
+    return { action:"disabled", label:"変更不可", disabled:true, targetNumbers:[] };
+  }
+
+  const targetDate = getHarvestTargetDate();
+  const unavailableSet = getHarvestAvailabilityState(targetDate).unavailableSet;
+  const availableNumbers = [];
+  for(let number = 1; number <= PALLETS_PER_BED; number++){
+    if(!unavailableSet.has(getPalletKey(normalizedBuilding, normalizedBed, number))){
+      availableNumbers.push(number);
+    }
+  }
+
+  const currentBedKeys = getForecastBedSelectedKeys(normalizedBuilding, normalizedBed);
+  if(!availableNumbers.length){
+    return currentBedKeys.length
+      ? { action:"clear", label:"全解除", disabled:false, targetNumbers:[] }
+      : { action:"disabled", label:"選択不可", disabled:true, targetNumbers:[] };
+  }
+
+  const availableKeys = availableNumbers.map(number =>
+    getPalletKey(normalizedBuilding, normalizedBed, number)
+  );
+  const allAvailableSelected = availableKeys.every(key => currentBedKeys.includes(key));
+  if(allAvailableSelected){
+    return { action:"clear", label:"全解除", disabled:false, targetNumbers:[] };
+  }
+
+  const outsideKeys = harvestFillKeys.filter(key => {
+    const pallet = parsePalletKey(String(key || ""));
+    return !(pallet.building === normalizedBuilding && pallet.bed === normalizedBed);
+  });
+  const needHeads = getManualHarvestNeedHeads();
+  const outsideHarvestTotal = getCurrentHarvestTotalRaw(
+    outsideKeys,
+    { includeProgressActual:true }
+  );
+  const buildTargetNumbers = direction => {
+    if(needHeads !== null && outsideHarvestTotal >= needHeads) return [];
+    const numbers = direction === "back"
+      ? [...availableNumbers].reverse()
+      : [...availableNumbers];
+    if(needHeads === null) return numbers;
+
+    const selectedNumbers = [];
+    let runningHarvestTotal = outsideHarvestTotal;
+    for(const number of numbers){
+      selectedNumbers.push(number);
+      runningHarvestTotal += getPredictedHarvestForPallet(
+        normalizedBuilding,
+        normalizedBed,
+        number,
+        targetDate
+      );
+      if(runningHarvestTotal >= needHeads) break;
+    }
+    return selectedNumbers;
+  };
+
+  const frontNumbers = buildTargetNumbers("front");
+  if(!frontNumbers.length){
+    return currentBedKeys.length
+      ? { action:"clear", label:"全解除", disabled:false, targetNumbers:[] }
+      : { action:"disabled", label:"上限到達", disabled:true, targetNumbers:[] };
+  }
+  if(needHeads === null || frontNumbers.length === availableNumbers.length){
+    return {
+      action:"select",
+      direction:"front",
+      label:"全選択",
+      disabled:false,
+      targetNumbers:frontNumbers
+    };
+  }
+
+  const backNumbers = buildTargetNumbers("back");
+  const frontKeys = frontNumbers.map(number => getPalletKey(normalizedBuilding, normalizedBed, number));
+  const backKeys = backNumbers.map(number => getPalletKey(normalizedBuilding, normalizedBed, number));
+  if(arePalletKeySetsEqual(currentBedKeys, frontKeys)){
+    if(!arePalletKeySetsEqual(frontKeys, backKeys)){
+      return {
+        action:"select",
+        direction:"back",
+        label:"78から選択",
+        disabled:false,
+        targetNumbers:backNumbers
+      };
+    }
+    return { action:"clear", label:"全解除", disabled:false, targetNumbers:[] };
+  }
+  if(arePalletKeySetsEqual(currentBedKeys, backKeys)){
+    return { action:"clear", label:"全解除", disabled:false, targetNumbers:[] };
+  }
+  return {
+    action:"select",
+    direction:"front",
+    label:"1から選択",
+    disabled:false,
+    targetNumbers:frontNumbers
+  };
+}
+
+function applyForecastBedDetailBulkSelection(){
+  const building = currentBuilding;
+  const bed = activeBedDetailBed;
+  const model = getForecastBedBulkSelectionModel(building, bed);
+  if(model.disabled){
+    showToast(model.label === "上限到達"
+      ? "すでに必要個数に達しています"
+      : "このベッドは一括変更できません");
+    return;
+  }
+
+  const isTargetBedKey = key => {
+    const pallet = parsePalletKey(String(key || ""));
+    return pallet.building === building && pallet.bed === bed;
+  };
+  harvestFillKeys = harvestFillKeys.filter(key => !isTargetBedKey(key));
+  harvestOverageKeys = harvestOverageKeys.filter(key => !isTargetBedKey(key));
+
+  if(model.action === "clear"){
+    sortHarvestFillKeys();
+    refreshAfterHarvestSelectionChanged();
+    refreshBedDetailWindow();
+    showToast(`${building}号棟 ${bed}ベッドを全解除しました`);
     return;
   }
 
   const needHeads = getManualHarvestNeedHeads();
-
-  const originalKeys = [...harvestFillKeys];
-  const originalOverageKeys = [...harvestOverageKeys];
-  harvestFillKeys = harvestFillKeys.filter(key => {
-    const p = parsePalletKey(key);
-    return !(p.building === currentBuilding && p.bed === bed);
-  });
-
-  if(needHeads !== null && getCurrentHarvestTotal() >= needHeads){
-    harvestFillKeys = originalKeys;
-    harvestOverageKeys = originalOverageKeys;
-    showToast("すでに必要個数に達しています");
-    return;
-  }
-
-  const numbers = [];
-  if(direction === "back"){
-    for(let number = PALLETS_PER_BED; number >= 1; number--) numbers.push(number);
-  }else{
-    for(let number = 1; number <= PALLETS_PER_BED; number++) numbers.push(number);
-  }
-
-  let added = 0;
   let runningHarvestTotal = getCurrentHarvestTotalRaw();
-  const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
-  for(const number of numbers){
-    if(isRecorded(currentBuilding, bed, number, { recordedSet })) continue;
-
-    const key = getPalletKey(currentBuilding, bed, number);
-    if(harvestFillKeys.includes(key)) continue;
-
+  model.targetNumbers.forEach(number => {
+    const key = getPalletKey(building, bed, number);
     const nextTotal = runningHarvestTotal
-      + getPredictedHarvestForPallet(currentBuilding, bed, number);
-
+      + getPredictedHarvestForPallet(building, bed, number);
     harvestFillKeys.push(key);
     markHarvestSelectionOverage(key, nextTotal, needHeads);
     runningHarvestTotal = nextTotal;
-    added++;
-    if(needHeads !== null && runningHarvestTotal >= needHeads) break;
-  }
-
-  if(added === 0){
-    harvestFillKeys = originalKeys;
-    harvestOverageKeys = originalOverageKeys;
-    showToast("追加できるパレットがありません");
-    return;
-  }
-
-  sortHarvestFillKeys();
-  refreshAfterHarvestSelectionChanged();
-  refreshBedDetailWindow();
-  showToast(currentBuilding + "号棟 " + bed + "ベッドを" + (direction === "back" ? "後ろ" : "前") + "から選択しました");
-}
-
-function clearSelectedBedFromMenu(){
-  const bed = activeBedActionBed;
-  hideBedActionMenu();
-  if(!bed) return;
-  if(isHarvestProgressCompletedBed(currentBuilding, bed)){
-    showToast("途中経過で完了にしたベッドです。変更は途中経過から行ってください");
-    return;
-  }
-
-  const beforeCount = harvestFillKeys.length;
-  harvestFillKeys = harvestFillKeys.filter(key => {
-    const p = parsePalletKey(key);
-    return !(p.building === currentBuilding && p.bed === bed);
   });
-
-  if(harvestFillKeys.length === beforeCount){
-    showToast("このベッドに解除する選択がありません");
-    return;
-  }
-
-  refreshAfterHarvestSelectionChanged();
+  sortHarvestFillKeys();
+  refreshAfterHarvestSelectionChanged({ currentHarvestTotal:runningHarvestTotal });
   refreshBedDetailWindow();
-  showToast(currentBuilding + "号棟 " + bed + "ベッドを全解除しました");
+  const actionText = model.label === "全選択"
+    ? "全選択"
+    : (model.direction === "back" ? "78番から選択" : "1番から選択");
+  showToast(`${building}号棟 ${bed}ベッドを${actionText}しました`);
 }
 
 function openBedDetailFromOverview(context, building, bed){
@@ -1945,7 +2007,6 @@ function closeBedDetailWindow(){
   const modal = document.getElementById("bedDetailModal");
   hidePageBlockingUi(modal);
   palletDragState = null;
-  hideBedActionMenu();
   hideRecordBedActionMenu();
   activeBedDetailContext = null;
   activeBedDetailBed = null;
@@ -2200,8 +2261,32 @@ function openBedDetailBulkActions(){
   if(activeBedDetailContext === "record"){
     showRecordBedActionMenu(activeBedDetailBed);
   }else{
-    showBedActionMenu(activeBedDetailBed);
+    applyForecastBedDetailBulkSelection();
   }
+}
+
+function updateBedDetailBulkSelectButton(){
+  const button = document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn");
+  if(!button || !activeBedDetailBed) return;
+  if(activeBedDetailContext === "record"){
+    button.textContent = "一括選択";
+    button.disabled = false;
+    button.setAttribute("aria-haspopup", "dialog");
+    button.setAttribute(
+      "aria-label",
+      `${currentBuilding}号棟 ${activeBedDetailBed}ベッドの範囲選択を開く`
+    );
+    return;
+  }
+
+  const model = getForecastBedBulkSelectionModel(currentBuilding, activeBedDetailBed);
+  button.textContent = model.label;
+  button.disabled = !!model.disabled;
+  button.removeAttribute("aria-haspopup");
+  button.setAttribute(
+    "aria-label",
+    `${currentBuilding}号棟 ${activeBedDetailBed}ベッド。${model.label}`
+  );
 }
 
 function renderBedDetailWindow(){
@@ -2217,6 +2302,7 @@ function renderBedDetailWindow(){
   title.ontouchend = null;
   title.ontouchcancel = null;
   body.innerHTML = "";
+  updateBedDetailBulkSelectButton();
   if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     const legend = document.createElement("div");
     legend.className = "recordPlantingLegend bedDetailPlantingLegend";
@@ -2410,7 +2496,6 @@ function appendRecordBedDetail(container, b){
 }
 
 function clearHarvestPrediction(){
-  hideBedActionMenu();
   hideRecordBedActionMenu();
   workflowMonitorCheckpointSignature = "";
   workflowHarvestRecordingActive = false;

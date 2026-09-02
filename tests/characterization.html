@@ -5417,7 +5417,17 @@
           const previous = {
             building:currentBuilding,
             mode:recordSelectionMode,
-            keys:[...harvestFillKeys]
+            tab:activeAppTab,
+            keys:[...harvestFillKeys],
+            overageKeys:[...harvestOverageKeys],
+            records,
+            summary:harvestSummary,
+            progressState:harvestProgressState,
+            selectionMode:harvestSelectionMode,
+            autoEstimated:harvestCasesAutoEstimated,
+            casesValue:document.getElementById("casesInput")?.value || "",
+            getAvailability:getHarvestAvailabilityState,
+            getPrediction:getPredictedHarvestForPallet
           };
           const readCommon = () => {
             const title = document.getElementById("bedDetailWindowTitle");
@@ -5438,19 +5448,30 @@
           };
           try{
             currentBuilding = 2;
+            activeAppTab = "forecast";
             harvestFillKeys = [];
+            harvestOverageKeys = [];
+            records = [];
+            harvestSummary = null;
+            harvestProgressState = null;
+            harvestCasesAutoEstimated = false;
+            document.getElementById("casesInput").value = "";
             recordSelectionMode = "harvest";
+            getHarvestAvailabilityState = () => ({
+              unavailableSet:new Set(),
+              unplantedSet:new Set(),
+              plantingLockedSet:new Set(),
+              replantingInfoByPallet:new Map()
+            });
+            getPredictedHarvestForPallet = () => 12;
             openBedDetailWindow("forecast", "A");
             const forecastCommon = readCommon();
             document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn")?.click();
             const forecast = {
               ...forecastCommon,
-              opensExistingBulkMenu:document.getElementById("bedActionMenu")?.classList.contains("show")
-                && activeBedActionBed === "A",
-              menuOptions:[...document.querySelectorAll("#bedActionMenu button")]
-                .map(button => button.textContent.trim())
+              directlySelectsAll:getForecastBedSelectedKeys(2, "A").length === 78,
+              hasNoOldPopup:!document.getElementById("bedActionMenu")
             };
-            hideBedActionMenu();
             closeBedDetailWindow();
 
             openBedDetailWindow("record", "B");
@@ -5463,32 +5484,167 @@
             };
             return { forecast, record };
           }finally{
-            hideBedActionMenu();
             hideRecordBedActionMenu();
             closeBedDetailWindow();
             currentBuilding = previous.building;
+            activeAppTab = previous.tab;
             recordSelectionMode = previous.mode;
             harvestFillKeys = previous.keys;
+            harvestOverageKeys = previous.overageKeys;
+            records = previous.records;
+            harvestSummary = previous.summary;
+            harvestProgressState = previous.progressState;
+            harvestSelectionMode = previous.selectionMode;
+            harvestCasesAutoEstimated = previous.autoEstimated;
+            document.getElementById("casesInput").value = previous.casesValue;
+            getHarvestAvailabilityState = previous.getAvailability;
+            getPredictedHarvestForPallet = previous.getPrediction;
           }
         })()`));
-        const commonExpected = {
-          noSelectionHint:true,
-          buttonText:"一括選択",
-          buttonBesideTitle:true,
-          buttonNotInBody:true,
-          buttonCompact:true,
-          hasPopup:"dialog",
-          titleHasNoLongPress:true,
-          opensExistingBulkMenu:true
-        };
         assertDeepEqual(state, {
           forecast:{
             title:"2-A",
-            ...commonExpected,
-            menuOptions:["前から選択", "後ろから選択", "クリア", "閉じる"]
+            noSelectionHint:true,
+            buttonText:"全選択",
+            buttonBesideTitle:true,
+            buttonNotInBody:true,
+            buttonCompact:true,
+            hasPopup:"",
+            titleHasNoLongPress:true,
+            directlySelectsAll:true,
+            hasNoOldPopup:true
           },
-          record:{ title:"2-B", ...commonExpected }
+          record:{
+            title:"2-B",
+            noSelectionHint:true,
+            buttonText:"一括選択",
+            buttonBesideTitle:true,
+            buttonNotInBody:true,
+            buttonCompact:true,
+            hasPopup:"dialog",
+            titleHasNoLongPress:true,
+            opensExistingBulkMenu:true
+          }
         }, "ベッド名の長押し操作を一括選択ボタンへ移せていません");
+      });
+
+      await runTest("シミュの一括選択は上限に応じて前・後ろ・解除を循環する", () => {
+        const state = comparable(app.eval(`(() => {
+          const casesInput = document.getElementById("casesInput");
+          const previous = {
+            building:currentBuilding,
+            tab:activeAppTab,
+            mode:recordSelectionMode,
+            keys:[...harvestFillKeys],
+            overageKeys:[...harvestOverageKeys],
+            records,
+            summary:harvestSummary,
+            progressState:harvestProgressState,
+            selectionMode:harvestSelectionMode,
+            autoEstimated:harvestCasesAutoEstimated,
+            casesValue:casesInput?.value || "",
+            getAvailability:getHarvestAvailabilityState,
+            getPrediction:getPredictedHarvestForPallet
+          };
+          const readButton = () => document.querySelector(
+            ".bedDetailWindowHeader .bedDetailBulkSelectBtn"
+          )?.textContent || "";
+          const readNumbers = () => getForecastBedSelectedKeys(2, "A")
+            .map(key => parsePalletKey(key).number)
+            .sort((left, right) => left - right);
+          const clickBulk = () => document.querySelector(
+            ".bedDetailWindowHeader .bedDetailBulkSelectBtn"
+          )?.click();
+          try{
+            currentBuilding = 2;
+            activeAppTab = "forecast";
+            recordSelectionMode = "harvest";
+            harvestFillKeys = [];
+            harvestOverageKeys = [];
+            records = [];
+            harvestSummary = null;
+            harvestProgressState = null;
+            harvestCasesAutoEstimated = false;
+            casesInput.value = "10";
+            getHarvestAvailabilityState = () => ({
+              unavailableSet:new Set([
+                getPalletKey(2, "A", 1),
+                getPalletKey(2, "A", 2)
+              ]),
+              unplantedSet:new Set(),
+              plantingLockedSet:new Set(),
+              replantingInfoByPallet:new Map()
+            });
+            getPredictedHarvestForPallet = () => 12;
+
+            openBedDetailWindow("forecast", "A");
+            const cappedInitialLabel = readButton();
+            clickBulk();
+            const frontNumbers = readNumbers();
+            const afterFrontLabel = readButton();
+            clickBulk();
+            const backNumbers = readNumbers();
+            const afterBackLabel = readButton();
+            clickBulk();
+            const afterClearNumbers = readNumbers();
+            const afterClearLabel = readButton();
+
+            casesInput.value = "";
+            harvestCasesAutoEstimated = false;
+            refreshBedDetailWindow();
+            const unlimitedInitialLabel = readButton();
+            clickBulk();
+            const allAvailableCount = readNumbers().length;
+            const afterSelectAllLabel = readButton();
+            clickBulk();
+            const afterSelectAllClearCount = readNumbers().length;
+            const unlimitedAfterClearLabel = readButton();
+
+            return {
+              cappedInitialLabel,
+              frontNumbers,
+              afterFrontLabel,
+              backNumbers,
+              afterBackLabel,
+              afterClearNumbers,
+              afterClearLabel,
+              unlimitedInitialLabel,
+              allAvailableCount,
+              afterSelectAllLabel,
+              afterSelectAllClearCount,
+              unlimitedAfterClearLabel
+            };
+          }finally{
+            closeBedDetailWindow();
+            currentBuilding = previous.building;
+            activeAppTab = previous.tab;
+            recordSelectionMode = previous.mode;
+            harvestFillKeys = previous.keys;
+            harvestOverageKeys = previous.overageKeys;
+            records = previous.records;
+            harvestSummary = previous.summary;
+            harvestProgressState = previous.progressState;
+            harvestSelectionMode = previous.selectionMode;
+            harvestCasesAutoEstimated = previous.autoEstimated;
+            casesInput.value = previous.casesValue;
+            getHarvestAvailabilityState = previous.getAvailability;
+            getPredictedHarvestForPallet = previous.getPrediction;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          cappedInitialLabel:"1から選択",
+          frontNumbers:[3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          afterFrontLabel:"78から選択",
+          backNumbers:[69, 70, 71, 72, 73, 74, 75, 76, 77, 78],
+          afterBackLabel:"全解除",
+          afterClearNumbers:[],
+          afterClearLabel:"1から選択",
+          unlimitedInitialLabel:"全選択",
+          allAvailableCount:76,
+          afterSelectAllLabel:"全解除",
+          afterSelectAllClearCount:0,
+          unlimitedAfterClearLabel:"全選択"
+        }, "シミュの一括選択ボタンが前・後ろ・解除の順に動いていません");
       });
 
       await runTest("収穫ケース数は外枠を付けず入力欄だけを区別する", () => {
@@ -10103,18 +10259,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "2feb592f", elements: 2303, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "f04bb467", elements: 2372, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "7c1b1eb0", elements: 2372, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "4c2d6c9a", elements: 2304, visible: 116, viewport: "390x844" },
-          mobileDashboard: { hash: "2eedd689", elements: 2321, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "79365fc6", elements: 2404, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "74c9cc7c", elements: 2419, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "9e873c9f", elements: 2419, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "599db76c", elements: 2419, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "c4fb428b", elements: 2419, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "6e70998f", elements: 2419, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "b4998295", elements: 2419, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "4d727121", elements: 2297, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "2a163ac7", elements: 2366, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "aaae5b90", elements: 2366, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "913caf90", elements: 2298, visible: 116, viewport: "390x844" },
+          mobileDashboard: { hash: "daa0769e", elements: 2315, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "3b29d780", elements: 2398, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "1033662e", elements: 2413, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "76dc4dc9", elements: 2413, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "64352a1e", elements: 2413, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "ba1a7efd", elements: 2413, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "559ea7db", elements: 2413, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "b715c515", elements: 2413, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

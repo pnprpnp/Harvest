@@ -310,7 +310,6 @@ function getAdjacentBuilding(building, direction){
 
 function shiftCurrentBuilding(direction){
   closeBedDetailWindow();
-  hideBedActionMenu();
   hideRecordBedActionMenu();
   syncCurrentCasePlacementFromInputs();
   expandedForecastBed = null;
