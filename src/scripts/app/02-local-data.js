@@ -1063,6 +1063,7 @@ function invalidatePlantingEventStateCache(){
   plantingEventStateCacheKey = "";
   plantingDateByPalletCache.clear();
   plantingStateByPalletCache.clear();
+  invalidateHarvestAvailabilityStateCache();
   invalidatePlantingAllowedPalletSetCache();
 }
 

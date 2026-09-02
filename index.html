@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260901-lock-harvest-after-planting">
+<meta name="harvestnavi-version" content="20260902-faster-harvest-selection">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -14988,6 +14988,8 @@ let harvestRecordEditTimelineCacheRecordCount = 0;
 let harvestRecordEditTimelineCacheDate = "";
 let plantingDateByPalletCache = new Map();
 let plantingStateByPalletCache = new Map();
+let harvestAvailabilityStateCache = new WeakMap();
+let harvestAvailabilityStateCachePlantingEvents = plantingEvents;
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
 let recordHistoryCache = null;
@@ -19296,6 +19298,7 @@ function invalidatePlantingEventStateCache(){
   plantingEventStateCacheKey = "";
   plantingDateByPalletCache.clear();
   plantingStateByPalletCache.clear();
+  invalidateHarvestAvailabilityStateCache();
   invalidatePlantingAllowedPalletSetCache();
 }
 
@@ -29633,6 +29636,120 @@ function getLatestFullHarvestInfoByPallet(sourceRecords, referenceDate = null){
   return latestInfoByPallet;
 }
 
+function getFullHarvestRecordsWithinPlantingLock(referenceDay, sourceRecords){
+  const earliestDay = addDays(referenceDay, -(HARVEST_SELECTION_PLANTING_LOCK_DAYS - 1));
+  const earliestTime = earliestDay.getTime();
+  const referenceTime = referenceDay.getTime();
+  const relevantRecords = [];
+
+  for(const record of (Array.isArray(sourceRecords) ? sourceRecords : [])){
+    const harvestDate = parseDateOnlyString(record?.date);
+    if(!harvestDate) continue;
+    const harvestTime = startOfLocalDay(harvestDate).getTime();
+    if(harvestTime > referenceTime) continue;
+    // 収穫記録は新しい順で保持しているため、10日より前へ到達したら終了できる。
+    if(harvestTime < earliestTime) break;
+    if(record?.type === "partialHarvest") continue;
+    relevantRecords.push(record);
+  }
+
+  return relevantRecords;
+}
+
+function getHarvestAvailabilityPlantingInfo(
+  recentHarvestRecords,
+  referenceDay,
+  sourcePlantingEvents,
+  lifecycleSourceRecords
+){
+  const cycleHarvestInfoByPallet = getLatestFullHarvestInfoByPallet(
+    recentHarvestRecords,
+    referenceDay
+  );
+  const recentLifecycleHarvestInfoByPallet = getLatestFullHarvestInfoByPallet(
+    getFullHarvestRecordsWithinPlantingLock(referenceDay, lifecycleSourceRecords),
+    referenceDay
+  );
+  const recentHarvestIds = new Set(
+    (Array.isArray(recentHarvestRecords) ? recentHarvestRecords : [])
+      .map(record => getSafePositiveRecordId(record?.id))
+      .filter(recordId => recordId !== null)
+  );
+  const recentHarvestDays = (Array.isArray(recentHarvestRecords) ? recentHarvestRecords : [])
+    .map(record => parseDateOnlyString(record?.date))
+    .filter(Boolean)
+    .map(date => startOfLocalDay(date).getTime());
+  const lockStartTime = addDays(
+    referenceDay,
+    -(HARVEST_SELECTION_PLANTING_LOCK_DAYS - 1)
+  ).getTime();
+  const earliestRelevantTime = recentHarvestDays.length
+    ? Math.min(lockStartTime, ...recentHarvestDays)
+    : lockStartTime;
+  const referenceTime = referenceDay.getTime();
+  const cycleReplantingInfoByPallet = new Map();
+  const recentPlantingLockInfoByPallet = new Map();
+  const events = Array.isArray(sourcePlantingEvents) ? sourcePlantingEvents : [];
+
+  // 苗植え記録は古い順で保持している。末尾から必要期間だけを確認する。
+  for(let eventIndex = events.length - 1; eventIndex >= 0; eventIndex--){
+    const event = events[eventIndex];
+    const plantingDate = parseDateOnlyString(event?.plantingDate);
+    if(!plantingDate) continue;
+    const plantingDay = startOfLocalDay(plantingDate);
+    const plantingTime = plantingDay.getTime();
+    if(plantingTime > referenceTime) continue;
+    if(plantingTime < earliestRelevantTime) break;
+
+    const eventId = Number(event?.eventId) || 0;
+    const ageDays = getLocalDayDiff(plantingDay, referenceDay);
+    const isWithinLockPeriod = ageDays >= 0
+      && ageDays < HARVEST_SELECTION_PLANTING_LOCK_DAYS;
+
+    (Array.isArray(event?.sourceAllocations) ? event.sourceAllocations : []).forEach(allocation => {
+      const harvestRecordId = Number(allocation?.harvestRecordId);
+      (Array.isArray(allocation?.palletKeys) ? allocation.palletKeys : []).forEach(key => {
+        const cycleHarvestInfo = cycleHarvestInfoByPallet.get(key);
+        if(recentHarvestIds.has(harvestRecordId)
+          && cycleHarvestInfo?.recordId === harvestRecordId
+          && plantingTime >= cycleHarvestInfo.harvestDay.getTime()
+          && !cycleReplantingInfoByPallet.has(key)){
+          cycleReplantingInfoByPallet.set(key, {
+            eventId,
+            harvestRecordId,
+            plantingDay,
+            ageDays,
+            remainingLockDays:Math.max(0, HARVEST_SELECTION_PLANTING_LOCK_DAYS - ageDays),
+            isSelectionLocked:ageDays < HARVEST_SELECTION_PLANTING_LOCK_DAYS
+          });
+        }
+
+        if(!isWithinLockPeriod || recentPlantingLockInfoByPallet.has(key)) return;
+        const recentLifecycleHarvestInfo = recentLifecycleHarvestInfoByPallet.get(key);
+        if(recentLifecycleHarvestInfo
+          && (recentLifecycleHarvestInfo.harvestDay.getTime() > plantingTime
+            || (recentLifecycleHarvestInfo.harvestDay.getTime() === plantingTime
+              && recentLifecycleHarvestInfo.recordId !== harvestRecordId))){
+          return;
+        }
+        recentPlantingLockInfoByPallet.set(key, {
+          eventId,
+          harvestRecordId,
+          plantingDay,
+          ageDays,
+          remainingLockDays:HARVEST_SELECTION_PLANTING_LOCK_DAYS - ageDays,
+          isSelectionLocked:true
+        });
+      });
+    });
+  }
+
+  return {
+    cycleReplantingInfoByPallet,
+    recentPlantingLockInfoByPallet
+  };
+}
+
 function getLatestReplantingInfoByPalletFromRecords(
   sourceRecords,
   referenceDate = new Date(),
@@ -29704,17 +29821,20 @@ function getHarvestAvailabilityStateFromRecords(
     ? startOfLocalDay(referenceDate)
     : startOfLocalDay(parseDateOnlyString(String(referenceDate || "")) || new Date());
   const cycleRecordedSet = getRecordedPalletSetFromRecords(recentHarvestRecords);
-  const latestHarvestInfo = getLatestFullHarvestInfoByPallet(lifecycleSourceRecords, referenceDay);
-  const replantingInfoByPallet = getLatestReplantingInfoByPalletFromRecords(
-    lifecycleSourceRecords,
+  const {
+    cycleReplantingInfoByPallet,
+    recentPlantingLockInfoByPallet
+  } = getHarvestAvailabilityPlantingInfo(
+    recentHarvestRecords,
     referenceDay,
     sourcePlantingEvents,
-    latestHarvestInfo
+    lifecycleSourceRecords
   );
+  const replantingInfoByPallet = new Map(cycleReplantingInfoByPallet);
   const unavailableSet = new Set(cycleRecordedSet);
   const plantingLockedSet = new Set();
 
-  replantingInfoByPallet.forEach((info, key) => {
+  cycleReplantingInfoByPallet.forEach((info, key) => {
     if(info.isSelectionLocked){
       unavailableSet.add(key);
       plantingLockedSet.add(key);
@@ -29723,9 +29843,21 @@ function getHarvestAvailabilityStateFromRecords(
     }
   });
 
+  recentPlantingLockInfoByPallet.forEach((info, key) => {
+    unavailableSet.add(key);
+    plantingLockedSet.add(key);
+    const current = replantingInfoByPallet.get(key);
+    if(!current
+      || current.plantingDay.getTime() < info.plantingDay.getTime()
+      || (current.plantingDay.getTime() === info.plantingDay.getTime()
+        && current.eventId < info.eventId)){
+      replantingInfoByPallet.set(key, info);
+    }
+  });
+
   const unplantedSet = new Set();
   cycleRecordedSet.forEach(key => {
-    if(!replantingInfoByPallet.has(key)) unplantedSet.add(key);
+    if(!cycleReplantingInfoByPallet.has(key)) unplantedSet.add(key);
   });
 
   return {
@@ -29764,18 +29896,43 @@ function getHarvestedPalletSet(referenceDate = new Date()){
   return getHarvestAvailabilityState(referenceDate).unavailableSet;
 }
 
+function invalidateHarvestAvailabilityStateCache(){
+  harvestAvailabilityStateCache = new WeakMap();
+  harvestAvailabilityStateCachePlantingEvents = plantingEvents;
+}
+
 function getHarvestAvailabilityState(referenceDate = new Date(), sourceRecords = getActiveHarvestTimelineRecords(records)){
+  if(harvestAvailabilityStateCachePlantingEvents !== plantingEvents){
+    invalidateHarvestAvailabilityStateCache();
+  }
+  const referenceDay = referenceDate instanceof Date
+    ? startOfLocalDay(referenceDate)
+    : startOfLocalDay(parseDateOnlyString(String(referenceDate || "")) || new Date());
+  const cacheKey = formatDateOnlyString(referenceDay);
+  const cacheableSourceRecords = Array.isArray(sourceRecords) ? sourceRecords : [];
+  let sourceCache = harvestAvailabilityStateCache.get(cacheableSourceRecords);
+  if(!sourceCache){
+    sourceCache = new Map();
+    harvestAvailabilityStateCache.set(cacheableSourceRecords, sourceCache);
+  }
+  if(sourceCache.has(cacheKey)) return sourceCache.get(cacheKey);
+
   const recentRecords = getRecentHarvestRecordsByCount(
-    referenceDate,
+    referenceDay,
     RECORDED_LOOKBACK_COUNT,
-    sourceRecords
+    cacheableSourceRecords
   );
-  return getHarvestAvailabilityStateFromRecords(
+  const state = getHarvestAvailabilityStateFromRecords(
     recentRecords,
-    referenceDate,
+    referenceDay,
     plantingEvents,
-    sourceRecords
+    cacheableSourceRecords
   );
+  sourceCache.set(cacheKey, state);
+  if(sourceCache.size > 16){
+    sourceCache.delete(sourceCache.keys().next().value);
+  }
+  return state;
 }
 
 function getRecordEditingReferenceDate(){
@@ -29785,17 +29942,7 @@ function getRecordEditingReferenceDate(){
 function getRecordTabHarvestAvailabilityState(){
   const referenceDate = getRecordEditingReferenceDate();
   const sourceRecords = getActiveHarvestTimelineRecords(records);
-  const recentRecords = getRecentHarvestRecordsByCount(
-    referenceDate,
-    RECORDED_LOOKBACK_COUNT,
-    sourceRecords
-  );
-  return getHarvestAvailabilityStateFromRecords(
-    recentRecords,
-    referenceDate,
-    plantingEvents,
-    sourceRecords
-  );
+  return getHarvestAvailabilityState(referenceDate, sourceRecords);
 }
 
 function getRecordTabRecordedPalletSet(){
@@ -30376,8 +30523,9 @@ function selectBedToNeed(direction){
 
   let added = 0;
   let runningHarvestTotal = getCurrentHarvestTotalRaw();
+  const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
   for(const number of numbers){
-    if(isRecorded(currentBuilding, bed, number)) continue;
+    if(isRecorded(currentBuilding, bed, number, { recordedSet })) continue;
 
     const key = getPalletKey(currentBuilding, bed, number);
     if(harvestFillKeys.includes(key)) continue;

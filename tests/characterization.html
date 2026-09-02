@@ -458,6 +458,7 @@
         "normalizePartialHarvestTargets",
         "getHarvestAvailabilityStateFromRecords",
         "getHarvestAvailabilityState",
+        "invalidateHarvestAvailabilityStateCache",
         "getReplantedPalletSetFromRecords",
         "getHarvestedPalletSetFromRecords",
         "getHarvestedPalletSet",
@@ -1805,6 +1806,10 @@
             const unavailableDay9 = [...getHarvestedPalletSet(day9)].sort();
             const unavailableDay10 = [...getHarvestedPalletSet(day10)].sort();
             const unavailableAllUnlocked = [...getHarvestedPalletSet(allUnlockedDay)].sort();
+            const cachedAvailabilityState = getHarvestAvailabilityState(day10);
+            const cacheReused = cachedAvailabilityState === getHarvestAvailabilityState(day10);
+            invalidateHarvestAvailabilityStateCache();
+            const cacheRebuilt = cachedAvailabilityState !== getHarvestAvailabilityState(day10);
             const automatic = calculateHarvestSelectionFromRecords({
               referenceDate:day10,
               partialTargetDate:day10,
@@ -1863,6 +1868,8 @@
               unavailableDay9,
               unavailableDay10,
               unavailableAllUnlocked,
+              cacheReused,
+              cacheRebuilt,
               automaticStart:automatic?.palletKeys?.[0] || "",
               automaticCursor:automatic?.startCursorKey || "",
               manualSelectableSameDay,
@@ -1880,6 +1887,8 @@
             unavailableDay9:["2-A-1", "2-A-2", "2-A-3"],
             unavailableDay10:["2-A-2", "2-A-3"],
             unavailableAllUnlocked:[],
+            cacheReused:true,
+            cacheRebuilt:true,
             automaticStart:"2-A-4",
             automaticCursor:"2-A-4",
             manualSelectableSameDay:false,
@@ -1916,6 +1925,55 @@
           assert(
             !reasons.some(reason => reason.includes("収穫済みの場所と重複")),
             "苗植え後の再収穫を収穫済み場所の重複として警告しています"
+          );
+
+          const oldSourceHarvest = {
+            ...harvestRecord,
+            id:20000000000060,
+            recordUuid:"60606060-6060-4060-8060-606060606060",
+            date:"2026-08-01",
+            palletRanges:["2-A-1-1"]
+          };
+          const newerRecords = Array.from({ length:7 }, (_, index) => ({
+            ...harvestRecord,
+            id:20000000000070 + index,
+            recordUuid:`70707070-7070-4070-8070-${String(707070707070 + index).padStart(12, "0")}`,
+            date:`2026-08-${String(20 - index).padStart(2, "0")}`,
+            palletRanges:[`2-B-${index + 1}-${index + 1}`]
+          }));
+          const oldSourcePlantingEvent = makePlantingEvent(
+            20000000000080,
+            "2026-08-15",
+            "2-A-1"
+          );
+          oldSourcePlantingEvent.sourceAllocations[0].harvestRecordId = oldSourceHarvest.id;
+          replaceAppHistory(app, [...newerRecords, oldSourceHarvest], [oldSourcePlantingEvent]);
+          app.invalidatePlantingEventStateCache();
+          const outsideSevenLock = comparable(app.eval(`(() => {
+            const day5 = new Date(2026, 7, 20);
+            const day10 = new Date(2026, 7, 25);
+            return {
+              lockedDay5:getHarvestedPalletSet(day5).has("2-A-1"),
+              unlockedDay10:!getHarvestedPalletSet(day10).has("2-A-1")
+            };
+          })()`));
+          assertDeepEqual(outsideSevenLock, {
+            lockedDay5:true,
+            unlockedDay10:true
+          }, "直近7件より前の収穫元に定植した場所の10日ロックが正しくありません");
+
+          const laterHarvest = {
+            ...oldSourceHarvest,
+            id:20000000000090,
+            recordUuid:"90909090-9090-4090-8090-909090909090",
+            date:"2026-08-16"
+          };
+          replaceAppHistory(app, [...newerRecords, laterHarvest, oldSourceHarvest], [oldSourcePlantingEvent]);
+          app.invalidatePlantingEventStateCache();
+          assertEqual(
+            app.getHarvestedPalletSet(new Date(2026, 7, 20)).has("2-A-1"),
+            false,
+            "定植後に再収穫され直近7件から外れた場所へ古い10日ロックが残りました"
           );
         }finally{
           replaceAppHistory(app, previousRecords, previousEvents);
@@ -9893,6 +9951,8 @@
           recordHistoryCache = {};
           plantingEventStateCache = {};
           plantingEventStateCacheKey = "test";
+          harvestAvailabilityStateCache.set(records, new Map([["test", {}]]));
+          harvestAvailabilityStateCachePlantingEvents = [];
           dashboardHarvestForecastModelCache = {};
           dashboardSeedlingStatusModelCache = {};
           dashboardPastCalendarItemsByDateCache = {};
@@ -9907,6 +9967,8 @@
           history: recordHistoryCache,
           planting: plantingEventStateCache,
           plantingKey: plantingEventStateCacheKey,
+          harvestAvailability: harvestAvailabilityStateCache.has(records),
+          harvestAvailabilityEventsCurrent: harvestAvailabilityStateCachePlantingEvents === plantingEvents,
           forecast: dashboardHarvestForecastModelCache,
           seedlings: dashboardSeedlingStatusModelCache,
           calendar: dashboardPastCalendarItemsByDateCache,
@@ -9920,6 +9982,8 @@
           history: null,
           planting: null,
           plantingKey: "",
+          harvestAvailability: false,
+          harvestAvailabilityEventsCurrent: true,
           forecast: null,
           seedlings: null,
           calendar: null,
