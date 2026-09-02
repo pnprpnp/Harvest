@@ -8256,6 +8256,72 @@
         }, "記録タブ上部の工程表示が現在の記録モードに追従していません");
       });
 
+      await runTest("本日の収穫記録済み表示で収穫・苗植え工程バーを置き換える", () => {
+        const state = comparable(app.eval(`(() => {
+          const previousRecords = records;
+          const previousMode = recordSelectionMode;
+          const status = document.getElementById("recordTodayRecordedStatus");
+          const modeStatus = document.getElementById("recordModeStatus");
+          const today = formatDateOnlyString(new Date());
+          const readState = () => ({
+            statusParent:status.parentElement?.id || "",
+            statusVisible:!status.hidden,
+            modeVisible:!modeStatus.hidden,
+            replacesSteps:modeStatus.classList.contains("has-today-record"),
+            statusText:status.textContent.trim(),
+            ariaLabel:modeStatus.getAttribute("aria-label") || "",
+            stepVisibility:getComputedStyle(document.getElementById("recordModeHarvestStep")).visibility
+          });
+          try{
+            recordSelectionMode = "planting";
+            records = [{ id:20000000000992, type:"fullHarvest", date:today }];
+            updateTodayHarvestRecordedStatus();
+            const recordedPlanting = readState();
+            recordSelectionMode = "harvest";
+            updateTodayHarvestRecordedStatus();
+            const recordedHarvest = readState();
+            records = [];
+            updateTodayHarvestRecordedStatus();
+            const notRecordedHarvest = readState();
+            return { recordedPlanting, recordedHarvest, notRecordedHarvest };
+          }finally{
+            records = previousRecords;
+            recordSelectionMode = previousMode;
+            updateTodayHarvestRecordedStatus();
+            refreshRecordModeUi();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          recordedPlanting:{
+            statusParent:"recordModeStatus",
+            statusVisible:true,
+            modeVisible:true,
+            replacesSteps:true,
+            statusText:"本日は記録済みです",
+            ariaLabel:"本日は記録済みです",
+            stepVisibility:"hidden"
+          },
+          recordedHarvest:{
+            statusParent:"recordModeStatus",
+            statusVisible:true,
+            modeVisible:true,
+            replacesSteps:true,
+            statusText:"本日は記録済みです",
+            ariaLabel:"本日は記録済みです",
+            stepVisibility:"hidden"
+          },
+          notRecordedHarvest:{
+            statusParent:"recordModeStatus",
+            statusVisible:false,
+            modeVisible:false,
+            replacesSteps:false,
+            statusText:"本日は記録済みです",
+            ariaLabel:"全2段階。現在は収穫記録中",
+            stepVisibility:"visible"
+          }
+        }, "本日の記録済み表示が収穫・苗植え工程バーと同じ場所へ切り替わっていません");
+      });
+
       await runTest("収穫記録を4工程で進め、対象棟の確認後だけ固定ボタンで保存へ進める", () => {
         const state = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");
@@ -10543,18 +10609,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "cc7fd7da", elements: 2327, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "efac5964", elements: 2396, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "2f9ca31f", elements: 2396, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "4ada8d81", elements: 2328, visible: 76, viewport: "390x844" },
-          mobileDashboard: { hash: "0f004f16", elements: 2345, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "c62ff8db", elements: 2428, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "6b35d142", elements: 2443, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "01a2283d", elements: 2443, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "ddccb99c", elements: 2443, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "1b851d8f", elements: 2443, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "49d9d1c7", elements: 2443, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "123e376d", elements: 2443, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "33c04e0b", elements: 2327, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "22e73fa5", elements: 2396, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "70dd91c6", elements: 2396, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "cf370e39", elements: 2328, visible: 76, viewport: "390x844" },
+          mobileDashboard: { hash: "7d81dd21", elements: 2345, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f3ee38f8", elements: 2428, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "94a3246b", elements: 2443, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "d4317f64", elements: 2443, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "d60c8545", elements: 2443, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "84cdf692", elements: 2443, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "96df5054", elements: 2443, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "fedb733a", elements: 2443, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -1946,12 +1946,23 @@ function renderRecordHarvestWorkflowUi(){
   const confirmSection = document.getElementById("recordHarvestConfirmSection");
   const legacyActionRow = document.getElementById("recordFormActionRow");
   const modeStatus = document.getElementById("recordModeStatus");
+  const todayRecordedStatus = document.getElementById("recordTodayRecordedStatus");
+  const isRecordedToday = !!todayRecordedStatus && !todayRecordedStatus.hidden;
 
   if(progress) progress.hidden = !isHarvestMode;
   if(progressCount) progressCount.textContent = `${stageIndex + 1}/4`;
   if(progressTitle) progressTitle.textContent = labels[stage];
   if(progressValue) progressValue.style.width = `${(stageIndex + 1) * 25}%`;
-  if(modeStatus) modeStatus.hidden = isHarvestMode;
+  if(modeStatus){
+    modeStatus.hidden = isHarvestMode && !isRecordedToday;
+    modeStatus.classList.toggle("has-today-record", isRecordedToday);
+    modeStatus.setAttribute(
+      "aria-label",
+      isRecordedToday
+        ? "本日は記録済みです"
+        : `全2段階。現在は${isHarvestMode ? "収穫記録中" : "苗植え記録中"}`
+    );
+  }
   if(casesSection) casesSection.hidden = !isHarvestMode || stage !== "cases";
   if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
   if(locationSummary) locationSummary.hidden = !isHarvestMode;
@@ -2092,12 +2103,14 @@ function refreshRecordModeUi(){
   const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const modeStatus = document.getElementById("recordModeStatus");
+  const todayRecordedStatus = document.getElementById("recordTodayRecordedStatus");
   const harvestModeStep = document.getElementById("recordModeHarvestStep");
   const plantingModeStep = document.getElementById("recordModePlantingStep");
   const harvestModeStepText = document.getElementById("recordModeHarvestStepText");
   const plantingModeStepText = document.getElementById("recordModePlantingStepText");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
+  const isRecordedToday = !!todayRecordedStatus && !todayRecordedStatus.hidden;
   const saveCard = document.getElementById("recordSaveCard");
   const historyCard = document.getElementById("recordHistoryCard");
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
@@ -2131,10 +2144,16 @@ function refreshRecordModeUi(){
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
   if(modeStatus){
-    modeStatus.hidden = !isPlantingMode;
+    modeStatus.hidden = !isPlantingMode && !isRecordedToday;
     modeStatus.classList.toggle("is-harvest", !isPlantingMode);
     modeStatus.classList.toggle("is-planting", isPlantingMode);
-    modeStatus.setAttribute("aria-label", `全2段階。現在は${isPlantingMode ? "苗植え記録中" : "収穫記録中"}`);
+    modeStatus.classList.toggle("has-today-record", isRecordedToday);
+    modeStatus.setAttribute(
+      "aria-label",
+      isRecordedToday
+        ? "本日は記録済みです"
+        : `全2段階。現在は${isPlantingMode ? "苗植え記録中" : "収穫記録中"}`
+    );
   }
   if(harvestModeStep){
     harvestModeStep.classList.toggle("is-active", !isPlantingMode);

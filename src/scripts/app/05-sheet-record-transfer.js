@@ -1506,9 +1506,21 @@ function updateTodayHarvestRecordedStatus(referenceDate = new Date()){
   const status = document.getElementById("recordTodayRecordedStatus");
   if(!status) return;
   const today = formatDateOnlyString(referenceDate);
-  status.hidden = !records.some(record => (
+  const isRecordedToday = records.some(record => (
     record?.type === "fullHarvest" && String(record.date || "") === today
   ));
+  const modeStatus = document.getElementById("recordModeStatus");
+  status.hidden = !isRecordedToday;
+  if(modeStatus){
+    modeStatus.classList.toggle("has-today-record", isRecordedToday);
+    modeStatus.hidden = recordSelectionMode === "harvest" && !isRecordedToday;
+    modeStatus.setAttribute(
+      "aria-label",
+      isRecordedToday
+        ? "本日は記録済みです"
+        : `全2段階。現在は${recordSelectionMode === "planting" ? "苗植え記録中" : "収穫記録中"}`
+    );
+  }
 }
 
 function setRecordSyncAvailabilityNotice(available){

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260902-record-step-workflow">
+<meta name="harvestnavi-version" content="20260903-today-record-status">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10363,6 +10363,7 @@ button.recordHarvestLocationMetric{font:inherit;}
 .recordHistoryHeader .sectionTitle{margin-bottom:0;}
 .recordModeStatus{
   --record-mode-active:var(--ui-accent-dark);
+  position:relative;
   min-height:46px;
   margin:0 0 10px;
   padding:7px 10px;
@@ -10374,6 +10375,26 @@ button.recordHarvestLocationMetric{font:inherit;}
   border-radius:10px;
   background:var(--ui-surface-muted);
 }
+.recordModeStatus.has-today-record > .recordModeStep,
+.recordModeStatus.has-today-record > .recordModeConnector{visibility:hidden;}
+.recordModeStatus .recordTodayRecordedStatus{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  min-height:46px;
+  margin:0;
+  border:1px solid #86efac;
+  border-radius:10px;
+  background:#dcfce7;
+  color:#15803d;
+  font-size:14px;
+  font-weight:820;
+}
+.recordModeStatus .recordTodayRecordedStatus[hidden]{display:none;}
 .recordModeStatus.is-planting{--record-mode-active:var(--ui-blue);}
 .recordModeStep{
   min-width:0;
@@ -13646,6 +13667,7 @@ requestAnimationFrame(function(){
           <span class="recordModeStepNumber" aria-hidden="true">2</span>
           <span id="recordModePlantingStepText">苗植え記録</span>
         </div>
+        <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
       </div>
       <div class="recordInputUtilityRow">
         <div class="recordDateField">
@@ -13658,8 +13680,6 @@ requestAnimationFrame(function(){
         <button id="recordHistoryOpenBtn" class="recordHistoryToggleBtn" type="button" data-ui-click="showRecordHistoryView">記録一覧</button>
       </div>
       <div id="recordPastDateNotice" class="recordPastDateNotice" role="status" hidden>過去の日付を記録中</div>
-      <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
-
       <div id="recordHarvestWorkflowProgress" class="recordHarvestWorkflowProgress" role="status" aria-live="polite">
         <div class="recordHarvestWorkflowProgressCopy">
           <span id="recordHarvestWorkflowProgressCount">1/4</span>
@@ -24844,9 +24864,21 @@ function updateTodayHarvestRecordedStatus(referenceDate = new Date()){
   const status = document.getElementById("recordTodayRecordedStatus");
   if(!status) return;
   const today = formatDateOnlyString(referenceDate);
-  status.hidden = !records.some(record => (
+  const isRecordedToday = records.some(record => (
     record?.type === "fullHarvest" && String(record.date || "") === today
   ));
+  const modeStatus = document.getElementById("recordModeStatus");
+  status.hidden = !isRecordedToday;
+  if(modeStatus){
+    modeStatus.classList.toggle("has-today-record", isRecordedToday);
+    modeStatus.hidden = recordSelectionMode === "harvest" && !isRecordedToday;
+    modeStatus.setAttribute(
+      "aria-label",
+      isRecordedToday
+        ? "本日は記録済みです"
+        : `全2段階。現在は${recordSelectionMode === "planting" ? "苗植え記録中" : "収穫記録中"}`
+    );
+  }
 }
 
 function setRecordSyncAvailabilityNotice(available){
@@ -34697,12 +34729,23 @@ function renderRecordHarvestWorkflowUi(){
   const confirmSection = document.getElementById("recordHarvestConfirmSection");
   const legacyActionRow = document.getElementById("recordFormActionRow");
   const modeStatus = document.getElementById("recordModeStatus");
+  const todayRecordedStatus = document.getElementById("recordTodayRecordedStatus");
+  const isRecordedToday = !!todayRecordedStatus && !todayRecordedStatus.hidden;
 
   if(progress) progress.hidden = !isHarvestMode;
   if(progressCount) progressCount.textContent = `${stageIndex + 1}/4`;
   if(progressTitle) progressTitle.textContent = labels[stage];
   if(progressValue) progressValue.style.width = `${(stageIndex + 1) * 25}%`;
-  if(modeStatus) modeStatus.hidden = isHarvestMode;
+  if(modeStatus){
+    modeStatus.hidden = isHarvestMode && !isRecordedToday;
+    modeStatus.classList.toggle("has-today-record", isRecordedToday);
+    modeStatus.setAttribute(
+      "aria-label",
+      isRecordedToday
+        ? "本日は記録済みです"
+        : `全2段階。現在は${isHarvestMode ? "収穫記録中" : "苗植え記録中"}`
+    );
+  }
   if(casesSection) casesSection.hidden = !isHarvestMode || stage !== "cases";
   if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
   if(locationSummary) locationSummary.hidden = !isHarvestMode;
@@ -34843,12 +34886,14 @@ function refreshRecordModeUi(){
   const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const modeStatus = document.getElementById("recordModeStatus");
+  const todayRecordedStatus = document.getElementById("recordTodayRecordedStatus");
   const harvestModeStep = document.getElementById("recordModeHarvestStep");
   const plantingModeStep = document.getElementById("recordModePlantingStep");
   const harvestModeStepText = document.getElementById("recordModeHarvestStepText");
   const plantingModeStepText = document.getElementById("recordModePlantingStepText");
   const isPlantingMode = recordSelectionMode === "planting";
   const isEditing = isRecordEditMode();
+  const isRecordedToday = !!todayRecordedStatus && !todayRecordedStatus.hidden;
   const saveCard = document.getElementById("recordSaveCard");
   const historyCard = document.getElementById("recordHistoryCard");
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
@@ -34882,10 +34927,16 @@ function refreshRecordModeUi(){
   if(harvestStep) harvestStep.classList.toggle("active", !isPlantingMode);
   if(plantingStep) plantingStep.classList.toggle("active", isPlantingMode);
   if(modeStatus){
-    modeStatus.hidden = !isPlantingMode;
+    modeStatus.hidden = !isPlantingMode && !isRecordedToday;
     modeStatus.classList.toggle("is-harvest", !isPlantingMode);
     modeStatus.classList.toggle("is-planting", isPlantingMode);
-    modeStatus.setAttribute("aria-label", `全2段階。現在は${isPlantingMode ? "苗植え記録中" : "収穫記録中"}`);
+    modeStatus.classList.toggle("has-today-record", isRecordedToday);
+    modeStatus.setAttribute(
+      "aria-label",
+      isRecordedToday
+        ? "本日は記録済みです"
+        : `全2段階。現在は${isPlantingMode ? "苗植え記録中" : "収穫記録中"}`
+    );
   }
   if(harvestModeStep){
     harvestModeStep.classList.toggle("is-active", !isPlantingMode);
