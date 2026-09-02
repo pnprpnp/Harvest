@@ -30,6 +30,7 @@ function initializeStartupSettingsAndStorage(){
   installHarvestStateSaveFlushListeners();
   installMonitorViewportResizeObserver();
   syncHarvestPlantingPendingFlags();
+  initializeCurrentPalletLifecycleState();
 }
 
 function resetInvalidStartupPlantingState(){

@@ -21,6 +21,14 @@ function getLatestPlantingStateByPallet(targetDate, options = {}){
   if(plantingStateByPalletCache.has(cacheKey)){
     return plantingStateByPalletCache.get(cacheKey);
   }
+  const currentLifecycleMap = getLatestPlantingStateFromCurrentPalletLifecycle(
+    targetDay,
+    { includeTargetDate }
+  );
+  if(currentLifecycleMap){
+    plantingStateByPalletCache.set(cacheKey, currentLifecycleMap);
+    return currentLifecycleMap;
+  }
   const map = new Map();
 
   for(const event of plantingEvents){
@@ -526,6 +534,390 @@ function getLatestFullHarvestInfoByPallet(sourceRecords, referenceDate = null){
   return latestInfoByPallet;
 }
 
+function getPalletLifecycleSourceStamp(sourceRecords = records, sourcePlantingEvents = plantingEvents){
+  const getRecordStamp = record => [
+    String(record?.type || ""),
+    String(record?.id || ""),
+    String(record?.recordUuid || ""),
+    String(record?.date || ""),
+    String(record?.updatedAt || ""),
+    Array.isArray(record?.palletKeys) ? record.palletKeys.length : 0,
+    Array.isArray(record?.palletRanges) ? record.palletRanges.length : 0
+  ].join(":");
+  const getEventStamp = event => [
+    String(event?.eventId || ""),
+    String(event?.plantingDate || ""),
+    String(event?.updatedAt || ""),
+    Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys.length : 0,
+    Array.isArray(event?.sourceAllocations) ? event.sourceAllocations.length : 0
+  ].join(":");
+  const recordList = Array.isArray(sourceRecords) ? sourceRecords : [];
+  const eventList = Array.isArray(sourcePlantingEvents) ? sourcePlantingEvents : [];
+  return [
+    recordList.length,
+    getRecordStamp(recordList[0]),
+    getRecordStamp(recordList[recordList.length - 1]),
+    eventList.length,
+    getEventStamp(eventList[0]),
+    getEventStamp(eventList[eventList.length - 1])
+  ].join("|");
+}
+
+function buildCurrentPalletLifecycleState(
+  sourceRecords = records,
+  sourcePlantingEvents = plantingEvents
+){
+  const stateByPallet = new Map();
+  const latestPlantingByPallet = new Map();
+  let latestLifecycleTime = -Infinity;
+  let latestPlantingTime = -Infinity;
+
+  (Array.isArray(sourceRecords) ? sourceRecords : []).forEach(record => {
+    if(record?.type !== "fullHarvest") return;
+    const harvestRecordId = getSafePositiveRecordId(record?.id);
+    const harvestDate = parseDateOnlyString(record?.date);
+    if(harvestRecordId === null || !harvestDate) return;
+    const harvestDay = startOfLocalDay(harvestDate);
+    const harvestTime = harvestDay.getTime();
+    latestLifecycleTime = Math.max(latestLifecycleTime, harvestTime);
+    getPalletKeysFromRecord(record).forEach(key => {
+      const current = stateByPallet.get(key);
+      if(current
+        && (current.harvestTime > harvestTime
+          || (current.harvestTime === harvestTime
+            && current.harvestRecordId > harvestRecordId))){
+        return;
+      }
+      stateByPallet.set(key, {
+        harvestRecordId,
+        harvestDate:formatDateOnlyString(harvestDay),
+        harvestTime,
+        plantingEventId:null,
+        plantingDate:"",
+        plantingTime:null,
+        plantingCount:null
+      });
+    });
+  });
+
+  (Array.isArray(sourcePlantingEvents) ? sourcePlantingEvents : []).forEach(event => {
+    const plantingDate = parseDateOnlyString(event?.plantingDate);
+    if(!plantingDate) return;
+    const plantingDay = startOfLocalDay(plantingDate);
+    const plantingTime = plantingDay.getTime();
+    const plantingEventId = getSafePositiveRecordId(event?.eventId);
+    if(plantingEventId === null) return;
+    (Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : []).forEach(key => {
+      const currentPlanting = latestPlantingByPallet.get(key);
+      if(currentPlanting
+        && (currentPlanting.plantingTime > plantingTime
+          || (currentPlanting.plantingTime === plantingTime
+            && currentPlanting.plantingEventId > plantingEventId))){
+        return;
+      }
+      const explicitCount = Number(event?.plantingCountsByPallet?.[key]);
+      latestPlantingByPallet.set(key, {
+        plantingEventId,
+        plantingDate:formatDateOnlyString(plantingDay),
+        plantingTime,
+        plantingCount:ALLOWED_YIELDS.includes(explicitCount) ? explicitCount : null
+      });
+      latestPlantingTime = Math.max(latestPlantingTime, plantingTime);
+    });
+    (Array.isArray(event?.sourceAllocations) ? event.sourceAllocations : []).forEach(allocation => {
+      const harvestRecordId = Number(allocation?.harvestRecordId);
+      (Array.isArray(allocation?.palletKeys) ? allocation.palletKeys : []).forEach(key => {
+        const current = stateByPallet.get(key);
+        if(!current || current.harvestRecordId !== harvestRecordId
+          || plantingTime < current.harvestTime){
+          return;
+        }
+        if(current.plantingTime !== null
+          && (current.plantingTime > plantingTime
+            || (current.plantingTime === plantingTime
+              && current.plantingEventId > plantingEventId))){
+          return;
+        }
+        current.plantingEventId = plantingEventId;
+        current.plantingDate = formatDateOnlyString(plantingDay);
+        current.plantingTime = plantingTime;
+        const explicitCount = Number(event?.plantingCountsByPallet?.[key]);
+        current.plantingCount = ALLOWED_YIELDS.includes(explicitCount)
+          ? explicitCount
+          : null;
+        latestLifecycleTime = Math.max(latestLifecycleTime, plantingTime);
+      });
+    });
+  });
+
+  return {
+    stateByPallet,
+    latestPlantingByPallet,
+    latestLifecycleTime,
+    latestPlantingTime,
+    sourceStamp:getPalletLifecycleSourceStamp(sourceRecords, sourcePlantingEvents)
+  };
+}
+
+function serializeCurrentPalletLifecycleState(state = currentPalletLifecycleState){
+  if(!state || !(state.stateByPallet instanceof Map)) return null;
+  return {
+    version:1,
+    sourceStamp:state.sourceStamp,
+    latestLifecycleDate:Number.isFinite(state.latestLifecycleTime)
+      ? formatDateOnlyString(new Date(state.latestLifecycleTime))
+      : "",
+    latestPlantingDate:Number.isFinite(state.latestPlantingTime)
+      ? formatDateOnlyString(new Date(state.latestPlantingTime))
+      : "",
+    plantingStates:[...state.latestPlantingByPallet.entries()].map(([key, value]) => [
+      key,
+      value.plantingEventId,
+      value.plantingDate,
+      value.plantingCount
+    ]),
+    states:[...state.stateByPallet.entries()].map(([key, value]) => [
+      key,
+      value.harvestRecordId,
+      value.harvestDate,
+      value.plantingEventId,
+      value.plantingDate,
+      value.plantingCount
+    ])
+  };
+}
+
+function normalizeStoredCurrentPalletLifecycleState(value){
+  if(!value || Number(value.version) !== 1 || !Array.isArray(value.states)
+    || !Array.isArray(value.plantingStates)) return null;
+  if(String(value.sourceStamp || "") !== getPalletLifecycleSourceStamp()) return null;
+  const stateByPallet = new Map();
+  const latestPlantingByPallet = new Map();
+  let latestPlantingTime = -Infinity;
+  for(const item of value.plantingStates){
+    if(!Array.isArray(item) || item.length < 4) return null;
+    const key = String(item[0] || "");
+    const plantingEventId = getSafePositiveRecordId(item[1]);
+    const plantingDate = parseDateOnlyString(String(item[2] || ""));
+    const plantingCountValue = Number(item[3]);
+    if(!isValidPalletKeyString(key) || plantingEventId === null || !plantingDate) return null;
+    const plantingDay = startOfLocalDay(plantingDate);
+    latestPlantingByPallet.set(key, {
+      plantingEventId,
+      plantingDate:formatDateOnlyString(plantingDay),
+      plantingTime:plantingDay.getTime(),
+      plantingCount:ALLOWED_YIELDS.includes(plantingCountValue) ? plantingCountValue : null
+    });
+    latestPlantingTime = Math.max(latestPlantingTime, plantingDay.getTime());
+  }
+  for(const item of value.states){
+    if(!Array.isArray(item) || item.length < 5) return null;
+    const key = String(item[0] || "");
+    const harvestRecordId = getSafePositiveRecordId(item[1]);
+    const harvestDate = parseDateOnlyString(String(item[2] || ""));
+    const plantingEventId = item[3] === null ? null : getSafePositiveRecordId(item[3]);
+    const plantingDateText = String(item[4] || "");
+    const plantingDate = plantingDateText ? parseDateOnlyString(plantingDateText) : null;
+    const plantingCountValue = Number(item[5]);
+    const plantingCount = ALLOWED_YIELDS.includes(plantingCountValue)
+      ? plantingCountValue
+      : null;
+    if(!isValidPalletKeyString(key) || harvestRecordId === null || !harvestDate
+      || (plantingDateText && (!plantingDate || plantingEventId === null))){
+      return null;
+    }
+    const harvestDay = startOfLocalDay(harvestDate);
+    const plantingDay = plantingDate ? startOfLocalDay(plantingDate) : null;
+    stateByPallet.set(key, {
+      harvestRecordId,
+      harvestDate:formatDateOnlyString(harvestDay),
+      harvestTime:harvestDay.getTime(),
+      plantingEventId,
+      plantingDate:plantingDay ? formatDateOnlyString(plantingDay) : "",
+      plantingTime:plantingDay ? plantingDay.getTime() : null,
+      plantingCount
+    });
+  }
+  const latestLifecycleDate = parseDateOnlyString(String(value.latestLifecycleDate || ""));
+  return {
+    stateByPallet,
+    latestPlantingByPallet,
+    latestLifecycleTime:latestLifecycleDate
+      ? startOfLocalDay(latestLifecycleDate).getTime()
+      : -Infinity,
+    latestPlantingTime,
+    sourceStamp:String(value.sourceStamp || "")
+  };
+}
+
+function loadCurrentPalletLifecycleStateFromStorage(){
+  try{
+    return normalizeStoredCurrentPalletLifecycleState(
+      harvestnaviLocalStorage.readJson(getActivePalletLifecycleStateStorageKey(), null)
+    );
+  }catch(error){
+    return null;
+  }
+}
+
+function saveCurrentPalletLifecycleStateToStorage(state = currentPalletLifecycleState){
+  const serialized = serializeCurrentPalletLifecycleState(state);
+  if(!serialized) return false;
+  try{
+    harvestnaviLocalStorage.writeJson(getActivePalletLifecycleStateStorageKey(), serialized);
+    return true;
+  }catch(error){
+    console.warn("パレット状態表を端末内へ保存できませんでした", error);
+    return false;
+  }
+}
+
+function invalidateCurrentPalletLifecycleState(options = {}){
+  currentPalletLifecycleState = null;
+  currentPalletLifecycleStateRecords = records;
+  currentPalletLifecycleStatePlantingEvents = plantingEvents;
+  currentPalletLifecycleStateStorageLoadPending = options.allowStored === true;
+}
+
+function rebuildCurrentPalletLifecycleState(options = {}){
+  currentPalletLifecycleState = buildCurrentPalletLifecycleState(records, plantingEvents);
+  currentPalletLifecycleStateRecords = records;
+  currentPalletLifecycleStatePlantingEvents = plantingEvents;
+  currentPalletLifecycleStateStorageLoadPending = false;
+  invalidateHarvestAvailabilityStateCache();
+  if(options.persist !== false){
+    saveCurrentPalletLifecycleStateToStorage(currentPalletLifecycleState);
+  }
+  return currentPalletLifecycleState;
+}
+
+function ensureCurrentPalletLifecycleState(){
+  if(currentPalletLifecycleState
+    && currentPalletLifecycleStateRecords === records
+    && currentPalletLifecycleStatePlantingEvents === plantingEvents){
+    return currentPalletLifecycleState;
+  }
+  if(currentPalletLifecycleStateStorageLoadPending){
+    const stored = loadCurrentPalletLifecycleStateFromStorage();
+    currentPalletLifecycleStateStorageLoadPending = false;
+    if(stored){
+      currentPalletLifecycleState = stored;
+      currentPalletLifecycleStateRecords = records;
+      currentPalletLifecycleStatePlantingEvents = plantingEvents;
+      return stored;
+    }
+  }
+  return rebuildCurrentPalletLifecycleState({ persist: true });
+}
+
+function initializeCurrentPalletLifecycleState(){
+  const state = ensureCurrentPalletLifecycleState();
+  const today = startOfLocalDay(new Date());
+  getHarvestAvailabilityState(today, records);
+  getLatestPlantingStateByPallet(today);
+  return state;
+}
+
+function getLatestPlantingStateFromCurrentPalletLifecycle(targetDay, options = {}){
+  const lifecycleState = ensureCurrentPalletLifecycleState();
+  const targetTime = targetDay.getTime();
+  if(Number.isFinite(lifecycleState.latestPlantingTime)
+    && targetTime < lifecycleState.latestPlantingTime){
+    return null;
+  }
+  const includeTargetDate = options.includeTargetDate === true;
+  const map = new Map();
+  lifecycleState.latestPlantingByPallet.forEach((state, key) => {
+    if(includeTargetDate ? state.plantingTime > targetTime : state.plantingTime >= targetTime) return;
+    const plantingDay = startOfLocalDay(new Date(state.plantingTime));
+    const diffDays = getLocalDayDiff(plantingDay, targetDay);
+    if(diffDays < 0 || diffDays > CALCULATION_LOOKBACK_DAYS) return;
+    map.set(key, {
+      date:plantingDay,
+      eventId:state.plantingEventId,
+      plantingCount:state.plantingCount
+    });
+  });
+  return map;
+}
+
+function getHarvestAvailabilityStateFromCurrentPalletLifecycle(referenceDay){
+  const lifecycleState = ensureCurrentPalletLifecycleState();
+  const cycleRecordedSet = new Set(lifecycleState.stateByPallet.keys());
+  const unavailableSet = new Set();
+  const unplantedSet = new Set();
+  const plantingLockedSet = new Set();
+  const replantingInfoByPallet = new Map();
+
+  lifecycleState.stateByPallet.forEach((state, key) => {
+    if(state.plantingTime === null){
+      unavailableSet.add(key);
+      unplantedSet.add(key);
+      return;
+    }
+    const plantingDay = startOfLocalDay(new Date(state.plantingTime));
+    const ageDays = getLocalDayDiff(plantingDay, referenceDay);
+    const info = {
+      eventId:state.plantingEventId,
+      harvestRecordId:state.harvestRecordId,
+      plantingDay,
+      ageDays,
+      remainingLockDays:Math.max(0, HARVEST_SELECTION_PLANTING_LOCK_DAYS - ageDays),
+      isSelectionLocked:ageDays < HARVEST_SELECTION_PLANTING_LOCK_DAYS
+    };
+    replantingInfoByPallet.set(key, info);
+    if(info.isSelectionLocked){
+      unavailableSet.add(key);
+      plantingLockedSet.add(key);
+    }
+  });
+
+  return {
+    referenceDay,
+    cycleRecordedSet,
+    unavailableSet,
+    unplantedSet,
+    plantingLockedSet,
+    replantingInfoByPallet
+  };
+}
+
+function getHarvestAvailabilityStateFromLifecycleRecords(
+  sourceRecords,
+  referenceDay,
+  sourcePlantingEvents = plantingEvents
+){
+  const latestHarvestInfo = getLatestFullHarvestInfoByPallet(sourceRecords, referenceDay);
+  const cycleRecordedSet = new Set(latestHarvestInfo.keys());
+  const replantingInfoByPallet = getLatestReplantingInfoByPalletFromRecords(
+    sourceRecords,
+    referenceDay,
+    sourcePlantingEvents,
+    latestHarvestInfo
+  );
+  const unavailableSet = new Set(cycleRecordedSet);
+  const unplantedSet = new Set();
+  const plantingLockedSet = new Set();
+  replantingInfoByPallet.forEach((info, key) => {
+    if(info.isSelectionLocked){
+      plantingLockedSet.add(key);
+    }else{
+      unavailableSet.delete(key);
+    }
+  });
+  cycleRecordedSet.forEach(key => {
+    if(!replantingInfoByPallet.has(key)) unplantedSet.add(key);
+  });
+  return {
+    referenceDay,
+    cycleRecordedSet,
+    unavailableSet,
+    unplantedSet,
+    plantingLockedSet,
+    replantingInfoByPallet
+  };
+}
+
 function getFullHarvestRecordsWithinPlantingLock(referenceDay, sourceRecords){
   const earliestDay = addDays(referenceDay, -(HARVEST_SELECTION_PLANTING_LOCK_DAYS - 1));
   const earliestTime = earliestDay.getTime();
@@ -807,17 +1199,19 @@ function getHarvestAvailabilityState(referenceDate = new Date(), sourceRecords =
   }
   if(sourceCache.has(cacheKey)) return sourceCache.get(cacheKey);
 
-  const recentRecords = getRecentHarvestRecordsByCount(
-    referenceDay,
-    RECORDED_LOOKBACK_COUNT,
-    cacheableSourceRecords
-  );
-  const state = getHarvestAvailabilityStateFromRecords(
-    recentRecords,
-    referenceDay,
-    plantingEvents,
-    cacheableSourceRecords
-  );
+  const lifecycleState = cacheableSourceRecords === records
+    ? ensureCurrentPalletLifecycleState()
+    : null;
+  const canUseCurrentState = lifecycleState
+    && (!Number.isFinite(lifecycleState.latestLifecycleTime)
+      || referenceDay.getTime() >= lifecycleState.latestLifecycleTime);
+  const state = canUseCurrentState
+    ? getHarvestAvailabilityStateFromCurrentPalletLifecycle(referenceDay)
+    : getHarvestAvailabilityStateFromLifecycleRecords(
+        cacheableSourceRecords,
+        referenceDay,
+        plantingEvents
+      );
   sourceCache.set(cacheKey, state);
   if(sourceCache.size > 16){
     sourceCache.delete(sourceCache.keys().next().value);
@@ -2547,20 +2941,25 @@ function calculateHarvestSelectionFromRecords(options = {}){
       ? options.additionalExcludedPalletKeys
       : []
   );
+  const currentAvailabilityState = sourceRecords === records
+    ? getHarvestAvailabilityState(referenceDate, sourceRecords)
+    : null;
   const buildProgressRecordedSet = harvestRecords => {
     const set = getRecordedPalletSetFromRecords(harvestRecords);
     additionalExcludedSet.forEach(key => set.add(key));
     return set;
   };
   const buildSelectionUnavailableSet = harvestRecords => {
-    const state = getHarvestAvailabilityStateFromRecords(
-      harvestRecords,
-      referenceDate,
-      plantingEvents,
-      sourceRecords
-    );
-    additionalExcludedSet.forEach(key => state.unavailableSet.add(key));
-    return state.unavailableSet;
+    const unavailableSet = currentAvailabilityState
+      ? new Set(currentAvailabilityState.unavailableSet)
+      : getHarvestAvailabilityStateFromRecords(
+          harvestRecords,
+          referenceDate,
+          plantingEvents,
+          sourceRecords
+        ).unavailableSet;
+    additionalExcludedSet.forEach(key => unavailableSet.add(key));
+    return unavailableSet;
   };
   let recentRecords = getRecentHarvestRecordsByCount(referenceDate, RECORDED_LOOKBACK_COUNT, sourceRecords);
   let progressRecordedSet = buildProgressRecordedSet(recentRecords);

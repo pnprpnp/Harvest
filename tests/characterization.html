@@ -459,6 +459,8 @@
         "getHarvestAvailabilityStateFromRecords",
         "getHarvestAvailabilityState",
         "invalidateHarvestAvailabilityStateCache",
+        "buildCurrentPalletLifecycleState",
+        "ensureCurrentPalletLifecycleState",
         "getReplantedPalletSetFromRecords",
         "getHarvestedPalletSetFromRecords",
         "getHarvestedPalletSet",
@@ -1810,6 +1812,22 @@
             const cacheReused = cachedAvailabilityState === getHarvestAvailabilityState(day10);
             invalidateHarvestAvailabilityStateCache();
             const cacheRebuilt = cachedAvailabilityState !== getHarvestAvailabilityState(day10);
+            const originalGetLatestFullHarvestInfoByPallet = getLatestFullHarvestInfoByPallet;
+            let currentStateHistoryScanCalls = 0;
+            try{
+              getLatestFullHarvestInfoByPallet = (...args) => {
+                currentStateHistoryScanCalls++;
+                return originalGetLatestFullHarvestInfoByPallet(...args);
+              };
+              invalidateHarvestAvailabilityStateCache();
+              getHarvestAvailabilityState(allUnlockedDay);
+              getHarvestAvailabilityState(allUnlockedDay);
+            }finally{
+              getLatestFullHarvestInfoByPallet = originalGetLatestFullHarvestInfoByPallet;
+            }
+            const storedLifecycleState = JSON.parse(
+              localStorage.getItem(getActivePalletLifecycleStateStorageKey()) || "null"
+            );
             const automatic = calculateHarvestSelectionFromRecords({
               referenceDate:day10,
               partialTargetDate:day10,
@@ -1870,6 +1888,8 @@
               unavailableAllUnlocked,
               cacheReused,
               cacheRebuilt,
+              currentStateHistoryScanCalls,
+              storedLifecycleStateVersion:storedLifecycleState?.version || null,
               automaticStart:automatic?.palletKeys?.[0] || "",
               automaticCursor:automatic?.startCursorKey || "",
               manualSelectableSameDay,
@@ -1889,6 +1909,8 @@
             unavailableAllUnlocked:[],
             cacheReused:true,
             cacheRebuilt:true,
+            currentStateHistoryScanCalls:0,
+            storedLifecycleStateVersion:1,
             automaticStart:"2-A-4",
             automaticCursor:"2-A-4",
             manualSelectableSameDay:false,
@@ -1972,8 +1994,8 @@
           app.invalidatePlantingEventStateCache();
           assertEqual(
             app.getHarvestedPalletSet(new Date(2026, 7, 20)).has("2-A-1"),
-            false,
-            "定植後に再収穫され直近7件から外れた場所へ古い10日ロックが残りました"
+            true,
+            "定植後に再収穫した未定植場所が直近7件から外れただけで選択可能になりました"
           );
         }finally{
           replaceAppHistory(app, previousRecords, previousEvents);
@@ -3434,7 +3456,9 @@
               recordsStorageSeparated: getActiveRecordsStorageKey() === WORKER_RECORDS_KEY
                 && getActiveRecordsStorageKey() !== RECORDS_KEY,
               plantingStorageSeparated: getActivePlantingEventsStorageKey() === WORKER_PLANTING_EVENTS_KEY
-                && getActivePlantingEventsStorageKey() !== PLANTING_EVENTS_KEY
+                && getActivePlantingEventsStorageKey() !== PLANTING_EVENTS_KEY,
+              lifecycleStorageSeparated: getActivePalletLifecycleStateStorageKey() === WORKER_PALLET_LIFECYCLE_STATE_KEY
+                && getActivePalletLifecycleStateStorageKey() !== PALLET_LIFECYCLE_STATE_KEY
             };
           })()`));
           assertDeepEqual(state, {
@@ -3450,7 +3474,8 @@
             staleAdminUnlockIgnored: true,
             dashboardPreloadRemoved: true,
             recordsStorageSeparated: true,
-            plantingStorageSeparated: true
+            plantingStorageSeparated: true,
+            lifecycleStorageSeparated: true
           }, "作業者モードの表示・権限・保存領域が正しくありません");
         }finally{
           app.eval(`
@@ -9953,6 +9978,7 @@
           plantingEventStateCacheKey = "test";
           harvestAvailabilityStateCache.set(records, new Map([["test", {}]]));
           harvestAvailabilityStateCachePlantingEvents = [];
+          currentPalletLifecycleState = {};
           dashboardHarvestForecastModelCache = {};
           dashboardSeedlingStatusModelCache = {};
           dashboardPastCalendarItemsByDateCache = {};
@@ -9969,6 +9995,7 @@
           plantingKey: plantingEventStateCacheKey,
           harvestAvailability: harvestAvailabilityStateCache.has(records),
           harvestAvailabilityEventsCurrent: harvestAvailabilityStateCachePlantingEvents === plantingEvents,
+          currentPalletLifecycle: currentPalletLifecycleState,
           forecast: dashboardHarvestForecastModelCache,
           seedlings: dashboardSeedlingStatusModelCache,
           calendar: dashboardPastCalendarItemsByDateCache,
@@ -9984,6 +10011,7 @@
           plantingKey: "",
           harvestAvailability: false,
           harvestAvailabilityEventsCurrent: true,
+          currentPalletLifecycle: null,
           forecast: null,
           seedlings: null,
           calendar: null,
@@ -10024,7 +10052,7 @@
           mobileDashboard: { hash: "bbc492bb", elements: 2321, visible: 104, viewport: "390x844" },
           mobileDashboardRecord: { hash: "2ccb6fb0", elements: 2404, visible: 168, viewport: "390x844" },
           mobileDashboardResultsGraph: { hash: "53b9ea06", elements: 2419, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "50d74359", elements: 2419, visible: 284, viewport: "390x844" },
+          mobileMenu: { hash: "465afd6d", elements: 2419, visible: 284, viewport: "390x844" },
           mobileSettings: { hash: "02b2921e", elements: 2419, visible: 180, viewport: "390x844" },
           mobileMonitor: { hash: "234ce161", elements: 2419, visible: 101, viewport: "390x844" },
           wideForecast: { hash: "ea374757", elements: 2419, visible: 606, viewport: "1024x900" },

@@ -734,7 +734,8 @@ function getBackupImportRollbackStorageKeys(){
     getActiveGoogleSheetSyncConflictsStorageKey(),
     getActivePlantingEventSyncStatusStorageKey(),
     RECORD_EXPORT_STATUS_KEY,
-    getActiveRecordTrashStorageKey()
+    getActiveRecordTrashStorageKey(),
+    getActivePalletLifecycleStateStorageKey()
   ];
 }
 

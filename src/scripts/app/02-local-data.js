@@ -1063,6 +1063,7 @@ function invalidatePlantingEventStateCache(){
   plantingEventStateCacheKey = "";
   plantingDateByPalletCache.clear();
   plantingStateByPalletCache.clear();
+  invalidateCurrentPalletLifecycleState();
   invalidateHarvestAvailabilityStateCache();
   invalidatePlantingAllowedPalletSetCache();
 }
@@ -1423,6 +1424,7 @@ function invalidateRecordDerivedCaches(options = {}){
 
 function completeRecordDataMutation(options = {}){
   invalidateRecordDerivedCaches(options);
+  rebuildCurrentPalletLifecycleState({ persist: true });
   scheduleWorkflowGuideUpdate();
   if(typeof renderSeedlingHouseUi === "function" && document.getElementById("seedlingHouseOpenBtn")){
     renderSeedlingHouseUi();

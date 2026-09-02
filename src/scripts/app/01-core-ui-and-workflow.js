@@ -22,6 +22,7 @@ const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v
 const GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestForecastGoogleSheetSyncConflicts_v1";
 const GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS = 2000;
 const RECORD_TRASH_KEY = "harvestForecastRecordTrash_v1";
+const PALLET_LIFECYCLE_STATE_KEY = "harvestnaviPalletLifecycleState_v1";
 const RECORD_EXPORT_STATUS_KEY = "harvestForecastRecordExportStatus_v1";
 const DASHBOARD_FILTER_KEY = "harvestForecastDashboardFilter_v1";
 const PROTECTED_ACCESS_AUTH_KEY = "harvestForecastProtectedAccessAuth_v1";
@@ -39,6 +40,7 @@ const WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestnaviWorkerGoogleSheetSyncSta
 const WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestnaviWorkerGoogleSheetSyncRevision_v1";
 const WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestnaviWorkerGoogleSheetSyncConflicts_v1";
 const WORKER_RECORD_TRASH_KEY = "harvestnaviWorkerRecordTrash_v1";
+const WORKER_PALLET_LIFECYCLE_STATE_KEY = "harvestnaviWorkerPalletLifecycleState_v1";
 const RECORD_AVAILABILITY_CHECK_AT_KEY = "harvestnaviRecordAvailabilityCheckAt_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
@@ -188,6 +190,7 @@ function getActiveGoogleSheetSyncStatusStorageKey(){ return getRoleScopedStorage
 function getActiveGoogleSheetSyncRevisionStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_REVISION_KEY, WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY); }
 function getActiveGoogleSheetSyncConflictsStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_CONFLICTS_KEY, WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY); }
 function getActiveRecordTrashStorageKey(){ return getRoleScopedStorageKey(RECORD_TRASH_KEY, WORKER_RECORD_TRASH_KEY); }
+function getActivePalletLifecycleStateStorageKey(){ return getRoleScopedStorageKey(PALLET_LIFECYCLE_STATE_KEY, WORKER_PALLET_LIFECYCLE_STATE_KEY); }
 
 const defaultSettings = {
   defaultLossRate: 0,
@@ -326,6 +329,10 @@ let plantingDateByPalletCache = new Map();
 let plantingStateByPalletCache = new Map();
 let harvestAvailabilityStateCache = new WeakMap();
 let harvestAvailabilityStateCachePlantingEvents = plantingEvents;
+let currentPalletLifecycleState = null;
+let currentPalletLifecycleStateRecords = records;
+let currentPalletLifecycleStatePlantingEvents = plantingEvents;
+let currentPalletLifecycleStateStorageLoadPending = true;
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
 let recordHistoryCache = null;
