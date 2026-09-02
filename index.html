@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260902-pallet-lifecycle-state">
+<meta name="harvestnavi-version" content="20260902-gray-unharvested-planting-age">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7617,6 +7617,7 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
 .plantingAgeMapLegendItem,.plantingAgeMapBedSummaryItem{display:inline-flex;align-items:center;gap:5px;}
 .plantingAgeMapSwatch{width:11px;height:11px;flex:0 0 11px;box-sizing:border-box;border:1px solid var(--planting-age-border);border-radius:3px;background:var(--planting-age-color);}
 .plantingAgeMapSwatch.is-unknown{border-color:#64748b;background:#94a3b8;}
+.plantingAgeMapSwatch.is-not-harvested{border-color:#9ca3af;background:#e5e7eb;}
 .plantingAgeMapBeds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
 .plantingAgeMapBed.bed.bedCollapsed.simulationBedOverview{height:auto;min-height:192px;padding:6px;cursor:default;}
 .plantingAgeMapBed .dashboardSeedlingBedMap{width:46px;margin-bottom:4px;}
@@ -8548,6 +8549,10 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
     transparent 1px,
     transparent 3px
   );
+}
+.plantingAgeMapBed.simulationBedOverview .simulationBedMapCell.is-planting-age-not-harvested{
+  border-color:#9ca3af;
+  background:#e5e7eb;
 }
 .recordBedOverview .simulationBedMapCell.is-planting-selectable{
   background:#fef08a;
@@ -12540,6 +12545,14 @@ html[data-theme="dark"] .monitorSendStatusBadge.is-waiting{
 html[data-theme="dark"] .monitorSendActionBar{
   background:rgba(21,26,34,.96);
   box-shadow:0 -4px 16px rgba(0,0,0,.22);
+}
+html[data-theme="dark"] .plantingAgeMapSwatch.is-not-harvested{
+  border-color:#64748b;
+  background:#475569;
+}
+html[data-theme="dark"] .plantingAgeMapBed.simulationBedOverview .simulationBedMapCell.is-planting-age-not-harvested.is-harvest-available:not(.is-selected):not(.is-partial-harvest):not(.is-progress-completed){
+  border-color:#64748b;
+  background:#475569;
 }
 
 @media(max-width:430px){
@@ -29326,7 +29339,12 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
       ${getPlantingAgeMapGroupSwatchHtml(group)}
       ${getPlantingAgeMapGroupLabel(group.ageDays)}
     </span>
-  `).join("");
+  `).join("") + `
+    <span class="plantingAgeMapLegendItem">
+      <span class="plantingAgeMapSwatch is-not-harvested"></span>
+      今回収穫しない
+    </span>
+  `;
   container.appendChild(legend);
 
   const beds = document.createElement("div");
@@ -29343,7 +29361,8 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
 
     appendBedOverviewMap(bed, building, bedName, {
       selectedSet: new Set(bedItems.map(item => item.key)),
-      plantingAgeGroupByKey: model.groupByPalletKey
+      plantingAgeGroupByKey: model.groupByPalletKey,
+      markUnselectedAsNotHarvested: true
     });
 
     const bedGroups = new Map();
@@ -30681,6 +30700,9 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     const isSelected = selectedSet.has(key);
     const isUnavailable = recordedSet.has(key);
     classes.push(isUnavailable ? "is-harvest-unavailable" : "is-harvest-available");
+    if(options.markUnselectedAsNotHarvested && !isSelected){
+      classes.push("is-planting-age-not-harvested");
+    }
     if(unplantedSet.has(key)) classes.push("is-unplanted");
     if(isSelected){
       classes.push("is-selected");
@@ -30725,7 +30747,7 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
             ? `収穫不可能、定植から${plantingInfo.ageDays}日、あと${plantingInfo.remainingLockDays}日`
             : "収穫不可能");
     }else if(!isSelected && partialHarvestCount <= 0 && !progressCompletedSet.has(key)){
-      stateText = "収穫可能";
+      stateText = options.markUnselectedAsNotHarvested ? "今回収穫しない" : "収穫可能";
     }
   }
   if(sectionStart) classes.push("is-section-start");

@@ -207,7 +207,12 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
       ${getPlantingAgeMapGroupSwatchHtml(group)}
       ${getPlantingAgeMapGroupLabel(group.ageDays)}
     </span>
-  `).join("");
+  `).join("") + `
+    <span class="plantingAgeMapLegendItem">
+      <span class="plantingAgeMapSwatch is-not-harvested"></span>
+      今回収穫しない
+    </span>
+  `;
   container.appendChild(legend);
 
   const beds = document.createElement("div");
@@ -224,7 +229,8 @@ function renderPlantingAgeDetailMap(container, items, building = currentBuilding
 
     appendBedOverviewMap(bed, building, bedName, {
       selectedSet: new Set(bedItems.map(item => item.key)),
-      plantingAgeGroupByKey: model.groupByPalletKey
+      plantingAgeGroupByKey: model.groupByPalletKey,
+      markUnselectedAsNotHarvested: true
     });
 
     const bedGroups = new Map();
@@ -1562,6 +1568,9 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
     const isSelected = selectedSet.has(key);
     const isUnavailable = recordedSet.has(key);
     classes.push(isUnavailable ? "is-harvest-unavailable" : "is-harvest-available");
+    if(options.markUnselectedAsNotHarvested && !isSelected){
+      classes.push("is-planting-age-not-harvested");
+    }
     if(unplantedSet.has(key)) classes.push("is-unplanted");
     if(isSelected){
       classes.push("is-selected");
@@ -1606,7 +1615,7 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
             ? `収穫不可能、定植から${plantingInfo.ageDays}日、あと${plantingInfo.remainingLockDays}日`
             : "収穫不可能");
     }else if(!isSelected && partialHarvestCount <= 0 && !progressCompletedSet.has(key)){
-      stateText = "収穫可能";
+      stateText = options.markUnselectedAsNotHarvested ? "今回収穫しない" : "収穫可能";
     }
   }
   if(sectionStart) classes.push("is-section-start");
