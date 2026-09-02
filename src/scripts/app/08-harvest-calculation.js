@@ -1434,24 +1434,56 @@ function getBedSummaryCounts(building, bed, options = {}){
   const selectedSet = options.selectedSet || new Set(harvestFillKeys || []);
   const recordedSet = options.recordedSet || new Set();
   const allowedSet = options.allowedSet || null;
+  const calculateHarvestableCases = !!options.calculateHarvestableCases;
+  const targetDate = calculateHarvestableCases
+    ? (options.targetDate || getHarvestTargetDate())
+    : null;
+  const partialHarvestSourceRecords = calculateHarvestableCases
+    ? (Array.isArray(options.partialHarvestSourceRecords) ? options.partialHarvestSourceRecords : records)
+    : [];
+  const hasPartialHarvestRecords = calculateHarvestableCases && !!options.hasPartialHarvestRecords;
   let selected = 0;
   let recorded = 0;
   let selectable = 0;
   let allowed = 0;
   let unavailable = 0;
+  let harvestableHeads = 0;
 
   for(let number = 1; number <= PALLETS_PER_BED; number++){
     const key = getPalletKey(building, bed, number);
     if(selectedSet.has(key)) selected++;
     if(recordedSet.has(key)) recorded++;
-    else selectable++;
+    else{
+      selectable++;
+      if(calculateHarvestableCases){
+        const predictedHeads = getPredictedHarvestForBed(
+          building,
+          bed,
+          number,
+          targetDate,
+          { plantingStateByPallet:options.plantingStateByPallet }
+        );
+        const partialHarvestCount = hasPartialHarvestRecords
+          ? getPartialHarvestCountForPallet(
+              building,
+              bed,
+              number,
+              targetDate,
+              partialHarvestSourceRecords,
+              { lookup:options.partialHarvestLookup }
+            )
+          : 0;
+        harvestableHeads += Math.max(0, predictedHeads - partialHarvestCount);
+      }
+    }
     if(allowedSet){
       if(allowedSet.has(key)) allowed++;
       else unavailable++;
     }
   }
 
-  return { selected, recorded, selectable, allowed, unavailable };
+  const harvestableCases = Math.floor(((harvestableHeads / CASE_SIZE) * 10) + 1e-9) / 10;
+  return { selected, recorded, selectable, allowed, unavailable, harvestableCases };
 }
 
 function getSelectedNumbersForBed(building, bed, selectedSet = new Set(harvestFillKeys || [])){
@@ -2412,11 +2444,14 @@ function getConfiguredHarvestPlantCountForPallet(bed, number){
   return Number(number) <= profile.frontCount ? profile.front : profile.back;
 }
 
-function getHarvestPlantCountForPallet(building, bed, number, targetDate = null){
+function getHarvestPlantCountForPallet(building, bed, number, targetDate = null, options = {}){
   const key = getPalletKey(Number(building), bed, Number(number));
   if(isValidPalletKeyString(key)){
     const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
-    const plantingState = getLatestPlantingStateByPallet(targetDay).get(key);
+    const plantingStateByPallet = options.plantingStateByPallet instanceof Map
+      ? options.plantingStateByPallet
+      : getLatestPlantingStateByPallet(targetDay);
+    const plantingState = plantingStateByPallet.get(key);
     if(ALLOWED_YIELDS.includes(Number(plantingState?.plantingCount))){
       return Number(plantingState.plantingCount);
     }
@@ -2457,8 +2492,8 @@ function getAppliedLossRateForBed(bed){
   return normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
 }
 
-function getPredictedHarvestForBed(building, bed, number, targetDate = null){
-  const plantCount = getHarvestPlantCountForPallet(building, bed, number, targetDate);
+function getPredictedHarvestForBed(building, bed, number, targetDate = null, options = {}){
+  const plantCount = getHarvestPlantCountForPallet(building, bed, number, targetDate, options);
   const lossRate = getAppliedLossRateForBed(bed);
   return plantCount * (100 - lossRate) / 100;
 }

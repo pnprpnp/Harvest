@@ -488,11 +488,21 @@ function drawBeds(){
   const partialHarvestLookup = hasPartialHarvestRecords
     ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
     : null;
+  const plantingStateByPallet = getLatestPlantingStateByPallet(targetDate);
 
   bedMap.forEach(b => {
     const bed = document.createElement("div");
     const isProgressCompleted = isHarvestProgressCompletedBed(currentBuilding, b);
-    const summaryCounts = getBedSummaryCounts(currentBuilding, b, { selectedSet, recordedSet });
+    const summaryCounts = getBedSummaryCounts(currentBuilding, b, {
+      selectedSet,
+      recordedSet,
+      calculateHarvestableCases:true,
+      targetDate,
+      plantingStateByPallet,
+      hasPartialHarvestRecords,
+      partialHarvestSourceRecords,
+      partialHarvestLookup
+    });
     const collapsedStateClass = isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)
       ? " bedCollapsedFull"
       : "";
@@ -523,14 +533,14 @@ function drawBeds(){
     counts.innerHTML = summaryCounts.selectable > 0
       ? `
         <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-        <span class="simulationBedOverviewCountSelectable">選択可 ${summaryCounts.selectable}</span>
+        <span class="simulationBedOverviewCountHarvestable">収穫可 ${formatHarvestProgressCases(summaryCounts.harvestableCases)}</span>
       `
       : "";
     bed.appendChild(counts);
     attachBedDetailOpenTapHandler(bed, "forecast", currentBuilding, b);
     bed.setAttribute(
       "aria-label",
-      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、選択可能 ${summaryCounts.selectable}パレット。タップで拡大してパレットを選択`
+      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、収穫可能 ${formatHarvestProgressCases(summaryCounts.harvestableCases)}ケース。タップで拡大してパレットを選択`
     );
     container.appendChild(bed);
   });

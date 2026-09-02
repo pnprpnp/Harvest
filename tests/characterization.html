@@ -5306,16 +5306,28 @@
         }
       });
 
-      await runTest("シミュの簡易ベッド表示は選択可能枚数を表示する", () => {
+      await runTest("シミュの簡易ベッド表示は収穫可能ケース数を軽量に表示する", () => {
         const counts = comparable(app.eval(`(() => {
           const previous = {
             building: currentBuilding,
             keys: [...harvestFillKeys],
-            getAvailability: getHarvestAvailabilityState
+            records,
+            getAvailability: getHarvestAvailabilityState,
+            getPlantingState: getLatestPlantingStateByPallet,
+            getConfiguredPlantCount: getConfiguredHarvestPlantCountForPallet,
+            getLossRate: getAppliedLossRateForBed
           };
           try{
             currentBuilding = 2;
             harvestFillKeys = [];
+            records = [];
+            let plantingStateLookupCount = 0;
+            getLatestPlantingStateByPallet = () => {
+              plantingStateLookupCount++;
+              return new Map();
+            };
+            getConfiguredHarvestPlantCountForPallet = () => 20;
+            getAppliedLossRateForBed = () => 0;
             const buildAvailabilityState = count => ({
               unavailableSet:new Set(Array.from({ length: count }, (_, index) => getPalletKey(2, "F", index + 1))),
               unplantedSet:new Set(),
@@ -5324,6 +5336,7 @@
             });
             getHarvestAvailabilityState = () => buildAvailabilityState(5);
             drawBeds();
+            const plantingStateLookupCountAfterFirstDraw = plantingStateLookupCount;
             const firstBed = document.querySelector("#beds .simulationBedOverview");
             const countText = firstBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
             const hasTapHandler = typeof firstBed?.onclick === "function" && !firstBed?.onpointerdown;
@@ -5338,8 +5351,10 @@
             const unavailableCountText = unavailableBed?.querySelector(".simulationBedOverviewCounts")?.textContent.replace(/\\s+/g, " ").trim() || "";
             return {
               countText,
-              hasSelectable: countText.includes("選択可 73"),
+              hasHarvestableCases: countText.includes("収穫可 121.6"),
+              hidesSelectableCount: !countText.includes("選択可"),
               hidesRecordedCount: !countText.includes("記録済"),
+              plantingStateLookupCountAfterFirstDraw,
               hasTapHandler,
               opensDetailOnTap,
               unavailableCountText,
@@ -5349,20 +5364,26 @@
           }finally{
             currentBuilding = previous.building;
             harvestFillKeys = previous.keys;
+            records = previous.records;
             getHarvestAvailabilityState = previous.getAvailability;
+            getLatestPlantingStateByPallet = previous.getPlantingState;
+            getConfiguredHarvestPlantCountForPallet = previous.getConfiguredPlantCount;
+            getAppliedLossRateForBed = previous.getLossRate;
             drawBeds();
           }
         })()`));
         assertDeepEqual(counts, {
-          countText: "選択 0 選択可 73",
-          hasSelectable: true,
+          countText: "選択 0 収穫可 121.6",
+          hasHarvestableCases: true,
+          hidesSelectableCount: true,
           hidesRecordedCount: true,
+          plantingStateLookupCountAfterFirstDraw: 1,
           hasTapHandler: true,
           opensDetailOnTap: true,
           unavailableCountText: "",
           hidesSelectedWhenUnavailable: true,
-          label: "2号棟 Fベッド。選択 0パレット、選択可能 73パレット。タップで拡大してパレットを選択"
-        }, "シミュの簡易ベッド表示が選択可能枚数になっていません");
+          label: "2号棟 Fベッド。選択 0パレット、収穫可能 121.6ケース。タップで拡大してパレットを選択"
+        }, "シミュの簡易ベッド表示が収穫可能ケース数になっていません");
       });
 
       await runTest("ベッド詳細は短い見出しと一括選択ボタンを表示する", () => {
@@ -10056,18 +10077,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "c9617923", elements: 2303, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "85bcc1eb", elements: 2372, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "60188f24", elements: 2372, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "d98d8374", elements: 2304, visible: 116, viewport: "390x844" },
-          mobileDashboard: { hash: "bbc492bb", elements: 2321, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "2ccb6fb0", elements: 2404, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "53b9ea06", elements: 2419, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "465afd6d", elements: 2419, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "02b2921e", elements: 2419, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "234ce161", elements: 2419, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "ea374757", elements: 2419, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "e53312ed", elements: 2419, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "ff5721c5", elements: 2303, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "ce07da0d", elements: 2372, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "f86cac86", elements: 2372, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "0b90f3da", elements: 2304, visible: 116, viewport: "390x844" },
+          mobileDashboard: { hash: "c0bba309", elements: 2321, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "fbf08812", elements: 2404, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "db613a88", elements: 2419, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "709a4a1f", elements: 2419, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "a255ccec", elements: 2419, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "45f8c94b", elements: 2419, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "ee3daf01", elements: 2419, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "fe8a0099", elements: 2419, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
