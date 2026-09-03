@@ -1958,10 +1958,6 @@ function applyForecastBedDetailBulkSelection(){
   sortHarvestFillKeys();
   refreshAfterHarvestSelectionChanged({ currentHarvestTotal:runningHarvestTotal });
   refreshBedDetailWindow();
-  if(model.label !== "全選択"){
-    const actionText = model.direction === "back" ? "78番から選択" : "1番から選択";
-    showToast(`${building}号棟 ${bed}ベッドを${actionText}しました`);
-  }
 }
 
 function openBedDetailFromOverview(context, building, bed){

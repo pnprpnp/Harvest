@@ -1936,7 +1936,7 @@ function renderRecordHarvestWorkflowUi(){
   const locationSummary = document.getElementById("recordHarvestLocationSummary");
   const qualitySection = document.getElementById("recordQualityMemoSection");
   const confirmSection = document.getElementById("recordHarvestConfirmSection");
-  const legacyActionRow = document.getElementById("recordFormActionRow");
+  const plantingActionRow = document.getElementById("recordFormActionRow");
   const modeStatus = document.getElementById("recordModeStatus");
   const todayRecordedStatus = document.getElementById("recordTodayRecordedStatus");
   const isRecordedToday = !!todayRecordedStatus && !todayRecordedStatus.hidden;
@@ -1960,7 +1960,7 @@ function renderRecordHarvestWorkflowUi(){
   if(locationSummary) locationSummary.hidden = !isHarvestMode;
   if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
-  if(legacyActionRow) legacyActionRow.hidden = isHarvestMode;
+  if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
   if(stage === "confirm") renderRecordHarvestConfirmation();
   updateRecordPastDateNotice();
   updateRecordHarvestLocationSummary();
@@ -2173,6 +2173,9 @@ function refreshRecordModeUi(){
     actionRow.hidden = !isPlantingMode;
     actionRow.classList.toggle("isEditing", isEditing);
   }
+  if(button) button.textContent = editingPlantingEventId
+    ? "苗植え記録を更新して送信する"
+    : "苗植え場所を記録して送信する";
   if(plantingActionCard) plantingActionCard.hidden = !!editingPlantingEventId;
 
   if(isPlantingMode){
@@ -2181,9 +2184,6 @@ function refreshRecordModeUi(){
           ? "長期履歴の繰越基準を保つため、日付以外を編集できます。"
           : "保存済みの苗植え記録を編集中です。")
       : "棟を選び、場所・植え付け数・品質の順に設定してください。";
-    if(button) button.textContent = editingPlantingEventId
-      ? "苗植え記録を更新して送信する"
-      : "苗植え場所を記録して送信する";
     if(plantingInput) plantingInput.placeholder = "表で実際に苗植えした場所を選ぶと入ります";
     if(harvestStageSection) harvestStageSection.hidden = true;
     if(plantingStageSection) plantingStageSection.hidden = false;
@@ -2196,7 +2196,6 @@ function refreshRecordModeUi(){
     if(notice) notice.textContent = editingHarvestRecordId
       ? "保存済みの収穫記録を編集中です。この記録と、それ以降の記録を一時的に計算対象から外しています。"
       : "実際の収穫場所に調整してください。";
-    if(button) button.textContent = editingHarvestRecordId ? "収穫記録を更新する" : "収穫場所を記録する";
     if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
