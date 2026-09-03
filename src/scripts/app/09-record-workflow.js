@@ -1573,7 +1573,7 @@ function getActivePlantingRecord(){
   return getRecordById(activePlantingRecordId);
 }
 
-function getPlantingCandidateRecordIdSet(options = {}){
+function getPlantingResumeCandidateRecordIdSet(options = {}){
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
   const referenceDate = parseDateOnlyString(String(
     options.referenceDate || editingEvent?.plantingDate || ""
@@ -1587,12 +1587,12 @@ function getPlantingCandidateRecordIdSet(options = {}){
         return !!recordDate && recordDate.getTime() <= referenceDate.getTime();
       })
       .sort(compareRecordsByDateDesc)
-      .slice(0, PLANTING_CANDIDATE_RECORD_LIMIT)
+      .slice(0, PLANTING_RESUME_RECORD_LIMIT)
       .map(record => Number(record.id))
       .filter(Number.isFinite)
   );
 
-  // 過去の苗植え記録はその日以前の3件を参照し、既存の記録元も編集対象から外さない。
+  // 自動再開は直近3件に絞るが、選択可能な未定植場所にはこの上限を使わない。
   (editingEvent?.sourceAllocations || []).forEach(allocation => {
     const recordId = Number(allocation.harvestRecordId);
     if(Number.isFinite(recordId)) candidateIds.add(recordId);
@@ -1601,7 +1601,7 @@ function getPlantingCandidateRecordIdSet(options = {}){
 }
 
 function getLatestPendingPlantingRecord(){
-  const candidateIds = getPlantingCandidateRecordIdSet();
+  const candidateIds = getPlantingResumeCandidateRecordIdSet();
   const state = getPlantingEventStateIndex();
   return [...records]
     .filter(record => record?.type === "fullHarvest" && candidateIds.has(Number(record.id)))
@@ -1615,7 +1615,7 @@ function getLatestPendingPlantingRecord(){
 function shouldOfferPlantingRecordResume(record){
   if(!record || record.type !== "fullHarvest") return false;
   const state = getPlantingEventStateIndex();
-  return getPlantingCandidateRecordIdSet().has(Number(record.id))
+  return getPlantingResumeCandidateRecordIdSet().has(Number(record.id))
     && !state.noPlantingCompletedHarvestIds.has(Number(record.id))
     && getUnplantedPalletKeysForHarvest(record.id).length > 0;
 }
@@ -1656,12 +1656,7 @@ function getUnplantedPalletSet(options = {}){
   const state = options.excludeEventId
     ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
     : getPlantingEventStateIndex();
-  const candidateIds = getPlantingCandidateRecordIdSet();
-  const allowed = new Set();
-  candidateIds.forEach(recordId => {
-    (state.pendingByHarvestId.get(Number(recordId)) || new Set()).forEach(key => allowed.add(key));
-  });
-  return allowed;
+  return new Set(state.allowedPalletSet);
 }
 
 function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecord, options = {}){
@@ -1689,7 +1684,7 @@ function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecor
   );
   const missingLots = [];
 
-  getPlantingCandidateRecordIdSet({ referenceDate: options.plantingDate }).forEach(harvestRecordId => {
+  state.pendingByHarvestId.forEach((pendingKeys, harvestRecordId) => {
     const safeHarvestRecordId = Number(harvestRecordId);
     if(!Number.isFinite(safeHarvestRecordId)
       || noPlantingCompletedHarvestIds.has(safeHarvestRecordId)) return;
@@ -1698,7 +1693,7 @@ function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecor
     // 「以前」は収穫元の並び順ではなく日付で判定する。
     // 苗植え日と同じ日に収穫した未定植場所は警告対象にしない。
     if(!harvestDate || harvestDate.getTime() >= plantingDate.getTime()) return;
-    (state.pendingByHarvestId.get(safeHarvestRecordId) || new Set()).forEach(palletKey => {
+    pendingKeys.forEach(palletKey => {
       if(selectedLotKeys.has(getPlantingLotKey(safeHarvestRecordId, palletKey))) return;
       missingLots.push({ harvestRecordId: safeHarvestRecordId, palletKey });
     });
@@ -1743,16 +1738,13 @@ function invalidatePlantingAllowedPalletSetCache(){
 
 function getFastPlantingAllowedPalletSet(){
   const activeRecord = getActivePlantingRecord();
-  const allowed = new Set(harvestFillKeys || []);
-  getUnplantedPalletSet().forEach(key => allowed.add(key));
-  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
-  (editingEvent?.plantingPalletKeys || []).forEach(key => allowed.add(key));
   if(plantingAllowedPalletSetCache
     && Number(plantingAllowedPalletSetCacheRecordId) === Number(activeRecord?.id)
+    && plantingAllowedPalletSetCacheRecordCount === records.length
     && Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId)){
-    plantingAllowedPalletSetCache.forEach(key => allowed.add(key));
+    return plantingAllowedPalletSetCache;
   }
-  return allowed;
+  return getPlantingAllowedPalletSet();
 }
 
 function getPlantingAllowedPalletSet(options = {}){
@@ -1768,7 +1760,7 @@ function getPlantingAllowedPalletSet(options = {}){
     plantingAllowedPalletSetCacheRecordCount === records.length &&
     Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId)
   ){
-    return new Set(plantingAllowedPalletSetCache);
+    return plantingAllowedPalletSetCache;
   }
 
   const allowed = getUnplantedPalletSet({ excludeEventId: editingPlantingEventId });
@@ -1778,7 +1770,7 @@ function getPlantingAllowedPalletSet(options = {}){
   plantingAllowedPalletSetCacheRecordId = activeRecordId;
   plantingAllowedPalletSetCacheRecordCount = records.length;
   plantingAllowedPalletSetCacheEventId = editingPlantingEventId;
-  return allowed;
+  return plantingAllowedPalletSetCache;
 }
 
 function isPlantingSelectionAllowed(key, options = {}){

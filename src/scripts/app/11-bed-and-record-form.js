@@ -569,7 +569,7 @@ function toggleRecordPallet(building, bed, number){
   }
 
   if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key, { fast: true })){
-    showToast("苗植え場所は、今回収穫した場所か前回苗植えしなかった場所だけ選択できます");
+    showToast("苗植え場所は、今回収穫した場所か過去から残っている未定植場所だけ選択できます");
     return;
   }
 

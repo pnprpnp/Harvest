@@ -2067,7 +2067,7 @@ function applyRecordPalletDragChange(building, bed, number, mode){
   if(flowAssignmentChanged !== null) return flowAssignmentChanged;
 
   if(recordSelectionMode === "planting" && !isPlantingSelectionAllowed(key, { fast: true })){
-    showPalletDragToast("苗植え場所は、今回収穫した場所か前回苗植えしなかった場所だけ選択できます");
+    showPalletDragToast("苗植え場所は、今回収穫した場所か過去から残っている未定植場所だけ選択できます");
     return false;
   }
 

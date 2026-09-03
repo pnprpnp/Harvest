@@ -9287,6 +9287,97 @@
         }, "苗植え記録を棟ごとの工程で完了できません");
       });
 
+      await runTest("古い未定植パレットも選択でき、選択可能集合をタップ間で再利用する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            records,
+            events:plantingEvents,
+            mode:recordSelectionMode,
+            activeId:activePlantingRecordId,
+            editingId:editingPlantingEventId,
+            flowEnabled:recordPlantingFlowEnabled,
+            keys:[...harvestFillKeys],
+            toast:showToast
+          };
+          const harvestRecords = Array.from({ length:5 }, (_, index) => ({
+            palletNumberingVersion:2,
+            id:20000000002001 + index,
+            type:"fullHarvest",
+            date:"2026-08-0" + (index + 1),
+            cases:1,
+            palletRanges:["2-A-" + (index + 1) + "-" + (index + 1)],
+            plantingPending:true
+          }));
+          const plantedEvent = {
+            palletNumberingVersion:2,
+            eventId:20000000002101,
+            plantingDate:"2026-08-03",
+            sourceAllocations:[{
+              harvestRecordId:harvestRecords[1].id,
+              palletKeys:["2-A-2"]
+            }],
+            plantingPalletKeys:["2-A-2"],
+            plantingCountsByPallet:{"2-A-2":20},
+            actualSeedlingTrayCount:1,
+            actualTakenSeedlingCount:120,
+            actualPlantedSeedlingCount:20,
+            actualSeedlingCarryoverMode:"loss",
+            actualSeedlingLossRate:"0",
+            detailsUnknown:false
+          };
+          let warningText = "";
+          try{
+            records = harvestRecords;
+            plantingEvents = [normalizePlantingEvent(plantedEvent)];
+            recordSelectionMode = "planting";
+            activePlantingRecordId = harvestRecords[4].id;
+            editingPlantingEventId = null;
+            recordPlantingFlowEnabled = false;
+            harvestFillKeys = ["2-A-5"];
+            invalidatePlantingEventStateCache();
+
+            const firstAllowed = getPlantingAllowedPalletSet({ fast:true });
+            const secondAllowed = getPlantingAllowedPalletSet({ fast:true });
+            const warningLots = getUnselectedPreviousUnplantedPalletLots(
+              [{ harvestRecordId:harvestRecords[4].id, palletKeys:["2-A-5"] }],
+              harvestRecords[4],
+              { plantingDate:"2026-08-06" }
+            );
+            showToast = message => { warningText = message; };
+            toggleRecordPallet(8, "F", 78);
+            return {
+              oldestUnplantedAllowed:firstAllowed.has("2-A-1"),
+              plantedPalletBlocked:!firstAllowed.has("2-A-2"),
+              currentHarvestAllowed:firstAllowed.has("2-A-5"),
+              sameAllowedSetReused:firstAllowed === secondAllowed,
+              oldUnplantedWarningIncluded:warningLots.some(lot => (
+                Number(lot.harvestRecordId) === Number(harvestRecords[0].id)
+                && lot.palletKey === "2-A-1"
+              )),
+              warningText
+            };
+          }finally{
+            records = previous.records;
+            plantingEvents = previous.events;
+            recordSelectionMode = previous.mode;
+            activePlantingRecordId = previous.activeId;
+            editingPlantingEventId = previous.editingId;
+            recordPlantingFlowEnabled = previous.flowEnabled;
+            harvestFillKeys = previous.keys;
+            showToast = previous.toast;
+            invalidatePlantingEventStateCache();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          oldestUnplantedAllowed:true,
+          plantedPalletBlocked:true,
+          currentHarvestAllowed:true,
+          sameAllowedSetReused:true,
+          oldUnplantedWarningIncluded:true,
+          warningText:"苗植え場所は、今回収穫した場所か過去から残っている未定植場所だけ選択できます"
+        }, "直近3件より古い未定植場所の選択または選択可能集合の再利用ができません");
+      });
+
       await runTest("植え付け数を変えて選択済みパレットをタップすると上書きする", () => {
         const selectionState = comparable(app.eval(`(() => {
           const previous = {
