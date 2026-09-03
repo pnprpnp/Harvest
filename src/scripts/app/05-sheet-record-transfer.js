@@ -1774,7 +1774,7 @@ function askPlantingUnselectedWarningConfirm(unselectedLots = []){
 
   const detail = formatUnselectedPreviousUnplantedPalletLots(unselectedLots);
   const noticeText = [
-    "以前の未定植の場所が選択されていません。",
+    "現在も未定植の場所が選択されていません。",
     detail ? `\n未選択のパレット:\n${detail}` : ""
   ].join("");
 
@@ -1804,7 +1804,7 @@ function resolvePlantingUnselectedWarning(shouldSave){
   if(panel) panel.classList.remove("show");
   if(yesButton) yesButton.disabled = true;
   if(noButton) noButton.disabled = true;
-  if(message) message.textContent = "以前の未定植の場所が選択されていません。";
+  if(message) message.textContent = "現在も未定植の場所が選択されていません。";
 
   if(plantingUnselectedWarningResolver){
     plantingUnselectedWarningResolver(!!shouldSave);

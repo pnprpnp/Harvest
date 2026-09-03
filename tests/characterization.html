@@ -9378,6 +9378,99 @@
         }, "直近3件より古い未定植場所の選択または選択可能集合の再利用ができません");
       });
 
+      await runTest("後の収穫・定植で古い収穫回の未定植状態を残さない", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            records,
+            events:plantingEvents,
+            mode:recordSelectionMode,
+            activeId:activePlantingRecordId,
+            editingId:editingPlantingEventId,
+            keys:[...harvestFillKeys]
+          };
+          const oldHarvest = {
+            palletNumberingVersion:2,
+            id:20000000002201,
+            type:"fullHarvest",
+            date:"2026-03-01",
+            cases:1,
+            palletRanges:["2-A-1-1"],
+            plantingPending:true
+          };
+          const currentHarvest = {
+            ...oldHarvest,
+            id:20000000002202,
+            date:"2026-08-01",
+            plantingPending:false
+          };
+          const currentPlanting = normalizePlantingEvent({
+            palletNumberingVersion:2,
+            eventId:20000000002203,
+            plantingDate:"2026-08-02",
+            sourceAllocations:[{
+              harvestRecordId:currentHarvest.id,
+              palletKeys:["2-A-1"]
+            }],
+            plantingPalletKeys:["2-A-1"],
+            plantingCountsByPallet:{"2-A-1":20},
+            actualSeedlingTrayCount:1,
+            actualTakenSeedlingCount:120,
+            actualPlantedSeedlingCount:20,
+            actualSeedlingCarryoverMode:"loss",
+            actualSeedlingLossRate:"0",
+            detailsUnknown:false
+          });
+          try{
+            records = [currentHarvest, oldHarvest];
+            plantingEvents = [currentPlanting];
+            recordSelectionMode = "planting";
+            activePlantingRecordId = currentHarvest.id;
+            editingPlantingEventId = null;
+            harvestFillKeys = [];
+            invalidatePlantingEventStateCache();
+
+            const currentAllowed = getUnplantedPalletSet();
+            const oldPendingCount = getUnplantedPalletKeysForHarvest(oldHarvest.id).length;
+            const currentPendingCount = getUnplantedPalletKeysForHarvest(currentHarvest.id).length;
+
+            editingPlantingEventId = currentPlanting.eventId;
+            harvestFillKeys = ["2-A-1"];
+            invalidatePlantingAllowedPalletSetCache();
+            const editAllowed = getPlantingAllowedPalletSet({ fast:true });
+            const editWarningLots = getUnselectedPreviousUnplantedPalletLots(
+              currentPlanting.sourceAllocations,
+              currentHarvest,
+              {
+                excludeEventId:currentPlanting.eventId,
+                plantingDate:currentPlanting.plantingDate
+              }
+            );
+            return {
+              oldPendingCount,
+              currentPendingCount,
+              currentStateIsPlanted:!currentAllowed.has("2-A-1"),
+              editOriginalLocationAllowed:editAllowed.has("2-A-1"),
+              staleWarningCount:editWarningLots.length
+            };
+          }finally{
+            records = previous.records;
+            plantingEvents = previous.events;
+            recordSelectionMode = previous.mode;
+            activePlantingRecordId = previous.activeId;
+            editingPlantingEventId = previous.editingId;
+            harvestFillKeys = previous.keys;
+            invalidatePlantingEventStateCache();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          oldPendingCount:0,
+          currentPendingCount:0,
+          currentStateIsPlanted:true,
+          editOriginalLocationAllowed:true,
+          staleWarningCount:0
+        }, "現在定植済みの場所に古い収穫回の未定植状態が残っています");
+      });
+
       await runTest("植え付け数を変えて選択済みパレットをタップすると上書きする", () => {
         const selectionState = comparable(app.eval(`(() => {
           const previous = {

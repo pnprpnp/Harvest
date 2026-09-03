@@ -1201,6 +1201,7 @@ function buildPlantingEventStateIndex(options = {}){
     });
   const harvestById = new Map();
   const pendingByHarvestId = new Map();
+  const latestHarvestOwnerByPalletKey = new Map();
   const allocatedLotKeys = new Set();
   const eventsByHarvestId = new Map();
   const noPlantingCompletedHarvestIds = new Set();
@@ -1211,8 +1212,18 @@ function buildPlantingEventStateIndex(options = {}){
   harvestRecords.forEach((record, harvestOrder) => {
     const harvestRecordId = Number(record.id);
     const palletKeys = getPalletKeysFromRecord(record);
+    const pendingKeys = new Set();
     harvestById.set(harvestRecordId, { record, harvestOrder, palletKeys });
-    pendingByHarvestId.set(harvestRecordId, new Set(palletKeys));
+    pendingByHarvestId.set(harvestRecordId, pendingKeys);
+    palletKeys.forEach(palletKey => {
+      // 同じ場所の過去の収穫回は、後の収穫回が現在状態を引き継いだ時点で未定植候補から外す。
+      const previousHarvestRecordId = latestHarvestOwnerByPalletKey.get(palletKey);
+      if(previousHarvestRecordId !== undefined){
+        pendingByHarvestId.get(previousHarvestRecordId)?.delete(palletKey);
+      }
+      latestHarvestOwnerByPalletKey.set(palletKey, harvestRecordId);
+      pendingKeys.add(palletKey);
+    });
   });
 
   orderedEvents.forEach(event => {

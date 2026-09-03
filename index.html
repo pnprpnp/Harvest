@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260903-all-unplanted-selection">
+<meta name="harvestnavi-version" content="20260903-current-unplanted-state">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -14869,7 +14869,7 @@ requestAnimationFrame(function(){
 <div id="plantingUnselectedWarningPanel" class="appUpdateConfirmOverlay">
   <div class="googleSheetConfirmPanel appUpdateConfirmWindow" role="dialog" aria-modal="true" aria-labelledby="plantingUnselectedWarningTitle" aria-describedby="plantingUnselectedWarningMessage">
     <div id="plantingUnselectedWarningTitle" class="googleSheetConfirmTitle">未定植場所の確認</div>
-    <div id="plantingUnselectedWarningMessage" class="googleSheetConfirmMessage">以前の未定植の場所が選択されていません。</div>
+    <div id="plantingUnselectedWarningMessage" class="googleSheetConfirmMessage">現在も未定植の場所が選択されていません。</div>
     <div class="googleSheetConfirmActions plantingUnselectedWarningActions">
       <button id="plantingUnselectedConfirmNo" type="button" class="googleSheetConfirmCancel" data-ui-click="resolvePlantingUnselectedWarning" data-ui-boolean="false">選択へ戻る</button>
       <button id="plantingUnselectedConfirmYes" type="button" class="googleSheetConfirmSend appUpdateConfirmYes" data-ui-click="resolvePlantingUnselectedWarning" data-ui-boolean="true">このまま保存</button>
@@ -19703,6 +19703,7 @@ function buildPlantingEventStateIndex(options = {}){
     });
   const harvestById = new Map();
   const pendingByHarvestId = new Map();
+  const latestHarvestOwnerByPalletKey = new Map();
   const allocatedLotKeys = new Set();
   const eventsByHarvestId = new Map();
   const noPlantingCompletedHarvestIds = new Set();
@@ -19713,8 +19714,18 @@ function buildPlantingEventStateIndex(options = {}){
   harvestRecords.forEach((record, harvestOrder) => {
     const harvestRecordId = Number(record.id);
     const palletKeys = getPalletKeysFromRecord(record);
+    const pendingKeys = new Set();
     harvestById.set(harvestRecordId, { record, harvestOrder, palletKeys });
-    pendingByHarvestId.set(harvestRecordId, new Set(palletKeys));
+    pendingByHarvestId.set(harvestRecordId, pendingKeys);
+    palletKeys.forEach(palletKey => {
+      // 同じ場所の過去の収穫回は、後の収穫回が現在状態を引き継いだ時点で未定植候補から外す。
+      const previousHarvestRecordId = latestHarvestOwnerByPalletKey.get(palletKey);
+      if(previousHarvestRecordId !== undefined){
+        pendingByHarvestId.get(previousHarvestRecordId)?.delete(palletKey);
+      }
+      latestHarvestOwnerByPalletKey.set(palletKey, harvestRecordId);
+      pendingKeys.add(palletKey);
+    });
   });
 
   orderedEvents.forEach(event => {
@@ -25132,7 +25143,7 @@ function askPlantingUnselectedWarningConfirm(unselectedLots = []){
 
   const detail = formatUnselectedPreviousUnplantedPalletLots(unselectedLots);
   const noticeText = [
-    "以前の未定植の場所が選択されていません。",
+    "現在も未定植の場所が選択されていません。",
     detail ? `\n未選択のパレット:\n${detail}` : ""
   ].join("");
 
@@ -25162,7 +25173,7 @@ function resolvePlantingUnselectedWarning(shouldSave){
   if(panel) panel.classList.remove("show");
   if(yesButton) yesButton.disabled = true;
   if(noButton) noButton.disabled = true;
-  if(message) message.textContent = "以前の未定植の場所が選択されていません。";
+  if(message) message.textContent = "現在も未定植の場所が選択されていません。";
 
   if(plantingUnselectedWarningResolver){
     plantingUnselectedWarningResolver(!!shouldSave);
