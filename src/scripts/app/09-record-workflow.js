@@ -1930,7 +1930,6 @@ function renderRecordHarvestWorkflowUi(){
   const progress = document.getElementById("recordHarvestWorkflowProgress");
   const progressCount = document.getElementById("recordHarvestWorkflowProgressCount");
   const progressTitle = document.getElementById("recordHarvestWorkflowProgressTitle");
-  const progressValue = document.getElementById("recordHarvestWorkflowTrackValue");
   const casesSection = document.getElementById("recordHarvestStageSection");
   const locationSection = document.getElementById("recordHarvestLocationSection");
   const locationSummary = document.getElementById("recordHarvestLocationSummary");
@@ -1944,7 +1943,6 @@ function renderRecordHarvestWorkflowUi(){
   if(progress) progress.hidden = !isHarvestMode;
   if(progressCount) progressCount.textContent = `${stageIndex + 1}/4`;
   if(progressTitle) progressTitle.textContent = labels[stage];
-  if(progressValue) progressValue.style.width = `${(stageIndex + 1) * 25}%`;
   if(modeStatus){
     modeStatus.hidden = isHarvestMode && !isRecordedToday;
     modeStatus.classList.toggle("has-today-record", isRecordedToday);
