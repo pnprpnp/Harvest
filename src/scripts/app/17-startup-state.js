@@ -80,7 +80,7 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
   recordHarvestStage = RECORD_HARVEST_STAGES.includes(savedHarvestState.recordHarvestStage)
     ? savedHarvestState.recordHarvestStage
-    : "cases";
+    : "location";
   recordHarvestActiveBuilding = BUILDINGS.includes(Number(savedHarvestState.recordHarvestActiveBuilding))
     ? Number(savedHarvestState.recordHarvestActiveBuilding)
     : null;

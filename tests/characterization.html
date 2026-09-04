@@ -8382,7 +8382,7 @@
         }, "本日の記録済み表示が収穫・苗植え工程バーと同じ場所へ切り替わっていません");
       });
 
-      await runTest("収穫記録を4工程で進め、対象棟の確認後だけ固定ボタンで保存へ進める", () => {
+      await runTest("収穫場所から始まる3工程を進め、対象棟の確認後だけ固定ボタンで保存へ進める", () => {
         const state = comparable(app.eval(`(() => {
           const recordTab = document.getElementById("recordTab");
           const previous = {
@@ -8405,7 +8405,7 @@
             activeAppTab = "record";
             recordSelectionMode = "harvest";
             recordViewMode = "entry";
-            recordHarvestStage = "cases";
+            recordHarvestStage = "location";
             recordHarvestPrimaryInputsExpanded = false;
             recordHarvestActiveBuilding = null;
             recordHarvestVisitedBuildings = [];
@@ -8437,9 +8437,10 @@
                 document.getElementById("recordHarvestNextBtn")
               ].map(item => getComputedStyle(item).height)
             };
-            const casesState = {
+            const locationStartState = {
               workflowProgressExists:!!document.getElementById("recordHarvestWorkflowProgress"),
-              instructionText:document.querySelector("#recordHarvestStageSection .recordHarvestStageInstruction")?.textContent.trim() || "",
+              legacyInstructionExists:!!document.querySelector("#recordHarvestStageSection .recordHarvestStageInstruction"),
+              title:document.getElementById("recordEditNotice")?.textContent.trim() || "",
               summaryDateMatches:document.getElementById("recordHarvestSummaryDate").textContent === formatRecordHarvestFixedNavDate(document.getElementById("recordDateInput").value),
               summaryCases:document.getElementById("recordHarvestSummaryCases").textContent,
               summaryIsOneLine:Math.abs(document.getElementById("recordHarvestSummaryDate").getBoundingClientRect().top
@@ -8447,10 +8448,16 @@
               summaryFontSizesMatch:getComputedStyle(document.getElementById("recordHarvestSummaryDate")).fontSize
                 === getComputedStyle(document.getElementById("recordHarvestSummaryCases")).fontSize,
               summaryAction:document.getElementById("recordHarvestSummaryBtn").dataset.uiClick,
-              casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
+              casesPanelHidden:document.getElementById("recordHarvestStageSection").hidden,
               dateInputHidden:document.getElementById("recordDateInputSection").hidden,
               casesInputHidden:document.getElementById("recordHarvestCasesInputSection").hidden,
-              locationHidden:document.getElementById("recordHarvestLocationSection").hidden,
+              locationVisible:!document.getElementById("recordHarvestLocationSection").hidden,
+              locationMetricsExist:!!document.getElementById("recordHarvestLocationSummary")
+                || !!document.getElementById("recordHarvestLocationCases")
+                || !!document.getElementById("recordHarvestLocationPallets"),
+              actualLossVisible:!document.querySelector(".recordActualLossField").hidden,
+              actualLossBelowMap:!!(document.getElementById("recordBeds").compareDocumentPosition(document.querySelector(".recordActualLossField"))
+                & Node.DOCUMENT_POSITION_FOLLOWING),
               navPosition:getComputedStyle(nav).position,
               navTouchesTabBar:Math.round(nav.getBoundingClientRect().bottom) === Math.round(tabBar.getBoundingClientRect().top),
               nextLabel:document.getElementById("recordHarvestNextBtn").textContent
@@ -8464,9 +8471,10 @@
             document.getElementById("recordHarvestSummaryBtn").click();
             const fixedSummaryAfter = {
               stage:recordHarvestStage,
-              casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
+              casesPanelVisible:!document.getElementById("recordHarvestStageSection").hidden,
               dateInputVisible:!document.getElementById("recordDateInputSection").hidden,
               casesInputVisible:!document.getElementById("recordHarvestCasesInputSection").hidden,
+              locationVisible:!document.getElementById("recordHarvestLocationSection").hidden,
               qualityHidden:document.getElementById("recordQualityMemoSection").hidden,
               quickEditModalExists:!!document.getElementById("recordHarvestQuickEditModal")
             };
@@ -8514,7 +8522,7 @@
             };
             showRecordEntryView();
             const restoredMemo = document.getElementById("recordMemoInput").value;
-            return { fixedBarDimensions, casesState, fixedSummaryBefore, fixedSummaryAfter, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
+            return { fixedBarDimensions, locationStartState, fixedSummaryBefore, fixedSummaryAfter, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
           }finally{
             recordTab.style.display = previous.display;
             activeAppTab = previous.activeTab;
@@ -8539,24 +8547,28 @@
             verticalPadding:[["6px","6px"],["6px","6px"],["6px","6px"]],
             buttons:["46px","46px","46px","46px","46px"]
           },
-          casesState:{
+          locationStartState:{
             workflowProgressExists:false,
-            instructionText:"日付と実際の収穫ケース数を確認して下さい",
+            legacyInstructionExists:false,
+            title:"実際に収穫した場所を選択して下さい",
             summaryDateMatches:true,
             summaryCases:"1ケース",
             summaryIsOneLine:true,
             summaryFontSizesMatch:true,
             summaryAction:"openRecordHarvestPrimaryInputs",
-            casesVisible:true,
+            casesPanelHidden:true,
             dateInputHidden:true,
             casesInputHidden:true,
-            locationHidden:true,
+            locationVisible:true,
+            locationMetricsExist:false,
+            actualLossVisible:true,
+            actualLossBelowMap:true,
             navPosition:"fixed",
             navTouchesTabBar:true,
             nextLabel:"次へ"
           },
           fixedSummaryBefore:{stage:"quality",casesHidden:true,qualityVisible:true},
-          fixedSummaryAfter:{stage:"cases",casesVisible:true,dateInputVisible:true,casesInputVisible:true,qualityHidden:true,quickEditModalExists:false},
+          fixedSummaryAfter:{stage:"location",casesPanelVisible:true,dateInputVisible:true,casesInputVisible:true,locationVisible:true,qualityHidden:true,quickEditModalExists:false},
           pastDateNotice:{visible:true,text:"過去の日付を記録中"},
           locationBefore:{
             headings:["2号棟"],
@@ -8984,6 +8996,8 @@
             mode: recordSelectionMode,
             keys: [...harvestFillKeys],
             additional: [...recordAdditionalBuildings],
+            activeBuilding:recordHarvestActiveBuilding,
+            visited:[...recordHarvestVisitedBuildings],
             getRecorded: getRecordTabRecordedPalletSet
           };
           try{
@@ -9018,6 +9032,24 @@
               selectedCount: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length
             };
             removeRecordBuildingDisplay(2);
+            const removedState = {
+              headings: [...document.querySelectorAll("#recordBeds .recordBuildingMapTitleText")]
+                .map(element => element.textContent.trim()),
+              additionalBuildings: [...recordAdditionalBuildings],
+              selectedExtraBuilding: harvestFillKeys.includes("2-A-1"),
+              selectedCount: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length,
+              canAddAgain: [...options.querySelectorAll("button")]
+                .some(button => button.textContent.trim() === "2号棟")
+            };
+            harvestFillKeys = [];
+            recordAdditionalBuildings = [];
+            chooser.hidden = true;
+            drawRecordBeds();
+            const emptyState = {
+              chooserHidden:chooser.hidden,
+              ariaExpanded:openButton.getAttribute("aria-expanded"),
+              simulationPromptExists:(recordBeds.textContent || "").includes("シミュで収穫場所を選択すると")
+            };
             return {
               controlsVisible: !controls.hidden,
               controlsBeforeMaps: !!(controls.compareDocumentPosition(recordBeds) & Node.DOCUMENT_POSITION_FOLLOWING),
@@ -9027,15 +9059,8 @@
               hasBuildingOption: beforeOptions.includes("2号棟"),
               chooserHiddenAfterAdd,
               addedState,
-              removedState: {
-                headings: [...document.querySelectorAll("#recordBeds .recordBuildingMapTitleText")]
-                .map(element => element.textContent.trim()),
-                additionalBuildings: [...recordAdditionalBuildings],
-                selectedExtraBuilding: harvestFillKeys.includes("2-A-1"),
-                selectedCount: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length,
-                canAddAgain: [...options.querySelectorAll("button")]
-                  .some(button => button.textContent.trim() === "2号棟")
-              }
+              removedState,
+              emptyState
             };
           }finally{
             recordTab.style.display = previous.display;
@@ -9043,6 +9068,8 @@
             recordSelectionMode = previous.mode;
             harvestFillKeys = previous.keys;
             recordAdditionalBuildings = previous.additional;
+            recordHarvestActiveBuilding = previous.activeBuilding;
+            recordHarvestVisitedBuildings = previous.visited;
             getRecordTabRecordedPalletSet = previous.getRecorded;
             cancelPendingHarvestStateSave();
           }
@@ -9068,7 +9095,8 @@
             selectedExtraBuilding: false,
             selectedCount: 2,
             canAddAgain: true
-          }
+          },
+          emptyState:{chooserHidden:true,ariaExpanded:"false",simulationPromptExists:false}
         }, "計算対象外の号棟を追加し、1棟ずつ切り替えて選択できません");
       });
 
@@ -10957,18 +10985,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "1a331898", elements: 2327, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "f03d185e", elements: 2396, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "7c1d1579", elements: 2396, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "f0d1ea6f", elements: 2328, visible: 59, viewport: "390x844" },
-          mobileDashboard: { hash: "afbcd350", elements: 2345, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "c0ceab7d", elements: 2428, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "fbb4d318", elements: 2443, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "652a8cc7", elements: 2443, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "57abced6", elements: 2443, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "2b4b01ad", elements: 2443, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "520c674d", elements: 2443, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "78c2e7d3", elements: 2443, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "1a49e40f", elements: 2316, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "e5956eb8", elements: 2385, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "bf276f8f", elements: 2385, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "3c10e02b", elements: 2316, visible: 81, viewport: "390x844" },
+          mobileDashboard: { hash: "38038b64", elements: 2333, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "acc9a528", elements: 2416, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "a141027c", elements: 2431, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "9c30a915", elements: 2431, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "612d7d0c", elements: 2431, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "677f97c5", elements: 2431, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "36b54a35", elements: 2431, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "0f43d51d", elements: 2431, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

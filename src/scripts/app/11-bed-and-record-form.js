@@ -701,10 +701,6 @@ function renderRecordBuildingDisplayControls(){
       ? `${displayedBuildings.length}棟を選択中`
       : "表示中の号棟はありません";
   }
-  if(!displayedBuildings.length && chooser && openButton){
-    chooser.hidden = false;
-    openButton.setAttribute("aria-expanded", "true");
-  }
 }
 
 function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
@@ -901,12 +897,12 @@ function drawRecordBeds(){
 
   if(!buildings.length){
     if(isRecordPlantingFlowActive() && recordPlantingFlowStage === "building") return;
-    const empty = document.createElement("div");
-    empty.className = "recordBuildingMapEmpty";
-    empty.textContent = recordSelectionMode === "planting"
-      ? "苗植えできる未定植の場所はありません。"
-      : "シミュで収穫場所を選択すると、ここに号棟ごとの縦型パレット配置図が表示されます。";
-    container.appendChild(empty);
+    if(recordSelectionMode === "planting"){
+      const empty = document.createElement("div");
+      empty.className = "recordBuildingMapEmpty";
+      empty.textContent = "苗植えできる未定植の場所はありません。";
+      container.appendChild(empty);
+    }
     return;
   }
 
@@ -1196,7 +1192,6 @@ function updateRecordActualLoss(){
       ? "ロス率を計算できません"
       : `${isEstimated ? "推定ロス率" : "実際のロス率"} ${value}%`
   );
-  updateRecordHarvestLocationSummary();
   if(recordHarvestStage === "confirm") renderRecordHarvestConfirmation();
   renderRecordHarvestFixedNavigation();
   updateRecordInputGuides();
@@ -1708,7 +1703,7 @@ function clearRecordForm(){
   }
   editingHarvestRecordId = null;
   editingHarvestSelectionKeys = null;
-  recordHarvestStage = "cases";
+  recordHarvestStage = "location";
   recordHarvestPrimaryInputsExpanded = false;
   recordHarvestActiveBuilding = null;
   recordHarvestVisitedBuildings = [];

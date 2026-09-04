@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260904-record-inputs-on-demand">
+<meta name="harvestnavi-version" content="20260904-record-location-first">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3397,9 +3397,6 @@ button.monitorSaveBtn:active{
   border:1px solid #e5e7eb;
   border-radius:10px;
   background:#f8fafc;
-}
-.recordHarvestAdjustBox .recordEditNotice{
-  margin:0 0 10px;
 }
 .recordHarvestAdjustBox .recordBedWrap{
   margin-top:0;
@@ -10236,40 +10233,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   font-weight:800;
 }
 .recordPastDateNotice[hidden]{display:none;}
-.recordHarvestStageInstruction{
-  margin:2px 0 12px;
-  color:var(--ui-text);
-  font-size:15px;
-  font-weight:850;
-  line-height:1.45;
-}
-.recordHarvestLocationSummary{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:7px;
-  margin-bottom:10px;
-}
-.recordHarvestLocationSummary[hidden]{display:none;}
-.recordHarvestLocationMetric{
-  min-width:0;
-  min-height:64px;
-  display:grid;
-  align-content:center;
-  justify-items:center;
-  gap:3px;
-  box-sizing:border-box;
-  padding:8px 5px;
-  border:1px solid var(--ui-line);
-  border-radius:13px;
-  background:var(--ui-surface-muted);
-  color:var(--ui-text-secondary);
-  text-align:center;
-}
-button.recordHarvestLocationMetric{font:inherit;}
-.recordHarvestLocationMetric.is-action{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8;cursor:pointer;}
-.recordHarvestLocationMetric span{font-size:10px;font-weight:750;line-height:1.2;}
-.recordHarvestLocationMetric strong{max-width:100%;color:inherit;font-size:15px;font-weight:880;overflow-wrap:anywhere;}
-.recordHarvestLocationMetric strong.is-estimated{color:#c2410c;}
+#recordHarvestLocationSection > .recordEditNotice{margin-top:2px;font-size:15px;}
 .recordHarvestBuildingPager{
   display:grid;
   grid-template-columns:42px minmax(0,1fr) 42px;
@@ -13716,7 +13680,6 @@ requestAnimationFrame(function(){
       </div>
 
       <div id="recordHarvestStageSection" class="recordStageSection">
-        <div class="recordHarvestStageInstruction">日付と実際の収穫ケース数を確認して下さい</div>
         <div id="recordHarvestCasesInputSection" class="recordActualRow recordActualCasesRow" hidden>
           <div>
             <label class="fieldAccentLabel">実際の収穫ケース数</label>
@@ -13799,20 +13762,7 @@ requestAnimationFrame(function(){
       <textarea id="recordPlantingSummaryInput" class="hiddenRecordField" readonly placeholder="収穫を記録した後、表で苗植え場所を選ぶと入ります"></textarea>
 
       <div id="recordHarvestLocationSection">
-        <div id="recordHarvestLocationSummary" class="recordHarvestLocationSummary">
-          <button class="recordHarvestLocationMetric is-action" type="button" data-ui-click="openRecordHarvestStage" data-ui-arg="cases">
-            <span>ケース数</span>
-            <strong id="recordHarvestLocationCases">--</strong>
-          </button>
-          <div class="recordHarvestLocationMetric">
-            <span>選択</span>
-            <strong id="recordHarvestLocationPallets">0枚</strong>
-          </div>
-          <div class="recordHarvestLocationMetric">
-            <span id="recordHarvestLocationLossLabel">実際のロス率</span>
-            <strong id="recordHarvestLocationLoss">--</strong>
-          </div>
-        </div>
+        <div id="recordEditNotice" class="recordEditNotice">実際に収穫した場所を選択して下さい</div>
         <div id="recordBuildingDisplayControls" class="recordBuildingDisplayControls" hidden>
           <div class="recordBuildingDisplayHeader">
             <button id="recordBuildingAddOpenBtn" class="recordBuildingAddOpenBtn" type="button"
@@ -13826,7 +13776,6 @@ requestAnimationFrame(function(){
         </div>
         <div id="recordHarvestBuildingPager" class="recordHarvestBuildingPager" hidden></div>
         <div class="recordHarvestAdjustBox">
-        <div id="recordEditNotice" class="recordEditNotice">実際の収穫場所に調整してください。</div>
         <div id="recordPlantingFlowPanel" class="recordPlantingFlowPanel" hidden></div>
         <div id="recordPlantingCountPreset" class="recordPlantingCountPreset" hidden>
           <div class="recordPlantingCountPresetHeader">
@@ -15253,8 +15202,8 @@ const tabScrollPositions = {
 let recordBaseFillKeys = [];
 let recordAdditionalBuildings = [];
 let recordSelectionMode = "harvest";
-const RECORD_HARVEST_STAGES = Object.freeze(["cases", "location", "quality", "confirm"]);
-let recordHarvestStage = "cases";
+const RECORD_HARVEST_STAGES = Object.freeze(["location", "quality", "confirm"]);
+let recordHarvestStage = "location";
 let recordHarvestPrimaryInputsExpanded = false;
 let recordHarvestActiveBuilding = null;
 let recordHarvestVisitedBuildings = [];
@@ -34656,7 +34605,7 @@ function isRecordEditMode(){
 }
 
 function normalizeRecordHarvestStage(value){
-  return RECORD_HARVEST_STAGES.includes(value) ? value : "cases";
+  return RECORD_HARVEST_STAGES.includes(value) ? value : "location";
 }
 
 function getRecordHarvestStageIndex(){
@@ -34680,22 +34629,6 @@ function updateRecordPastDateNotice(){
   const selectedDate = document.getElementById("recordDateInput")?.value || "";
   const today = formatDateOnlyString(new Date());
   notice.hidden = !selectedDate || selectedDate >= today;
-}
-
-function updateRecordHarvestLocationSummary(){
-  const cases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
-  const lossDisplay = document.getElementById("recordActualLossInput");
-  const casesDisplay = document.getElementById("recordHarvestLocationCases");
-  const palletsDisplay = document.getElementById("recordHarvestLocationPallets");
-  const lossLabel = document.getElementById("recordHarvestLocationLossLabel");
-  const lossValue = document.getElementById("recordHarvestLocationLoss");
-  if(casesDisplay) casesDisplay.textContent = cases > 0 ? `${cases}ケース` : "--";
-  if(palletsDisplay) palletsDisplay.textContent = `${harvestFillKeys.length}枚`;
-  if(lossLabel) lossLabel.textContent = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
-  if(lossValue){
-    lossValue.textContent = lossDisplay?.textContent || "--";
-    lossValue.classList.toggle("is-estimated", !!lossDisplay?.classList.contains("estimated"));
-  }
 }
 
 function appendRecordHarvestConfirmItem(container, label, value, stage){
@@ -34760,7 +34693,7 @@ function renderRecordHarvestFixedNavigation(){
     summaryButton.classList.toggle("is-past-date", !!dateValue && dateValue < todayValue);
     summaryButton.setAttribute("aria-label", `日付と実際の収穫ケース数を確認。${formattedDate}、${formattedCases}`);
   }
-  backButton.textContent = stage === "cases"
+  backButton.textContent = stage === "location"
     ? (isEditing ? "確認へ戻る" : "クリア")
     : (isEditing && stage === "confirm" ? "編集を破棄" : "戻る");
   nextButton.textContent = stage === "confirm" ? (isEditing ? "更新" : "保存") : "次へ";
@@ -34786,7 +34719,7 @@ function renderRecordHarvestWorkflowUi(){
   const casesSection = document.getElementById("recordHarvestStageSection");
   const casesInputSection = document.getElementById("recordHarvestCasesInputSection");
   const locationSection = document.getElementById("recordHarvestLocationSection");
-  const locationSummary = document.getElementById("recordHarvestLocationSummary");
+  const actualLossField = document.querySelector(".recordActualLossField");
   const qualitySection = document.getElementById("recordQualityMemoSection");
   const confirmSection = document.getElementById("recordHarvestConfirmSection");
   const plantingActionRow = document.getElementById("recordFormActionRow");
@@ -34805,26 +34738,25 @@ function renderRecordHarvestWorkflowUi(){
     );
   }
   const showHarvestPrimaryInputs = isHarvestMode
-    && stage === "cases"
+    && stage === "location"
     && recordHarvestPrimaryInputsExpanded;
   if(dateInputSection) dateInputSection.hidden = isHarvestMode && !showHarvestPrimaryInputs;
-  if(casesSection) casesSection.hidden = !isHarvestMode || stage !== "cases";
+  if(casesSection) casesSection.hidden = !showHarvestPrimaryInputs;
   if(casesInputSection) casesInputSection.hidden = !showHarvestPrimaryInputs;
   if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
-  if(locationSummary) locationSummary.hidden = !isHarvestMode;
+  if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location";
   if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
   if(stage === "confirm") renderRecordHarvestConfirmation();
   updateRecordPastDateNotice();
-  updateRecordHarvestLocationSummary();
   renderRecordHarvestFixedNavigation();
 }
 
-function openRecordHarvestStage(stage){
+function openRecordHarvestStage(stage, options = {}){
   if(recordSelectionMode !== "harvest") return;
   const normalizedStage = normalizeRecordHarvestStage(stage);
-  if(normalizedStage !== "cases") recordHarvestPrimaryInputsExpanded = false;
+  recordHarvestPrimaryInputsExpanded = options.showPrimaryInputs === true;
   recordHarvestStage = normalizedStage;
   if(normalizedStage === "location"){
     drawRecordBeds();
@@ -34837,8 +34769,7 @@ function openRecordHarvestStage(stage){
 
 function openRecordHarvestPrimaryInputs(){
   if(recordSelectionMode !== "harvest") return;
-  recordHarvestPrimaryInputsExpanded = true;
-  openRecordHarvestStage("cases");
+  openRecordHarvestStage("location", { showPrimaryInputs:true });
 }
 
 function validateRecordHarvestCasesStep(){
@@ -34883,7 +34814,7 @@ function handleRecordHarvestNext(){
     handleRecordPrimaryAction();
     return;
   }
-  if(stage === "cases" && !validateRecordHarvestCasesStep()) return;
+  if(stage === "location" && !validateRecordHarvestCasesStep()) return;
   if(stage === "location" && !validateRecordHarvestLocationStep()) return;
   if(editingHarvestRecordId){
     openRecordHarvestStage("confirm");
@@ -34899,7 +34830,7 @@ function handleRecordHarvestBack(){
     else openRecordHarvestStage("confirm");
     return;
   }
-  if(stage === "cases"){
+  if(stage === "location"){
     handleRecordClearAction();
     return;
   }
@@ -35054,16 +34985,14 @@ function refreshRecordModeUi(){
     if(actualLossField) actualLossField.hidden = true;
     updateRecordSeedlingDiffDisplay();
   }else{
-    if(notice) notice.textContent = editingHarvestRecordId
-      ? "保存済みの収穫記録を編集中です。この記録と、それ以降の記録を一時的に計算対象から外しています。"
-      : "実際の収穫場所に調整してください。";
+    if(notice) notice.textContent = "実際に収穫した場所を選択して下さい";
     if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
     if(qualityMemoSection) qualityMemoSection.hidden = false;
     if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
-    if(actualLossField) actualLossField.hidden = true;
+    if(actualLossField) actualLossField.hidden = false;
   }
   if(saveCard) saveCard.hidden = recordViewMode === "history";
   if(historyCard) historyCard.hidden = recordViewMode !== "history";
@@ -37335,10 +37264,6 @@ function renderRecordBuildingDisplayControls(){
       ? `${displayedBuildings.length}棟を選択中`
       : "表示中の号棟はありません";
   }
-  if(!displayedBuildings.length && chooser && openButton){
-    chooser.hidden = false;
-    openButton.setAttribute("aria-expanded", "true");
-  }
 }
 
 function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
@@ -37535,12 +37460,12 @@ function drawRecordBeds(){
 
   if(!buildings.length){
     if(isRecordPlantingFlowActive() && recordPlantingFlowStage === "building") return;
-    const empty = document.createElement("div");
-    empty.className = "recordBuildingMapEmpty";
-    empty.textContent = recordSelectionMode === "planting"
-      ? "苗植えできる未定植の場所はありません。"
-      : "シミュで収穫場所を選択すると、ここに号棟ごとの縦型パレット配置図が表示されます。";
-    container.appendChild(empty);
+    if(recordSelectionMode === "planting"){
+      const empty = document.createElement("div");
+      empty.className = "recordBuildingMapEmpty";
+      empty.textContent = "苗植えできる未定植の場所はありません。";
+      container.appendChild(empty);
+    }
     return;
   }
 
@@ -37830,7 +37755,6 @@ function updateRecordActualLoss(){
       ? "ロス率を計算できません"
       : `${isEstimated ? "推定ロス率" : "実際のロス率"} ${value}%`
   );
-  updateRecordHarvestLocationSummary();
   if(recordHarvestStage === "confirm") renderRecordHarvestConfirmation();
   renderRecordHarvestFixedNavigation();
   updateRecordInputGuides();
@@ -38342,7 +38266,7 @@ function clearRecordForm(){
   }
   editingHarvestRecordId = null;
   editingHarvestSelectionKeys = null;
-  recordHarvestStage = "cases";
+  recordHarvestStage = "location";
   recordHarvestPrimaryInputsExpanded = false;
   recordHarvestActiveBuilding = null;
   recordHarvestVisitedBuildings = [];
@@ -43759,7 +43683,7 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
   recordHarvestStage = RECORD_HARVEST_STAGES.includes(savedHarvestState.recordHarvestStage)
     ? savedHarvestState.recordHarvestStage
-    : "cases";
+    : "location";
   recordHarvestActiveBuilding = BUILDINGS.includes(Number(savedHarvestState.recordHarvestActiveBuilding))
     ? Number(savedHarvestState.recordHarvestActiveBuilding)
     : null;

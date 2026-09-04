@@ -1824,7 +1824,7 @@ function isRecordEditMode(){
 }
 
 function normalizeRecordHarvestStage(value){
-  return RECORD_HARVEST_STAGES.includes(value) ? value : "cases";
+  return RECORD_HARVEST_STAGES.includes(value) ? value : "location";
 }
 
 function getRecordHarvestStageIndex(){
@@ -1848,22 +1848,6 @@ function updateRecordPastDateNotice(){
   const selectedDate = document.getElementById("recordDateInput")?.value || "";
   const today = formatDateOnlyString(new Date());
   notice.hidden = !selectedDate || selectedDate >= today;
-}
-
-function updateRecordHarvestLocationSummary(){
-  const cases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
-  const lossDisplay = document.getElementById("recordActualLossInput");
-  const casesDisplay = document.getElementById("recordHarvestLocationCases");
-  const palletsDisplay = document.getElementById("recordHarvestLocationPallets");
-  const lossLabel = document.getElementById("recordHarvestLocationLossLabel");
-  const lossValue = document.getElementById("recordHarvestLocationLoss");
-  if(casesDisplay) casesDisplay.textContent = cases > 0 ? `${cases}ケース` : "--";
-  if(palletsDisplay) palletsDisplay.textContent = `${harvestFillKeys.length}枚`;
-  if(lossLabel) lossLabel.textContent = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
-  if(lossValue){
-    lossValue.textContent = lossDisplay?.textContent || "--";
-    lossValue.classList.toggle("is-estimated", !!lossDisplay?.classList.contains("estimated"));
-  }
 }
 
 function appendRecordHarvestConfirmItem(container, label, value, stage){
@@ -1928,7 +1912,7 @@ function renderRecordHarvestFixedNavigation(){
     summaryButton.classList.toggle("is-past-date", !!dateValue && dateValue < todayValue);
     summaryButton.setAttribute("aria-label", `日付と実際の収穫ケース数を確認。${formattedDate}、${formattedCases}`);
   }
-  backButton.textContent = stage === "cases"
+  backButton.textContent = stage === "location"
     ? (isEditing ? "確認へ戻る" : "クリア")
     : (isEditing && stage === "confirm" ? "編集を破棄" : "戻る");
   nextButton.textContent = stage === "confirm" ? (isEditing ? "更新" : "保存") : "次へ";
@@ -1954,7 +1938,7 @@ function renderRecordHarvestWorkflowUi(){
   const casesSection = document.getElementById("recordHarvestStageSection");
   const casesInputSection = document.getElementById("recordHarvestCasesInputSection");
   const locationSection = document.getElementById("recordHarvestLocationSection");
-  const locationSummary = document.getElementById("recordHarvestLocationSummary");
+  const actualLossField = document.querySelector(".recordActualLossField");
   const qualitySection = document.getElementById("recordQualityMemoSection");
   const confirmSection = document.getElementById("recordHarvestConfirmSection");
   const plantingActionRow = document.getElementById("recordFormActionRow");
@@ -1973,26 +1957,25 @@ function renderRecordHarvestWorkflowUi(){
     );
   }
   const showHarvestPrimaryInputs = isHarvestMode
-    && stage === "cases"
+    && stage === "location"
     && recordHarvestPrimaryInputsExpanded;
   if(dateInputSection) dateInputSection.hidden = isHarvestMode && !showHarvestPrimaryInputs;
-  if(casesSection) casesSection.hidden = !isHarvestMode || stage !== "cases";
+  if(casesSection) casesSection.hidden = !showHarvestPrimaryInputs;
   if(casesInputSection) casesInputSection.hidden = !showHarvestPrimaryInputs;
   if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
-  if(locationSummary) locationSummary.hidden = !isHarvestMode;
+  if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location";
   if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
   if(stage === "confirm") renderRecordHarvestConfirmation();
   updateRecordPastDateNotice();
-  updateRecordHarvestLocationSummary();
   renderRecordHarvestFixedNavigation();
 }
 
-function openRecordHarvestStage(stage){
+function openRecordHarvestStage(stage, options = {}){
   if(recordSelectionMode !== "harvest") return;
   const normalizedStage = normalizeRecordHarvestStage(stage);
-  if(normalizedStage !== "cases") recordHarvestPrimaryInputsExpanded = false;
+  recordHarvestPrimaryInputsExpanded = options.showPrimaryInputs === true;
   recordHarvestStage = normalizedStage;
   if(normalizedStage === "location"){
     drawRecordBeds();
@@ -2005,8 +1988,7 @@ function openRecordHarvestStage(stage){
 
 function openRecordHarvestPrimaryInputs(){
   if(recordSelectionMode !== "harvest") return;
-  recordHarvestPrimaryInputsExpanded = true;
-  openRecordHarvestStage("cases");
+  openRecordHarvestStage("location", { showPrimaryInputs:true });
 }
 
 function validateRecordHarvestCasesStep(){
@@ -2051,7 +2033,7 @@ function handleRecordHarvestNext(){
     handleRecordPrimaryAction();
     return;
   }
-  if(stage === "cases" && !validateRecordHarvestCasesStep()) return;
+  if(stage === "location" && !validateRecordHarvestCasesStep()) return;
   if(stage === "location" && !validateRecordHarvestLocationStep()) return;
   if(editingHarvestRecordId){
     openRecordHarvestStage("confirm");
@@ -2067,7 +2049,7 @@ function handleRecordHarvestBack(){
     else openRecordHarvestStage("confirm");
     return;
   }
-  if(stage === "cases"){
+  if(stage === "location"){
     handleRecordClearAction();
     return;
   }
@@ -2222,16 +2204,14 @@ function refreshRecordModeUi(){
     if(actualLossField) actualLossField.hidden = true;
     updateRecordSeedlingDiffDisplay();
   }else{
-    if(notice) notice.textContent = editingHarvestRecordId
-      ? "保存済みの収穫記録を編集中です。この記録と、それ以降の記録を一時的に計算対象から外しています。"
-      : "実際の収穫場所に調整してください。";
+    if(notice) notice.textContent = "実際に収穫した場所を選択して下さい";
     if(plantingInput) plantingInput.placeholder = "収穫を記録した後、表で苗植え場所を選ぶと入ります";
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
     if(qualityMemoSection) qualityMemoSection.hidden = false;
     if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
-    if(actualLossField) actualLossField.hidden = true;
+    if(actualLossField) actualLossField.hidden = false;
   }
   if(saveCard) saveCard.hidden = recordViewMode === "history";
   if(historyCard) historyCard.hidden = recordViewMode !== "history";
