@@ -1000,7 +1000,6 @@ function drawRecordBeds(){
             : "")
         : `
           <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-          <span class="simulationBedOverviewCountRecorded">収穫不可 ${summaryCounts.recorded}</span>
         `;
       bed.appendChild(counts);
       attachBedDetailOpenTapHandler(bed, "record", building, b);
@@ -1008,7 +1007,7 @@ function drawRecordBeds(){
         "aria-label",
         plantingAllowedSet
           ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
-          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、収穫不可能 ${summaryCounts.recorded}パレット。タップで拡大してパレットを選択`
+          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット。タップで拡大してパレットを選択`
       );
       beds.appendChild(bed);
     });
