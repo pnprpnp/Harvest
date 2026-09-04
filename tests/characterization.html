@@ -6061,10 +6061,10 @@
           record: !!document.getElementById("recordSaveSectionTitleText"),
           monitorActions: document.querySelectorAll('#monitorCard [data-ui-click="openMonitorMode"], #monitorCard [data-ui-click="openMonitorEditorWindow"]').length,
           recordStatusExists: !!document.getElementById("recordTodayRecordedStatus"),
-          recordStatusRowIsFirst: document.getElementById("recordSaveCard")?.firstElementChild?.classList.contains("recordTopStatusRow") || false,
+          recordStatusRowIsFirst: document.getElementById("recordTab")?.firstElementChild?.classList.contains("recordTopStatusRow") || false,
           recordModeStatusInTopRow: document.getElementById("recordModeStatus")?.parentElement?.classList.contains("recordTopStatusRow") || false,
           recordHistorySharesStatusRow: document.getElementById("recordHistoryOpenBtn")?.parentElement === document.getElementById("recordModeStatus")?.parentElement,
-          recordDateSectionFollowsStatusRow: document.querySelector(".recordTopStatusRow")?.nextElementSibling?.id === "recordDateInputSection",
+          recordSaveCardFollowsStatusRow: document.querySelector(".recordTopStatusRow")?.nextElementSibling?.id === "recordSaveCard",
           recordUtilityInsideDateSection: document.querySelector("#recordDateInputSection > .recordInputUtilityRow") !== null,
           recordStepIndicatorExists: !!document.getElementById("recordStepIndicator"),
           recordStageCaptionCount: document.querySelectorAll("#recordSaveCard .recordStageCaption").length
@@ -6078,7 +6078,7 @@
           recordStatusRowIsFirst: true,
           recordModeStatusInTopRow: true,
           recordHistorySharesStatusRow: true,
-          recordDateSectionFollowsStatusRow: true,
+          recordSaveCardFollowsStatusRow: true,
           recordUtilityInsideDateSection: true,
           recordStepIndicatorExists: false,
           recordStageCaptionCount: 0
@@ -8518,11 +8518,17 @@
             const historyState = {
               saveHidden:document.getElementById("recordSaveCard").hidden,
               historyVisible:!document.getElementById("recordHistoryCard").hidden,
-              navHidden:document.getElementById("recordHarvestFixedNav").hidden
+              navHidden:document.getElementById("recordHarvestFixedNav").hidden,
+              topRowVisible:!document.querySelector(".recordTopStatusRow").hidden,
+              toggleLabel:document.getElementById("recordHistoryToggleLabel").textContent,
+              duplicateBackButtonCount:document.querySelectorAll('#recordHistoryCard [data-ui-click="showRecordEntryView"]').length
             };
             showRecordEntryView();
-            const restoredMemo = document.getElementById("recordMemoInput").value;
-            return { fixedBarDimensions, locationStartState, fixedSummaryBefore, fixedSummaryAfter, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
+            const entryState = {
+              restoredMemo:document.getElementById("recordMemoInput").value,
+              toggleLabel:document.getElementById("recordHistoryToggleLabel").textContent
+            };
+            return { fixedBarDimensions, locationStartState, fixedSummaryBefore, fixedSummaryAfter, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, entryState };
           }finally{
             recordTab.style.display = previous.display;
             activeAppTab = previous.activeTab;
@@ -8584,8 +8590,8 @@
           },
           qualityState:{stage:"quality",qualityVisible:true,nextLabel:"次へ"},
           confirmState:{stage:"confirm",summaryItems:5,finalLabel:"保存",memoCollapsed:true},
-          historyState:{saveHidden:true,historyVisible:true,navHidden:true},
-          restoredMemo:"入力途中"
+          historyState:{saveHidden:true,historyVisible:true,navHidden:true,topRowVisible:true,toggleLabel:"入力へ戻る",duplicateBackButtonCount:0},
+          entryState:{restoredMemo:"入力途中",toggleLabel:"記録一覧"}
         }, "収穫記録の工程表示・号棟確認・固定操作・確認画面が連動していません");
       });
 
@@ -8867,21 +8873,35 @@
               memo:"単独表示メモ\\n部分収穫後の残り予想: 約9ケース（目安）",
               targets:[{ building:2, bed:"B", start:1, end:1, plantsPerPallet:12 }]
             });
+            const detailActionHost = document.createElement("div");
+            detailActionHost.innerHTML = getRecordDetailActionsHtml("harvest", 20000000000070);
             return {
               groupCount:document.querySelectorAll("#recordList .recordDateGroup").length,
+              groupElement:group?.tagName || "",
+              groupOpen:!!group?.open,
               heading:group?.querySelector(".recordDateGroupTitle")?.textContent.trim() || "",
               types:[...group.querySelectorAll(".recordDateGroupType")].map(item => item.textContent.trim()),
-              itemTitles:[...group.querySelectorAll(".recordItem .recordTitle")].map(item => item.textContent.trim()),
+              primaryKinds:[...group.querySelectorAll(".recordDateGroupPrimary .recordItemKind")].map(item => item.textContent.trim()),
               primaryDisplay:getComputedStyle(group.querySelector(".recordDateGroupPrimary")).display,
+              primaryOneColumn:(() => {
+                const columns = [...group.querySelectorAll(".recordDateGroupPrimary > .recordDateColumn")];
+                if(columns.length < 2) return true;
+                const first = columns[0].getBoundingClientRect();
+                const second = columns[1].getBoundingClientRect();
+                return Math.abs(first.left - second.left) <= 1 && second.top >= first.bottom - 1;
+              })(),
               primaryColumns:[...group.querySelectorAll(".recordDateGroupPrimary > .recordDateColumn")]
-                .map(column => [...column.querySelectorAll(".recordTitle")].map(item => item.textContent.trim())),
+                .map(column => [...column.querySelectorAll(".recordItemKind")].map(item => item.textContent.trim())),
               partialTitles:[...group.querySelectorAll(".recordDatePartialColumn .recordTitle")]
                 .map(item => item.textContent.trim()),
               partialCardCount:group.querySelectorAll(".recordDatePartialColumn > .recordItem").length,
               partialEntryCount:group.querySelectorAll(".partialHarvestDayEntry").length,
               partialTotal:group.querySelector(".partialHarvestDayTotal")?.textContent.trim() || "",
               partialEntries:[...group.querySelectorAll(".partialHarvestDayEntryMain")]
-                .map(item => item.textContent.replace(/\\s+/g, " ").trim()),
+                .map(item => [
+                  item.querySelector(".partialHarvestDayLocation")?.textContent.trim() || "",
+                  item.querySelector(".partialHarvestDayCases")?.textContent.trim() || ""
+                ].join(" ")),
               partialMemoHidden:!["現場メモ", "別のメモ", "部分収穫後の残り予想"]
                 .some(text => partialColumnText.includes(text)),
               fallbackPartialMemoHidden:!["単独表示メモ", "部分収穫後の残り予想"]
@@ -8892,16 +8912,20 @@
                 .filter(Boolean),
               repeatedDates:[...group.querySelectorAll(".recordItem .recordTitle")]
                 .filter(item => item.textContent.includes("2026-08-23")).length,
-              editButtonCount:group.querySelectorAll('.recordActions [data-ui-click^="edit"]').length,
-              deleteButtonCount:group.querySelectorAll(".recordListDeleteBtn").length
+              rowDetailButtonCount:group.querySelectorAll('[data-ui-click="openRecordDetailWindow"]').length,
+              inlineActionCount:group.querySelectorAll(".recordActions").length,
+              detailActions:[...detailActionHost.querySelectorAll("button")].map(button => button.textContent.trim())
             };
           })()`));
           assertDeepEqual(state, {
             groupCount:1,
-            heading:"8/23（日）の記録",
-            types:["収穫", "苗植え", "部分"],
-            itemTitles:["収穫", "苗植え", "部分収穫まとめ4件"],
+            groupElement:"DETAILS",
+            groupOpen:true,
+            heading:"8/23（日）",
+            types:["収穫 22ケース", "苗植え 2枚", "部分 4件"],
+            primaryKinds:["収穫", "苗植え"],
             primaryDisplay:"grid",
+            primaryOneColumn:true,
             primaryColumns:[["収穫"], ["苗植え"]],
             partialTitles:["部分収穫まとめ4件"],
             partialCardCount:1,
@@ -8920,8 +8944,9 @@
               "別のメモ\n部分収穫後の残り予想: 約22ケース（目安）"
             ],
             repeatedDates:0,
-            editButtonCount:6,
-            deleteButtonCount:6
+            rowDetailButtonCount:6,
+            inlineActionCount:0,
+            detailActions:["記録を編集", "ケース数の一部を部分収穫へ", "削除"]
           }, "同日の記録が日付見出しの下へ種類順・部分収穫の場所順にまとまっていません");
         }finally{
           replaceAppHistory(app, previousRecords, previousEvents);
@@ -10764,8 +10789,8 @@
         assert(confirmation.includes("この記録分の合計: 100ケース（変わりません）"), "合計維持の説明が警告にありません");
         assert(confirmation.includes("別の通常収穫記録 1件のロス率を更新します"), "他の記録のロス率変更が警告にありません");
         assert(
-          app.renderRecordItemHtml(source).includes('data-ui-click="openHarvestPartialSplitWindow"'),
-          "通常収穫の一覧に部分収穫へ分ける操作がありません"
+          app.getRecordDetailActionsHtml("harvest", source.id).includes('data-ui-arg="split"'),
+          "通常収穫の詳細に部分収穫へ分ける操作がありません"
         );
         assert(app.document.getElementById("harvestPartialSplitModal"), "部分収穫へ分ける確認画面がありません");
 
@@ -10988,18 +11013,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "202d4d5e", elements: 2316, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "64ffeb85", elements: 2385, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "5b03defa", elements: 2385, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "6c18445e", elements: 2316, visible: 81, viewport: "390x844" },
-          mobileDashboard: { hash: "94cc8315", elements: 2333, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a913086b", elements: 2416, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "972fc295", elements: 2431, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "aac8bff2", elements: 2431, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "818d61f7", elements: 2431, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "085e3f8a", elements: 2431, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "64ee13ea", elements: 2431, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "0d56e9d4", elements: 2431, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "99586b29", elements: 2323, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "1b352173", elements: 2392, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "770068ec", elements: 2392, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "522d6dfb", elements: 2323, visible: 83, viewport: "390x844" },
+          mobileDashboard: { hash: "c9da7886", elements: 2340, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "b294d7ef", elements: 2423, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "970ab703", elements: 2438, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "80225112", elements: 2438, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "aa5739b9", elements: 2438, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "c986560e", elements: 2438, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "5c80d05a", elements: 2438, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "0654674a", elements: 2438, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

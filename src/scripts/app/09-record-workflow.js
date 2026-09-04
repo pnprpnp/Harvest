@@ -2056,12 +2056,29 @@ function handleRecordHarvestBack(){
   openRecordHarvestStage(RECORD_HARVEST_STAGES[getRecordHarvestStageIndex() - 1]);
 }
 
+function renderRecordHistoryToggle(){
+  const button = document.getElementById("recordHistoryOpenBtn");
+  const label = document.getElementById("recordHistoryToggleLabel");
+  if(!button || !label) return;
+  const isHistoryOpen = recordViewMode === "history";
+  label.textContent = isHistoryOpen ? "入力へ戻る" : "記録一覧";
+  button.classList.toggle("is-history-open", isHistoryOpen);
+  button.setAttribute("aria-label", isHistoryOpen ? "記録入力へ戻る" : "記録一覧を開く");
+  button.setAttribute("aria-pressed", String(isHistoryOpen));
+}
+
+function toggleRecordHistoryView(){
+  if(recordViewMode === "history") showRecordEntryView();
+  else showRecordHistoryView();
+}
+
 function showRecordHistoryView(options = {}){
   recordViewMode = "history";
   const saveCard = document.getElementById("recordSaveCard");
   const historyCard = document.getElementById("recordHistoryCard");
   if(saveCard) saveCard.hidden = true;
   if(historyCard) historyCard.hidden = false;
+  renderRecordHistoryToggle();
   renderRecordList();
   renderRecordHarvestFixedNavigation();
   scheduleHarvestStateSave();
@@ -2121,6 +2138,7 @@ function refreshRecordModeUi(){
     && editingEvent?.openingCarryoverBefore !== null
     && editingEvent?.openingCarryoverBefore !== undefined;
   const recordDateInput = document.getElementById("recordDateInput");
+  renderRecordHistoryToggle();
   if(qualityMemoMediumChoice){
     qualityMemoMediumChoice.hidden = !isPlantingMode;
     const input = qualityMemoMediumChoice.querySelector("input");

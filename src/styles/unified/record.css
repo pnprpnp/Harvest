@@ -30,6 +30,18 @@
   font-weight:800;
   white-space:nowrap;
 }
+.recordHistoryToggleBtn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+}
+.recordHistoryToggleBtn svg{width:15px;height:15px;flex:none;}
+.recordHistoryToggleBtn.is-history-open{
+  border-color:var(--ui-accent);
+  background:var(--ui-accent-soft);
+  color:var(--ui-accent-dark);
+}
 .recordPastDateNotice{
   width:max-content;
   margin:7px 0 0;
@@ -162,11 +174,17 @@
   grid-template-columns:minmax(0,1fr) auto;
   align-items:stretch;
   gap:8px;
-  margin:0 0 10px;
+  margin:0 30px 10px;
   background:var(--ui-bg);
 }
 .recordTopStatusRow > .recordModeStatus{margin:0;}
 .recordTopStatusRow > .recordHistoryToggleBtn{height:46px;min-height:46px;align-self:stretch;}
+@media(max-width:759px){
+  .recordTopStatusRow{margin-right:2px;margin-left:2px;}
+}
+@media(max-width:360px){
+  .recordHistoryToggleBtn svg{display:none;}
+}
 .recordModeStatus{
   --record-mode-active:var(--ui-accent-dark);
   position:relative;
@@ -461,29 +479,49 @@
 }
 .recordDateGroup{
   margin-top:12px;
-  padding:13px;
   border:1px solid var(--ui-line);
   border-radius:15px;
   background:var(--ui-surface-solid);
+  overflow:hidden;
+  scroll-margin-top:calc(var(--app-top-chrome-height) + 58px);
 }
 .recordDateGroupHeader{
   display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
   gap:7px;
-  padding:0 2px 11px;
+  padding:13px 14px;
+  cursor:pointer;
+  list-style:none;
+}
+.recordDateGroupHeader::-webkit-details-marker{display:none;}
+.recordDateGroup[open] > .recordDateGroupHeader{
   border-bottom:1px solid var(--ui-line);
 }
 .recordDateGroupTitle{
+  grid-column:1;
   color:var(--ui-text);
   font-size:17px;
   font-weight:850;
   line-height:1.25;
 }
 .recordDateGroupTypes{
+  grid-column:1;
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   gap:7px;
 }
+.recordDateGroupChevron{
+  grid-column:2;
+  grid-row:1 / span 2;
+  color:var(--ui-text-tertiary);
+  font-size:25px;
+  line-height:1;
+  transform:rotate(90deg);
+  transition:transform .16s ease;
+}
+.recordDateGroup[open] > .recordDateGroupHeader .recordDateGroupChevron{transform:rotate(-90deg);}
 .recordDateGroupType{
   display:inline-flex;
   align-items:center;
@@ -502,14 +540,15 @@
 .recordDateGroupItems{
   display:grid;
   gap:9px;
-  padding-top:11px;
+  padding:11px 13px 13px;
 }
 .recordDateGroupPrimary{
   display:grid;
-  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns:minmax(0,1fr);
   gap:9px;
   align-items:start;
 }
+.recordDateGroupPrimary > .recordDateColumn{grid-column:1;}
 .recordDateColumn{
   display:grid;
   gap:9px;
@@ -521,6 +560,48 @@
 .recordDateGroup .recordItem{
   margin-top:0;
   min-width:0;
+}
+.recordItemOpenButton{
+  width:100%;
+  min-height:44px;
+  margin:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--ui-text);
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:9px;
+  text-align:left;
+}
+.recordItemKind{font-size:14px;font-weight:900;white-space:nowrap;}
+.recordItemCompactSummary{
+  min-width:0;
+  color:var(--ui-text-secondary);
+  font-size:13px;
+  font-weight:750;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+.recordItemChevron{color:var(--ui-text-tertiary);font-size:23px;font-weight:500;line-height:1;}
+.recordItemOpenButton:focus-visible,
+.partialHarvestDayEntryMain:focus-visible{
+  outline:2px solid var(--ui-accent);
+  outline-offset:3px;
+  border-radius:8px;
+}
+.recordHistoryMore{display:flex;justify-content:center;margin-top:14px;}
+.recordHistoryMoreBtn{
+  min-height:42px;
+  margin:0;
+  padding:8px 14px;
+  border:1px solid var(--ui-line-strong);
+  border-radius:11px;
+  background:var(--ui-surface-solid);
+  color:var(--ui-accent-dark);
+  font-size:12px;
+  font-weight:850;
 }
 .recordTitle{color:var(--ui-text);}
 .recordTitleHarvest{color:#15803d;}
@@ -563,10 +644,16 @@
   border-color:#f59e0b;
 }
 .partialHarvestDayEntryMain{
-  display:flex;
-  align-items:baseline;
-  justify-content:space-between;
+  width:100%;
+  margin:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto;
+  align-items:center;
   gap:10px;
+  text-align:left;
 }
 .partialHarvestDayLocation{
   min-width:0;
@@ -602,6 +689,22 @@
   background:#fff;
   color:var(--ui-accent-dark);
 }
+.recordDetailRecordActions{
+  display:grid;
+  gap:8px;
+  margin-top:14px;
+  padding-top:14px;
+  border-top:1px solid var(--ui-line);
+}
+.recordDetailRecordActions button{
+  min-height:42px;
+  margin:0;
+  border-radius:11px;
+  box-shadow:none;
+  font-size:12px;
+  font-weight:850;
+}
+.recordDetailRecordActions .recordListDeleteBtn{background:#dc2626;color:#fff;}
 .recordDetailLocationCountTabs{
   grid-template-columns:repeat(auto-fit,minmax(76px,1fr));
   margin-bottom:4px;

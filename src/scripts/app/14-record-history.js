@@ -1,4 +1,6 @@
 // ===== 記録一覧：編集・履歴・削除 =====
+let recordHistoryVisibleLimit = RECORD_LIST_DISPLAY_LIMIT;
+
 function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
@@ -411,7 +413,12 @@ function formatRecordHistoryDateLabel(value){
   const date = parseDateOnlyString(String(value || "").trim());
   if(!date) return "日付なしの記録";
   const weekday = ["日", "月", "火", "水", "木", "金", "土"][date.getDay()];
-  return `${date.getMonth() + 1}/${date.getDate()}（${weekday}）の記録`;
+  return `${date.getMonth() + 1}/${date.getDate()}（${weekday}）`;
+}
+
+function showMoreRecordHistory(){
+  recordHistoryVisibleLimit += RECORD_LIST_DISPLAY_LIMIT;
+  renderRecordList();
 }
 
 function renderRecordList(){
@@ -426,27 +433,24 @@ function renderRecordList(){
   }
 
   const selectedDate = document.getElementById("recordDateInput")?.value || "";
-  let visibleItems = [];
-
-  if(selectedDate){
-    visibleItems = (itemsByDate.get(selectedDate) || []).slice(0, RECORD_LIST_DISPLAY_LIMIT);
+  const preferredOpenDate = itemsByDate.has(selectedDate)
+    ? selectedDate
+    : String(historyItems[0]?.date || "");
+  const previouslyOpenDates = new Set(
+    [...box.querySelectorAll("details.recordDateGroup[open]")]
+      .map(group => group.dataset.recordHistoryDate || "")
+      .filter(Boolean)
+  );
+  const visibleDateKeys = new Set();
+  let visibleItemCount = 0;
+  for(const [dateKey, dateItems] of itemsByDate){
+    if(visibleItemCount >= recordHistoryVisibleLimit) break;
+    visibleDateKeys.add(dateKey);
+    visibleItemCount += dateItems.length;
   }
-
-  if(!visibleItems.length){
-    const latestDate = historyItems[0].date;
-    visibleItems = (itemsByDate.get(String(latestDate || "")) || []).slice(0, RECORD_LIST_DISPLAY_LIMIT);
-  }
-
-  const getItemKey = item => item.kind + ":" + item.id;
-  const visibleIds = new Set(visibleItems.map(getItemKey));
-  const hiddenLimit = Math.max(0, RECORD_LIST_DISPLAY_LIMIT - visibleItems.length);
-  const hiddenItems = [];
-  let hiddenTotal = 0;
-  historyItems.forEach(item => {
-    if(visibleIds.has(getItemKey(item))) return;
-    hiddenTotal++;
-    if(hiddenItems.length < hiddenLimit) hiddenItems.push(item);
-  });
+  if(preferredOpenDate) visibleDateKeys.add(preferredOpenDate);
+  const visibleItems = historyItems.filter(item => visibleDateKeys.has(String(item.date || "")));
+  const hiddenTotal = Math.max(0, historyItems.length - visibleItems.length);
 
   const renderHistoryItem = item => {
     const issue = consistencyAudit.issueByKey.get(getRecordConsistencyIssueKey(item.kind, item.id)) || null;
@@ -472,10 +476,22 @@ function renderRecordList(){
       const partialHtml = group.partial.length
         ? renderPartialHarvestDaySummaryHtml(group.partial, consistencyAudit)
         : "";
+      const caseTotals = getHarvestCaseTotalsForDate(group.dateKey, records, harvestCaseTotalsByDate);
+      const plantingMetrics = getPlantingEventGroupListMetrics(
+        group.planting.map(item => item.value)
+      );
       const typeBadges = [
-        harvestHtml ? '<span class="recordDateGroupType is-harvest">収穫</span>' : "",
-        plantingHtml ? '<span class="recordDateGroupType is-planting">苗植え</span>' : "",
-        partialHtml ? '<span class="recordDateGroupType is-partial">部分</span>' : ""
+        harvestHtml
+          ? `<span class="recordDateGroupType is-harvest">収穫 ${escapeHtml(String(caseTotals.totalCases))}ケース</span>`
+          : "",
+        plantingHtml
+          ? `<span class="recordDateGroupType is-planting">苗植え ${escapeHtml(plantingMetrics.seedlingTrayText)}</span>`
+          : "",
+        partialHtml
+          ? `<span class="recordDateGroupType is-partial">${harvestHtml
+              ? `部分 ${group.partial.length}件`
+              : `部分収穫 ${escapeHtml(String(caseTotals.partialCases))}ケース・${group.partial.length}件`}</span>`
+          : ""
       ].join("");
       const primaryHtml = harvestHtml || plantingHtml
         ? `<div class="recordDateGroupPrimary">
@@ -483,28 +499,26 @@ function renderRecordList(){
             ${plantingHtml ? `<div class="recordDateColumn recordDatePlantingColumn">${plantingHtml}</div>` : ""}
           </div>`
         : "";
-      return `<section class="recordDateGroup" data-record-history-date="${escapeHtml(group.dateKey)}">
-        <div class="recordDateGroupHeader">
+      const isOpen = group.dateKey === preferredOpenDate || previouslyOpenDates.has(group.dateKey);
+      return `<details class="recordDateGroup" data-record-history-date="${escapeHtml(group.dateKey)}"${isOpen ? " open" : ""}>
+        <summary class="recordDateGroupHeader">
           <div class="recordDateGroupTitle">${escapeHtml(formatRecordHistoryDateLabel(group.dateKey))}</div>
           <div class="recordDateGroupTypes" aria-label="この日の記録">${typeBadges}</div>
-        </div>
+          <span class="recordDateGroupChevron" aria-hidden="true">›</span>
+        </summary>
         <div class="recordDateGroupItems">
           ${primaryHtml}
           ${partialHtml ? `<div class="recordDateColumn recordDatePartialColumn">${partialHtml}</div>` : ""}
         </div>
-      </section>`;
+      </details>`;
     }).join("");
   };
   const visibleHtml = renderHistoryGroups(visibleItems);
-  const hiddenHtml = renderHistoryGroups(hiddenItems);
 
-  box.innerHTML = visibleHtml + (hiddenItems.length ? `
-    <details class="recordToggleWrap">
-      <summary class="recordToggleSummary">一覧を見る（最近 ${hiddenItems.length} 件 / 全 ${hiddenTotal} 件）</summary>
-      <div class="recordToggleBody">
-        ${hiddenHtml}
-      </div>
-    </details>
+  box.innerHTML = visibleHtml + (hiddenTotal ? `
+    <div class="recordHistoryMore">
+      <button type="button" class="recordHistoryMoreBtn" data-ui-click="showMoreRecordHistory">さらに過去の記録を表示（残り ${hiddenTotal} 件）</button>
+    </div>
   ` : "");
 }
 
@@ -757,6 +771,39 @@ function getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind = ""){
   return locationFirst
     ? `${locationHtml}${infoHtml}`
     : `${infoHtml}${locationHtml}`;
+}
+
+function getRecordDetailActionsHtml(kind, id){
+  const safeId = getSafePositiveRecordId(id);
+  if(!safeId) return "";
+  const editLabel = kind === "planting" ? "苗植え記録を編集" : "記録を編集";
+  return `
+    <div class="recordDetailRecordActions" aria-label="この記録の操作">
+      <button type="button" class="thirdBtn" data-ui-click="runRecordDetailAction" data-ui-arg="edit" data-ui-arg2="${escapeHtml(kind)}" data-ui-number="${safeId}">${editLabel}</button>
+      ${kind === "harvest" ? `<button type="button" class="thirdBtn" data-ui-click="runRecordDetailAction" data-ui-arg="split" data-ui-arg2="harvest" data-ui-number="${safeId}">ケース数の一部を部分収穫へ</button>` : ""}
+      <button type="button" class="secondaryBtn recordListDeleteBtn" data-ui-click="runRecordDetailAction" data-ui-arg="delete" data-ui-arg2="${escapeHtml(kind)}" data-ui-number="${safeId}">削除</button>
+    </div>
+  `;
+}
+
+function runRecordDetailAction(action, kind, id){
+  const safeId = getSafePositiveRecordId(id);
+  if(!safeId) return;
+  closeRecordDetailWindow({ restoreFocus:false });
+  if(action === "edit"){
+    if(kind === "planting") editPlantingEvent(safeId);
+    else if(kind === "partialHarvest") editPartialHarvestRecord(safeId);
+    else editHarvestRecord(safeId);
+    return;
+  }
+  if(action === "split" && kind === "harvest"){
+    openHarvestPartialSplitWindow(safeId);
+    return;
+  }
+  if(action === "delete"){
+    if(kind === "planting") confirmDeletePlantingEvent(safeId);
+    else confirmDeleteRecord(safeId);
+  }
 }
 
 function getDashboardDayRecordDetailBodyHtml(infoRows){
@@ -1565,7 +1612,8 @@ function openRecordDetailWindow(kind, id){
     : null;
   title.textContent = titleText;
   body.classList.add("hasLocationDisplay");
-  body.innerHTML = getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind);
+  body.innerHTML = getRecordDetailWindowBodyHtml(infoRows, locationTitle, kind)
+    + getRecordDetailActionsHtml(kind, safeId);
   body.scrollTop = 0;
   showPageBlockingUi(modal);
   requestAnimationFrame(() => {
@@ -1800,18 +1848,15 @@ function renderPartialHarvestDaySummaryHtml(items, consistencyAudit){
     const syncWarningText = getHarvestRecordSyncWarningText(record, syncConflict);
     return `
       <div class="partialHarvestDayEntry${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}" data-partial-harvest-record-id="${safeRecordId}">
-        <div class="partialHarvestDayEntryMain">
+        <button type="button" class="partialHarvestDayEntryMain" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="partialHarvest" data-ui-number="${safeRecordId}">
           <span class="partialHarvestDayLocation">${escapeHtml(location)}</span>
           <span class="partialHarvestDayCases">${escapeHtml(String(cases))}ケース</span>
-        </div>
+          <span class="recordItemChevron" aria-hidden="true">›</span>
+        </button>
         <div class="partialHarvestDayTargetDetail">${escapeHtml(formatPartialHarvestSummary(record?.targets))}</div>
         ${syncWarningText ? `<div class="smallText partialHarvestDayWarning">${escapeHtml(syncWarningText)}</div>` : ""}
         ${renderRecordItemSyncConflictHtml("record", record)}
         ${renderRecordItemConsistencyHtml("harvest", record, consistencyIssue)}
-        <div class="recordActions partialHarvestDayActions">
-          <button class="thirdBtn" data-ui-click="editPartialHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
-          <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
-        </div>
       </div>
     `;
   }).join("");
@@ -1835,16 +1880,14 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
   if(r.type === "partialHarvest"){
     return `
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle"><span class="recordTitlePartial">部分</span></div>
-      <div class="recordMeta">収穫ケース数: ${safeCases}</div>
+      <button type="button" class="recordItemOpenButton" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="partialHarvest" data-ui-number="${safeRecordId}">
+        <span class="recordItemKind recordTitlePartial">部分収穫</span>
+        <span class="recordItemCompactSummary">${safeCases}ケース・${escapeHtml(formatPartialHarvestCompactLocation(r.targets))}</span>
+        <span class="recordItemChevron" aria-hidden="true">›</span>
+      </button>
       ${syncWarningText ? `<div class="smallText partialHarvestDayWarning">${escapeHtml(syncWarningText)}</div>` : ""}
-      <span class="summaryCode">${escapeHtml(formatPartialHarvestSummary(r.targets))}</span>
       ${conflictHtml}
       ${consistencyHtml}
-      <div class="recordActions">
-        <button class="thirdBtn" data-ui-click="editPartialHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
-        <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
-      </div>
     </div>
     `;
   }
@@ -1859,24 +1902,21 @@ function renderRecordItemHtml(r, harvestCaseTotalsByDate = null, consistencyIssu
   )]
     .sort((a, b) => BUILDINGS.indexOf(a) - BUILDINGS.indexOf(b))
     .join("・") || "-";
+  const harvestLocationCompactText = harvestBuildingText === "-" ? "場所 -" : `${harvestBuildingText}号棟`;
+  const harvestLossCompactText = actualLossNumber === null
+    ? `${harvestLossLabel} -`
+    : `${harvestLossLabel} ${safeActualLoss}%`;
 
   return `
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle"><span class="recordTitleHarvest">収穫</span></div>
-      <div class="recordMeta">収穫ケース数: ${safeCases}
-${harvestLossLabel}: ${safeActualLoss}${actualLossNumber === null ? "" : "%"}
-収穫場所: ${escapeHtml(harvestBuildingText)}
-品質メモ: ${escapeHtml(formatQualityMemo(r.qualityMemo) || "-")}</div>
+      <button type="button" class="recordItemOpenButton" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="harvest" data-ui-number="${safeRecordId}">
+        <span class="recordItemKind recordTitleHarvest">収穫</span>
+        <span class="recordItemCompactSummary">${safeCases}ケース・${escapeHtml(harvestLossCompactText)}・${escapeHtml(harvestLocationCompactText)}</span>
+        <span class="recordItemChevron" aria-hidden="true">›</span>
+      </button>
 ${syncWarningText ? `<div class="smallText" style="margin-top:6px; color:#b45309;">${escapeHtml(syncWarningText.trim())}</div>` : ""}
       ${conflictHtml}
       ${consistencyHtml}
-      ${r.memo ? `<div class="smallText" style="margin-top:8px; white-space:pre-wrap;">メモ: ${escapeHtml(r.memo)}</div>` : ""}
-      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="harvest" data-ui-number="${safeRecordId}">詳細</button>
-      <div class="recordActions">
-        <button class="thirdBtn" data-ui-click="editHarvestRecord" data-ui-number="${safeRecordId}">編集</button>
-        <button class="thirdBtn recordSplitPartialBtn" data-ui-click="openHarvestPartialSplitWindow" data-ui-number="${safeRecordId}">ケース数の一部を部分収穫へ分ける</button>
-        <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeleteRecord" data-ui-number="${safeRecordId}">削除</button>
-      </div>
     </div>
   `;
 }
@@ -1895,18 +1935,13 @@ function renderPlantingEventItemHtml(event, consistencyIssue = null){
   ).size;
   return `
     <div class="recordItem${syncConflict ? " hasSyncConflict" : ""}${consistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle"><span class="recordTitlePlanting">苗植え</span></div>
-      <div class="recordMeta">苗枚数: ${escapeHtml(metrics.seedlingTrayText)}
-苗ロス率: ${escapeHtml(metrics.lossRateText)}
-苗の品質: ${escapeHtml(formatPlantingQualityMemo(getPlantingQualityMemoSummary(event)))}
-未定植枚数: ${escapeHtml(String(pendingPalletCount))}枚</div>
+      <button type="button" class="recordItemOpenButton" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="planting" data-ui-number="${safeEventId}">
+        <span class="recordItemKind recordTitlePlanting">苗植え</span>
+        <span class="recordItemCompactSummary">${escapeHtml(metrics.seedlingTrayText)}・ロス率 ${escapeHtml(metrics.lossRateText)}・未定植 ${escapeHtml(String(pendingPalletCount))}枚</span>
+        <span class="recordItemChevron" aria-hidden="true">›</span>
+      </button>
       ${conflictHtml}
       ${consistencyHtml}
-      <button type="button" class="recordDetailSummary" aria-haspopup="dialog" aria-controls="recordDetailModal" data-ui-click="openRecordDetailWindow" data-ui-arg="planting" data-ui-number="${safeEventId}">詳細</button>
-      <div class="recordActions">
-        <button class="thirdBtn" data-ui-click="editPlantingEvent" data-ui-number="${safeEventId}">編集</button>
-        <button class="secondaryBtn recordListDeleteBtn" data-ui-click="confirmDeletePlantingEvent" data-ui-number="${safeEventId}">削除</button>
-      </div>
     </div>
   `;
 }
