@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260904-hide-record-progress-gauge">
+<meta name="harvestnavi-version" content="20260904-record-bar-date-cases">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10347,8 +10347,8 @@ button.recordHarvestLocationMetric{font:inherit;}
   z-index:8990;
   height:60px;
   display:grid;
-  grid-template-columns:minmax(90px,.65fr) minmax(160px,1.35fr);
-  gap:9px;
+  grid-template-columns:minmax(80px,.6fr) minmax(0,1.45fr) minmax(68px,.7fr);
+  gap:6px;
   box-sizing:border-box;
   padding:6px max(calc(12px + env(safe-area-inset-right, 0px)), calc((100vw - 720px) / 2));
   border-top:1px solid var(--ui-line);
@@ -10359,9 +10359,39 @@ button.recordHarvestLocationMetric{font:inherit;}
 }
 .recordHarvestFixedNav[hidden]{display:none;}
 .recordHarvestBackBtn,
-.recordHarvestNextBtn{height:46px;min-height:46px;margin:0;border-radius:13px;font-size:15px;font-weight:850;}
-.recordHarvestBackBtn{border:1px solid var(--ui-line-strong);background:var(--ui-surface-solid);color:var(--ui-text-secondary);}
+.recordHarvestNextBtn{height:46px;min-height:46px;margin:0;padding:0 8px;border-radius:13px;font-size:13px;font-weight:850;white-space:nowrap;}
+.recordHarvestBackBtn{padding-right:4px;padding-left:4px;border:1px solid var(--ui-line-strong);background:var(--ui-surface-solid);color:var(--ui-text-secondary);font-size:12px;}
 .recordHarvestNextBtn{border:1px solid var(--ui-accent);background:var(--ui-accent);color:#fff;}
+.recordHarvestSummaryBtn{
+  position:relative;
+  min-width:0;
+  height:46px;
+  min-height:46px;
+  margin:0;
+  padding:4px 18px 4px 8px;
+  border:1px solid var(--ui-line-strong);
+  border-radius:13px;
+  background:var(--ui-surface-solid);
+  color:var(--ui-text);
+  display:grid;
+  place-content:center;
+  gap:1px;
+  overflow:hidden;
+  text-align:center;
+  white-space:nowrap;
+}
+.recordHarvestSummaryBtn::after{content:"›";position:absolute;right:7px;top:50%;color:var(--ui-text-tertiary);font-size:18px;transform:translateY(-50%);}
+.recordHarvestSummaryDate{color:var(--ui-text-secondary);font-size:11px;font-weight:750;line-height:1.05;}
+.recordHarvestSummaryCases{overflow:hidden;color:var(--ui-accent-dark);font-size:14px;font-weight:880;line-height:1.1;text-overflow:ellipsis;}
+.recordHarvestSummaryBtn.is-past-date .recordHarvestSummaryDate{color:#c2410c;}
+.recordHarvestQuickEditWindow{width:min(420px,100%);}
+.recordHarvestQuickEditBody{display:grid;gap:16px;white-space:normal;}
+.recordHarvestQuickEditField{display:grid;gap:7px;color:var(--ui-text-secondary);font-size:12px;font-weight:800;}
+.recordHarvestQuickEditDateRow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;}
+.recordHarvestQuickEditDateRow input,
+.recordHarvestQuickEditCasesWrap input{width:100%;min-width:0;box-sizing:border-box;}
+.recordHarvestQuickEditWeekday{min-width:32px;color:var(--ui-text);font-size:14px;font-weight:850;text-align:center;}
+.recordHarvestQuickEditApplyBtn{width:100%;min-height:46px;margin:2px 0 0;}
 #recordSaveCard:has(.recordHarvestFixedNav:not([hidden])){padding-bottom:92px;}
 .recordHistoryHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .recordHistoryHeader .sectionTitle{margin-bottom:0;}
@@ -13874,6 +13904,10 @@ requestAnimationFrame(function(){
       </div>
       <div id="recordHarvestFixedNav" class="recordHarvestFixedNav" hidden>
         <button id="recordHarvestBackBtn" class="recordHarvestBackBtn" type="button" data-ui-click="handleRecordHarvestBack">クリア</button>
+        <button id="recordHarvestSummaryBtn" class="recordHarvestSummaryBtn" type="button" data-ui-click="openRecordHarvestQuickEditWindow" aria-label="記録の日付とケース数を変更">
+          <span id="recordHarvestSummaryDate" class="recordHarvestSummaryDate">--/--（--）</span>
+          <strong id="recordHarvestSummaryCases" class="recordHarvestSummaryCases">--ケース</strong>
+        </button>
         <button id="recordHarvestNextBtn" class="recordHarvestNextBtn" type="button" data-ui-click="handleRecordHarvestNext">次へ</button>
       </div>
     </div>
@@ -14488,6 +14522,31 @@ requestAnimationFrame(function(){
     <div id="forecastSettingsWindowBody" class="forecastSettingsWindowBody"></div>
     <div class="forecastSettingsWindowBody">
       <button class="actionBtn" data-ui-click="saveForecastSettingsAndClose">設定を保存</button>
+    </div>
+  </div>
+</div>
+<div id="recordHarvestQuickEditModal" class="recordDetailModal recordHarvestQuickEditModal" role="dialog" aria-modal="true" aria-labelledby="recordHarvestQuickEditTitle" data-ui-backdrop-click="closeRecordHarvestQuickEditWindow">
+  <div class="recordDetailWindow recordHarvestQuickEditWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="recordHarvestQuickEditTitle" class="recordDetailWindowTitle">日付・ケース数</div>
+      <button type="button" class="recordDetailWindowClose" data-ui-click="closeRecordHarvestQuickEditWindow">閉じる</button>
+    </div>
+    <div class="recordDetailWindowBody recordHarvestQuickEditBody">
+      <label class="recordHarvestQuickEditField" for="recordHarvestQuickEditDateInput">
+        <span>日付</span>
+        <span class="recordHarvestQuickEditDateRow">
+          <input id="recordHarvestQuickEditDateInput" type="date" data-ui-input="updateRecordHarvestQuickEditWeekday">
+          <span id="recordHarvestQuickEditWeekday" class="recordHarvestQuickEditWeekday">（--）</span>
+        </span>
+      </label>
+      <label class="recordHarvestQuickEditField" for="recordHarvestQuickEditCasesInput">
+        <span>収穫ケース数</span>
+        <span class="inputUnitWrap recordHarvestQuickEditCasesWrap">
+          <input id="recordHarvestQuickEditCasesInput" type="number" min="0" inputmode="numeric">
+          <span class="inputUnitSuffix">ケース</span>
+        </span>
+      </label>
+      <button type="button" class="actionBtn recordHarvestQuickEditApplyBtn" data-ui-click="applyRecordHarvestQuickEdit">変更を反映</button>
     </div>
   </div>
 </div>
@@ -15157,6 +15216,7 @@ let expandedRecordBed = null;
 let activeBedDetailContext = null;
 let activeBedDetailBed = null;
 let recordDetailReturnFocus = null;
+let recordHarvestQuickEditReturnFocus = null;
 let seedlingHouseReturnFocus = null;
 let seedlingHouseSelectedBed = null;
 let seedlingHousePrimaryDateEditingEventId = null;
@@ -15539,6 +15599,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "monitorPreviewModal",
   "appMenuModal",
   "forecastSettingsModal",
+  "recordHarvestQuickEditModal",
   "dashboardModal",
   "dashboardCasesAllModal",
   "dashboardCalendarInfoModal",
@@ -17713,6 +17774,7 @@ function closeRecordFloatingUi(){
     closeDashboardSeedlingStatusDetail({ restoreFocus: false });
   }
   closeRecordDetailWindow({ restoreFocus: false });
+  closeRecordHarvestQuickEditWindow({ restoreFocus: false });
   closePartialHarvestEditWindow({ restoreFocus: false });
   closeHarvestPartialSplitWindow({ restoreFocus: false });
   closeBedDetailWindow();
@@ -34705,6 +34767,9 @@ function renderRecordHarvestConfirmation(){
 function renderRecordHarvestFixedNavigation(){
   const nav = document.getElementById("recordHarvestFixedNav");
   const backButton = document.getElementById("recordHarvestBackBtn");
+  const summaryButton = document.getElementById("recordHarvestSummaryBtn");
+  const summaryDate = document.getElementById("recordHarvestSummaryDate");
+  const summaryCases = document.getElementById("recordHarvestSummaryCases");
   const nextButton = document.getElementById("recordHarvestNextBtn");
   const isVisible = recordSelectionMode === "harvest" && recordViewMode === "entry";
   if(nav) nav.hidden = !isVisible;
@@ -34712,6 +34777,17 @@ function renderRecordHarvestFixedNavigation(){
 
   const stage = normalizeRecordHarvestStage(recordHarvestStage);
   const isEditing = !!editingHarvestRecordId;
+  const dateValue = document.getElementById("recordDateInput")?.value || "";
+  const caseValue = String(document.getElementById("recordCasesInput")?.value || "").trim();
+  const formattedDate = formatRecordHarvestFixedNavDate(dateValue);
+  const formattedCases = caseValue === "" ? "--ケース" : `${caseValue}ケース`;
+  if(summaryDate) summaryDate.textContent = formattedDate;
+  if(summaryCases) summaryCases.textContent = formattedCases;
+  if(summaryButton){
+    const todayValue = formatDateOnlyString(new Date());
+    summaryButton.classList.toggle("is-past-date", !!dateValue && dateValue < todayValue);
+    summaryButton.setAttribute("aria-label", `記録の日付とケース数を変更。${formattedDate}、${formattedCases}`);
+  }
   backButton.textContent = stage === "cases"
     ? (isEditing ? "確認へ戻る" : "クリア")
     : (isEditing && stage === "confirm" ? "編集を破棄" : "戻る");
@@ -34721,6 +34797,82 @@ function renderRecordHarvestFixedNavigation(){
   nextButton.title = stage === "location" && unvisited.length
     ? `${unvisited.map(building => `${building}号棟`).join("・")}の配置図を確認してください`
     : "";
+}
+
+function formatRecordHarvestFixedNavDate(value){
+  const date = parseDateOnlyString(value);
+  if(!date) return "--/--（--）";
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getMonth() + 1}/${date.getDate()}（${weekdays[date.getDay()]}）`;
+}
+
+function updateRecordHarvestQuickEditWeekday(){
+  const input = document.getElementById("recordHarvestQuickEditDateInput");
+  const display = document.getElementById("recordHarvestQuickEditWeekday");
+  if(!display) return;
+  const date = parseDateOnlyString(input?.value || "");
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  display.textContent = date ? `（${weekdays[date.getDay()]}）` : "（--）";
+}
+
+function openRecordHarvestQuickEditWindow(){
+  const modal = document.getElementById("recordHarvestQuickEditModal");
+  const dateInput = document.getElementById("recordHarvestQuickEditDateInput");
+  const casesInput = document.getElementById("recordHarvestQuickEditCasesInput");
+  if(!modal || !dateInput || !casesInput) return;
+  recordHarvestQuickEditReturnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  dateInput.value = document.getElementById("recordDateInput")?.value || "";
+  casesInput.value = document.getElementById("recordCasesInput")?.value || "";
+  updateRecordHarvestQuickEditWeekday();
+  showPageBlockingUi(modal);
+  dateInput.focus();
+}
+
+function closeRecordHarvestQuickEditWindow(options = {}){
+  const modal = document.getElementById("recordHarvestQuickEditModal");
+  const returnFocus = recordHarvestQuickEditReturnFocus;
+  recordHarvestQuickEditReturnFocus = null;
+  hidePageBlockingUi(modal);
+  if(options.restoreFocus !== false && returnFocus && typeof returnFocus.focus === "function"){
+    returnFocus.focus();
+  }
+}
+
+function applyRecordHarvestQuickEdit(){
+  const quickDateInput = document.getElementById("recordHarvestQuickEditDateInput");
+  const quickCasesInput = document.getElementById("recordHarvestQuickEditCasesInput");
+  const recordDateInput = document.getElementById("recordDateInput");
+  const recordCasesInput = document.getElementById("recordCasesInput");
+  const dateValue = String(quickDateInput?.value || "").trim();
+  const casesText = String(quickCasesInput?.value || "").trim();
+  const casesValue = Number(casesText);
+  if(!parseDateOnlyString(dateValue)){
+    showToast("日付を入力してください");
+    quickDateInput?.focus();
+    return;
+  }
+  if(casesText === "" || !Number.isFinite(casesValue) || casesValue < 0){
+    showToast("ケース数を入力してください");
+    quickCasesInput?.focus();
+    return;
+  }
+  if(!recordDateInput || !recordCasesInput) return;
+  const dateChanged = recordDateInput.value !== dateValue;
+  recordDateInput.value = dateValue;
+  recordCasesInput.value = String(casesValue);
+  recordCasesEdited = true;
+  if(dateChanged){
+    handleRecordDateUpdate(true);
+  }else{
+    updateRecordWeekdayDisplay();
+    updateRecordActualLoss();
+    updateRecordInputGuides();
+    saveHarvestStateToStorage();
+  }
+  renderRecordHarvestFixedNavigation();
+  closeRecordHarvestQuickEditWindow();
 }
 
 function renderRecordHarvestWorkflowUi(){
@@ -43934,6 +44086,7 @@ function installStartupRecordFormEvents(){
       recordCasesEdited = true;
       updateRecordActualLoss();
       updateRecordInputGuides();
+      renderRecordHarvestFixedNavigation();
       scheduleHarvestStateSave();
     });
   }
@@ -44098,6 +44251,11 @@ function handleStartupEscapeKey(event){
   const recordDetailModal = document.getElementById("recordDetailModal");
   if(recordDetailModal?.classList.contains("show")){
     closeRecordDetailWindow();
+    return;
+  }
+  const recordHarvestQuickEditModal = document.getElementById("recordHarvestQuickEditModal");
+  if(recordHarvestQuickEditModal?.classList.contains("show")){
+    closeRecordHarvestQuickEditWindow();
     return;
   }
   const partialHarvestEditModal = document.getElementById("partialHarvestEditModal");

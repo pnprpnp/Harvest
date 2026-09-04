@@ -1903,6 +1903,9 @@ function renderRecordHarvestConfirmation(){
 function renderRecordHarvestFixedNavigation(){
   const nav = document.getElementById("recordHarvestFixedNav");
   const backButton = document.getElementById("recordHarvestBackBtn");
+  const summaryButton = document.getElementById("recordHarvestSummaryBtn");
+  const summaryDate = document.getElementById("recordHarvestSummaryDate");
+  const summaryCases = document.getElementById("recordHarvestSummaryCases");
   const nextButton = document.getElementById("recordHarvestNextBtn");
   const isVisible = recordSelectionMode === "harvest" && recordViewMode === "entry";
   if(nav) nav.hidden = !isVisible;
@@ -1910,6 +1913,17 @@ function renderRecordHarvestFixedNavigation(){
 
   const stage = normalizeRecordHarvestStage(recordHarvestStage);
   const isEditing = !!editingHarvestRecordId;
+  const dateValue = document.getElementById("recordDateInput")?.value || "";
+  const caseValue = String(document.getElementById("recordCasesInput")?.value || "").trim();
+  const formattedDate = formatRecordHarvestFixedNavDate(dateValue);
+  const formattedCases = caseValue === "" ? "--ケース" : `${caseValue}ケース`;
+  if(summaryDate) summaryDate.textContent = formattedDate;
+  if(summaryCases) summaryCases.textContent = formattedCases;
+  if(summaryButton){
+    const todayValue = formatDateOnlyString(new Date());
+    summaryButton.classList.toggle("is-past-date", !!dateValue && dateValue < todayValue);
+    summaryButton.setAttribute("aria-label", `記録の日付とケース数を変更。${formattedDate}、${formattedCases}`);
+  }
   backButton.textContent = stage === "cases"
     ? (isEditing ? "確認へ戻る" : "クリア")
     : (isEditing && stage === "confirm" ? "編集を破棄" : "戻る");
@@ -1919,6 +1933,82 @@ function renderRecordHarvestFixedNavigation(){
   nextButton.title = stage === "location" && unvisited.length
     ? `${unvisited.map(building => `${building}号棟`).join("・")}の配置図を確認してください`
     : "";
+}
+
+function formatRecordHarvestFixedNavDate(value){
+  const date = parseDateOnlyString(value);
+  if(!date) return "--/--（--）";
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getMonth() + 1}/${date.getDate()}（${weekdays[date.getDay()]}）`;
+}
+
+function updateRecordHarvestQuickEditWeekday(){
+  const input = document.getElementById("recordHarvestQuickEditDateInput");
+  const display = document.getElementById("recordHarvestQuickEditWeekday");
+  if(!display) return;
+  const date = parseDateOnlyString(input?.value || "");
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  display.textContent = date ? `（${weekdays[date.getDay()]}）` : "（--）";
+}
+
+function openRecordHarvestQuickEditWindow(){
+  const modal = document.getElementById("recordHarvestQuickEditModal");
+  const dateInput = document.getElementById("recordHarvestQuickEditDateInput");
+  const casesInput = document.getElementById("recordHarvestQuickEditCasesInput");
+  if(!modal || !dateInput || !casesInput) return;
+  recordHarvestQuickEditReturnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  dateInput.value = document.getElementById("recordDateInput")?.value || "";
+  casesInput.value = document.getElementById("recordCasesInput")?.value || "";
+  updateRecordHarvestQuickEditWeekday();
+  showPageBlockingUi(modal);
+  dateInput.focus();
+}
+
+function closeRecordHarvestQuickEditWindow(options = {}){
+  const modal = document.getElementById("recordHarvestQuickEditModal");
+  const returnFocus = recordHarvestQuickEditReturnFocus;
+  recordHarvestQuickEditReturnFocus = null;
+  hidePageBlockingUi(modal);
+  if(options.restoreFocus !== false && returnFocus && typeof returnFocus.focus === "function"){
+    returnFocus.focus();
+  }
+}
+
+function applyRecordHarvestQuickEdit(){
+  const quickDateInput = document.getElementById("recordHarvestQuickEditDateInput");
+  const quickCasesInput = document.getElementById("recordHarvestQuickEditCasesInput");
+  const recordDateInput = document.getElementById("recordDateInput");
+  const recordCasesInput = document.getElementById("recordCasesInput");
+  const dateValue = String(quickDateInput?.value || "").trim();
+  const casesText = String(quickCasesInput?.value || "").trim();
+  const casesValue = Number(casesText);
+  if(!parseDateOnlyString(dateValue)){
+    showToast("日付を入力してください");
+    quickDateInput?.focus();
+    return;
+  }
+  if(casesText === "" || !Number.isFinite(casesValue) || casesValue < 0){
+    showToast("ケース数を入力してください");
+    quickCasesInput?.focus();
+    return;
+  }
+  if(!recordDateInput || !recordCasesInput) return;
+  const dateChanged = recordDateInput.value !== dateValue;
+  recordDateInput.value = dateValue;
+  recordCasesInput.value = String(casesValue);
+  recordCasesEdited = true;
+  if(dateChanged){
+    handleRecordDateUpdate(true);
+  }else{
+    updateRecordWeekdayDisplay();
+    updateRecordActualLoss();
+    updateRecordInputGuides();
+    saveHarvestStateToStorage();
+  }
+  renderRecordHarvestFixedNavigation();
+  closeRecordHarvestQuickEditWindow();
 }
 
 function renderRecordHarvestWorkflowUi(){

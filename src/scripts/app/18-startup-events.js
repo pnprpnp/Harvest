@@ -108,6 +108,7 @@ function installStartupRecordFormEvents(){
       recordCasesEdited = true;
       updateRecordActualLoss();
       updateRecordInputGuides();
+      renderRecordHarvestFixedNavigation();
       scheduleHarvestStateSave();
     });
   }
@@ -272,6 +273,11 @@ function handleStartupEscapeKey(event){
   const recordDetailModal = document.getElementById("recordDetailModal");
   if(recordDetailModal?.classList.contains("show")){
     closeRecordDetailWindow();
+    return;
+  }
+  const recordHarvestQuickEditModal = document.getElementById("recordHarvestQuickEditModal");
+  if(recordHarvestQuickEditModal?.classList.contains("show")){
+    closeRecordHarvestQuickEditWindow();
     return;
   }
   const partialHarvestEditModal = document.getElementById("partialHarvestEditModal");
