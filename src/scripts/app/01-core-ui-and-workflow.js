@@ -1462,11 +1462,20 @@ function reconcileHarvestSelectionOverage(){
   return harvestOverageKeys;
 }
 
-function getHarvestSelectionOverageCases(){
+function getHarvestSelectionCaseDeltaCases(){
   const needHeads = getManualHarvestNeedHeads();
   if(needHeads === null || !harvestSummary) return 0;
-  const excessHeads = Math.max(0, getCurrentHarvestTotalRaw() - needHeads);
-  return Math.round((excessHeads / CASE_SIZE) * 10) / 10;
+  const differenceHeads = getCurrentHarvestTotalRaw() - needHeads;
+  return Math.round((differenceHeads / CASE_SIZE) * 10) / 10;
+}
+
+function getHarvestSelectionOverageCases(){
+  return Math.max(0, getHarvestSelectionCaseDeltaCases());
+}
+
+function getHarvestSelectionRemainingCases(){
+  if(harvestSelectionMode !== "manual" || !harvestFillKeys.length) return 0;
+  return Math.max(0, -getHarvestSelectionCaseDeltaCases());
 }
 
 function renderHarvestSelectionMapsForActiveTab(){

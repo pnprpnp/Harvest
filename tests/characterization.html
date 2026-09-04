@@ -4878,7 +4878,7 @@
         }, "逆算時の途中経過が未選択パレットを巻き込むか、残りの選択場所を変えています");
       });
 
-      await runTest("指定ケース数を超えて手動選択し、超過分だけを別色で表示する", () => {
+      await runTest("手動選択中は指定ケース数までの残りを表示し、超過分だけを別色にする", () => {
         const overage = comparable(app.eval(`(() => {
           const previous = {
             getPlan:getHarvestCasePlan,
@@ -4911,16 +4911,26 @@
             activeAppTab = "forecast";
             currentBuilding = 2;
             casePlacementBuilding = 2;
-            harvestFillKeys = ["2-A-1", "2-A-2"];
+            harvestFillKeys = ["2-A-1"];
             harvestOverageKeys = [];
-            harvestSummary = { start:"2-A-1", end:"2-A-2", filledCount:2, totalHarvest:24, needHeads:24 };
-            harvestSelectionMode = "auto";
+            harvestSummary = { start:"2-A-1", end:"2-A-1", filledCount:1, totalHarvest:12, needHeads:24 };
+            harvestSelectionMode = "manual";
             harvestProgressState = null;
             harvestProgressAvailable = true;
             harvestCasesAutoEstimated = false;
             document.getElementById("casesInput").value = "2";
             renderForecastSummary();
 
+            const remaining = {
+              cases:getHarvestSelectionRemainingCases(),
+              noteText:document.getElementById("partialHarvestDeductionNote")?.textContent.trim() || "",
+              noteVisible:!document.getElementById("partialHarvestDeductionNote")?.hidden
+            };
+            togglePallet(2, "A", 2);
+            const exact = {
+              cases:getHarvestSelectionRemainingCases(),
+              noteHidden:document.getElementById("partialHarvestDeductionNote")?.hidden || false
+            };
             togglePallet(2, "A", 3);
             openBedDetailWindow("forecast", "A");
             saveHarvestStateToStorage();
@@ -4951,7 +4961,7 @@
               overageCases:getHarvestSelectionOverageCases(),
               noteHidden:document.getElementById("partialHarvestDeductionNote")?.hidden || false
             };
-            return { added, removed };
+            return { remaining, exact, added, removed };
           }finally{
             cancelPendingHarvestStateSave();
             closeBedDetailWindow();
@@ -4975,6 +4985,15 @@
           }
         })()`));
         assertDeepEqual(overage, {
+          remaining:{
+            cases:1,
+            noteText:"あと1ケース",
+            noteVisible:true
+          },
+          exact:{
+            cases:0,
+            noteHidden:true
+          },
           added:{
             selected:true,
             selectionMode:"manual",
@@ -4994,7 +5013,7 @@
             overageCases:0,
             noteHidden:true
           }
-        }, "指定ケース数を超えた手動選択を追加できないか、超過表示が正しくありません");
+        }, "手動選択中の残りケース数または超過表示が正しくありません");
       });
 
       await runTest("部分収穫場所による誤差幅が5ポイント以上なら推定ロス率と表示する", () => {
