@@ -6064,7 +6064,8 @@
           recordStatusRowIsFirst: document.getElementById("recordSaveCard")?.firstElementChild?.classList.contains("recordTopStatusRow") || false,
           recordModeStatusInTopRow: document.getElementById("recordModeStatus")?.parentElement?.classList.contains("recordTopStatusRow") || false,
           recordHistorySharesStatusRow: document.getElementById("recordHistoryOpenBtn")?.parentElement === document.getElementById("recordModeStatus")?.parentElement,
-          recordUtilityFollowsStatusRow: document.querySelector(".recordTopStatusRow")?.nextElementSibling?.classList.contains("recordInputUtilityRow") || false,
+          recordDateSectionFollowsStatusRow: document.querySelector(".recordTopStatusRow")?.nextElementSibling?.id === "recordDateInputSection",
+          recordUtilityInsideDateSection: document.querySelector("#recordDateInputSection > .recordInputUtilityRow") !== null,
           recordStepIndicatorExists: !!document.getElementById("recordStepIndicator"),
           recordStageCaptionCount: document.querySelectorAll("#recordSaveCard .recordStageCaption").length
         }))()`));
@@ -6077,7 +6078,8 @@
           recordStatusRowIsFirst: true,
           recordModeStatusInTopRow: true,
           recordHistorySharesStatusRow: true,
-          recordUtilityFollowsStatusRow: true,
+          recordDateSectionFollowsStatusRow: true,
+          recordUtilityInsideDateSection: true,
           recordStepIndicatorExists: false,
           recordStageCaptionCount: 0
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
@@ -8389,6 +8391,7 @@
             mode:recordSelectionMode,
             view:recordViewMode,
             stage:recordHarvestStage,
+            primaryInputsExpanded:recordHarvestPrimaryInputsExpanded,
             activeBuilding:recordHarvestActiveBuilding,
             visited:[...recordHarvestVisitedBuildings],
             keys:[...harvestFillKeys],
@@ -8403,6 +8406,7 @@
             recordSelectionMode = "harvest";
             recordViewMode = "entry";
             recordHarvestStage = "cases";
+            recordHarvestPrimaryInputsExpanded = false;
             recordHarvestActiveBuilding = null;
             recordHarvestVisitedBuildings = [];
             harvestFillKeys = ["2-A-1", "3-A-1"];
@@ -8443,8 +8447,9 @@
               summaryFontSizesMatch:getComputedStyle(document.getElementById("recordHarvestSummaryDate")).fontSize
                 === getComputedStyle(document.getElementById("recordHarvestSummaryCases")).fontSize,
               summaryAction:document.getElementById("recordHarvestSummaryBtn").dataset.uiClick,
-              summaryArg:document.getElementById("recordHarvestSummaryBtn").dataset.uiArg,
               casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
+              dateInputHidden:document.getElementById("recordDateInputSection").hidden,
+              casesInputHidden:document.getElementById("recordHarvestCasesInputSection").hidden,
               locationHidden:document.getElementById("recordHarvestLocationSection").hidden,
               navPosition:getComputedStyle(nav).position,
               navTouchesTabBar:Math.round(nav.getBoundingClientRect().bottom) === Math.round(tabBar.getBoundingClientRect().top),
@@ -8460,6 +8465,8 @@
             const fixedSummaryAfter = {
               stage:recordHarvestStage,
               casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
+              dateInputVisible:!document.getElementById("recordDateInputSection").hidden,
+              casesInputVisible:!document.getElementById("recordHarvestCasesInputSection").hidden,
               qualityHidden:document.getElementById("recordQualityMemoSection").hidden,
               quickEditModalExists:!!document.getElementById("recordHarvestQuickEditModal")
             };
@@ -8514,6 +8521,7 @@
             recordSelectionMode = previous.mode;
             recordViewMode = previous.view;
             recordHarvestStage = previous.stage;
+            recordHarvestPrimaryInputsExpanded = previous.primaryInputsExpanded;
             recordHarvestActiveBuilding = previous.activeBuilding;
             recordHarvestVisitedBuildings = previous.visited;
             harvestFillKeys = previous.keys;
@@ -8538,16 +8546,17 @@
             summaryCases:"1ケース",
             summaryIsOneLine:true,
             summaryFontSizesMatch:true,
-            summaryAction:"openRecordHarvestStage",
-            summaryArg:"cases",
+            summaryAction:"openRecordHarvestPrimaryInputs",
             casesVisible:true,
+            dateInputHidden:true,
+            casesInputHidden:true,
             locationHidden:true,
             navPosition:"fixed",
             navTouchesTabBar:true,
             nextLabel:"次へ"
           },
           fixedSummaryBefore:{stage:"quality",casesHidden:true,qualityVisible:true},
-          fixedSummaryAfter:{stage:"cases",casesVisible:true,qualityHidden:true,quickEditModalExists:false},
+          fixedSummaryAfter:{stage:"cases",casesVisible:true,dateInputVisible:true,casesInputVisible:true,qualityHidden:true,quickEditModalExists:false},
           pastDateNotice:{visible:true,text:"過去の日付を記録中"},
           locationBefore:{
             headings:["2号棟"],
@@ -10948,18 +10957,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "0c17da39", elements: 2326, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "07c50913", elements: 2395, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "41e6c3e0", elements: 2395, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "ea34126d", elements: 2327, visible: 72, viewport: "390x844" },
-          mobileDashboard: { hash: "fb1db89b", elements: 2344, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "caf9090e", elements: 2427, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "385b4d54", elements: 2442, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "7c97c993", elements: 2442, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "ff62c206", elements: 2442, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "5dd86ef1", elements: 2442, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "011ef011", elements: 2442, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "e41ee7f5", elements: 2442, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "1a331898", elements: 2327, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "f03d185e", elements: 2396, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "7c1d1579", elements: 2396, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "f0d1ea6f", elements: 2328, visible: 59, viewport: "390x844" },
+          mobileDashboard: { hash: "afbcd350", elements: 2345, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c0ceab7d", elements: 2428, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "fbb4d318", elements: 2443, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "652a8cc7", elements: 2443, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "57abced6", elements: 2443, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "2b4b01ad", elements: 2443, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "520c674d", elements: 2443, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "78c2e7d3", elements: 2443, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -1709,6 +1709,7 @@ function clearRecordForm(){
   editingHarvestRecordId = null;
   editingHarvestSelectionKeys = null;
   recordHarvestStage = "cases";
+  recordHarvestPrimaryInputsExpanded = false;
   recordHarvestActiveBuilding = null;
   recordHarvestVisitedBuildings = [];
   recordViewMode = "entry";

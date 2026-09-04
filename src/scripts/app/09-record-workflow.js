@@ -1870,8 +1870,12 @@ function appendRecordHarvestConfirmItem(container, label, value, stage){
   const button = document.createElement("button");
   button.type = "button";
   button.className = "recordHarvestConfirmItem";
-  button.dataset.uiClick = "openRecordHarvestStage";
-  button.dataset.uiArg = stage;
+  if(stage === "cases"){
+    button.dataset.uiClick = "openRecordHarvestPrimaryInputs";
+  }else{
+    button.dataset.uiClick = "openRecordHarvestStage";
+    button.dataset.uiArg = stage;
+  }
   const labelElement = document.createElement("span");
   labelElement.textContent = label;
   const valueElement = document.createElement("strong");
@@ -1946,7 +1950,9 @@ function renderRecordHarvestWorkflowUi(){
   recordHarvestStage = normalizeRecordHarvestStage(recordHarvestStage);
   const isHarvestMode = recordSelectionMode === "harvest";
   const stage = recordHarvestStage;
+  const dateInputSection = document.getElementById("recordDateInputSection");
   const casesSection = document.getElementById("recordHarvestStageSection");
+  const casesInputSection = document.getElementById("recordHarvestCasesInputSection");
   const locationSection = document.getElementById("recordHarvestLocationSection");
   const locationSummary = document.getElementById("recordHarvestLocationSummary");
   const qualitySection = document.getElementById("recordQualityMemoSection");
@@ -1966,7 +1972,12 @@ function renderRecordHarvestWorkflowUi(){
         : `全2段階。現在は${isHarvestMode ? "収穫記録中" : "苗植え記録中"}`
     );
   }
+  const showHarvestPrimaryInputs = isHarvestMode
+    && stage === "cases"
+    && recordHarvestPrimaryInputsExpanded;
+  if(dateInputSection) dateInputSection.hidden = isHarvestMode && !showHarvestPrimaryInputs;
   if(casesSection) casesSection.hidden = !isHarvestMode || stage !== "cases";
+  if(casesInputSection) casesInputSection.hidden = !showHarvestPrimaryInputs;
   if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
   if(locationSummary) locationSummary.hidden = !isHarvestMode;
   if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
@@ -1981,6 +1992,7 @@ function renderRecordHarvestWorkflowUi(){
 function openRecordHarvestStage(stage){
   if(recordSelectionMode !== "harvest") return;
   const normalizedStage = normalizeRecordHarvestStage(stage);
+  if(normalizedStage !== "cases") recordHarvestPrimaryInputsExpanded = false;
   recordHarvestStage = normalizedStage;
   if(normalizedStage === "location"){
     drawRecordBeds();
@@ -1989,6 +2001,12 @@ function openRecordHarvestStage(stage){
   scheduleHarvestStateSave();
   document.getElementById(normalizedStage === "location" ? "recordHarvestLocationSection" : "recordSaveCard")
     ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+}
+
+function openRecordHarvestPrimaryInputs(){
+  if(recordSelectionMode !== "harvest") return;
+  recordHarvestPrimaryInputsExpanded = true;
+  openRecordHarvestStage("cases");
 }
 
 function validateRecordHarvestCasesStep(){

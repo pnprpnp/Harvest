@@ -306,6 +306,7 @@ let recordAdditionalBuildings = [];
 let recordSelectionMode = "harvest";
 const RECORD_HARVEST_STAGES = Object.freeze(["cases", "location", "quality", "confirm"]);
 let recordHarvestStage = "cases";
+let recordHarvestPrimaryInputsExpanded = false;
 let recordHarvestActiveBuilding = null;
 let recordHarvestVisitedBuildings = [];
 let recordViewMode = "entry";
