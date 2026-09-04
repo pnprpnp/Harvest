@@ -8401,6 +8401,21 @@
 
             const nav = document.getElementById("recordHarvestFixedNav");
             const tabBar = document.querySelector(".tabBar");
+            const monitorBar = document.querySelector(".monitorSendActionBar");
+            const forecastBar = document.querySelector(".forecastActionRow");
+            const fixedBarDimensions = {
+              bars:[forecastBar, monitorBar, nav].map(item => getComputedStyle(item).height),
+              verticalPadding:[forecastBar, monitorBar, nav].map(item => {
+                const style = getComputedStyle(item);
+                return [style.paddingTop, style.paddingBottom];
+              }),
+              buttons:[
+                document.querySelector(".forecastActionRow .casePlacementCalculateBtn"),
+                document.getElementById("monitorSaveBtn"),
+                document.getElementById("recordHarvestBackBtn"),
+                document.getElementById("recordHarvestNextBtn")
+              ].map(item => getComputedStyle(item).height)
+            };
             const casesState = {
               progress:document.getElementById("recordHarvestWorkflowProgressCount").textContent,
               title:document.getElementById("recordHarvestWorkflowProgressTitle").textContent,
@@ -8456,7 +8471,7 @@
             };
             showRecordEntryView();
             const restoredMemo = document.getElementById("recordMemoInput").value;
-            return { casesState, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
+            return { fixedBarDimensions, casesState, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
           }finally{
             recordTab.style.display = previous.display;
             activeAppTab = previous.activeTab;
@@ -8475,6 +8490,11 @@
           }
         })()`));
         assertDeepEqual(state, {
+          fixedBarDimensions:{
+            bars:["60px","60px","60px"],
+            verticalPadding:[["6px","6px"],["6px","6px"],["6px","6px"]],
+            buttons:["46px","46px","46px","46px"]
+          },
           casesState:{
             progress:"1/4",
             title:"ケース数",
@@ -10835,18 +10855,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "de66301f", elements: 2327, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "d7d41621", elements: 2396, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "ae907a02", elements: 2396, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "36de0012", elements: 2328, visible: 73, viewport: "390x844" },
-          mobileDashboard: { hash: "66268663", elements: 2345, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "7811e55c", elements: 2428, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "7af4ac07", elements: 2443, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "d7aeb25a", elements: 2443, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "b02a8acf", elements: 2443, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "9076f840", elements: 2443, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "11a7f9f8", elements: 2443, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "08e8bd40", elements: 2443, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "dfc53a38", elements: 2327, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "99dc9e3e", elements: 2396, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "0824a159", elements: 2396, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "6ff5fc21", elements: 2328, visible: 73, viewport: "390x844" },
+          mobileDashboard: { hash: "9bb1e0d6", elements: 2345, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c967b55b", elements: 2428, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "9df98c3a", elements: 2443, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "e622b129", elements: 2443, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "7ba2155c", elements: 2443, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "29ef775f", elements: 2443, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "f81d41c3", elements: 2443, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "621b6531", elements: 2443, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
