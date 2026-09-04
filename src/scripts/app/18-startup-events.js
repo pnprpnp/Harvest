@@ -275,11 +275,6 @@ function handleStartupEscapeKey(event){
     closeRecordDetailWindow();
     return;
   }
-  const recordHarvestQuickEditModal = document.getElementById("recordHarvestQuickEditModal");
-  if(recordHarvestQuickEditModal?.classList.contains("show")){
-    closeRecordHarvestQuickEditWindow();
-    return;
-  }
   const partialHarvestEditModal = document.getElementById("partialHarvestEditModal");
   if(partialHarvestEditModal?.classList.contains("show")){
     closePartialHarvestEditWindow();

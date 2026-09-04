@@ -1922,7 +1922,7 @@ function renderRecordHarvestFixedNavigation(){
   if(summaryButton){
     const todayValue = formatDateOnlyString(new Date());
     summaryButton.classList.toggle("is-past-date", !!dateValue && dateValue < todayValue);
-    summaryButton.setAttribute("aria-label", `記録の日付とケース数を変更。${formattedDate}、${formattedCases}`);
+    summaryButton.setAttribute("aria-label", `日付と実際の収穫ケース数を確認。${formattedDate}、${formattedCases}`);
   }
   backButton.textContent = stage === "cases"
     ? (isEditing ? "確認へ戻る" : "クリア")
@@ -1940,75 +1940,6 @@ function formatRecordHarvestFixedNavDate(value){
   if(!date) return "--/--（--）";
   const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
   return `${date.getMonth() + 1}/${date.getDate()}（${weekdays[date.getDay()]}）`;
-}
-
-function updateRecordHarvestQuickEditWeekday(){
-  const input = document.getElementById("recordHarvestQuickEditDateInput");
-  const display = document.getElementById("recordHarvestQuickEditWeekday");
-  if(!display) return;
-  const date = parseDateOnlyString(input?.value || "");
-  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-  display.textContent = date ? `（${weekdays[date.getDay()]}）` : "（--）";
-}
-
-function openRecordHarvestQuickEditWindow(){
-  const modal = document.getElementById("recordHarvestQuickEditModal");
-  const dateInput = document.getElementById("recordHarvestQuickEditDateInput");
-  const casesInput = document.getElementById("recordHarvestQuickEditCasesInput");
-  if(!modal || !dateInput || !casesInput) return;
-  recordHarvestQuickEditReturnFocus = document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : null;
-  dateInput.value = document.getElementById("recordDateInput")?.value || "";
-  casesInput.value = document.getElementById("recordCasesInput")?.value || "";
-  updateRecordHarvestQuickEditWeekday();
-  showPageBlockingUi(modal);
-  dateInput.focus();
-}
-
-function closeRecordHarvestQuickEditWindow(options = {}){
-  const modal = document.getElementById("recordHarvestQuickEditModal");
-  const returnFocus = recordHarvestQuickEditReturnFocus;
-  recordHarvestQuickEditReturnFocus = null;
-  hidePageBlockingUi(modal);
-  if(options.restoreFocus !== false && returnFocus && typeof returnFocus.focus === "function"){
-    returnFocus.focus();
-  }
-}
-
-function applyRecordHarvestQuickEdit(){
-  const quickDateInput = document.getElementById("recordHarvestQuickEditDateInput");
-  const quickCasesInput = document.getElementById("recordHarvestQuickEditCasesInput");
-  const recordDateInput = document.getElementById("recordDateInput");
-  const recordCasesInput = document.getElementById("recordCasesInput");
-  const dateValue = String(quickDateInput?.value || "").trim();
-  const casesText = String(quickCasesInput?.value || "").trim();
-  const casesValue = Number(casesText);
-  if(!parseDateOnlyString(dateValue)){
-    showToast("日付を入力してください");
-    quickDateInput?.focus();
-    return;
-  }
-  if(casesText === "" || !Number.isFinite(casesValue) || casesValue < 0){
-    showToast("ケース数を入力してください");
-    quickCasesInput?.focus();
-    return;
-  }
-  if(!recordDateInput || !recordCasesInput) return;
-  const dateChanged = recordDateInput.value !== dateValue;
-  recordDateInput.value = dateValue;
-  recordCasesInput.value = String(casesValue);
-  recordCasesEdited = true;
-  if(dateChanged){
-    handleRecordDateUpdate(true);
-  }else{
-    updateRecordWeekdayDisplay();
-    updateRecordActualLoss();
-    updateRecordInputGuides();
-    saveHarvestStateToStorage();
-  }
-  renderRecordHarvestFixedNavigation();
-  closeRecordHarvestQuickEditWindow();
 }
 
 function renderRecordHarvestWorkflowUi(){

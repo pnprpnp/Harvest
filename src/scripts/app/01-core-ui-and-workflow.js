@@ -237,7 +237,6 @@ let expandedRecordBed = null;
 let activeBedDetailContext = null;
 let activeBedDetailBed = null;
 let recordDetailReturnFocus = null;
-let recordHarvestQuickEditReturnFocus = null;
 let seedlingHouseReturnFocus = null;
 let seedlingHouseSelectedBed = null;
 let seedlingHousePrimaryDateEditingEventId = null;
@@ -620,7 +619,6 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "monitorPreviewModal",
   "appMenuModal",
   "forecastSettingsModal",
-  "recordHarvestQuickEditModal",
   "dashboardModal",
   "dashboardCasesAllModal",
   "dashboardCalendarInfoModal",
@@ -2795,7 +2793,6 @@ function closeRecordFloatingUi(){
     closeDashboardSeedlingStatusDetail({ restoreFocus: false });
   }
   closeRecordDetailWindow({ restoreFocus: false });
-  closeRecordHarvestQuickEditWindow({ restoreFocus: false });
   closePartialHarvestEditWindow({ restoreFocus: false });
   closeHarvestPartialSplitWindow({ restoreFocus: false });
   closeBedDetailWindow();

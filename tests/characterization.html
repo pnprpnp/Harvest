@@ -3353,7 +3353,6 @@
           "monitorPreviewModal",
           "appMenuModal",
           "forecastSettingsModal",
-          "recordHarvestQuickEditModal",
           "dashboardModal",
           "dashboardCasesAllModal",
           "dashboardCalendarInfoModal",
@@ -8436,36 +8435,33 @@
             };
             const casesState = {
               workflowProgressExists:!!document.getElementById("recordHarvestWorkflowProgress"),
+              instructionText:document.querySelector("#recordHarvestStageSection .recordHarvestStageInstruction")?.textContent.trim() || "",
               summaryDateMatches:document.getElementById("recordHarvestSummaryDate").textContent === formatRecordHarvestFixedNavDate(document.getElementById("recordDateInput").value),
               summaryCases:document.getElementById("recordHarvestSummaryCases").textContent,
               summaryIsOneLine:Math.abs(document.getElementById("recordHarvestSummaryDate").getBoundingClientRect().top
                 - document.getElementById("recordHarvestSummaryCases").getBoundingClientRect().top) <= 1,
+              summaryFontSizesMatch:getComputedStyle(document.getElementById("recordHarvestSummaryDate")).fontSize
+                === getComputedStyle(document.getElementById("recordHarvestSummaryCases")).fontSize,
               summaryAction:document.getElementById("recordHarvestSummaryBtn").dataset.uiClick,
+              summaryArg:document.getElementById("recordHarvestSummaryBtn").dataset.uiArg,
               casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
               locationHidden:document.getElementById("recordHarvestLocationSection").hidden,
               navPosition:getComputedStyle(nav).position,
               navTouchesTabBar:Math.round(nav.getBoundingClientRect().bottom) === Math.round(tabBar.getBoundingClientRect().top),
               nextLabel:document.getElementById("recordHarvestNextBtn").textContent
             };
-            openRecordHarvestQuickEditWindow();
-            const quickDateInput = document.getElementById("recordHarvestQuickEditDateInput");
-            const quickCasesInput = document.getElementById("recordHarvestQuickEditCasesInput");
-            const quickEditBefore = {
-              open:document.getElementById("recordHarvestQuickEditModal").classList.contains("show"),
-              dateMatchesMain:quickDateInput.value === document.getElementById("recordDateInput").value,
-              casesMatchMain:quickCasesInput.value === document.getElementById("recordCasesInput").value
+            openRecordHarvestStage("quality");
+            const fixedSummaryBefore = {
+              stage:recordHarvestStage,
+              casesHidden:document.getElementById("recordHarvestStageSection").hidden,
+              qualityVisible:!document.getElementById("recordQualityMemoSection").hidden
             };
-            quickDateInput.value = "2026-09-05";
-            quickCasesInput.value = "24";
-            updateRecordHarvestQuickEditWeekday();
-            const quickEditWeekday = document.getElementById("recordHarvestQuickEditWeekday").textContent;
-            applyRecordHarvestQuickEdit();
-            const quickEditAfter = {
-              open:document.getElementById("recordHarvestQuickEditModal").classList.contains("show"),
-              date:document.getElementById("recordDateInput").value,
-              cases:document.getElementById("recordCasesInput").value,
-              summaryDate:document.getElementById("recordHarvestSummaryDate").textContent,
-              summaryCases:document.getElementById("recordHarvestSummaryCases").textContent
+            document.getElementById("recordHarvestSummaryBtn").click();
+            const fixedSummaryAfter = {
+              stage:recordHarvestStage,
+              casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
+              qualityHidden:document.getElementById("recordQualityMemoSection").hidden,
+              quickEditModalExists:!!document.getElementById("recordHarvestQuickEditModal")
             };
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
@@ -8511,7 +8507,7 @@
             };
             showRecordEntryView();
             const restoredMemo = document.getElementById("recordMemoInput").value;
-            return { fixedBarDimensions, casesState, quickEditBefore, quickEditWeekday, quickEditAfter, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
+            return { fixedBarDimensions, casesState, fixedSummaryBefore, fixedSummaryAfter, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, restoredMemo };
           }finally{
             recordTab.style.display = previous.display;
             activeAppTab = previous.activeTab;
@@ -8537,19 +8533,21 @@
           },
           casesState:{
             workflowProgressExists:false,
+            instructionText:"日付と実際の収穫ケース数を確認して下さい",
             summaryDateMatches:true,
             summaryCases:"1ケース",
             summaryIsOneLine:true,
-            summaryAction:"openRecordHarvestQuickEditWindow",
+            summaryFontSizesMatch:true,
+            summaryAction:"openRecordHarvestStage",
+            summaryArg:"cases",
             casesVisible:true,
             locationHidden:true,
             navPosition:"fixed",
             navTouchesTabBar:true,
             nextLabel:"次へ"
           },
-          quickEditBefore:{open:true,dateMatchesMain:true,casesMatchMain:true},
-          quickEditWeekday:"（土）",
-          quickEditAfter:{open:false,date:"2026-09-05",cases:"24",summaryDate:"9/5（土）",summaryCases:"24ケース"},
+          fixedSummaryBefore:{stage:"quality",casesHidden:true,qualityVisible:true},
+          fixedSummaryAfter:{stage:"cases",casesVisible:true,qualityHidden:true,quickEditModalExists:false},
           pastDateNotice:{visible:true,text:"過去の日付を記録中"},
           locationBefore:{
             headings:["2号棟"],
@@ -10950,18 +10948,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "a7583573", elements: 2342, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "deab5bec", elements: 2411, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "4a8abb2f", elements: 2411, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "a47142f3", elements: 2343, visible: 71, viewport: "390x844" },
-          mobileDashboard: { hash: "3f18d633", elements: 2360, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "0eae4ce0", elements: 2443, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "f196e7f6", elements: 2458, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "61fc38a1", elements: 2458, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "f2e7e32a", elements: 2458, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "4edc5f85", elements: 2458, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "39c0b301", elements: 2458, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "0271b633", elements: 2458, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "0c17da39", elements: 2326, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "07c50913", elements: 2395, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "41e6c3e0", elements: 2395, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "ea34126d", elements: 2327, visible: 72, viewport: "390x844" },
+          mobileDashboard: { hash: "fb1db89b", elements: 2344, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "caf9090e", elements: 2427, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "385b4d54", elements: 2442, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "7c97c993", elements: 2442, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "ff62c206", elements: 2442, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "5dd86ef1", elements: 2442, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "011ef011", elements: 2442, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "e41ee7f5", elements: 2442, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
