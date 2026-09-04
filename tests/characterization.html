@@ -8606,11 +8606,14 @@
             const status = document.getElementById("recordModeStatus");
             const history = document.getElementById("recordHistoryOpenBtn");
             const rect = row.getBoundingClientRect();
+            const rowStyle = getComputedStyle(row);
             return {
               withinViewport:rect.left >= 0 && rect.right <= innerWidth,
               sameLine:Math.abs(status.getBoundingClientRect().top - history.getBoundingClientRect().top) <= 1,
               labelsFit:[...status.querySelectorAll(".recordModeStep")].every(item => item.scrollWidth <= item.clientWidth + 1),
-              historyFits:history.scrollWidth <= history.clientWidth + 1
+              historyFits:history.scrollWidth <= history.clientWidth + 1,
+              fixedAtTop:rowStyle.position === "sticky" && parseFloat(rowStyle.top) > 0,
+              aboveContent:Number(rowStyle.zIndex) > 0
             };
           })()`));
           app.eval(`recordSelectionMode = "harvest"; refreshRecordModeUi();`);
@@ -8627,7 +8630,7 @@
             };
           })()`));
           assertDeepEqual({ topState, navState }, {
-            topState:{withinViewport:true,sameLine:true,labelsFit:true,historyFits:true},
+            topState:{withinViewport:true,sameLine:true,labelsFit:true,historyFits:true,fixedAtTop:true,aboveContent:true},
             navState:{withinViewport:true,contentFits:true,summaryIsOneLine:true}
           }, "320px幅で記録の工程行または固定操作が横にはみ出しています");
         }finally{
@@ -10985,18 +10988,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "1a49e40f", elements: 2316, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "e5956eb8", elements: 2385, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "bf276f8f", elements: 2385, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "3c10e02b", elements: 2316, visible: 81, viewport: "390x844" },
-          mobileDashboard: { hash: "38038b64", elements: 2333, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "acc9a528", elements: 2416, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "a141027c", elements: 2431, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "9c30a915", elements: 2431, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "612d7d0c", elements: 2431, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "677f97c5", elements: 2431, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "36b54a35", elements: 2431, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "0f43d51d", elements: 2431, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "202d4d5e", elements: 2316, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "64ffeb85", elements: 2385, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "5b03defa", elements: 2385, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "6c18445e", elements: 2316, visible: 81, viewport: "390x844" },
+          mobileDashboard: { hash: "94cc8315", elements: 2333, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "a913086b", elements: 2416, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "972fc295", elements: 2431, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "aac8bff2", elements: 2431, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "818d61f7", elements: 2431, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "085e3f8a", elements: 2431, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "64ee13ea", elements: 2431, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "0d56e9d4", elements: 2431, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
