@@ -6062,8 +6062,10 @@
           record: !!document.getElementById("recordSaveSectionTitleText"),
           monitorActions: document.querySelectorAll('#monitorCard [data-ui-click="openMonitorMode"], #monitorCard [data-ui-click="openMonitorEditorWindow"]').length,
           recordStatusExists: !!document.getElementById("recordTodayRecordedStatus"),
-          recordModeStatusIsFirst: document.getElementById("recordSaveCard")?.firstElementChild?.id === "recordModeStatus",
-          recordUtilityFollowsStatus: document.getElementById("recordModeStatus")?.nextElementSibling?.classList.contains("recordInputUtilityRow") || false,
+          recordStatusRowIsFirst: document.getElementById("recordSaveCard")?.firstElementChild?.classList.contains("recordTopStatusRow") || false,
+          recordModeStatusInTopRow: document.getElementById("recordModeStatus")?.parentElement?.classList.contains("recordTopStatusRow") || false,
+          recordHistorySharesStatusRow: document.getElementById("recordHistoryOpenBtn")?.parentElement === document.getElementById("recordModeStatus")?.parentElement,
+          recordUtilityFollowsStatusRow: document.querySelector(".recordTopStatusRow")?.nextElementSibling?.classList.contains("recordInputUtilityRow") || false,
           recordStepIndicatorExists: !!document.getElementById("recordStepIndicator"),
           recordStageCaptionCount: document.querySelectorAll("#recordSaveCard .recordStageCaption").length
         }))()`));
@@ -6073,8 +6075,10 @@
           record: false,
           monitorActions: 2,
           recordStatusExists: true,
-          recordModeStatusIsFirst: true,
-          recordUtilityFollowsStatus: true,
+          recordStatusRowIsFirst: true,
+          recordModeStatusInTopRow: true,
+          recordHistorySharesStatusRow: true,
+          recordUtilityFollowsStatusRow: true,
           recordStepIndicatorExists: false,
           recordStageCaptionCount: 0
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
@@ -8243,6 +8247,10 @@
             completed:[...document.querySelectorAll("#recordModeStatus .recordModeStep.is-completed")]
               .map(step => step.id),
             current:document.querySelector('#recordModeStatus [aria-current="step"]')?.id || "",
+            historyParent:document.getElementById("recordHistoryOpenBtn")?.parentElement?.className || "",
+            historyAligned:document.getElementById("recordModeStatus").hidden
+              || Math.abs(document.getElementById("recordModeStatus").getBoundingClientRect().top
+                - document.getElementById("recordHistoryOpenBtn").getBoundingClientRect().top) <= 1,
             actions:{
               hidden:document.getElementById("recordFormActionRow").hidden,
               display:getComputedStyle(document.getElementById("recordFormActionRow")).display,
@@ -8275,6 +8283,8 @@
             active:["recordModeHarvestStep"],
             completed:[],
             current:"recordModeHarvestStep",
+            historyParent:"recordTopStatusRow",
+            historyAligned:true,
             actions:{
               hidden:true,
               display:"none",
@@ -8289,6 +8299,8 @@
             active:["recordModePlantingStep"],
             completed:["recordModeHarvestStep"],
             current:"recordModePlantingStep",
+            historyParent:"recordTopStatusRow",
+            historyAligned:true,
             actions:{
               hidden:false,
               display:"grid",
@@ -8313,7 +8325,8 @@
             replacesSteps:modeStatus.classList.contains("has-today-record"),
             statusText:status.textContent.trim(),
             ariaLabel:modeStatus.getAttribute("aria-label") || "",
-            stepVisibility:getComputedStyle(document.getElementById("recordModeHarvestStep")).visibility
+            stepVisibility:getComputedStyle(document.getElementById("recordModeHarvestStep")).visibility,
+            historyVisible:getComputedStyle(document.getElementById("recordHistoryOpenBtn")).visibility
           });
           try{
             recordSelectionMode = "planting";
@@ -8342,7 +8355,8 @@
             replacesSteps:true,
             statusText:"本日は記録済みです",
             ariaLabel:"本日は記録済みです",
-            stepVisibility:"hidden"
+            stepVisibility:"hidden",
+            historyVisible:"visible"
           },
           recordedHarvest:{
             statusParent:"recordModeStatus",
@@ -8351,7 +8365,8 @@
             replacesSteps:true,
             statusText:"本日は記録済みです",
             ariaLabel:"本日は記録済みです",
-            stepVisibility:"hidden"
+            stepVisibility:"hidden",
+            historyVisible:"visible"
           },
           notRecordedHarvest:{
             statusParent:"recordModeStatus",
@@ -8360,7 +8375,8 @@
             replacesSteps:false,
             statusText:"本日は記録済みです",
             ariaLabel:"全2段階。現在は収穫記録中",
-            stepVisibility:"visible"
+            stepVisibility:"visible",
+            historyVisible:"visible"
           }
         }, "本日の記録済み表示が収穫・苗植え工程バーと同じ場所へ切り替わっていません");
       });
@@ -8419,11 +8435,11 @@
               ].map(item => getComputedStyle(item).height)
             };
             const casesState = {
-              progress:document.getElementById("recordHarvestWorkflowProgressCount").textContent,
-              title:document.getElementById("recordHarvestWorkflowProgressTitle").textContent,
-              progressGaugeCount:document.querySelectorAll("#recordHarvestWorkflowProgress .recordHarvestWorkflowTrack").length,
+              workflowProgressExists:!!document.getElementById("recordHarvestWorkflowProgress"),
               summaryDateMatches:document.getElementById("recordHarvestSummaryDate").textContent === formatRecordHarvestFixedNavDate(document.getElementById("recordDateInput").value),
               summaryCases:document.getElementById("recordHarvestSummaryCases").textContent,
+              summaryIsOneLine:Math.abs(document.getElementById("recordHarvestSummaryDate").getBoundingClientRect().top
+                - document.getElementById("recordHarvestSummaryCases").getBoundingClientRect().top) <= 1,
               summaryAction:document.getElementById("recordHarvestSummaryBtn").dataset.uiClick,
               casesVisible:!document.getElementById("recordHarvestStageSection").hidden,
               locationHidden:document.getElementById("recordHarvestLocationSection").hidden,
@@ -8462,8 +8478,6 @@
 
             openRecordHarvestStage("location");
             const locationBefore = {
-              progress:document.getElementById("recordHarvestWorkflowProgressCount").textContent,
-              title:document.getElementById("recordHarvestWorkflowProgressTitle").textContent,
               headings:[...document.querySelectorAll("#recordBeds .recordBuildingMapTitleText")].map(item => item.textContent.trim()),
               visited:[...recordHarvestVisitedBuildings],
               noticeDots:document.querySelectorAll("#recordHarvestBuildingPager .recordHarvestBuildingNoticeDot").length,
@@ -8522,11 +8536,10 @@
             buttons:["46px","46px","46px","46px","46px"]
           },
           casesState:{
-            progress:"1/4",
-            title:"ケース数",
-            progressGaugeCount:0,
+            workflowProgressExists:false,
             summaryDateMatches:true,
             summaryCases:"1ケース",
+            summaryIsOneLine:true,
             summaryAction:"openRecordHarvestQuickEditWindow",
             casesVisible:true,
             locationHidden:true,
@@ -8539,8 +8552,6 @@
           quickEditAfter:{open:false,date:"2026-09-05",cases:"24",summaryDate:"9/5（土）",summaryCases:"24ケース"},
           pastDateNotice:{visible:true,text:"過去の日付を記録中"},
           locationBefore:{
-            progress:"2/4",
-            title:"収穫場所",
             headings:["2号棟"],
             visited:[2],
             noticeDots:1,
@@ -8557,6 +8568,55 @@
           historyState:{saveHidden:true,historyVisible:true,navHidden:true},
           restoredMemo:"入力途中"
         }, "収穫記録の工程表示・号棟確認・固定操作・確認画面が連動していません");
+      });
+
+      await runTest("記録の工程行と固定操作を320px幅でも一列に収める", async () => {
+        const previousFrameWidth = iframe.style.width;
+        const previous = comparable(app.eval(`({
+          tab:activeAppTab,
+          mode:recordSelectionMode,
+          view:recordViewMode
+        })`));
+        try{
+          iframe.style.width = "320px";
+          app.switchTab("record");
+          app.eval(`recordSelectionMode = "planting"; recordViewMode = "entry"; refreshRecordModeUi();`);
+          await new Promise(resolve => app.requestAnimationFrame(() => app.requestAnimationFrame(resolve)));
+          const topState = comparable(app.eval(`(() => {
+            const row = document.querySelector(".recordTopStatusRow");
+            const status = document.getElementById("recordModeStatus");
+            const history = document.getElementById("recordHistoryOpenBtn");
+            const rect = row.getBoundingClientRect();
+            return {
+              withinViewport:rect.left >= 0 && rect.right <= innerWidth,
+              sameLine:Math.abs(status.getBoundingClientRect().top - history.getBoundingClientRect().top) <= 1,
+              labelsFit:[...status.querySelectorAll(".recordModeStep")].every(item => item.scrollWidth <= item.clientWidth + 1),
+              historyFits:history.scrollWidth <= history.clientWidth + 1
+            };
+          })()`));
+          app.eval(`recordSelectionMode = "harvest"; refreshRecordModeUi();`);
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
+          const navState = comparable(app.eval(`(() => {
+            const nav = document.getElementById("recordHarvestFixedNav");
+            const date = document.getElementById("recordHarvestSummaryDate");
+            const cases = document.getElementById("recordHarvestSummaryCases");
+            const rect = nav.getBoundingClientRect();
+            return {
+              withinViewport:rect.left >= 0 && rect.right <= innerWidth,
+              contentFits:nav.scrollWidth <= nav.clientWidth + 1,
+              summaryIsOneLine:Math.abs(date.getBoundingClientRect().top - cases.getBoundingClientRect().top) <= 1
+            };
+          })()`));
+          assertDeepEqual({ topState, navState }, {
+            topState:{withinViewport:true,sameLine:true,labelsFit:true,historyFits:true},
+            navState:{withinViewport:true,contentFits:true,summaryIsOneLine:true}
+          }, "320px幅で記録の工程行または固定操作が横にはみ出しています");
+        }finally{
+          iframe.style.width = previousFrameWidth;
+          app.eval(`recordSelectionMode = ${JSON.stringify(previous.mode)}; recordViewMode = ${JSON.stringify(previous.view)}; refreshRecordModeUi();`);
+          app.switchTab(previous.tab || "forecast");
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
+        }
       });
 
       await runTest("保存済み収穫記録の更新後は苗植えへ移らず元の日付の一覧へ戻る", () => {
@@ -8685,7 +8745,7 @@
             switchTab("record");
             window.scrollTo(0, 0);
             const chrome = document.querySelector(".appTopChrome");
-            const status = document.getElementById("recordModeStatus");
+            const status = document.querySelector(".recordTopStatusRow");
             return {
               gap:Math.round(status.getBoundingClientRect().top - chrome.getBoundingClientRect().bottom),
               cardPaddingTop:getComputedStyle(document.getElementById("recordSaveCard")).paddingTop
@@ -10890,18 +10950,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "f402141f", elements: 2345, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "42961899", elements: 2414, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "f98dc206", elements: 2414, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "35170738", elements: 2346, visible: 74, viewport: "390x844" },
-          mobileDashboard: { hash: "7e82ebb3", elements: 2363, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f88c3cee", elements: 2446, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "84e355cf", elements: 2461, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "cb1016f2", elements: 2461, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "12dd783f", elements: 2461, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "b00e0e7c", elements: 2461, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "1aa57c2c", elements: 2461, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "03b66ec0", elements: 2461, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "a7583573", elements: 2342, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "deab5bec", elements: 2411, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "4a8abb2f", elements: 2411, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "a47142f3", elements: 2343, visible: 71, viewport: "390x844" },
+          mobileDashboard: { hash: "3f18d633", elements: 2360, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "0eae4ce0", elements: 2443, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "f196e7f6", elements: 2458, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "61fc38a1", elements: 2458, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "f2e7e32a", elements: 2458, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "4edc5f85", elements: 2458, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "39c0b301", elements: 2458, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "0271b633", elements: 2458, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -2015,11 +2015,6 @@ function renderRecordHarvestWorkflowUi(){
   recordHarvestStage = normalizeRecordHarvestStage(recordHarvestStage);
   const isHarvestMode = recordSelectionMode === "harvest";
   const stage = recordHarvestStage;
-  const stageIndex = getRecordHarvestStageIndex();
-  const labels = { cases:"ケース数", location:"収穫場所", quality:"品質", confirm:"内容確認・保存" };
-  const progress = document.getElementById("recordHarvestWorkflowProgress");
-  const progressCount = document.getElementById("recordHarvestWorkflowProgressCount");
-  const progressTitle = document.getElementById("recordHarvestWorkflowProgressTitle");
   const casesSection = document.getElementById("recordHarvestStageSection");
   const locationSection = document.getElementById("recordHarvestLocationSection");
   const locationSummary = document.getElementById("recordHarvestLocationSummary");
@@ -2030,9 +2025,6 @@ function renderRecordHarvestWorkflowUi(){
   const todayRecordedStatus = document.getElementById("recordTodayRecordedStatus");
   const isRecordedToday = !!todayRecordedStatus && !todayRecordedStatus.hidden;
 
-  if(progress) progress.hidden = !isHarvestMode;
-  if(progressCount) progressCount.textContent = `${stageIndex + 1}/4`;
-  if(progressTitle) progressTitle.textContent = labels[stage];
   if(modeStatus){
     modeStatus.hidden = isHarvestMode && !isRecordedToday;
     modeStatus.classList.toggle("has-today-record", isRecordedToday);
