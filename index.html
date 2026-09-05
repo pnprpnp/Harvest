@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260905-record-history-accordion">
+<meta name="harvestnavi-version" content="20260905-planting-count-default">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -31215,7 +31215,8 @@ function applyRecordBedRange(action){
         continue;
       }
       if(harvestFillKeys.includes(key)) continue;
-      if(recordSelectionMode === "planting" && !canAddPlantingPallet(key)){
+      const initialPlantingCount = getRecordPlantingInitialCountForKey(key);
+      if(recordSelectionMode === "planting" && !canAddPlantingPallet(key, getActivePlantingRecord(), initialPlantingCount)){
         plantingCapacityReached = true;
         continue;
       }
@@ -31226,7 +31227,7 @@ function applyRecordBedRange(action){
       harvestFillKeys.push(key);
       if(recordSelectionMode === "harvest") markHarvestSelectionOverage(key, nextTotal);
       if(recordSelectionMode === "planting"){
-        setRecordPlantingCountForKey(key);
+        setRecordPlantingCountForKey(key, initialPlantingCount);
         markRecordPlantingFlowBuildingDirty(currentBuilding);
       }
       changed++;
@@ -31606,7 +31607,8 @@ function applyRecordPalletDragChange(building, bed, number, mode){
     setRecordPlantingCountForKey(key);
     return true;
   }
-  if(recordSelectionMode === "planting" && !canAddPlantingPallet(key)){
+  const initialPlantingCount = getRecordPlantingInitialCountForKey(key);
+  if(recordSelectionMode === "planting" && !canAddPlantingPallet(key, getActivePlantingRecord(), initialPlantingCount)){
     showPalletDragToast(getPlantingCapacityExceededMessage());
     return false;
   }
@@ -31615,7 +31617,7 @@ function applyRecordPalletDragChange(building, bed, number, mode){
     : 0;
   harvestFillKeys.push(key);
   if(recordSelectionMode === "planting"){
-    setRecordPlantingCountForKey(key);
+    setRecordPlantingCountForKey(key, initialPlantingCount);
     markRecordPlantingFlowBuildingDirty(building);
   }else{
     markHarvestSelectionOverage(key, nextTotal);
@@ -32982,6 +32984,12 @@ function getPlantingCountForSelectedKey(key, countsByPallet = recordPlantingCoun
   return ALLOWED_YIELDS.includes(explicit) ? explicit : getConfiguredPlantingCountForKey(key);
 }
 
+function getRecordPlantingInitialCountForKey(key){
+  return isRecordPlantingFlowActive() && recordPlantingFlowStage === "location"
+    ? getConfiguredPlantingCountForKey(key)
+    : recordPlantingCountPreset;
+}
+
 function buildPlantingCountsByPalletForKeys(keys, countsByPallet = recordPlantingCountsByPallet){
   const result = {};
   [...new Set(Array.isArray(keys) ? keys : [])]
@@ -33117,6 +33125,7 @@ function moveRecordPlantingFlowToStage(stage){
   if(!isRecordPlantingFlowActive()) return;
   const normalizedStage = String(stage || "");
   if(!RECORD_PLANTING_FLOW_STAGES.includes(normalizedStage)) return;
+  const previousStage = recordPlantingFlowStage;
   if(normalizedStage === "building"){
     recordPlantingFlowStage = "building";
     recordPlantingFlowBuilding = null;
@@ -33130,6 +33139,11 @@ function moveRecordPlantingFlowToStage(stage){
       return;
     }
     recordPlantingFlowStage = normalizedStage;
+    if(previousStage === "location" && normalizedStage === "count" && !editingPlantingEventId){
+      recordPlantingCountPreset = getConfiguredPlantingCountForFirstKey(
+        getRecordPlantingFlowKeys()
+      );
+    }
   }
   drawRecordBeds();
   refreshBedDetailWindow();
@@ -37318,7 +37332,8 @@ function toggleRecordPallet(building, bed, number){
     scheduleHarvestStateSave();
     return;
   }else{
-    if(recordSelectionMode === "planting" && !canAddPlantingPallet(key, getActivePlantingRecord(), recordPlantingCountPreset)){
+    const initialPlantingCount = getRecordPlantingInitialCountForKey(key);
+    if(recordSelectionMode === "planting" && !canAddPlantingPallet(key, getActivePlantingRecord(), initialPlantingCount)){
       showToast(getPlantingCapacityExceededMessage());
       return;
     }
@@ -37327,7 +37342,7 @@ function toggleRecordPallet(building, bed, number){
       : 0;
     harvestFillKeys.push(key);
     if(recordSelectionMode === "planting"){
-      setRecordPlantingCountForKey(key);
+      setRecordPlantingCountForKey(key, initialPlantingCount);
       markRecordPlantingFlowBuildingDirty(building);
     }else{
       markHarvestSelectionOverage(key, nextTotal);

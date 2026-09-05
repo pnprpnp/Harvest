@@ -88,6 +88,12 @@ function getPlantingCountForSelectedKey(key, countsByPallet = recordPlantingCoun
   return ALLOWED_YIELDS.includes(explicit) ? explicit : getConfiguredPlantingCountForKey(key);
 }
 
+function getRecordPlantingInitialCountForKey(key){
+  return isRecordPlantingFlowActive() && recordPlantingFlowStage === "location"
+    ? getConfiguredPlantingCountForKey(key)
+    : recordPlantingCountPreset;
+}
+
 function buildPlantingCountsByPalletForKeys(keys, countsByPallet = recordPlantingCountsByPallet){
   const result = {};
   [...new Set(Array.isArray(keys) ? keys : [])]
@@ -223,6 +229,7 @@ function moveRecordPlantingFlowToStage(stage){
   if(!isRecordPlantingFlowActive()) return;
   const normalizedStage = String(stage || "");
   if(!RECORD_PLANTING_FLOW_STAGES.includes(normalizedStage)) return;
+  const previousStage = recordPlantingFlowStage;
   if(normalizedStage === "building"){
     recordPlantingFlowStage = "building";
     recordPlantingFlowBuilding = null;
@@ -236,6 +243,11 @@ function moveRecordPlantingFlowToStage(stage){
       return;
     }
     recordPlantingFlowStage = normalizedStage;
+    if(previousStage === "location" && normalizedStage === "count" && !editingPlantingEventId){
+      recordPlantingCountPreset = getConfiguredPlantingCountForFirstKey(
+        getRecordPlantingFlowKeys()
+      );
+    }
   }
   drawRecordBeds();
   refreshBedDetailWindow();

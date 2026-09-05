@@ -9325,6 +9325,114 @@
         }, "植え付け数プリセットの選択状態が一致しません");
       });
 
+      await runTest("苗植え場所選択後の初期植え付け数にシミュの計算設定を使う", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            settings,
+            mode:recordSelectionMode,
+            enabled:recordPlantingFlowEnabled,
+            stage:recordPlantingFlowStage,
+            building:recordPlantingFlowBuilding,
+            preset:recordPlantingCountPreset,
+            counts:{ ...recordPlantingCountsByPallet },
+            keys:[...harvestFillKeys],
+            editingId:editingPlantingEventId,
+            canPlant:canPlantSeedlingKeysWithinCapacity,
+            isAllowed:isPlantingSelectionAllowed,
+            drawRecord:drawRecordBeds,
+            refreshDetail:refreshBedDetailWindow,
+            jump:jumpToRecordPlantingFlowPanel,
+            save:scheduleHarvestStateSave
+          };
+          try{
+            settings = {
+              ...settings,
+              defaultPlantingCount:20,
+              useBedPlantSettings:true,
+              beds:{
+                ...settings.beds,
+                A:{
+                  ...settings.beds.A,
+                  plant:20,
+                  plantUseFrontBack:true,
+                  plantFrontCount:39,
+                  plantFront:16,
+                  plantBack:12
+                }
+              }
+            };
+            invalidateNormalizedBedCalculationSettings();
+            recordSelectionMode = "planting";
+            recordPlantingFlowEnabled = true;
+            recordPlantingFlowStage = "location";
+            recordPlantingFlowBuilding = 2;
+            recordPlantingCountPreset = 20;
+            recordPlantingCountsByPallet = {};
+            harvestFillKeys = [];
+            editingPlantingEventId = null;
+            canPlantSeedlingKeysWithinCapacity = () => true;
+            isPlantingSelectionAllowed = () => true;
+            drawRecordBeds = () => {};
+            refreshBedDetailWindow = () => {};
+            jumpToRecordPlantingFlowPanel = () => {};
+            scheduleHarvestStateSave = () => {};
+
+            const frontAdded = applyRecordPalletDragChange(2, "A", 1, "add");
+            const backAdded = applyRecordPalletDragChange(2, "A", 78, "add");
+            moveRecordPlantingFlowToStage("count");
+            updateRecordPlantingCountPresetUi();
+            const newRecord = {
+              frontAdded,
+              backAdded,
+              counts:{ ...recordPlantingCountsByPallet },
+              preset:recordPlantingCountPreset,
+              pressed:document.querySelector('[data-record-planting-count][aria-pressed="true"]')?.textContent || ""
+            };
+
+            editingPlantingEventId = 999;
+            recordPlantingFlowStage = "location";
+            recordPlantingCountPreset = 20;
+            moveRecordPlantingFlowToStage("count");
+            const editingRecord = {
+              preset:recordPlantingCountPreset,
+              counts:{ ...recordPlantingCountsByPallet }
+            };
+            return { newRecord, editingRecord };
+          }finally{
+            settings = previous.settings;
+            invalidateNormalizedBedCalculationSettings();
+            recordSelectionMode = previous.mode;
+            recordPlantingFlowEnabled = previous.enabled;
+            recordPlantingFlowStage = previous.stage;
+            recordPlantingFlowBuilding = previous.building;
+            recordPlantingCountPreset = previous.preset;
+            recordPlantingCountsByPallet = previous.counts;
+            harvestFillKeys = previous.keys;
+            editingPlantingEventId = previous.editingId;
+            canPlantSeedlingKeysWithinCapacity = previous.canPlant;
+            isPlantingSelectionAllowed = previous.isAllowed;
+            drawRecordBeds = previous.drawRecord;
+            refreshBedDetailWindow = previous.refreshDetail;
+            jumpToRecordPlantingFlowPanel = previous.jump;
+            scheduleHarvestStateSave = previous.save;
+            updateRecordPlantingCountPresetUi();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          newRecord:{
+            frontAdded:true,
+            backAdded:true,
+            counts:{ "2-A-1":16, "2-A-78":12 },
+            preset:16,
+            pressed:"16植え"
+          },
+          editingRecord:{
+            preset:20,
+            counts:{ "2-A-1":16, "2-A-78":12 }
+          }
+        }, "苗植え数の初期値が計算設定と一致せず、編集中の設定も保持できていません");
+      });
+
       await runTest("苗植え記録を棟ごとに場所・植え付け数・品質の順で設定する", () => {
         const flowState = comparable(app.eval(`(() => {
           const previous = {
