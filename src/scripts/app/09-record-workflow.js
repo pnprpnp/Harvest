@@ -7,6 +7,54 @@ function scrollToRecordActiveStage(options = {}){
   window.scrollTo({ top: Math.max(0, top), behavior: getWorkflowScrollBehavior(options.behavior || "auto") });
 }
 
+function shouldUseRecordHarvestViewportLayout(){
+  return activeAppTab === "record"
+    && window.innerWidth <= 759
+    && window.innerHeight >= 760
+    && recordSelectionMode === "harvest"
+    && recordViewMode === "entry"
+    && normalizeRecordHarvestStage(recordHarvestStage) === "location"
+    && !recordHarvestPrimaryInputsExpanded
+    && document.getElementById("recordBuildingAddChooser")?.hidden !== false;
+}
+
+function applyRecordHarvestViewportLayout(){
+  const card = document.getElementById("recordSaveCard");
+  const actionBar = document.getElementById("recordHarvestFixedNav");
+  if(!card) return false;
+  const shouldFit = shouldUseRecordHarvestViewportLayout()
+    && !!actionBar
+    && !actionBar.hidden
+    && card.getClientRects().length > 0;
+  card.classList.toggle("recordHarvestViewportLayout", shouldFit);
+  if(!shouldFit){
+    card.style.removeProperty("--record-harvest-viewport-height");
+    scheduleMainTabViewportScrollLock();
+    return false;
+  }
+
+  const scrollTop = window.pageYOffset || 0;
+  const cardTopAtPageStart = card.getBoundingClientRect().top + scrollTop;
+  const availableHeight = Math.floor(actionBar.getBoundingClientRect().top - cardTopAtPageStart);
+  if(availableHeight > 0){
+    card.style.setProperty("--record-harvest-viewport-height", `${availableHeight}px`);
+  }
+  scheduleMainTabViewportScrollLock();
+  return availableHeight > 0;
+}
+
+function scheduleRecordHarvestViewportLayout(){
+  if(scheduleRecordHarvestViewportLayout.frameId){
+    cancelAnimationFrame(scheduleRecordHarvestViewportLayout.frameId);
+  }
+  scheduleRecordHarvestViewportLayout.frameId = requestAnimationFrame(() => {
+    scheduleRecordHarvestViewportLayout.frameId = requestAnimationFrame(() => {
+      scheduleRecordHarvestViewportLayout.frameId = 0;
+      applyRecordHarvestViewportLayout();
+    });
+  });
+}
+
 function jumpToRecordPlantingFlowPanel(){
   const panel = document.getElementById("recordPlantingFlowPanel");
   if(!panel || panel.hidden) return;
@@ -1984,6 +2032,7 @@ function renderRecordHarvestWorkflowUi(){
   if(stage === "confirm") renderRecordHarvestConfirmation();
   updateRecordPastDateNotice();
   renderRecordHarvestFixedNavigation();
+  scheduleRecordHarvestViewportLayout();
 }
 
 function openRecordHarvestStage(stage, options = {}){
@@ -2095,6 +2144,7 @@ function showRecordHistoryView(options = {}){
   renderRecordHistoryToggle();
   renderRecordList();
   renderRecordHarvestFixedNavigation();
+  scheduleRecordHarvestViewportLayout();
   scheduleHarvestStateSave();
   const targetDate = typeof options === "object" ? options.date : "";
   requestAnimationFrame(() => {

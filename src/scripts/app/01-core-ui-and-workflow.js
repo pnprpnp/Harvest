@@ -2914,8 +2914,23 @@ function doesMonitorTabFitWithoutScrolling(){
   return cardBottomAtPageTop <= tabBar.getBoundingClientRect().top + 1;
 }
 
+function doesRecordTabFitWithoutScrolling(){
+  if(activeAppTab !== "record" || window.innerWidth > 759 || window.innerHeight < 760) return false;
+  const card = document.getElementById("recordSaveCard");
+  const actionBar = document.getElementById("recordHarvestFixedNav");
+  if(!card?.classList.contains("recordHarvestViewportLayout")
+    || !actionBar
+    || actionBar.hidden
+    || card.getClientRects().length === 0) return false;
+  const scrollTop = window.pageYOffset || 0;
+  const cardBottomAtPageTop = card.getBoundingClientRect().bottom + scrollTop;
+  return cardBottomAtPageTop <= actionBar.getBoundingClientRect().top + 1;
+}
+
 function applyMainTabViewportScrollLock(){
-  const shouldLock = doesForecastTabFitWithoutScrolling() || doesMonitorTabFitWithoutScrolling();
+  const shouldLock = doesForecastTabFitWithoutScrolling()
+    || doesMonitorTabFitWithoutScrolling()
+    || doesRecordTabFitWithoutScrolling();
   document.documentElement.classList.toggle("mainTabViewportScrollLocked", shouldLock);
   if(shouldLock){
     tabScrollPositions[activeAppTab] = 0;
@@ -2940,15 +2955,29 @@ function installMainTabViewportScrollLock(){
   if(document.documentElement.dataset.mainTabViewportScrollLockInstalled === "1") return;
   document.documentElement.dataset.mainTabViewportScrollLockInstalled = "1";
   if(typeof ResizeObserver === "function"){
-    const observer = new ResizeObserver(scheduleMainTabViewportScrollLock);
-    ["forecastSimulationCard", "monitorCard"].forEach(id => {
+    const observer = new ResizeObserver(() => {
+      if(typeof scheduleRecordHarvestViewportLayout === "function"){
+        scheduleRecordHarvestViewportLayout();
+      }
+      scheduleMainTabViewportScrollLock();
+    });
+    ["forecastSimulationCard", "monitorCard", "recordSaveCard"].forEach(id => {
       const element = document.getElementById(id);
       if(element) observer.observe(element);
     });
     installMainTabViewportScrollLock.observer = observer;
   }
-  window.addEventListener("resize", scheduleMainTabViewportScrollLock, { passive:true });
-  window.visualViewport?.addEventListener("resize", scheduleMainTabViewportScrollLock, { passive:true });
+  const handleResize = () => {
+    if(typeof scheduleRecordHarvestViewportLayout === "function"){
+      scheduleRecordHarvestViewportLayout();
+    }
+    scheduleMainTabViewportScrollLock();
+  };
+  window.addEventListener("resize", handleResize, { passive:true });
+  window.visualViewport?.addEventListener("resize", handleResize, { passive:true });
+  if(typeof scheduleRecordHarvestViewportLayout === "function"){
+    scheduleRecordHarvestViewportLayout();
+  }
   scheduleMainTabViewportScrollLock();
 }
 

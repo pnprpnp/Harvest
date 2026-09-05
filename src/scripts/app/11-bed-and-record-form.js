@@ -799,6 +799,7 @@ function toggleRecordBuildingAddChooser(){
   chooser.hidden = !chooser.hidden;
   if(openButton) openButton.setAttribute("aria-expanded", String(!chooser.hidden));
   if(!chooser.hidden) chooser.querySelector("button")?.focus();
+  scheduleRecordHarvestViewportLayout();
 }
 
 function addRecordBuildingDisplay(building){
@@ -1016,6 +1017,7 @@ function drawRecordBeds(){
     section.appendChild(beds);
     container.appendChild(section);
   });
+  scheduleRecordHarvestViewportLayout();
 }
 
 

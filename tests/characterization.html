@@ -5367,7 +5367,7 @@
         }, "計算ボタンの未入力・計算可能・計算済み状態が正しく切り替わりません");
       });
 
-      await runTest("画面内に収まる計算前後のシミュとモニターのスクロールを止める", async () => {
+      await runTest("画面内に収まるシミュ・モニター・収穫記録のスクロールを止める", async () => {
         const visualFrame = await loadVisualAppFrame(390, 844);
         const visualApp = visualFrame.contentWindow;
         try{
@@ -5474,6 +5474,100 @@
           assert(!visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
             "モニター内容が画面を超えてもスクロール固定が解除されません");
           monitorCard.style.height = "";
+
+          visualApp.switchTab("record");
+          visualApp.eval(`
+            records=[];
+            plantingEvents=[];
+            invalidateRecordDerivedCaches({ harvestRecords:true });
+            recordSelectionMode="harvest";
+            recordViewMode="entry";
+            recordHarvestStage="location";
+            recordHarvestPrimaryInputsExpanded=false;
+            recordAdditionalBuildings=[];
+            recordHarvestActiveBuilding=2;
+            recordHarvestVisitedBuildings=[2];
+            harvestFillKeys=[getPalletKey(2,"A",1)];
+            document.getElementById("recordDateInput").value=formatDateOnlyString(new Date());
+            document.getElementById("recordCasesInput").value="1";
+            recalcHarvestSummary();
+            refreshRecordModeUi();
+            drawRecordBeds();
+            updateRecordActualLoss();
+          `);
+          await settleVisualApp(visualApp);
+          visualApp.applyRecordHarvestViewportLayout();
+          visualApp.applyMainTabViewportScrollLock();
+          const recordCard = visualApp.document.getElementById("recordSaveCard");
+          const recordLocation = visualApp.document.getElementById("recordHarvestLocationSection");
+          const recordAdjustBox = visualApp.document.querySelector("#recordHarvestLocationSection .recordHarvestAdjustBox");
+          const recordPager = visualApp.document.getElementById("recordHarvestBuildingPager");
+          const recordLoss = visualApp.document.querySelector(".recordActualLossField");
+          const recordNav = visualApp.document.getElementById("recordHarvestFixedNav");
+          const recordBedRects = [...visualApp.document.querySelectorAll("#recordBeds .recordBedOverview")]
+            .map(element => element.getBoundingClientRect());
+          const recordMapRects = [...visualApp.document.querySelectorAll("#recordBeds .dashboardSeedlingBedMapGrid")]
+            .map(element => element.getBoundingClientRect());
+          const recordRowTops = [...new Set(recordBedRects.map(rect => Math.round(rect.top)))];
+          const recordCardRect = recordCard.getBoundingClientRect();
+          const recordLocationRect = recordLocation.getBoundingClientRect();
+          const recordAdjustRect = recordAdjustBox.getBoundingClientRect();
+          const recordPagerRect = recordPager.getBoundingClientRect();
+          const recordLossRect = recordLoss.getBoundingClientRect();
+          const recordNavRect = recordNav.getBoundingClientRect();
+          const recordState = comparable({
+            viewportScrollLocked:visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            overflowHidden:visualApp.getComputedStyle(visualApp.document.documentElement).overflowY === "hidden",
+            compactLayout:recordCard.classList.contains("recordHarvestViewportLayout"),
+            cardEndsBeforeActionBar:recordCardRect.bottom <= recordNavRect.top + 1,
+            locationInsideCard:recordLocationRect.top >= recordCardRect.top - 1
+              && recordLocationRect.bottom <= recordCardRect.bottom + 1,
+            pagerInsideLocation:recordPagerRect.top >= recordLocationRect.top - 1
+              && recordPagerRect.bottom <= recordLocationRect.bottom + 1,
+            sixBeds:recordBedRects.length === 6,
+            twoBedRows:recordRowTops.length === 2,
+            bedsStayInsideMap:recordBedRects.every(rect => (
+              rect.top >= recordAdjustRect.top - 1 && rect.bottom <= recordAdjustRect.bottom + 1
+            )),
+            compactBedHeight:recordBedRects.every(rect => rect.height >= 85 && rect.height < 206),
+            readableMapHeight:recordMapRects.every(rect => rect.height >= 55),
+            lossBelowMap:recordLossRect.top >= recordAdjustRect.bottom - 1,
+            lossBeforeActionBar:recordLossRect.bottom <= recordNavRect.top + 1
+          });
+          assertDeepEqual(recordState, {
+            viewportScrollLocked:true,
+            overflowHidden:true,
+            compactLayout:true,
+            cardEndsBeforeActionBar:true,
+            locationInsideCard:true,
+            pagerInsideLocation:true,
+            sixBeds:true,
+            twoBedRows:true,
+            bedsStayInsideMap:true,
+            compactBedHeight:true,
+            readableMapHeight:true,
+            lossBelowMap:true,
+            lossBeforeActionBar:true
+          }, "収穫場所の選択画面が配置図・実ロス率・固定操作ごと画面内に収まっていません");
+
+          const compactBedHeight = recordBedRects[0]?.height || 0;
+          visualApp.toggleRecordBuildingAddChooser();
+          await settleVisualApp(visualApp);
+          visualApp.applyRecordHarvestViewportLayout();
+          visualApp.applyMainTabViewportScrollLock();
+          const expandedRecordBedHeight = visualApp.document.querySelector("#recordBeds .recordBedOverview")
+            ?.getBoundingClientRect().height || 0;
+          assertDeepEqual(comparable({
+            chooserVisible:!visualApp.document.getElementById("recordBuildingAddChooser").hidden,
+            compactLayout:recordCard.classList.contains("recordHarvestViewportLayout"),
+            viewportScrollUnlocked:!visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            normalBedHeightRestored:expandedRecordBedHeight > compactBedHeight && expandedRecordBedHeight >= 200
+          }), {
+            chooserVisible:true,
+            compactLayout:false,
+            viewportScrollUnlocked:true,
+            normalBedHeightRestored:true
+          }, "号棟追加を開いても収穫記録が通常のスクロール表示へ戻りません");
         }finally{
           visualFrame.remove();
         }
@@ -11353,7 +11447,7 @@
           mobileForecast: { hash: "7b9e65c8", elements: 2319, visible: 606, viewport: "390x844" },
           cssStates: { hash: "8f28d767", elements: 2388, visible: 661, viewport: "390x844" },
           cssFocus: { hash: "d58dd428", elements: 2388, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "ff6c7037", elements: 2323, visible: 84, viewport: "390x844" },
+          mobileRecord: { hash: "72a15f46", elements: 2323, visible: 71, viewport: "390x844" },
           mobileDashboard: { hash: "c0c3ec90", elements: 2340, visible: 104, viewport: "390x844" },
           mobileDashboardRecord: { hash: "67e5b4d1", elements: 2423, visible: 168, viewport: "390x844" },
           mobileDashboardResultsGraph: { hash: "5d2e1fbd", elements: 2438, visible: 89, viewport: "390x844" },
