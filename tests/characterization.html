@@ -5483,7 +5483,6 @@
             "モニター内容が画面を超えてもスクロール固定が解除されません");
           monitorCard.style.height = "";
 
-          visualApp.switchTab("record");
           visualApp.eval(`
             records=[];
             plantingEvents=[];
@@ -5503,10 +5502,12 @@
             drawRecordBeds();
             updateRecordActualLoss();
           `);
+          visualApp.switchTab("record");
+          const recordCard = visualApp.document.getElementById("recordSaveCard");
+          const compactLayoutBeforeFirstPaint = recordCard.classList.contains("recordHarvestViewportLayout");
           await settleVisualApp(visualApp);
           visualApp.applyRecordHarvestViewportLayout();
           visualApp.applyMainTabViewportScrollLock();
-          const recordCard = visualApp.document.getElementById("recordSaveCard");
           const recordLocation = visualApp.document.getElementById("recordHarvestLocationSection");
           const recordAdjustBox = visualApp.document.querySelector("#recordHarvestLocationSection .recordHarvestAdjustBox");
           const recordPager = visualApp.document.getElementById("recordHarvestBuildingPager");
@@ -5533,6 +5534,7 @@
           const sameRect = (left, right) => ["left", "top", "width", "height"]
             .every(property => Math.abs(left[property] - right[property]) <= 1);
           const recordState = comparable({
+            compactLayoutBeforeFirstPaint,
             viewportScrollLocked:visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
             overflowHidden:visualApp.getComputedStyle(visualApp.document.documentElement).overflowY === "hidden",
             compactLayout:recordCard.classList.contains("recordHarvestViewportLayout"),
@@ -5573,6 +5575,7 @@
               && recordNavRect.top - recordBedPanelRect.bottom <= 12
           });
           assertDeepEqual(recordState, {
+            compactLayoutBeforeFirstPaint:true,
             viewportScrollLocked:true,
             overflowHidden:true,
             compactLayout:true,

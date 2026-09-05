@@ -3113,6 +3113,11 @@ function prepareRecordMainTabSelection(){
   refreshRecordModeUi();
   syncRecordPlantingSummaryFromSelection();
   updateRecordActualLoss();
+  // 記録タブを表示した同じフレーム内で高さを確定し、
+  // 通常サイズの配置図が一瞬描画されてから縮むのを防ぐ。
+  if(typeof applyRecordHarvestViewportLayout === "function"){
+    applyRecordHarvestViewportLayout();
+  }
 }
 
 function prepareForecastMainTabSelection(){
@@ -3142,6 +3147,9 @@ function switchTab(tabName){
 
   setMainTabSelection(tabName);
   activeAppTab = tabName;
+  if(tabName !== "record" && typeof applyRecordHarvestViewportLayout === "function"){
+    applyRecordHarvestViewportLayout();
+  }
   scheduleMainTabPostSelectionWork(tabName);
   const definition = MAIN_TAB_DEFINITIONS[tabName];
   definition.afterSelection?.();
