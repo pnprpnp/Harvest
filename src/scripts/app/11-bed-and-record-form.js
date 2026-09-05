@@ -769,6 +769,25 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
   pager.hidden = false;
 }
 
+function renderRecordHarvestStatusBuilding(building = recordHarvestActiveBuilding){
+  const value = document.getElementById("recordHarvestStatusBuilding");
+  const removeButton = document.getElementById("recordHarvestStatusRemoveBtn");
+  const normalizedBuilding = Number(building);
+  const hasBuilding = BUILDINGS.includes(normalizedBuilding);
+  const isAdditionalBuilding = hasBuilding && recordAdditionalBuildings.includes(normalizedBuilding);
+  if(value) value.textContent = hasBuilding ? `${normalizedBuilding}号棟` : "--号棟";
+  if(removeButton){
+    removeButton.hidden = !isAdditionalBuilding;
+    if(isAdditionalBuilding){
+      removeButton.dataset.uiNumber = String(normalizedBuilding);
+      removeButton.setAttribute("aria-label", `${normalizedBuilding}号棟の追加表示を削除`);
+    }else{
+      removeButton.removeAttribute("data-ui-number");
+      removeButton.removeAttribute("aria-label");
+    }
+  }
+}
+
 function setRecordHarvestBuilding(building){
   if(recordSelectionMode === "planting") return;
   const normalizedBuilding = Number(building);
@@ -893,6 +912,7 @@ function drawRecordBeds(){
     : (recordSelectionMode === "planting"
         ? allBuildings
         : (BUILDINGS.includes(Number(recordHarvestActiveBuilding)) ? [Number(recordHarvestActiveBuilding)] : []));
+  renderRecordHarvestStatusBuilding(recordSelectionMode === "planting" ? null : buildings[0]);
   const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
   const hasPartialHarvestRecords = recordSelectionMode !== "planting"
     && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
@@ -916,25 +936,15 @@ function drawRecordBeds(){
     const section = document.createElement("div");
     section.className = "recordBuildingMapSection";
 
-    const buildingTitle = document.createElement("div");
-    const isAdditionalBuilding = recordSelectionMode !== "planting"
-      && recordAdditionalBuildings.includes(building);
-    buildingTitle.className = "recordBuildingMapTitle" + (isAdditionalBuilding ? " hasRemoveAction" : "");
-    const buildingTitleText = document.createElement("span");
-    buildingTitleText.className = "recordBuildingMapTitleText";
-    buildingTitleText.textContent = building + "号棟";
-    buildingTitle.appendChild(buildingTitleText);
-    if(isAdditionalBuilding){
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "recordBuildingMapRemoveBtn";
-      removeButton.textContent = "削除";
-      removeButton.dataset.uiClick = "removeRecordBuildingDisplay";
-      removeButton.dataset.uiNumber = String(building);
-      removeButton.setAttribute("aria-label", `${building}号棟の追加表示を削除`);
-      buildingTitle.appendChild(removeButton);
+    if(recordSelectionMode === "planting"){
+      const buildingTitle = document.createElement("div");
+      buildingTitle.className = "recordBuildingMapTitle";
+      const buildingTitleText = document.createElement("span");
+      buildingTitleText.className = "recordBuildingMapTitleText";
+      buildingTitleText.textContent = building + "号棟";
+      buildingTitle.appendChild(buildingTitleText);
+      section.appendChild(buildingTitle);
     }
-    section.appendChild(buildingTitle);
 
     const beds = document.createElement("div");
     beds.className = "recordBuildingMapBeds";
