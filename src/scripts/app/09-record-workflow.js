@@ -1802,6 +1802,7 @@ function enterHarvestRecordMode(){
   recordPlantingSummaryEdited = false;
   const input = document.getElementById("recordActualSeedlingTrayCountInput");
   if(input) delete input.dataset.userEdited;
+  updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
 }
 
@@ -1821,6 +1822,7 @@ function enterPlantingRecordMode(record, options = {}){
   }else{
     harvestSummary = null;
   }
+  updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
   saveHarvestStateToStorage();
   drawRecordBeds();

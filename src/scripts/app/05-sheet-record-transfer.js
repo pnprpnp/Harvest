@@ -1502,13 +1502,20 @@ function updateHeaderLatestRecordDate(){
   label.textContent = formatLatestRecordDateForHeader(getLatestRecordDate());
 }
 
+function hasCompletedTodayHarvestRecord(referenceDate = new Date()){
+  const today = formatDateOnlyString(referenceDate);
+  return records.some(record => (
+    record?.type === "fullHarvest"
+    && String(record.date || "") === today
+    && getPlantingEventsForHarvest(record.id).length > 0
+  ));
+}
+
 function updateTodayHarvestRecordedStatus(referenceDate = new Date()){
   const status = document.getElementById("recordTodayRecordedStatus");
   if(!status) return;
-  const today = formatDateOnlyString(referenceDate);
-  const isRecordedToday = records.some(record => (
-    record?.type === "fullHarvest" && String(record.date || "") === today
-  ));
+  const isRecordedToday = recordSelectionMode !== "planting"
+    && hasCompletedTodayHarvestRecord(referenceDate);
   const modeStatus = document.getElementById("recordModeStatus");
   status.hidden = !isRecordedToday;
   if(modeStatus){

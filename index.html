@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260905-planting-count-default">
+<meta name="harvestnavi-version" content="20260905-planting-finish-status">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -24975,13 +24975,20 @@ function updateHeaderLatestRecordDate(){
   label.textContent = formatLatestRecordDateForHeader(getLatestRecordDate());
 }
 
+function hasCompletedTodayHarvestRecord(referenceDate = new Date()){
+  const today = formatDateOnlyString(referenceDate);
+  return records.some(record => (
+    record?.type === "fullHarvest"
+    && String(record.date || "") === today
+    && getPlantingEventsForHarvest(record.id).length > 0
+  ));
+}
+
 function updateTodayHarvestRecordedStatus(referenceDate = new Date()){
   const status = document.getElementById("recordTodayRecordedStatus");
   if(!status) return;
-  const today = formatDateOnlyString(referenceDate);
-  const isRecordedToday = records.some(record => (
-    record?.type === "fullHarvest" && String(record.date || "") === today
-  ));
+  const isRecordedToday = recordSelectionMode !== "planting"
+    && hasCompletedTodayHarvestRecord(referenceDate);
   const modeStatus = document.getElementById("recordModeStatus");
   status.hidden = !isRecordedToday;
   if(modeStatus){
@@ -34698,6 +34705,7 @@ function enterHarvestRecordMode(){
   recordPlantingSummaryEdited = false;
   const input = document.getElementById("recordActualSeedlingTrayCountInput");
   if(input) delete input.dataset.userEdited;
+  updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
 }
 
@@ -34717,6 +34725,7 @@ function enterPlantingRecordMode(record, options = {}){
   }else{
     harvestSummary = null;
   }
+  updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
   saveHarvestStateToStorage();
   drawRecordBeds();

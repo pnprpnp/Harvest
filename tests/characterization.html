@@ -1746,6 +1746,156 @@
         );
       });
 
+      await runTest("苗0枚・場所未選択の苗植え記録を保存操作で終了できる", async () => {
+        const today = app.formatDateOnlyString(new Date());
+        const harvestRecord = {
+          palletNumberingVersion:2,
+          id:20000000000008,
+          recordUuid:"88888888-8888-4888-8888-888888888880",
+          type:"fullHarvest",
+          date:today,
+          cases:10,
+          palletRanges:["3-C-1-2"],
+          plantingPending:true
+        };
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previousState = comparable(app.eval(`({
+          settings,
+          mode:recordSelectionMode,
+          activePlantingRecordId,
+          workflowPlantingSessionActive,
+          editingPlantingEventId,
+          plantingRecordDraft,
+          harvestFillKeys,
+          harvestSummary,
+          recordPlantingCountsByPallet
+        })`));
+        const dateInput = app.document.getElementById("recordDateInput");
+        const trayInput = app.document.getElementById("recordActualSeedlingTrayCountInput");
+        const previousDate = dateInput.value;
+        const previousTrayCount = trayInput.value;
+        const originalFunctions = {
+          ensureProtectedOperationAccess:app.ensureProtectedOperationAccess,
+          ensureGoogleSheetLocalMutationAllowed:app.ensureGoogleSheetLocalMutationAllowed,
+          savePlantingEventsToStorage:app.savePlantingEventsToStorage,
+          saveRecordsToStorage:app.saveRecordsToStorage,
+          setPlantingEventSyncStatus:app.setPlantingEventSyncStatus,
+          confirmPlantingRecordBeforeSend:app.confirmPlantingRecordBeforeSend,
+          maybePromptRecordExport:app.maybePromptRecordExport,
+          refreshRecordDataUi:app.refreshRecordDataUi,
+          clearHarvestPrediction:app.clearHarvestPrediction,
+          resetAllCasePlacements:app.resetAllCasePlacements,
+          resetForecastCasesInput:app.resetForecastCasesInput,
+          captureRecordBaseSelection:app.captureRecordBaseSelection,
+          clearRecordForm:app.clearRecordForm,
+          showWorkflowCompletionCelebration:app.showWorkflowCompletionCelebration,
+          saveHarvestStateToStorage:app.saveHarvestStateToStorage,
+          queueGoogleSheetPlantingEventSend:app.queueGoogleSheetPlantingEventSend,
+          showToast:app.showToast
+        };
+        let confirmCount = 0;
+        let completionCount = 0;
+        let clearCount = 0;
+        let toastMessage = "";
+        try{
+          replaceAppHistory(app, [harvestRecord], []);
+          app.eval(`
+            settings = { ...settings, seedlingHouseInitialStartKey:"" };
+            recordSelectionMode = "planting";
+            activePlantingRecordId = ${harvestRecord.id};
+            workflowPlantingSessionActive = true;
+            editingPlantingEventId = null;
+            plantingRecordDraft = null;
+            harvestFillKeys = [];
+            harvestSummary = null;
+            recordPlantingCountsByPallet = {};
+            invalidatePlantingEventStateCache();
+          `);
+          dateInput.value = today;
+          trayInput.value = "0";
+          app.setRecordSeedlingCarryoverMode("loss", { silent:true });
+          app.setSelectedQualityMemo(null);
+
+          app.ensureProtectedOperationAccess = () => true;
+          app.ensureGoogleSheetLocalMutationAllowed = () => true;
+          app.savePlantingEventsToStorage = () => app.invalidatePlantingEventStateCache();
+          app.saveRecordsToStorage = () => {};
+          app.setPlantingEventSyncStatus = () => {};
+          app.confirmPlantingRecordBeforeSend = () => {
+            confirmCount++;
+            return true;
+          };
+          app.maybePromptRecordExport = () => {};
+          app.refreshRecordDataUi = () => {};
+          app.clearHarvestPrediction = () => {};
+          app.resetAllCasePlacements = () => {};
+          app.resetForecastCasesInput = () => {};
+          app.captureRecordBaseSelection = () => {};
+          app.clearRecordForm = () => {
+            clearCount++;
+            app.eval(`
+              recordSelectionMode = "harvest";
+              activePlantingRecordId = null;
+              workflowPlantingSessionActive = false;
+              updateTodayHarvestRecordedStatus();
+            `);
+          };
+          app.showWorkflowCompletionCelebration = () => { completionCount++; };
+          app.saveHarvestStateToStorage = () => {};
+          app.queueGoogleSheetPlantingEventSend = () => false;
+          app.showToast = message => { toastMessage = String(message || ""); };
+
+          await app.savePlantingRecord();
+
+          const saved = comparable(app.eval(`({
+            events:plantingEvents.map(event => ({
+              harvestRecordId:event.sourceAllocations[0]?.harvestRecordId,
+              plantingPalletKeys:event.plantingPalletKeys,
+              actualSeedlingTrayCount:event.actualSeedlingTrayCount,
+              noPlantingEvent:isNoPlantingEvent(event)
+            })),
+            plantingPending:records[0]?.plantingPending,
+            mode:recordSelectionMode,
+            recordedStatusVisible:!document.getElementById("recordTodayRecordedStatus").hidden
+          })`));
+          assertDeepEqual(saved, {
+            events:[{
+              harvestRecordId:harvestRecord.id,
+              plantingPalletKeys:[],
+              actualSeedlingTrayCount:0,
+              noPlantingEvent:true
+            }],
+            plantingPending:false,
+            mode:"harvest",
+            recordedStatusVisible:true
+          }, "苗0枚・場所未選択の保存操作を完了扱いにできません");
+          assertEqual(confirmCount, 1, "苗0枚の完了確認を通っていません");
+          assertEqual(clearCount, 1, "苗0枚の保存後に苗植え工程を終了していません");
+          assertEqual(completionCount, 1, "苗0枚の新規保存後に完了処理を実行していません");
+          assert(toastMessage.includes("苗植え場所を記録しました"), "苗0枚の保存完了結果が表示されません");
+        }finally{
+          Object.entries(originalFunctions).forEach(([name, fn]) => { app[name] = fn; });
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.eval(`
+            settings = ${JSON.stringify(previousState.settings)};
+            recordSelectionMode = ${JSON.stringify(previousState.mode)};
+            activePlantingRecordId = ${JSON.stringify(previousState.activePlantingRecordId)};
+            workflowPlantingSessionActive = ${JSON.stringify(previousState.workflowPlantingSessionActive)};
+            editingPlantingEventId = ${JSON.stringify(previousState.editingPlantingEventId)};
+            plantingRecordDraft = ${JSON.stringify(previousState.plantingRecordDraft)};
+            harvestFillKeys = ${JSON.stringify(previousState.harvestFillKeys)};
+            harvestSummary = ${JSON.stringify(previousState.harvestSummary)};
+            recordPlantingCountsByPallet = ${JSON.stringify(previousState.recordPlantingCountsByPallet)};
+            invalidatePlantingEventStateCache();
+            updateTodayHarvestRecordedStatus();
+            refreshRecordModeUi();
+          `);
+          dateInput.value = previousDate;
+          trayInput.value = previousTrayCount;
+        }
+      });
+
       await runTest("定植後10日未満を選択不可にし10日後も自動選択順を維持する", () => {
         const harvestRecord = {
           palletNumberingVersion: 2,
@@ -8312,13 +8462,23 @@
         }, "記録タブ上部の工程表示が現在の記録モードに追従していません");
       });
 
-      await runTest("本日の収穫記録済み表示で収穫・苗植え工程バーを置き換える", () => {
+      await runTest("苗植え記録の終了後だけ本日の記録済み表示へ切り替える", () => {
         const state = comparable(app.eval(`(() => {
           const previousRecords = records;
+          const previousEvents = plantingEvents;
           const previousMode = recordSelectionMode;
           const status = document.getElementById("recordTodayRecordedStatus");
           const modeStatus = document.getElementById("recordModeStatus");
           const today = formatDateOnlyString(new Date());
+          const harvestRecord = {
+            palletNumberingVersion:CURRENT_PALLET_NUMBERING_VERSION,
+            id:20000000000992,
+            type:"fullHarvest",
+            date:today,
+            cases:10,
+            palletKeys:["3-A-1"],
+            plantingPending:true
+          };
           const readState = () => ({
             statusParent:status.parentElement?.id || "",
             statusVisible:!status.hidden,
@@ -8330,46 +8490,60 @@
             historyVisible:getComputedStyle(document.getElementById("recordHistoryOpenBtn")).visibility
           });
           try{
+            records = [harvestRecord];
+            plantingEvents = [];
+            invalidatePlantingEventStateCache();
             recordSelectionMode = "planting";
-            records = [{ id:20000000000992, type:"fullHarvest", date:today }];
             updateTodayHarvestRecordedStatus();
-            const recordedPlanting = readState();
+            const plantingInProgress = readState();
             recordSelectionMode = "harvest";
             updateTodayHarvestRecordedStatus();
-            const recordedHarvest = readState();
-            records = [];
+            const harvestBeforePlanting = readState();
+
+            plantingEvents = [normalizePlantingEvent({
+              palletNumberingVersion:CURRENT_PALLET_NUMBERING_VERSION,
+              eventId:20000000000993,
+              plantingDate:today,
+              sourceAllocations:[{ harvestRecordId:harvestRecord.id, palletKeys:[] }],
+              plantingPalletKeys:[],
+              plantingCountsByPallet:{},
+              actualSeedlingTrayCount:0,
+              actualTakenSeedlingCount:0,
+              actualPlantedSeedlingCount:0,
+              actualSeedlingCarryoverMode:"loss",
+              actualSeedlingLossRate:"",
+              qualityMemo:null,
+              detailsUnknown:false
+            })];
+            invalidatePlantingEventStateCache();
+            recordSelectionMode = "planting";
             updateTodayHarvestRecordedStatus();
-            const notRecordedHarvest = readState();
-            return { recordedPlanting, recordedHarvest, notRecordedHarvest };
+            const plantingAfterSave = readState();
+            recordSelectionMode = "harvest";
+            updateTodayHarvestRecordedStatus();
+            const completedHarvest = readState();
+            return { plantingInProgress, harvestBeforePlanting, plantingAfterSave, completedHarvest };
           }finally{
             records = previousRecords;
+            plantingEvents = previousEvents;
+            invalidatePlantingEventStateCache();
             recordSelectionMode = previousMode;
             updateTodayHarvestRecordedStatus();
             refreshRecordModeUi();
           }
         })()`));
         assertDeepEqual(state, {
-          recordedPlanting:{
+          plantingInProgress:{
             statusParent:"recordModeStatus",
-            statusVisible:true,
+            statusVisible:false,
             modeVisible:true,
-            replacesSteps:true,
+            replacesSteps:false,
             statusText:"本日は記録済みです",
-            ariaLabel:"本日は記録済みです",
-            stepVisibility:"hidden",
+            ariaLabel:"全2段階。現在は苗植え記録中",
+            stepVisibility:"visible",
             historyVisible:"visible"
           },
-          recordedHarvest:{
-            statusParent:"recordModeStatus",
-            statusVisible:true,
-            modeVisible:true,
-            replacesSteps:true,
-            statusText:"本日は記録済みです",
-            ariaLabel:"本日は記録済みです",
-            stepVisibility:"hidden",
-            historyVisible:"visible"
-          },
-          notRecordedHarvest:{
+          harvestBeforePlanting:{
             statusParent:"recordModeStatus",
             statusVisible:false,
             modeVisible:false,
@@ -8378,8 +8552,28 @@
             ariaLabel:"全2段階。現在は収穫記録中",
             stepVisibility:"visible",
             historyVisible:"visible"
+          },
+          plantingAfterSave:{
+            statusParent:"recordModeStatus",
+            statusVisible:false,
+            modeVisible:true,
+            replacesSteps:false,
+            statusText:"本日は記録済みです",
+            ariaLabel:"全2段階。現在は苗植え記録中",
+            stepVisibility:"visible",
+            historyVisible:"visible"
+          },
+          completedHarvest:{
+            statusParent:"recordModeStatus",
+            statusVisible:true,
+            modeVisible:true,
+            replacesSteps:true,
+            statusText:"本日は記録済みです",
+            ariaLabel:"本日は記録済みです",
+            stepVisibility:"hidden",
+            historyVisible:"visible"
           }
-        }, "本日の記録済み表示が収穫・苗植え工程バーと同じ場所へ切り替わっていません");
+        }, "本日の記録済み表示が苗植え記録の完了前に切り替わっています");
       });
 
       await runTest("収穫場所から始まる3工程を進め、対象棟の確認後だけ固定ボタンで保存へ進める", () => {
