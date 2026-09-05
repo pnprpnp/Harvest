@@ -9232,10 +9232,23 @@
             document.getElementById("recordBuildingAddChooser").hidden = true;
             drawRecordBeds();
             const recordBeds = document.getElementById("recordBeds");
-            const controls = document.getElementById("recordBuildingDisplayControls");
+            const pager = document.getElementById("recordHarvestBuildingPager");
             const openButton = document.getElementById("recordBuildingAddOpenBtn");
             const chooser = document.getElementById("recordBuildingAddChooser");
             const options = document.getElementById("recordBuildingAddOptions");
+            const pagerChildren = [...pager.children];
+            const pagerState = {
+              visible:!pager.hidden,
+              order:pagerChildren.map(element => element.className),
+              addButtonParent:openButton.parentElement?.id || "",
+              sameRow:pagerChildren.every(element => (
+                Math.abs(element.getBoundingClientRect().top - pagerChildren[0].getBoundingClientRect().top) <= 1
+              )),
+              buildingLabels:[...pager.querySelectorAll(".recordHarvestBuildingTab")]
+                .map(button => button.textContent.trim()),
+              standaloneControlsExists:!!document.getElementById("recordBuildingDisplayControls"),
+              summaryExists:!!document.getElementById("recordBuildingDisplaySummary")
+            };
             const chooserHiddenBeforeOpen = chooser.hidden;
             toggleRecordBuildingAddChooser();
             const chooserVisibleAfterOpen = !chooser.hidden;
@@ -9251,7 +9264,10 @@
               baseHasRemoveButton: !!document.querySelector('#recordBeds .recordBuildingMapSection:first-child .recordBuildingMapRemoveBtn'),
               addedRemoveLabel: document.querySelector('#recordBeds .recordBuildingMapRemoveBtn')?.getAttribute("aria-label") || "",
               selectedExtraBuilding: harvestFillKeys.includes("2-A-1"),
-              selectedCount: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length
+              selectedCount: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length,
+              pagerLabels:[...document.querySelectorAll("#recordHarvestBuildingPager .recordHarvestBuildingTab")]
+                .map(button => button.textContent.trim()),
+              addButtonInPager:document.getElementById("recordBuildingAddOpenBtn")?.parentElement === pager
             };
             removeRecordBuildingDisplay(2);
             const removedState = {
@@ -9267,15 +9283,18 @@
             recordAdditionalBuildings = [];
             chooser.hidden = true;
             drawRecordBeds();
+            const emptyOpenButton = document.getElementById("recordBuildingAddOpenBtn");
             const emptyState = {
               chooserHidden:chooser.hidden,
-              ariaExpanded:openButton.getAttribute("aria-expanded"),
+              ariaExpanded:emptyOpenButton.getAttribute("aria-expanded"),
+              pagerVisible:!pager.hidden,
+              buildingTabCount:pager.querySelectorAll(".recordHarvestBuildingTab").length,
+              addButtonVisible:!emptyOpenButton.hidden,
               simulationPromptExists:(recordBeds.textContent || "").includes("シミュで収穫場所を選択すると")
             };
             return {
-              controlsVisible: !controls.hidden,
-              controlsBeforeMaps: !!(controls.compareDocumentPosition(recordBeds) & Node.DOCUMENT_POSITION_FOLLOWING),
               openButtonText: openButton.textContent.trim(),
+              pagerState,
               chooserHiddenBeforeOpen,
               chooserVisibleAfterOpen,
               hasBuildingOption: beforeOptions.includes("2号棟"),
@@ -9297,9 +9316,16 @@
           }
         })()`));
         assertDeepEqual(state, {
-          controlsVisible: true,
-          controlsBeforeMaps: true,
           openButtonText: "＋号棟",
+          pagerState:{
+            visible:true,
+            order:["recordHarvestBuildingArrow", "recordHarvestBuildingTabs", "recordHarvestBuildingAddTab", "recordHarvestBuildingArrow"],
+            addButtonParent:"recordHarvestBuildingPager",
+            sameRow:true,
+            buildingLabels:["8号棟2枚"],
+            standaloneControlsExists:false,
+            summaryExists:false
+          },
           chooserHiddenBeforeOpen: true,
           chooserVisibleAfterOpen: true,
           hasBuildingOption: true,
@@ -9309,7 +9335,9 @@
             baseHasRemoveButton: true,
             addedRemoveLabel: "2号棟の追加表示を削除",
             selectedExtraBuilding: true,
-            selectedCount: 1
+            selectedCount: 1,
+            pagerLabels:["8号棟2枚", "2号棟1枚"],
+            addButtonInPager:true
           },
           removedState: {
             headings: ["8号棟"],
@@ -9318,7 +9346,14 @@
             selectedCount: 2,
             canAddAgain: true
           },
-          emptyState:{chooserHidden:true,ariaExpanded:"false",simulationPromptExists:false}
+          emptyState:{
+            chooserHidden:true,
+            ariaExpanded:"false",
+            pagerVisible:true,
+            buildingTabCount:0,
+            addButtonVisible:true,
+            simulationPromptExists:false
+          }
         }, "計算対象外の号棟を追加し、1棟ずつ切り替えて選択できません");
       });
 
@@ -11315,18 +11350,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "99586b29", elements: 2323, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "1b352173", elements: 2392, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "770068ec", elements: 2392, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "522d6dfb", elements: 2323, visible: 83, viewport: "390x844" },
-          mobileDashboard: { hash: "c9da7886", elements: 2340, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "b294d7ef", elements: 2423, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "970ab703", elements: 2438, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "80225112", elements: 2438, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "aa5739b9", elements: 2438, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "c986560e", elements: 2438, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "5c80d05a", elements: 2438, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "0654674a", elements: 2438, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "7b9e65c8", elements: 2319, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "8f28d767", elements: 2388, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "d58dd428", elements: 2388, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "ff6c7037", elements: 2323, visible: 84, viewport: "390x844" },
+          mobileDashboard: { hash: "c0c3ec90", elements: 2340, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "67e5b4d1", elements: 2423, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "5d2e1fbd", elements: 2438, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "0c98ac10", elements: 2438, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "63a9299b", elements: 2438, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "1f1d3f4c", elements: 2438, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "2c46b2f0", elements: 2438, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "a9774fd4", elements: 2438, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -672,15 +672,12 @@ function getRecordMapBuildings(allowedSet = null){
 }
 
 function renderRecordBuildingDisplayControls(){
-  const controls = document.getElementById("recordBuildingDisplayControls");
   const options = document.getElementById("recordBuildingAddOptions");
-  const summary = document.getElementById("recordBuildingDisplaySummary");
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
-  if(!controls || !options) return;
+  if(!options) return;
 
   const isHarvestMode = recordSelectionMode !== "planting";
-  controls.hidden = !isHarvestMode;
   if(!isHarvestMode){
     if(chooser) chooser.hidden = true;
     if(openButton) openButton.setAttribute("aria-expanded", "false");
@@ -697,11 +694,6 @@ function renderRecordBuildingDisplayControls(){
     chooser.hidden = true;
     if(openButton) openButton.setAttribute("aria-expanded", "false");
   }
-  if(summary){
-    summary.textContent = displayedBuildings.length
-      ? `${displayedBuildings.length}棟を選択中`
-      : "表示中の号棟はありません";
-  }
 }
 
 function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
@@ -709,7 +701,7 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
   if(!pager) return;
   pager.innerHTML = "";
   const normalizedBuildings = [...new Set((buildings || []).map(Number).filter(building => BUILDINGS.includes(building)))];
-  if(recordSelectionMode === "planting" || normalizedBuildings.length <= 1){
+  if(recordSelectionMode === "planting"){
     pager.hidden = true;
     return;
   }
@@ -753,6 +745,18 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
     tabs.appendChild(button);
   });
 
+  const chooser = document.getElementById("recordBuildingAddChooser");
+  const availableBuildings = BUILDINGS.filter(building => !normalizedBuildings.includes(building));
+  const addButton = document.createElement("button");
+  addButton.id = "recordBuildingAddOpenBtn";
+  addButton.type = "button";
+  addButton.className = "recordHarvestBuildingAddTab";
+  addButton.textContent = "＋号棟";
+  addButton.dataset.uiClick = "toggleRecordBuildingAddChooser";
+  addButton.disabled = availableBuildings.length === 0;
+  addButton.setAttribute("aria-expanded", String(!!chooser && !chooser.hidden));
+  addButton.setAttribute("aria-controls", "recordBuildingAddChooser");
+
   const nextButton = document.createElement("button");
   nextButton.type = "button";
   nextButton.className = "recordHarvestBuildingArrow";
@@ -761,7 +765,7 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
   nextButton.dataset.uiNumber = "1";
   nextButton.disabled = activeIndex < 0 || activeIndex >= normalizedBuildings.length - 1;
   nextButton.setAttribute("aria-label", "次の号棟を表示");
-  pager.append(previousButton, tabs, nextButton);
+  pager.append(previousButton, tabs, addButton, nextButton);
   pager.hidden = false;
 }
 

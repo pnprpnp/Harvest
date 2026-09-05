@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260905-planting-finish-status">
+<meta name="harvestnavi-version" content="20260905-record-building-pager">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10248,7 +10248,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 #recordHarvestLocationSection > .recordEditNotice{margin-top:2px;font-size:15px;}
 .recordHarvestBuildingPager{
   display:grid;
-  grid-template-columns:42px minmax(0,1fr) 42px;
+  grid-template-columns:42px minmax(0,1fr) 64px 42px;
   gap:6px;
   margin:0 0 10px;
   touch-action:pan-y;
@@ -10257,7 +10257,8 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .recordHarvestBuildingTabs{display:flex;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none;}
 .recordHarvestBuildingTabs::-webkit-scrollbar{display:none;}
 .recordHarvestBuildingArrow,
-.recordHarvestBuildingTab{
+.recordHarvestBuildingTab,
+.recordHarvestBuildingAddTab{
   position:relative;
   min-height:46px;
   border:1px solid var(--ui-line-strong);
@@ -10267,6 +10268,15 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 }
 .recordHarvestBuildingArrow{font-size:26px;font-weight:500;line-height:1;}
 .recordHarvestBuildingTab{min-width:72px;display:grid;place-content:center;gap:2px;padding:5px 8px;}
+.recordHarvestBuildingAddTab{
+  min-width:0;
+  padding:5px 4px;
+  color:var(--ui-accent-dark);
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.recordHarvestBuildingAddTab:disabled{opacity:.45;}
 .recordHarvestBuildingTab strong{font-size:12px;font-weight:850;}
 .recordHarvestBuildingTab span{font-size:10px;font-weight:700;}
 .recordHarvestBuildingTab.is-active{border-color:var(--ui-accent);background:var(--ui-accent-soft);color:var(--ui-accent-dark);}
@@ -10590,33 +10600,17 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .recordPlantingFlowNextBtn{border:1px solid var(--ui-accent);background:var(--ui-accent);color:#fff;}
 .recordPlantingFlowStage-location .recordPlantingCountPreset,
 .recordPlantingFlowStage-quality .recordPlantingCountPreset{display:none;}
-.recordBuildingDisplayControls{
+.recordBuildingAddChooser{
   display:grid;
-  gap:8px;
-  margin:0 0 14px;
+  gap:5px;
+  margin:-2px 0 10px;
   padding:10px 12px;
   border:1px solid var(--ui-line);
   border-radius:12px;
   background:var(--ui-surface-solid);
 }
-.recordBuildingDisplayControls[hidden]{display:none;}
-.recordBuildingDisplayHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-.recordBuildingDisplayHint{margin-top:2px;color:var(--ui-text-tertiary);font-size:10px;line-height:1.35;}
-.recordBuildingDisplaySummary{flex:none;color:var(--ui-accent-dark);font-size:10px;font-weight:700;text-align:right;white-space:nowrap;}
-.recordBuildingAddOpenBtn{
-  min-height:38px;
-  padding:6px 11px;
-  border:1px solid var(--ui-line-strong);
-  border-radius:9px;
-  background:var(--ui-surface-solid);
-  color:var(--ui-accent-dark);
-  font-size:12px;
-  font-weight:750;
-  white-space:nowrap;
-}
-.recordBuildingAddOpenBtn:disabled{opacity:.45;}
-.recordBuildingAddChooser{display:grid;gap:5px;padding-top:2px;}
 .recordBuildingAddChooser[hidden]{display:none;}
+.recordBuildingDisplayHint{margin-top:2px;color:var(--ui-text-tertiary);font-size:10px;line-height:1.35;}
 .recordBuildingAddOptions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;}
 .recordBuildingAddOptions button{
   min-width:0;
@@ -13877,18 +13871,11 @@ requestAnimationFrame(function(){
 
       <div id="recordHarvestLocationSection">
         <div id="recordEditNotice" class="recordEditNotice">実際に収穫した場所を選択して下さい</div>
-        <div id="recordBuildingDisplayControls" class="recordBuildingDisplayControls" hidden>
-          <div class="recordBuildingDisplayHeader">
-            <button id="recordBuildingAddOpenBtn" class="recordBuildingAddOpenBtn" type="button"
-              data-ui-click="toggleRecordBuildingAddChooser" aria-expanded="false" aria-controls="recordBuildingAddChooser">＋号棟</button>
-            <div id="recordBuildingDisplaySummary" class="recordBuildingDisplaySummary">表示中の号棟はありません</div>
-          </div>
-          <div id="recordBuildingAddChooser" class="recordBuildingAddChooser" hidden>
-            <div class="recordBuildingDisplayHint">追加する号棟を押してください</div>
-            <div id="recordBuildingAddOptions" class="recordBuildingAddOptions" role="group" aria-label="追加する号棟"></div>
-          </div>
-        </div>
         <div id="recordHarvestBuildingPager" class="recordHarvestBuildingPager" hidden></div>
+        <div id="recordBuildingAddChooser" class="recordBuildingAddChooser" hidden>
+          <div class="recordBuildingDisplayHint">追加する号棟を押してください</div>
+          <div id="recordBuildingAddOptions" class="recordBuildingAddOptions" role="group" aria-label="追加する号棟"></div>
+        </div>
         <div class="recordHarvestAdjustBox">
         <div id="recordPlantingFlowPanel" class="recordPlantingFlowPanel" hidden></div>
         <div id="recordPlantingCountPreset" class="recordPlantingCountPreset" hidden>
@@ -37389,15 +37376,12 @@ function getRecordMapBuildings(allowedSet = null){
 }
 
 function renderRecordBuildingDisplayControls(){
-  const controls = document.getElementById("recordBuildingDisplayControls");
   const options = document.getElementById("recordBuildingAddOptions");
-  const summary = document.getElementById("recordBuildingDisplaySummary");
   const chooser = document.getElementById("recordBuildingAddChooser");
   const openButton = document.getElementById("recordBuildingAddOpenBtn");
-  if(!controls || !options) return;
+  if(!options) return;
 
   const isHarvestMode = recordSelectionMode !== "planting";
-  controls.hidden = !isHarvestMode;
   if(!isHarvestMode){
     if(chooser) chooser.hidden = true;
     if(openButton) openButton.setAttribute("aria-expanded", "false");
@@ -37414,11 +37398,6 @@ function renderRecordBuildingDisplayControls(){
     chooser.hidden = true;
     if(openButton) openButton.setAttribute("aria-expanded", "false");
   }
-  if(summary){
-    summary.textContent = displayedBuildings.length
-      ? `${displayedBuildings.length}棟を選択中`
-      : "表示中の号棟はありません";
-  }
 }
 
 function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
@@ -37426,7 +37405,7 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
   if(!pager) return;
   pager.innerHTML = "";
   const normalizedBuildings = [...new Set((buildings || []).map(Number).filter(building => BUILDINGS.includes(building)))];
-  if(recordSelectionMode === "planting" || normalizedBuildings.length <= 1){
+  if(recordSelectionMode === "planting"){
     pager.hidden = true;
     return;
   }
@@ -37470,6 +37449,18 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
     tabs.appendChild(button);
   });
 
+  const chooser = document.getElementById("recordBuildingAddChooser");
+  const availableBuildings = BUILDINGS.filter(building => !normalizedBuildings.includes(building));
+  const addButton = document.createElement("button");
+  addButton.id = "recordBuildingAddOpenBtn";
+  addButton.type = "button";
+  addButton.className = "recordHarvestBuildingAddTab";
+  addButton.textContent = "＋号棟";
+  addButton.dataset.uiClick = "toggleRecordBuildingAddChooser";
+  addButton.disabled = availableBuildings.length === 0;
+  addButton.setAttribute("aria-expanded", String(!!chooser && !chooser.hidden));
+  addButton.setAttribute("aria-controls", "recordBuildingAddChooser");
+
   const nextButton = document.createElement("button");
   nextButton.type = "button";
   nextButton.className = "recordHarvestBuildingArrow";
@@ -37478,7 +37469,7 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
   nextButton.dataset.uiNumber = "1";
   nextButton.disabled = activeIndex < 0 || activeIndex >= normalizedBuildings.length - 1;
   nextButton.setAttribute("aria-label", "次の号棟を表示");
-  pager.append(previousButton, tabs, nextButton);
+  pager.append(previousButton, tabs, addButton, nextButton);
   pager.hidden = false;
 }
 
