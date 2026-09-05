@@ -9251,7 +9251,8 @@
             activeTab: activeAppTab,
             mode: recordSelectionMode,
             building: currentBuilding,
-            keys: [...harvestFillKeys]
+            keys: [...harvestFillKeys],
+            overageKeys: [...harvestOverageKeys]
           };
           try{
             recordTab.style.display = "block";
@@ -9259,8 +9260,12 @@
             recordSelectionMode = "harvest";
             currentBuilding = 2;
             harvestFillKeys = ["2-A-1", "2-A-2"];
+            harvestOverageKeys = ["2-A-2"];
             drawRecordBeds();
             const firstBed = document.querySelector("#recordBeds .recordBedOverview");
+            const recordDetailHost = document.createElement("div");
+            appendRecordBedDetail(recordDetailHost, "A");
+            const overageSelectedPallet = recordDetailHost.querySelector('[data-pallet-key="2-A-2"]');
             const plantingMapHost = document.createElement("div");
             appendBedOverviewMap(plantingMapHost, 2, "A", {
               context: "record",
@@ -9273,6 +9278,11 @@
               cells: document.querySelectorAll("#recordBeds .recordBedOverview .simulationBedMapCell").length,
               firstBedCells: firstBed?.querySelectorAll(".simulationBedMapCell").length || 0,
               selected: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length,
+              overageColored: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-overage").length,
+              overageLegendHidden: !document.getElementById("recordHarvestMapLegend")?.textContent.includes("超過分"),
+              detailSelected: overageSelectedPallet?.classList.contains("harvestFill") || false,
+              detailOverageColored: overageSelectedPallet?.classList.contains("harvestOveragePallet") || false,
+              detailOverageLabelHidden: !overageSelectedPallet?.title.includes("超過分"),
               unavailableCountLabels: document.querySelectorAll("#recordBeds .simulationBedOverviewCountRecorded").length,
               plantingSelected: plantingMapHost.querySelectorAll(".is-planting-selected").length,
               plantingSelectable: plantingMapHost.querySelectorAll(".is-planting-selectable").length,
@@ -9285,6 +9295,7 @@
             recordSelectionMode = previous.mode;
             currentBuilding = previous.building;
             harvestFillKeys = previous.keys;
+            harvestOverageKeys = previous.overageKeys;
             recordTab.style.display = previous.display;
           }
         })()`));
@@ -9294,6 +9305,11 @@
           cells: 468,
           firstBedCells: 78,
           selected: 2,
+          overageColored: 0,
+          overageLegendHidden: true,
+          detailSelected: true,
+          detailOverageColored: false,
+          detailOverageLabelHidden: true,
           unavailableCountLabels: 0,
           plantingSelected: 1,
           plantingSelectable: 1,
@@ -11444,18 +11460,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "7b9e65c8", elements: 2319, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "8f28d767", elements: 2388, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "d58dd428", elements: 2388, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "72a15f46", elements: 2323, visible: 71, viewport: "390x844" },
-          mobileDashboard: { hash: "c0c3ec90", elements: 2340, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "67e5b4d1", elements: 2423, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "5d2e1fbd", elements: 2438, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "0c98ac10", elements: 2438, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "63a9299b", elements: 2438, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "1f1d3f4c", elements: 2438, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "2c46b2f0", elements: 2438, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "a9774fd4", elements: 2438, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "f3551711", elements: 2317, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "5ec0df2c", elements: 2386, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "0451edef", elements: 2386, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "7aa931e3", elements: 2321, visible: 71, viewport: "390x844" },
+          mobileDashboard: { hash: "a840a2b7", elements: 2338, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "81000c04", elements: 2421, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "d89c28c6", elements: 2436, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "1a442f39", elements: 2436, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "8e208a78", elements: 2436, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "f0165921", elements: 2436, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "0aa530e9", elements: 2436, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "1ecc9fd9", elements: 2436, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -2125,8 +2125,7 @@ function updatePalletElementForDrag(pallet, context, mode){
   if(!pallet) return;
   if(mode === "add"){
     pallet.classList.add("harvestFill");
-    if((context === "forecast" || recordSelectionMode === "harvest")
-      && isHarvestOveragePallet(pallet.dataset.palletKey)){
+    if(context === "forecast" && isHarvestOveragePallet(pallet.dataset.palletKey)){
       pallet.classList.add("harvestOveragePallet");
     }
     if(context === "record" && recordSelectionMode === "planting"){
@@ -2415,7 +2414,6 @@ function appendRecordBedDetail(container, b){
   const plantingQualityByPallet = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
     ? getRecordPlantingFlowQualityByPallet()
     : {};
-  const overageSet = recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set();
 
   const grid = document.createElement("div");
   grid.className = "palletGrid";
@@ -2431,7 +2429,6 @@ function appendRecordBedDetail(container, b){
       if(partialHarvestCount > 0) cls += " partialHarvestPallet";
       const isSelected = isFilled(currentBuilding, b, number);
       if(isSelected) cls += " harvestFill";
-      if(overageSet.has(key)) cls += " harvestOveragePallet";
       if(recordSelectionMode === "planting"){
         if(!plantingAllowedSet.has(key)){
           cls += " plantingUnavailablePallet";
@@ -2476,7 +2473,6 @@ function appendRecordBedDetail(container, b){
       pallet.title = `${currentBuilding}号棟 ${b}-${number}`
         + statusText
         + (recordSelectionMode !== "planting" ? ` ${getHarvestAvailabilityLabel(key, availabilityState)}` : "")
-        + (overageSet.has(key) ? " 超過分" : "")
         + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
       pallet.style.gridColumnStart = c + 1;

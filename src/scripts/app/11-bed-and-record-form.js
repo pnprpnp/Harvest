@@ -967,7 +967,7 @@ function drawRecordBeds(){
       appendBedOverviewMap(bed, building, b, {
         context: "record",
         selectedSet,
-        overageSet: recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set(),
+        overageSet: new Set(),
         recordedSet,
         unplantedSet:recordSelectionMode === "planting" ? new Set() : availabilityState.unplantedSet,
         plantingLockInfoByPallet:recordSelectionMode === "planting"

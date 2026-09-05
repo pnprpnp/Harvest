@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260905-record-viewport-fit">
+<meta name="harvestnavi-version" content="20260905-record-no-overage">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -14020,7 +14020,6 @@ requestAnimationFrame(function(){
         <div id="recordHarvestMapLegend" class="simulationBedMapLegend" aria-label="収穫場所配置図の色分け">
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-harvest-available"></span>収穫可能</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-selected"></span>選択中</span>
-          <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-overage"></span>超過分</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-recorded"></span>収穫不可能</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-unplanted"></span>未定植</span>
           <span class="simulationBedMapLegendItem"><span class="simulationBedMapLegendSwatch is-partial-harvest"></span>部分収穫</span>
@@ -31775,8 +31774,7 @@ function updatePalletElementForDrag(pallet, context, mode){
   if(!pallet) return;
   if(mode === "add"){
     pallet.classList.add("harvestFill");
-    if((context === "forecast" || recordSelectionMode === "harvest")
-      && isHarvestOveragePallet(pallet.dataset.palletKey)){
+    if(context === "forecast" && isHarvestOveragePallet(pallet.dataset.palletKey)){
       pallet.classList.add("harvestOveragePallet");
     }
     if(context === "record" && recordSelectionMode === "planting"){
@@ -32065,7 +32063,6 @@ function appendRecordBedDetail(container, b){
   const plantingQualityByPallet = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
     ? getRecordPlantingFlowQualityByPallet()
     : {};
-  const overageSet = recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set();
 
   const grid = document.createElement("div");
   grid.className = "palletGrid";
@@ -32081,7 +32078,6 @@ function appendRecordBedDetail(container, b){
       if(partialHarvestCount > 0) cls += " partialHarvestPallet";
       const isSelected = isFilled(currentBuilding, b, number);
       if(isSelected) cls += " harvestFill";
-      if(overageSet.has(key)) cls += " harvestOveragePallet";
       if(recordSelectionMode === "planting"){
         if(!plantingAllowedSet.has(key)){
           cls += " plantingUnavailablePallet";
@@ -32126,7 +32122,6 @@ function appendRecordBedDetail(container, b){
       pallet.title = `${currentBuilding}号棟 ${b}-${number}`
         + statusText
         + (recordSelectionMode !== "planting" ? ` ${getHarvestAvailabilityLabel(key, availabilityState)}` : "")
-        + (overageSet.has(key) ? " 超過分" : "")
         + (partialHarvestCount > 0 ? " 部分収穫あり" : "");
       pallet.style.gridRowStart = r + 1;
       pallet.style.gridColumnStart = c + 1;
@@ -37873,7 +37868,7 @@ function drawRecordBeds(){
       appendBedOverviewMap(bed, building, b, {
         context: "record",
         selectedSet,
-        overageSet: recordSelectionMode === "harvest" ? getHarvestOverageKeySet() : new Set(),
+        overageSet: new Set(),
         recordedSet,
         unplantedSet:recordSelectionMode === "planting" ? new Set() : availabilityState.unplantedSet,
         plantingLockInfoByPallet:recordSelectionMode === "planting"
