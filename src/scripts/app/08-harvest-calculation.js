@@ -1806,6 +1806,15 @@ function getForecastBedSelectedKeys(building, bed, sourceKeys = harvestFillKeys)
   });
 }
 
+function getRecordHarvestNeedHeadsForBulkSelection(){
+  const casesInput = document.getElementById("recordCasesInput");
+  const rawCases = String(casesInput?.value || "").trim();
+  if(!rawCases) return null;
+  const totalCases = clampNumber(rawCases, 0, 999999, 0);
+  const date = document.getElementById("recordDateInput")?.value || getHarvestTargetDateString();
+  return getRegularHarvestCases(totalCases, date) * CASE_SIZE;
+}
+
 function arePalletKeySetsEqual(leftKeys, rightKeys){
   const leftSet = new Set(Array.isArray(leftKeys) ? leftKeys : []);
   const rightSet = new Set(Array.isArray(rightKeys) ? rightKeys : []);
@@ -1814,17 +1823,30 @@ function arePalletKeySetsEqual(leftKeys, rightKeys){
 }
 
 function getForecastBedBulkSelectionModel(building = currentBuilding, bed = activeBedDetailBed){
+  return getHarvestBedBulkSelectionModel("forecast", building, bed);
+}
+
+function getRecordBedBulkSelectionModel(building = currentBuilding, bed = activeBedDetailBed){
+  return getHarvestBedBulkSelectionModel("record", building, bed);
+}
+
+function getHarvestBedBulkSelectionModel(context, building = currentBuilding, bed = activeBedDetailBed){
+  const normalizedContext = context === "record" ? "record" : "forecast";
   const normalizedBuilding = Number(building);
   const normalizedBed = bedOrder.includes(bed) ? bed : null;
   if(!BUILDINGS.includes(normalizedBuilding) || !normalizedBed){
     return { action:"disabled", label:"変更不可", disabled:true, targetNumbers:[] };
   }
-  if(isHarvestProgressCompletedBed(normalizedBuilding, normalizedBed)){
+  if(normalizedContext === "forecast" && isHarvestProgressCompletedBed(normalizedBuilding, normalizedBed)){
     return { action:"disabled", label:"変更不可", disabled:true, targetNumbers:[] };
   }
 
-  const targetDate = getHarvestTargetDate();
-  const unavailableSet = getHarvestAvailabilityState(targetDate).unavailableSet;
+  const targetDate = normalizedContext === "record"
+    ? (parseDateOnlyString(document.getElementById("recordDateInput")?.value || "") || getHarvestTargetDate())
+    : getHarvestTargetDate();
+  const unavailableSet = normalizedContext === "record"
+    ? getRecordTabHarvestAvailabilityState().unavailableSet
+    : getHarvestAvailabilityState(targetDate).unavailableSet;
   const availableNumbers = [];
   for(let number = 1; number <= PALLETS_PER_BED; number++){
     if(!unavailableSet.has(getPalletKey(normalizedBuilding, normalizedBed, number))){
@@ -1851,10 +1873,12 @@ function getForecastBedBulkSelectionModel(building = currentBuilding, bed = acti
     const pallet = parsePalletKey(String(key || ""));
     return !(pallet.building === normalizedBuilding && pallet.bed === normalizedBed);
   });
-  const needHeads = getManualHarvestNeedHeads();
+  const needHeads = normalizedContext === "record"
+    ? getRecordHarvestNeedHeadsForBulkSelection()
+    : getManualHarvestNeedHeads();
   const outsideHarvestTotal = getCurrentHarvestTotalRaw(
     outsideKeys,
-    { includeProgressActual:true }
+    { includeProgressActual:normalizedContext === "forecast" }
   );
   const buildTargetNumbers = direction => {
     if(needHeads !== null && outsideHarvestTotal >= needHeads) return [];
@@ -1922,9 +1946,20 @@ function getForecastBedBulkSelectionModel(building = currentBuilding, bed = acti
 }
 
 function applyForecastBedDetailBulkSelection(){
+  applyHarvestBedDetailBulkSelection("forecast");
+}
+
+function applyRecordBedDetailBulkSelection(){
+  applyHarvestBedDetailBulkSelection("record");
+}
+
+function applyHarvestBedDetailBulkSelection(context){
+  const normalizedContext = context === "record" ? "record" : "forecast";
   const building = currentBuilding;
   const bed = activeBedDetailBed;
-  const model = getForecastBedBulkSelectionModel(building, bed);
+  const model = normalizedContext === "record"
+    ? getRecordBedBulkSelectionModel(building, bed)
+    : getForecastBedBulkSelectionModel(building, bed);
   if(model.disabled){
     showToast(model.label === "上限到達"
       ? "すでに必要個数に達しています"
@@ -1946,14 +1981,14 @@ function applyForecastBedDetailBulkSelection(){
     return;
   }
 
-  const needHeads = getManualHarvestNeedHeads();
+  const overageNeedHeads = getManualHarvestNeedHeads();
   let runningHarvestTotal = getCurrentHarvestTotalRaw();
   model.targetNumbers.forEach(number => {
     const key = getPalletKey(building, bed, number);
     const nextTotal = runningHarvestTotal
       + getPredictedHarvestForPallet(building, bed, number);
     harvestFillKeys.push(key);
-    markHarvestSelectionOverage(key, nextTotal, needHeads);
+    markHarvestSelectionOverage(key, nextTotal, overageNeedHeads);
     runningHarvestTotal = nextTotal;
   });
   sortHarvestFillKeys();
@@ -2254,8 +2289,10 @@ function attachPalletDragHandlers(pallet, context, building, bed, number){
 
 function openBedDetailBulkActions(){
   if(!activeBedDetailBed) return;
-  if(activeBedDetailContext === "record"){
+  if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     showRecordBedActionMenu(activeBedDetailBed);
+  }else if(activeBedDetailContext === "record"){
+    applyRecordBedDetailBulkSelection();
   }else{
     applyForecastBedDetailBulkSelection();
   }
@@ -2264,7 +2301,7 @@ function openBedDetailBulkActions(){
 function updateBedDetailBulkSelectButton(){
   const button = document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn");
   if(!button || !activeBedDetailBed) return;
-  if(activeBedDetailContext === "record"){
+  if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     button.textContent = "一括選択";
     button.disabled = false;
     button.setAttribute("aria-haspopup", "dialog");
@@ -2275,7 +2312,9 @@ function updateBedDetailBulkSelectButton(){
     return;
   }
 
-  const model = getForecastBedBulkSelectionModel(currentBuilding, activeBedDetailBed);
+  const model = activeBedDetailContext === "record"
+    ? getRecordBedBulkSelectionModel(currentBuilding, activeBedDetailBed)
+    : getForecastBedBulkSelectionModel(currentBuilding, activeBedDetailBed);
   button.textContent = model.label;
   button.disabled = !!model.disabled;
   button.removeAttribute("aria-haspopup");

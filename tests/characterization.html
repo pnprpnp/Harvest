@@ -5445,6 +5445,10 @@
           const calculatedActionRect = visualApp.document.querySelector(".forecastActionRow").getBoundingClientRect();
           const calculatedBedRects = [...visualApp.document.querySelectorAll("#beds .simulationBedOverview")]
             .map(element => element.getBoundingClientRect());
+          const calculatedMapRect = visualApp.document.querySelector("#beds .dashboardSeedlingBedMapGrid")
+            .getBoundingClientRect();
+          const calculatedBedPanelRect = visualApp.document.querySelector("#forecastTab .casePlacementBedPanel")
+            .getBoundingClientRect();
           assertDeepEqual(comparable({
             resultActionsVisible:!resultActions.hidden,
             compactState:visualApp.document.getElementById("forecastSimulationCard")
@@ -5513,10 +5517,15 @@
           const recordCardRect = recordCard.getBoundingClientRect();
           const recordLocationRect = recordLocation.getBoundingClientRect();
           const recordAdjustRect = recordAdjustBox.getBoundingClientRect();
+          const recordBedPanelRect = visualApp.document.querySelector(".recordBuildingMapBeds").getBoundingClientRect();
           const recordPagerRect = recordPager.getBoundingClientRect();
           const recordLegendRect = recordLegend.getBoundingClientRect();
           const recordLossRect = recordLoss.getBoundingClientRect();
           const recordNavRect = recordNav.getBoundingClientRect();
+          const recordFirstBedRect = recordBedRects[0];
+          const recordFirstMapRect = recordMapRects[0];
+          const sameRect = (left, right) => ["left", "top", "width", "height"]
+            .every(property => Math.abs(left[property] - right[property]) <= 1);
           const recordState = comparable({
             viewportScrollLocked:visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
             overflowHidden:visualApp.getComputedStyle(visualApp.document.documentElement).overflowY === "hidden",
@@ -5528,6 +5537,9 @@
               && recordPagerRect.bottom <= recordLocationRect.bottom + 1,
             sixBeds:recordBedRects.length === 6,
             twoBedRows:recordRowTops.length === 2,
+            mapPanelMatchesSimulation:sameRect(recordBedPanelRect, calculatedBedPanelRect),
+            bedMatchesSimulation:sameRect(recordFirstBedRect, calculatedBedRects[0]),
+            palletMapMatchesSimulation:sameRect(recordFirstMapRect, calculatedMapRect),
             bedsStayInsideMap:recordBedRects.every(rect => (
               rect.top >= recordAdjustRect.top - 1 && rect.bottom <= recordAdjustRect.bottom + 1
             )),
@@ -5549,6 +5561,9 @@
             pagerInsideLocation:true,
             sixBeds:true,
             twoBedRows:true,
+            mapPanelMatchesSimulation:true,
+            bedMatchesSimulation:true,
+            palletMapMatchesSimulation:true,
             bedsStayInsideMap:true,
             compactBedHeight:true,
             readableMapHeight:true,
@@ -5684,7 +5699,7 @@
         }, "シミュの簡易ベッド表示が収穫可能ケース数になっていません");
       });
 
-      await runTest("ベッド詳細は短い見出しと一括選択ボタンを表示する", () => {
+      await runTest("シミュと収穫記録のベッド詳細で共通の一括選択ボタンを表示する", () => {
         const state = comparable(app.eval(`(() => {
           const previous = {
             building:currentBuilding,
@@ -5698,7 +5713,9 @@
             selectionMode:harvestSelectionMode,
             autoEstimated:harvestCasesAutoEstimated,
             casesValue:document.getElementById("casesInput")?.value || "",
+            recordCasesValue:document.getElementById("recordCasesInput")?.value || "",
             getAvailability:getHarvestAvailabilityState,
+            getRecordAvailability:getRecordTabHarvestAvailabilityState,
             getPrediction:getPredictedHarvestForPallet
           };
           const readCommon = () => {
@@ -5756,13 +5773,22 @@
             };
             closeBedDetailWindow();
 
+            harvestFillKeys = [];
+            harvestOverageKeys = [];
+            document.getElementById("recordCasesInput").value = "";
+            getRecordTabHarvestAvailabilityState = () => ({
+              unavailableSet:new Set(),
+              unplantedSet:new Set(),
+              plantingLockedSet:new Set(),
+              replantingInfoByPallet:new Map()
+            });
             openBedDetailWindow("record", "B");
             const recordCommon = readCommon();
             document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn")?.click();
             const record = {
               ...recordCommon,
-              opensExistingBulkMenu:document.getElementById("recordBedActionMenu")?.classList.contains("show")
-                && activeRecordBedActionBed === "B"
+              directlySelectsAll:getForecastBedSelectedKeys(2, "B").length === 78,
+              hasNoBulkMenu:!document.getElementById("recordBedActionMenu")?.classList.contains("show")
             };
             return { forecast, record };
           }finally{
@@ -5779,7 +5805,9 @@
             harvestSelectionMode = previous.selectionMode;
             harvestCasesAutoEstimated = previous.autoEstimated;
             document.getElementById("casesInput").value = previous.casesValue;
+            document.getElementById("recordCasesInput").value = previous.recordCasesValue;
             getHarvestAvailabilityState = previous.getAvailability;
+            getRecordTabHarvestAvailabilityState = previous.getRecordAvailability;
             getPredictedHarvestForPallet = previous.getPrediction;
           }
         })()`));
@@ -5801,17 +5829,18 @@
           record:{
             title:"2-B",
             noSelectionHint:true,
-            buttonText:"一括選択",
+            buttonText:"全選択",
             buttonBesideTitle:true,
             buttonNotInBody:true,
             titleLeftAligned:true,
             buttonCentered:true,
             buttonWide:true,
-            hasPopup:"dialog",
+            hasPopup:"",
             titleHasNoLongPress:true,
-            opensExistingBulkMenu:true
+            directlySelectsAll:true,
+            hasNoBulkMenu:true
           }
-        }, "ベッド名の長押し操作を一括選択ボタンへ移せていません");
+        }, "シミュと収穫記録で共通の一括選択操作を表示できていません");
       });
 
       await runTest("シミュの一括選択は上限に応じて前・後ろ・解除を循環する", () => {
@@ -5937,6 +5966,133 @@
           unlimitedAfterClearLabel:"全選択",
           toastMessages:[]
         }, "シミュの一括選択ボタンが前・後ろ・解除の順に動いていません");
+      });
+
+      await runTest("収穫記録の一括選択も実ケース数に応じて前・後ろ・解除を循環する", () => {
+        const state = comparable(app.eval(`(() => {
+          const casesInput = document.getElementById("casesInput");
+          const recordCasesInput = document.getElementById("recordCasesInput");
+          const recordDateInput = document.getElementById("recordDateInput");
+          const previous = {
+            building:currentBuilding,
+            tab:activeAppTab,
+            mode:recordSelectionMode,
+            keys:[...harvestFillKeys],
+            overageKeys:[...harvestOverageKeys],
+            records,
+            summary:harvestSummary,
+            casesValue:casesInput?.value || "",
+            recordCasesValue:recordCasesInput?.value || "",
+            recordDateValue:recordDateInput?.value || "",
+            getRecordAvailability:getRecordTabHarvestAvailabilityState,
+            getPrediction:getPredictedHarvestForPallet,
+            showToast
+          };
+          const toastMessages = [];
+          const readButton = () => document.querySelector(
+            ".bedDetailWindowHeader .bedDetailBulkSelectBtn"
+          )?.textContent || "";
+          const readNumbers = () => getForecastBedSelectedKeys(2, "A")
+            .map(key => parsePalletKey(key).number)
+            .sort((left, right) => left - right);
+          const clickBulk = () => document.querySelector(
+            ".bedDetailWindowHeader .bedDetailBulkSelectBtn"
+          )?.click();
+          try{
+            currentBuilding = 2;
+            activeAppTab = "record";
+            recordSelectionMode = "harvest";
+            harvestFillKeys = [];
+            harvestOverageKeys = [];
+            records = [];
+            harvestSummary = null;
+            casesInput.value = "";
+            recordCasesInput.value = "10";
+            recordDateInput.value = "2026-09-05";
+            getRecordTabHarvestAvailabilityState = () => ({
+              unavailableSet:new Set([
+                getPalletKey(2, "A", 1),
+                getPalletKey(2, "A", 2)
+              ]),
+              unplantedSet:new Set(),
+              plantingLockedSet:new Set(),
+              replantingInfoByPallet:new Map()
+            });
+            getPredictedHarvestForPallet = () => 12;
+            showToast = message => toastMessages.push(String(message || ""));
+
+            openBedDetailWindow("record", "A");
+            const cappedInitialLabel = readButton();
+            clickBulk();
+            const frontNumbers = readNumbers();
+            const afterFrontLabel = readButton();
+            clickBulk();
+            const backNumbers = readNumbers();
+            const afterBackLabel = readButton();
+            clickBulk();
+            const afterClearNumbers = readNumbers();
+            const afterClearLabel = readButton();
+
+            recordCasesInput.value = "";
+            refreshBedDetailWindow();
+            const unlimitedInitialLabel = readButton();
+            clickBulk();
+            const allAvailableCount = readNumbers().length;
+            const afterSelectAllLabel = readButton();
+            clickBulk();
+            const afterSelectAllClearCount = readNumbers().length;
+            const unlimitedAfterClearLabel = readButton();
+
+            return {
+              cappedInitialLabel,
+              frontNumbers,
+              afterFrontLabel,
+              backNumbers,
+              afterBackLabel,
+              afterClearNumbers,
+              afterClearLabel,
+              unlimitedInitialLabel,
+              allAvailableCount,
+              afterSelectAllLabel,
+              afterSelectAllClearCount,
+              unlimitedAfterClearLabel,
+              bulkMenuStaysClosed:!document.getElementById("recordBedActionMenu")?.classList.contains("show"),
+              toastMessages
+            };
+          }finally{
+            hideRecordBedActionMenu();
+            closeBedDetailWindow();
+            currentBuilding = previous.building;
+            activeAppTab = previous.tab;
+            recordSelectionMode = previous.mode;
+            harvestFillKeys = previous.keys;
+            harvestOverageKeys = previous.overageKeys;
+            records = previous.records;
+            harvestSummary = previous.summary;
+            casesInput.value = previous.casesValue;
+            recordCasesInput.value = previous.recordCasesValue;
+            recordDateInput.value = previous.recordDateValue;
+            getRecordTabHarvestAvailabilityState = previous.getRecordAvailability;
+            getPredictedHarvestForPallet = previous.getPrediction;
+            showToast = previous.showToast;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          cappedInitialLabel:"1から選択",
+          frontNumbers:[3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+          afterFrontLabel:"78から選択",
+          backNumbers:[69, 70, 71, 72, 73, 74, 75, 76, 77, 78],
+          afterBackLabel:"全解除",
+          afterClearNumbers:[],
+          afterClearLabel:"1から選択",
+          unlimitedInitialLabel:"全選択",
+          allAvailableCount:76,
+          afterSelectAllLabel:"全解除",
+          afterSelectAllClearCount:0,
+          unlimitedAfterClearLabel:"全選択",
+          bulkMenuStaysClosed:true,
+          toastMessages:[]
+        }, "収穫記録の一括選択ボタンが前・後ろ・解除の順に動いていません");
       });
 
       await runTest("収穫ケース数は外枠を付けず入力欄だけを区別する", () => {
@@ -11470,16 +11626,16 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "c194b2ee", elements: 2315, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "d84ea409", elements: 2384, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "e402498e", elements: 2384, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "289b5cad", elements: 2319, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "c5d7a842", elements: 2336, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "ff24c616", elements: 2419, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "7bf88deb", elements: 2434, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "b9c26656", elements: 2434, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "661d902b", elements: 2434, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "5283330a", elements: 2434, visible: 101, viewport: "390x844" },
+          mobileForecast: { hash: "d130606b", elements: 2315, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "3d4d1fa4", elements: 2384, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "9ba0efdb", elements: 2384, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "ae0189e9", elements: 2319, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "4db63ec4", elements: 2336, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c67f58e4", elements: 2419, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "e6a4f711", elements: 2434, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "de9add7c", elements: 2434, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "be065395", elements: 2434, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "0508dde0", elements: 2434, visible: 101, viewport: "390x844" },
           wideForecast: { hash: "27f5e076", elements: 2434, visible: 606, viewport: "1024x900" },
           wideDashboard: { hash: "738e061a", elements: 2434, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");

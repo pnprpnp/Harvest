@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260905-record-legend-visible">
+<meta name="harvestnavi-version" content="20260905-shared-map-layout">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8698,6 +8698,13 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
 
 /* Keep the normal simulation controls between the top chrome and the fixed action bar. */
 @media (max-width:759px) and (min-height:760px){
+  #forecastSimulationCard,
+  #recordSaveCard.recordHarvestViewportLayout{
+    --shared-harvest-bed-panel-height:max(
+      280px,
+      calc(100dvh - var(--app-top-chrome-height) - 412px)
+    );
+  }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .casePlacementPanel{
     height:calc(100dvh - var(--app-top-chrome-height) - 213px);
     min-height:0;
@@ -8727,11 +8734,12 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .forecastPlacementStatusCard,
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .casePlacementRemainingSummary,
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .forecastPlantingAgeResult{
-    min-height:44px;
+    min-height:42px;
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .forecastPlacementStatusCard{
+    grid-auto-rows:42px;
     flex:0 0 auto;
-    margin-bottom:4px;
+    margin-bottom:0;
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .casePlacementDetailsSummary{
     min-height:42px;
@@ -8741,7 +8749,12 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) .casePlacementBedPanel{
     min-height:0;
     flex:1 1 auto;
-    margin-top:4px;
+    margin-top:0;
+  }
+  #forecastSimulationCard.has-forecast-result-actions:not(:has(#casePlacementDetails[open]))
+    .casePlacementBedPanel{
+    height:var(--shared-harvest-bed-panel-height);
+    flex:0 0 var(--shared-harvest-bed-panel-height);
   }
   #forecastSimulationCard:not(:has(#casePlacementDetails[open])) #beds{
     height:100%;
@@ -10645,6 +10658,9 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
     padding-bottom:0;
     overflow:hidden;
   }
+  #recordSaveCard.recordHarvestViewportLayout:has(.recordHarvestFixedNav:not([hidden])){
+    padding-bottom:0;
+  }
   #recordSaveCard.recordHarvestViewportLayout #recordHarvestLocationSection{
     height:100%;
     min-height:0;
@@ -10652,12 +10668,23 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
     flex-direction:column;
   }
   #recordSaveCard.recordHarvestViewportLayout #recordHarvestLocationSection > .recordEditNotice{
-    flex:0 0 auto;
-    margin:0 2px 4px;
+    order:2;
+    min-height:60px;
+    flex:0 0 60px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-sizing:border-box;
+    margin:0;
+    padding:8px 10px;
+    border:1px solid var(--ui-line);
+    border-radius:8px;
+    background:var(--ui-surface-solid);
     font-size:13px;
     line-height:1.2;
   }
   #recordSaveCard.recordHarvestViewportLayout .recordHarvestBuildingPager{
+    order:1;
     flex:0 0 40px;
     grid-template-columns:38px minmax(0,1fr) 60px 38px;
     gap:5px;
@@ -10670,25 +10697,25 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
     border-radius:9px;
   }
   #recordSaveCard.recordHarvestViewportLayout .recordHarvestAdjustBox{
+    order:3;
     min-height:0;
-    flex:1 1 auto;
+    flex:0 0 auto;
     display:flex;
     flex-direction:column;
-    margin-top:0;
-    padding:5px 6px;
+    margin-top:30px;
+    padding:5px 0;
     border-radius:12px;
   }
   #recordSaveCard.recordHarvestViewportLayout #recordBeds{
     min-height:0;
-    flex:1 1 auto;
+    flex:0 0 auto;
     display:grid;
     grid-template-columns:minmax(0,1fr);
     gap:0;
   }
   #recordSaveCard.recordHarvestViewportLayout .recordBuildingMapSection{
     min-height:0;
-    display:flex;
-    flex-direction:column;
+    display:block;
   }
   #recordSaveCard.recordHarvestViewportLayout .recordBuildingMapTitle{
     flex:0 0 auto;
@@ -10697,29 +10724,29 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
     line-height:1.15;
   }
   #recordSaveCard.recordHarvestViewportLayout .recordBuildingMapBeds{
+    height:var(--shared-harvest-bed-panel-height);
     min-height:0;
-    flex:1 1 auto;
     grid-template-rows:repeat(2,minmax(0,1fr));
-    gap:5px;
+    row-gap:5px;
+    column-gap:8px;
   }
   #recordSaveCard.recordHarvestViewportLayout .bed.bedCollapsed.simulationBedOverview{
     height:100%;
     min-height:0;
-    padding:4px 5px;
-    border-radius:10px;
+    padding:5px 6px;
+    border-radius:12px;
   }
   #recordSaveCard.recordHarvestViewportLayout .simulationBedOverview .bedTitle{
-    margin-bottom:2px;
+    margin-bottom:3px;
   }
   #recordSaveCard.recordHarvestViewportLayout .simulationBedOverview .bedTitleMain{
-    font-size:12px;
-    line-height:1;
+    font-size:15px;
   }
   #recordSaveCard.recordHarvestViewportLayout .simulationBedOverview .dashboardSeedlingBedMap{
     min-height:0;
     flex:1 1 auto;
     display:flex;
-    margin-bottom:1px;
+    margin-bottom:2px;
   }
   #recordSaveCard.recordHarvestViewportLayout .simulationBedOverview .dashboardSeedlingBedMapGrid{
     height:auto;
@@ -10728,10 +10755,9 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
     grid-template-rows:repeat(39,minmax(1px,1fr));
   }
   #recordSaveCard.recordHarvestViewportLayout .simulationBedOverviewCounts{
-    min-height:12px;
-    gap:4px;
-    font-size:9px;
-    line-height:1;
+    min-height:14px;
+    gap:5px;
+    font-size:10px;
   }
   #recordSaveCard.recordHarvestViewportLayout #recordHarvestMapLegend{
     flex:0 0 auto;
@@ -10750,6 +10776,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
     display:none;
   }
   #recordSaveCard.recordHarvestViewportLayout .recordActualLossField{
+    order:4;
     max-width:none;
     min-height:34px;
     flex:0 0 34px;
@@ -10757,7 +10784,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
     align-items:center;
     justify-content:flex-end;
     gap:8px;
-    margin:5px 2px 0;
+    margin:0 2px;
   }
   #recordSaveCard.recordHarvestViewportLayout .recordActualLossField > label{
     margin:0;
@@ -31466,6 +31493,15 @@ function getForecastBedSelectedKeys(building, bed, sourceKeys = harvestFillKeys)
   });
 }
 
+function getRecordHarvestNeedHeadsForBulkSelection(){
+  const casesInput = document.getElementById("recordCasesInput");
+  const rawCases = String(casesInput?.value || "").trim();
+  if(!rawCases) return null;
+  const totalCases = clampNumber(rawCases, 0, 999999, 0);
+  const date = document.getElementById("recordDateInput")?.value || getHarvestTargetDateString();
+  return getRegularHarvestCases(totalCases, date) * CASE_SIZE;
+}
+
 function arePalletKeySetsEqual(leftKeys, rightKeys){
   const leftSet = new Set(Array.isArray(leftKeys) ? leftKeys : []);
   const rightSet = new Set(Array.isArray(rightKeys) ? rightKeys : []);
@@ -31474,17 +31510,30 @@ function arePalletKeySetsEqual(leftKeys, rightKeys){
 }
 
 function getForecastBedBulkSelectionModel(building = currentBuilding, bed = activeBedDetailBed){
+  return getHarvestBedBulkSelectionModel("forecast", building, bed);
+}
+
+function getRecordBedBulkSelectionModel(building = currentBuilding, bed = activeBedDetailBed){
+  return getHarvestBedBulkSelectionModel("record", building, bed);
+}
+
+function getHarvestBedBulkSelectionModel(context, building = currentBuilding, bed = activeBedDetailBed){
+  const normalizedContext = context === "record" ? "record" : "forecast";
   const normalizedBuilding = Number(building);
   const normalizedBed = bedOrder.includes(bed) ? bed : null;
   if(!BUILDINGS.includes(normalizedBuilding) || !normalizedBed){
     return { action:"disabled", label:"変更不可", disabled:true, targetNumbers:[] };
   }
-  if(isHarvestProgressCompletedBed(normalizedBuilding, normalizedBed)){
+  if(normalizedContext === "forecast" && isHarvestProgressCompletedBed(normalizedBuilding, normalizedBed)){
     return { action:"disabled", label:"変更不可", disabled:true, targetNumbers:[] };
   }
 
-  const targetDate = getHarvestTargetDate();
-  const unavailableSet = getHarvestAvailabilityState(targetDate).unavailableSet;
+  const targetDate = normalizedContext === "record"
+    ? (parseDateOnlyString(document.getElementById("recordDateInput")?.value || "") || getHarvestTargetDate())
+    : getHarvestTargetDate();
+  const unavailableSet = normalizedContext === "record"
+    ? getRecordTabHarvestAvailabilityState().unavailableSet
+    : getHarvestAvailabilityState(targetDate).unavailableSet;
   const availableNumbers = [];
   for(let number = 1; number <= PALLETS_PER_BED; number++){
     if(!unavailableSet.has(getPalletKey(normalizedBuilding, normalizedBed, number))){
@@ -31511,10 +31560,12 @@ function getForecastBedBulkSelectionModel(building = currentBuilding, bed = acti
     const pallet = parsePalletKey(String(key || ""));
     return !(pallet.building === normalizedBuilding && pallet.bed === normalizedBed);
   });
-  const needHeads = getManualHarvestNeedHeads();
+  const needHeads = normalizedContext === "record"
+    ? getRecordHarvestNeedHeadsForBulkSelection()
+    : getManualHarvestNeedHeads();
   const outsideHarvestTotal = getCurrentHarvestTotalRaw(
     outsideKeys,
-    { includeProgressActual:true }
+    { includeProgressActual:normalizedContext === "forecast" }
   );
   const buildTargetNumbers = direction => {
     if(needHeads !== null && outsideHarvestTotal >= needHeads) return [];
@@ -31582,9 +31633,20 @@ function getForecastBedBulkSelectionModel(building = currentBuilding, bed = acti
 }
 
 function applyForecastBedDetailBulkSelection(){
+  applyHarvestBedDetailBulkSelection("forecast");
+}
+
+function applyRecordBedDetailBulkSelection(){
+  applyHarvestBedDetailBulkSelection("record");
+}
+
+function applyHarvestBedDetailBulkSelection(context){
+  const normalizedContext = context === "record" ? "record" : "forecast";
   const building = currentBuilding;
   const bed = activeBedDetailBed;
-  const model = getForecastBedBulkSelectionModel(building, bed);
+  const model = normalizedContext === "record"
+    ? getRecordBedBulkSelectionModel(building, bed)
+    : getForecastBedBulkSelectionModel(building, bed);
   if(model.disabled){
     showToast(model.label === "上限到達"
       ? "すでに必要個数に達しています"
@@ -31606,14 +31668,14 @@ function applyForecastBedDetailBulkSelection(){
     return;
   }
 
-  const needHeads = getManualHarvestNeedHeads();
+  const overageNeedHeads = getManualHarvestNeedHeads();
   let runningHarvestTotal = getCurrentHarvestTotalRaw();
   model.targetNumbers.forEach(number => {
     const key = getPalletKey(building, bed, number);
     const nextTotal = runningHarvestTotal
       + getPredictedHarvestForPallet(building, bed, number);
     harvestFillKeys.push(key);
-    markHarvestSelectionOverage(key, nextTotal, needHeads);
+    markHarvestSelectionOverage(key, nextTotal, overageNeedHeads);
     runningHarvestTotal = nextTotal;
   });
   sortHarvestFillKeys();
@@ -31914,8 +31976,10 @@ function attachPalletDragHandlers(pallet, context, building, bed, number){
 
 function openBedDetailBulkActions(){
   if(!activeBedDetailBed) return;
-  if(activeBedDetailContext === "record"){
+  if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     showRecordBedActionMenu(activeBedDetailBed);
+  }else if(activeBedDetailContext === "record"){
+    applyRecordBedDetailBulkSelection();
   }else{
     applyForecastBedDetailBulkSelection();
   }
@@ -31924,7 +31988,7 @@ function openBedDetailBulkActions(){
 function updateBedDetailBulkSelectButton(){
   const button = document.querySelector(".bedDetailWindowHeader .bedDetailBulkSelectBtn");
   if(!button || !activeBedDetailBed) return;
-  if(activeBedDetailContext === "record"){
+  if(activeBedDetailContext === "record" && recordSelectionMode === "planting"){
     button.textContent = "一括選択";
     button.disabled = false;
     button.setAttribute("aria-haspopup", "dialog");
@@ -31935,7 +31999,9 @@ function updateBedDetailBulkSelectButton(){
     return;
   }
 
-  const model = getForecastBedBulkSelectionModel(currentBuilding, activeBedDetailBed);
+  const model = activeBedDetailContext === "record"
+    ? getRecordBedBulkSelectionModel(currentBuilding, activeBedDetailBed)
+    : getForecastBedBulkSelectionModel(currentBuilding, activeBedDetailBed);
   button.textContent = model.label;
   button.disabled = !!model.disabled;
   button.removeAttribute("aria-haspopup");
