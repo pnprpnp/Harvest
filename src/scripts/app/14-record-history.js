@@ -489,7 +489,7 @@ function renderRecordList(){
           ? `<span class="recordDateGroupType is-planting">苗植え ${escapeHtml(plantingMetrics.seedlingTrayText)}</span>`
           : "",
         partialHtml
-          ? `<span class="recordDateGroupType is-partial">部分 ${escapeHtml(String(caseTotals.partialCases))}ケース</span>`
+          ? `<span class="recordDateGroupType is-partial">部分</span>`
           : ""
       ].join("");
       const primaryHtml = harvestHtml || plantingHtml
