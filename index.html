@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260907-record-partial-label">
+<meta name="harvestnavi-version" content="20260907-forecast-full-target">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -16753,11 +16753,8 @@ function updateEstimatedHarvestCasesFromSelection(currentHarvestTotal = null){
   const estimatedRegularCases = harvestFillKeys.length
     ? Math.max(0, Math.floor(resolvedHarvestTotal / CASE_SIZE))
     : 0;
-  const partialHarvestCases = harvestFillKeys.length
-    ? getPartialHarvestCaseDeductionForDate(getHarvestTargetDateString())
-    : 0;
   const estimatedCases = harvestFillKeys.length
-    ? estimatedRegularCases + partialHarvestCases
+    ? estimatedRegularCases
     : 0;
   casesInput.value = estimatedCases > 0 ? String(estimatedCases) : "";
   harvestCasesAutoEstimated = estimatedCases > 0;
@@ -23490,7 +23487,7 @@ function getCurrentMonitorInstructionFields(){
   const casePlan = getHarvestCasePlan();
   const seedlingCounts = getSeedlingInstructionCounts();
   const remainingKeys = getHarvestProgressRemainingSelectionKeys();
-  const completedCases = getHarvestProgressActualCases() + casePlan.partialCases;
+  const completedCases = getHarvestProgressActualCases();
   const casesText = hasAppliedHarvestProgress()
     ? `${formatHarvestProgressCases(getHarvestProgressRemainingTargetCases())}ケース\n目標 ${formatHarvestProgressCases(casePlan.totalCases)}ケース / 収穫済み ${formatHarvestProgressCases(completedCases)}ケース`
     : String(casePlan.totalCases);
@@ -32776,19 +32773,15 @@ function getRegularHarvestCases(totalCases, dateStr = getHarvestTargetDateString
   return Math.max(0, safeTotal - partialCases - additionalPartialCases);
 }
 
-function getHarvestCasePlan(totalCases = null, options = {}){
+function getHarvestCasePlan(totalCases = null){
   const dateStr = getHarvestTargetDateString();
   const total = totalCases === null
     ? clampNumber(document.getElementById("casesInput")?.value || 0, 0, 999999, 0)
     : clampNumber(totalCases, 0, 999999, 0);
-  const recordedPartialCases = getPartialHarvestCasesForDate(dateStr);
-  const partial = getPartialHarvestCaseDeductionForDate(dateStr, records, options);
   return {
     date: dateStr,
     totalCases: total,
-    partialCases: partial,
-    recordedPartialCases,
-    regularCases: Math.max(0, total - partial)
+    regularCases: total
   };
 }
 
@@ -37706,19 +37699,15 @@ function renderMonitorMode(){
   });
 }
 
-function updatePartialHarvestDeductionNote(casePlan = getHarvestCasePlan()){
+function updatePartialHarvestDeductionNote(){
   const note = document.getElementById("partialHarvestDeductionNote");
   if(!note) return;
-  const partialCases = clampNumber(casePlan?.partialCases, 0, 999999, 0);
-  const regularCases = clampNumber(casePlan?.regularCases, 0, 999999, 0);
   const selectionCaseDelta = getHarvestSelectionCaseDeltaCases();
   const overageCases = Math.max(0, selectionCaseDelta);
   const remainingCases = harvestSelectionMode === "manual" && harvestFillKeys.length
     ? Math.max(0, -selectionCaseDelta)
     : 0;
-  const lines = partialCases > 0
-    ? [`うち部分収穫済み: ${partialCases}ケース`, `通常順で収穫する分: ${regularCases}ケース`]
-    : [];
+  const lines = [];
   if(overageCases > 0) lines.push(`${formatHarvestProgressCases(overageCases)}ケース超過`);
   else if(remainingCases > 0) lines.push(`あと${formatHarvestProgressCases(remainingCases)}ケース`);
   note.hidden = !lines.length;
@@ -38096,7 +38085,7 @@ function getMonitorSendSummaryLabelHtml(label, iconKind){
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   updateHarvestCalculationButtonState();
-  updatePartialHarvestDeductionNote(casePlan);
+  updatePartialHarvestDeductionNote();
   updateRecordPartialHarvestIncludedNote();
   renderSeedlingHouseUi();
   const resultActions = document.getElementById("forecastResultActions");

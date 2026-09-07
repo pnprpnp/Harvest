@@ -1420,11 +1420,8 @@ function updateEstimatedHarvestCasesFromSelection(currentHarvestTotal = null){
   const estimatedRegularCases = harvestFillKeys.length
     ? Math.max(0, Math.floor(resolvedHarvestTotal / CASE_SIZE))
     : 0;
-  const partialHarvestCases = harvestFillKeys.length
-    ? getPartialHarvestCaseDeductionForDate(getHarvestTargetDateString())
-    : 0;
   const estimatedCases = harvestFillKeys.length
-    ? estimatedRegularCases + partialHarvestCases
+    ? estimatedRegularCases
     : 0;
   casesInput.value = estimatedCases > 0 ? String(estimatedCases) : "";
   harvestCasesAutoEstimated = estimatedCases > 0;

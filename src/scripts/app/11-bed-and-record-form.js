@@ -1,16 +1,12 @@
-function updatePartialHarvestDeductionNote(casePlan = getHarvestCasePlan()){
+function updatePartialHarvestDeductionNote(){
   const note = document.getElementById("partialHarvestDeductionNote");
   if(!note) return;
-  const partialCases = clampNumber(casePlan?.partialCases, 0, 999999, 0);
-  const regularCases = clampNumber(casePlan?.regularCases, 0, 999999, 0);
   const selectionCaseDelta = getHarvestSelectionCaseDeltaCases();
   const overageCases = Math.max(0, selectionCaseDelta);
   const remainingCases = harvestSelectionMode === "manual" && harvestFillKeys.length
     ? Math.max(0, -selectionCaseDelta)
     : 0;
-  const lines = partialCases > 0
-    ? [`うち部分収穫済み: ${partialCases}ケース`, `通常順で収穫する分: ${regularCases}ケース`]
-    : [];
+  const lines = [];
   if(overageCases > 0) lines.push(`${formatHarvestProgressCases(overageCases)}ケース超過`);
   else if(remainingCases > 0) lines.push(`あと${formatHarvestProgressCases(remainingCases)}ケース`);
   note.hidden = !lines.length;
@@ -388,7 +384,7 @@ function getMonitorSendSummaryLabelHtml(label, iconKind){
 function renderForecastSummary(){
   const casePlan = getHarvestCasePlan();
   updateHarvestCalculationButtonState();
-  updatePartialHarvestDeductionNote(casePlan);
+  updatePartialHarvestDeductionNote();
   updateRecordPartialHarvestIncludedNote();
   renderSeedlingHouseUi();
   const resultActions = document.getElementById("forecastResultActions");

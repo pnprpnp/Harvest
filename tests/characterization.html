@@ -12010,6 +12010,56 @@
         assertEqual(Object.prototype.hasOwnProperty.call(serialized, "palletRanges"), false, "途中収穫へ通常収穫の範囲が混入しました");
       });
 
+      await runTest("保存済みの部分収穫は次のシミュ目標ケース数から差し引かない", () => {
+        replaceAppHistory(app, [
+          {
+            palletNumberingVersion: 2,
+            id: 9099,
+            recordUuid: "90990000-0000-4000-8000-000000000099",
+            type: "partialHarvest",
+            date: "2026-08-01",
+            cases: 10,
+            targets: app.buildPartialHarvestTargets(2, ["A"], 10),
+            palletKeys: []
+          }
+        ]);
+        const state = comparable(app.eval(`(() => {
+          const dateInput = document.getElementById("recordDateInput");
+          const casesInput = document.getElementById("casesInput");
+          const previous = {
+            date:dateInput?.value || "",
+            cases:casesInput?.value || "",
+            editingId:editingHarvestRecordId
+          };
+          try{
+            editingHarvestRecordId = null;
+            if(dateInput) dateInput.value = "2026-08-01";
+            if(casesInput) casesInput.value = "100";
+            const plan = getHarvestCasePlan();
+            return {
+              savedPartialCases:getPartialHarvestCaseDeductionForDate("2026-08-01"),
+              recordRegularCases:getRegularHarvestCases(100, "2026-08-01"),
+              forecastPlan:{
+                totalCases:plan.totalCases,
+                regularCases:plan.regularCases
+              }
+            };
+          }finally{
+            editingHarvestRecordId = previous.editingId;
+            if(dateInput) dateInput.value = previous.date;
+            if(casesInput) casesInput.value = previous.cases;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          savedPartialCases:10,
+          recordRegularCases:90,
+          forecastPlan:{
+            totalCases:100,
+            regularCases:100
+          }
+        }, "保存済みの部分収穫が次のシミュ目標ケース数へ混ざっています");
+      });
+
       await runTest("通常収穫の合計を保ったまま一部を部分収穫へ分け、影響するロス率を警告する", () => {
         replaceAppHistory(app, [
           {

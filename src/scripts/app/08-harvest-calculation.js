@@ -2888,19 +2888,15 @@ function getRegularHarvestCases(totalCases, dateStr = getHarvestTargetDateString
   return Math.max(0, safeTotal - partialCases - additionalPartialCases);
 }
 
-function getHarvestCasePlan(totalCases = null, options = {}){
+function getHarvestCasePlan(totalCases = null){
   const dateStr = getHarvestTargetDateString();
   const total = totalCases === null
     ? clampNumber(document.getElementById("casesInput")?.value || 0, 0, 999999, 0)
     : clampNumber(totalCases, 0, 999999, 0);
-  const recordedPartialCases = getPartialHarvestCasesForDate(dateStr);
-  const partial = getPartialHarvestCaseDeductionForDate(dateStr, records, options);
   return {
     date: dateStr,
     totalCases: total,
-    partialCases: partial,
-    recordedPartialCases,
-    regularCases: Math.max(0, total - partial)
+    regularCases: total
   };
 }
 

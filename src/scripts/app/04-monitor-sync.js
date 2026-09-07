@@ -674,7 +674,7 @@ function getCurrentMonitorInstructionFields(){
   const casePlan = getHarvestCasePlan();
   const seedlingCounts = getSeedlingInstructionCounts();
   const remainingKeys = getHarvestProgressRemainingSelectionKeys();
-  const completedCases = getHarvestProgressActualCases() + casePlan.partialCases;
+  const completedCases = getHarvestProgressActualCases();
   const casesText = hasAppliedHarvestProgress()
     ? `${formatHarvestProgressCases(getHarvestProgressRemainingTargetCases())}ケース\n目標 ${formatHarvestProgressCases(casePlan.totalCases)}ケース / 収穫済み ${formatHarvestProgressCases(completedCases)}ケース`
     : String(casePlan.totalCases);
