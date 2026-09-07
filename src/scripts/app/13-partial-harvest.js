@@ -43,6 +43,72 @@ function buildPartialHarvestTargets(building, beds, cases){
   }));
 }
 
+function buildPartialHarvestTargetsForRecordBeds(bedKeys, cases){
+  const normalizedCases = getStrictIntegerInRange(cases, 1, RECORD_MAX_CASES);
+  const normalizedBedKeys = normalizeRecordPartialHarvestBedKeys(bedKeys);
+  if(normalizedCases === null || !normalizedBedKeys.length) return [];
+  const plantsPerPallet = Math.round(
+    (normalizedCases * CASE_SIZE / (PALLETS_PER_BED * normalizedBedKeys.length)) * 1000000
+  ) / 1000000;
+  return normalizedBedKeys.map(key => {
+    const target = parseRecordPartialHarvestBedKey(key);
+    return {
+      building:target.building,
+      bed:target.bed,
+      start:1,
+      end:PALLETS_PER_BED,
+      plantsPerPallet
+    };
+  });
+}
+
+function getRecordPartialHarvestRemainingCaseEstimate(bedKeys, cases, date, sourceRecords = records){
+  const targetDate = parseDateOnlyString(date) || new Date();
+  let predictedHeads = 0;
+  normalizeRecordPartialHarvestBedKeys(bedKeys).forEach(key => {
+    const target = parseRecordPartialHarvestBedKey(key);
+    if(!target) return;
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      predictedHeads += getPredictedHarvestForPallet(
+        target.building,
+        target.bed,
+        number,
+        targetDate,
+        sourceRecords
+      );
+    }
+  });
+  return Math.max(0, Math.round(predictedHeads / CASE_SIZE - clampNumber(cases, 0, 999999, 0)));
+}
+
+function buildRecordTabPartialHarvestRecord(draft, options = {}){
+  const normalizedDraft = normalizeRecordPartialHarvestDraft(draft);
+  const cases = getStrictIntegerInRange(normalizedDraft.cases, 1, RECORD_MAX_CASES);
+  const date = String(options.date || "").trim();
+  const id = getSafePositiveRecordId(options.id);
+  const targets = buildPartialHarvestTargetsForRecordBeds(normalizedDraft.bedKeys, cases);
+  if(!date || id === null || cases === null || !targets.length) return null;
+  const record = {
+    ...getCurrentRecordSyncMetadata(),
+    palletNumberingVersion:CURRENT_PALLET_NUMBERING_VERSION,
+    id,
+    type:"partialHarvest",
+    date,
+    cases,
+    memo:String(options.memo || "").trim(),
+    targets,
+    palletKeys:[],
+    remainingCaseEstimate:getRecordPartialHarvestRemainingCaseEstimate(
+      normalizedDraft.bedKeys,
+      cases,
+      date,
+      options.sourceRecords || records
+    )
+  };
+  record.duplicateKey = getRecordDuplicateKey(record);
+  return record;
+}
+
 function getPartialHarvestRemainingPlantsValue(value){
   if(value === null || value === undefined || String(value).trim() === "") return null;
   return getStrictDecimalInRange(String(value), 0, 999);

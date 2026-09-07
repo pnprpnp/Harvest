@@ -5511,7 +5511,7 @@
           const recordLocation = visualApp.document.getElementById("recordHarvestLocationSection");
           const recordAdjustBox = visualApp.document.querySelector("#recordHarvestLocationSection .recordHarvestAdjustBox");
           const recordPager = visualApp.document.getElementById("recordHarvestBuildingPager");
-          const recordLegend = visualApp.document.getElementById("recordHarvestMapLegend");
+          const recordPartialButton = visualApp.document.getElementById("recordPartialHarvestModeBtn");
           const recordLoss = visualApp.document.querySelector(".recordActualLossField");
           const recordStatus = visualApp.document.getElementById("recordHarvestStatusCard");
           const recordNav = visualApp.document.getElementById("recordHarvestFixedNav");
@@ -5525,7 +5525,7 @@
           const recordAdjustRect = recordAdjustBox.getBoundingClientRect();
           const recordBedPanelRect = visualApp.document.querySelector(".recordBuildingMapBeds").getBoundingClientRect();
           const recordPagerRect = recordPager.getBoundingClientRect();
-          const recordLegendRect = recordLegend.getBoundingClientRect();
+          const recordPartialButtonRect = recordPartialButton.getBoundingClientRect();
           const recordLossRect = recordLoss.getBoundingClientRect();
           const recordStatusRect = recordStatus.getBoundingClientRect();
           const recordNavRect = recordNav.getBoundingClientRect();
@@ -5551,7 +5551,7 @@
             )),
             statusLabels:[
               visualApp.document.querySelector(".recordHarvestBuildingStatus .recordHarvestStatusLabel")?.textContent.trim() || "",
-              visualApp.document.querySelector(".recordHarvestLegendStatus .recordHarvestStatusLabel")?.textContent.trim() || "",
+              visualApp.document.querySelector(".recordHarvestPartialStatus .recordHarvestStatusLabel")?.textContent.trim() || "",
               visualApp.document.querySelector(".recordHarvestLossStatus label")?.textContent.trim() || ""
             ],
             displayedBuilding:visualApp.document.getElementById("recordHarvestStatusBuilding")?.textContent || "",
@@ -5565,10 +5565,9 @@
             )),
             compactBedHeight:recordBedRects.every(rect => rect.height >= 200 && rect.height <= 225),
             readableMapHeight:recordMapRects.every(rect => rect.height >= 55),
-            legendVisible:recordLegendRect.width > 0 && recordLegendRect.height > 0,
-            legendUsesCompactTwoRows:recordLegendRect.height > 8 && recordLegendRect.height <= 20,
-            legendInsideStatus:recordLegendRect.top >= recordStatusRect.top - 1
-              && recordLegendRect.bottom <= recordStatusRect.bottom + 1,
+            partialButtonVisible:recordPartialButtonRect.width > 0 && recordPartialButtonRect.height > 0,
+            partialButtonInsideStatus:recordPartialButtonRect.top >= recordStatusRect.top - 1
+              && recordPartialButtonRect.bottom <= recordStatusRect.bottom + 1,
             lossInsideStatus:recordLossRect.top >= recordStatusRect.top - 1
               && recordLossRect.bottom <= recordStatusRect.bottom + 1,
             mapNearActionBar:recordBedPanelRect.bottom <= recordNavRect.top
@@ -5586,7 +5585,7 @@
             pagerMatchesSimulation:true,
             statusMatchesSimulation:true,
             statusUsesThreeEqualColumns:true,
-            statusLabels:["表示中の棟", "色の凡例", "実際のロス率"],
+            statusLabels:["表示中の棟", "部分収穫", "実際のロス率"],
             displayedBuilding:"2号棟",
             sixBeds:true,
             twoBedRows:true,
@@ -5596,9 +5595,8 @@
             bedsStayInsideMap:true,
             compactBedHeight:true,
             readableMapHeight:true,
-            legendVisible:true,
-            legendUsesCompactTwoRows:true,
-            legendInsideStatus:true,
+            partialButtonVisible:true,
+            partialButtonInsideStatus:true,
             lossInsideStatus:true,
             mapNearActionBar:true
           }, "収穫場所のページ切り替え・3分割情報・配置図がシミュと同じ位置に収まっていません");
@@ -8942,8 +8940,8 @@
                 || !!document.getElementById("recordHarvestLocationPallets"),
               statusCardVisible:!document.getElementById("recordHarvestStatusCard").hidden,
               statusBuilding:document.getElementById("recordHarvestStatusBuilding").textContent,
-              legendInStatusCard:document.getElementById("recordHarvestMapLegend").parentElement
-                ?.classList.contains("recordHarvestLegendStatus") || false,
+              partialButtonInStatusCard:document.getElementById("recordPartialHarvestModeBtn").parentElement
+                ?.classList.contains("recordHarvestStatusCard") || false,
               actualLossVisible:!document.querySelector(".recordActualLossField").hidden,
               actualLossInStatusCard:document.querySelector(".recordActualLossField").parentElement
                 ?.classList.contains("recordHarvestLossStatus") || false,
@@ -9061,7 +9059,7 @@
             locationMetricsExist:false,
             statusCardVisible:true,
             statusBuilding:"2号棟",
-            legendInStatusCard:true,
+            partialButtonInStatusCard:true,
             actualLossVisible:true,
             actualLossInStatusCard:true,
             navPosition:"fixed",
@@ -9488,8 +9486,7 @@
               firstBedCells: firstBed?.querySelectorAll(".simulationBedMapCell").length || 0,
               selected: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length,
               overageColored: document.querySelectorAll("#recordBeds .simulationBedMapCell.is-overage").length,
-              harvestLegend: [...document.querySelectorAll("#recordHarvestMapLegend .simulationBedMapLegendItem")]
-                .map(item => item.textContent.trim()),
+              partialHarvestButton: document.getElementById("recordPartialHarvestModeBtn")?.textContent.trim().replace(/\\s+/g, " ") || "",
               detailSelected: overageSelectedPallet?.classList.contains("harvestFill") || false,
               detailOverageColored: overageSelectedPallet?.classList.contains("harvestOveragePallet") || false,
               detailOverageLabelHidden: !overageSelectedPallet?.title.includes("超過分"),
@@ -9516,7 +9513,7 @@
           firstBedCells: 78,
           selected: 2,
           overageColored: 0,
-          harvestLegend: ["収穫可能", "選択中", "収穫不可能", "部分収穫"],
+          partialHarvestButton: "部分収穫 追加",
           detailSelected: true,
           detailOverageColored: false,
           detailOverageLabelHidden: true,
@@ -9527,6 +9524,313 @@
           role: "button",
           label: "2号棟 Fベッド。選択 0パレット。タップで拡大してパレットを選択"
         }, "記録タブの縦型パレット配置図がシミュと一致しません");
+      });
+
+      await runTest("記録タブで部分収穫をベッド単位で選び通常収穫と同時に準備する", () => {
+        const state = comparable(app.eval(`(() => {
+          const recordTab = document.getElementById("recordTab");
+          const previous = {
+            display:recordTab.style.display,
+            activeTab:activeAppTab,
+            mode:recordSelectionMode,
+            view:recordViewMode,
+            stage:recordHarvestStage,
+            primaryInputsExpanded:recordHarvestPrimaryInputsExpanded,
+            activeBuilding:recordHarvestActiveBuilding,
+            visited:[...recordHarvestVisitedBuildings],
+            keys:[...harvestFillKeys],
+            additional:[...recordAdditionalBuildings],
+            partialMode:recordPartialHarvestSelectionMode,
+            partialDraft:normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+            date:document.getElementById("recordDateInput").value,
+            cases:document.getElementById("recordCasesInput").value,
+            summary:document.getElementById("recordPalletSummaryInput").value
+          };
+          try{
+            recordTab.style.display = "block";
+            activeAppTab = "record";
+            recordSelectionMode = "harvest";
+            recordViewMode = "entry";
+            recordHarvestStage = "location";
+            recordHarvestPrimaryInputsExpanded = false;
+            recordHarvestActiveBuilding = 2;
+            recordHarvestVisitedBuildings = [2];
+            recordAdditionalBuildings = [];
+            recordPartialHarvestSelectionMode = false;
+            recordPartialHarvestDraft = { bedKeys:[], cases:"" };
+            recordPartialHarvestDraftSnapshot = null;
+            harvestFillKeys = [getPalletKey(2, "A", 1)];
+            document.getElementById("recordDateInput").value = "2099-12-31";
+            document.getElementById("recordCasesInput").value = "10";
+            document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+            refreshRecordModeUi();
+            drawRecordBeds();
+
+            startRecordPartialHarvestSelection();
+            handleRecordBuildingBedClick(2, "F");
+            addRecordBuildingDisplay(3);
+            handleRecordBuildingBedClick(3, "C");
+            handleRecordPartialHarvestCasesInput("3");
+            const duringSelection = {
+              selecting:recordPartialHarvestSelectionMode,
+              bedKeys:[...recordPartialHarvestDraft.bedKeys],
+              normalKeys:[...harvestFillKeys],
+              fixedEditorVisible:!document.getElementById("recordPartialHarvestFixedEditor").hidden,
+              summaryHidden:document.getElementById("recordHarvestSummaryBtn").hidden,
+              nextLabel:document.getElementById("recordHarvestNextBtn").textContent,
+              visibleSelectedBeds:document.querySelectorAll("#recordBeds .is-record-partial-selected").length,
+              pagerCounts:[...document.querySelectorAll("#recordHarvestBuildingPager .recordHarvestBuildingTab span")]
+                .map(item => item.textContent)
+            };
+
+            completeRecordPartialHarvestSelection();
+            const partialRecord = buildRecordTabPartialHarvestRecord(recordPartialHarvestDraft, {
+              id:123,
+              date:"2099-12-31",
+              sourceRecords:[]
+            });
+            openRecordHarvestStage("confirm");
+            const combined = {
+              selecting:recordPartialHarvestSelectionMode,
+              buttonValue:document.getElementById("recordPartialHarvestStatusValue").textContent,
+              regularCases:getRecordRegularHarvestCases(10, "2099-12-31"),
+              locations:formatRecordPartialHarvestBedLocations(),
+              targetBeds:partialRecord.targets.map(target => String(target.building) + "-" + target.bed),
+              wholeBeds:partialRecord.targets.every(target => target.start === 1 && target.end === PALLETS_PER_BED),
+              harvestedHeads:Math.round(partialRecord.targets.reduce((total, target) => (
+                total + target.plantsPerPallet * PALLETS_PER_BED
+              ), 0)),
+              confirmLabels:[...document.querySelectorAll("#recordHarvestConfirmSummary .recordHarvestConfirmItem > span:first-child")]
+                .map(item => item.textContent)
+            };
+
+            harvestFillKeys = [];
+            document.getElementById("recordPalletSummaryInput").value = "";
+            document.getElementById("recordCasesInput").value = "";
+            recordHarvestStage = "location";
+            recordHarvestActiveBuilding = 2;
+            recordAdditionalBuildings = [2];
+            resetRecordPartialHarvestDraft();
+            startRecordPartialHarvestSelection();
+            handleRecordBuildingBedClick(2, "A");
+            handleRecordPartialHarvestCasesInput("5");
+            completeRecordPartialHarvestSelection();
+            const partialOnlyValid = validateRecordHarvestCasesStep() && validateRecordHarvestLocationStep();
+            handleRecordHarvestNext();
+            const partialOnly = {
+              totalCases:document.getElementById("recordCasesInput").value,
+              valid:partialOnlyValid,
+              nextStage:recordHarvestStage
+            };
+            return { duringSelection, combined, partialOnly };
+          }finally{
+            recordTab.style.display = previous.display;
+            activeAppTab = previous.activeTab;
+            recordSelectionMode = previous.mode;
+            recordViewMode = previous.view;
+            recordHarvestStage = previous.stage;
+            recordHarvestPrimaryInputsExpanded = previous.primaryInputsExpanded;
+            recordHarvestActiveBuilding = previous.activeBuilding;
+            recordHarvestVisitedBuildings = previous.visited;
+            harvestFillKeys = previous.keys;
+            recordAdditionalBuildings = previous.additional;
+            recordPartialHarvestSelectionMode = previous.partialMode;
+            recordPartialHarvestDraft = previous.partialDraft;
+            recordPartialHarvestDraftSnapshot = null;
+            document.getElementById("recordDateInput").value = previous.date;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            document.getElementById("recordPalletSummaryInput").value = previous.summary;
+            refreshRecordModeUi();
+            cancelPendingHarvestStateSave();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          duringSelection:{
+            selecting:true,
+            bedKeys:["2-F", "3-C"],
+            normalKeys:["2-A-1"],
+            fixedEditorVisible:true,
+            summaryHidden:true,
+            nextLabel:"完了",
+            visibleSelectedBeds:1,
+            pagerCounts:["1ベッド", "1ベッド"]
+          },
+          combined:{
+            selecting:false,
+            buttonValue:"2ベッド・3ケース",
+            regularCases:7,
+            locations:"2号棟Fベッド、3号棟Cベッド",
+            targetBeds:["2-F", "3-C"],
+            wholeBeds:true,
+            harvestedHeads:36,
+            confirmLabels:["日付", "ケース数", "部分収穫", "通常収穫場所", "実際のロス率", "品質"]
+          },
+          partialOnly:{totalCases:"5",valid:true,nextStage:"confirm"}
+        }, "部分収穫のベッド選択・ケース配分・通常収穫との差し引きが連動していません");
+      });
+
+      await runTest("記録タブの保存1回で通常収穫とベッド単位の部分収穫をまとめて保存する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            records,
+            keys:[...harvestFillKeys],
+            overageKeys:[...harvestOverageKeys],
+            harvestSelectionMode,
+            harvestProgressState,
+            harvestProgressAvailable,
+            mode:recordSelectionMode,
+            activePlantingRecordId,
+            partialMode:recordPartialHarvestSelectionMode,
+            partialDraft:normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+            date:document.getElementById("recordDateInput").value,
+            cases:document.getElementById("recordCasesInput").value,
+            summary:document.getElementById("recordPalletSummaryInput").value,
+            ensureAccess:ensureProtectedOperationAccess,
+            ensureMutation:ensureGoogleSheetLocalMutationAllowed,
+            warnings:confirmHarvestRecordWarnings,
+            saveStorage:saveRecordsToStorage,
+            exportPrompt:maybePromptRecordExport,
+            queueBatch:queueGoogleSheetRecordBatchSend,
+            recalculate:recalculateHarvestPredictionAfterPartialHarvest,
+            completeGuide:completeWorkflowGuideHarvestRecord,
+            planting:enterPlantingRecordMode,
+            clear:clearRecordForm,
+            saveState:saveHarvestStateToStorage,
+            scheduleRefresh:scheduleRecordDataUiRefresh,
+            toast:showToast,
+            loss:getRecordActualLossValue,
+            instruction:getRemainingHarvestableCaseInstruction
+          };
+          let storageSaveCount = 0;
+          let queueBatchCount = 0;
+          let predictionCount = 0;
+          let plantingCalls = 0;
+          let clearCalls = 0;
+          const queuedBatches = [];
+          try{
+            ensureProtectedOperationAccess = () => true;
+            ensureGoogleSheetLocalMutationAllowed = () => true;
+            confirmHarvestRecordWarnings = () => true;
+            saveRecordsToStorage = () => { storageSaveCount++; };
+            maybePromptRecordExport = () => {};
+            queueGoogleSheetRecordBatchSend = batch => {
+              queueBatchCount++;
+              queuedBatches.push(batch.map(record => ({
+                type:record.type,
+                cases:record.cases,
+                targets:normalizePartialHarvestTargets(record.targets)
+              })));
+              return batch.length;
+            };
+            recalculateHarvestPredictionAfterPartialHarvest = () => {
+              predictionCount++;
+              return { attempted:false, recalculated:false, changed:false, hasEnough:true };
+            };
+            completeWorkflowGuideHarvestRecord = () => {};
+            enterPlantingRecordMode = record => {
+              plantingCalls++;
+              recordSelectionMode = "planting";
+              activePlantingRecordId = record.id;
+            };
+            clearRecordForm = () => {
+              clearCalls++;
+              resetRecordPartialHarvestDraft();
+              recordSelectionMode = "harvest";
+            };
+            saveHarvestStateToStorage = () => {};
+            scheduleRecordDataUiRefresh = () => {};
+            showToast = () => {};
+            getRecordActualLossValue = () => "5";
+            getRemainingHarvestableCaseInstruction = () => "";
+
+            records = [];
+            recordSelectionMode = "harvest";
+            harvestFillKeys = [getPalletKey(2, "A", 1)];
+            recordPartialHarvestSelectionMode = false;
+            recordPartialHarvestDraft = { bedKeys:["2-F", "3-C"], cases:"3" };
+            document.getElementById("recordDateInput").value = "2099-12-30";
+            document.getElementById("recordCasesInput").value = "10";
+            document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+            saveRecord();
+            const combinedRecords = records.map(record => ({
+              type:record.type,
+              cases:record.cases,
+              targetBeds:normalizePartialHarvestTargets(record.targets)
+                .map(target => String(target.building) + "-" + target.bed)
+            }));
+
+            records = [];
+            recordSelectionMode = "harvest";
+            harvestFillKeys = [];
+            recordPartialHarvestSelectionMode = false;
+            recordPartialHarvestDraft = { bedKeys:["2-A"], cases:"5" };
+            document.getElementById("recordCasesInput").value = "5";
+            document.getElementById("recordPalletSummaryInput").value = "";
+            saveRecord();
+            const partialOnlyRecords = records.map(record => ({
+              type:record.type,
+              cases:record.cases,
+              targetBeds:normalizePartialHarvestTargets(record.targets)
+                .map(target => String(target.building) + "-" + target.bed)
+            }));
+            return {
+              combinedRecords,
+              partialOnlyRecords,
+              storageSaveCount,
+              queueBatchCount,
+              batchSizes:queuedBatches.map(batch => batch.length),
+              predictionCount,
+              plantingCalls,
+              clearCalls
+            };
+          }finally{
+            records = previous.records;
+            harvestFillKeys = previous.keys;
+            harvestOverageKeys = previous.overageKeys;
+            harvestSelectionMode = previous.harvestSelectionMode;
+            harvestProgressState = previous.harvestProgressState;
+            harvestProgressAvailable = previous.harvestProgressAvailable;
+            recordSelectionMode = previous.mode;
+            activePlantingRecordId = previous.activePlantingRecordId;
+            recordPartialHarvestSelectionMode = previous.partialMode;
+            recordPartialHarvestDraft = previous.partialDraft;
+            recordPartialHarvestDraftSnapshot = null;
+            document.getElementById("recordDateInput").value = previous.date;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            document.getElementById("recordPalletSummaryInput").value = previous.summary;
+            ensureProtectedOperationAccess = previous.ensureAccess;
+            ensureGoogleSheetLocalMutationAllowed = previous.ensureMutation;
+            confirmHarvestRecordWarnings = previous.warnings;
+            saveRecordsToStorage = previous.saveStorage;
+            maybePromptRecordExport = previous.exportPrompt;
+            queueGoogleSheetRecordBatchSend = previous.queueBatch;
+            recalculateHarvestPredictionAfterPartialHarvest = previous.recalculate;
+            completeWorkflowGuideHarvestRecord = previous.completeGuide;
+            enterPlantingRecordMode = previous.planting;
+            clearRecordForm = previous.clear;
+            saveHarvestStateToStorage = previous.saveState;
+            scheduleRecordDataUiRefresh = previous.scheduleRefresh;
+            showToast = previous.toast;
+            getRecordActualLossValue = previous.loss;
+            getRemainingHarvestableCaseInstruction = previous.instruction;
+            renderRecordPartialHarvestControl();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          combinedRecords:[
+            {type:"fullHarvest",cases:7,targetBeds:[]},
+            {type:"partialHarvest",cases:3,targetBeds:["2-F", "3-C"]}
+          ],
+          partialOnlyRecords:[
+            {type:"partialHarvest",cases:5,targetBeds:["2-A"]}
+          ],
+          storageSaveCount:2,
+          queueBatchCount:2,
+          batchSizes:[2,1],
+          predictionCount:2,
+          plantingCalls:1,
+          clearCalls:1
+        }, "通常収穫・部分収穫の同時保存または部分収穫だけの保存が1回にまとまっていません");
       });
 
       await runTest("収穫記録で号棟を追加し配置図を1棟ずつ切り替えられる", () => {
@@ -11681,18 +11985,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "9d39bef8", elements: 2323, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "e411a5c2", elements: 2392, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "d47edcfd", elements: 2392, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "75e9a3db", elements: 2327, visible: 83, viewport: "390x844" },
-          mobileDashboard: { hash: "8a4f28c8", elements: 2344, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "dabd3069", elements: 2427, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "d7e2fba5", elements: 2442, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "26fda2c0", elements: 2442, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "44a4be87", elements: 2442, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "5c195574", elements: 2442, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "c92f4bc0", elements: 2442, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "126a052c", elements: 2442, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "003bccc2", elements: 2320, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "6245a4e9", elements: 2389, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "4b924abe", elements: 2389, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "017eb592", elements: 2324, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "d72eae81", elements: 2341, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "6d402256", elements: 2424, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "290564b2", elements: 2439, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "6ed25e11", elements: 2439, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "551e3432", elements: 2439, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "e80e40a5", elements: 2439, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "0ffb0f25", elements: 2439, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "ccd3eb3d", elements: 2439, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

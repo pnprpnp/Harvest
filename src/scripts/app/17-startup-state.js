@@ -36,6 +36,8 @@ function initializeStartupSettingsAndStorage(){
 function resetInvalidStartupPlantingState(){
   editingPlantingEventId = null;
   recordSelectionMode = "harvest";
+  recordPartialHarvestSelectionMode = false;
+  recordPartialHarvestDraftSnapshot = null;
   recordAdditionalBuildings = [];
   activePlantingRecordId = null;
   plantingRecordDraft = null;
@@ -78,6 +80,10 @@ function restoreHarvestStateAtStartup(savedHarvestState){
     ? [...new Set(savedHarvestState.recordAdditionalBuildings.filter(building => BUILDINGS.includes(Number(building))).map(Number))]
     : [];
   recordSelectionMode = savedHarvestState.recordSelectionMode || "harvest";
+  recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft(savedHarvestState.recordPartialHarvestDraft);
+  recordPartialHarvestSelectionMode = recordSelectionMode === "harvest"
+    && savedHarvestState.recordPartialHarvestSelectionMode === true;
+  recordPartialHarvestDraftSnapshot = null;
   recordHarvestStage = RECORD_HARVEST_STAGES.includes(savedHarvestState.recordHarvestStage)
     ? savedHarvestState.recordHarvestStage
     : "location";

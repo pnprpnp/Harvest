@@ -2884,7 +2884,8 @@ function getPartialHarvestCaseDeductionForDate(dateStr, sourceRecords = records,
 function getRegularHarvestCases(totalCases, dateStr = getHarvestTargetDateString(), options = {}){
   const safeTotal = clampNumber(totalCases, 0, 999999, 0);
   const partialCases = getPartialHarvestCaseDeductionForDate(dateStr, records, options);
-  return Math.max(0, safeTotal - partialCases);
+  const additionalPartialCases = clampNumber(options.additionalPartialCases, 0, 999999, 0);
+  return Math.max(0, safeTotal - partialCases - additionalPartialCases);
 }
 
 function getHarvestCasePlan(totalCases = null, options = {}){

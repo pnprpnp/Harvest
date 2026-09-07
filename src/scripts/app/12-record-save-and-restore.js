@@ -57,7 +57,13 @@ function saveRecord(){
   const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
   const date = document.getElementById("recordDateInput").value;
   const totalCases = clampNumber(document.getElementById("recordCasesInput").value || 0, 0, 999999, 0);
-  const cases = getRegularHarvestCases(totalCases, date);
+  const partialDraft = editingRecord
+    ? normalizeRecordPartialHarvestDraft(null)
+    : getRecordPartialHarvestDraftModel();
+  const partialCases = partialDraft.isValid ? partialDraft.casesValue : 0;
+  const cases = editingRecord
+    ? getRegularHarvestCases(totalCases, date)
+    : getRecordRegularHarvestCases(totalCases, date);
   const actualLoss = getRecordActualLossValue();
   const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
   const actualSeedlingCarryoverMode = getRecordSeedlingCarryoverMode();
@@ -74,23 +80,35 @@ function saveRecord(){
     showToast("収穫ケース数を入力してください");
     return;
   }
-  if(cases <= 0){
-    showToast("各パレット部分収穫だけで今回の収穫ケース数に達しています");
+  if(!editingRecord && !partialDraft.isEmpty && !partialDraft.isValid){
+    showToast("部分収穫の場所とケース数を入力してください");
     return;
   }
-  if(palletSummary === ""){
+  if(partialCases > totalCases){
+    showToast("部分収穫のケース数が、実際の収穫ケース数を超えています");
+    return;
+  }
+  if(cases <= 0 && !partialDraft.isValid){
+    showToast("記録する通常収穫または部分収穫がありません");
+    return;
+  }
+  if(cases > 0 && palletSummary === ""){
     showToast("収穫したパレット番号を入力してください");
     return;
   }
-  if(actualLoss === ""){
+  if(cases > 0 && actualLoss === ""){
     showToast("実際のロス率を計算できません");
     return;
   }
-  if(!harvestFillKeys.length){
+  if(cases > 0 && !harvestFillKeys.length){
     showToast("保存する選択結果がありません");
     return;
   }
-  if(!confirmHarvestRecordWarnings(date, actualLoss, editingRecord)){
+  if(cases <= 0 && harvestFillKeys.length){
+    showToast("通常収穫場所が選択されています。実際の収穫ケース数を確認してください");
+    return;
+  }
+  if(cases > 0 && !confirmHarvestRecordWarnings(date, actualLoss, editingRecord)){
     showToast("収穫記録の保存をキャンセルしました");
     return;
   }
@@ -143,46 +161,85 @@ function saveRecord(){
     return;
   }
 
-  const record = {
-    ...getCurrentRecordSyncMetadata(),
-    palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
-    id: Date.now(),
-    type: "fullHarvest",
-    date,
-    cases,
-    palletSummary,
-    plannedSeedlingTrayCount: getPlannedSeedlingTrayCountForRecord(),
-    plantingCaseInstruction: "",
-    plantingSummary: "",
-    plantingPending: true,
-    actualSeedlingTrayCount,
-    actualSeedlingCarryoverMode,
-    actualSeedlingLossRate: "",
-    memo,
-    actualLoss,
-    qualityMemo,
-    plantingAge,
-    palletKeys: [...harvestFillKeys],
-    plantingPalletKeys: []
-  };
-  records.unshift(record);
-  record.plantingCaseInstruction = getRemainingHarvestableCaseInstruction(record);
-  record.duplicateKey = getRecordDuplicateKey(record);
+  const newRecordCount = Number(cases > 0) + Number(partialDraft.isValid);
+  const recordIds = getNextLocalHarvestRecordIds(newRecordCount);
+  if(recordIds.length !== newRecordCount){
+    showToast("新しい収穫記録の番号を作成できませんでした");
+    return;
+  }
+  let nextRecordIdIndex = 0;
+  const record = cases > 0
+    ? {
+        ...getCurrentRecordSyncMetadata(),
+        palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
+        id: recordIds[nextRecordIdIndex++],
+        type: "fullHarvest",
+        date,
+        cases,
+        palletSummary,
+        plannedSeedlingTrayCount: getPlannedSeedlingTrayCountForRecord(),
+        plantingCaseInstruction: "",
+        plantingSummary: "",
+        plantingPending: true,
+        actualSeedlingTrayCount,
+        actualSeedlingCarryoverMode,
+        actualSeedlingLossRate: "",
+        memo,
+        actualLoss,
+        qualityMemo,
+        plantingAge,
+        palletKeys: [...harvestFillKeys],
+        plantingPalletKeys: []
+      }
+    : null;
+  if(record) record.duplicateKey = getRecordDuplicateKey(record);
+  const partialRecord = partialDraft.isValid
+    ? buildRecordTabPartialHarvestRecord(partialDraft, {
+        id:recordIds[nextRecordIdIndex++],
+        date,
+        memo,
+        sourceRecords:records
+      })
+    : null;
+  if(partialDraft.isValid && !partialRecord){
+    showToast("部分収穫記録を作成できませんでした");
+    return;
+  }
+  const newRecords = [record, partialRecord].filter(Boolean);
+  records.unshift(...newRecords);
+  if(record){
+    record.plantingCaseInstruction = getRemainingHarvestableCaseInstruction(record);
+    record.duplicateKey = getRecordDuplicateKey(record);
+  }
 
   saveRecordsToStorage();
   maybePromptRecordExport();
-  queueGoogleSheetRecordSend(record, {
+  const sendQueuedCount = queueGoogleSheetRecordBatchSend(newRecords, {
     failureMessage: "収穫記録は保存済みです。スプレッドシートは未送信です"
   });
+  if(partialRecord) recalculateHarvestPredictionAfterPartialHarvest([date]);
   harvestProgressState = null;
   harvestOverageKeys = [];
   harvestSelectionMode = "none";
   harvestProgressAvailable = false;
   completeWorkflowGuideHarvestRecord();
-  enterPlantingRecordMode(record);
+  resetRecordPartialHarvestDraft();
+  if(record){
+    enterPlantingRecordMode(record);
+  }else{
+    clearRecordForm();
+  }
   saveHarvestStateToStorage();
   scheduleRecordDataUiRefresh();
-  showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");
+  if(record && partialRecord){
+    showToast("通常収穫と部分収穫を記録しました。続けて苗植え場所を選択してください");
+  }else if(record){
+    showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");
+  }else{
+    showToast(sendQueuedCount === newRecords.length
+      ? "部分収穫を記録しました。スプレッドシートへ送信中です"
+      : "部分収穫を記録しました。スプレッドシートは未送信です");
+  }
 }
 
 function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, actualSeedlingTrayCount, actualSeedlingLossRate, actualSeedlingCarryoverMode = "loss", actualTakenSeedlingCount = null, actualPlantedSeedlingCount = null, plantingQualityMemo = null){

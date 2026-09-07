@@ -309,6 +309,9 @@ let recordHarvestStage = "location";
 let recordHarvestPrimaryInputsExpanded = false;
 let recordHarvestActiveBuilding = null;
 let recordHarvestVisitedBuildings = [];
+let recordPartialHarvestSelectionMode = false;
+let recordPartialHarvestDraft = { bedKeys: [], cases: "" };
+let recordPartialHarvestDraftSnapshot = null;
 let recordViewMode = "entry";
 let recordPlantingCountPreset = 20;
 let recordPlantingCountsByPallet = {};
@@ -586,6 +589,9 @@ function reloadRoleScopedRecordData(){
   activePlantingRecordId = null;
   plantingRecordDraft = null;
   recordSelectionMode = "harvest";
+  recordPartialHarvestSelectionMode = false;
+  recordPartialHarvestDraft = { bedKeys:[], cases:"" };
+  recordPartialHarvestDraftSnapshot = null;
   invalidateRecordDerivedCaches({ harvestRecords: true });
   syncHarvestPlantingPendingFlags();
   refreshRecordDataUi();
@@ -1170,6 +1176,8 @@ function saveHarvestStateToStorage(options = {}){
     recordHarvestStage,
     recordHarvestActiveBuilding,
     recordHarvestVisitedBuildings: [...recordHarvestVisitedBuildings],
+    recordPartialHarvestSelectionMode,
+    recordPartialHarvestDraft: normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
     recordViewMode,
     recordPlantingCountPreset,
     recordPlantingCountsByPallet,
@@ -1318,6 +1326,16 @@ function loadHarvestStateFromStorage(){
         ? [...new Set(parsed.recordAdditionalBuildings.map(value => Number(value)).filter(building => BUILDINGS.includes(building)))]
         : [],
       recordSelectionMode: parsed.recordSelectionMode === "planting" ? "planting" : "harvest",
+      recordHarvestStage: normalizeRecordHarvestStage(parsed.recordHarvestStage),
+      recordHarvestActiveBuilding: BUILDINGS.includes(Number(parsed.recordHarvestActiveBuilding))
+        ? Number(parsed.recordHarvestActiveBuilding)
+        : null,
+      recordHarvestVisitedBuildings: Array.isArray(parsed.recordHarvestVisitedBuildings)
+        ? [...new Set(parsed.recordHarvestVisitedBuildings.map(Number).filter(building => BUILDINGS.includes(building)))]
+        : [],
+      recordPartialHarvestSelectionMode: parsed.recordPartialHarvestSelectionMode === true,
+      recordPartialHarvestDraft: normalizeRecordPartialHarvestDraft(parsed.recordPartialHarvestDraft),
+      recordViewMode: parsed.recordViewMode === "history" ? "history" : "entry",
       recordPlantingCountPreset: normalizePlantingCountPreset(parsed.recordPlantingCountPreset),
       recordPlantingCountsByPallet: normalizePlantingCountsByPallet(parsed.recordPlantingCountsByPallet, parsed.harvestFillKeys),
       recordPlantingFlowEnabled: parsed.recordPlantingFlowEnabled === true,

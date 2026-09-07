@@ -1889,6 +1889,244 @@ function normalizeRecordHarvestStage(value){
   return RECORD_HARVEST_STAGES.includes(value) ? value : "location";
 }
 
+function parseRecordPartialHarvestBedKey(value){
+  const match = /^(\d+)-([A-F])$/.exec(String(value || "").trim());
+  if(!match) return null;
+  const building = Number(match[1]);
+  const bed = match[2];
+  return BUILDINGS.includes(building) && bedOrder.includes(bed) ? { building, bed } : null;
+}
+
+function getRecordPartialHarvestBedKey(building, bed){
+  const normalizedBuilding = Number(building);
+  const normalizedBed = String(bed || "").trim().toUpperCase();
+  return BUILDINGS.includes(normalizedBuilding) && bedOrder.includes(normalizedBed)
+    ? `${normalizedBuilding}-${normalizedBed}`
+    : "";
+}
+
+function normalizeRecordPartialHarvestBedKeys(values){
+  const unique = new Map();
+  (Array.isArray(values) ? values : []).forEach(value => {
+    const parsed = parseRecordPartialHarvestBedKey(value);
+    if(parsed) unique.set(`${parsed.building}-${parsed.bed}`, parsed);
+  });
+  return [...unique.values()]
+    .sort((left, right) => (
+      left.building - right.building
+      || bedOrder.indexOf(left.bed) - bedOrder.indexOf(right.bed)
+    ))
+    .map(item => `${item.building}-${item.bed}`);
+}
+
+function normalizeRecordPartialHarvestDraft(value){
+  const source = value && typeof value === "object" ? value : {};
+  const cases = source.cases === null || source.cases === undefined
+    ? ""
+    : String(source.cases).trim().slice(0, 12);
+  return {
+    bedKeys: normalizeRecordPartialHarvestBedKeys(source.bedKeys),
+    cases
+  };
+}
+
+function getRecordPartialHarvestDraftModel(){
+  recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
+  const cases = getStrictIntegerInRange(recordPartialHarvestDraft.cases, 1, RECORD_MAX_CASES);
+  const hasBeds = recordPartialHarvestDraft.bedKeys.length > 0;
+  const hasCases = String(recordPartialHarvestDraft.cases || "").trim() !== "";
+  return {
+    ...recordPartialHarvestDraft,
+    casesValue: cases === null ? 0 : cases,
+    isEmpty: !hasBeds && !hasCases,
+    isValid: hasBeds && cases !== null
+  };
+}
+
+function getRecordPartialHarvestDraftCases(){
+  const draft = getRecordPartialHarvestDraftModel();
+  return draft.isValid ? draft.casesValue : 0;
+}
+
+function getRecordRegularHarvestCases(totalCases, dateStr, options = {}){
+  return getRegularHarvestCases(totalCases, dateStr, {
+    ...options,
+    additionalPartialCases:getRecordPartialHarvestDraftCases()
+  });
+}
+
+function formatRecordPartialHarvestBedLocations(bedKeys = recordPartialHarvestDraft?.bedKeys){
+  const grouped = new Map();
+  normalizeRecordPartialHarvestBedKeys(bedKeys).forEach(key => {
+    const parsed = parseRecordPartialHarvestBedKey(key);
+    if(!parsed) return;
+    if(!grouped.has(parsed.building)) grouped.set(parsed.building, []);
+    grouped.get(parsed.building).push(parsed.bed);
+  });
+  return [...grouped.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([building, beds]) => `${building}号棟${beds.join("・")}ベッド`)
+    .join("、");
+}
+
+function renderRecordPartialHarvestControl(){
+  const button = document.getElementById("recordPartialHarvestModeBtn");
+  const value = document.getElementById("recordPartialHarvestStatusValue");
+  const saveCard = document.getElementById("recordSaveCard");
+  const hint = document.querySelector("#recordHarvestLocationSection .bedDetailOpenHint");
+  const notice = document.getElementById("recordEditNotice");
+  const draft = getRecordPartialHarvestDraftModel();
+  if(button){
+    button.disabled = recordSelectionMode === "planting" || !!editingHarvestRecordId;
+    button.classList.toggle("is-selecting", recordPartialHarvestSelectionMode);
+    button.classList.toggle("has-draft", !recordPartialHarvestSelectionMode && draft.isValid);
+    button.setAttribute("aria-pressed", String(recordPartialHarvestSelectionMode));
+    button.setAttribute(
+      "aria-label",
+      recordPartialHarvestSelectionMode
+        ? "部分収穫場所をベッド単位で選択中"
+        : (draft.isValid
+            ? `部分収穫 ${draft.bedKeys.length}ベッド、${draft.casesValue}ケース。変更する`
+            : "部分収穫を追加")
+    );
+  }
+  if(value){
+    value.textContent = recordPartialHarvestSelectionMode
+      ? `${draft.bedKeys.length}ベッド選択中`
+      : (draft.isValid ? `${draft.bedKeys.length}ベッド・${draft.casesValue}ケース` : "追加");
+  }
+  if(saveCard) saveCard.classList.toggle("recordPartialHarvestSelectionMode", recordPartialHarvestSelectionMode);
+  if(hint){
+    hint.textContent = recordPartialHarvestSelectionMode
+      ? "ベッドをタップして部分収穫場所を選択してください"
+      : "ベッドをタップすると拡大し、パレットを選択できます";
+  }
+  if(notice && recordSelectionMode === "harvest" && recordHarvestStage === "location"){
+    notice.textContent = recordPartialHarvestSelectionMode
+      ? "部分収穫したベッドを選択して下さい"
+      : "実際に収穫した場所を選択して下さい";
+  }
+}
+
+function startRecordPartialHarvestSelection(){
+  if(recordSelectionMode !== "harvest") return;
+  if(editingHarvestRecordId){
+    showToast("保存済みの収穫記録を編集中は、部分収穫を追加できません");
+    return;
+  }
+  if(recordPartialHarvestSelectionMode) return;
+  recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
+  recordPartialHarvestDraftSnapshot = {
+    draft:normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+    additionalBuildings:[...recordAdditionalBuildings],
+    activeBuilding:recordHarvestActiveBuilding,
+    visitedBuildings:[...recordHarvestVisitedBuildings],
+    returnStage:normalizeRecordHarvestStage(recordHarvestStage),
+    primaryInputsExpanded:recordHarvestPrimaryInputsExpanded
+  };
+  recordPartialHarvestSelectionMode = true;
+  recordHarvestStage = "location";
+  recordHarvestPrimaryInputsExpanded = false;
+  const draftBuildings = recordPartialHarvestDraft.bedKeys
+    .map(key => parseRecordPartialHarvestBedKey(key)?.building)
+    .filter(building => BUILDINGS.includes(building));
+  const displayedBuildings = getRecordMapBuildings();
+  const fallbackBuilding = BUILDINGS.includes(Number(recordHarvestActiveBuilding))
+    ? Number(recordHarvestActiveBuilding)
+    : (BUILDINGS.includes(Number(currentBuilding)) ? Number(currentBuilding) : BUILDINGS[0]);
+  if(!displayedBuildings.length && !draftBuildings.length && !recordAdditionalBuildings.includes(fallbackBuilding)){
+    recordAdditionalBuildings.push(fallbackBuilding);
+  }
+  const nextBuildings = getRecordMapBuildings();
+  if(!nextBuildings.includes(Number(recordHarvestActiveBuilding))){
+    recordHarvestActiveBuilding = nextBuildings[0] || fallbackBuilding;
+  }
+  const chooser = document.getElementById("recordBuildingAddChooser");
+  if(chooser) chooser.hidden = true;
+  renderRecordHarvestWorkflowUi();
+  drawRecordBeds();
+  updateRecordActualLoss();
+  scheduleHarvestStateSave();
+}
+
+function toggleRecordPartialHarvestBed(building, bed){
+  if(!recordPartialHarvestSelectionMode) return;
+  const key = getRecordPartialHarvestBedKey(building, bed);
+  if(!key) return;
+  const selected = new Set(recordPartialHarvestDraft.bedKeys || []);
+  if(selected.has(key)) selected.delete(key);
+  else selected.add(key);
+  recordPartialHarvestDraft = {
+    ...normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+    bedKeys:normalizeRecordPartialHarvestBedKeys([...selected])
+  };
+  drawRecordBeds();
+  updateRecordActualLoss();
+  scheduleHarvestStateSave();
+}
+
+function handleRecordPartialHarvestCasesInput(value){
+  if(!recordPartialHarvestSelectionMode) return;
+  recordPartialHarvestDraft = {
+    ...normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+    cases:String(value ?? "").trim().slice(0, 12)
+  };
+  renderRecordPartialHarvestControl();
+  updateRecordActualLoss();
+  scheduleHarvestStateSave();
+}
+
+function finishRecordPartialHarvestSelection(options = {}){
+  const snapshot = recordPartialHarvestDraftSnapshot;
+  if(options.cancel && snapshot){
+    recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft(snapshot.draft);
+    recordAdditionalBuildings = [...snapshot.additionalBuildings];
+    recordHarvestActiveBuilding = snapshot.activeBuilding;
+    recordHarvestVisitedBuildings = [...snapshot.visitedBuildings];
+  }
+  recordPartialHarvestSelectionMode = false;
+  recordHarvestStage = snapshot?.returnStage === "confirm" ? "confirm" : "location";
+  recordHarvestPrimaryInputsExpanded = options.cancel
+    ? !!snapshot?.primaryInputsExpanded
+    : false;
+  recordPartialHarvestDraftSnapshot = null;
+  renderRecordHarvestWorkflowUi();
+  if(recordHarvestStage === "location") drawRecordBeds();
+  updateRecordActualLoss();
+  scheduleHarvestStateSave();
+}
+
+function completeRecordPartialHarvestSelection(){
+  const draft = getRecordPartialHarvestDraftModel();
+  if(!draft.bedKeys.length){
+    showToast("部分収穫したベッドを選択してください");
+    return;
+  }
+  if(!draft.isValid){
+    showToast("部分収穫のケース数を1以上の整数で入力してください");
+    document.getElementById("recordPartialHarvestCasesInput")?.focus();
+    return;
+  }
+  const totalInput = document.getElementById("recordCasesInput");
+  const totalText = String(totalInput?.value || "").trim();
+  if(totalInput && !harvestFillKeys.length && (!totalText || Number(totalText) <= 0)){
+    totalInput.value = String(draft.casesValue);
+    recordCasesEdited = true;
+  }
+  finishRecordPartialHarvestSelection();
+}
+
+function cancelRecordPartialHarvestSelection(){
+  finishRecordPartialHarvestSelection({ cancel:true });
+}
+
+function resetRecordPartialHarvestDraft(){
+  recordPartialHarvestSelectionMode = false;
+  recordPartialHarvestDraft = { bedKeys:[], cases:"" };
+  recordPartialHarvestDraftSnapshot = null;
+  renderRecordPartialHarvestControl();
+}
+
 function getRecordHarvestStageIndex(){
   return RECORD_HARVEST_STAGES.indexOf(normalizeRecordHarvestStage(recordHarvestStage));
 }
@@ -1918,6 +2156,8 @@ function appendRecordHarvestConfirmItem(container, label, value, stage){
   button.className = "recordHarvestConfirmItem";
   if(stage === "cases"){
     button.dataset.uiClick = "openRecordHarvestPrimaryInputs";
+  }else if(stage === "partial"){
+    button.dataset.uiClick = "startRecordPartialHarvestSelection";
   }else{
     button.dataset.uiClick = "openRecordHarvestStage";
     button.dataset.uiArg = stage;
@@ -1939,15 +2179,29 @@ function renderRecordHarvestConfirmation(){
   container.innerHTML = "";
   const date = document.getElementById("recordDateInput")?.value || "";
   const cases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
+  const regularCases = getRecordRegularHarvestCases(cases, date);
+  const partialDraft = getRecordPartialHarvestDraftModel();
   const location = document.getElementById("recordPalletSummaryInput")?.value.trim() || "";
   const lossDisplay = document.getElementById("recordActualLossInput");
   const lossLabel = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
   const quality = formatQualityMemo(getSelectedQualityMemo()) || "選択なし";
   appendRecordHarvestConfirmItem(container, "日付", date || "未入力", "cases");
   appendRecordHarvestConfirmItem(container, "ケース数", cases > 0 ? `${cases}ケース` : "未入力", "cases");
-  appendRecordHarvestConfirmItem(container, "収穫場所", location || "未選択", "location");
-  appendRecordHarvestConfirmItem(container, lossLabel, lossDisplay?.textContent || "--", "location");
-  appendRecordHarvestConfirmItem(container, "品質", quality, "quality");
+  if(partialDraft.isValid){
+    appendRecordHarvestConfirmItem(
+      container,
+      "部分収穫",
+      `${partialDraft.casesValue}ケース / ${formatRecordPartialHarvestBedLocations(partialDraft.bedKeys)}`,
+      "partial"
+    );
+  }
+  if(regularCases > 0){
+    appendRecordHarvestConfirmItem(container, "通常収穫場所", location || "未選択", "location");
+    appendRecordHarvestConfirmItem(container, lossLabel, lossDisplay?.textContent || "--", "location");
+    appendRecordHarvestConfirmItem(container, "品質", quality, "quality");
+  }else{
+    appendRecordHarvestConfirmItem(container, "通常収穫", "なし", "location");
+  }
 }
 
 function renderRecordHarvestFixedNavigation(){
@@ -1956,10 +2210,30 @@ function renderRecordHarvestFixedNavigation(){
   const summaryButton = document.getElementById("recordHarvestSummaryBtn");
   const summaryDate = document.getElementById("recordHarvestSummaryDate");
   const summaryCases = document.getElementById("recordHarvestSummaryCases");
+  const partialEditor = document.getElementById("recordPartialHarvestFixedEditor");
+  const partialCasesInput = document.getElementById("recordPartialHarvestCasesInput");
   const nextButton = document.getElementById("recordHarvestNextBtn");
   const isVisible = recordSelectionMode === "harvest" && recordViewMode === "entry";
   if(nav) nav.hidden = !isVisible;
   if(!isVisible || !backButton || !nextButton) return;
+
+  if(recordPartialHarvestSelectionMode){
+    const draft = getRecordPartialHarvestDraftModel();
+    if(summaryButton) summaryButton.hidden = true;
+    if(partialEditor) partialEditor.hidden = false;
+    if(partialCasesInput && document.activeElement !== partialCasesInput){
+      partialCasesInput.value = draft.cases;
+    }
+    backButton.textContent = "キャンセル";
+    nextButton.textContent = "完了";
+    nextButton.disabled = !draft.isValid;
+    nextButton.title = !draft.bedKeys.length
+      ? "部分収穫したベッドを選択してください"
+      : (!draft.isValid ? "部分収穫のケース数を入力してください" : "");
+    return;
+  }
+  if(summaryButton) summaryButton.hidden = false;
+  if(partialEditor) partialEditor.hidden = true;
 
   const stage = normalizeRecordHarvestStage(recordHarvestStage);
   const isEditing = !!editingHarvestRecordId;
@@ -1979,10 +2253,19 @@ function renderRecordHarvestFixedNavigation(){
     : (isEditing && stage === "confirm" ? "編集を破棄" : "戻る");
   nextButton.textContent = stage === "confirm" ? (isEditing ? "更新" : "保存") : "次へ";
   const unvisited = getRecordHarvestUnvisitedTargetBuildings();
-  nextButton.disabled = stage === "location" && (!harvestFillKeys.length || unvisited.length > 0);
-  nextButton.title = stage === "location" && unvisited.length
+  const totalCases = clampNumber(caseValue || 0, 0, 999999, 0);
+  const partialDraft = getRecordPartialHarvestDraftModel();
+  const partialCases = partialDraft.isValid ? partialDraft.casesValue : 0;
+  const regularCases = getRecordRegularHarvestCases(totalCases, dateValue);
+  const invalidPartialDraft = !partialDraft.isEmpty && !partialDraft.isValid;
+  const locationBlocked = invalidPartialDraft
+    || partialCases > totalCases
+    || (regularCases > 0 && (!harvestFillKeys.length || unvisited.length > 0))
+    || (regularCases <= 0 && (!partialDraft.isValid || harvestFillKeys.length > 0));
+  nextButton.disabled = stage === "location" && locationBlocked;
+  nextButton.title = stage === "location" && unvisited.length && regularCases > 0
     ? `${unvisited.map(building => `${building}号棟`).join("・")}の配置図を確認してください`
-    : "";
+    : (stage === "location" && invalidPartialDraft ? "部分収穫の入力を完了してください" : "");
 }
 
 function formatRecordHarvestFixedNavDate(value){
@@ -2031,6 +2314,7 @@ function renderRecordHarvestWorkflowUi(){
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
   if(stage === "confirm") renderRecordHarvestConfirmation();
   updateRecordPastDateNotice();
+  renderRecordPartialHarvestControl();
   renderRecordHarvestFixedNavigation();
   scheduleRecordHarvestViewportLayout();
 }
@@ -2066,14 +2350,33 @@ function validateRecordHarvestCasesStep(){
     document.getElementById("recordCasesInput")?.focus();
     return false;
   }
-  if(getRegularHarvestCases(totalCases, date) <= 0){
-    showToast("各パレット部分収穫だけで今回の収穫ケース数に達しています");
+  const partialDraft = getRecordPartialHarvestDraftModel();
+  if(!partialDraft.isEmpty && !partialDraft.isValid){
+    showToast("部分収穫の場所とケース数を入力してください");
+    return false;
+  }
+  if(partialDraft.casesValue > totalCases){
+    showToast("部分収穫のケース数が、実際の収穫ケース数を超えています");
+    return false;
+  }
+  const regularCases = getRecordRegularHarvestCases(totalCases, date);
+  if(regularCases <= 0 && !partialDraft.isValid){
+    showToast("記録する通常収穫または部分収穫がありません");
+    return false;
+  }
+  if(regularCases <= 0 && harvestFillKeys.length){
+    showToast("通常収穫場所が選択されています。実際の収穫ケース数を確認してください");
     return false;
   }
   return true;
 }
 
 function validateRecordHarvestLocationStep(){
+  const date = document.getElementById("recordDateInput")?.value || "";
+  const totalCases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
+  if(getRecordRegularHarvestCases(totalCases, date) <= 0 && getRecordPartialHarvestDraftModel().isValid){
+    return true;
+  }
   if(!harvestFillKeys.length){
     showToast("収穫した場所を選択してください");
     return false;
@@ -2091,6 +2394,10 @@ function validateRecordHarvestLocationStep(){
 }
 
 function handleRecordHarvestNext(){
+  if(recordPartialHarvestSelectionMode){
+    completeRecordPartialHarvestSelection();
+    return;
+  }
   const stage = normalizeRecordHarvestStage(recordHarvestStage);
   if(stage === "confirm"){
     handleRecordPrimaryAction();
@@ -2102,10 +2409,22 @@ function handleRecordHarvestNext(){
     openRecordHarvestStage("confirm");
     return;
   }
+  if(stage === "location"){
+    const date = document.getElementById("recordDateInput")?.value || "";
+    const totalCases = clampNumber(document.getElementById("recordCasesInput")?.value || 0, 0, 999999, 0);
+    if(getRecordRegularHarvestCases(totalCases, date) <= 0){
+      openRecordHarvestStage("confirm");
+      return;
+    }
+  }
   openRecordHarvestStage(RECORD_HARVEST_STAGES[getRecordHarvestStageIndex() + 1]);
 }
 
 function handleRecordHarvestBack(){
+  if(recordPartialHarvestSelectionMode){
+    cancelRecordPartialHarvestSelection();
+    return;
+  }
   const stage = normalizeRecordHarvestStage(recordHarvestStage);
   if(editingHarvestRecordId){
     if(stage === "confirm") discardRecordEditChanges();
@@ -2184,7 +2503,6 @@ function refreshRecordModeUi(){
   const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
   const plantingStep = document.getElementById("recordStepPlanting");
-  const harvestMapLegend = document.getElementById("recordHarvestMapLegend");
   const harvestStatusCard = document.getElementById("recordHarvestStatusCard");
   const plantingLegend = document.getElementById("recordPlantingLegend");
   const modeStatus = document.getElementById("recordModeStatus");
@@ -2257,7 +2575,6 @@ function refreshRecordModeUi(){
   }
   if(harvestModeStepText) harvestModeStepText.textContent = isPlantingMode ? "収穫記録" : "収穫記録中";
   if(plantingModeStepText) plantingModeStepText.textContent = isPlantingMode ? "苗植え記録中" : "苗植え記録";
-  if(harvestMapLegend) harvestMapLegend.hidden = isPlantingMode;
   if(harvestStatusCard) harvestStatusCard.hidden = isPlantingMode;
   if(notice) notice.hidden = !isPlantingMode;
   if(!isPlantingMode){
@@ -2308,6 +2625,7 @@ function refreshRecordModeUi(){
   if(saveCard) saveCard.hidden = recordViewMode === "history";
   if(historyCard) historyCard.hidden = recordViewMode !== "history";
   renderRecordHarvestWorkflowUi();
+  renderRecordPartialHarvestControl();
   updateRecordAutoValueNotes();
   scheduleWorkflowGuideUpdate();
 }

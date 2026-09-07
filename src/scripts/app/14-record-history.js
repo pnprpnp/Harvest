@@ -119,6 +119,7 @@ function editHarvestRecord(id, options = {}){
   const wasAlreadyEditingHarvestRecord = !!editingHarvestRecordId;
   if(switchTab("record") === false) return;
   if(!wasAlreadyEditingHarvestRecord && !options.skipForecastCapture) captureForecastSelectionState();
+  resetRecordPartialHarvestDraft();
   enterHarvestRecordMode();
   recordViewMode = "entry";
   recordHarvestStage = "confirm";
