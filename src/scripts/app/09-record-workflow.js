@@ -2351,11 +2351,10 @@ function openRecordHarvestPrimaryInputs(){
     recordHarvestPrimaryInputsExpanded = false;
     recordHarvestStage = returnStage;
     summaryButton?.removeAttribute("data-return-stage");
-    if(returnStage === "location") drawRecordBeds();
+    if(returnStage === "location") applyRecordHarvestViewportLayout();
     renderRecordHarvestWorkflowUi();
+    if(returnStage === "location") applyMainTabViewportScrollLock();
     scheduleHarvestStateSave();
-    document.getElementById(returnStage === "location" ? "recordHarvestLocationSection" : "recordSaveCard")
-      ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
     return;
   }
   if(summaryButton) summaryButton.dataset.returnStage = normalizeRecordHarvestStage(recordHarvestStage);

@@ -5601,6 +5601,45 @@
             mapNearActionBar:true
           }, "収穫場所のページ切り替え・3分割情報・配置図がシミュと同じ位置に収まっていません");
 
+          const recordMapNodeBeforeInputToggle = visualApp.document.getElementById("recordBeds").firstElementChild;
+          visualApp.document.getElementById("recordHarvestSummaryBtn").click();
+          await settleVisualApp(visualApp);
+          const inputOnlyState = comparable({
+            compactLayoutRemoved:!recordCard.classList.contains("recordHarvestViewportLayout"),
+            locationHidden:visualApp.document.getElementById("recordHarvestLocationSection").hidden
+          });
+          visualApp.document.getElementById("recordHarvestSummaryBtn").click();
+          const bedRectImmediatelyAfterReturn = visualApp.document.querySelector("#recordBeds .recordBedOverview")
+            .getBoundingClientRect();
+          const immediateReturnState = comparable({
+            compactLayoutRestored:recordCard.classList.contains("recordHarvestViewportLayout"),
+            locationVisible:!visualApp.document.getElementById("recordHarvestLocationSection").hidden,
+            mapNodeReused:visualApp.document.getElementById("recordBeds").firstElementChild === recordMapNodeBeforeInputToggle,
+            bedPositionStable:sameRect(bedRectImmediatelyAfterReturn, recordFirstBedRect)
+          });
+          await settleVisualApp(visualApp);
+          const bedRectAfterReturnSettled = visualApp.document.querySelector("#recordBeds .recordBedOverview")
+            .getBoundingClientRect();
+          const settledReturnState = comparable({
+            compactLayoutMaintained:recordCard.classList.contains("recordHarvestViewportLayout"),
+            mapNodeStillReused:visualApp.document.getElementById("recordBeds").firstElementChild === recordMapNodeBeforeInputToggle,
+            bedPositionUnchanged:sameRect(bedRectAfterReturnSettled, bedRectImmediatelyAfterReturn)
+          });
+          assertDeepEqual({ inputOnlyState, immediateReturnState, settledReturnState }, {
+            inputOnlyState:{ compactLayoutRemoved:true, locationHidden:true },
+            immediateReturnState:{
+              compactLayoutRestored:true,
+              locationVisible:true,
+              mapNodeReused:true,
+              bedPositionStable:true
+            },
+            settledReturnState:{
+              compactLayoutMaintained:true,
+              mapNodeStillReused:true,
+              bedPositionUnchanged:true
+            }
+          }, "日付・ケース数入力から戻る際に配置図の位置や大きさが揺れています");
+
           const compactBedHeight = recordBedRects[0]?.height || 0;
           visualApp.toggleRecordBuildingAddChooser();
           await settleVisualApp(visualApp);
