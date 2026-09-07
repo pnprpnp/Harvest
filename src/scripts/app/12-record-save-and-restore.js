@@ -161,7 +161,8 @@ function saveRecord(){
     return;
   }
 
-  const newRecordCount = Number(cases > 0) + Number(partialDraft.isValid);
+  const partialEntryCount = partialDraft.isValid ? partialDraft.entries.length : 0;
+  const newRecordCount = Number(cases > 0) + partialEntryCount;
   const recordIds = getNextLocalHarvestRecordIds(newRecordCount);
   if(recordIds.length !== newRecordCount){
     showToast("新しい収穫記録の番号を作成できませんでした");
@@ -193,19 +194,20 @@ function saveRecord(){
       }
     : null;
   if(record) record.duplicateKey = getRecordDuplicateKey(record);
-  const partialRecord = partialDraft.isValid
-    ? buildRecordTabPartialHarvestRecord(partialDraft, {
-        id:recordIds[nextRecordIdIndex++],
+  const partialRecords = partialDraft.isValid
+    ? buildRecordTabPartialHarvestRecords(partialDraft, {
+        ids:recordIds.slice(nextRecordIdIndex, nextRecordIdIndex + partialEntryCount),
         date,
         memo,
         sourceRecords:records
       })
-    : null;
-  if(partialDraft.isValid && !partialRecord){
+    : [];
+  nextRecordIdIndex += partialEntryCount;
+  if(partialDraft.isValid && partialRecords.length !== partialEntryCount){
     showToast("部分収穫記録を作成できませんでした");
     return;
   }
-  const newRecords = [record, partialRecord].filter(Boolean);
+  const newRecords = [record, ...partialRecords].filter(Boolean);
   records.unshift(...newRecords);
   if(record){
     record.plantingCaseInstruction = getRemainingHarvestableCaseInstruction(record);
@@ -217,7 +219,7 @@ function saveRecord(){
   const sendQueuedCount = queueGoogleSheetRecordBatchSend(newRecords, {
     failureMessage: "収穫記録は保存済みです。スプレッドシートは未送信です"
   });
-  if(partialRecord) recalculateHarvestPredictionAfterPartialHarvest([date]);
+  if(partialRecords.length) recalculateHarvestPredictionAfterPartialHarvest([date]);
   harvestProgressState = null;
   harvestOverageKeys = [];
   harvestSelectionMode = "none";
@@ -231,7 +233,7 @@ function saveRecord(){
   }
   saveHarvestStateToStorage();
   scheduleRecordDataUiRefresh();
-  if(record && partialRecord){
+  if(record && partialRecords.length){
     showToast("通常収穫と部分収穫を記録しました。続けて苗植え場所を選択してください");
   }else if(record){
     showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");

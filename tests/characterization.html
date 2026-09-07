@@ -9730,7 +9730,7 @@
           },
           combined:{
             selecting:false,
-            buttonValue:"2ベッド・3ケース",
+            buttonValue:"1件・3ケース",
             regularCases:7,
             locations:"2号棟Fベッド、3号棟Cベッド",
             targetBeds:["2-F", "3-C"],
@@ -9742,7 +9742,150 @@
         }, "部分収穫のベッド選択・ケース配分・通常収穫との差し引きが連動していません");
       });
 
-      await runTest("記録タブの保存1回で通常収穫とベッド単位の部分収穫をまとめて保存する", () => {
+      await runTest("記録タブでベッド別ケース数と複数ベッド合計を選び分ける", () => {
+        const state = comparable(app.eval(`(() => {
+          const recordTab = document.getElementById("recordTab");
+          const previous = {
+            display:recordTab.style.display,
+            activeTab:activeAppTab,
+            mode:recordSelectionMode,
+            view:recordViewMode,
+            stage:recordHarvestStage,
+            activeBuilding:recordHarvestActiveBuilding,
+            additional:[...recordAdditionalBuildings],
+            partialMode:recordPartialHarvestSelectionMode,
+            partialDraft:normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+            partialSnapshot:recordPartialHarvestDraftSnapshot,
+            keys:[...harvestFillKeys],
+            cases:document.getElementById("recordCasesInput").value,
+            casesEdited:recordCasesEdited
+          };
+          const getAssignedBedLabels = () => [...document.querySelectorAll("#recordBeds .is-record-partial-assigned")]
+            .map(bed => ({
+              bed:bed.querySelector(".bedTitleMain")?.textContent || "",
+              value:bed.querySelector(".recordBedOverviewPartialCount")?.textContent || ""
+            }))
+            .sort((left, right) => left.bed.localeCompare(right.bed));
+          try{
+            recordTab.style.display = "block";
+            activeAppTab = "record";
+            recordSelectionMode = "harvest";
+            recordViewMode = "entry";
+            recordHarvestStage = "location";
+            recordHarvestActiveBuilding = 2;
+            recordAdditionalBuildings = [2];
+            harvestFillKeys = [];
+            recordCasesEdited = false;
+            document.getElementById("recordCasesInput").value = "";
+            resetRecordPartialHarvestDraft();
+
+            startRecordPartialHarvestSelection();
+            toggleRecordPartialHarvestBed(2, "A");
+            document.getElementById("recordPartialHarvestCasesInput").value = "5";
+            handleRecordPartialHarvestCasesInput("5");
+            toggleRecordPartialHarvestBed(2, "C");
+            const switchedEntryState = {
+              committed:recordPartialHarvestDraft.entries.map(entry => ({ bedKeys:entry.bedKeys, cases:entry.cases })),
+              activeBedKeys:[...recordPartialHarvestDraft.bedKeys],
+              activeCases:recordPartialHarvestDraft.cases,
+              fixedInput:document.getElementById("recordPartialHarvestCasesInput").value,
+              totalInput:document.getElementById("recordCasesInput").value
+            };
+            document.getElementById("recordPartialHarvestCasesInput").value = "2";
+            handleRecordPartialHarvestCasesInput("2");
+            completeRecordPartialHarvestSelection();
+            const exactModel = getRecordPartialHarvestDraftModel();
+            const exactState = {
+              entries:exactModel.entries.map(entry => ({ bedKeys:entry.bedKeys, cases:entry.cases })),
+              totalCases:exactModel.casesValue,
+              totalInput:document.getElementById("recordCasesInput").value,
+              status:document.getElementById("recordPartialHarvestStatusValue").textContent
+            };
+            startRecordPartialHarvestSelection();
+            const exactAssignedLabels = getAssignedBedLabels();
+            toggleRecordPartialHarvestBed(2, "A");
+            const editState = {
+              bedKeys:[...recordPartialHarvestDraft.bedKeys],
+              cases:recordPartialHarvestDraft.cases,
+              fixedInput:document.getElementById("recordPartialHarvestCasesInput").value,
+              fixedLabel:document.querySelector("#recordPartialHarvestFixedEditor > span:first-child")?.textContent || ""
+            };
+            cancelRecordPartialHarvestSelection();
+
+            resetRecordPartialHarvestDraft();
+            document.getElementById("recordCasesInput").value = "";
+            recordCasesEdited = false;
+            startRecordPartialHarvestSelection();
+            toggleRecordPartialHarvestBed(2, "A");
+            toggleRecordPartialHarvestBed(2, "C");
+            document.getElementById("recordPartialHarvestCasesInput").value = "7";
+            handleRecordPartialHarvestCasesInput("7");
+            completeRecordPartialHarvestSelection();
+            const groupedModel = getRecordPartialHarvestDraftModel();
+            const groupedState = {
+              entries:groupedModel.entries.map(entry => ({ bedKeys:entry.bedKeys, cases:entry.cases })),
+              totalCases:groupedModel.casesValue,
+              totalInput:document.getElementById("recordCasesInput").value,
+              confirmation:formatRecordPartialHarvestEntry(groupedModel.entries[0])
+            };
+            startRecordPartialHarvestSelection();
+            const groupedAssignedLabels = getAssignedBedLabels();
+            cancelRecordPartialHarvestSelection();
+            return { switchedEntryState, exactState, exactAssignedLabels, editState, groupedState, groupedAssignedLabels };
+          }finally{
+            recordTab.style.display = previous.display;
+            activeAppTab = previous.activeTab;
+            recordSelectionMode = previous.mode;
+            recordViewMode = previous.view;
+            recordHarvestStage = previous.stage;
+            recordHarvestActiveBuilding = previous.activeBuilding;
+            recordAdditionalBuildings = previous.additional;
+            recordPartialHarvestSelectionMode = previous.partialMode;
+            recordPartialHarvestDraft = previous.partialDraft;
+            recordPartialHarvestDraftSnapshot = previous.partialSnapshot;
+            harvestFillKeys = previous.keys;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            recordCasesEdited = previous.casesEdited;
+            refreshRecordModeUi();
+            cancelPendingHarvestStateSave();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          switchedEntryState:{
+            committed:[{bedKeys:["2-A"],cases:"5"}],
+            activeBedKeys:["2-C"],
+            activeCases:"",
+            fixedInput:"",
+            totalInput:"5"
+          },
+          exactState:{
+            entries:[
+              {bedKeys:["2-A"],cases:"5"},
+              {bedKeys:["2-C"],cases:"2"}
+            ],
+            totalCases:7,
+            totalInput:"7",
+            status:"2件・7ケース"
+          },
+          exactAssignedLabels:[
+            {bed:"A",value:"5ケース"},
+            {bed:"C",value:"2ケース"}
+          ],
+          editState:{bedKeys:["2-A"],cases:"5",fixedInput:"5",fixedLabel:"2号棟A"},
+          groupedState:{
+            entries:[{bedKeys:["2-A","2-C"],cases:"7"}],
+            totalCases:7,
+            totalInput:"7",
+            confirmation:"7ケース / 2号棟A・Cベッド"
+          },
+          groupedAssignedLabels:[
+            {bed:"A",value:"合計 7ケース"},
+            {bed:"C",value:"合計 7ケース"}
+          ]
+        }, "ベッド別入力と複数ベッド合計入力を同じ部分収穫操作で選び分けられません");
+      });
+
+      await runTest("記録タブの保存1回でベッド別・複数ベッド合算の部分収穫をまとめて保存する", () => {
         const state = comparable(app.eval(`(() => {
           const previous = {
             records,
@@ -9820,7 +9963,15 @@
             recordSelectionMode = "harvest";
             harvestFillKeys = [getPalletKey(2, "A", 1)];
             recordPartialHarvestSelectionMode = false;
-            recordPartialHarvestDraft = { bedKeys:["2-F", "3-C"], cases:"3" };
+            recordPartialHarvestDraft = {
+              entries:[
+                { bedKeys:["2-F"], cases:"5" },
+                { bedKeys:["3-C"], cases:"2" }
+              ],
+              bedKeys:[],
+              cases:"",
+              editingEntryIndex:-1
+            };
             document.getElementById("recordDateInput").value = "2099-12-30";
             document.getElementById("recordCasesInput").value = "10";
             document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
@@ -9836,8 +9987,13 @@
             recordSelectionMode = "harvest";
             harvestFillKeys = [];
             recordPartialHarvestSelectionMode = false;
-            recordPartialHarvestDraft = { bedKeys:["2-A"], cases:"5" };
-            document.getElementById("recordCasesInput").value = "5";
+            recordPartialHarvestDraft = {
+              entries:[{ bedKeys:["2-A", "2-C"], cases:"7" }],
+              bedKeys:[],
+              cases:"",
+              editingEntryIndex:-1
+            };
+            document.getElementById("recordCasesInput").value = "7";
             document.getElementById("recordPalletSummaryInput").value = "";
             saveRecord();
             const partialOnlyRecords = records.map(record => ({
@@ -9891,19 +10047,20 @@
         })()`));
         assertDeepEqual(state, {
           combinedRecords:[
-            {type:"fullHarvest",cases:7,targetBeds:[]},
-            {type:"partialHarvest",cases:3,targetBeds:["2-F", "3-C"]}
+            {type:"fullHarvest",cases:3,targetBeds:[]},
+            {type:"partialHarvest",cases:5,targetBeds:["2-F"]},
+            {type:"partialHarvest",cases:2,targetBeds:["3-C"]}
           ],
           partialOnlyRecords:[
-            {type:"partialHarvest",cases:5,targetBeds:["2-A"]}
+            {type:"partialHarvest",cases:7,targetBeds:["2-A", "2-C"]}
           ],
           storageSaveCount:2,
           queueBatchCount:2,
-          batchSizes:[2,1],
+          batchSizes:[3,1],
           predictionCount:2,
           plantingCalls:1,
           clearCalls:1
-        }, "通常収穫・部分収穫の同時保存または部分収穫だけの保存が1回にまとまっていません");
+        }, "ベッド別・複数ベッド合算の部分収穫が通常収穫と一度に保存されていません");
       });
 
       await runTest("収穫記録で号棟を追加し配置図を1棟ずつ切り替えられる", () => {

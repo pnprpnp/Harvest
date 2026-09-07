@@ -1919,33 +1919,95 @@ function normalizeRecordPartialHarvestBedKeys(values){
     .map(item => `${item.building}-${item.bed}`);
 }
 
+function normalizeRecordPartialHarvestEntries(values){
+  const usedBedKeys = new Set();
+  const entries = [];
+  (Array.isArray(values) ? values : []).forEach(value => {
+    const source = value && typeof value === "object" ? value : {};
+    const cases = getStrictIntegerInRange(source.cases, 1, RECORD_MAX_CASES);
+    const bedKeys = normalizeRecordPartialHarvestBedKeys(source.bedKeys)
+      .filter(key => !usedBedKeys.has(key));
+    if(cases === null || !bedKeys.length) return;
+    bedKeys.forEach(key => usedBedKeys.add(key));
+    entries.push({ bedKeys, cases:String(cases) });
+  });
+  return entries;
+}
+
 function normalizeRecordPartialHarvestDraft(value){
   const source = value && typeof value === "object" ? value : {};
-  const cases = source.cases === null || source.cases === undefined
+  let bedKeys = normalizeRecordPartialHarvestBedKeys(source.bedKeys);
+  let cases = source.cases === null || source.cases === undefined
     ? ""
     : String(source.cases).trim().slice(0, 12);
+  let entries = normalizeRecordPartialHarvestEntries(source.entries);
+  if(!Array.isArray(source.entries)){
+    const legacyCases = getStrictIntegerInRange(cases, 1, RECORD_MAX_CASES);
+    if(bedKeys.length && legacyCases !== null){
+      entries = [{ bedKeys:[...bedKeys], cases:String(legacyCases) }];
+      bedKeys = [];
+      cases = "";
+    }
+  }
+  const requestedEditingIndex = Number(source.editingEntryIndex);
+  const editingEntryIndex = Number.isInteger(requestedEditingIndex)
+    && requestedEditingIndex >= 0
+    && requestedEditingIndex < entries.length
+      ? requestedEditingIndex
+      : -1;
   return {
-    bedKeys: normalizeRecordPartialHarvestBedKeys(source.bedKeys),
-    cases
+    entries,
+    bedKeys,
+    cases,
+    editingEntryIndex
   };
 }
 
-function getRecordPartialHarvestDraftModel(){
-  recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
-  const cases = getStrictIntegerInRange(recordPartialHarvestDraft.cases, 1, RECORD_MAX_CASES);
-  const hasBeds = recordPartialHarvestDraft.bedKeys.length > 0;
-  const hasCases = String(recordPartialHarvestDraft.cases || "").trim() !== "";
+function getRecordPartialHarvestDraftModel(value){
+  const usesCurrentDraft = arguments.length === 0;
+  const normalized = normalizeRecordPartialHarvestDraft(
+    usesCurrentDraft ? recordPartialHarvestDraft : value
+  );
+  if(usesCurrentDraft) recordPartialHarvestDraft = normalized;
+  const activeCases = getStrictIntegerInRange(normalized.cases, 1, RECORD_MAX_CASES);
+  const hasActiveBeds = normalized.bedKeys.length > 0;
+  const hasActiveCases = String(normalized.cases || "").trim() !== "";
+  const activeIsEmpty = !hasActiveBeds && !hasActiveCases;
+  const activeIsValid = hasActiveBeds && activeCases !== null;
+  const committedEntries = normalized.entries.map(entry => ({
+    bedKeys:[...entry.bedKeys],
+    cases:entry.cases
+  }));
+  const entries = committedEntries.map(entry => ({ ...entry, bedKeys:[...entry.bedKeys] }));
+  if(activeIsValid){
+    const activeEntry = { bedKeys:[...normalized.bedKeys], cases:String(activeCases) };
+    if(normalized.editingEntryIndex >= 0) entries[normalized.editingEntryIndex] = activeEntry;
+    else entries.push(activeEntry);
+  }
+  const allBedKeys = normalizeRecordPartialHarvestBedKeys([
+    ...entries.flatMap(entry => entry.bedKeys),
+    ...normalized.bedKeys
+  ]);
+  const totalCases = entries.reduce((total, entry) => total + Number(entry.cases || 0), 0);
   return {
-    ...recordPartialHarvestDraft,
-    casesValue: cases === null ? 0 : cases,
-    isEmpty: !hasBeds && !hasCases,
-    isValid: hasBeds && cases !== null
+    ...normalized,
+    entries,
+    committedEntries,
+    allBedKeys,
+    activeCasesValue:activeCases === null ? 0 : activeCases,
+    activeIsEmpty,
+    activeIsValid,
+    casesValue:totalCases,
+    entryCount:entries.length,
+    bedCount:allBedKeys.length,
+    isEmpty:committedEntries.length === 0 && activeIsEmpty,
+    isValid:entries.length > 0 && (activeIsEmpty || activeIsValid)
   };
 }
 
 function getRecordPartialHarvestDraftCases(){
   const draft = getRecordPartialHarvestDraftModel();
-  return draft.isValid ? draft.casesValue : 0;
+  return draft.casesValue;
 }
 
 function getRecordRegularHarvestCases(totalCases, dateStr, options = {}){
@@ -1955,9 +2017,12 @@ function getRecordRegularHarvestCases(totalCases, dateStr, options = {}){
   });
 }
 
-function formatRecordPartialHarvestBedLocations(bedKeys = recordPartialHarvestDraft?.bedKeys){
+function formatRecordPartialHarvestBedLocations(bedKeys){
+  const targetBedKeys = arguments.length > 0
+    ? bedKeys
+    : getRecordPartialHarvestDraftModel().allBedKeys;
   const grouped = new Map();
-  normalizeRecordPartialHarvestBedKeys(bedKeys).forEach(key => {
+  normalizeRecordPartialHarvestBedKeys(targetBedKeys).forEach(key => {
     const parsed = parseRecordPartialHarvestBedKey(key);
     if(!parsed) return;
     if(!grouped.has(parsed.building)) grouped.set(parsed.building, []);
@@ -1967,6 +2032,12 @@ function formatRecordPartialHarvestBedLocations(bedKeys = recordPartialHarvestDr
     .sort((left, right) => left[0] - right[0])
     .map(([building, beds]) => `${building}号棟${beds.join("・")}ベッド`)
     .join("、");
+}
+
+function formatRecordPartialHarvestEntry(entry){
+  const normalized = normalizeRecordPartialHarvestEntries([entry])[0];
+  if(!normalized) return "";
+  return `${normalized.cases}ケース / ${formatRecordPartialHarvestBedLocations(normalized.bedKeys)}`;
 }
 
 function renderRecordPartialHarvestControl(){
@@ -1984,16 +2055,18 @@ function renderRecordPartialHarvestControl(){
     button.setAttribute(
       "aria-label",
       recordPartialHarvestSelectionMode
-        ? "部分収穫場所をベッド単位で選択中"
+        ? (draft.activeIsEmpty
+            ? `部分収穫場所を選択中。${draft.entryCount}件追加済み`
+            : `部分収穫 ${draft.bedKeys.length}ベッドのケース数を入力中`)
         : (draft.isValid
-            ? `部分収穫 ${draft.bedKeys.length}ベッド、${draft.casesValue}ケース。変更する`
+            ? `部分収穫 ${draft.entryCount}件、${draft.bedCount}ベッド、合計${draft.casesValue}ケース。追加または変更する`
             : "部分収穫を追加")
     );
   }
   if(value){
     value.textContent = recordPartialHarvestSelectionMode
-      ? `${draft.bedKeys.length}ベッド選択中`
-      : (draft.isValid ? `${draft.bedKeys.length}ベッド・${draft.casesValue}ケース` : "追加");
+      ? (draft.activeIsEmpty ? `${draft.entryCount}件追加済み` : `${draft.bedKeys.length}ベッド選択中`)
+      : (draft.isValid ? `${draft.entryCount}件・${draft.casesValue}ケース` : "追加");
   }
   if(saveCard) saveCard.classList.toggle("recordPartialHarvestSelectionMode", recordPartialHarvestSelectionMode);
   if(hint){
@@ -2003,7 +2076,13 @@ function renderRecordPartialHarvestControl(){
   }
   if(notice && recordSelectionMode === "harvest" && recordHarvestStage === "location"){
     notice.textContent = recordPartialHarvestSelectionMode
-      ? "部分収穫したベッドを選択して下さい"
+      ? (draft.activeIsValid
+          ? "別のベッドを選ぶと、現在の内容を追加して次の入力へ進みます"
+          : draft.bedKeys.length > 1
+          ? `選択した${draft.bedKeys.length}ベッド合計のケース数を入力して下さい`
+          : (draft.bedKeys.length === 1
+              ? "選択したベッドのケース数を入力して下さい"
+              : "部分収穫したベッドを選択して下さい"))
       : "実際に収穫した場所を選択して下さい";
   }
 }
@@ -2027,7 +2106,7 @@ function startRecordPartialHarvestSelection(){
   recordPartialHarvestSelectionMode = true;
   recordHarvestStage = "location";
   recordHarvestPrimaryInputsExpanded = false;
-  const draftBuildings = recordPartialHarvestDraft.bedKeys
+  const draftBuildings = getRecordPartialHarvestDraftModel().allBedKeys
     .map(key => parseRecordPartialHarvestBedKey(key)?.building)
     .filter(building => BUILDINGS.includes(building));
   const displayedBuildings = getRecordMapBuildings();
@@ -2049,15 +2128,72 @@ function startRecordPartialHarvestSelection(){
   scheduleHarvestStateSave();
 }
 
+function commitRecordPartialHarvestActiveEntry(draft, nextBedKeys = []){
+  if(!draft?.activeIsValid) return false;
+  const previousPartialCases = draft.committedEntries.reduce((total, entry) => (
+    total + Number(entry.cases || 0)
+  ), 0);
+  recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft({
+    entries:draft.entries,
+    bedKeys:nextBedKeys,
+    cases:"",
+    editingEntryIndex:-1
+  });
+  const fixedCasesInput = document.getElementById("recordPartialHarvestCasesInput");
+  if(fixedCasesInput) fixedCasesInput.value = "";
+  const nextPartialCases = getRecordPartialHarvestDraftCases();
+  const totalInput = document.getElementById("recordCasesInput");
+  const totalText = String(totalInput?.value || "").trim();
+  if(totalInput && !harvestFillKeys.length && (!totalText || Number(totalText) <= previousPartialCases)){
+    totalInput.value = String(nextPartialCases);
+    recordCasesEdited = true;
+  }
+  return true;
+}
+
 function toggleRecordPartialHarvestBed(building, bed){
   if(!recordPartialHarvestSelectionMode) return;
   const key = getRecordPartialHarvestBedKey(building, bed);
   if(!key) return;
-  const selected = new Set(recordPartialHarvestDraft.bedKeys || []);
-  if(selected.has(key)) selected.delete(key);
-  else selected.add(key);
+  const normalizedDraft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
+  const selected = new Set(normalizedDraft.bedKeys || []);
+  if(selected.has(key)){
+    selected.delete(key);
+  }else{
+    const assignedEntryIndex = normalizedDraft.entries.findIndex((entry, index) => (
+      index !== normalizedDraft.editingEntryIndex && entry.bedKeys.includes(key)
+    ));
+    if(assignedEntryIndex >= 0){
+      if(selected.size || normalizedDraft.cases || normalizedDraft.editingEntryIndex >= 0){
+        showToast("このベッドは別の部分収穫として追加済みです");
+        return;
+      }
+      const assignedEntry = normalizedDraft.entries[assignedEntryIndex];
+      recordPartialHarvestDraft = {
+        ...normalizedDraft,
+        bedKeys:[...assignedEntry.bedKeys],
+        cases:assignedEntry.cases,
+        editingEntryIndex:assignedEntryIndex
+      };
+      const fixedCasesInput = document.getElementById("recordPartialHarvestCasesInput");
+      if(fixedCasesInput) fixedCasesInput.value = assignedEntry.cases;
+      drawRecordBeds();
+      updateRecordActualLoss();
+      scheduleHarvestStateSave();
+      return;
+    }
+    const draftModel = getRecordPartialHarvestDraftModel(normalizedDraft);
+    if(draftModel.activeIsValid){
+      commitRecordPartialHarvestActiveEntry(draftModel, [key]);
+      drawRecordBeds();
+      updateRecordActualLoss();
+      scheduleHarvestStateSave();
+      return;
+    }
+    selected.add(key);
+  }
   recordPartialHarvestDraft = {
-    ...normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+    ...normalizedDraft,
     bedKeys:normalizeRecordPartialHarvestBedKeys([...selected])
   };
   drawRecordBeds();
@@ -2083,6 +2219,14 @@ function finishRecordPartialHarvestSelection(options = {}){
     recordAdditionalBuildings = [...snapshot.additionalBuildings];
     recordHarvestActiveBuilding = snapshot.activeBuilding;
     recordHarvestVisitedBuildings = [...snapshot.visitedBuildings];
+  }else if(options.cancel){
+    const draft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
+    recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft({
+      entries:draft.entries,
+      bedKeys:[],
+      cases:"",
+      editingEntryIndex:-1
+    });
   }
   recordPartialHarvestSelectionMode = false;
   recordHarvestStage = snapshot?.returnStage === "confirm" ? "confirm" : "location";
@@ -2102,17 +2246,12 @@ function completeRecordPartialHarvestSelection(){
     showToast("部分収穫したベッドを選択してください");
     return;
   }
-  if(!draft.isValid){
+  if(!draft.activeIsValid){
     showToast("部分収穫のケース数を1以上の整数で入力してください");
     document.getElementById("recordPartialHarvestCasesInput")?.focus();
     return;
   }
-  const totalInput = document.getElementById("recordCasesInput");
-  const totalText = String(totalInput?.value || "").trim();
-  if(totalInput && !harvestFillKeys.length && (!totalText || Number(totalText) <= 0)){
-    totalInput.value = String(draft.casesValue);
-    recordCasesEdited = true;
-  }
+  commitRecordPartialHarvestActiveEntry(draft);
   finishRecordPartialHarvestSelection();
 }
 
@@ -2122,7 +2261,7 @@ function cancelRecordPartialHarvestSelection(){
 
 function resetRecordPartialHarvestDraft(){
   recordPartialHarvestSelectionMode = false;
-  recordPartialHarvestDraft = { bedKeys:[], cases:"" };
+  recordPartialHarvestDraft = { entries:[], bedKeys:[], cases:"", editingEntryIndex:-1 };
   recordPartialHarvestDraftSnapshot = null;
   renderRecordPartialHarvestControl();
 }
@@ -2191,7 +2330,7 @@ function renderRecordHarvestConfirmation(){
     appendRecordHarvestConfirmItem(
       container,
       "部分収穫",
-      `${partialDraft.casesValue}ケース / ${formatRecordPartialHarvestBedLocations(partialDraft.bedKeys)}`,
+      partialDraft.entries.map(formatRecordPartialHarvestEntry).filter(Boolean).join("、"),
       "partial"
     );
   }
@@ -2211,6 +2350,7 @@ function renderRecordHarvestFixedNavigation(){
   const summaryDate = document.getElementById("recordHarvestSummaryDate");
   const summaryCases = document.getElementById("recordHarvestSummaryCases");
   const partialEditor = document.getElementById("recordPartialHarvestFixedEditor");
+  const partialEditorLabel = partialEditor?.querySelector("span:first-child");
   const partialCasesInput = document.getElementById("recordPartialHarvestCasesInput");
   const nextButton = document.getElementById("recordHarvestNextBtn");
   const isVisible = recordSelectionMode === "harvest" && recordViewMode === "entry";
@@ -2221,15 +2361,33 @@ function renderRecordHarvestFixedNavigation(){
     const draft = getRecordPartialHarvestDraftModel();
     if(summaryButton) summaryButton.hidden = true;
     if(partialEditor) partialEditor.hidden = false;
-    if(partialCasesInput && document.activeElement !== partialCasesInput){
-      partialCasesInput.value = draft.cases;
+    if(partialEditorLabel){
+      if(draft.bedKeys.length === 1){
+        const target = parseRecordPartialHarvestBedKey(draft.bedKeys[0]);
+        partialEditorLabel.textContent = target ? `${target.building}号棟${target.bed}` : "部分収穫";
+      }else{
+        partialEditorLabel.textContent = draft.bedKeys.length > 1
+          ? `${draft.bedKeys.length}ベッド合計`
+          : "部分収穫";
+      }
+    }
+    if(partialCasesInput){
+      if(document.activeElement !== partialCasesInput) partialCasesInput.value = draft.cases;
+      partialCasesInput.setAttribute(
+        "aria-label",
+        draft.bedKeys.length > 1
+          ? `選択した${draft.bedKeys.length}ベッド合計の部分収穫ケース数`
+          : (draft.bedKeys.length === 1
+              ? `${formatRecordPartialHarvestBedLocations(draft.bedKeys)}の部分収穫ケース数`
+              : "部分収穫のケース数")
+      );
     }
     backButton.textContent = "キャンセル";
     nextButton.textContent = "決定";
-    nextButton.disabled = !draft.isValid;
+    nextButton.disabled = !draft.activeIsValid;
     nextButton.title = !draft.bedKeys.length
       ? "部分収穫したベッドを選択してください"
-      : (!draft.isValid ? "部分収穫のケース数を入力してください" : "");
+      : (!draft.activeIsValid ? "部分収穫のケース数を入力してください" : "");
     return;
   }
   if(summaryButton) summaryButton.hidden = false;

@@ -310,7 +310,7 @@ let recordHarvestPrimaryInputsExpanded = false;
 let recordHarvestActiveBuilding = null;
 let recordHarvestVisitedBuildings = [];
 let recordPartialHarvestSelectionMode = false;
-let recordPartialHarvestDraft = { bedKeys: [], cases: "" };
+let recordPartialHarvestDraft = { entries: [], bedKeys: [], cases: "", editingEntryIndex: -1 };
 let recordPartialHarvestDraftSnapshot = null;
 let recordViewMode = "entry";
 let recordPlantingCountPreset = 20;
@@ -590,7 +590,7 @@ function reloadRoleScopedRecordData(){
   plantingRecordDraft = null;
   recordSelectionMode = "harvest";
   recordPartialHarvestSelectionMode = false;
-  recordPartialHarvestDraft = { bedKeys:[], cases:"" };
+  recordPartialHarvestDraft = { entries:[], bedKeys:[], cases:"", editingEntryIndex:-1 };
   recordPartialHarvestDraftSnapshot = null;
   invalidateRecordDerivedCaches({ harvestRecords: true });
   syncHarvestPlantingPendingFlags();

@@ -82,11 +82,13 @@ function getRecordPartialHarvestRemainingCaseEstimate(bedKeys, cases, date, sour
 }
 
 function buildRecordTabPartialHarvestRecord(draft, options = {}){
-  const normalizedDraft = normalizeRecordPartialHarvestDraft(draft);
-  const cases = getStrictIntegerInRange(normalizedDraft.cases, 1, RECORD_MAX_CASES);
+  const draftModel = getRecordPartialHarvestDraftModel(draft);
+  if(draftModel.entries.length !== 1) return null;
+  const entry = draftModel.entries[0];
+  const cases = getStrictIntegerInRange(entry.cases, 1, RECORD_MAX_CASES);
   const date = String(options.date || "").trim();
   const id = getSafePositiveRecordId(options.id);
-  const targets = buildPartialHarvestTargetsForRecordBeds(normalizedDraft.bedKeys, cases);
+  const targets = buildPartialHarvestTargetsForRecordBeds(entry.bedKeys, cases);
   if(!date || id === null || cases === null || !targets.length) return null;
   const record = {
     ...getCurrentRecordSyncMetadata(),
@@ -99,7 +101,7 @@ function buildRecordTabPartialHarvestRecord(draft, options = {}){
     targets,
     palletKeys:[],
     remainingCaseEstimate:getRecordPartialHarvestRemainingCaseEstimate(
-      normalizedDraft.bedKeys,
+      entry.bedKeys,
       cases,
       date,
       options.sourceRecords || records
@@ -107,6 +109,19 @@ function buildRecordTabPartialHarvestRecord(draft, options = {}){
   };
   record.duplicateKey = getRecordDuplicateKey(record);
   return record;
+}
+
+function buildRecordTabPartialHarvestRecords(draft, options = {}){
+  const draftModel = getRecordPartialHarvestDraftModel(draft);
+  const ids = Array.isArray(options.ids) ? options.ids : [];
+  if(!draftModel.isValid || ids.length !== draftModel.entries.length) return [];
+  return draftModel.entries.map((entry, index) => buildRecordTabPartialHarvestRecord(
+    { entries:[entry], bedKeys:[], cases:"", editingEntryIndex:-1 },
+    {
+      ...options,
+      id:ids[index]
+    }
+  )).filter(Boolean);
 }
 
 function getPartialHarvestRemainingPlantsValue(value){

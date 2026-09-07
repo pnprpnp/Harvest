@@ -659,7 +659,7 @@ function getRecordMapBuildings(allowedSet = null){
   ];
   const partialHarvestBuildings = recordSelectionMode === "planting"
     ? []
-    : normalizeRecordPartialHarvestBedKeys(recordPartialHarvestDraft?.bedKeys)
+    : getRecordPartialHarvestDraftModel().allBedKeys
         .map(key => parseRecordPartialHarvestBedKey(key)?.building)
         .filter(building => BUILDINGS.includes(building));
   const additionalBuildings = recordSelectionMode === "planting"
@@ -721,6 +721,9 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
   const activeIndex = normalizedBuildings.indexOf(activeBuilding);
   const targetSet = new Set(recordPartialHarvestSelectionMode ? [] : getRecordHarvestTargetBuildings());
   const visitedSet = new Set((recordHarvestVisitedBuildings || []).map(Number));
+  const partialBedKeys = recordPartialHarvestSelectionMode
+    ? getRecordPartialHarvestDraftModel().allBedKeys
+    : [];
   const previousButton = document.createElement("button");
   previousButton.type = "button";
   previousButton.className = "recordHarvestBuildingArrow";
@@ -740,7 +743,7 @@ function renderRecordHarvestBuildingPager(buildings = getRecordMapBuildings()){
     button.dataset.uiNumber = String(building);
     button.setAttribute("aria-pressed", String(building === activeBuilding));
     const selectedCount = recordPartialHarvestSelectionMode
-      ? normalizeRecordPartialHarvestBedKeys(recordPartialHarvestDraft?.bedKeys)
+      ? partialBedKeys
           .filter(key => parseRecordPartialHarvestBedKey(key)?.building === building).length
       : (harvestFillKeys || []).filter(key => parsePalletKey(key).building === building).length;
     const title = document.createElement("strong");
@@ -864,20 +867,35 @@ function removeRecordBuildingDisplay(building){
   recordAdditionalBuildings = recordAdditionalBuildings.filter(item => Number(item) !== normalizedBuilding);
   recordHarvestVisitedBuildings = recordHarvestVisitedBuildings.filter(item => Number(item) !== normalizedBuilding);
   if(recordPartialHarvestSelectionMode){
-    const previousBedCount = recordPartialHarvestDraft.bedKeys.length;
-    recordPartialHarvestDraft = {
-      ...normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
-      bedKeys:recordPartialHarvestDraft.bedKeys.filter(key => (
+    const draft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
+    const previousBedKeys = new Set(getRecordPartialHarvestDraftModel(draft).allBedKeys);
+    const entries = [];
+    let editingEntryIndex = -1;
+    draft.entries.forEach((entry, index) => {
+      const bedKeys = entry.bedKeys.filter(key => (
         parseRecordPartialHarvestBedKey(key)?.building !== normalizedBuilding
-      ))
-    };
+      ));
+      if(!bedKeys.length) return;
+      if(index === draft.editingEntryIndex) editingEntryIndex = entries.length;
+      entries.push({ ...entry, bedKeys });
+    });
+    const activeBedKeys = draft.bedKeys.filter(key => (
+      parseRecordPartialHarvestBedKey(key)?.building !== normalizedBuilding
+    ));
+    recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft({
+      entries,
+      bedKeys:activeBedKeys,
+      cases:activeBedKeys.length ? draft.cases : "",
+      editingEntryIndex
+    });
     const remainingBuildings = getRecordMapBuildings();
     if(Number(recordHarvestActiveBuilding) === normalizedBuilding){
       recordHarvestActiveBuilding = remainingBuildings[0] || null;
     }
     drawRecordBeds();
     scheduleHarvestStateSave();
-    const removedBedCount = previousBedCount - recordPartialHarvestDraft.bedKeys.length;
+    const nextBedKeys = new Set(getRecordPartialHarvestDraftModel().allBedKeys);
+    const removedBedCount = [...previousBedKeys].filter(key => !nextBedKeys.has(key)).length;
     if(removedBedCount > 0) showToast(`${normalizedBuilding}号棟の部分収穫 ${removedBedCount}ベッドを解除しました`);
     return;
   }
@@ -926,7 +944,15 @@ function drawRecordBeds(){
   const availabilityState = getRecordTabHarvestAvailabilityState();
   const recordedSet = availabilityState.unavailableSet;
   const selectedSet = new Set(harvestFillKeys || []);
-  const partialBedSet = new Set(normalizeRecordPartialHarvestBedKeys(recordPartialHarvestDraft?.bedKeys));
+  const partialDraftModel = getRecordPartialHarvestDraftModel();
+  const partialBedSet = new Set(partialDraftModel.bedKeys);
+  const partialAssignedEntryByBed = new Map();
+  if(recordPartialHarvestSelectionMode){
+    partialDraftModel.committedEntries.forEach((entry, index) => {
+      if(index === partialDraftModel.editingEntryIndex) return;
+      entry.bedKeys.forEach(key => partialAssignedEntryByBed.set(key, entry));
+    });
+  }
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const allBuildings = getRecordMapBuildings(plantingAllowedSet);
   if(recordSelectionMode !== "planting"){
@@ -993,6 +1019,8 @@ function drawRecordBeds(){
       const bed = document.createElement("div");
       const partialBedKey = getRecordPartialHarvestBedKey(building, b);
       const isPartialBedSelected = recordPartialHarvestSelectionMode && partialBedSet.has(partialBedKey);
+      const assignedPartialEntry = partialAssignedEntryByBed.get(partialBedKey) || null;
+      const isPartialBedAssigned = !!assignedPartialEntry;
       const summaryCounts = getBedSummaryCounts(building, b, { selectedSet, recordedSet });
       let selectableCount = 0;
       if(plantingAllowedSet){
@@ -1009,6 +1037,7 @@ function drawRecordBeds(){
         + collapsedStateClass
         + (recordSelectionMode === "planting" ? " plantingBedMap" : "")
         + (isPartialBedSelected ? " is-record-partial-selected" : "")
+        + (isPartialBedAssigned ? " is-record-partial-assigned" : "")
         + (recordPartialHarvestSelectionMode ? " is-record-partial-selectable" : "");
 
       const title = document.createElement("div");
@@ -1051,7 +1080,15 @@ function drawRecordBeds(){
         ? formatPlantingQualityDistribution(bedSelectedKeys, getRecordPlantingFlowQualityByPallet())
         : "";
       counts.innerHTML = recordPartialHarvestSelectionMode
-        ? `<span class="recordBedOverviewPartialCount">${isPartialBedSelected ? "部分収穫 選択中" : "タップで選択"}</span>`
+        ? `<span class="recordBedOverviewPartialCount${isPartialBedAssigned ? " is-assigned" : ""}">${
+            isPartialBedSelected
+              ? "部分収穫 選択中"
+              : (isPartialBedAssigned
+                  ? (assignedPartialEntry.bedKeys.length > 1
+                      ? `合計 ${assignedPartialEntry.cases}ケース`
+                      : `${assignedPartialEntry.cases}ケース`)
+                  : "タップで選択")
+          }</span>`
         : plantingAllowedSet
         ? ((qualityText || plantingCountText)
             ? `<span class="recordBedOverviewCountBreakdown">${escapeHtml(qualityText || plantingCountText)}</span>`
@@ -1064,7 +1101,11 @@ function drawRecordBeds(){
       bed.setAttribute(
         "aria-label",
         recordPartialHarvestSelectionMode
-          ? `${building}号棟 ${b}ベッド。部分収穫場所として${isPartialBedSelected ? "選択中" : "未選択"}。タップで切り替え`
+          ? (isPartialBedSelected
+              ? `${building}号棟 ${b}ベッド。部分収穫場所として選択中。タップで切り替え`
+              : (isPartialBedAssigned
+                  ? `${building}号棟 ${b}ベッド。${assignedPartialEntry.cases}ケースの部分収穫として追加済み。タップで変更`
+                  : `${building}号棟 ${b}ベッド。部分収穫場所として未選択。タップで選択`))
           : plantingAllowedSet
           ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
           : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット。タップで拡大してパレットを選択`
