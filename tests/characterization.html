@@ -9632,6 +9632,7 @@
               document.getElementById("recordPartialHarvestFixedEditor"),
               document.getElementById("recordHarvestNextBtn")
             ].map(item => item.getBoundingClientRect());
+            const partialFixedEditorStyle = getComputedStyle(document.getElementById("recordPartialHarvestFixedEditor"));
             const duringSelection = {
               selecting:recordPartialHarvestSelectionMode,
               bedKeys:[...recordPartialHarvestDraft.bedKeys],
@@ -9640,10 +9641,13 @@
               summaryHidden:document.getElementById("recordHarvestSummaryBtn").hidden,
               backLabel:document.getElementById("recordHarvestBackBtn").textContent,
               nextLabel:document.getElementById("recordHarvestNextBtn").textContent,
-              fixedControlSizesMatch:partialFixedRects.every((rect, index) => (
-                Math.abs(rect.width - normalFixedRects[index].width) <= 1
-                && Math.abs(rect.height - normalFixedRects[index].height) <= 1
+              fixedControlGeometryMatch:partialFixedRects.every((rect, index) => (
+                ["left", "top", "right", "bottom", "width", "height"].every(property => (
+                  Math.abs(rect[property] - normalFixedRects[index][property]) <= 1
+                ))
               )),
+              fixedEditorFrameRemoved:parseFloat(partialFixedEditorStyle.borderTopWidth) === 0
+                && partialFixedEditorStyle.backgroundColor === "rgba(0, 0, 0, 0)",
               visibleSelectedBeds:document.querySelectorAll("#recordBeds .is-record-partial-selected").length,
               pagerCounts:[...document.querySelectorAll("#recordHarvestBuildingPager .recordHarvestBuildingTab span")]
                 .map(item => item.textContent)
@@ -9719,7 +9723,8 @@
             summaryHidden:true,
             backLabel:"キャンセル",
             nextLabel:"決定",
-            fixedControlSizesMatch:true,
+            fixedControlGeometryMatch:true,
+            fixedEditorFrameRemoved:true,
             visibleSelectedBeds:1,
             pagerCounts:["1ベッド", "1ベッド"]
           },
