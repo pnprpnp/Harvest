@@ -489,9 +489,7 @@ function renderRecordList(){
           ? `<span class="recordDateGroupType is-planting">苗植え ${escapeHtml(plantingMetrics.seedlingTrayText)}</span>`
           : "",
         partialHtml
-          ? `<span class="recordDateGroupType is-partial">${harvestHtml
-              ? `部分 ${group.partial.length}件`
-              : `部分収穫 ${escapeHtml(String(caseTotals.partialCases))}ケース・${group.partial.length}件`}</span>`
+          ? `<span class="recordDateGroupType is-partial">部分 ${escapeHtml(String(caseTotals.partialCases))}ケース</span>`
           : ""
       ].join("");
       const primaryHtml = harvestHtml || plantingHtml
@@ -1863,11 +1861,14 @@ function renderPartialHarvestDaySummaryHtml(items, consistencyAudit){
   }).join("");
 
   return `
-    <div class="recordItem partialHarvestDaySummary${hasSyncConflict ? " hasSyncConflict" : ""}${hasConsistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle partialHarvestDayTitle"><span class="recordTitlePartial">部分収穫まとめ</span><span class="partialHarvestDayCount">${partialItems.length}件</span></div>
-      <div class="recordMeta partialHarvestDayTotal">合計: ${escapeHtml(String(totalCases))}ケース</div>
+    <details class="recordItem partialHarvestDaySummary${hasSyncConflict ? " hasSyncConflict" : ""}${hasConsistencyIssue ? " hasConsistencyIssue" : ""}">
+      <summary class="recordItemOpenButton partialHarvestDaySummaryToggle">
+        <span class="recordItemKind recordTitlePartial">部分収穫</span>
+        <span class="recordItemCompactSummary">${escapeHtml(String(totalCases))}ケース</span>
+        <span class="recordItemChevron" aria-hidden="true">›</span>
+      </summary>
       <div class="partialHarvestDayEntries">${detailHtml}</div>
-    </div>
+    </details>
   `;
 }
 

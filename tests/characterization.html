@@ -9438,6 +9438,9 @@
             });
             const detailActionHost = document.createElement("div");
             detailActionHost.innerHTML = getRecordDetailActionsHtml("harvest", 20000000000070);
+            const partialSummary = group?.querySelector(".partialHarvestDaySummary");
+            const partialInitiallyOpen = !!partialSummary?.open;
+            partialSummary?.querySelector(".partialHarvestDaySummaryToggle")?.click();
             return {
               groupCount:document.querySelectorAll("#recordList .recordDateGroup").length,
               groupElement:group?.tagName || "",
@@ -9455,11 +9458,14 @@
               })(),
               primaryColumns:[...group.querySelectorAll(".recordDateGroupPrimary > .recordDateColumn")]
                 .map(column => [...column.querySelectorAll(".recordItemKind")].map(item => item.textContent.trim())),
-              partialTitles:[...group.querySelectorAll(".recordDatePartialColumn .recordTitle")]
+              partialTitles:[...group.querySelectorAll(".partialHarvestDaySummaryToggle .recordItemKind")]
                 .map(item => item.textContent.trim()),
               partialCardCount:group.querySelectorAll(".recordDatePartialColumn > .recordItem").length,
+              partialSummaryElement:partialSummary?.tagName || "",
+              partialInitiallyOpen,
+              partialOpenAfterTap:!!partialSummary?.open,
               partialEntryCount:group.querySelectorAll(".partialHarvestDayEntry").length,
-              partialTotal:group.querySelector(".partialHarvestDayTotal")?.textContent.trim() || "",
+              partialTotal:group.querySelector(".partialHarvestDaySummaryToggle .recordItemCompactSummary")?.textContent.trim() || "",
               partialEntries:[...group.querySelectorAll(".partialHarvestDayEntryMain")]
                 .map(item => [
                   item.querySelector(".partialHarvestDayLocation")?.textContent.trim() || "",
@@ -9488,15 +9494,18 @@
             groupElement:"DETAILS",
             groupOpen:true,
             heading:"8/23（日）",
-            types:["収穫 22ケース", "苗植え 2枚", "部分 4件"],
+            types:["収穫 22ケース", "苗植え 2枚", "部分 10ケース"],
             primaryKinds:["収穫", "苗植え"],
             primaryDisplay:"grid",
             primaryOneColumn:true,
             primaryColumns:[["収穫"], ["苗植え"]],
-            partialTitles:["部分収穫まとめ4件"],
+            partialTitles:["部分収穫"],
             partialCardCount:1,
+            partialSummaryElement:"DETAILS",
+            partialInitiallyOpen:false,
+            partialOpenAfterTap:true,
             partialEntryCount:4,
-            partialTotal:"合計: 10ケース",
+            partialTotal:"10ケース",
             partialEntries:[
               "2号棟A 2ケース",
               "2号棟B 1ケース",
@@ -11170,6 +11179,7 @@
           const previousRecords = records;
           let normalized = null;
           let labels = [];
+          let actionButtonColors = [];
           try{
             normalized = normalizeStoredRecord({
               palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
@@ -11190,6 +11200,8 @@
               openRecordDetailWindow("harvest", normalized.id);
               labels = [...document.querySelectorAll("#recordDetailWindowBody .recordDetailInfoLabel")]
                 .map(item => item.textContent.trim());
+              actionButtonColors = [...document.querySelectorAll("#recordDetailWindowBody .recordDetailRecordActions .thirdBtn")]
+                .map(button => getComputedStyle(button).color);
             }
           }finally{
             closeRecordDetailWindow({ restoreFocus: false });
@@ -11197,12 +11209,17 @@
             invalidateHarvestRecordEditTimelineCache();
             invalidateRecordHistoryCache();
           }
-          return { normalized: !!normalized, labels };
+          return { normalized: !!normalized, labels, actionButtonColors };
         })()`));
         assertEqual(detailState.normalized, true, "確認用の収穫記録を作成できません");
         assert(!detailState.labels.includes("苗植え"), "収穫の詳細に苗植えが表示されています");
         assert(!detailState.labels.includes("予定苗枚数"), "収穫の詳細に予定苗枚数が表示されています");
         assert(detailState.labels.includes("定植日数の詳細"), "残す定植日数の詳細が消えています");
+        assert(detailState.actionButtonColors.length > 0, "記録詳細の編集ボタンが表示されていません");
+        assert(
+          detailState.actionButtonColors.every(color => color === "rgb(255, 255, 255)"),
+          "記録詳細の緑色ボタンの文字が白に統一されていません"
+        );
       });
 
       await runTest("苗植え詳細の場所を植え付け数で切り替え、苗の品質色で表示する", () => {

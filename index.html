@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260907-partial-mode-history-header">
+<meta name="harvestnavi-version" content="20260907-record-partial-summary">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -11094,24 +11094,11 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .recordTitlePlanting{color:#2563eb;}
 .recordTitlePartial{color:#9a6700;}
 .recordMeta{color:var(--ui-text-secondary);}
-.partialHarvestDayTitle{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-}
-.partialHarvestDayCount{
-  flex:0 0 auto;
-  padding:3px 8px;
-  border-radius:999px;
-  background:#fef3c7;
-  color:#92400e;
-  font-size:11px;
-  font-weight:850;
-}
-.partialHarvestDayTotal{
-  font-size:15px;
-  font-weight:850;
+.partialHarvestDaySummaryToggle{cursor:pointer;list-style:none;}
+.partialHarvestDaySummaryToggle::-webkit-details-marker{display:none;}
+.partialHarvestDaySummaryToggle::marker{content:"";}
+.partialHarvestDaySummary[open] > .partialHarvestDaySummaryToggle .recordItemChevron{
+  transform:rotate(90deg);
 }
 .partialHarvestDayEntries{
   display:grid;
@@ -11189,6 +11176,10 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   box-shadow:none;
   font-size:12px;
   font-weight:850;
+}
+.recordDetailRecordActions button.thirdBtn{
+  color:#fff;
+  -webkit-text-fill-color:#fff;
 }
 .recordDetailRecordActions .recordListDeleteBtn{background:#dc2626;color:#fff;}
 .recordDetailLocationCountTabs{
@@ -12246,10 +12237,6 @@ html[data-theme="dark"] .recordTitlePartial,
 html[data-theme="dark"] .partialHarvestDayCases{
   color:#fbbf24;
 }
-html[data-theme="dark"] .partialHarvestDayCount{
-  background:#4a3512;
-  color:#fcd34d;
-}
 
 html[data-theme="dark"] .bed.bedCollapsed.simulationBedOverview{
   border-color:var(--ui-line);
@@ -12786,6 +12773,10 @@ html[data-theme="dark"] .forecastActionRow button.casePlacementCalculateBtn:disa
 html[data-theme="dark"] button.actionBtn:active,
 html[data-theme="dark"] button.thirdBtn:active{
   box-shadow:none;
+}
+html[data-theme="dark"] .recordDetailRecordActions button.thirdBtn{
+  color:#fff;
+  -webkit-text-fill-color:#fff;
 }
 html[data-theme="dark"] .forecastSettingsOpenBtn{
   border-color:var(--ui-line-strong);
@@ -42410,9 +42401,7 @@ function renderRecordList(){
           ? `<span class="recordDateGroupType is-planting">苗植え ${escapeHtml(plantingMetrics.seedlingTrayText)}</span>`
           : "",
         partialHtml
-          ? `<span class="recordDateGroupType is-partial">${harvestHtml
-              ? `部分 ${group.partial.length}件`
-              : `部分収穫 ${escapeHtml(String(caseTotals.partialCases))}ケース・${group.partial.length}件`}</span>`
+          ? `<span class="recordDateGroupType is-partial">部分 ${escapeHtml(String(caseTotals.partialCases))}ケース</span>`
           : ""
       ].join("");
       const primaryHtml = harvestHtml || plantingHtml
@@ -43784,11 +43773,14 @@ function renderPartialHarvestDaySummaryHtml(items, consistencyAudit){
   }).join("");
 
   return `
-    <div class="recordItem partialHarvestDaySummary${hasSyncConflict ? " hasSyncConflict" : ""}${hasConsistencyIssue ? " hasConsistencyIssue" : ""}">
-      <div class="recordTitle partialHarvestDayTitle"><span class="recordTitlePartial">部分収穫まとめ</span><span class="partialHarvestDayCount">${partialItems.length}件</span></div>
-      <div class="recordMeta partialHarvestDayTotal">合計: ${escapeHtml(String(totalCases))}ケース</div>
+    <details class="recordItem partialHarvestDaySummary${hasSyncConflict ? " hasSyncConflict" : ""}${hasConsistencyIssue ? " hasConsistencyIssue" : ""}">
+      <summary class="recordItemOpenButton partialHarvestDaySummaryToggle">
+        <span class="recordItemKind recordTitlePartial">部分収穫</span>
+        <span class="recordItemCompactSummary">${escapeHtml(String(totalCases))}ケース</span>
+        <span class="recordItemChevron" aria-hidden="true">›</span>
+      </summary>
       <div class="partialHarvestDayEntries">${detailHtml}</div>
-    </div>
+    </details>
   `;
 }
 
