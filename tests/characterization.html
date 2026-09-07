@@ -8961,9 +8961,20 @@
               casesPanelVisible:!document.getElementById("recordHarvestStageSection").hidden,
               dateInputVisible:!document.getElementById("recordDateInputSection").hidden,
               casesInputVisible:!document.getElementById("recordHarvestCasesInputSection").hidden,
-              locationVisible:!document.getElementById("recordHarvestLocationSection").hidden,
+              locationHidden:document.getElementById("recordHarvestLocationSection").hidden,
               qualityHidden:document.getElementById("recordQualityMemoSection").hidden,
+              confirmHidden:document.getElementById("recordHarvestConfirmSection").hidden,
+              summaryExpanded:document.getElementById("recordHarvestSummaryBtn").getAttribute("aria-pressed"),
               quickEditModalExists:!!document.getElementById("recordHarvestQuickEditModal")
+            };
+            document.getElementById("recordHarvestSummaryBtn").click();
+            const fixedSummaryRestored = {
+              stage:recordHarvestStage,
+              casesPanelHidden:document.getElementById("recordHarvestStageSection").hidden,
+              dateInputHidden:document.getElementById("recordDateInputSection").hidden,
+              locationHidden:document.getElementById("recordHarvestLocationSection").hidden,
+              qualityVisible:!document.getElementById("recordQualityMemoSection").hidden,
+              summaryExpanded:document.getElementById("recordHarvestSummaryBtn").getAttribute("aria-pressed")
             };
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
@@ -9017,7 +9028,7 @@
               restoredMemo:document.getElementById("recordMemoInput").value,
               toggleLabel:document.getElementById("recordHistoryToggleLabel").textContent
             };
-            return { fixedBarDimensions, locationStartState, fixedSummaryBefore, fixedSummaryAfter, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, entryState };
+            return { fixedBarDimensions, locationStartState, fixedSummaryBefore, fixedSummaryAfter, fixedSummaryRestored, pastDateNotice, locationBefore, locationAfter, qualityState, confirmState, historyState, entryState };
           }finally{
             recordTab.style.display = previous.display;
             activeAppTab = previous.activeTab;
@@ -9067,7 +9078,8 @@
             nextLabel:"次へ"
           },
           fixedSummaryBefore:{stage:"quality",casesHidden:true,qualityVisible:true},
-          fixedSummaryAfter:{stage:"location",casesPanelVisible:true,dateInputVisible:true,casesInputVisible:true,locationVisible:true,qualityHidden:true,quickEditModalExists:false},
+          fixedSummaryAfter:{stage:"location",casesPanelVisible:true,dateInputVisible:true,casesInputVisible:true,locationHidden:true,qualityHidden:true,confirmHidden:true,summaryExpanded:"true",quickEditModalExists:false},
+          fixedSummaryRestored:{stage:"quality",casesPanelHidden:true,dateInputHidden:true,locationHidden:true,qualityVisible:true,summaryExpanded:"false"},
           pastDateNotice:{visible:true,text:"過去の日付を記録中"},
           locationBefore:{
             headings:[],
@@ -9565,19 +9577,34 @@
             document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
             refreshRecordModeUi();
             drawRecordBeds();
+            const normalFixedRects = [
+              document.getElementById("recordHarvestBackBtn"),
+              document.getElementById("recordHarvestSummaryBtn"),
+              document.getElementById("recordHarvestNextBtn")
+            ].map(item => item.getBoundingClientRect());
 
             startRecordPartialHarvestSelection();
             handleRecordBuildingBedClick(2, "F");
             addRecordBuildingDisplay(3);
             handleRecordBuildingBedClick(3, "C");
             handleRecordPartialHarvestCasesInput("3");
+            const partialFixedRects = [
+              document.getElementById("recordHarvestBackBtn"),
+              document.getElementById("recordPartialHarvestFixedEditor"),
+              document.getElementById("recordHarvestNextBtn")
+            ].map(item => item.getBoundingClientRect());
             const duringSelection = {
               selecting:recordPartialHarvestSelectionMode,
               bedKeys:[...recordPartialHarvestDraft.bedKeys],
               normalKeys:[...harvestFillKeys],
               fixedEditorVisible:!document.getElementById("recordPartialHarvestFixedEditor").hidden,
               summaryHidden:document.getElementById("recordHarvestSummaryBtn").hidden,
+              backLabel:document.getElementById("recordHarvestBackBtn").textContent,
               nextLabel:document.getElementById("recordHarvestNextBtn").textContent,
+              fixedControlSizesMatch:partialFixedRects.every((rect, index) => (
+                Math.abs(rect.width - normalFixedRects[index].width) <= 1
+                && Math.abs(rect.height - normalFixedRects[index].height) <= 1
+              )),
               visibleSelectedBeds:document.querySelectorAll("#recordBeds .is-record-partial-selected").length,
               pagerCounts:[...document.querySelectorAll("#recordHarvestBuildingPager .recordHarvestBuildingTab span")]
                 .map(item => item.textContent)
@@ -9651,7 +9678,9 @@
             normalKeys:["2-A-1"],
             fixedEditorVisible:true,
             summaryHidden:true,
-            nextLabel:"完了",
+            backLabel:"キャンセル",
+            nextLabel:"決定",
+            fixedControlSizesMatch:true,
             visibleSelectedBeds:1,
             pagerCounts:["1ベッド", "1ベッド"]
           },

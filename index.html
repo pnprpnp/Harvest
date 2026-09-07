@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260907-record-bed-partial-harvest">
+<meta name="harvestnavi-version" content="20260907-record-input-toggle">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10480,7 +10480,9 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   text-align:center;
   white-space:nowrap;
 }
+.recordHarvestSummaryBtn[hidden]{display:none;}
 .recordHarvestSummaryBtn::after{content:"›";position:absolute;right:7px;top:50%;color:var(--ui-text-tertiary);font-size:18px;transform:translateY(-50%);}
+.recordHarvestSummaryBtn.is-expanded::after{content:"‹";}
 .recordHarvestSummaryDate{min-width:0;overflow:hidden;color:var(--ui-text-secondary);font-size:13px;font-weight:750;line-height:1;text-overflow:ellipsis;}
 .recordHarvestSummaryCases{flex:none;color:var(--ui-accent-dark);font-size:13px;font-weight:880;line-height:1;}
 .recordHarvestSummaryBtn.is-past-date .recordHarvestSummaryDate{color:#c2410c;}
@@ -35526,7 +35528,7 @@ function renderRecordHarvestFixedNavigation(){
       partialCasesInput.value = draft.cases;
     }
     backButton.textContent = "キャンセル";
-    nextButton.textContent = "完了";
+    nextButton.textContent = "決定";
     nextButton.disabled = !draft.isValid;
     nextButton.title = !draft.bedKeys.length
       ? "部分収穫したベッドを選択してください"
@@ -35547,7 +35549,14 @@ function renderRecordHarvestFixedNavigation(){
   if(summaryButton){
     const todayValue = formatDateOnlyString(new Date());
     summaryButton.classList.toggle("is-past-date", !!dateValue && dateValue < todayValue);
-    summaryButton.setAttribute("aria-label", `日付と実際の収穫ケース数を確認。${formattedDate}、${formattedCases}`);
+    summaryButton.classList.toggle("is-expanded", recordHarvestPrimaryInputsExpanded);
+    summaryButton.setAttribute("aria-pressed", String(recordHarvestPrimaryInputsExpanded));
+    summaryButton.setAttribute(
+      "aria-label",
+      recordHarvestPrimaryInputsExpanded
+        ? `日付と実際の収穫ケース数の入力を閉じる。${formattedDate}、${formattedCases}`
+        : `日付と実際の収穫ケース数を確認。${formattedDate}、${formattedCases}`
+    );
   }
   backButton.textContent = stage === "location"
     ? (isEditing ? "確認へ戻る" : "クリア")
@@ -35608,8 +35617,8 @@ function renderRecordHarvestWorkflowUi(){
   if(dateInputSection) dateInputSection.hidden = isHarvestMode && !showHarvestPrimaryInputs;
   if(casesSection) casesSection.hidden = !showHarvestPrimaryInputs;
   if(casesInputSection) casesInputSection.hidden = !showHarvestPrimaryInputs;
-  if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
-  if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location";
+  if(locationSection) locationSection.hidden = isHarvestMode && (stage !== "location" || showHarvestPrimaryInputs);
+  if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location" || showHarvestPrimaryInputs;
   if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
@@ -35624,6 +35633,9 @@ function openRecordHarvestStage(stage, options = {}){
   if(recordSelectionMode !== "harvest") return;
   const normalizedStage = normalizeRecordHarvestStage(stage);
   recordHarvestPrimaryInputsExpanded = options.showPrimaryInputs === true;
+  if(!recordHarvestPrimaryInputsExpanded){
+    document.getElementById("recordHarvestSummaryBtn")?.removeAttribute("data-return-stage");
+  }
   recordHarvestStage = normalizedStage;
   if(normalizedStage === "location"){
     drawRecordBeds();
@@ -35636,7 +35648,26 @@ function openRecordHarvestStage(stage, options = {}){
 
 function openRecordHarvestPrimaryInputs(){
   if(recordSelectionMode !== "harvest") return;
-  openRecordHarvestStage("location", { showPrimaryInputs:true });
+  const summaryButton = document.getElementById("recordHarvestSummaryBtn");
+  if(recordHarvestPrimaryInputsExpanded){
+    const returnStage = normalizeRecordHarvestStage(summaryButton?.dataset.returnStage || "location");
+    recordHarvestPrimaryInputsExpanded = false;
+    recordHarvestStage = returnStage;
+    summaryButton?.removeAttribute("data-return-stage");
+    if(returnStage === "location") drawRecordBeds();
+    renderRecordHarvestWorkflowUi();
+    scheduleHarvestStateSave();
+    document.getElementById(returnStage === "location" ? "recordHarvestLocationSection" : "recordSaveCard")
+      ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+    return;
+  }
+  if(summaryButton) summaryButton.dataset.returnStage = normalizeRecordHarvestStage(recordHarvestStage);
+  recordHarvestPrimaryInputsExpanded = true;
+  recordHarvestStage = "location";
+  renderRecordHarvestWorkflowUi();
+  scheduleHarvestStateSave();
+  document.getElementById("recordSaveCard")
+    ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
 }
 
 function validateRecordHarvestCasesStep(){

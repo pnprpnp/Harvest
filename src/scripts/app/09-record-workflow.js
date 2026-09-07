@@ -2225,7 +2225,7 @@ function renderRecordHarvestFixedNavigation(){
       partialCasesInput.value = draft.cases;
     }
     backButton.textContent = "キャンセル";
-    nextButton.textContent = "完了";
+    nextButton.textContent = "決定";
     nextButton.disabled = !draft.isValid;
     nextButton.title = !draft.bedKeys.length
       ? "部分収穫したベッドを選択してください"
@@ -2246,7 +2246,14 @@ function renderRecordHarvestFixedNavigation(){
   if(summaryButton){
     const todayValue = formatDateOnlyString(new Date());
     summaryButton.classList.toggle("is-past-date", !!dateValue && dateValue < todayValue);
-    summaryButton.setAttribute("aria-label", `日付と実際の収穫ケース数を確認。${formattedDate}、${formattedCases}`);
+    summaryButton.classList.toggle("is-expanded", recordHarvestPrimaryInputsExpanded);
+    summaryButton.setAttribute("aria-pressed", String(recordHarvestPrimaryInputsExpanded));
+    summaryButton.setAttribute(
+      "aria-label",
+      recordHarvestPrimaryInputsExpanded
+        ? `日付と実際の収穫ケース数の入力を閉じる。${formattedDate}、${formattedCases}`
+        : `日付と実際の収穫ケース数を確認。${formattedDate}、${formattedCases}`
+    );
   }
   backButton.textContent = stage === "location"
     ? (isEditing ? "確認へ戻る" : "クリア")
@@ -2307,8 +2314,8 @@ function renderRecordHarvestWorkflowUi(){
   if(dateInputSection) dateInputSection.hidden = isHarvestMode && !showHarvestPrimaryInputs;
   if(casesSection) casesSection.hidden = !showHarvestPrimaryInputs;
   if(casesInputSection) casesInputSection.hidden = !showHarvestPrimaryInputs;
-  if(locationSection) locationSection.hidden = isHarvestMode && stage !== "location";
-  if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location";
+  if(locationSection) locationSection.hidden = isHarvestMode && (stage !== "location" || showHarvestPrimaryInputs);
+  if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location" || showHarvestPrimaryInputs;
   if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
@@ -2323,6 +2330,9 @@ function openRecordHarvestStage(stage, options = {}){
   if(recordSelectionMode !== "harvest") return;
   const normalizedStage = normalizeRecordHarvestStage(stage);
   recordHarvestPrimaryInputsExpanded = options.showPrimaryInputs === true;
+  if(!recordHarvestPrimaryInputsExpanded){
+    document.getElementById("recordHarvestSummaryBtn")?.removeAttribute("data-return-stage");
+  }
   recordHarvestStage = normalizedStage;
   if(normalizedStage === "location"){
     drawRecordBeds();
@@ -2335,7 +2345,26 @@ function openRecordHarvestStage(stage, options = {}){
 
 function openRecordHarvestPrimaryInputs(){
   if(recordSelectionMode !== "harvest") return;
-  openRecordHarvestStage("location", { showPrimaryInputs:true });
+  const summaryButton = document.getElementById("recordHarvestSummaryBtn");
+  if(recordHarvestPrimaryInputsExpanded){
+    const returnStage = normalizeRecordHarvestStage(summaryButton?.dataset.returnStage || "location");
+    recordHarvestPrimaryInputsExpanded = false;
+    recordHarvestStage = returnStage;
+    summaryButton?.removeAttribute("data-return-stage");
+    if(returnStage === "location") drawRecordBeds();
+    renderRecordHarvestWorkflowUi();
+    scheduleHarvestStateSave();
+    document.getElementById(returnStage === "location" ? "recordHarvestLocationSection" : "recordSaveCard")
+      ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+    return;
+  }
+  if(summaryButton) summaryButton.dataset.returnStage = normalizeRecordHarvestStage(recordHarvestStage);
+  recordHarvestPrimaryInputsExpanded = true;
+  recordHarvestStage = "location";
+  renderRecordHarvestWorkflowUi();
+  scheduleHarvestStateSave();
+  document.getElementById("recordSaveCard")
+    ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
 }
 
 function validateRecordHarvestCasesStep(){
