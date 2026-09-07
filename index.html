@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260907-record-partial-groups">
+<meta name="harvestnavi-version" content="20260907-partial-mode-history-header">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3862,13 +3862,8 @@ button.monitorSaveBtn:active{
   gap:8px;
 }
 .googleSheetResendHelpWrap{
-  display:grid;
-  grid-template-columns:minmax(0, 1fr) auto;
-  gap:8px;
-  align-items:start;
-}
-.googleSheetResendHelpWrap .actionBtn{
-  margin-top:0;
+  display:flex;
+  justify-content:flex-end;
 }
 .syncConflictBtn{
   margin-top:0;
@@ -10545,6 +10540,15 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .recordBedOverviewPartialCount.is-assigned{color:#92400e;}
 .recordHistoryHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .recordHistoryHeader .sectionTitle{margin-bottom:0;}
+.recordHistoryHeader #googleSheetResendBtn{
+  width:auto;
+  min-height:40px;
+  margin:0 0 0 auto;
+  padding:8px 12px;
+  border-radius:11px;
+  font-size:12px;
+  white-space:nowrap;
+}
 .recordTopStatusRow{
   position:sticky;
   top:var(--app-top-chrome-height);
@@ -14300,6 +14304,7 @@ requestAnimationFrame(function(){
     <div id="recordHistoryCard" class="card" hidden>
       <div class="recordHistoryHeader">
         <div class="sectionTitle">記録一覧</div>
+        <button id="googleSheetResendBtn" class="actionBtn secondaryBtn" type="button" data-ui-click="sendPendingRecordsToGoogleSheet">未送信の記録（0）</button>
       </div>
       <div id="syncConflictAlert" class="syncConflictAlert" role="status" aria-live="polite" hidden>
         <div class="syncConflictAlertCopy">
@@ -14318,7 +14323,6 @@ requestAnimationFrame(function(){
       <div id="recordList" class="smallText">まだ記録がありません。</div>
       <div class="externalSaveTools">
         <div class="googleSheetResendHelpWrap">
-          <button id="googleSheetResendBtn" class="actionBtn secondaryBtn" data-ui-click="sendPendingRecordsToGoogleSheet">未送信の記録（0）</button>
           <details id="recordTrashDetails" class="recordToggleWrap recordTrashDetailsInline">
             <summary id="recordTrashSummary" class="recordTrashIconBtn" aria-label="削除済みの記録">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -35573,7 +35577,10 @@ function completeRecordPartialHarvestSelection(){
     return;
   }
   commitRecordPartialHarvestActiveEntry(draft);
-  finishRecordPartialHarvestSelection();
+  renderRecordHarvestWorkflowUi();
+  drawRecordBeds();
+  updateRecordActualLoss();
+  scheduleHarvestStateSave();
 }
 
 function cancelRecordPartialHarvestSelection(){
@@ -35703,7 +35710,7 @@ function renderRecordHarvestFixedNavigation(){
               : "部分収穫のケース数")
       );
     }
-    backButton.textContent = "キャンセル";
+    backButton.textContent = draft.committedEntries.length ? "完了" : "キャンセル";
     nextButton.textContent = "決定";
     nextButton.disabled = !draft.activeIsValid;
     nextButton.title = !draft.bedKeys.length
@@ -35929,7 +35936,18 @@ function handleRecordHarvestNext(){
 
 function handleRecordHarvestBack(){
   if(recordPartialHarvestSelectionMode){
-    cancelRecordPartialHarvestSelection();
+    const draft = getRecordPartialHarvestDraftModel();
+    if(draft.committedEntries.length){
+      recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft({
+        entries:draft.committedEntries,
+        bedKeys:[],
+        cases:"",
+        editingEntryIndex:-1
+      });
+      finishRecordPartialHarvestSelection();
+    }else{
+      cancelRecordPartialHarvestSelection();
+    }
     return;
   }
   const stage = normalizeRecordHarvestStage(recordHarvestStage);

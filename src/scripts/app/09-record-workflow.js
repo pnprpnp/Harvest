@@ -2252,7 +2252,10 @@ function completeRecordPartialHarvestSelection(){
     return;
   }
   commitRecordPartialHarvestActiveEntry(draft);
-  finishRecordPartialHarvestSelection();
+  renderRecordHarvestWorkflowUi();
+  drawRecordBeds();
+  updateRecordActualLoss();
+  scheduleHarvestStateSave();
 }
 
 function cancelRecordPartialHarvestSelection(){
@@ -2382,7 +2385,7 @@ function renderRecordHarvestFixedNavigation(){
               : "部分収穫のケース数")
       );
     }
-    backButton.textContent = "キャンセル";
+    backButton.textContent = draft.committedEntries.length ? "完了" : "キャンセル";
     nextButton.textContent = "決定";
     nextButton.disabled = !draft.activeIsValid;
     nextButton.title = !draft.bedKeys.length
@@ -2608,7 +2611,18 @@ function handleRecordHarvestNext(){
 
 function handleRecordHarvestBack(){
   if(recordPartialHarvestSelectionMode){
-    cancelRecordPartialHarvestSelection();
+    const draft = getRecordPartialHarvestDraftModel();
+    if(draft.committedEntries.length){
+      recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft({
+        entries:draft.committedEntries,
+        bedKeys:[],
+        cases:"",
+        editingEntryIndex:-1
+      });
+      finishRecordPartialHarvestSelection();
+    }else{
+      cancelRecordPartialHarvestSelection();
+    }
     return;
   }
   const stage = normalizeRecordHarvestStage(recordHarvestStage);

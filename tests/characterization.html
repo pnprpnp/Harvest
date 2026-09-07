@@ -9181,9 +9181,26 @@
               summaryIsOneLine:Math.abs(date.getBoundingClientRect().top - cases.getBoundingClientRect().top) <= 1
             };
           })()`));
-          assertDeepEqual({ topState, navState }, {
+          app.showRecordHistoryView();
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
+          const historyHeaderState = comparable(app.eval(`(() => {
+            const header = document.querySelector(".recordHistoryHeader");
+            const title = header.querySelector(".sectionTitle");
+            const resend = document.getElementById("googleSheetResendBtn");
+            const headerRect = header.getBoundingClientRect();
+            const titleRect = title.getBoundingClientRect();
+            const resendRect = resend.getBoundingClientRect();
+            return {
+              withinViewport:headerRect.left >= 0 && headerRect.right <= innerWidth,
+              sameLine:Math.abs((titleRect.top + titleRect.bottom) / 2 - (resendRect.top + resendRect.bottom) / 2) <= 1,
+              noOverlap:titleRect.right <= resendRect.left,
+              rightAligned:Math.abs(headerRect.right - resendRect.right) <= 1
+            };
+          })()`));
+          assertDeepEqual({ topState, navState, historyHeaderState }, {
             topState:{withinViewport:true,sameLine:true,labelsFit:true,historyFits:true,fixedAtTop:true,aboveContent:true},
-            navState:{withinViewport:true,contentFits:true,summaryIsOneLine:true}
+            navState:{withinViewport:true,contentFits:true,summaryIsOneLine:true},
+            historyHeaderState:{withinViewport:true,sameLine:true,noOverlap:true,rightAligned:true}
           }, "320px幅で記録の工程行または固定操作が横にはみ出しています");
         }finally{
           iframe.style.width = previousFrameWidth;
@@ -9460,7 +9477,10 @@
                 .filter(item => item.textContent.includes("2026-08-23")).length,
               rowDetailButtonCount:group.querySelectorAll('[data-ui-click="openRecordDetailWindow"]').length,
               inlineActionCount:group.querySelectorAll(".recordActions").length,
-              detailActions:[...detailActionHost.querySelectorAll("button")].map(button => button.textContent.trim())
+              detailActions:[...detailActionHost.querySelectorAll("button")].map(button => button.textContent.trim()),
+              resendInHeader:document.getElementById("googleSheetResendBtn")?.parentElement?.classList.contains("recordHistoryHeader") || false,
+              resendIsRightmost:document.querySelector(".recordHistoryHeader")?.lastElementChild?.id === "googleSheetResendBtn",
+              resendOutsideFooter:!document.querySelector(".externalSaveTools")?.contains(document.getElementById("googleSheetResendBtn"))
             };
           })()`));
           assertDeepEqual(state, {
@@ -9492,7 +9512,10 @@
             repeatedDates:0,
             rowDetailButtonCount:6,
             inlineActionCount:0,
-            detailActions:["記録を編集", "ケース数の一部を部分収穫へ", "削除"]
+            detailActions:["記録を編集", "ケース数の一部を部分収穫へ", "削除"],
+            resendInHeader:true,
+            resendIsRightmost:true,
+            resendOutsideFooter:true
           }, "同日の記録が日付見出しの下へ種類順・部分収穫の場所順にまとまっていません");
         }finally{
           replaceAppHistory(app, previousRecords, previousEvents);
@@ -9654,11 +9677,19 @@
             };
 
             completeRecordPartialHarvestSelection();
+            const afterDecision = {
+              selecting:recordPartialHarvestSelectionMode,
+              activeBedKeys:[...recordPartialHarvestDraft.bedKeys],
+              fixedInput:document.getElementById("recordPartialHarvestCasesInput").value,
+              backLabel:document.getElementById("recordHarvestBackBtn").textContent,
+              nextDisabled:document.getElementById("recordHarvestNextBtn").disabled
+            };
             const partialRecord = buildRecordTabPartialHarvestRecord(recordPartialHarvestDraft, {
               id:123,
               date:"2099-12-31",
               sourceRecords:[]
             });
+            handleRecordHarvestBack();
             openRecordHarvestStage("confirm");
             const combined = {
               selecting:recordPartialHarvestSelectionMode,
@@ -9686,13 +9717,14 @@
             handleRecordPartialHarvestCasesInput("5");
             completeRecordPartialHarvestSelection();
             const partialOnlyValid = validateRecordHarvestCasesStep() && validateRecordHarvestLocationStep();
+            handleRecordHarvestBack();
             handleRecordHarvestNext();
             const partialOnly = {
               totalCases:document.getElementById("recordCasesInput").value,
               valid:partialOnlyValid,
               nextStage:recordHarvestStage
             };
-            return { duringSelection, combined, partialOnly };
+            return { duringSelection, afterDecision, combined, partialOnly };
           }finally{
             recordTab.style.display = previous.display;
             activeAppTab = previous.activeTab;
@@ -9727,6 +9759,13 @@
             fixedEditorFrameRemoved:true,
             visibleSelectedBeds:1,
             pagerCounts:["1ベッド", "1ベッド"]
+          },
+          afterDecision:{
+            selecting:true,
+            activeBedKeys:[],
+            fixedInput:"",
+            backLabel:"完了",
+            nextDisabled:true
           },
           combined:{
             selecting:false,
@@ -9796,12 +9835,14 @@
             completeRecordPartialHarvestSelection();
             const exactModel = getRecordPartialHarvestDraftModel();
             const exactState = {
+              selecting:recordPartialHarvestSelectionMode,
+              activeBedKeys:[...exactModel.bedKeys],
               entries:exactModel.entries.map(entry => ({ bedKeys:entry.bedKeys, cases:entry.cases })),
               totalCases:exactModel.casesValue,
               totalInput:document.getElementById("recordCasesInput").value,
-              status:document.getElementById("recordPartialHarvestStatusValue").textContent
+              status:document.getElementById("recordPartialHarvestStatusValue").textContent,
+              backLabel:document.getElementById("recordHarvestBackBtn").textContent
             };
-            startRecordPartialHarvestSelection();
             const exactAssignedLabels = getAssignedBedLabels();
             toggleRecordPartialHarvestBed(2, "A");
             const editState = {
@@ -9823,15 +9864,21 @@
             completeRecordPartialHarvestSelection();
             const groupedModel = getRecordPartialHarvestDraftModel();
             const groupedState = {
+              selecting:recordPartialHarvestSelectionMode,
+              activeBedKeys:[...groupedModel.bedKeys],
               entries:groupedModel.entries.map(entry => ({ bedKeys:entry.bedKeys, cases:entry.cases })),
               totalCases:groupedModel.casesValue,
               totalInput:document.getElementById("recordCasesInput").value,
-              confirmation:formatRecordPartialHarvestEntry(groupedModel.entries[0])
+              confirmation:formatRecordPartialHarvestEntry(groupedModel.entries[0]),
+              backLabel:document.getElementById("recordHarvestBackBtn").textContent
             };
-            startRecordPartialHarvestSelection();
             const groupedAssignedLabels = getAssignedBedLabels();
-            cancelRecordPartialHarvestSelection();
-            return { switchedEntryState, exactState, exactAssignedLabels, editState, groupedState, groupedAssignedLabels };
+            handleRecordHarvestBack();
+            const groupedExitState = {
+              selecting:recordPartialHarvestSelectionMode,
+              status:document.getElementById("recordPartialHarvestStatusValue").textContent
+            };
+            return { switchedEntryState, exactState, exactAssignedLabels, editState, groupedState, groupedAssignedLabels, groupedExitState };
           }finally{
             recordTab.style.display = previous.display;
             activeAppTab = previous.activeTab;
@@ -9859,13 +9906,16 @@
             totalInput:"5"
           },
           exactState:{
+            selecting:true,
+            activeBedKeys:[],
             entries:[
               {bedKeys:["2-A"],cases:"5"},
               {bedKeys:["2-C"],cases:"2"}
             ],
             totalCases:7,
             totalInput:"7",
-            status:"2件・7ケース"
+            status:"2件追加済み",
+            backLabel:"完了"
           },
           exactAssignedLabels:[
             {bed:"A",value:"5ケース"},
@@ -9873,15 +9923,19 @@
           ],
           editState:{bedKeys:["2-A"],cases:"5",fixedInput:"5",fixedLabel:"2号棟A"},
           groupedState:{
+            selecting:true,
+            activeBedKeys:[],
             entries:[{bedKeys:["2-A","2-C"],cases:"7"}],
             totalCases:7,
             totalInput:"7",
-            confirmation:"7ケース / 2号棟A・Cベッド"
+            confirmation:"7ケース / 2号棟A・Cベッド",
+            backLabel:"完了"
           },
           groupedAssignedLabels:[
             {bed:"A",value:"合計 7ケース"},
             {bed:"C",value:"合計 7ケース"}
-          ]
+          ],
+          groupedExitState:{selecting:false,status:"1件・7ケース"}
         }, "ベッド別入力と複数ベッド合計入力を同じ部分収穫操作で選び分けられません");
       });
 
@@ -12215,18 +12269,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "003bccc2", elements: 2320, visible: 606, viewport: "390x844" },
-          cssStates: { hash: "6245a4e9", elements: 2389, visible: 661, viewport: "390x844" },
-          cssFocus: { hash: "4b924abe", elements: 2389, visible: 661, viewport: "390x844" },
-          mobileRecord: { hash: "017eb592", elements: 2324, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "d72eae81", elements: 2341, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "6d402256", elements: 2424, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "290564b2", elements: 2439, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "6ed25e11", elements: 2439, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "551e3432", elements: 2439, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "e80e40a5", elements: 2439, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "0ffb0f25", elements: 2439, visible: 606, viewport: "1024x900" },
-          wideDashboard: { hash: "ccd3eb3d", elements: 2439, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "87a5a7b1", elements: 2320, visible: 606, viewport: "390x844" },
+          cssStates: { hash: "10345eea", elements: 2389, visible: 661, viewport: "390x844" },
+          cssFocus: { hash: "223a94b9", elements: 2389, visible: 661, viewport: "390x844" },
+          mobileRecord: { hash: "9a3c8e01", elements: 2324, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "dbde77da", elements: 2341, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "569ad81b", elements: 2424, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "fa9c6909", elements: 2439, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "ea26ba2e", elements: 2439, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "f042e2c3", elements: 2439, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "b0d53f84", elements: 2439, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "f7a56c74", elements: 2439, visible: 606, viewport: "1024x900" },
+          wideDashboard: { hash: "743f433e", elements: 2439, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
