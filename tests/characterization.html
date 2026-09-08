@@ -11691,6 +11691,104 @@
         ], "途中収穫場所の正規化結果が違います");
       });
 
+      await runTest("部分収穫は記録日時点で収穫可能だったパレットだけに適用する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previousPlantingEvents = plantingEvents;
+          const buildKeys = (bed, start, end) => {
+            const keys = [];
+            for(let number = start; number <= end; number++) keys.push(getPalletKey(4, bed, number));
+            return keys;
+          };
+          const harvest26 = {
+            id:1787700392983,
+            type:"fullHarvest",
+            date:"2026-08-26",
+            cases:174,
+            palletKeys:buildKeys("A", 23, 78)
+          };
+          const partial27 = {
+            id:1787783891929,
+            type:"partialHarvest",
+            date:"2026-08-27",
+            cases:55,
+            targets:["A", "C", "E"].map(bed => ({
+              building:4,
+              bed,
+              start:1,
+              end:78,
+              plantsPerPallet:2.820513
+            }))
+          };
+          const harvest29 = {
+            id:1787974546749,
+            type:"fullHarvest",
+            date:"2026-08-29",
+            cases:103,
+            palletKeys:[
+              ...buildKeys("A", 1, 22),
+              ...buildKeys("C", 1, 78),
+              ...buildKeys("E", 1, 78)
+            ]
+          };
+          const timeline = [harvest29, partial27, harvest26];
+          const replantedKeys = buildKeys("A", 23, 78);
+          try{
+            plantingEvents = [{
+              eventId:1787820439760,
+              plantingDate:"2026-08-27",
+              sourceAllocations:[{
+                harvestRecordId:harvest26.id,
+                palletKeys:replantedKeys
+              }],
+              plantingPalletKeys:replantedKeys
+            }];
+            invalidateHarvestRecordLookupCache();
+            invalidateHarvestAvailabilityStateCache();
+
+            const effective = getEffectivePartialHarvestCountByPallet(partial27, timeline);
+            const beforeFinalHarvest = buildHarvestRecordLookup(
+              parseDateOnlyString("2026-08-28"),
+              timeline
+            ).partialHarvestCountByPallet;
+            const current = buildHarvestRecordLookup(
+              parseDateOnlyString("2026-09-08"),
+              timeline
+            ).partialHarvestCountByPallet;
+            return {
+              effectiveCount:effective.size,
+              effectiveHeads:Math.round([...effective.values()].reduce((total, count) => total + count, 0) * 1000) / 1000,
+              beforeFinalHarvest:{
+                a1:beforeFinalHarvest.get("4-A-1") || 0,
+                a22:beforeFinalHarvest.get("4-A-22") || 0,
+                a23:beforeFinalHarvest.get("4-A-23") || 0,
+                a78:beforeFinalHarvest.get("4-A-78") || 0
+              },
+              current:{
+                a1:current.get("4-A-1") || 0,
+                a22:current.get("4-A-22") || 0,
+                a23:current.get("4-A-23") || 0,
+                a78:current.get("4-A-78") || 0
+              }
+            };
+          }finally{
+            plantingEvents = previousPlantingEvents;
+            invalidateHarvestRecordLookupCache();
+            invalidateHarvestAvailabilityStateCache();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          effectiveCount:178,
+          effectiveHeads:660,
+          beforeFinalHarvest:{
+            a1:3.707865,
+            a22:3.707865,
+            a23:0,
+            a78:0
+          },
+          current:{ a1:0, a22:0, a23:0, a78:0 }
+        }, "収穫・苗植え済みのパレットへ部分収穫が残っています");
+      });
+
       await runTest("ベッドの残り株数からケース数とベッド別配分を予想する", () => {
         const estimate = app.estimatePartialHarvestFromRemainingPlants(
           2,

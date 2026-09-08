@@ -945,7 +945,7 @@ function savePlantingEventsToStorage(){
     getActivePlantingEventsStorageKey(),
     plantingEvents.map(serializePlantingEventForStorage).filter(Boolean)
   );
-  completeRecordDataMutation();
+  completeRecordDataMutation({ plantingEvents: true });
 }
 
 function loadDeletedPlantingEvents(){
@@ -1425,6 +1425,8 @@ function invalidateWorkflowPendingRecordCache(){
 function invalidateRecordDerivedCaches(options = {}){
   if(options.harvestRecords === true){
     invalidateHarvestRecordEditTimelineCache();
+  }
+  if(options.harvestRecords === true || options.plantingEvents === true){
     invalidateHarvestRecordLookupCache();
   }
   invalidateRecordHistoryCache();

@@ -2640,6 +2640,92 @@ function getLatestFullHarvestDateForPalletReference(key, targetDate, sourceRecor
   return null;
 }
 
+function getPartialHarvestEffectiveCountCacheForSource(sourceRecords){
+  if(partialHarvestEffectiveCountCachePlantingEvents !== plantingEvents){
+    partialHarvestEffectiveCountCache = new WeakMap();
+    partialHarvestEffectiveCountCachePlantingEvents = plantingEvents;
+  }
+  const source = Array.isArray(sourceRecords) ? sourceRecords : [];
+  let sourceCache = partialHarvestEffectiveCountCache.get(source);
+  if(!sourceCache){
+    sourceCache = {
+      eligibilityByDate:new Map(),
+      effectiveByRecord:new WeakMap()
+    };
+    partialHarvestEffectiveCountCache.set(source, sourceCache);
+  }
+  return { source, sourceCache };
+}
+
+function getPartialHarvestEligibilityState(recordDate, sourceRecords = records){
+  const recordDay = startOfLocalDay(recordDate);
+  const { source, sourceCache } = getPartialHarvestEffectiveCountCacheForSource(sourceRecords);
+  const cacheKey = formatDateOnlyString(recordDay);
+  if(sourceCache.eligibilityByDate.has(cacheKey)){
+    return sourceCache.eligibilityByDate.get(cacheKey);
+  }
+
+  // 同日の通常収穫は、この後の時系列処理で部分収穫状態を解除する。
+  // ここでは前日までに収穫済みだった場所と、その苗植え状態だけで対象可否を決める。
+  const priorFullHarvestRecords = source.filter(record => {
+    if(record?.type === "partialHarvest") return false;
+    const harvestDate = parseDateOnlyString(record?.date);
+    return harvestDate && startOfLocalDay(harvestDate).getTime() < recordDay.getTime();
+  });
+  const state = getHarvestAvailabilityStateFromLifecycleRecords(
+    priorFullHarvestRecords,
+    recordDay,
+    plantingEvents,
+    priorFullHarvestRecords
+  );
+  sourceCache.eligibilityByDate.set(cacheKey, state);
+  return state;
+}
+
+function getEffectivePartialHarvestCountByPallet(record, sourceRecords = records){
+  if(!record || typeof record !== "object" || record.type !== "partialHarvest") return new Map();
+  const recordDate = parseDateOnlyString(record.date);
+  const targets = normalizePartialHarvestTargets(record.targets);
+  if(!recordDate || !targets.length) return new Map();
+
+  const { source, sourceCache } = getPartialHarvestEffectiveCountCacheForSource(sourceRecords);
+  const signature = JSON.stringify([
+    record.date,
+    record.cases,
+    targets.map(target => [
+      target.building,
+      target.bed,
+      target.start,
+      target.end,
+      target.plantsPerPallet
+    ])
+  ]);
+  const cached = sourceCache.effectiveByRecord.get(record);
+  if(cached?.signature === signature) return cached.countByPallet;
+
+  const unavailableSet = getPartialHarvestEligibilityState(recordDate, source).unavailableSet;
+  const rawCountByPallet = new Map();
+  targets.forEach(target => {
+    for(let number = target.start; number <= target.end; number++){
+      const key = getPalletKey(target.building, target.bed, number);
+      if(unavailableSet.has(key)) continue;
+      rawCountByPallet.set(key, (rawCountByPallet.get(key) || 0) + target.plantsPerPallet);
+    }
+  });
+
+  const rawEligibleHeads = [...rawCountByPallet.values()].reduce((total, value) => total + value, 0);
+  const recordedCases = clampNumber(record.cases, 0, 999999, 0);
+  const intendedHeads = recordedCases > 0 ? recordedCases * CASE_SIZE : rawEligibleHeads;
+  const scale = rawEligibleHeads > 0 && intendedHeads > 0 ? intendedHeads / rawEligibleHeads : 0;
+  const countByPallet = new Map();
+  rawCountByPallet.forEach((value, key) => {
+    const effectiveCount = Math.round(value * scale * 1000000) / 1000000;
+    if(effectiveCount > 0) countByPallet.set(key, effectiveCount);
+  });
+  sourceCache.effectiveByRecord.set(record, { signature, countByPallet });
+  return countByPallet;
+}
+
 function getPartialHarvestCountForPalletReference(building, bed, number, targetDate = null, sourceRecords = records){
   const key = getPalletKey(building, bed, number);
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
@@ -2657,11 +2743,7 @@ function getPartialHarvestCountForPalletReference(building, bed, number, targetD
     if(latestFullHarvestDate && recordDay.getTime() <= latestFullHarvestDate.getTime()) break;
     if(record.type !== "partialHarvest") continue;
 
-    normalizePartialHarvestTargets(record.targets).forEach(target => {
-      if(target.building !== building || target.bed !== bed) return;
-      if(number < target.start || number > target.end) return;
-      total += target.plantsPerPallet;
-    });
+    total += getEffectivePartialHarvestCountByPallet(record, sourceRecords).get(key) || 0;
   }
 
   return total;
@@ -2669,6 +2751,8 @@ function getPartialHarvestCountForPalletReference(building, bed, number, targetD
 
 function invalidateHarvestRecordLookupCache(){
   harvestRecordLookupCache.clear();
+  partialHarvestEffectiveCountCache = new WeakMap();
+  partialHarvestEffectiveCountCachePlantingEvents = plantingEvents;
 }
 
 function buildHarvestRecordLookup(targetDate, sourceRecords = records){
@@ -2685,12 +2769,12 @@ function buildHarvestRecordLookup(targetDate, sourceRecords = records){
     if(!dayGroups.has(recordTime)){
       dayGroups.set(recordTime, {
         fullHarvestKeys: new Set(),
-        partialTargets: []
+        partialRecords: []
       });
     }
     const group = dayGroups.get(recordTime);
     if(record?.type === "partialHarvest"){
-      group.partialTargets.push(...normalizePartialHarvestTargets(record.targets));
+      group.partialRecords.push(record);
     }else if(recordTime < targetTime && Array.isArray(record?.palletKeys)){
       record.palletKeys.forEach(key => group.fullHarvestKeys.add(key));
     }
@@ -2708,15 +2792,14 @@ function buildHarvestRecordLookup(targetDate, sourceRecords = records){
         });
       }
 
-      group.partialTargets.forEach(target => {
-        for(let number = target.start; number <= target.end; number++){
-          const key = getPalletKey(target.building, target.bed, number);
-          if(recordTime < targetTime && group.fullHarvestKeys.has(key)) continue;
+      group.partialRecords.forEach(record => {
+        getEffectivePartialHarvestCountByPallet(record, sourceRecords).forEach((count, key) => {
+          if(recordTime < targetTime && group.fullHarvestKeys.has(key)) return;
           partialHarvestCountByPallet.set(
             key,
-            (partialHarvestCountByPallet.get(key) || 0) + target.plantsPerPallet
+            (partialHarvestCountByPallet.get(key) || 0) + count
           );
-        }
+        });
       });
     });
 

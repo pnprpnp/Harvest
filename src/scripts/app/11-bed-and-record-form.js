@@ -1195,12 +1195,9 @@ function getHarvestLossPartialAllocationUncertaintyPoints(
     const diffDays = getLocalDayDiff(recordDay, targetDay);
     if(diffDays < 0 || diffDays > CALCULATION_LOOKBACK_DAYS) return;
 
-    const targetKeys = new Set();
-    normalizePartialHarvestTargets(record.targets).forEach(target => {
-      for(let number = target.start; number <= target.end; number++){
-        targetKeys.add(getPalletKey(target.building, target.bed, number));
-      }
-    });
+    const targetKeys = new Set(
+      getEffectivePartialHarvestCountByPallet(record, timelineRecords).keys()
+    );
     if(!targetKeys.size) return;
 
     let hasActiveSelectedTarget = false;
