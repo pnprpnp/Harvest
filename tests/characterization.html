@@ -5909,6 +5909,54 @@
             mapNearActionBar:true
           }, "収穫場所のページ切り替え・3分割情報・配置図がシミュと同じ位置に収まっていません");
 
+          const recordMapNodeBeforeHistory = visualApp.document.getElementById("recordBeds").firstElementChild;
+          visualApp.showRecordHistoryView();
+          await settleVisualApp(visualApp);
+          const historyTransitionState = comparable({
+            saveHidden:recordCard.hidden,
+            historyVisible:!visualApp.document.getElementById("recordHistoryCard").hidden,
+            compactLayoutRemoved:!recordCard.classList.contains("recordHarvestViewportLayout")
+          });
+          visualApp.showRecordEntryView();
+          const bedRectImmediatelyAfterHistoryReturn = visualApp.document.querySelector("#recordBeds .recordBedOverview")
+            .getBoundingClientRect();
+          const immediateHistoryReturnState = comparable({
+            saveVisible:!recordCard.hidden,
+            historyHidden:visualApp.document.getElementById("recordHistoryCard").hidden,
+            compactLayoutRestored:recordCard.classList.contains("recordHarvestViewportLayout"),
+            viewportScrollLocked:visualApp.document.documentElement.classList.contains("mainTabViewportScrollLocked"),
+            mapNodeReused:visualApp.document.getElementById("recordBeds").firstElementChild === recordMapNodeBeforeHistory,
+            bedPositionStable:sameRect(bedRectImmediatelyAfterHistoryReturn, recordFirstBedRect)
+          });
+          await settleVisualApp(visualApp);
+          const bedRectAfterHistoryReturnSettled = visualApp.document.querySelector("#recordBeds .recordBedOverview")
+            .getBoundingClientRect();
+          const settledHistoryReturnState = comparable({
+            compactLayoutMaintained:recordCard.classList.contains("recordHarvestViewportLayout"),
+            mapNodeStillReused:visualApp.document.getElementById("recordBeds").firstElementChild === recordMapNodeBeforeHistory,
+            bedPositionUnchanged:sameRect(bedRectAfterHistoryReturnSettled, bedRectImmediatelyAfterHistoryReturn)
+          });
+          assertDeepEqual({ historyTransitionState, immediateHistoryReturnState, settledHistoryReturnState }, {
+            historyTransitionState:{
+              saveHidden:true,
+              historyVisible:true,
+              compactLayoutRemoved:true
+            },
+            immediateHistoryReturnState:{
+              saveVisible:true,
+              historyHidden:true,
+              compactLayoutRestored:true,
+              viewportScrollLocked:true,
+              mapNodeReused:true,
+              bedPositionStable:true
+            },
+            settledHistoryReturnState:{
+              compactLayoutMaintained:true,
+              mapNodeStillReused:true,
+              bedPositionUnchanged:true
+            }
+          }, "記録一覧から戻る際に配置図の位置や大きさが揺れています");
+
           const recordMapNodeBeforeInputToggle = visualApp.document.getElementById("recordBeds").firstElementChild;
           visualApp.document.getElementById("recordHarvestSummaryBtn").click();
           await settleVisualApp(visualApp);

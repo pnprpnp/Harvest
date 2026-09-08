@@ -2771,8 +2771,10 @@ function showRecordEntryView(){
   if(saveCard) saveCard.hidden = false;
   if(historyCard) historyCard.hidden = true;
   refreshRecordModeUi();
+  applyRecordHarvestViewportLayout();
+  const viewportLocked = applyMainTabViewportScrollLock();
+  if(!viewportLocked) scrollToRecordActiveStage({ behavior:"auto" });
   scheduleHarvestStateSave();
-  requestAnimationFrame(() => document.getElementById("recordSaveCard")?.scrollIntoView({ block:"start" }));
 }
 
 function refreshRecordModeUi(){
