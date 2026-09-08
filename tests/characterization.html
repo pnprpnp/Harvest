@@ -488,6 +488,7 @@
         "findHarvestRecordByIdentity",
         "harvestRecordMatchesIdentity",
         "invalidateRecordDerivedCaches",
+        "invalidateHarvestLossEstimatedRecordCache",
         "getHarvestRecordCaseDisplayText",
         "getHarvestRecordEditTimelineRecords",
         "buildRecordConsistencyAudit",
@@ -12380,6 +12381,53 @@
         const totals = app.getHarvestCaseTotalsByDate([full, partial]);
         assertEqual(app.getHarvestRecordCaseDisplayText(full, totals), "120", "通常収穫側の合計表示が違います");
         assertEqual(app.getHarvestRecordCaseDisplayText(partial, totals), "(20)", "途中収穫側の内数表示が違います");
+      });
+
+      await runTest("記録一覧の推定ロス率判定を記録変更まで再利用する", () => {
+        const previousRecords = comparable(app.eval("records"));
+        const previousPlantingEvents = comparable(app.eval("plantingEvents"));
+        try{
+          replaceAppHistory(app, [{
+            palletNumberingVersion: 2,
+            id: 9901,
+            recordUuid: "99010000-0000-4000-8000-000000000001",
+            type: "fullHarvest",
+            date: "2026-08-02",
+            cases: 10,
+            palletRanges: ["2-A-1-2"],
+            plantingPending: true
+          }]);
+          const state = comparable(app.eval(`(() => {
+            invalidateRecordDerivedCaches({ harvestRecords:true, plantingEvents:true });
+            const original = getHarvestLossEstimateStatus;
+            let calculationCount = 0;
+            try{
+              getHarvestLossEstimateStatus = (...args) => {
+                calculationCount++;
+                return original(...args);
+              };
+              const record = records[0];
+              const first = isHarvestLossEstimatedForRecord(record);
+              const second = isHarvestLossEstimatedForRecord(record);
+              const countAfterRepeatedRead = calculationCount;
+              invalidateRecordDerivedCaches({ harvestRecords:true });
+              const afterInvalidation = isHarvestLossEstimatedForRecord(record);
+              return { first, second, afterInvalidation, countAfterRepeatedRead, calculationCount };
+            }finally{
+              getHarvestLossEstimateStatus = original;
+            }
+          })()`));
+          assertDeepEqual(state, {
+            first:false,
+            second:false,
+            afterInvalidation:false,
+            countAfterRepeatedRead:1,
+            calculationCount:2
+          }, "推定ロス率を一覧表示のたびに再計算しています");
+        }finally{
+          replaceAppHistory(app, previousRecords, previousPlantingEvents);
+          app.eval("invalidateRecordDerivedCaches({ harvestRecords:true, plantingEvents:true });");
+        }
       });
 
       await runTest("過去の記録を編集するとき、対象以降の記録を計算から外す", () => {

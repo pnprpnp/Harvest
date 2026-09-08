@@ -1281,15 +1281,40 @@ function getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords = recor
   ));
 }
 
+function invalidateHarvestLossEstimatedRecordCache(){
+  harvestLossEstimatedRecordCache = new WeakMap();
+  harvestLossEstimatedRecordCachePlantingEvents = plantingEvents;
+  harvestLossEstimatedRecordCacheSettings = settings;
+}
+
+function getHarvestLossEstimatedRecordCache(sourceRecords = records){
+  if(harvestLossEstimatedRecordCachePlantingEvents !== plantingEvents
+    || harvestLossEstimatedRecordCacheSettings !== settings){
+    invalidateHarvestLossEstimatedRecordCache();
+  }
+  const source = Array.isArray(sourceRecords) ? sourceRecords : records;
+  let recordCache = harvestLossEstimatedRecordCache.get(source);
+  if(!recordCache){
+    recordCache = new WeakMap();
+    harvestLossEstimatedRecordCache.set(source, recordCache);
+  }
+  return recordCache;
+}
+
 function isHarvestLossEstimatedForRecord(record, sourceRecords = records){
   if(!record || record.type !== "fullHarvest") return false;
   const targetDate = parseDateOnlyString(record.date);
   if(!targetDate) return false;
-  return getHarvestLossEstimateStatus(
+  const recordCache = getHarvestLossEstimatedRecordCache(sourceRecords);
+  if(recordCache.has(record)) return recordCache.get(record);
+
+  const isEstimated = getHarvestLossEstimateStatus(
     getPalletKeysFromRecord(record),
     targetDate,
     getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords)
   ).isEstimated;
+  recordCache.set(record, isEstimated);
+  return isEstimated;
 }
 
 function updateRecordActualLoss(){

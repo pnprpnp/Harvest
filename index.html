@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260908-record-list-loading">
+<meta name="harvestnavi-version" content="20260908-record-list-cache">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -15503,6 +15503,9 @@ let plantingEventStateCacheKey = "";
 let harvestRecordLookupCache = new Map();
 let partialHarvestEffectiveCountCache = new WeakMap();
 let partialHarvestEffectiveCountCachePlantingEvents = plantingEvents;
+let harvestLossEstimatedRecordCache = new WeakMap();
+let harvestLossEstimatedRecordCachePlantingEvents = plantingEvents;
+let harvestLossEstimatedRecordCacheSettings = settings;
 let harvestRecordEditTimelineCache = null;
 let harvestRecordEditTimelineCacheId = null;
 let harvestRecordEditTimelineCacheRecordCount = 0;
@@ -19077,6 +19080,7 @@ function loadSettings(){
 function saveSettingsToStorage(){
   harvestnaviLocalStorage.writeJson(SETTINGS_KEY, settings);
   invalidateNormalizedBedCalculationSettings();
+  invalidateHarvestLossEstimatedRecordCache();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
 }
@@ -20465,6 +20469,7 @@ function invalidateRecordDerivedCaches(options = {}){
   if(options.harvestRecords === true || options.plantingEvents === true){
     invalidateHarvestRecordLookupCache();
   }
+  invalidateHarvestLossEstimatedRecordCache();
   invalidateRecordHistoryCache();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
@@ -39216,15 +39221,40 @@ function getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords = recor
   ));
 }
 
+function invalidateHarvestLossEstimatedRecordCache(){
+  harvestLossEstimatedRecordCache = new WeakMap();
+  harvestLossEstimatedRecordCachePlantingEvents = plantingEvents;
+  harvestLossEstimatedRecordCacheSettings = settings;
+}
+
+function getHarvestLossEstimatedRecordCache(sourceRecords = records){
+  if(harvestLossEstimatedRecordCachePlantingEvents !== plantingEvents
+    || harvestLossEstimatedRecordCacheSettings !== settings){
+    invalidateHarvestLossEstimatedRecordCache();
+  }
+  const source = Array.isArray(sourceRecords) ? sourceRecords : records;
+  let recordCache = harvestLossEstimatedRecordCache.get(source);
+  if(!recordCache){
+    recordCache = new WeakMap();
+    harvestLossEstimatedRecordCache.set(source, recordCache);
+  }
+  return recordCache;
+}
+
 function isHarvestLossEstimatedForRecord(record, sourceRecords = records){
   if(!record || record.type !== "fullHarvest") return false;
   const targetDate = parseDateOnlyString(record.date);
   if(!targetDate) return false;
-  return getHarvestLossEstimateStatus(
+  const recordCache = getHarvestLossEstimatedRecordCache(sourceRecords);
+  if(recordCache.has(record)) return recordCache.get(record);
+
+  const isEstimated = getHarvestLossEstimateStatus(
     getPalletKeysFromRecord(record),
     targetDate,
     getHarvestLossTimelineRecordsBeforeRecord(record, sourceRecords)
   ).isEstimated;
+  recordCache.set(record, isEstimated);
+  return isEstimated;
 }
 
 function updateRecordActualLoss(){

@@ -41,6 +41,7 @@ function loadSettings(){
 function saveSettingsToStorage(){
   harvestnaviLocalStorage.writeJson(SETTINGS_KEY, settings);
   invalidateNormalizedBedCalculationSettings();
+  invalidateHarvestLossEstimatedRecordCache();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
 }
@@ -1429,6 +1430,7 @@ function invalidateRecordDerivedCaches(options = {}){
   if(options.harvestRecords === true || options.plantingEvents === true){
     invalidateHarvestRecordLookupCache();
   }
+  invalidateHarvestLossEstimatedRecordCache();
   invalidateRecordHistoryCache();
   invalidatePlantingEventStateCache();
   invalidateDashboardDerivedData();
