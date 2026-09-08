@@ -352,6 +352,8 @@ let currentPalletLifecycleStateStorageLoadPending = true;
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
 let recordHistoryCache = null;
+let recordHistoryRenderScheduleId = 0;
+let recordHistoryRenderPending = false;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
 let editingPartialHarvestRecordId = null;
@@ -3236,7 +3238,7 @@ function setMainTabSelection(tabName){
   scheduleMainTabViewportScrollLock();
 }
 
-function setMainTabLoadingState(tabName, isLoading){
+function setMainTabLoadingState(tabName, isLoading, options = {}){
   const loadingState = document.getElementById("mainTabLoadingState");
   if(!loadingState) return;
   MAIN_TAB_NAMES.forEach(name => {
@@ -3250,22 +3252,28 @@ function setMainTabLoadingState(tabName, isLoading){
 
   if(!isLoading){
     loadingState.classList.remove("is-delayed-visible");
+    loadingState.classList.remove("is-immediate-visible");
     loadingState.hidden = true;
     loadingState.removeAttribute("data-loading-tab");
     return;
   }
 
   const definition = MAIN_TAB_DEFINITIONS[tabName];
-  const label = definition?.label || "画面";
+  const label = String(options.label || definition?.label || "画面").trim();
   const text = document.getElementById("mainTabLoadingText");
-  if(text) text.textContent = label + "をロード中...";
+  if(text) text.textContent = label + "を読み込み中...";
   loadingState.setAttribute("data-loading-tab", tabName);
-  loadingState.setAttribute("aria-label", label + "をロード中");
+  loadingState.setAttribute("aria-label", label + "を読み込み中");
   loadingState.classList.remove("is-delayed-visible");
+  loadingState.classList.remove("is-immediate-visible");
   loadingState.hidden = false;
-  // タブを連続して切り替えた場合も、表示待ちの0.3秒を新しいタブから数え直す。
-  void loadingState.offsetWidth;
-  loadingState.classList.add("is-delayed-visible");
+  if(options.immediate){
+    loadingState.classList.add("is-immediate-visible");
+  }else{
+    // タブを連続して切り替えた場合も、表示待ちの0.3秒を新しいタブから数え直す。
+    void loadingState.offsetWidth;
+    loadingState.classList.add("is-delayed-visible");
+  }
   document.getElementById(tabName + "Tab")?.setAttribute("aria-busy", "true");
   document.getElementById(tabName + "TabBtn")?.setAttribute("aria-busy", "true");
 }

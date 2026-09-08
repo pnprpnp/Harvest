@@ -419,7 +419,11 @@ function formatRecordHistoryDateLabel(value){
 
 function showMoreRecordHistory(){
   recordHistoryVisibleLimit += RECORD_LIST_DISPLAY_LIMIT;
-  renderRecordList();
+  if(recordViewMode === "history" && activeAppTab === "record"){
+    scheduleRecordHistoryListRender({ scroll: false });
+  }else{
+    renderRecordList();
+  }
 }
 
 function renderRecordList(){

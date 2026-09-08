@@ -2692,6 +2692,55 @@ function renderRecordHistoryToggle(){
   button.setAttribute("aria-pressed", String(isHistoryOpen));
 }
 
+function finishRecordHistoryListRender(scheduleId){
+  if(scheduleId !== recordHistoryRenderScheduleId) return;
+  recordHistoryRenderPending = false;
+  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const loadingState = document.getElementById("mainTabLoadingState");
+  if(loadingState?.dataset.loadingTab === "record"){
+    setMainTabLoadingState("record", false);
+  }
+}
+
+function scheduleRecordHistoryListRender(options = {}){
+  const historyCard = document.getElementById("recordHistoryCard");
+  if(!historyCard) return;
+  const scheduleId = ++recordHistoryRenderScheduleId;
+  recordHistoryRenderPending = true;
+  historyCard.setAttribute("aria-busy", "true");
+  setMainTabLoadingState("record", true, {
+    immediate: true,
+    label: "記録一覧"
+  });
+
+  runAfterUiSettles(() => {
+    if(scheduleId !== recordHistoryRenderScheduleId) return;
+    if(recordViewMode !== "history" || activeAppTab !== "record"){
+      finishRecordHistoryListRender(scheduleId);
+      return;
+    }
+    try{
+      renderRecordList();
+      scheduleRecordHarvestViewportLayout();
+      const targetDate = String(options.targetDate || "");
+      if(options.scroll !== false){
+        requestAnimationFrame(() => {
+          const target = targetDate
+            ? [...document.querySelectorAll("#recordList [data-record-history-date]")]
+                .find(element => element.dataset.recordHistoryDate === targetDate)
+            : historyCard;
+          target?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+        });
+      }
+    }catch(error){
+      console.error("記録一覧を読み込めませんでした", error);
+      showToast("記録一覧を読み込めませんでした。もう一度お試しください");
+    }finally{
+      finishRecordHistoryListRender(scheduleId);
+    }
+  });
+}
+
 function toggleRecordHistoryView(){
   if(recordViewMode === "history") showRecordEntryView();
   else showRecordHistoryView();
@@ -2704,21 +2753,18 @@ function showRecordHistoryView(options = {}){
   if(saveCard) saveCard.hidden = true;
   if(historyCard) historyCard.hidden = false;
   renderRecordHistoryToggle();
-  renderRecordList();
   renderRecordHarvestFixedNavigation();
-  scheduleRecordHarvestViewportLayout();
-  scheduleHarvestStateSave();
   const targetDate = typeof options === "object" ? options.date : "";
-  requestAnimationFrame(() => {
-    const target = targetDate
-      ? [...document.querySelectorAll("#recordList [data-record-history-date]")]
-          .find(element => element.dataset.recordHistoryDate === targetDate)
-      : historyCard;
-    target?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
-  });
+  scheduleRecordHistoryListRender({ targetDate });
+  scheduleHarvestStateSave();
 }
 
 function showRecordEntryView(){
+  recordHistoryRenderScheduleId++;
+  recordHistoryRenderPending = false;
+  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const loadingState = document.getElementById("mainTabLoadingState");
+  if(loadingState?.dataset.loadingTab === "record") setMainTabLoadingState("record", false);
   recordViewMode = "entry";
   const saveCard = document.getElementById("recordSaveCard");
   const historyCard = document.getElementById("recordHistoryCard");

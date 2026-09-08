@@ -8982,6 +8982,48 @@
         }
       });
 
+      await runTest("記録一覧は読み込み表示を描画してから一覧を作る", async () => {
+        const loadingState = app.document.getElementById("mainTabLoadingState");
+        const historyCard = app.document.getElementById("recordHistoryCard");
+        const previousTab = app.eval("activeAppTab");
+        const previousView = app.eval("recordViewMode");
+        app.eval("protectedAccessUnlocked = true");
+        try{
+          app.switchTab("record");
+          await new Promise(resolve => app.requestAnimationFrame(() => app.setTimeout(resolve, 40)));
+          app.eval(`
+            window.__characterizationOriginalRenderRecordList = renderRecordList;
+            window.__characterizationRecordListRenderCalls = 0;
+            renderRecordList = () => { window.__characterizationRecordListRenderCalls++; };
+          `);
+
+          app.showRecordHistoryView();
+          assertEqual(app.eval("window.__characterizationRecordListRenderCalls"), 0, "待機表示より先に記録一覧の描画が始まりました");
+          assertEqual(loadingState.hidden, false, "記録一覧の待機表示が開始されません");
+          assert(loadingState.classList.contains("is-immediate-visible"), "記録一覧の待機表示がすぐ見える状態ではありません");
+          assertEqual(app.getComputedStyle(loadingState).visibility, "visible", "記録一覧の読み込み中表示が見えません");
+          assertEqual(app.document.getElementById("mainTabLoadingText").textContent, "記録一覧を読み込み中...", "読み込み対象が分かりません");
+          assertEqual(historyCard.getAttribute("aria-busy"), "true", "記録一覧の処理中状態を読み上げ機能へ伝えられません");
+
+          await new Promise(resolve => app.requestAnimationFrame(() => app.setTimeout(resolve, 40)));
+          assertEqual(app.eval("window.__characterizationRecordListRenderCalls"), 1, "待機表示後に記録一覧が描画されません");
+          assertEqual(loadingState.hidden, true, "記録一覧の描画後も待機表示が残っています");
+          assertEqual(historyCard.hasAttribute("aria-busy"), false, "記録一覧の処理中状態が解除されません");
+        }finally{
+          app.eval(`
+            if(window.__characterizationOriginalRenderRecordList){
+              renderRecordList = window.__characterizationOriginalRenderRecordList;
+            }
+            delete window.__characterizationOriginalRenderRecordList;
+            delete window.__characterizationRecordListRenderCalls;
+          `);
+          app.showRecordEntryView();
+          app.switchTab(previousTab || "forecast");
+          app.eval(`recordViewMode = ${JSON.stringify(previousView)};`);
+          await new Promise(resolve => app.requestAnimationFrame(() => app.setTimeout(resolve, 40)));
+        }
+      });
+
       await runTest("苗植え記録の編集時は今回の指示を表示しない", () => {
         const state = comparable(app.eval(`(() => {
           const card = document.querySelector("#recordPlantingStageSection .plantingActionCard");

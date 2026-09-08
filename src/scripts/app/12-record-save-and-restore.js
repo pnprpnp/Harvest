@@ -1,11 +1,16 @@
 // ===== 記録：保存後の関連画面更新 =====
 function refreshRecordHistoryViews(){
-  renderRecordList();
+  if(recordViewMode === "history" && activeAppTab === "record"){
+    scheduleRecordHistoryListRender({ scroll: false });
+  }else if(!recordHistoryRenderPending){
+    renderRecordList();
+  }
   renderDashboardIfVisible();
 }
 
 function refreshRecordDataUi(options = {}){
-  refreshRecordHistoryViews();
+  if(options.history !== false) refreshRecordHistoryViews();
+  else renderDashboardIfVisible();
   updateGoogleSheetResendButtonState();
   if(options.maps !== false) refreshHarvestMapViews();
   if(options.actualLoss === true) updateRecordActualLoss();
@@ -14,9 +19,10 @@ function refreshRecordDataUi(options = {}){
 }
 
 function scheduleRecordDataUiRefresh(){
+  const skipPendingHistoryRender = recordHistoryRenderPending;
   runAfterUiSettles(() => {
     try{
-      refreshRecordDataUi({ maps: false });
+      refreshRecordDataUi({ maps: false, history: !skipPendingHistoryRender });
     }catch(e){
       console.error("Failed to refresh record data UI", e);
     }

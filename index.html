@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260908-faster-welcome">
+<meta name="harvestnavi-version" content="20260908-record-list-loading">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -4558,6 +4558,12 @@ button.monitorSaveBtn:active{
 .mainTabLoadingState[hidden]{display:none;}
 .mainTabLoadingState.is-delayed-visible{
   animation:mainTabLoadingReveal .01s linear .3s forwards;
+}
+.mainTabLoadingState.is-immediate-visible{
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto;
+  cursor:progress;
 }
 @keyframes mainTabLoadingReveal{
   from{opacity:0;visibility:hidden;}
@@ -13437,7 +13443,7 @@ requestAnimationFrame(function(){
       <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
     </svg>
   </span>
-  <span id="mainTabLoadingText">ロード中...</span>
+  <span id="mainTabLoadingText">読み込み中...</span>
 </div>
 
 <div class="container">
@@ -15512,6 +15518,8 @@ let currentPalletLifecycleStateStorageLoadPending = true;
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
 let recordHistoryCache = null;
+let recordHistoryRenderScheduleId = 0;
+let recordHistoryRenderPending = false;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
 let editingPartialHarvestRecordId = null;
@@ -18396,7 +18404,7 @@ function setMainTabSelection(tabName){
   scheduleMainTabViewportScrollLock();
 }
 
-function setMainTabLoadingState(tabName, isLoading){
+function setMainTabLoadingState(tabName, isLoading, options = {}){
   const loadingState = document.getElementById("mainTabLoadingState");
   if(!loadingState) return;
   MAIN_TAB_NAMES.forEach(name => {
@@ -18410,22 +18418,28 @@ function setMainTabLoadingState(tabName, isLoading){
 
   if(!isLoading){
     loadingState.classList.remove("is-delayed-visible");
+    loadingState.classList.remove("is-immediate-visible");
     loadingState.hidden = true;
     loadingState.removeAttribute("data-loading-tab");
     return;
   }
 
   const definition = MAIN_TAB_DEFINITIONS[tabName];
-  const label = definition?.label || "画面";
+  const label = String(options.label || definition?.label || "画面").trim();
   const text = document.getElementById("mainTabLoadingText");
-  if(text) text.textContent = label + "をロード中...";
+  if(text) text.textContent = label + "を読み込み中...";
   loadingState.setAttribute("data-loading-tab", tabName);
-  loadingState.setAttribute("aria-label", label + "をロード中");
+  loadingState.setAttribute("aria-label", label + "を読み込み中");
   loadingState.classList.remove("is-delayed-visible");
+  loadingState.classList.remove("is-immediate-visible");
   loadingState.hidden = false;
-  // タブを連続して切り替えた場合も、表示待ちの0.3秒を新しいタブから数え直す。
-  void loadingState.offsetWidth;
-  loadingState.classList.add("is-delayed-visible");
+  if(options.immediate){
+    loadingState.classList.add("is-immediate-visible");
+  }else{
+    // タブを連続して切り替えた場合も、表示待ちの0.3秒を新しいタブから数え直す。
+    void loadingState.offsetWidth;
+    loadingState.classList.add("is-delayed-visible");
+  }
   document.getElementById(tabName + "Tab")?.setAttribute("aria-busy", "true");
   document.getElementById(tabName + "TabBtn")?.setAttribute("aria-busy", "true");
 }
@@ -36132,6 +36146,55 @@ function renderRecordHistoryToggle(){
   button.setAttribute("aria-pressed", String(isHistoryOpen));
 }
 
+function finishRecordHistoryListRender(scheduleId){
+  if(scheduleId !== recordHistoryRenderScheduleId) return;
+  recordHistoryRenderPending = false;
+  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const loadingState = document.getElementById("mainTabLoadingState");
+  if(loadingState?.dataset.loadingTab === "record"){
+    setMainTabLoadingState("record", false);
+  }
+}
+
+function scheduleRecordHistoryListRender(options = {}){
+  const historyCard = document.getElementById("recordHistoryCard");
+  if(!historyCard) return;
+  const scheduleId = ++recordHistoryRenderScheduleId;
+  recordHistoryRenderPending = true;
+  historyCard.setAttribute("aria-busy", "true");
+  setMainTabLoadingState("record", true, {
+    immediate: true,
+    label: "記録一覧"
+  });
+
+  runAfterUiSettles(() => {
+    if(scheduleId !== recordHistoryRenderScheduleId) return;
+    if(recordViewMode !== "history" || activeAppTab !== "record"){
+      finishRecordHistoryListRender(scheduleId);
+      return;
+    }
+    try{
+      renderRecordList();
+      scheduleRecordHarvestViewportLayout();
+      const targetDate = String(options.targetDate || "");
+      if(options.scroll !== false){
+        requestAnimationFrame(() => {
+          const target = targetDate
+            ? [...document.querySelectorAll("#recordList [data-record-history-date]")]
+                .find(element => element.dataset.recordHistoryDate === targetDate)
+            : historyCard;
+          target?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+        });
+      }
+    }catch(error){
+      console.error("記録一覧を読み込めませんでした", error);
+      showToast("記録一覧を読み込めませんでした。もう一度お試しください");
+    }finally{
+      finishRecordHistoryListRender(scheduleId);
+    }
+  });
+}
+
 function toggleRecordHistoryView(){
   if(recordViewMode === "history") showRecordEntryView();
   else showRecordHistoryView();
@@ -36144,21 +36207,18 @@ function showRecordHistoryView(options = {}){
   if(saveCard) saveCard.hidden = true;
   if(historyCard) historyCard.hidden = false;
   renderRecordHistoryToggle();
-  renderRecordList();
   renderRecordHarvestFixedNavigation();
-  scheduleRecordHarvestViewportLayout();
-  scheduleHarvestStateSave();
   const targetDate = typeof options === "object" ? options.date : "";
-  requestAnimationFrame(() => {
-    const target = targetDate
-      ? [...document.querySelectorAll("#recordList [data-record-history-date]")]
-          .find(element => element.dataset.recordHistoryDate === targetDate)
-      : historyCard;
-    target?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
-  });
+  scheduleRecordHistoryListRender({ targetDate });
+  scheduleHarvestStateSave();
 }
 
 function showRecordEntryView(){
+  recordHistoryRenderScheduleId++;
+  recordHistoryRenderPending = false;
+  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const loadingState = document.getElementById("mainTabLoadingState");
+  if(loadingState?.dataset.loadingTab === "record") setMainTabLoadingState("record", false);
   recordViewMode = "entry";
   const saveCard = document.getElementById("recordSaveCard");
   const historyCard = document.getElementById("recordHistoryCard");
@@ -39762,12 +39822,17 @@ function resetPlantingRecordChanges(){
 
 // ===== 記録：保存後の関連画面更新 =====
 function refreshRecordHistoryViews(){
-  renderRecordList();
+  if(recordViewMode === "history" && activeAppTab === "record"){
+    scheduleRecordHistoryListRender({ scroll: false });
+  }else if(!recordHistoryRenderPending){
+    renderRecordList();
+  }
   renderDashboardIfVisible();
 }
 
 function refreshRecordDataUi(options = {}){
-  refreshRecordHistoryViews();
+  if(options.history !== false) refreshRecordHistoryViews();
+  else renderDashboardIfVisible();
   updateGoogleSheetResendButtonState();
   if(options.maps !== false) refreshHarvestMapViews();
   if(options.actualLoss === true) updateRecordActualLoss();
@@ -39776,9 +39841,10 @@ function refreshRecordDataUi(options = {}){
 }
 
 function scheduleRecordDataUiRefresh(){
+  const skipPendingHistoryRender = recordHistoryRenderPending;
   runAfterUiSettles(() => {
     try{
-      refreshRecordDataUi({ maps: false });
+      refreshRecordDataUi({ maps: false, history: !skipPendingHistoryRender });
     }catch(e){
       console.error("Failed to refresh record data UI", e);
     }
@@ -42042,7 +42108,11 @@ function formatRecordHistoryDateLabel(value){
 
 function showMoreRecordHistory(){
   recordHistoryVisibleLimit += RECORD_LIST_DISPLAY_LIMIT;
-  renderRecordList();
+  if(recordViewMode === "history" && activeAppTab === "record"){
+    scheduleRecordHistoryListRender({ scroll: false });
+  }else{
+    renderRecordList();
+  }
 }
 
 function renderRecordList(){
