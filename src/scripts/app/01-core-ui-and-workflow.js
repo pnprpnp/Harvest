@@ -2544,7 +2544,9 @@ function getHarvestProgressResultModel(){
 }
 
 function getHarvestProgressApplyLabel(state = harvestProgressState){
-  return isReverseHarvestProgressState(state) ? "追加して反映する" : "追加して再計算する";
+  const normalized = normalizeHarvestProgressState(state);
+  const baseSelectionMode = normalized?.baseSelectionMode || harvestSelectionMode;
+  return baseSelectionMode === "auto" ? "追加して再計算する" : "追加して反映する";
 }
 
 function updateHarvestProgressVisibility(){
@@ -2552,8 +2554,7 @@ function updateHarvestProgressVisibility(){
   const modal = document.getElementById("harvestProgressModal");
   const openButton = document.getElementById("harvestProgressOpenBtn");
   if(!panel) return false;
-  const shouldShow = harvestProgressAvailable
-    && harvestFillKeys.length > 0
+  const shouldShow = harvestFillKeys.length > 0
     && getHarvestCasePlan().totalCases > 0;
   panel.hidden = !shouldShow;
   if(!shouldShow) hidePageBlockingUi(modal);

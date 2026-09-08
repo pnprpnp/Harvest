@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260908-partial-harvest-eligibility">
+<meta name="harvestnavi-version" content="20260908-manual-harvest-progress">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17688,7 +17688,9 @@ function getHarvestProgressResultModel(){
 }
 
 function getHarvestProgressApplyLabel(state = harvestProgressState){
-  return isReverseHarvestProgressState(state) ? "追加して反映する" : "追加して再計算する";
+  const normalized = normalizeHarvestProgressState(state);
+  const baseSelectionMode = normalized?.baseSelectionMode || harvestSelectionMode;
+  return baseSelectionMode === "auto" ? "追加して再計算する" : "追加して反映する";
 }
 
 function updateHarvestProgressVisibility(){
@@ -17696,8 +17698,7 @@ function updateHarvestProgressVisibility(){
   const modal = document.getElementById("harvestProgressModal");
   const openButton = document.getElementById("harvestProgressOpenBtn");
   if(!panel) return false;
-  const shouldShow = harvestProgressAvailable
-    && harvestFillKeys.length > 0
+  const shouldShow = harvestFillKeys.length > 0
     && getHarvestCasePlan().totalCases > 0;
   panel.hidden = !shouldShow;
   if(!shouldShow) hidePageBlockingUi(modal);

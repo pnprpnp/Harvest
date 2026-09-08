@@ -4360,7 +4360,7 @@
         }, "定植日数の詳細が計算後にページネーション下の共有カードへ表示されていません");
       });
 
-      await runTest("計算後だけ1号棟・途中経過・クリアを収穫ケース数直下の同じ行に表示する", async () => {
+      await runTest("収穫場所選択後に1号棟・途中経過・クリアを収穫ケース数直下の同じ行に表示する", async () => {
         const previousTab = app.eval("activeAppTab");
         const previousFrameWidth = iframe.style.width;
         const previousSelectionState = app.eval(`JSON.stringify({
@@ -4662,6 +4662,75 @@
           iframe.style.width = previousFrameWidth;
           app.setMainTabSelection(previousTab);
         }
+      });
+
+      await runTest("計算せず手動選択した収穫場所でも途中経過を開ける", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            building:harvestProgressBuilding,
+            casesInput:document.getElementById("casesInput")?.value || ""
+          };
+          try{
+            getHarvestCasePlan = () => ({ totalCases:10, regularCases:10, date:"2026-09-08" });
+            harvestFillKeys = ["2-A-1", "2-A-2"];
+            harvestSummary = {
+              start:"2-A-1",
+              end:"2-A-2",
+              filledCount:2,
+              totalHarvest:24,
+              needHeads:120
+            };
+            harvestSelectionMode = "manual";
+            harvestProgressState = null;
+            harvestProgressAvailable = false;
+            harvestProgressBuilding = 2;
+            document.getElementById("casesInput").value = "10";
+            renderForecastSummary();
+            updateHarvestProgressUi();
+
+            const panel = document.getElementById("harvestProgressPanel");
+            const openButton = document.getElementById("harvestProgressOpenBtn");
+            const progress = ensureHarvestProgressState();
+            updateHarvestProgressUi();
+            return {
+              panelVisible:!panel.hidden,
+              buttonEnabled:!openButton.disabled,
+              baseSelectionMode:progress?.baseSelectionMode || "",
+              fixedReversePlan:progress?.fixedReversePlan,
+              applyLabel:document.getElementById("harvestProgressApplyBtn")?.textContent.trim() || "",
+              autoApplyLabel:getHarvestProgressApplyLabel({
+                ...progress,
+                baseSelectionMode:"auto",
+                fixedReversePlan:false
+              })
+            };
+          }finally{
+            getHarvestCasePlan = previous.getPlan;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            harvestProgressBuilding = previous.building;
+            document.getElementById("casesInput").value = previous.casesInput;
+            renderForecastSummary();
+            updateHarvestProgressUi();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          panelVisible:true,
+          buttonEnabled:true,
+          baseSelectionMode:"manual",
+          fixedReversePlan:false,
+          applyLabel:"追加して反映する",
+          autoApplyLabel:"追加して再計算する"
+        }, "計算済みフラグがない手動選択で途中経過を開けません");
       });
 
       await runTest("途中経過のケース数を複数回に分けて追加できる", () => {
