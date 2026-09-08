@@ -374,12 +374,7 @@ function parsePalletKey(key){
 
 function updateBuildingLabel(){
   const mainBtn = document.getElementById("currentBuildingBtn");
-  const partialBuildingInput = document.getElementById("partialHarvestBuildingInput");
   if(mainBtn) mainBtn.textContent = currentBuilding + "号棟";
-  if(partialBuildingInput) partialBuildingInput.value = String(currentBuilding);
-  if(typeof refreshAllPartialHarvestRemainingEstimators === "function"){
-    refreshAllPartialHarvestRemainingEstimators();
-  }
   updateBuildingLastHarvestInfo();
 }
 

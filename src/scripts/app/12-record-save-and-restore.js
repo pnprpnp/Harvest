@@ -148,6 +148,8 @@ function saveRecord(){
     harvestOverageKeys = [];
     harvestSelectionMode = "none";
     harvestProgressAvailable = false;
+    harvestProgressPartialSelectionMode = false;
+    harvestProgressPartialDraftSnapshot = null;
     clearRecordForm();
     const dateInput = document.getElementById("recordDateInput");
     if(dateInput) dateInput.value = editedRecordDate;
@@ -219,13 +221,15 @@ function saveRecord(){
   const sendQueuedCount = queueGoogleSheetRecordBatchSend(newRecords, {
     failureMessage: "収穫記録は保存済みです。スプレッドシートは未送信です"
   });
+  resetRecordPartialHarvestDraft();
   if(partialRecords.length) recalculateHarvestPredictionAfterPartialHarvest([date]);
   harvestProgressState = null;
   harvestOverageKeys = [];
   harvestSelectionMode = "none";
   harvestProgressAvailable = false;
+  harvestProgressPartialSelectionMode = false;
+  harvestProgressPartialDraftSnapshot = null;
   completeWorkflowGuideHarvestRecord();
-  resetRecordPartialHarvestDraft();
   if(record){
     enterPlantingRecordMode(record);
   }else{

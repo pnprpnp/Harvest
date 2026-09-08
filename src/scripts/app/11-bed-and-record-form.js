@@ -888,6 +888,7 @@ function removeRecordBuildingDisplay(building){
     if(Number(recordHarvestActiveBuilding) === normalizedBuilding){
       recordHarvestActiveBuilding = remainingBuildings[0] || null;
     }
+    syncHarvestProgressPartialEntriesFromRecordDraft();
     drawRecordBeds();
     scheduleHarvestStateSave();
     const nextBedKeys = new Set(getRecordPartialHarvestDraftModel().allBedKeys);
@@ -1272,11 +1273,13 @@ function updateRecordActualLoss(){
 
   const date = document.getElementById("recordDateInput")?.value || getHarvestTargetDateString();
   const targetDate = parseDateOnlyString(date) || getHarvestTargetDate();
+  const sourceRecords = getForecastHarvestTimelineRecords(records);
   const value = getActualLossRateFromSelectedPallets(
     getRecordRegularHarvestCases(cases, date),
-    targetDate
+    targetDate,
+    sourceRecords
   );
-  const estimateStatus = getHarvestLossEstimateStatus(harvestFillKeys, targetDate);
+  const estimateStatus = getHarvestLossEstimateStatus(harvestFillKeys, targetDate, sourceRecords);
   const isEstimated = value !== "" && estimateStatus.isEstimated;
   const label = document.querySelector(".recordActualLossField > label");
   if(label) label.textContent = isEstimated ? "推定ロス率" : "実際のロス率";
@@ -1766,7 +1769,6 @@ function updateRecordWeekdayDisplay(){
 function refreshRecordDateDependentUi(){
   updateRecordWeekdayDisplay();
   updateRecordPastDateNotice();
-  refreshAllPartialHarvestRemainingEstimators();
   renderRecordList();
   renderForecastSummary();
   updateRecordActualLoss();
@@ -1826,7 +1828,6 @@ function clearRecordForm(){
     delete actualSeedlingTrayCountInput.dataset.userEdited;
   }
   setRecordSeedlingCarryoverMode("loss", { silent: true });
-  resetPartialHarvestBatchEntries();
   setSelectedQualityMemo(null);
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();

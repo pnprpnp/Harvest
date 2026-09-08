@@ -53,6 +53,8 @@ function resetInvalidStartupPlantingState(){
 
 function restoreHarvestStateAtStartup(savedHarvestState){
   if(!savedHarvestState) return;
+  harvestProgressPartialSelectionMode = false;
+  harvestProgressPartialDraftSnapshot = null;
   currentBuilding = savedHarvestState.currentBuilding;
   casePlacementBuilding = savedHarvestState.casePlacementBuilding || savedHarvestState.currentBuilding;
   harvestFillKeys = savedHarvestState.harvestFillKeys;
@@ -176,7 +178,6 @@ function initializeStartupViews(savedHarvestState){
     harvestFillKeys: getHarvestProgressRemainingSelectionKeys()
   });
   setTodayToRecordDate();
-  refreshAllPartialHarvestRemainingEstimators();
   syncDashboardStartDayInputs(dashboardFilter.startDay || getDefaultDashboardStartDay());
 
   const dashboardCasesGranularityInput = document.getElementById("dashboardCasesGranularityInput");

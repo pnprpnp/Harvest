@@ -2010,6 +2010,28 @@ function getRecordPartialHarvestDraftCases(){
   return draft.casesValue;
 }
 
+function getRecordPartialHarvestDraftTimelineRecords(
+  dateStr = getHarvestTargetDateString(),
+  draft = recordPartialHarvestDraft
+){
+  const date = String(dateStr || "").trim();
+  if(!parseDateOnlyString(date)) return [];
+  return getRecordPartialHarvestDraftModel(draft).entries.map((entry, index) => ({
+    id:-(index + 1),
+    type:"partialHarvest",
+    date,
+    cases:Number(entry.cases),
+    targets:buildPartialHarvestTargetsForRecordBeds(entry.bedKeys, entry.cases),
+    palletKeys:[]
+  })).filter(record => record.targets.length > 0);
+}
+
+function getForecastHarvestTimelineRecords(sourceRecords = records){
+  if(sourceRecords !== records) return sourceRecords;
+  const draftRecords = getRecordPartialHarvestDraftTimelineRecords();
+  return draftRecords.length ? [...draftRecords, ...sourceRecords] : sourceRecords;
+}
+
 function getRecordRegularHarvestCases(totalCases, dateStr, options = {}){
   return getRegularHarvestCases(totalCases, dateStr, {
     ...options,
@@ -2151,10 +2173,9 @@ function commitRecordPartialHarvestActiveEntry(draft, nextBedKeys = []){
   return true;
 }
 
-function toggleRecordPartialHarvestBed(building, bed){
-  if(!recordPartialHarvestSelectionMode) return;
+function toggleSharedPartialHarvestDraftBed(building, bed){
   const key = getRecordPartialHarvestBedKey(building, bed);
-  if(!key) return;
+  if(!key) return { changed:false, message:"" };
   const normalizedDraft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
   const selected = new Set(normalizedDraft.bedKeys || []);
   if(selected.has(key)){
@@ -2165,8 +2186,7 @@ function toggleRecordPartialHarvestBed(building, bed){
     ));
     if(assignedEntryIndex >= 0){
       if(selected.size || normalizedDraft.cases || normalizedDraft.editingEntryIndex >= 0){
-        showToast("このベッドは別の部分収穫として追加済みです");
-        return;
+        return { changed:false, message:"このベッドは別の部分収穫として追加済みです" };
       }
       const assignedEntry = normalizedDraft.entries[assignedEntryIndex];
       recordPartialHarvestDraft = {
@@ -2175,20 +2195,12 @@ function toggleRecordPartialHarvestBed(building, bed){
         cases:assignedEntry.cases,
         editingEntryIndex:assignedEntryIndex
       };
-      const fixedCasesInput = document.getElementById("recordPartialHarvestCasesInput");
-      if(fixedCasesInput) fixedCasesInput.value = assignedEntry.cases;
-      drawRecordBeds();
-      updateRecordActualLoss();
-      scheduleHarvestStateSave();
-      return;
+      return { changed:true, loadedEntry:true };
     }
     const draftModel = getRecordPartialHarvestDraftModel(normalizedDraft);
     if(draftModel.activeIsValid){
       commitRecordPartialHarvestActiveEntry(draftModel, [key]);
-      drawRecordBeds();
-      updateRecordActualLoss();
-      scheduleHarvestStateSave();
-      return;
+      return { changed:true, committedPrevious:true };
     }
     selected.add(key);
   }
@@ -2196,6 +2208,28 @@ function toggleRecordPartialHarvestBed(building, bed){
     ...normalizedDraft,
     bedKeys:normalizeRecordPartialHarvestBedKeys([...selected])
   };
+  return { changed:true };
+}
+
+function setSharedPartialHarvestDraftCases(value){
+  recordPartialHarvestDraft = {
+    ...normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+    cases:String(value ?? "").trim().slice(0, 12)
+  };
+  return getRecordPartialHarvestDraftModel();
+}
+
+function toggleRecordPartialHarvestBed(building, bed){
+  if(!recordPartialHarvestSelectionMode) return;
+  const result = toggleSharedPartialHarvestDraftBed(building, bed);
+  if(result.message){
+    showToast(result.message);
+    return;
+  }
+  if(!result.changed) return;
+  if(result.committedPrevious) syncHarvestProgressPartialEntriesFromRecordDraft();
+  const fixedCasesInput = document.getElementById("recordPartialHarvestCasesInput");
+  if(fixedCasesInput) fixedCasesInput.value = getRecordPartialHarvestDraftModel().cases;
   drawRecordBeds();
   updateRecordActualLoss();
   scheduleHarvestStateSave();
@@ -2203,10 +2237,7 @@ function toggleRecordPartialHarvestBed(building, bed){
 
 function handleRecordPartialHarvestCasesInput(value){
   if(!recordPartialHarvestSelectionMode) return;
-  recordPartialHarvestDraft = {
-    ...normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
-    cases:String(value ?? "").trim().slice(0, 12)
-  };
+  setSharedPartialHarvestDraftCases(value);
   renderRecordPartialHarvestControl();
   updateRecordActualLoss();
   scheduleHarvestStateSave();
@@ -2234,6 +2265,7 @@ function finishRecordPartialHarvestSelection(options = {}){
     ? !!snapshot?.primaryInputsExpanded
     : false;
   recordPartialHarvestDraftSnapshot = null;
+  syncHarvestProgressPartialEntriesFromRecordDraft();
   renderRecordHarvestWorkflowUi();
   if(recordHarvestStage === "location") drawRecordBeds();
   updateRecordActualLoss();
@@ -2252,6 +2284,7 @@ function completeRecordPartialHarvestSelection(){
     return;
   }
   commitRecordPartialHarvestActiveEntry(draft);
+  syncHarvestProgressPartialEntriesFromRecordDraft();
   renderRecordHarvestWorkflowUi();
   drawRecordBeds();
   updateRecordActualLoss();
@@ -2266,6 +2299,7 @@ function resetRecordPartialHarvestDraft(){
   recordPartialHarvestSelectionMode = false;
   recordPartialHarvestDraft = { entries:[], bedKeys:[], cases:"", editingEntryIndex:-1 };
   recordPartialHarvestDraftSnapshot = null;
+  syncHarvestProgressPartialEntriesFromRecordDraft();
   renderRecordPartialHarvestControl();
 }
 

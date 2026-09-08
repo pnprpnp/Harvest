@@ -1292,6 +1292,9 @@ function isBedFullyFilledInCurrentBuilding(
 
 function getCurrentHarvestTotalRaw(keys = harvestFillKeys, options = {}){
   const sourceKeys = Array.isArray(keys) ? keys : [];
+  const sourceRecords = Array.isArray(options.sourceRecords)
+    ? options.sourceRecords
+    : getForecastHarvestTimelineRecords(records);
   const useProgressActual = recordSelectionMode !== "planting"
     && (sourceKeys === harvestFillKeys || options.includeProgressActual)
     && hasAppliedHarvestProgress();
@@ -1302,7 +1305,7 @@ function getCurrentHarvestTotalRaw(keys = harvestFillKeys, options = {}){
   sourceKeys.forEach(key => {
     if(completedSet.has(key)) return;
     const p = parsePalletKey(key);
-    total += getPredictedHarvestForPallet(p.building, p.bed, p.number);
+    total += getPredictedHarvestForPallet(p.building, p.bed, p.number, null, sourceRecords);
   });
   return total;
 }
@@ -2534,6 +2537,8 @@ function clearHarvestPrediction(){
   harvestSelectionMode = "none";
   harvestProgressState = null;
   harvestProgressAvailable = false;
+  harvestProgressPartialSelectionMode = false;
+  harvestProgressPartialDraftSnapshot = null;
   harvestFillKeys = [];
   harvestOverageKeys = [];
   harvestSummary = null;
@@ -2893,10 +2898,12 @@ function getHarvestCasePlan(totalCases = null){
   const total = totalCases === null
     ? clampNumber(document.getElementById("casesInput")?.value || 0, 0, 999999, 0)
     : clampNumber(totalCases, 0, 999999, 0);
+  const partialCases = getRecordPartialHarvestDraftCases();
   return {
     date: dateStr,
     totalCases: total,
-    regularCases: total
+    partialCases,
+    regularCases: Math.max(0, total - partialCases)
   };
 }
 
@@ -3234,6 +3241,7 @@ function runHarvestPrediction(options = {}){
   }
   const silent = !!options.silent;
   const casePlan = getHarvestCasePlan();
+  const forecastSourceRecords = getForecastHarvestTimelineRecords(records);
   const needHeads = Math.max(0, casePlan.regularCases - completedProgressCases) * CASE_SIZE;
 
   if(casePlan.totalCases <= 0){
@@ -3248,7 +3256,7 @@ function runHarvestPrediction(options = {}){
   const selection = needHeads > 0
     ? calculateHarvestSelectionFromRecords({
         referenceDate: getHarvestTargetDate(),
-        sourceRecords: records,
+        sourceRecords: forecastSourceRecords,
         needHeads,
         partialTargetDate: getHarvestTargetDate(),
         additionalExcludedPalletKeys: completedProgressKeys
