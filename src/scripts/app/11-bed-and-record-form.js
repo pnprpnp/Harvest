@@ -392,10 +392,15 @@ function renderForecastSummary(){
     && Array.isArray(harvestFillKeys)
     && harvestFillKeys.length > 0;
   if(resultActions){
-    resultActions.hidden = !hasForecastResult;
+    resultActions.hidden = false;
+    resultActions.classList.toggle("is-inactive", !hasForecastResult);
+    const seedlingButton = document.getElementById("seedlingHouseOpenBtn");
+    const clearButton = resultActions.querySelector(".forecastClearBtn");
+    if(seedlingButton) seedlingButton.disabled = !hasForecastResult;
+    if(clearButton) clearButton.disabled = !hasForecastResult;
   }
   document.getElementById("forecastSimulationCard")
-    ?.classList.toggle("has-forecast-result-actions", hasForecastResult);
+    ?.classList.add("has-forecast-result-actions");
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);

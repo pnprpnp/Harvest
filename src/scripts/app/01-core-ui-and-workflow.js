@@ -2560,6 +2560,9 @@ function updateHarvestProgressVisibility(){
   if(!shouldShow) hidePageBlockingUi(modal);
   if(openButton){
     openButton.disabled = !shouldShow;
+    openButton.title = shouldShow
+      ? ""
+      : (harvestFillKeys.length ? "収穫ケース数を入力してください" : "収穫場所を選択してください");
     openButton.setAttribute("aria-expanded", String(shouldShow && !!modal?.classList.contains("show")));
   }
   return shouldShow;

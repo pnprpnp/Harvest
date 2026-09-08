@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260908-manual-harvest-progress">
+<meta name="harvestnavi-version" content="20260908-subtle-progress-row">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8032,18 +8032,18 @@ button.forecastClearBtn{border-radius:10px;}
   min-width:0;
   margin:0;
   padding:5px 8px;
-  border:1px solid var(--ui-accent);
+  border:1px solid var(--ui-line-strong);
   border-radius:8px;
-  background:var(--ui-accent);
-  color:#fff;
+  background:transparent;
+  color:var(--ui-text-secondary);
   font-size:13px;
-  font-weight:750;
+  font-weight:720;
   white-space:nowrap;
 }
 .harvestProgressOpenBtn[aria-expanded="true"]{
-  border-color:var(--ui-accent-dark);
-  background:var(--ui-accent-dark);
-  color:#fff;
+  border-color:var(--ui-line-strong);
+  background:var(--ui-surface-muted);
+  color:var(--ui-accent-dark);
 }
 .forecastBottomClearRow button.forecastClearBtn{
   width:100%;
@@ -13478,7 +13478,7 @@ requestAnimationFrame(function(){
   </div>
 
   <div id="forecastTab">
-    <div id="forecastSimulationCard" class="card tabLinkedCard workflowFocusHeading" aria-label="シミュレーション">
+    <div id="forecastSimulationCard" class="card tabLinkedCard workflowFocusHeading has-forecast-result-actions" aria-label="シミュレーション">
       <div class="forecastControlRow">
         <div class="forecastCaseField">
           <div class="forecastFieldHeader">
@@ -13505,8 +13505,8 @@ requestAnimationFrame(function(){
 
       <div class="casePlacementDivider"></div>
 
-      <div id="forecastResultActions" class="forecastResultActions forecastBottomClearRow" hidden>
-        <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-label="苗取り場所の1号棟を開く" aria-haspopup="dialog" aria-controls="seedlingHouseModal">
+      <div id="forecastResultActions" class="forecastResultActions forecastBottomClearRow is-inactive">
+        <button id="seedlingHouseOpenBtn" type="button" class="seedlingHouseOpenBtn" data-ui-click="openSeedlingHouseWindow" aria-label="苗取り場所の1号棟を開く" aria-haspopup="dialog" aria-controls="seedlingHouseModal" disabled>
           <span class="seedlingHouseOpenIcon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false">
               <path d="M12 21V10"></path>
@@ -13516,8 +13516,8 @@ requestAnimationFrame(function(){
           </span>
           <span class="seedlingHouseOpenBuilding">1号棟</span>
         </button>
-        <button id="harvestProgressOpenBtn" type="button" class="harvestProgressOpenBtn" data-ui-click="toggleHarvestProgressInput" aria-expanded="false" aria-haspopup="dialog" aria-controls="harvestProgressModal">途中経過を入力</button>
-        <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction">クリア</button>
+        <button id="harvestProgressOpenBtn" type="button" class="harvestProgressOpenBtn" data-ui-click="toggleHarvestProgressInput" aria-expanded="false" aria-haspopup="dialog" aria-controls="harvestProgressModal" disabled>途中経過を入力</button>
+        <button class="actionBtn secondaryBtn forecastClearBtn" data-ui-click="clearHarvestPrediction" disabled>クリア</button>
       </div>
 
       <div class="casePlacementPanel">
@@ -17704,6 +17704,9 @@ function updateHarvestProgressVisibility(){
   if(!shouldShow) hidePageBlockingUi(modal);
   if(openButton){
     openButton.disabled = !shouldShow;
+    openButton.title = shouldShow
+      ? ""
+      : (harvestFillKeys.length ? "収穫ケース数を入力してください" : "収穫場所を選択してください");
     openButton.setAttribute("aria-expanded", String(shouldShow && !!modal?.classList.contains("show")));
   }
   return shouldShow;
@@ -38225,10 +38228,15 @@ function renderForecastSummary(){
     && Array.isArray(harvestFillKeys)
     && harvestFillKeys.length > 0;
   if(resultActions){
-    resultActions.hidden = !hasForecastResult;
+    resultActions.hidden = false;
+    resultActions.classList.toggle("is-inactive", !hasForecastResult);
+    const seedlingButton = document.getElementById("seedlingHouseOpenBtn");
+    const clearButton = resultActions.querySelector(".forecastClearBtn");
+    if(seedlingButton) seedlingButton.disabled = !hasForecastResult;
+    if(clearButton) clearButton.disabled = !hasForecastResult;
   }
   document.getElementById("forecastSimulationCard")
-    ?.classList.toggle("has-forecast-result-actions", hasForecastResult);
+    ?.classList.add("has-forecast-result-actions");
   let startLabel = "開始パレット: -";
   if(harvestSummary && harvestSummary.start){
     const p = parsePalletKey(harvestSummary.start);
