@@ -5,13 +5,12 @@ function hideWelcomeScreen(){
     requestAnimationFrame(hideWelcomeScreen);
     return;
   }
-  const minimumVisibleMs = 1100;
   const shownAt = Number(window.__harvestnaviWelcomePaintAt) || Date.now();
   const elapsedMs = Math.max(0, Date.now() - shownAt);
-  const delayMs = Math.max(0, minimumVisibleMs - elapsedMs);
+  const delayMs = Math.max(0, WELCOME_MINIMUM_VISIBLE_MS - elapsedMs);
   setTimeout(() => {
     screen.classList.add("hide");
-    setTimeout(() => screen.remove(), 460);
+    setTimeout(() => screen.remove(), WELCOME_FADE_MS);
   }, delayMs);
 }
 

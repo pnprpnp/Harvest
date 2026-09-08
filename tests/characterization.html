@@ -596,6 +596,23 @@
         assertDeepEqual(missing, [], `読み込めない関数があります: ${missing.join(", ")}`);
       });
 
+      await runTest("起動完了後はウェルカム画面を短時間で閉じる", () => {
+        const screen = app.document.createElement("div");
+        screen.className = "welcomeScreen";
+        app.document.body.appendChild(screen);
+        const state = {
+          minimumVisibleMs: app.eval("WELCOME_MINIMUM_VISIBLE_MS"),
+          fadeMs: app.eval("WELCOME_FADE_MS"),
+          transitionDuration: app.getComputedStyle(screen).transitionDuration
+        };
+        screen.remove();
+        assertDeepEqual(state, {
+          minimumVisibleMs: 450,
+          fadeMs: 200,
+          transitionDuration: "0.2s, 0.2s"
+        }, "ウェルカム画面の表示時間が短縮設定と一致しません");
+      });
+
       await runTest("ブラウザー内保存を共通窓口で読み書き・退避・復元する", () => {
         const state = comparable(app.eval(`(() => {
           const values = new Map();
