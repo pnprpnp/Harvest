@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260908-record-history-return-layout">
+<meta name="harvestnavi-version" content="20260909-monthly-record-history">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10860,8 +10860,46 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   border-radius:17px;
   background:var(--ui-surface-muted);
 }
-.recordDateGroup{
+.recordMonthGroup{
   margin-top:12px;
+  border:1px solid var(--ui-line);
+  border-radius:16px;
+  background:var(--ui-surface-solid);
+  overflow:hidden;
+  scroll-margin-top:calc(var(--app-top-chrome-height) + 8px);
+}
+.recordMonthGroupHeader{
+  width:100%;
+  min-height:52px;
+  margin:0;
+  padding:12px 15px;
+  border:0;
+  background:var(--ui-surface-muted);
+  color:var(--ui-text);
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:10px;
+  text-align:left;
+  cursor:pointer;
+}
+.recordMonthGroup.is-open > .recordMonthGroupHeader{border-bottom:1px solid var(--ui-line);}
+.recordMonthGroupTitle{
+  font-size:18px;
+  font-weight:900;
+  line-height:1.25;
+}
+.recordMonthGroupChevron{
+  color:var(--ui-text-tertiary);
+  font-size:26px;
+  line-height:1;
+  transform:rotate(90deg);
+  transition:transform .16s ease;
+}
+.recordMonthGroup.is-open > .recordMonthGroupHeader .recordMonthGroupChevron{transform:rotate(-90deg);}
+.recordMonthGroupBody{padding:0 10px 12px;}
+.recordDateGroup{
+  margin-top:10px;
   border:1px solid var(--ui-line);
   border-radius:15px;
   background:var(--ui-surface-solid);
@@ -10869,16 +10907,20 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   scroll-margin-top:calc(var(--app-top-chrome-height) + 58px);
 }
 .recordDateGroupHeader{
+  width:100%;
+  margin:0;
+  border:0;
+  background:transparent;
+  color:var(--ui-text);
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
   align-items:center;
   gap:7px;
   padding:13px 14px;
+  text-align:left;
   cursor:pointer;
-  list-style:none;
 }
-.recordDateGroupHeader::-webkit-details-marker{display:none;}
-.recordDateGroup[open] > .recordDateGroupHeader{
+.recordDateGroup.is-open > .recordDateGroupHeader{
   border-bottom:1px solid var(--ui-line);
 }
 .recordDateGroupTitle{
@@ -10904,7 +10946,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   transform:rotate(90deg);
   transition:transform .16s ease;
 }
-.recordDateGroup[open] > .recordDateGroupHeader .recordDateGroupChevron{transform:rotate(-90deg);}
+.recordDateGroup.is-open > .recordDateGroupHeader .recordDateGroupChevron{transform:rotate(-90deg);}
 .recordDateGroupType{
   display:inline-flex;
   align-items:center;
@@ -10969,7 +11011,9 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 }
 .recordItemChevron{color:var(--ui-text-tertiary);font-size:23px;font-weight:500;line-height:1;}
 .recordItemOpenButton:focus-visible,
-.partialHarvestDayEntryMain:focus-visible{
+.partialHarvestDayEntryMain:focus-visible,
+.recordMonthGroupHeader:focus-visible,
+.recordDateGroupHeader:focus-visible{
   outline:2px solid var(--ui-accent);
   outline-offset:3px;
   border-radius:8px;
@@ -15276,7 +15320,7 @@ const CALCULATION_LOOKBACK_DAYS = 35;
 const HARVEST_SELECTION_PLANTING_LOCK_DAYS = 10;
 const HARVEST_LOSS_ESTIMATE_THRESHOLD_POINTS = 5;
 const HARVEST_CYCLE_GAP_DAYS = 7;
-const RECORD_LIST_DISPLAY_LIMIT = 30;
+const RECORD_HISTORY_MONTH_BATCH_SIZE = 3;
 const DASHBOARD_RECORD_FILTER_DELAY_MS = 180;
 const HARVEST_STATE_SAVE_DELAY_MS = 250;
 const WELCOME_MINIMUM_VISIBLE_MS = 450;
@@ -36154,7 +36198,11 @@ function renderRecordHistoryToggle(){
 function finishRecordHistoryListRender(scheduleId){
   if(scheduleId !== recordHistoryRenderScheduleId) return;
   recordHistoryRenderPending = false;
-  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const historyCard = document.getElementById("recordHistoryCard");
+  historyCard?.removeAttribute("aria-busy");
+  historyCard?.querySelectorAll("[data-record-history-date][aria-busy]").forEach(group => (
+    group.removeAttribute("aria-busy")
+  ));
   const loadingState = document.getElementById("mainTabLoadingState");
   if(loadingState?.dataset.loadingTab === "record"){
     setMainTabLoadingState("record", false);
@@ -36179,9 +36227,9 @@ function scheduleRecordHistoryListRender(options = {}){
       return;
     }
     try{
-      renderRecordList();
-      scheduleRecordHarvestViewportLayout();
       const targetDate = String(options.targetDate || "");
+      renderRecordList({ preferredDate:targetDate });
+      scheduleRecordHarvestViewportLayout();
       if(options.scroll !== false){
         requestAnimationFrame(() => {
           const target = targetDate
@@ -36214,19 +36262,37 @@ function showRecordHistoryView(options = {}){
   renderRecordHistoryToggle();
   renderRecordHarvestFixedNavigation();
   const targetDate = typeof options === "object" ? options.date : "";
-  scheduleRecordHistoryListRender({ targetDate });
+  const shouldScroll = typeof options !== "object" || options.scroll !== false;
+  const canReuseRenderedList = !targetDate
+    && !!recordHistoryCache
+    && recordHistoryRenderedCache === recordHistoryCache;
+  if(canReuseRenderedList){
+    setMainTabLoadingState("record", false);
+    scheduleRecordHarvestViewportLayout();
+    if(shouldScroll){
+      requestAnimationFrame(() => historyCard?.scrollIntoView({
+        block:"start",
+        behavior:getWorkflowScrollBehavior("smooth")
+      }));
+    }
+  }else{
+    scheduleRecordHistoryListRender({ targetDate, scroll:shouldScroll });
+  }
   scheduleHarvestStateSave();
 }
 
 function showRecordEntryView(){
   recordHistoryRenderScheduleId++;
   recordHistoryRenderPending = false;
-  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const historyCard = document.getElementById("recordHistoryCard");
+  historyCard?.removeAttribute("aria-busy");
+  historyCard?.querySelectorAll("[data-record-history-date][aria-busy]").forEach(group => (
+    group.removeAttribute("aria-busy")
+  ));
   const loadingState = document.getElementById("mainTabLoadingState");
   if(loadingState?.dataset.loadingTab === "record") setMainTabLoadingState("record", false);
   recordViewMode = "entry";
   const saveCard = document.getElementById("recordSaveCard");
-  const historyCard = document.getElementById("recordHistoryCard");
   if(saveCard) saveCard.hidden = false;
   if(historyCard) historyCard.hidden = true;
   refreshRecordModeUi();
@@ -41720,7 +41786,10 @@ function savePartialHarvestRecordEdit(){
 }
 
 // ===== 記録一覧：編集・履歴・削除 =====
-let recordHistoryVisibleLimit = RECORD_LIST_DISPLAY_LIMIT;
+let recordHistoryVisibleMonthLimit = RECORD_HISTORY_MONTH_BATCH_SIZE;
+let recordHistoryOpenMonthKey = null;
+let recordHistoryOpenDateKeys = new Set();
+let recordHistoryRenderedCache = null;
 
 function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
@@ -42105,6 +42174,19 @@ function editFirstRecordConsistencyIssue(){
 
 function invalidateRecordHistoryCache(){
   recordHistoryCache = null;
+  recordHistoryRenderedCache = null;
+}
+
+function getRecordHistoryMonthKey(value){
+  const date = parseDateOnlyString(String(value || "").trim());
+  if(!date) return "undated";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatRecordHistoryMonthLabel(monthKey){
+  const match = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+  if(!match) return "日付なし";
+  return `${Number(match[1])}年${Number(match[2])}月`;
 }
 
 function getRecordHistoryCache(){
@@ -42121,13 +42203,24 @@ function getRecordHistoryCache(){
     return b.id - a.id;
   });
   const itemsByDate = new Map();
+  const itemsByMonth = new Map();
   historyItems.forEach(item => {
     const dateKey = String(item.date || "");
     if(!itemsByDate.has(dateKey)) itemsByDate.set(dateKey, []);
     itemsByDate.get(dateKey).push(item);
+    const monthKey = getRecordHistoryMonthKey(dateKey);
+    if(!itemsByMonth.has(monthKey)) itemsByMonth.set(monthKey, []);
+    itemsByMonth.get(monthKey).push(item);
   });
   const consistencyAudit = buildRecordConsistencyAudit();
-  recordHistoryCache = { historyItems, itemsByDate, harvestCaseTotalsByDate, consistencyAudit };
+  recordHistoryCache = {
+    historyItems,
+    itemsByDate,
+    itemsByMonth,
+    monthKeys:[...itemsByMonth.keys()],
+    harvestCaseTotalsByDate,
+    consistencyAudit
+  };
   return recordHistoryCache;
 }
 
@@ -42138,112 +42231,293 @@ function formatRecordHistoryDateLabel(value){
   return `${date.getMonth() + 1}/${date.getDate()}（${weekday}）`;
 }
 
-function showMoreRecordHistory(){
-  recordHistoryVisibleLimit += RECORD_LIST_DISPLAY_LIMIT;
-  if(recordViewMode === "history" && activeAppTab === "record"){
-    scheduleRecordHistoryListRender({ scroll: false });
-  }else{
-    renderRecordList();
-  }
+function splitRecordHistoryDayItems(items){
+  const group = { harvest:[], planting:[], partial:[] };
+  (Array.isArray(items) ? items : []).forEach(item => {
+    if(item.kind === "planting") group.planting.push(item);
+    else if(item.value?.type === "partialHarvest") group.partial.push(item);
+    else group.harvest.push(item);
+  });
+  return group;
 }
 
-function renderRecordList(){
-  const box = document.getElementById("recordList");
-  updateTodayHarvestRecordedStatus();
-  renderDeletedRecordList();
-  const { historyItems, itemsByDate, harvestCaseTotalsByDate, consistencyAudit } = getRecordHistoryCache();
-  renderRecordConsistencyAlert(consistencyAudit);
-  if(!historyItems.length){
-    box.textContent = "まだ記録がありません。";
+function renderRecordHistoryItemHtml(item, cache){
+  const issue = cache.consistencyAudit.issueByKey.get(
+    getRecordConsistencyIssueKey(item.kind, item.id)
+  ) || null;
+  return item.kind === "planting"
+    ? renderPlantingEventItemHtml(item.value, issue)
+    : renderRecordItemHtml(item.value, cache.harvestCaseTotalsByDate, issue);
+}
+
+function renderRecordHistoryDateBodyHtml(dateKey, cache = getRecordHistoryCache()){
+  const group = splitRecordHistoryDayItems(cache.itemsByDate.get(dateKey) || []);
+  const harvestHtml = group.harvest.map(item => renderRecordHistoryItemHtml(item, cache)).join("");
+  const plantingHtml = group.planting.map(item => renderRecordHistoryItemHtml(item, cache)).join("");
+  const partialHtml = group.partial.length
+    ? renderPartialHarvestDaySummaryHtml(group.partial, cache.consistencyAudit)
+    : "";
+  const primaryHtml = harvestHtml || plantingHtml
+    ? `<div class="recordDateGroupPrimary">
+        ${harvestHtml ? `<div class="recordDateColumn recordDateHarvestColumn">${harvestHtml}</div>` : ""}
+        ${plantingHtml ? `<div class="recordDateColumn recordDatePlantingColumn">${plantingHtml}</div>` : ""}
+      </div>`
+    : "";
+  return `${primaryHtml}${partialHtml ? `<div class="recordDateColumn recordDatePartialColumn">${partialHtml}</div>` : ""}`;
+}
+
+function renderRecordHistoryDateGroupHtml(dateKey, items, cache, isOpen){
+  const group = splitRecordHistoryDayItems(items);
+  const caseTotals = getHarvestCaseTotalsForDate(dateKey, records, cache.harvestCaseTotalsByDate);
+  const plantingMetrics = getPlantingEventGroupListMetrics(
+    group.planting.map(item => item.value)
+  );
+  const typeBadges = [
+    group.harvest.length
+      ? `<span class="recordDateGroupType is-harvest">収穫 ${escapeHtml(String(caseTotals.totalCases))}ケース</span>`
+      : "",
+    group.planting.length
+      ? `<span class="recordDateGroupType is-planting">苗植え ${escapeHtml(plantingMetrics.seedlingTrayText)}</span>`
+      : "",
+    group.partial.length
+      ? `<span class="recordDateGroupType is-partial">部分</span>`
+      : ""
+  ].join("");
+  const bodyHtml = isOpen ? renderRecordHistoryDateBodyHtml(dateKey, cache) : "";
+  return `<section class="recordDateGroup${isOpen ? " is-open" : ""}" data-record-history-date="${escapeHtml(dateKey)}">
+    <button type="button" class="recordDateGroupHeader" aria-expanded="${isOpen ? "true" : "false"}"
+      data-ui-click="toggleRecordHistoryDateGroup" data-ui-arg="${escapeHtml(dateKey)}">
+      <span class="recordDateGroupTitle">${escapeHtml(formatRecordHistoryDateLabel(dateKey))}</span>
+      <span class="recordDateGroupTypes" aria-label="この日の記録">${typeBadges}</span>
+      <span class="recordDateGroupChevron" aria-hidden="true">›</span>
+    </button>
+    <div class="recordDateGroupItems" data-record-history-date-body data-rendered="${isOpen ? "true" : "false"}"${isOpen ? "" : " hidden"}>
+      ${bodyHtml}
+    </div>
+  </section>`;
+}
+
+function renderRecordHistoryMonthBodyHtml(monthKey, cache = getRecordHistoryCache()){
+  const dateGroups = new Map();
+  (cache.itemsByMonth.get(monthKey) || []).forEach(item => {
+    const dateKey = String(item.date || "");
+    if(!dateGroups.has(dateKey)) dateGroups.set(dateKey, []);
+    dateGroups.get(dateKey).push(item);
+  });
+  return [...dateGroups.entries()].map(([dateKey, items]) => (
+    renderRecordHistoryDateGroupHtml(
+      dateKey,
+      items,
+      cache,
+      recordHistoryOpenDateKeys.has(dateKey)
+    )
+  )).join("");
+}
+
+function renderRecordHistoryMonthGroupHtml(monthKey, cache, isOpen = false){
+  const bodyHtml = isOpen ? renderRecordHistoryMonthBodyHtml(monthKey, cache) : "";
+  return `<section class="recordMonthGroup${isOpen ? " is-open" : ""}" data-record-history-month="${escapeHtml(monthKey)}">
+    <button type="button" class="recordMonthGroupHeader" aria-expanded="${isOpen ? "true" : "false"}"
+      data-ui-click="toggleRecordHistoryMonth" data-ui-arg="${escapeHtml(monthKey)}">
+      <span class="recordMonthGroupTitle">${escapeHtml(formatRecordHistoryMonthLabel(monthKey))}</span>
+      <span class="recordMonthGroupChevron" aria-hidden="true">›</span>
+    </button>
+    <div class="recordMonthGroupBody" data-record-history-month-body data-rendered="${isOpen ? "true" : "false"}"${isOpen ? "" : " hidden"}>
+      ${bodyHtml}
+    </div>
+  </section>`;
+}
+
+function renderRecordHistoryMoreHtml(hiddenMonthCount){
+  if(hiddenMonthCount <= 0) return "";
+  return `<div class="recordHistoryMore">
+    <button type="button" class="recordHistoryMoreBtn" data-ui-click="showMoreRecordHistory">さらに過去の月を表示（残り ${hiddenMonthCount}か月）</button>
+  </div>`;
+}
+
+function findRecordHistoryElement(attributeName, value){
+  return [...document.querySelectorAll(`#recordList [${attributeName}]`)]
+    .find(element => element.getAttribute(attributeName) === String(value || "")) || null;
+}
+
+function setRecordHistoryMonthExpanded(group, expanded){
+  if(!group) return;
+  group.classList.toggle("is-open", expanded);
+  group.querySelector(":scope > .recordMonthGroupHeader")?.setAttribute("aria-expanded", String(expanded));
+  const body = group.querySelector(":scope > .recordMonthGroupBody");
+  if(body) body.hidden = !expanded;
+}
+
+function setRecordHistoryDateExpanded(group, expanded){
+  if(!group) return;
+  const dateKey = String(group.dataset.recordHistoryDate || "");
+  group.classList.toggle("is-open", expanded);
+  group.querySelector(":scope > .recordDateGroupHeader")?.setAttribute("aria-expanded", String(expanded));
+  const body = group.querySelector(":scope > .recordDateGroupItems");
+  if(body) body.hidden = !expanded;
+  if(expanded) recordHistoryOpenDateKeys.add(dateKey);
+  else recordHistoryOpenDateKeys.delete(dateKey);
+}
+
+function scrollRecordHistoryGroupHeaderIntoView(group, headerSelector){
+  const header = group?.querySelector(headerSelector);
+  if(!header) return;
+  const top = header.getBoundingClientRect().top + window.pageYOffset - getAppTopChromeOffset() - 8;
+  window.scrollTo({ top:Math.max(0, top), behavior:"auto" });
+}
+
+function toggleRecordHistoryMonth(monthKey){
+  const target = findRecordHistoryElement("data-record-history-month", monthKey);
+  if(!target) return;
+  const wasOpen = target.classList.contains("is-open");
+  document.querySelectorAll("#recordList .recordMonthGroup.is-open").forEach(group => (
+    setRecordHistoryMonthExpanded(group, false)
+  ));
+  if(wasOpen){
+    recordHistoryOpenMonthKey = "";
+    scrollRecordHistoryGroupHeaderIntoView(target, ":scope > .recordMonthGroupHeader");
     return;
   }
 
-  const selectedDate = document.getElementById("recordDateInput")?.value || "";
-  const preferredOpenDate = itemsByDate.has(selectedDate)
+  const body = target.querySelector(":scope > .recordMonthGroupBody");
+  if(body?.dataset.rendered !== "true"){
+    body.innerHTML = renderRecordHistoryMonthBodyHtml(monthKey);
+    body.dataset.rendered = "true";
+  }
+  recordHistoryOpenMonthKey = String(monthKey || "");
+  setRecordHistoryMonthExpanded(target, true);
+  scrollRecordHistoryGroupHeaderIntoView(target, ":scope > .recordMonthGroupHeader");
+}
+
+function scheduleRecordHistoryDateGroupOpen(dateKey){
+  const group = findRecordHistoryElement("data-record-history-date", dateKey);
+  if(!group) return;
+  const scheduleId = ++recordHistoryRenderScheduleId;
+  recordHistoryRenderPending = true;
+  group.setAttribute("aria-busy", "true");
+  document.getElementById("recordHistoryCard")?.setAttribute("aria-busy", "true");
+  setMainTabLoadingState("record", true, {
+    immediate:true,
+    label:formatRecordHistoryDateLabel(dateKey) + "の記録"
+  });
+  runAfterUiSettles(() => {
+    if(scheduleId !== recordHistoryRenderScheduleId) return;
+    if(recordViewMode !== "history" || activeAppTab !== "record"){
+      finishRecordHistoryListRender(scheduleId);
+      return;
+    }
+    try{
+      const currentGroup = findRecordHistoryElement("data-record-history-date", dateKey);
+      const body = currentGroup?.querySelector(":scope > .recordDateGroupItems");
+      if(!currentGroup || !body) return;
+      body.innerHTML = renderRecordHistoryDateBodyHtml(dateKey);
+      body.dataset.rendered = "true";
+      setRecordHistoryDateExpanded(currentGroup, true);
+      requestAnimationFrame(() => (
+        scrollRecordHistoryGroupHeaderIntoView(currentGroup, ":scope > .recordDateGroupHeader")
+      ));
+    }catch(error){
+      console.error("日付の記録を読み込めませんでした", error);
+      showToast("この日の記録を読み込めませんでした。もう一度お試しください");
+    }finally{
+      finishRecordHistoryListRender(scheduleId);
+    }
+  });
+}
+
+function toggleRecordHistoryDateGroup(dateKey){
+  const group = findRecordHistoryElement("data-record-history-date", dateKey);
+  if(!group) return;
+  if(group.classList.contains("is-open")){
+    setRecordHistoryDateExpanded(group, false);
+    scrollRecordHistoryGroupHeaderIntoView(group, ":scope > .recordDateGroupHeader");
+    return;
+  }
+  const body = group.querySelector(":scope > .recordDateGroupItems");
+  if(body?.dataset.rendered === "true"){
+    setRecordHistoryDateExpanded(group, true);
+    scrollRecordHistoryGroupHeaderIntoView(group, ":scope > .recordDateGroupHeader");
+    return;
+  }
+  scheduleRecordHistoryDateGroupOpen(dateKey);
+}
+
+function showMoreRecordHistory(){
+  const box = document.getElementById("recordList");
+  const cache = getRecordHistoryCache();
+  const previousLimit = Math.min(recordHistoryVisibleMonthLimit, cache.monthKeys.length);
+  recordHistoryVisibleMonthLimit = Math.min(
+    cache.monthKeys.length,
+    previousLimit + RECORD_HISTORY_MONTH_BATCH_SIZE
+  );
+  if(!box || recordHistoryRenderedCache !== cache){
+    renderRecordList();
+    return;
+  }
+
+  const more = box.querySelector(".recordHistoryMore");
+  const nextMonthKeys = cache.monthKeys.slice(previousLimit, recordHistoryVisibleMonthLimit);
+  if(more && nextMonthKeys.length){
+    more.insertAdjacentHTML(
+      "beforebegin",
+      nextMonthKeys.map(monthKey => renderRecordHistoryMonthGroupHtml(monthKey, cache, false)).join("")
+    );
+  }
+  const hiddenMonthCount = Math.max(0, cache.monthKeys.length - recordHistoryVisibleMonthLimit);
+  if(more){
+    if(hiddenMonthCount){
+      more.querySelector(".recordHistoryMoreBtn").textContent = `さらに過去の月を表示（残り ${hiddenMonthCount}か月）`;
+    }else{
+      more.remove();
+    }
+  }
+}
+
+function renderRecordList(options = {}){
+  const box = document.getElementById("recordList");
+  updateTodayHarvestRecordedStatus();
+  renderDeletedRecordList();
+  const cache = getRecordHistoryCache();
+  const { historyItems, itemsByDate, monthKeys, consistencyAudit } = cache;
+  renderRecordConsistencyAlert(consistencyAudit);
+  if(!historyItems.length){
+    box.textContent = "まだ記録がありません。";
+    recordHistoryRenderedCache = cache;
+    return;
+  }
+
+  recordHistoryOpenDateKeys = new Set(
+    [...recordHistoryOpenDateKeys].filter(dateKey => itemsByDate.has(dateKey))
+  );
+  const requestedDate = String(options.preferredDate || "");
+  const selectedDate = String(document.getElementById("recordDateInput")?.value || "");
+  const hasRequestedDate = itemsByDate.has(requestedDate);
+  const initialDate = itemsByDate.has(selectedDate)
     ? selectedDate
     : String(historyItems[0]?.date || "");
-  const previouslyOpenDates = new Set(
-    [...box.querySelectorAll("details.recordDateGroup[open]")]
-      .map(group => group.dataset.recordHistoryDate || "")
-      .filter(Boolean)
-  );
-  const visibleDateKeys = new Set();
-  let visibleItemCount = 0;
-  for(const [dateKey, dateItems] of itemsByDate){
-    if(visibleItemCount >= recordHistoryVisibleLimit) break;
-    visibleDateKeys.add(dateKey);
-    visibleItemCount += dateItems.length;
+  const openStateNeedsDefault = recordHistoryOpenMonthKey === null
+    || (recordHistoryOpenMonthKey && !monthKeys.includes(recordHistoryOpenMonthKey));
+  if(hasRequestedDate){
+    recordHistoryOpenMonthKey = getRecordHistoryMonthKey(requestedDate);
+    recordHistoryOpenDateKeys.add(requestedDate);
+  }else if(openStateNeedsDefault){
+    recordHistoryOpenMonthKey = getRecordHistoryMonthKey(initialDate);
+    if(initialDate) recordHistoryOpenDateKeys.add(initialDate);
   }
-  if(preferredOpenDate) visibleDateKeys.add(preferredOpenDate);
-  const visibleItems = historyItems.filter(item => visibleDateKeys.has(String(item.date || "")));
-  const hiddenTotal = Math.max(0, historyItems.length - visibleItems.length);
-
-  const renderHistoryItem = item => {
-    const issue = consistencyAudit.issueByKey.get(getRecordConsistencyIssueKey(item.kind, item.id)) || null;
-    return item.kind === "planting"
-      ? renderPlantingEventItemHtml(item.value, issue)
-      : renderRecordItemHtml(item.value, harvestCaseTotalsByDate, issue);
-  };
-  const renderHistoryGroups = items => {
-    const groups = new Map();
-    items.forEach(item => {
-      const dateKey = String(item.date || "");
-      if(!groups.has(dateKey)){
-        groups.set(dateKey, { dateKey, harvest: [], planting: [], partial: [] });
-      }
-      const group = groups.get(dateKey);
-      if(item.kind === "planting") group.planting.push(item);
-      else if(item.value?.type === "partialHarvest") group.partial.push(item);
-      else group.harvest.push(item);
-    });
-    return [...groups.values()].map(group => {
-      const harvestHtml = group.harvest.map(renderHistoryItem).join("");
-      const plantingHtml = group.planting.map(renderHistoryItem).join("");
-      const partialHtml = group.partial.length
-        ? renderPartialHarvestDaySummaryHtml(group.partial, consistencyAudit)
-        : "";
-      const caseTotals = getHarvestCaseTotalsForDate(group.dateKey, records, harvestCaseTotalsByDate);
-      const plantingMetrics = getPlantingEventGroupListMetrics(
-        group.planting.map(item => item.value)
-      );
-      const typeBadges = [
-        harvestHtml
-          ? `<span class="recordDateGroupType is-harvest">収穫 ${escapeHtml(String(caseTotals.totalCases))}ケース</span>`
-          : "",
-        plantingHtml
-          ? `<span class="recordDateGroupType is-planting">苗植え ${escapeHtml(plantingMetrics.seedlingTrayText)}</span>`
-          : "",
-        partialHtml
-          ? `<span class="recordDateGroupType is-partial">部分</span>`
-          : ""
-      ].join("");
-      const primaryHtml = harvestHtml || plantingHtml
-        ? `<div class="recordDateGroupPrimary">
-            ${harvestHtml ? `<div class="recordDateColumn recordDateHarvestColumn">${harvestHtml}</div>` : ""}
-            ${plantingHtml ? `<div class="recordDateColumn recordDatePlantingColumn">${plantingHtml}</div>` : ""}
-          </div>`
-        : "";
-      const isOpen = group.dateKey === preferredOpenDate || previouslyOpenDates.has(group.dateKey);
-      return `<details class="recordDateGroup" data-record-history-date="${escapeHtml(group.dateKey)}"${isOpen ? " open" : ""}>
-        <summary class="recordDateGroupHeader">
-          <div class="recordDateGroupTitle">${escapeHtml(formatRecordHistoryDateLabel(group.dateKey))}</div>
-          <div class="recordDateGroupTypes" aria-label="この日の記録">${typeBadges}</div>
-          <span class="recordDateGroupChevron" aria-hidden="true">›</span>
-        </summary>
-        <div class="recordDateGroupItems">
-          ${primaryHtml}
-          ${partialHtml ? `<div class="recordDateColumn recordDatePartialColumn">${partialHtml}</div>` : ""}
-        </div>
-      </details>`;
-    }).join("");
-  };
-  const visibleHtml = renderHistoryGroups(visibleItems);
-
-  box.innerHTML = visibleHtml + (hiddenTotal ? `
-    <div class="recordHistoryMore">
-      <button type="button" class="recordHistoryMoreBtn" data-ui-click="showMoreRecordHistory">さらに過去の記録を表示（残り ${hiddenTotal} 件）</button>
-    </div>
-  ` : "");
+  const openMonthIndex = monthKeys.indexOf(recordHistoryOpenMonthKey);
+  if(openMonthIndex >= 0){
+    recordHistoryVisibleMonthLimit = Math.max(recordHistoryVisibleMonthLimit, openMonthIndex + 1);
+  }
+  recordHistoryVisibleMonthLimit = Math.max(
+    RECORD_HISTORY_MONTH_BATCH_SIZE,
+    Math.min(recordHistoryVisibleMonthLimit, monthKeys.length)
+  );
+  const visibleMonthKeys = monthKeys.slice(0, recordHistoryVisibleMonthLimit);
+  const hiddenMonthCount = Math.max(0, monthKeys.length - visibleMonthKeys.length);
+  box.innerHTML = visibleMonthKeys.map(monthKey => (
+    renderRecordHistoryMonthGroupHtml(monthKey, cache, monthKey === recordHistoryOpenMonthKey)
+  )).join("") + renderRecordHistoryMoreHtml(hiddenMonthCount);
+  recordHistoryRenderedCache = cache;
 }
 
 function renderDeletedRecordList(){

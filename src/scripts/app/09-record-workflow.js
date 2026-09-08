@@ -2695,7 +2695,11 @@ function renderRecordHistoryToggle(){
 function finishRecordHistoryListRender(scheduleId){
   if(scheduleId !== recordHistoryRenderScheduleId) return;
   recordHistoryRenderPending = false;
-  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const historyCard = document.getElementById("recordHistoryCard");
+  historyCard?.removeAttribute("aria-busy");
+  historyCard?.querySelectorAll("[data-record-history-date][aria-busy]").forEach(group => (
+    group.removeAttribute("aria-busy")
+  ));
   const loadingState = document.getElementById("mainTabLoadingState");
   if(loadingState?.dataset.loadingTab === "record"){
     setMainTabLoadingState("record", false);
@@ -2720,9 +2724,9 @@ function scheduleRecordHistoryListRender(options = {}){
       return;
     }
     try{
-      renderRecordList();
-      scheduleRecordHarvestViewportLayout();
       const targetDate = String(options.targetDate || "");
+      renderRecordList({ preferredDate:targetDate });
+      scheduleRecordHarvestViewportLayout();
       if(options.scroll !== false){
         requestAnimationFrame(() => {
           const target = targetDate
@@ -2755,19 +2759,37 @@ function showRecordHistoryView(options = {}){
   renderRecordHistoryToggle();
   renderRecordHarvestFixedNavigation();
   const targetDate = typeof options === "object" ? options.date : "";
-  scheduleRecordHistoryListRender({ targetDate });
+  const shouldScroll = typeof options !== "object" || options.scroll !== false;
+  const canReuseRenderedList = !targetDate
+    && !!recordHistoryCache
+    && recordHistoryRenderedCache === recordHistoryCache;
+  if(canReuseRenderedList){
+    setMainTabLoadingState("record", false);
+    scheduleRecordHarvestViewportLayout();
+    if(shouldScroll){
+      requestAnimationFrame(() => historyCard?.scrollIntoView({
+        block:"start",
+        behavior:getWorkflowScrollBehavior("smooth")
+      }));
+    }
+  }else{
+    scheduleRecordHistoryListRender({ targetDate, scroll:shouldScroll });
+  }
   scheduleHarvestStateSave();
 }
 
 function showRecordEntryView(){
   recordHistoryRenderScheduleId++;
   recordHistoryRenderPending = false;
-  document.getElementById("recordHistoryCard")?.removeAttribute("aria-busy");
+  const historyCard = document.getElementById("recordHistoryCard");
+  historyCard?.removeAttribute("aria-busy");
+  historyCard?.querySelectorAll("[data-record-history-date][aria-busy]").forEach(group => (
+    group.removeAttribute("aria-busy")
+  ));
   const loadingState = document.getElementById("mainTabLoadingState");
   if(loadingState?.dataset.loadingTab === "record") setMainTabLoadingState("record", false);
   recordViewMode = "entry";
   const saveCard = document.getElementById("recordSaveCard");
-  const historyCard = document.getElementById("recordHistoryCard");
   if(saveCard) saveCard.hidden = false;
   if(historyCard) historyCard.hidden = true;
   refreshRecordModeUi();
