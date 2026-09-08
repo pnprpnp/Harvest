@@ -2864,7 +2864,7 @@
         }
       });
 
-      await runTest("号棟をまたぐ先取りでも途中の未収穫ベッド分だけ苗を飛ばす", () => {
+      await runTest("飛ばして取る指定なら号棟をまたぐ未収穫ベッド分だけ苗を飛ばす", () => {
         const previousSettings = comparable(app.eval("settings"));
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
@@ -2907,6 +2907,7 @@
             const plan = getSeedlingHousePlanForHarvestKeys(selectedKeys, {
               takeCount: getSeedlingTrayCountNeededForKeys(selectedKeys, { carryoverSeedlings: 0 }),
               selectionMode: "manual",
+              allocationMode: "harvest",
               sourceRecords,
               sourceEvents: [],
               referenceDate: new Date(2026, 7, 18)
@@ -2971,7 +2972,7 @@
         }
       });
 
-      await runTest("1号棟を苗取り順で表示し先取り分を残して苗を選ぶ", () => {
+      await runTest("1号棟は通常順で苗を取り指定時だけ先取り分を残す", () => {
         const previousSettings = comparable(app.eval("settings"));
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
@@ -2979,6 +2980,7 @@
           keys: [...harvestFillKeys],
           summary: harvestSummary,
           mode: harvestSelectionMode,
+          allocationMode: seedlingHouseAllocationMode,
           progress: harvestProgressState
         })`));
         try{
@@ -2997,6 +2999,7 @@
             };
             harvestProgressState = null;
             harvestSelectionMode = "manual";
+            seedlingHouseAllocationMode = "sequential";
           `);
           const model = comparable(app.eval(`(() => {
             const order = getSeedlingHouseOrder();
@@ -3007,13 +3010,30 @@
               sourceRecords: [],
               referenceDate: new Date(2026, 7, 18)
             });
-            const plan = getSeedlingHousePlanForHarvestKeys(selectedHarvestBed, {
+            const originalGetHarvestOrderSkipSeedlingInfo = getHarvestOrderSkipSeedlingInfo;
+            let skipCalculationCalls = 0;
+            getHarvestOrderSkipSeedlingInfo = (...args) => {
+              skipCalculationCalls++;
+              return originalGetHarvestOrderSkipSeedlingInfo(...args);
+            };
+            const sequentialPlan = getSeedlingHousePlanForHarvestKeys(selectedHarvestBed, {
               takeCount: getSeedlingTrayCountNeededForKeys(selectedHarvestBed, { carryoverSeedlings: 0 }),
               selectionMode: "manual",
               sourceRecords: [],
               sourceEvents: [],
               referenceDate: new Date(2026, 7, 18)
             });
+            const sequentialSkipCalculationCalls = skipCalculationCalls;
+            const plan = getSeedlingHousePlanForHarvestKeys(selectedHarvestBed, {
+              takeCount: getSeedlingTrayCountNeededForKeys(selectedHarvestBed, { carryoverSeedlings: 0 }),
+              selectionMode: "manual",
+              allocationMode: "harvest",
+              sourceRecords: [],
+              sourceEvents: [],
+              referenceDate: new Date(2026, 7, 18)
+            });
+            const harvestAlignedSkipCalculationCalls = skipCalculationCalls;
+            getHarvestOrderSkipSeedlingInfo = originalGetHarvestOrderSkipSeedlingInfo;
             const legacyUsage = getSeedlingHouseUsageState([{
               eventId: 1,
               plantingDate: "2026-08-17",
@@ -3090,6 +3110,11 @@
               orderBreaks: [order[0], order[77], order[78], order[155], order[156], order[233], order[234], order[311], order[312], order[389], order[390], order[467]],
               skippedHarvestCount: skippedHarvestBed.length,
               skippedSeedlingTrayCount: skipInfo.skippedSeedlingTrayCount,
+              sequentialAllocationMode: sequentialPlan.allocationMode,
+              sequentialSkipCalculationCalls,
+              harvestAlignedSkipCalculationCalls,
+              sequentialSkippedRange: formatSeedlingHouseSelectionRange(sequentialPlan.skippedKeys),
+              sequentialSelectedRange: formatSeedlingHouseSelectionRange(sequentialPlan.selectedKeys),
               takeCount: plan.takeCount,
               skippedRange: formatSeedlingHouseSelectionRange(plan.skippedKeys),
               selectedRange: formatSeedlingHouseSelectionRange(plan.selectedKeys),
@@ -3119,6 +3144,11 @@
             orderBreaks: ["1-A-1", "1-A-78", "1-B-1", "1-B-78", "1-D-78", "1-D-1", "1-C-78", "1-C-1", "1-E-1", "1-E-78", "1-F-1", "1-F-78"],
             skippedHarvestCount: 78,
             skippedSeedlingTrayCount: 16,
+            sequentialAllocationMode: "sequential",
+            sequentialSkipCalculationCalls: 0,
+            harvestAlignedSkipCalculationCalls: 1,
+            sequentialSkippedRange: "-",
+            sequentialSelectedRange: "A-1〜A-16",
             takeCount: 16,
             skippedRange: "A-1〜A-16",
             selectedRange: "A-17〜A-32",
@@ -3181,7 +3211,10 @@
             selectedCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell.is-selected").length,
             skippedCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell.is-seedling-skipped").length,
             legacyCustomPalletCount: app.document.querySelectorAll("#seedlingHouseBeds .seedlingHousePallet").length,
-            summary: app.document.getElementById("seedlingHouseSummary").textContent.trim()
+            summary: app.document.getElementById("seedlingHouseSummary").textContent.trim(),
+            activeMode: app.document.querySelector(".seedlingHouseModeSwitch .is-active")?.textContent.trim(),
+            modeHelp: app.document.getElementById("seedlingHouseModeHelp").textContent.trim(),
+            skippedLegendHidden: app.document.getElementById("seedlingHouseSkippedLegend").hidden
           };
           assertDeepEqual(viewState, {
             buttonText: "1号棟",
@@ -3191,10 +3224,32 @@
             bedLayout: ["F", "D", "B", "E", "C", "A"],
             palletCount: 468,
             selectedCount: 16,
-            skippedCount: 16,
+            skippedCount: 0,
             legacyCustomPalletCount: 0,
-            summary: "16枚飛ばす → 16枚取る"
+            summary: "16枚取る",
+            activeMode: "順番通り",
+            modeHelp: "収穫場所に関係なく、次回開始位置から続けて取ります。",
+            skippedLegendHidden: true
           }, "1号棟が他の棟と同じ簡易ベッド配置図になっていません");
+
+          app.setSeedlingHouseAllocationMode("harvest");
+          app.cancelPendingHarvestStateSave();
+          const harvestAlignedViewState = {
+            selectedCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell.is-selected").length,
+            skippedCount: app.document.querySelectorAll("#seedlingHouseBeds .simulationBedMapCell.is-seedling-skipped").length,
+            summary: app.document.getElementById("seedlingHouseSummary").textContent.trim(),
+            activeMode: app.document.querySelector(".seedlingHouseModeSwitch .is-active")?.textContent.trim(),
+            modeHelp: app.document.getElementById("seedlingHouseModeHelp").textContent.trim(),
+            skippedLegendHidden: app.document.getElementById("seedlingHouseSkippedLegend").hidden
+          };
+          assertDeepEqual(harvestAlignedViewState, {
+            selectedCount: 16,
+            skippedCount: 16,
+            summary: "16枚飛ばす → 16枚取る",
+            activeMode: "収穫場所に合わせる",
+            modeHelp: "収穫場所の抜けに合わせて、1号棟でも苗を飛ばして残します。",
+            skippedLegendHidden: false
+          }, "明示的に収穫場所へ合わせた時だけ、1号棟の苗取りを飛ばせません");
 
           const primaryDates = comparable(app.eval(`(() => {
             const today = startOfLocalDay(new Date());
@@ -3299,6 +3354,7 @@
             harvestFillKeys = ${JSON.stringify(previousSelection.keys)};
             harvestSummary = ${JSON.stringify(previousSelection.summary)};
             harvestSelectionMode = ${JSON.stringify(previousSelection.mode)};
+            seedlingHouseAllocationMode = ${JSON.stringify(previousSelection.allocationMode)};
             harvestProgressState = ${JSON.stringify(previousSelection.progress)};
           `);
           replaceAppHistory(app, previousRecords, previousEvents);
@@ -12440,18 +12496,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "725b6e85", elements: 2236, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "524e2044", elements: 2305, visible: 670, viewport: "390x844" },
-          cssFocus: { hash: "071393bb", elements: 2305, visible: 670, viewport: "390x844" },
-          mobileRecord: { hash: "55ba2b18", elements: 2240, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "e91bb859", elements: 2257, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a6d7cb60", elements: 2340, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "ca6770f9", elements: 2355, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "43518f54", elements: 2355, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "21d8c7b5", elements: 2355, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "266a07c6", elements: 2355, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "9b29c5fc", elements: 2355, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "cd694132", elements: 2355, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "6289c82f", elements: 2242, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "dfd03345", elements: 2311, visible: 670, viewport: "390x844" },
+          cssFocus: { hash: "c65eedae", elements: 2311, visible: 670, viewport: "390x844" },
+          mobileRecord: { hash: "88257a46", elements: 2246, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "e092de6e", elements: 2263, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "6a930c6e", elements: 2346, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "4f02139e", elements: 2361, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "b4d18e6b", elements: 2361, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "145896c2", elements: 2361, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "4396c501", elements: 2361, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "ca141d4f", elements: 2361, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "444ce761", elements: 2361, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260908-subtle-progress-row">
+<meta name="harvestnavi-version" content="20260908-sequential-seedling-pick">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -7636,6 +7636,14 @@ button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.65);}
   line-height:1.4;
 }
 .seedlingHousePlanNote{color:var(--ui-text-secondary);font-size:13px;font-weight:650;line-height:1.45;}
+.seedlingHouseModePanel{display:grid;gap:7px;padding:10px;border:1px solid var(--ui-line);border-radius:13px;background:var(--ui-surface-muted);}
+.seedlingHouseModeLabel{color:var(--ui-text-secondary);font-size:12px;font-weight:750;}
+.seedlingHouseModeSwitch{display:grid;grid-template-columns:1fr 1fr;overflow:hidden;border:1px solid var(--ui-line-strong);border-radius:10px;background:var(--ui-surface);}
+.seedlingHouseModeSwitch button{min-width:0;min-height:38px;padding:7px 9px;border:0;border-radius:0;background:transparent;color:var(--ui-text-secondary);font-size:12px;font-weight:750;line-height:1.25;}
+.seedlingHouseModeSwitch button + button{border-left:1px solid var(--ui-line-strong);}
+.seedlingHouseModeSwitch button.is-active{background:var(--ui-accent-soft);color:var(--ui-accent-dark);}
+.seedlingHouseModeSwitch button:focus-visible{position:relative;z-index:1;outline:3px solid rgba(22,163,74,.2);outline-offset:-3px;}
+.seedlingHouseModeHelp{margin:0;color:var(--ui-text-tertiary);font-size:11px;font-weight:650;line-height:1.45;}
 .seedlingHouseToolbar{display:flex;justify-content:flex-end;}
 .seedlingHouseStartEditBtn{min-height:34px;padding:6px 11px;font-size:12px;}
 .seedlingHouseStartEditor{display:grid;grid-template-columns:auto minmax(70px,1fr) auto minmax(70px,1fr);align-items:center;gap:8px;padding:10px;border:1px solid var(--ui-line);border-radius:13px;background:var(--ui-surface-muted);}
@@ -14843,6 +14851,14 @@ requestAnimationFrame(function(){
     <div class="recordDetailWindowBody seedlingHouseWindowBody">
       <div id="seedlingHouseSummary" class="seedlingHouseSummary">次回開始 A-1</div>
       <div id="seedlingHousePlanNote" class="seedlingHousePlanNote">計算前は次回の苗取り開始場所だけを表示します。</div>
+      <div class="seedlingHouseModePanel">
+        <span class="seedlingHouseModeLabel">苗取り方法</span>
+        <div class="seedlingHouseModeSwitch" role="group" aria-label="苗取り方法">
+          <button id="seedlingHouseSequentialModeBtn" type="button" data-ui-click="setSeedlingHouseAllocationMode" data-ui-arg="sequential" aria-pressed="true">順番通り</button>
+          <button id="seedlingHouseHarvestModeBtn" type="button" data-ui-click="setSeedlingHouseAllocationMode" data-ui-arg="harvest" aria-pressed="false">収穫場所に合わせる</button>
+        </div>
+        <p id="seedlingHouseModeHelp" class="seedlingHouseModeHelp">収穫場所に関係なく、次回開始位置から続けて取ります。</p>
+      </div>
       <div class="seedlingHouseToolbar">
         <button type="button" class="secondaryBtn seedlingHouseStartEditBtn" data-ui-click="toggleSeedlingHouseStartEditor">開始位置を修正</button>
       </div>
@@ -14863,7 +14879,7 @@ requestAnimationFrame(function(){
       <div class="seedlingHouseLegend" aria-label="1号棟配置図の色分け">
         <span><i class="seedlingHouseLegendSwatch is-next"></i>次回開始</span>
         <span><i class="seedlingHouseLegendSwatch is-selected"></i>今回取る</span>
-        <span><i class="seedlingHouseLegendSwatch is-skipped"></i>飛ばして残す</span>
+        <span id="seedlingHouseSkippedLegend" hidden><i class="seedlingHouseLegendSwatch is-skipped"></i>飛ばして残す</span>
       </div>
       <p class="seedlingHouseOrderNote">苗取り順：A 1→78、B 1→78、D 78→1、C 78→1、E 1→78、F 1→78</p>
     </div>
@@ -15279,6 +15295,7 @@ const SEEDLING_HOUSE_BED_SEQUENCE = Object.freeze([
   Object.freeze({ bed: "F", direction: 1 })
 ]);
 const SEEDLING_HOUSE_POSITION_COUNT = bedOrder.length * PALLETS_PER_BED;
+const SEEDLING_HOUSE_ALLOCATION_MODES = Object.freeze(["sequential", "harvest"]);
 const CURRENT_PALLET_NUMBERING_VERSION = 2;
 const PALLETS_PER_PIN = 4;
 const HARVEST_FORECAST_WEEKDAYS = [0, 2, 3, 4, 6];
@@ -15384,6 +15401,7 @@ let recordDetailReturnFocus = null;
 let seedlingHouseReturnFocus = null;
 let seedlingHouseSelectedBed = null;
 let seedlingHousePrimaryDateEditingEventId = null;
+let seedlingHouseAllocationMode = "sequential";
 let recordDetailLocationModel = null;
 let recordDetailLocationBuilding = null;
 let recordDetailLocationSelectedBed = null;
@@ -16297,6 +16315,7 @@ function saveHarvestStateToStorage(options = {}){
     casesInput: document.getElementById("casesInput")?.value || "",
     harvestCasesAutoEstimated,
     harvestSelectionMode,
+    seedlingHouseAllocationMode,
     harvestProgressState,
     harvestProgressAvailable,
     harvestProgressBuilding,
@@ -16440,6 +16459,7 @@ function loadHarvestStateFromStorage(){
       casesInput: parsed.casesInput ?? "",
       harvestCasesAutoEstimated: !!parsed.harvestCasesAutoEstimated,
       harvestSelectionMode: normalizeHarvestSelectionMode(parsed.harvestSelectionMode),
+      seedlingHouseAllocationMode: normalizeSeedlingHouseAllocationMode(parsed.seedlingHouseAllocationMode),
       harvestProgressState: normalizeHarvestProgressState(parsed.harvestProgressState),
       harvestProgressAvailable: typeof parsed.harvestProgressAvailable === "boolean"
         ? parsed.harvestProgressAvailable
@@ -17225,12 +17245,17 @@ function normalizeForecastSelectionState(value){
     keys: Array.isArray(value.keys) ? value.keys.filter(key => typeof key === "string") : [],
     overageKeys: normalizeHarvestOverageKeys(value.overageKeys, value.keys),
     summary: value.summary && typeof value.summary === "object" ? value.summary : null,
-    manualSeedlingCount: normalizeManualSeedlingCount(value.manualSeedlingCount)
+    manualSeedlingCount: normalizeManualSeedlingCount(value.manualSeedlingCount),
+    seedlingHouseAllocationMode: normalizeSeedlingHouseAllocationMode(value.seedlingHouseAllocationMode)
   };
 }
 
 function normalizeHarvestSelectionMode(value){
   return value === "auto" || value === "manual" ? value : "none";
+}
+
+function normalizeSeedlingHouseAllocationMode(value){
+  return SEEDLING_HOUSE_ALLOCATION_MODES.includes(value) ? value : "sequential";
 }
 
 function isReverseHarvestProgressState(value = harvestProgressState){
@@ -18132,7 +18157,8 @@ function captureForecastSelectionState(){
     keys: [...harvestFillKeys],
     overageKeys: [...harvestOverageKeys],
     summary: harvestSummary ? { ...harvestSummary } : null,
-    manualSeedlingCount
+    manualSeedlingCount,
+    seedlingHouseAllocationMode
   };
 }
 
@@ -18143,6 +18169,7 @@ function restoreForecastSelectionState(options = {}){
   harvestOverageKeys = [...state.overageKeys];
   harvestSummary = state.summary;
   manualSeedlingCount = state.manualSeedlingCount;
+  seedlingHouseAllocationMode = state.seedlingHouseAllocationMode;
   if(options.render !== false){
     drawBeds();
     renderForecastSummary();
@@ -32430,6 +32457,7 @@ function clearHarvestPrediction(){
   workflowMonitorCheckpointSignature = "";
   workflowHarvestRecordingActive = false;
   harvestSelectionMode = "none";
+  seedlingHouseAllocationMode = "sequential";
   harvestProgressState = null;
   harvestProgressAvailable = false;
   harvestProgressPartialSelectionMode = false;
@@ -34502,6 +34530,18 @@ function getSeedlingHouseAllocationSegments(skipInfo, takeCount){
   })).filter(segment => segment.count > 0);
 }
 
+function getEmptyHarvestOrderSkipSeedlingInfo(){
+  return {
+    shouldShow: false,
+    normalStartKey: "",
+    selectedStartKey: "",
+    skippedPalletKeys: [],
+    skippedPalletCount: 0,
+    skippedSeedlingTrayCount: 0,
+    harvestOrderSegments: []
+  };
+}
+
 function allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationSegments = null){
   const order = usageState?.order || getSeedlingHouseOrder();
   const availableKeys = usageState?.availableKeys?.length
@@ -34548,6 +34588,7 @@ function allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationS
 
 function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
   const takeCount = clampNumber(options.takeCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+  const allocationMode = normalizeSeedlingHouseAllocationMode(options.allocationMode);
   const hasCustomSourceEvents = Array.isArray(options.sourceEvents);
   const usageState = getSeedlingHouseUsageState(
     hasCustomSourceEvents ? options.sourceEvents : plantingEvents,
@@ -34557,11 +34598,13 @@ function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
         || (hasCustomSourceEvents ? "" : settings.seedlingHouseInitialStartKey)
     }
   );
-  const skipInfo = getHarvestOrderSkipSeedlingInfo(keys, {
-    selectionMode: options.selectionMode ?? "manual",
-    referenceDate: options.referenceDate,
-    sourceRecords: Array.isArray(options.sourceRecords) ? options.sourceRecords : records
-  });
+  const skipInfo = allocationMode === "harvest"
+    ? getHarvestOrderSkipSeedlingInfo(keys, {
+        selectionMode: options.selectionMode ?? "manual",
+        referenceDate: options.referenceDate,
+        sourceRecords: Array.isArray(options.sourceRecords) ? options.sourceRecords : records
+      })
+    : getEmptyHarvestOrderSkipSeedlingInfo();
   const skipCount = skipInfo.shouldShow ? skipInfo.skippedSeedlingTrayCount : 0;
   const allocationSegments = getSeedlingHouseAllocationSegments(skipInfo, takeCount);
   const allocation = allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationSegments);
@@ -34569,6 +34612,7 @@ function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
     ...usageState,
     ...allocation,
     skipInfo,
+    allocationMode,
     takeCount,
     shouldShowSelection: options.shouldShowSelection !== false && takeCount > 0
   };
@@ -34594,6 +34638,7 @@ function getCurrentSeedlingHousePlan(){
     selectionMode: activeRecord ? "manual" : harvestSelectionMode,
     referenceDate,
     sourceRecords,
+    allocationMode: seedlingHouseAllocationMode,
     shouldShowSelection
   });
 }
@@ -34629,15 +34674,7 @@ function getSeedlingInstructionCounts(keys = harvestFillKeys, options = {}){
 }
 
 function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
-  const emptyResult = {
-    shouldShow: false,
-    normalStartKey: "",
-    selectedStartKey: "",
-    skippedPalletKeys: [],
-    skippedPalletCount: 0,
-    skippedSeedlingTrayCount: 0,
-    harvestOrderSegments: []
-  };
+  const emptyResult = getEmptyHarvestOrderSkipSeedlingInfo();
   const selectionMode = options.selectionMode ?? harvestSelectionMode;
   const selectedKeys = [...new Set(Array.isArray(keys) ? keys : [])]
     .filter(isValidPalletKeyString);
@@ -37862,6 +37899,14 @@ function updateRecordPartialHarvestIncludedNote(){
     : "";
 }
 
+function setSeedlingHouseAllocationMode(mode){
+  const nextMode = normalizeSeedlingHouseAllocationMode(mode);
+  if(seedlingHouseAllocationMode === nextMode) return;
+  seedlingHouseAllocationMode = nextMode;
+  renderSeedlingHouseUi();
+  scheduleHarvestStateSave();
+}
+
 function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const nextPosition = formatSeedlingHousePosition(plan.nextKey);
   const openButton = document.getElementById("seedlingHouseOpenBtn");
@@ -37874,9 +37919,30 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const beds = document.getElementById("seedlingHouseBeds");
   if(!summary || !note || !beds) return;
 
+  const allocationMode = normalizeSeedlingHouseAllocationMode(plan.allocationMode);
+  const sequentialModeButton = document.getElementById("seedlingHouseSequentialModeBtn");
+  const harvestModeButton = document.getElementById("seedlingHouseHarvestModeBtn");
+  [
+    [sequentialModeButton, "sequential"],
+    [harvestModeButton, "harvest"]
+  ].forEach(([button, mode]) => {
+    if(!button) return;
+    const isActive = allocationMode === mode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+  const modeHelp = document.getElementById("seedlingHouseModeHelp");
+  if(modeHelp){
+    modeHelp.textContent = allocationMode === "harvest"
+      ? "収穫場所の抜けに合わせて、1号棟でも苗を飛ばして残します。"
+      : "収穫場所に関係なく、次回開始位置から続けて取ります。";
+  }
+
   const showSelection = !!plan.shouldShowSelection;
   const selectedKeys = showSelection ? plan.selectedKeys : [];
   const skippedKeys = showSelection ? plan.skippedKeys : [];
+  const skippedLegend = document.getElementById("seedlingHouseSkippedLegend");
+  if(skippedLegend) skippedLegend.hidden = !skippedKeys.length;
   if(showSelection){
     const allocatedSegments = Array.isArray(plan.allocatedSegments) && plan.allocatedSegments.length
       ? plan.allocatedSegments
@@ -39927,6 +39993,7 @@ function saveRecord(){
   if(record){
     enterPlantingRecordMode(record);
   }else{
+    seedlingHouseAllocationMode = "sequential";
     clearRecordForm();
   }
   saveHarvestStateToStorage();
@@ -40132,6 +40199,7 @@ async function savePlantingRecord(){
     referenceDate: parseDateOnlyString(record.date) || new Date(),
     sourceRecords: records.filter(item => Number(item?.id) !== Number(record.id)),
     excludeEventId: existingEvent?.eventId,
+    allocationMode: seedlingHouseAllocationMode,
     shouldShowSelection: true
   });
   const seedlingHousePalletKeys = sameTrayCount && existingSeedlingHouseKeys.length
@@ -44741,6 +44809,7 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   harvestSelectionMode = savedHarvestState.harvestSelectionMode === "none" && harvestFillKeys.length
     ? "manual"
     : savedHarvestState.harvestSelectionMode;
+  seedlingHouseAllocationMode = normalizeSeedlingHouseAllocationMode(savedHarvestState.seedlingHouseAllocationMode);
   harvestProgressState = savedHarvestState.harvestProgressState;
   harvestProgressAvailable = !!savedHarvestState.harvestProgressAvailable;
   harvestProgressBuilding = savedHarvestState.harvestProgressBuilding;

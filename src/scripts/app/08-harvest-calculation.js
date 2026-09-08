@@ -2535,6 +2535,7 @@ function clearHarvestPrediction(){
   workflowMonitorCheckpointSignature = "";
   workflowHarvestRecordingActive = false;
   harvestSelectionMode = "none";
+  seedlingHouseAllocationMode = "sequential";
   harvestProgressState = null;
   harvestProgressAvailable = false;
   harvestProgressPartialSelectionMode = false;

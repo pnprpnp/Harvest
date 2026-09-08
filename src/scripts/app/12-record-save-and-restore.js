@@ -233,6 +233,7 @@ function saveRecord(){
   if(record){
     enterPlantingRecordMode(record);
   }else{
+    seedlingHouseAllocationMode = "sequential";
     clearRecordForm();
   }
   saveHarvestStateToStorage();
@@ -438,6 +439,7 @@ async function savePlantingRecord(){
     referenceDate: parseDateOnlyString(record.date) || new Date(),
     sourceRecords: records.filter(item => Number(item?.id) !== Number(record.id)),
     excludeEventId: existingEvent?.eventId,
+    allocationMode: seedlingHouseAllocationMode,
     shouldShowSelection: true
   });
   const seedlingHousePalletKeys = sameTrayCount && existingSeedlingHouseKeys.length

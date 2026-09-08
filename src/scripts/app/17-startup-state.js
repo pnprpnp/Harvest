@@ -68,6 +68,7 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   harvestSelectionMode = savedHarvestState.harvestSelectionMode === "none" && harvestFillKeys.length
     ? "manual"
     : savedHarvestState.harvestSelectionMode;
+  seedlingHouseAllocationMode = normalizeSeedlingHouseAllocationMode(savedHarvestState.seedlingHouseAllocationMode);
   harvestProgressState = savedHarvestState.harvestProgressState;
   harvestProgressAvailable = !!savedHarvestState.harvestProgressAvailable;
   harvestProgressBuilding = savedHarvestState.harvestProgressBuilding;

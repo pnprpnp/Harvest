@@ -1092,6 +1092,18 @@ function getSeedlingHouseAllocationSegments(skipInfo, takeCount){
   })).filter(segment => segment.count > 0);
 }
 
+function getEmptyHarvestOrderSkipSeedlingInfo(){
+  return {
+    shouldShow: false,
+    normalStartKey: "",
+    selectedStartKey: "",
+    skippedPalletKeys: [],
+    skippedPalletCount: 0,
+    skippedSeedlingTrayCount: 0,
+    harvestOrderSegments: []
+  };
+}
+
 function allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationSegments = null){
   const order = usageState?.order || getSeedlingHouseOrder();
   const availableKeys = usageState?.availableKeys?.length
@@ -1138,6 +1150,7 @@ function allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationS
 
 function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
   const takeCount = clampNumber(options.takeCount, 0, SEEDLING_HOUSE_POSITION_COUNT, 0);
+  const allocationMode = normalizeSeedlingHouseAllocationMode(options.allocationMode);
   const hasCustomSourceEvents = Array.isArray(options.sourceEvents);
   const usageState = getSeedlingHouseUsageState(
     hasCustomSourceEvents ? options.sourceEvents : plantingEvents,
@@ -1147,11 +1160,13 @@ function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
         || (hasCustomSourceEvents ? "" : settings.seedlingHouseInitialStartKey)
     }
   );
-  const skipInfo = getHarvestOrderSkipSeedlingInfo(keys, {
-    selectionMode: options.selectionMode ?? "manual",
-    referenceDate: options.referenceDate,
-    sourceRecords: Array.isArray(options.sourceRecords) ? options.sourceRecords : records
-  });
+  const skipInfo = allocationMode === "harvest"
+    ? getHarvestOrderSkipSeedlingInfo(keys, {
+        selectionMode: options.selectionMode ?? "manual",
+        referenceDate: options.referenceDate,
+        sourceRecords: Array.isArray(options.sourceRecords) ? options.sourceRecords : records
+      })
+    : getEmptyHarvestOrderSkipSeedlingInfo();
   const skipCount = skipInfo.shouldShow ? skipInfo.skippedSeedlingTrayCount : 0;
   const allocationSegments = getSeedlingHouseAllocationSegments(skipInfo, takeCount);
   const allocation = allocateSeedlingHousePlan(usageState, skipCount, takeCount, allocationSegments);
@@ -1159,6 +1174,7 @@ function getSeedlingHousePlanForHarvestKeys(keys, options = {}){
     ...usageState,
     ...allocation,
     skipInfo,
+    allocationMode,
     takeCount,
     shouldShowSelection: options.shouldShowSelection !== false && takeCount > 0
   };
@@ -1184,6 +1200,7 @@ function getCurrentSeedlingHousePlan(){
     selectionMode: activeRecord ? "manual" : harvestSelectionMode,
     referenceDate,
     sourceRecords,
+    allocationMode: seedlingHouseAllocationMode,
     shouldShowSelection
   });
 }
@@ -1219,15 +1236,7 @@ function getSeedlingInstructionCounts(keys = harvestFillKeys, options = {}){
 }
 
 function getHarvestOrderSkipSeedlingInfo(keys = harvestFillKeys, options = {}){
-  const emptyResult = {
-    shouldShow: false,
-    normalStartKey: "",
-    selectedStartKey: "",
-    skippedPalletKeys: [],
-    skippedPalletCount: 0,
-    skippedSeedlingTrayCount: 0,
-    harvestOrderSegments: []
-  };
+  const emptyResult = getEmptyHarvestOrderSkipSeedlingInfo();
   const selectionMode = options.selectionMode ?? harvestSelectionMode;
   const selectedKeys = [...new Set(Array.isArray(keys) ? keys : [])]
     .filter(isValidPalletKeyString);

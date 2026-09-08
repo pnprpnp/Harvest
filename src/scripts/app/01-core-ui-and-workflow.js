@@ -135,6 +135,7 @@ const SEEDLING_HOUSE_BED_SEQUENCE = Object.freeze([
   Object.freeze({ bed: "F", direction: 1 })
 ]);
 const SEEDLING_HOUSE_POSITION_COUNT = bedOrder.length * PALLETS_PER_BED;
+const SEEDLING_HOUSE_ALLOCATION_MODES = Object.freeze(["sequential", "harvest"]);
 const CURRENT_PALLET_NUMBERING_VERSION = 2;
 const PALLETS_PER_PIN = 4;
 const HARVEST_FORECAST_WEEKDAYS = [0, 2, 3, 4, 6];
@@ -240,6 +241,7 @@ let recordDetailReturnFocus = null;
 let seedlingHouseReturnFocus = null;
 let seedlingHouseSelectedBed = null;
 let seedlingHousePrimaryDateEditingEventId = null;
+let seedlingHouseAllocationMode = "sequential";
 let recordDetailLocationModel = null;
 let recordDetailLocationBuilding = null;
 let recordDetailLocationSelectedBed = null;
@@ -1153,6 +1155,7 @@ function saveHarvestStateToStorage(options = {}){
     casesInput: document.getElementById("casesInput")?.value || "",
     harvestCasesAutoEstimated,
     harvestSelectionMode,
+    seedlingHouseAllocationMode,
     harvestProgressState,
     harvestProgressAvailable,
     harvestProgressBuilding,
@@ -1296,6 +1299,7 @@ function loadHarvestStateFromStorage(){
       casesInput: parsed.casesInput ?? "",
       harvestCasesAutoEstimated: !!parsed.harvestCasesAutoEstimated,
       harvestSelectionMode: normalizeHarvestSelectionMode(parsed.harvestSelectionMode),
+      seedlingHouseAllocationMode: normalizeSeedlingHouseAllocationMode(parsed.seedlingHouseAllocationMode),
       harvestProgressState: normalizeHarvestProgressState(parsed.harvestProgressState),
       harvestProgressAvailable: typeof parsed.harvestProgressAvailable === "boolean"
         ? parsed.harvestProgressAvailable
@@ -2081,12 +2085,17 @@ function normalizeForecastSelectionState(value){
     keys: Array.isArray(value.keys) ? value.keys.filter(key => typeof key === "string") : [],
     overageKeys: normalizeHarvestOverageKeys(value.overageKeys, value.keys),
     summary: value.summary && typeof value.summary === "object" ? value.summary : null,
-    manualSeedlingCount: normalizeManualSeedlingCount(value.manualSeedlingCount)
+    manualSeedlingCount: normalizeManualSeedlingCount(value.manualSeedlingCount),
+    seedlingHouseAllocationMode: normalizeSeedlingHouseAllocationMode(value.seedlingHouseAllocationMode)
   };
 }
 
 function normalizeHarvestSelectionMode(value){
   return value === "auto" || value === "manual" ? value : "none";
+}
+
+function normalizeSeedlingHouseAllocationMode(value){
+  return SEEDLING_HOUSE_ALLOCATION_MODES.includes(value) ? value : "sequential";
 }
 
 function isReverseHarvestProgressState(value = harvestProgressState){
@@ -2988,7 +2997,8 @@ function captureForecastSelectionState(){
     keys: [...harvestFillKeys],
     overageKeys: [...harvestOverageKeys],
     summary: harvestSummary ? { ...harvestSummary } : null,
-    manualSeedlingCount
+    manualSeedlingCount,
+    seedlingHouseAllocationMode
   };
 }
 
@@ -2999,6 +3009,7 @@ function restoreForecastSelectionState(options = {}){
   harvestOverageKeys = [...state.overageKeys];
   harvestSummary = state.summary;
   manualSeedlingCount = state.manualSeedlingCount;
+  seedlingHouseAllocationMode = state.seedlingHouseAllocationMode;
   if(options.render !== false){
     drawBeds();
     renderForecastSummary();

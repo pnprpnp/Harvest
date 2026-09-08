@@ -26,6 +26,14 @@ function updateRecordPartialHarvestIncludedNote(){
     : "";
 }
 
+function setSeedlingHouseAllocationMode(mode){
+  const nextMode = normalizeSeedlingHouseAllocationMode(mode);
+  if(seedlingHouseAllocationMode === nextMode) return;
+  seedlingHouseAllocationMode = nextMode;
+  renderSeedlingHouseUi();
+  scheduleHarvestStateSave();
+}
+
 function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const nextPosition = formatSeedlingHousePosition(plan.nextKey);
   const openButton = document.getElementById("seedlingHouseOpenBtn");
@@ -38,9 +46,30 @@ function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const beds = document.getElementById("seedlingHouseBeds");
   if(!summary || !note || !beds) return;
 
+  const allocationMode = normalizeSeedlingHouseAllocationMode(plan.allocationMode);
+  const sequentialModeButton = document.getElementById("seedlingHouseSequentialModeBtn");
+  const harvestModeButton = document.getElementById("seedlingHouseHarvestModeBtn");
+  [
+    [sequentialModeButton, "sequential"],
+    [harvestModeButton, "harvest"]
+  ].forEach(([button, mode]) => {
+    if(!button) return;
+    const isActive = allocationMode === mode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+  const modeHelp = document.getElementById("seedlingHouseModeHelp");
+  if(modeHelp){
+    modeHelp.textContent = allocationMode === "harvest"
+      ? "収穫場所の抜けに合わせて、1号棟でも苗を飛ばして残します。"
+      : "収穫場所に関係なく、次回開始位置から続けて取ります。";
+  }
+
   const showSelection = !!plan.shouldShowSelection;
   const selectedKeys = showSelection ? plan.selectedKeys : [];
   const skippedKeys = showSelection ? plan.skippedKeys : [];
+  const skippedLegend = document.getElementById("seedlingHouseSkippedLegend");
+  if(skippedLegend) skippedLegend.hidden = !skippedKeys.length;
   if(showSelection){
     const allocatedSegments = Array.isArray(plan.allocatedSegments) && plan.allocatedSegments.length
       ? plan.allocatedSegments
