@@ -40,23 +40,77 @@ function buildPartialHarvestTargets(building, beds, cases){
   }));
 }
 
-function buildPartialHarvestTargetsForRecordBeds(bedKeys, cases){
+function buildPartialHarvestTargetsForRecordBeds(bedKeys, cases, options = {}){
   const normalizedCases = getStrictIntegerInRange(cases, 1, RECORD_MAX_CASES);
   const normalizedBedKeys = normalizeRecordPartialHarvestBedKeys(bedKeys);
   if(normalizedCases === null || !normalizedBedKeys.length) return [];
+  const excludedPalletSet = options.excludedPalletSet instanceof Set
+    ? options.excludedPalletSet
+    : new Set();
+  const eligibleNumbersByBedKey = new Map();
+  let eligiblePalletCount = 0;
+  normalizedBedKeys.forEach(bedKey => {
+    const target = parseRecordPartialHarvestBedKey(bedKey);
+    const numbers = [];
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      if(excludedPalletSet.has(getPalletKey(target.building, target.bed, number))) continue;
+      numbers.push(number);
+    }
+    eligibleNumbersByBedKey.set(bedKey, numbers);
+    eligiblePalletCount += numbers.length;
+  });
+  if(eligiblePalletCount <= 0) return [];
   const plantsPerPallet = Math.round(
-    (normalizedCases * CASE_SIZE / (PALLETS_PER_BED * normalizedBedKeys.length)) * 1000000
+    (normalizedCases * CASE_SIZE / eligiblePalletCount) * 1000000
   ) / 1000000;
-  return normalizedBedKeys.map(key => {
-    const target = parseRecordPartialHarvestBedKey(key);
-    return {
+  return normalizedBedKeys.flatMap(bedKey => {
+    const target = parseRecordPartialHarvestBedKey(bedKey);
+    const numbers = eligibleNumbersByBedKey.get(bedKey) || [];
+    const ranges = [];
+    numbers.forEach(number => {
+      const current = ranges[ranges.length - 1];
+      if(current && current.end + 1 === number){
+        current.end = number;
+      }else{
+        ranges.push({ start:number, end:number });
+      }
+    });
+    return ranges.map(range => ({
       building:target.building,
       bed:target.bed,
-      start:1,
-      end:PALLETS_PER_BED,
+      start:range.start,
+      end:range.end,
       plantsPerPallet
-    };
+    }));
   });
+}
+
+function getRecordPartialHarvestTargetContext(date, sourceRecords = records, harvestKeys = harvestFillKeys){
+  const targetDate = parseDateOnlyString(String(date || "")) || new Date();
+  const source = Array.isArray(sourceRecords) ? sourceRecords : records;
+  const normalizedHarvestKeys = [...new Set(Array.isArray(harvestKeys) ? harvestKeys : [])]
+    .filter(isValidPalletKeyString)
+    .sort((left, right) => getOrderIndexFromKey(left) - getOrderIndexFromKey(right));
+  const targetDateKey = formatDateOnlyString(targetDate);
+  const harvestKeySignature = normalizedHarvestKeys.join("|");
+  if(recordPartialHarvestTargetContextCache
+    && recordPartialHarvestTargetContextCache.sourceRecords === source
+    && recordPartialHarvestTargetContextCache.plantingEvents === plantingEvents
+    && recordPartialHarvestTargetContextCache.targetDateKey === targetDateKey
+    && recordPartialHarvestTargetContextCache.harvestKeySignature === harvestKeySignature){
+    return recordPartialHarvestTargetContextCache;
+  }
+  const unavailableSet = getPartialHarvestEligibilityState(targetDate, source).unavailableSet;
+  const excludedPalletSet = new Set(unavailableSet);
+  normalizedHarvestKeys.forEach(key => excludedPalletSet.add(key));
+  recordPartialHarvestTargetContextCache = {
+    sourceRecords:source,
+    plantingEvents,
+    targetDateKey,
+    harvestKeySignature,
+    excludedPalletSet
+  };
+  return recordPartialHarvestTargetContextCache;
 }
 
 function getRecordPartialHarvestRemainingCaseEstimate(bedKeys, cases, date, sourceRecords = records){
@@ -91,7 +145,12 @@ function buildRecordTabPartialHarvestRecord(draft, options = {}){
   const cases = getStrictIntegerInRange(entry.cases, 1, RECORD_MAX_CASES);
   const date = String(options.date || "").trim();
   const id = getSafePositiveRecordId(options.id);
-  const targets = buildPartialHarvestTargetsForRecordBeds(entry.bedKeys, cases);
+  const targetContext = options.targetContext || getRecordPartialHarvestTargetContext(
+    date,
+    options.sourceRecords || records,
+    Array.isArray(options.harvestKeys) ? options.harvestKeys : []
+  );
+  const targets = buildPartialHarvestTargetsForRecordBeds(entry.bedKeys, cases, targetContext);
   if(!date || id === null || cases === null || !targets.length) return null;
   const record = {
     ...getCurrentRecordSyncMetadata(),
@@ -118,10 +177,16 @@ function buildRecordTabPartialHarvestRecords(draft, options = {}){
   const draftModel = getRecordPartialHarvestDraftModel(draft);
   const ids = Array.isArray(options.ids) ? options.ids : [];
   if(!draftModel.isValid || ids.length !== draftModel.entries.length) return [];
+  const targetContext = options.targetContext || getRecordPartialHarvestTargetContext(
+    options.date,
+    options.sourceRecords || records,
+    Array.isArray(options.harvestKeys) ? options.harvestKeys : []
+  );
   return draftModel.entries.map((entry, index) => buildRecordTabPartialHarvestRecord(
     { entries:[entry], bedKeys:[], cases:"", editingEntryIndex:-1 },
     {
       ...options,
+      targetContext,
       id:ids[index]
     }
   )).filter(Boolean);

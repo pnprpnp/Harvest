@@ -5047,6 +5047,13 @@
 
             const draft = getRecordPartialHarvestDraftModel();
             const plan = getHarvestCasePlan();
+            const combinedLine = getHarvestProgressEntryDisplayLines({
+              ...harvestProgressState,
+              entries:[
+                { type:"regular", bedKeys:["2-A"], cases:40, recordedAt:1 },
+                { type:"partial", bedKeys:["2-A"], cases:5, recordedAt:2 }
+              ]
+            })[0];
             return {
               selecting,
               mode:harvestProgressPartialSelectionMode,
@@ -5054,6 +5061,7 @@
               recordStatus:document.getElementById("recordPartialHarvestStatusValue")?.textContent || "",
               recordCases:document.getElementById("recordCasesInput")?.value || "",
               progressLines:getHarvestProgressEntryDisplayLines(),
+              combinedLine,
               casePlan:{ totalCases:plan.totalCases, partialCases:plan.partialCases, regularCases:plan.regularCases },
               recordsAdded:records.length,
               queueCount,
@@ -5100,7 +5108,8 @@
           ],
           recordStatus:"2件・7ケース",
           recordCases:"100",
-          progressLines:["2号棟A：部分収穫5ケース", "2号棟C：部分収穫2ケース"],
+          progressLines:["2号棟A：5ケース（うち部分収穫5ケース）", "2号棟C：2ケース（うち部分収穫2ケース）"],
+          combinedLine:"2号棟A：45ケース（うち部分収穫5ケース）",
           casePlan:{ totalCases:100, partialCases:7, regularCases:93 },
           recordsAdded:0,
           queueCount:0,
@@ -5211,7 +5220,7 @@
         })()`));
         assertDeepEqual(preserved, {
           result:{ attempted:true, recalculated:true, changed:true, hasEnough:true },
-          entryLines:["5号棟AC：40ケース", "6号棟C：部分収穫10ケース"],
+          entryLines:["5号棟AC：40ケース", "6号棟C：10ケース（うち部分収穫10ケース）"],
           appliedActualCases:40,
           appliedBeds:["5-A", "5-C"],
           selectedBeds:["5-A", "5-C"],
@@ -12446,6 +12455,57 @@
         assertDeepEqual(normalized, [
           { building: 4, bed: "C", start: 5, end: 8, plantsPerPallet: 10 }
         ], "途中収穫場所の正規化結果が違います");
+      });
+
+      await runTest("途中経過の部分収穫は通常収穫場所と収穫不可能場所を除外する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previousEligibility = getPartialHarvestEligibilityState;
+          const previousCache = recordPartialHarvestTargetContextCache;
+          try{
+            const sourceRecords = [];
+            const harvestKeys = Array.from({ length:40 }, (_, index) => getPalletKey(2, "A", index + 1));
+            let eligibilityCalls = 0;
+            getPartialHarvestEligibilityState = () => {
+              eligibilityCalls++;
+              return { unavailableSet:new Set([getPalletKey(2, "A", 50)]) };
+            };
+            recordPartialHarvestTargetContextCache = null;
+            const firstContext = getRecordPartialHarvestTargetContext(
+              "2026-09-09",
+              sourceRecords,
+              harvestKeys
+            );
+            const secondContext = getRecordPartialHarvestTargetContext(
+              "2026-09-09",
+              sourceRecords,
+              harvestKeys
+            );
+            const targets = buildPartialHarvestTargetsForRecordBeds(["2-A"], 10, firstContext);
+            return {
+              eligibilityCalls,
+              contextReused:firstContext === secondContext,
+              ranges:targets.map(target => [target.start, target.end]),
+              allocatedHeads:Math.round(targets.reduce((total, target) => (
+                total + (target.end - target.start + 1) * target.plantsPerPallet
+              ), 0) * 1000) / 1000,
+              selectedExcluded:[1, 40].every(number => (
+                !targets.some(target => number >= target.start && number <= target.end)
+              )),
+              unavailableExcluded:!targets.some(target => 50 >= target.start && 50 <= target.end)
+            };
+          }finally{
+            getPartialHarvestEligibilityState = previousEligibility;
+            recordPartialHarvestTargetContextCache = previousCache;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          eligibilityCalls:1,
+          contextReused:true,
+          ranges:[[41, 49], [51, 78]],
+          allocatedHeads:120,
+          selectedExcluded:true,
+          unavailableExcluded:true
+        }, "部分収穫が通常収穫場所または収穫不可能場所にも割り当てられています");
       });
 
       await runTest("部分収穫は記録日時点で収穫可能だったパレットだけに適用する", () => {

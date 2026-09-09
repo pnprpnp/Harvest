@@ -1427,6 +1427,7 @@ function invalidateWorkflowPendingRecordCache(){
 }
 
 function invalidateRecordDerivedCaches(options = {}){
+  recordPartialHarvestTargetContextCache = null;
   invalidateForecastHarvestTimelineCache();
   if(options.harvestRecords === true){
     invalidateHarvestRecordEditTimelineCache();

@@ -207,7 +207,8 @@ function saveRecord(){
         ids:recordIds.slice(nextRecordIdIndex, nextRecordIdIndex + partialEntryCount),
         date,
         memo,
-        sourceRecords:records
+        sourceRecords:records,
+        harvestKeys:[...harvestFillKeys]
       })
     : [];
   nextRecordIdIndex += partialEntryCount;

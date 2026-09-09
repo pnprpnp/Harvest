@@ -373,6 +373,7 @@ let currentPalletLifecycleStateStorageLoadPending = true;
 let harvestRecordLookupEnabled = true;
 let harvestRecordLookupValidationRemaining = HARVEST_RECORD_LOOKUP_VALIDATION_LIMIT;
 let recordHistoryCache = null;
+let recordPartialHarvestTargetContextCache = null;
 let recordHistoryRenderScheduleId = 0;
 let recordHistoryRenderPending = false;
 let editingPlantingEventId = null;
@@ -2460,10 +2461,25 @@ function getHarvestProgressEntryDisplayLines(state = harvestProgressState){
       recordedAt: 0
     }];
   }
-  return entries.map(entry => {
-    const location = formatHarvestProgressEntryLocation(entry.bedKeys);
-    const typeLabel = entry.type === "partial" ? "部分収穫" : "";
-    return `${location}：${typeLabel}${formatHarvestProgressCases(entry.cases)}ケース`;
+  const grouped = new Map();
+  entries.forEach(entry => {
+    const bedKeys = [...new Set(entry.bedKeys || [])].sort();
+    const key = bedKeys.join("|");
+    if(!key) return;
+    if(!grouped.has(key)){
+      grouped.set(key, { bedKeys, totalCases:0, partialCases:0 });
+    }
+    const group = grouped.get(key);
+    const cases = Math.max(0, Number(entry.cases) || 0);
+    group.totalCases += cases;
+    if(entry.type === "partial") group.partialCases += cases;
+  });
+  return [...grouped.values()].map(group => {
+    const location = formatHarvestProgressEntryLocation(group.bedKeys);
+    const partialText = group.partialCases > 0
+      ? `（うち部分収穫${formatHarvestProgressCases(group.partialCases)}ケース）`
+      : "";
+    return `${location}：${formatHarvestProgressCases(group.totalCases)}ケース${partialText}`;
   });
 }
 

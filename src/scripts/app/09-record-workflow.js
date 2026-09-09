@@ -2051,12 +2051,14 @@ function getRecordPartialHarvestDraftTimelineRecords(
 ){
   const date = String(dateStr || "").trim();
   if(!parseDateOnlyString(date)) return [];
+  const sourceRecords = getActiveHarvestTimelineRecords(records);
+  const targetContext = getRecordPartialHarvestTargetContext(date, sourceRecords, harvestFillKeys);
   return getRecordPartialHarvestDraftModel(draft).entries.map((entry, index) => ({
     id:-(index + 1),
     type:"partialHarvest",
     date,
     cases:Number(entry.cases),
-    targets:buildPartialHarvestTargetsForRecordBeds(entry.bedKeys, entry.cases),
+    targets:buildPartialHarvestTargetsForRecordBeds(entry.bedKeys, entry.cases, targetContext),
     palletKeys:[]
   })).filter(record => record.targets.length > 0);
 }
