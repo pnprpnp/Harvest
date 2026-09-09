@@ -1,7 +1,7 @@
-function updatePartialHarvestDeductionNote(){
+function updatePartialHarvestDeductionNote(currentHarvestTotal = null){
   const note = document.getElementById("partialHarvestDeductionNote");
   if(!note) return;
-  const selectionCaseDelta = getHarvestSelectionCaseDeltaCases();
+  const selectionCaseDelta = getHarvestSelectionCaseDeltaCases(currentHarvestTotal);
   const overageCases = Math.max(0, selectionCaseDelta);
   const remainingCases = harvestSelectionMode === "manual" && harvestFillKeys.length
     ? Math.max(0, -selectionCaseDelta)
@@ -410,10 +410,10 @@ function getMonitorSendSummaryLabelHtml(label, iconKind){
   return `<span class="monitorSendSummaryLabel"><svg class="monitorSendSummaryIcon" viewBox="0 0 20 20" aria-hidden="true">${iconPaths[iconKind] || iconPaths.remaining}</svg><span>${escapeHtml(label)}</span></span>`;
 }
 
-function renderForecastSummary(){
+function renderForecastSummary(options = {}){
   const casePlan = getHarvestCasePlan();
   updateHarvestCalculationButtonState();
-  updatePartialHarvestDeductionNote();
+  updatePartialHarvestDeductionNote(options.currentHarvestTotal);
   updateRecordPartialHarvestIncludedNote();
   renderSeedlingHouseUi();
   const resultActions = document.getElementById("forecastResultActions");
@@ -447,7 +447,9 @@ function renderForecastSummary(){
     }
   }
 
-  const remainingCases = getRemainingCasesForCurrentBuilding();
+  const remainingCases = getRemainingCasesForCurrentBuilding({
+    harvestableHeadsByPallet:options.harvestableHeadsByPallet
+  });
 
   document.getElementById("forecastSummary").textContent =
     startLabel + "\n" +
@@ -510,7 +512,7 @@ function renderForecastSummary(){
   scheduleMainTabViewportScrollLock();
 }
 
-function drawBeds(){
+function drawBeds(options = {}){
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const targetDate = getHarvestTargetDate();
@@ -525,6 +527,9 @@ function drawBeds(){
     ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
     : null;
   const plantingStateByPallet = getLatestPlantingStateByPallet(targetDate);
+  const harvestableHeadsByPallet = options.harvestableHeadsByPallet instanceof Map
+    ? options.harvestableHeadsByPallet
+    : new Map();
 
   bedMap.forEach(b => {
     const bed = document.createElement("div");
@@ -537,7 +542,8 @@ function drawBeds(){
       plantingStateByPallet,
       hasPartialHarvestRecords,
       partialHarvestSourceRecords,
-      partialHarvestLookup
+      partialHarvestLookup,
+      harvestableHeadsByPallet
     });
     const displayedHarvestableCases = Math.round(summaryCounts.harvestableCases);
     const collapsedStateClass = isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)

@@ -1443,6 +1443,9 @@ function getBedSummaryCounts(building, bed, options = {}){
     ? (Array.isArray(options.partialHarvestSourceRecords) ? options.partialHarvestSourceRecords : records)
     : [];
   const hasPartialHarvestRecords = calculateHarvestableCases && !!options.hasPartialHarvestRecords;
+  const harvestableHeadsByPallet = options.harvestableHeadsByPallet instanceof Map
+    ? options.harvestableHeadsByPallet
+    : null;
   let selected = 0;
   let recorded = 0;
   let selectable = 0;
@@ -1457,24 +1460,29 @@ function getBedSummaryCounts(building, bed, options = {}){
     else{
       selectable++;
       if(calculateHarvestableCases){
-        const predictedHeads = getPredictedHarvestForBed(
-          building,
-          bed,
-          number,
-          targetDate,
-          { plantingStateByPallet:options.plantingStateByPallet }
-        );
-        const partialHarvestCount = hasPartialHarvestRecords
-          ? getPartialHarvestCountForPallet(
-              building,
-              bed,
-              number,
-              targetDate,
-              partialHarvestSourceRecords,
-              { lookup:options.partialHarvestLookup }
-            )
-          : 0;
-        harvestableHeads += Math.max(0, predictedHeads - partialHarvestCount);
+        let palletHarvestableHeads = harvestableHeadsByPallet?.get(key);
+        if(!Number.isFinite(palletHarvestableHeads)){
+          const predictedHeads = getPredictedHarvestForBed(
+            building,
+            bed,
+            number,
+            targetDate,
+            { plantingStateByPallet:options.plantingStateByPallet }
+          );
+          const partialHarvestCount = hasPartialHarvestRecords
+            ? getPartialHarvestCountForPallet(
+                building,
+                bed,
+                number,
+                targetDate,
+                partialHarvestSourceRecords,
+                { lookup:options.partialHarvestLookup }
+              )
+            : 0;
+          palletHarvestableHeads = Math.max(0, predictedHeads - partialHarvestCount);
+          harvestableHeadsByPallet?.set(key, palletHarvestableHeads);
+        }
+        harvestableHeads += palletHarvestableHeads;
       }
     }
     if(allowedSet){
@@ -3431,7 +3439,8 @@ function runHarvestPrediction(options = {}){
 
   if(!options.preserveManualSeedlingCount) manualSeedlingCount = null;
   refreshAfterHarvestSelectionChanged({
-    selectionChangeSource: shouldPreserveProgress ? "progress-auto" : "auto"
+    selectionChangeSource: shouldPreserveProgress ? "progress-auto" : "auto",
+    currentHarvestTotal:(completedProgressCases * CASE_SIZE) + selection.totalHarvest
   });
   if(shouldPreserveProgress) updateHarvestProgressUi();
   completeWorkflowGuideCalculation();

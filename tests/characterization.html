@@ -5335,6 +5335,56 @@
         }, "部分収穫後のシミュで仮履歴・検索表を再利用できていません");
       });
 
+      await runTest("配置図の収穫可能数を棟の残りケース計算で再利用する", () => {
+        const cacheState = comparable(app.eval(`(() => {
+          const previousPrediction = getPredictedHarvestForBed;
+          try{
+            let predictionCount = 0;
+            getPredictedHarvestForBed = () => {
+              predictionCount++;
+              return 20;
+            };
+            const harvestableHeadsByPallet = new Map();
+            const recordedSet = new Set();
+            const targetDate = parseDateOnlyString("2026-09-09");
+            const bedCases = bedOrder.map(bed => getBedSummaryCounts(2, bed, {
+              recordedSet,
+              calculateHarvestableCases:true,
+              targetDate,
+              plantingStateByPallet:new Map(),
+              hasPartialHarvestRecords:false,
+              partialHarvestSourceRecords:[],
+              partialHarvestLookup:null,
+              harvestableHeadsByPallet
+            }).harvestableCases);
+            const afterBedSummary = predictionCount;
+            const remainingCases = getRemainingHarvestableCasesForBuilding(2, {
+              referenceDate:targetDate,
+              sourceRecords:[],
+              recordedSet,
+              excludedPalletKeys:[],
+              harvestableHeadsByPallet
+            });
+            return {
+              afterBedSummary,
+              afterRemainingCases:predictionCount,
+              cachedPallets:harvestableHeadsByPallet.size,
+              bedCases,
+              remainingCases
+            };
+          }finally{
+            getPredictedHarvestForBed = previousPrediction;
+          }
+        })()`));
+        assertDeepEqual(cacheState, {
+          afterBedSummary:468,
+          afterRemainingCases:468,
+          cachedPallets:468,
+          bedCases:[130, 130, 130, 130, 130, 130],
+          remainingCases:780
+        }, "配置図の計算結果を残りケース数へ再利用できていません");
+      });
+
       await runTest("逆算時の途中経過は最初の選択場所を固定して反映する", () => {
         const reverseProgress = comparable(app.eval(`(() => {
           const previous = {

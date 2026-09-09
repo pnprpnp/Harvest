@@ -1488,19 +1488,33 @@ function removeHarvestSelectionOverage(key){
   harvestOverageKeys = harvestOverageKeys.filter(item => item !== normalizedKey);
 }
 
-function reconcileHarvestSelectionOverage(){
+function reconcileHarvestSelectionOverage(currentHarvestTotal = null){
   harvestOverageKeys = normalizeHarvestOverageKeys(harvestOverageKeys);
   const needHeads = getManualHarvestNeedHeads();
-  if(needHeads === null || !harvestSummary || getCurrentHarvestTotalRaw() <= needHeads){
+  if(needHeads === null || !harvestSummary){
+    harvestOverageKeys = [];
+    return harvestOverageKeys;
+  }
+  const resolvedHarvestTotal = currentHarvestTotal !== null
+    && typeof currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(currentHarvestTotal))
+    ? Number(currentHarvestTotal)
+    : getCurrentHarvestTotalRaw();
+  if(resolvedHarvestTotal <= needHeads){
     harvestOverageKeys = [];
   }
   return harvestOverageKeys;
 }
 
-function getHarvestSelectionCaseDeltaCases(){
+function getHarvestSelectionCaseDeltaCases(currentHarvestTotal = null){
   const needHeads = getManualHarvestNeedHeads();
   if(needHeads === null || !harvestSummary) return 0;
-  const differenceHeads = getCurrentHarvestTotalRaw() - needHeads;
+  const resolvedHarvestTotal = currentHarvestTotal !== null
+    && typeof currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(currentHarvestTotal))
+    ? Number(currentHarvestTotal)
+    : getCurrentHarvestTotalRaw();
+  const differenceHeads = resolvedHarvestTotal - needHeads;
   return Math.round((differenceHeads / CASE_SIZE) * 10) / 10;
 }
 
@@ -1513,18 +1527,19 @@ function getHarvestSelectionRemainingCases(){
   return Math.max(0, -getHarvestSelectionCaseDeltaCases());
 }
 
-function renderHarvestSelectionMapsForActiveTab(){
+function renderHarvestSelectionMapsForActiveTab(options = {}){
   if(activeAppTab === "forecast"){
-    drawBeds();
+    drawBeds(options);
   }else if(activeAppTab === "record"){
     drawRecordBeds();
   }
 }
 
 function refreshHarvestMapViews(){
-  drawBeds();
+  const harvestableHeadsByPallet = new Map();
+  drawBeds({ harvestableHeadsByPallet });
   drawRecordBeds();
-  renderForecastSummary();
+  renderForecastSummary({ harvestableHeadsByPallet });
 }
 
 function refreshAfterHarvestSelectionChanged(options = {}){
@@ -1536,11 +1551,10 @@ function refreshAfterHarvestSelectionChanged(options = {}){
       markForecastHarvestSelectionAsManual();
     }
   }
-  reconcileHarvestSelectionOverage();
-
   const currentHarvestTotal = Number.isFinite(Number(options.currentHarvestTotal))
     ? Math.round(Number(options.currentHarvestTotal) * 10) / 10
     : (harvestFillKeys.length ? getCurrentHarvestTotal() : 0);
+  reconcileHarvestSelectionOverage(currentHarvestTotal);
   if(harvestFillKeys.length){
     recalcHarvestSummary(currentHarvestTotal);
   }else{
@@ -1549,8 +1563,9 @@ function refreshAfterHarvestSelectionChanged(options = {}){
 
   updateEstimatedHarvestCasesFromSelection(currentHarvestTotal);
   syncReverseHarvestProgressAvailability();
-  renderHarvestSelectionMapsForActiveTab();
-  renderForecastSummary();
+  const harvestableHeadsByPallet = activeAppTab === "forecast" ? new Map() : null;
+  renderHarvestSelectionMapsForActiveTab({ harvestableHeadsByPallet });
+  renderForecastSummary({ currentHarvestTotal, harvestableHeadsByPallet });
 
   const summaryInput = document.getElementById("recordPalletSummaryInput");
   if(summaryInput){

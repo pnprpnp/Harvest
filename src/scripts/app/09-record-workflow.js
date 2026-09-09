@@ -841,6 +841,9 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
     : getHarvestedPalletSet(referenceDate);
   const excludedSet = new Set(Array.isArray(options.excludedPalletKeys) ? options.excludedPalletKeys : []);
   const hasPartialHarvestRecords = sourceRecords.some(record => record.type === "partialHarvest");
+  const harvestableHeadsByPallet = options.harvestableHeadsByPallet instanceof Map
+    ? options.harvestableHeadsByPallet
+    : null;
   const predictionOptions = {
     plantingStateByPallet:getLatestPlantingStateByPallet(referenceDate),
     lookup:hasPartialHarvestRecords ? getHarvestRecordLookup(referenceDate, sourceRecords) : null
@@ -852,32 +855,38 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
       const key = getPalletKey(normalizedBuilding, bed, number);
       if(recordedSet.has(key)) continue;
       if(excludedSet.has(key)) continue;
-      remainingHeads += hasPartialHarvestRecords
-        ? getPredictedHarvestForPallet(
-            normalizedBuilding,
-            bed,
-            number,
-            referenceDate,
-            sourceRecords,
-            predictionOptions
-          )
-        : getPredictedHarvestForBed(
-            normalizedBuilding,
-            bed,
-            number,
-            referenceDate,
-            predictionOptions
-          );
+      let palletHarvestableHeads = harvestableHeadsByPallet?.get(key);
+      if(!Number.isFinite(palletHarvestableHeads)){
+        palletHarvestableHeads = hasPartialHarvestRecords
+          ? getPredictedHarvestForPallet(
+              normalizedBuilding,
+              bed,
+              number,
+              referenceDate,
+              sourceRecords,
+              predictionOptions
+            )
+          : getPredictedHarvestForBed(
+              normalizedBuilding,
+              bed,
+              number,
+              referenceDate,
+              predictionOptions
+            );
+        harvestableHeadsByPallet?.set(key, palletHarvestableHeads);
+      }
+      remainingHeads += palletHarvestableHeads;
     }
   }
 
   return Math.floor((remainingHeads / CASE_SIZE) * 10) / 10;
 }
 
-function getRemainingCasesForCurrentBuilding(){
+function getRemainingCasesForCurrentBuilding(options = {}){
   return getRemainingHarvestableCasesForBuilding(currentBuilding, {
     recordedSet: getHarvestedPalletSet(getHarvestTargetDate()),
-    excludedPalletKeys: harvestFillKeys
+    excludedPalletKeys: harvestFillKeys,
+    harvestableHeadsByPallet:options.harvestableHeadsByPallet
   });
 }
 

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260909-faster-progress-simulation">
+<meta name="harvestnavi-version" content="20260909-reuse-simulation-calculations">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -16698,19 +16698,33 @@ function removeHarvestSelectionOverage(key){
   harvestOverageKeys = harvestOverageKeys.filter(item => item !== normalizedKey);
 }
 
-function reconcileHarvestSelectionOverage(){
+function reconcileHarvestSelectionOverage(currentHarvestTotal = null){
   harvestOverageKeys = normalizeHarvestOverageKeys(harvestOverageKeys);
   const needHeads = getManualHarvestNeedHeads();
-  if(needHeads === null || !harvestSummary || getCurrentHarvestTotalRaw() <= needHeads){
+  if(needHeads === null || !harvestSummary){
+    harvestOverageKeys = [];
+    return harvestOverageKeys;
+  }
+  const resolvedHarvestTotal = currentHarvestTotal !== null
+    && typeof currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(currentHarvestTotal))
+    ? Number(currentHarvestTotal)
+    : getCurrentHarvestTotalRaw();
+  if(resolvedHarvestTotal <= needHeads){
     harvestOverageKeys = [];
   }
   return harvestOverageKeys;
 }
 
-function getHarvestSelectionCaseDeltaCases(){
+function getHarvestSelectionCaseDeltaCases(currentHarvestTotal = null){
   const needHeads = getManualHarvestNeedHeads();
   if(needHeads === null || !harvestSummary) return 0;
-  const differenceHeads = getCurrentHarvestTotalRaw() - needHeads;
+  const resolvedHarvestTotal = currentHarvestTotal !== null
+    && typeof currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(currentHarvestTotal))
+    ? Number(currentHarvestTotal)
+    : getCurrentHarvestTotalRaw();
+  const differenceHeads = resolvedHarvestTotal - needHeads;
   return Math.round((differenceHeads / CASE_SIZE) * 10) / 10;
 }
 
@@ -16723,18 +16737,19 @@ function getHarvestSelectionRemainingCases(){
   return Math.max(0, -getHarvestSelectionCaseDeltaCases());
 }
 
-function renderHarvestSelectionMapsForActiveTab(){
+function renderHarvestSelectionMapsForActiveTab(options = {}){
   if(activeAppTab === "forecast"){
-    drawBeds();
+    drawBeds(options);
   }else if(activeAppTab === "record"){
     drawRecordBeds();
   }
 }
 
 function refreshHarvestMapViews(){
-  drawBeds();
+  const harvestableHeadsByPallet = new Map();
+  drawBeds({ harvestableHeadsByPallet });
   drawRecordBeds();
-  renderForecastSummary();
+  renderForecastSummary({ harvestableHeadsByPallet });
 }
 
 function refreshAfterHarvestSelectionChanged(options = {}){
@@ -16746,11 +16761,10 @@ function refreshAfterHarvestSelectionChanged(options = {}){
       markForecastHarvestSelectionAsManual();
     }
   }
-  reconcileHarvestSelectionOverage();
-
   const currentHarvestTotal = Number.isFinite(Number(options.currentHarvestTotal))
     ? Math.round(Number(options.currentHarvestTotal) * 10) / 10
     : (harvestFillKeys.length ? getCurrentHarvestTotal() : 0);
+  reconcileHarvestSelectionOverage(currentHarvestTotal);
   if(harvestFillKeys.length){
     recalcHarvestSummary(currentHarvestTotal);
   }else{
@@ -16759,8 +16773,9 @@ function refreshAfterHarvestSelectionChanged(options = {}){
 
   updateEstimatedHarvestCasesFromSelection(currentHarvestTotal);
   syncReverseHarvestProgressAvailability();
-  renderHarvestSelectionMapsForActiveTab();
-  renderForecastSummary();
+  const harvestableHeadsByPallet = activeAppTab === "forecast" ? new Map() : null;
+  renderHarvestSelectionMapsForActiveTab({ harvestableHeadsByPallet });
+  renderForecastSummary({ currentHarvestTotal, harvestableHeadsByPallet });
 
   const summaryInput = document.getElementById("recordPalletSummaryInput");
   if(summaryInput){
@@ -31446,6 +31461,9 @@ function getBedSummaryCounts(building, bed, options = {}){
     ? (Array.isArray(options.partialHarvestSourceRecords) ? options.partialHarvestSourceRecords : records)
     : [];
   const hasPartialHarvestRecords = calculateHarvestableCases && !!options.hasPartialHarvestRecords;
+  const harvestableHeadsByPallet = options.harvestableHeadsByPallet instanceof Map
+    ? options.harvestableHeadsByPallet
+    : null;
   let selected = 0;
   let recorded = 0;
   let selectable = 0;
@@ -31460,24 +31478,29 @@ function getBedSummaryCounts(building, bed, options = {}){
     else{
       selectable++;
       if(calculateHarvestableCases){
-        const predictedHeads = getPredictedHarvestForBed(
-          building,
-          bed,
-          number,
-          targetDate,
-          { plantingStateByPallet:options.plantingStateByPallet }
-        );
-        const partialHarvestCount = hasPartialHarvestRecords
-          ? getPartialHarvestCountForPallet(
-              building,
-              bed,
-              number,
-              targetDate,
-              partialHarvestSourceRecords,
-              { lookup:options.partialHarvestLookup }
-            )
-          : 0;
-        harvestableHeads += Math.max(0, predictedHeads - partialHarvestCount);
+        let palletHarvestableHeads = harvestableHeadsByPallet?.get(key);
+        if(!Number.isFinite(palletHarvestableHeads)){
+          const predictedHeads = getPredictedHarvestForBed(
+            building,
+            bed,
+            number,
+            targetDate,
+            { plantingStateByPallet:options.plantingStateByPallet }
+          );
+          const partialHarvestCount = hasPartialHarvestRecords
+            ? getPartialHarvestCountForPallet(
+                building,
+                bed,
+                number,
+                targetDate,
+                partialHarvestSourceRecords,
+                { lookup:options.partialHarvestLookup }
+              )
+            : 0;
+          palletHarvestableHeads = Math.max(0, predictedHeads - partialHarvestCount);
+          harvestableHeadsByPallet?.set(key, palletHarvestableHeads);
+        }
+        harvestableHeads += palletHarvestableHeads;
       }
     }
     if(allowedSet){
@@ -33434,7 +33457,8 @@ function runHarvestPrediction(options = {}){
 
   if(!options.preserveManualSeedlingCount) manualSeedlingCount = null;
   refreshAfterHarvestSelectionChanged({
-    selectionChangeSource: shouldPreserveProgress ? "progress-auto" : "auto"
+    selectionChangeSource: shouldPreserveProgress ? "progress-auto" : "auto",
+    currentHarvestTotal:(completedProgressCases * CASE_SIZE) + selection.totalHarvest
   });
   if(shouldPreserveProgress) updateHarvestProgressUi();
   completeWorkflowGuideCalculation();
@@ -34396,6 +34420,9 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
     : getHarvestedPalletSet(referenceDate);
   const excludedSet = new Set(Array.isArray(options.excludedPalletKeys) ? options.excludedPalletKeys : []);
   const hasPartialHarvestRecords = sourceRecords.some(record => record.type === "partialHarvest");
+  const harvestableHeadsByPallet = options.harvestableHeadsByPallet instanceof Map
+    ? options.harvestableHeadsByPallet
+    : null;
   const predictionOptions = {
     plantingStateByPallet:getLatestPlantingStateByPallet(referenceDate),
     lookup:hasPartialHarvestRecords ? getHarvestRecordLookup(referenceDate, sourceRecords) : null
@@ -34407,32 +34434,38 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
       const key = getPalletKey(normalizedBuilding, bed, number);
       if(recordedSet.has(key)) continue;
       if(excludedSet.has(key)) continue;
-      remainingHeads += hasPartialHarvestRecords
-        ? getPredictedHarvestForPallet(
-            normalizedBuilding,
-            bed,
-            number,
-            referenceDate,
-            sourceRecords,
-            predictionOptions
-          )
-        : getPredictedHarvestForBed(
-            normalizedBuilding,
-            bed,
-            number,
-            referenceDate,
-            predictionOptions
-          );
+      let palletHarvestableHeads = harvestableHeadsByPallet?.get(key);
+      if(!Number.isFinite(palletHarvestableHeads)){
+        palletHarvestableHeads = hasPartialHarvestRecords
+          ? getPredictedHarvestForPallet(
+              normalizedBuilding,
+              bed,
+              number,
+              referenceDate,
+              sourceRecords,
+              predictionOptions
+            )
+          : getPredictedHarvestForBed(
+              normalizedBuilding,
+              bed,
+              number,
+              referenceDate,
+              predictionOptions
+            );
+        harvestableHeadsByPallet?.set(key, palletHarvestableHeads);
+      }
+      remainingHeads += palletHarvestableHeads;
     }
   }
 
   return Math.floor((remainingHeads / CASE_SIZE) * 10) / 10;
 }
 
-function getRemainingCasesForCurrentBuilding(){
+function getRemainingCasesForCurrentBuilding(options = {}){
   return getRemainingHarvestableCasesForBuilding(currentBuilding, {
     recordedSet: getHarvestedPalletSet(getHarvestTargetDate()),
-    excludedPalletKeys: harvestFillKeys
+    excludedPalletKeys: harvestFillKeys,
+    harvestableHeadsByPallet:options.harvestableHeadsByPallet
   });
 }
 
@@ -38104,10 +38137,10 @@ function renderMonitorMode(){
   });
 }
 
-function updatePartialHarvestDeductionNote(){
+function updatePartialHarvestDeductionNote(currentHarvestTotal = null){
   const note = document.getElementById("partialHarvestDeductionNote");
   if(!note) return;
-  const selectionCaseDelta = getHarvestSelectionCaseDeltaCases();
+  const selectionCaseDelta = getHarvestSelectionCaseDeltaCases(currentHarvestTotal);
   const overageCases = Math.max(0, selectionCaseDelta);
   const remainingCases = harvestSelectionMode === "manual" && harvestFillKeys.length
     ? Math.max(0, -selectionCaseDelta)
@@ -38516,10 +38549,10 @@ function getMonitorSendSummaryLabelHtml(label, iconKind){
   return `<span class="monitorSendSummaryLabel"><svg class="monitorSendSummaryIcon" viewBox="0 0 20 20" aria-hidden="true">${iconPaths[iconKind] || iconPaths.remaining}</svg><span>${escapeHtml(label)}</span></span>`;
 }
 
-function renderForecastSummary(){
+function renderForecastSummary(options = {}){
   const casePlan = getHarvestCasePlan();
   updateHarvestCalculationButtonState();
-  updatePartialHarvestDeductionNote();
+  updatePartialHarvestDeductionNote(options.currentHarvestTotal);
   updateRecordPartialHarvestIncludedNote();
   renderSeedlingHouseUi();
   const resultActions = document.getElementById("forecastResultActions");
@@ -38553,7 +38586,9 @@ function renderForecastSummary(){
     }
   }
 
-  const remainingCases = getRemainingCasesForCurrentBuilding();
+  const remainingCases = getRemainingCasesForCurrentBuilding({
+    harvestableHeadsByPallet:options.harvestableHeadsByPallet
+  });
 
   document.getElementById("forecastSummary").textContent =
     startLabel + "\n" +
@@ -38616,7 +38651,7 @@ function renderForecastSummary(){
   scheduleMainTabViewportScrollLock();
 }
 
-function drawBeds(){
+function drawBeds(options = {}){
   const container = document.getElementById("beds");
   container.innerHTML = "";
   const targetDate = getHarvestTargetDate();
@@ -38631,6 +38666,9 @@ function drawBeds(){
     ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
     : null;
   const plantingStateByPallet = getLatestPlantingStateByPallet(targetDate);
+  const harvestableHeadsByPallet = options.harvestableHeadsByPallet instanceof Map
+    ? options.harvestableHeadsByPallet
+    : new Map();
 
   bedMap.forEach(b => {
     const bed = document.createElement("div");
@@ -38643,7 +38681,8 @@ function drawBeds(){
       plantingStateByPallet,
       hasPartialHarvestRecords,
       partialHarvestSourceRecords,
-      partialHarvestLookup
+      partialHarvestLookup,
+      harvestableHeadsByPallet
     });
     const displayedHarvestableCases = Math.round(summaryCounts.harvestableCases);
     const collapsedStateClass = isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)
