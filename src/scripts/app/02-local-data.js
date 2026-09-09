@@ -1062,6 +1062,9 @@ function getNextPlantingEventId(){
 function invalidatePlantingEventStateCache(){
   plantingEventStateCache = null;
   plantingEventStateCacheKey = "";
+  seedlingHouseNextKeyCache = "";
+  seedlingHouseNextKeyCacheEvents = null;
+  seedlingHouseNextKeyCacheInitialStart = "";
   plantingDateByPalletCache.clear();
   plantingStateByPalletCache.clear();
   invalidateCurrentPalletLifecycleState();
@@ -1442,8 +1445,12 @@ function completeRecordDataMutation(options = {}){
   invalidateRecordDerivedCaches(options);
   rebuildCurrentPalletLifecycleState({ persist: true });
   scheduleWorkflowGuideUpdate();
-  if(typeof renderSeedlingHouseUi === "function" && document.getElementById("seedlingHouseOpenBtn")){
-    renderSeedlingHouseUi();
+  if((activeAppTab === "forecast" || activeAppTab === "monitor")
+    && typeof renderSeedlingHouseUi === "function"
+    && document.getElementById("seedlingHouseOpenBtn")){
+    const modal = document.getElementById("seedlingHouseModal");
+    if(modal?.classList.contains("show")) renderSeedlingHouseUi();
+    else if(typeof renderSeedlingHouseOpenButtonState === "function") renderSeedlingHouseOpenButtonState();
   }
 }
 

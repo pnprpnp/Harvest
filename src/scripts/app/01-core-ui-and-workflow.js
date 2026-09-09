@@ -270,6 +270,17 @@ let harvestProgressPartialSelectionMode = false;
 let harvestProgressPartialDraftSnapshot = null;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
+let lastRenderedForecastBuilding = null;
+let lastRenderedForecastSelectionSet = new Set();
+let lastRenderedForecastOverageSet = new Set();
+let lastRenderedForecastProgressSet = new Set();
+let forecastHarvestableHeadsByPalletCache = new Map();
+let lastRenderedForecastAvailabilityState = null;
+let lastRenderedForecastTimelineRecords = null;
+let lastRenderedForecastPlantingState = null;
+let lastRenderedForecastTargetDateKey = "";
+let lastRenderedForecastSettings = null;
+let pendingWorkflowGuideCurrentHarvestTotal = null;
 const MAIN_TAB_DEFINITIONS = Object.freeze({
   forecast: { label: "シミュ", afterSelection: prepareForecastMainTabSelection, afterPaint: finishForecastMainTabSelection },
   monitor: { label: "モニター", afterPaint: finishMonitorMainTabSelection },
@@ -334,6 +345,9 @@ let plantingAllowedPalletSetCacheRecordCount = 0;
 let plantingAllowedPalletSetCacheEventId = null;
 let plantingEventStateCache = null;
 let plantingEventStateCacheKey = "";
+let seedlingHouseNextKeyCache = "";
+let seedlingHouseNextKeyCacheEvents = null;
+let seedlingHouseNextKeyCacheInitialStart = "";
 let harvestRecordLookupCache = new Map();
 let harvestRecordLookupSourceCache = new WeakMap();
 let partialHarvestEffectiveCountCache = new WeakMap();
@@ -1402,13 +1416,13 @@ function updateHarvestCasesAutoEstimatedAppearance(){
   casesInput.title = isAutoEstimated ? "パレット選択から自動計算された値" : "";
 }
 
-function updateHarvestCalculationButtonState(){
+function updateHarvestCalculationButtonState(currentHarvestTotal = null){
   const button = document.getElementById("harvestCalculateBtn");
   const casesInput = document.getElementById("casesInput");
   if(!button || !casesInput) return;
   const hasCases = String(casesInput.value || "").trim() !== ""
     && getHarvestCasePlan().totalCases > 0;
-  const isCalculated = hasCases && hasWorkflowCalculationResult();
+  const isCalculated = hasCases && hasWorkflowCalculationResult(currentHarvestTotal);
   button.disabled = !hasCases || isCalculated;
   button.classList.toggle("is-calculated", isCalculated);
   button.setAttribute("aria-label", isCalculated ? "計算済み" : "計算");
@@ -1529,17 +1543,27 @@ function getHarvestSelectionRemainingCases(){
 
 function renderHarvestSelectionMapsForActiveTab(options = {}){
   if(activeAppTab === "forecast"){
+    if(options.preferIncremental && updateForecastBeds(options)){
+      return forecastHarvestableHeadsByPalletCache;
+    }
     drawBeds(options);
+    return forecastHarvestableHeadsByPalletCache;
   }else if(activeAppTab === "record"){
     drawRecordBeds();
   }
+  return null;
 }
 
 function refreshHarvestMapViews(){
-  const harvestableHeadsByPallet = new Map();
-  drawBeds({ harvestableHeadsByPallet });
-  drawRecordBeds();
-  renderForecastSummary({ harvestableHeadsByPallet });
+  if(activeAppTab === "forecast"){
+    const harvestableHeadsByPallet = new Map();
+    drawBeds({ harvestableHeadsByPallet });
+    renderForecastSummary({ harvestableHeadsByPallet });
+  }else if(activeAppTab === "record"){
+    drawRecordBeds();
+  }else if(activeAppTab === "monitor"){
+    renderForecastSummary();
+  }
 }
 
 function refreshAfterHarvestSelectionChanged(options = {}){
@@ -1563,9 +1587,10 @@ function refreshAfterHarvestSelectionChanged(options = {}){
 
   updateEstimatedHarvestCasesFromSelection(currentHarvestTotal);
   syncReverseHarvestProgressAvailability();
-  const harvestableHeadsByPallet = activeAppTab === "forecast" ? new Map() : null;
-  renderHarvestSelectionMapsForActiveTab({ harvestableHeadsByPallet });
-  renderForecastSummary({ currentHarvestTotal, harvestableHeadsByPallet });
+  const harvestableHeadsByPallet = renderHarvestSelectionMapsForActiveTab({ preferIncremental:true });
+  if(activeAppTab === "forecast" || activeAppTab === "monitor"){
+    renderForecastSummary({ currentHarvestTotal, harvestableHeadsByPallet });
+  }
 
   const summaryInput = document.getElementById("recordPalletSummaryInput");
   if(summaryInput){
@@ -1573,13 +1598,14 @@ function refreshAfterHarvestSelectionChanged(options = {}){
       summaryInput.value = keepRecordSummary ? (summaryInput.value || "") : formatPalletSummary(harvestFillKeys);
     }
   }
-  syncRecordPlantingSummaryFromSelection();
-
-  updateRecordActualLoss();
-  updateRecordSeedlingDiffDisplay();
-  updateRecordActualSeedlingDisplays();
-  updateRecordPlantingCountPresetUi();
-  scheduleWorkflowGuideUpdate();
+  if(activeAppTab === "record"){
+    syncRecordPlantingSummaryFromSelection();
+    updateRecordActualLoss();
+    updateRecordSeedlingDiffDisplay();
+    updateRecordActualSeedlingDisplays();
+    updateRecordPlantingCountPresetUi();
+  }
+  scheduleWorkflowGuideUpdate({ currentHarvestTotal });
   scheduleHarvestStateSave();
 }
 
@@ -2333,7 +2359,12 @@ function getHarvestProgressRemainingTargetCases(){
   return Math.max(0, getHarvestCasePlan().regularCases - getHarvestProgressActualCases());
 }
 
-function getHarvestProgressSelectedRemainingHeads(){
+function getHarvestProgressSelectedRemainingHeads(currentHarvestTotal = null){
+  if(currentHarvestTotal !== null
+    && typeof currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(currentHarvestTotal))){
+    return Math.max(0, Number(currentHarvestTotal) - getHarvestProgressActualCases() * CASE_SIZE);
+  }
   const sourceRecords = getForecastHarvestTimelineRecords(records);
   const targetDate = getHarvestTargetDate();
   const predictionOptions = {
@@ -2530,7 +2561,7 @@ function renderHarvestProgressBeds(){
   });
 }
 
-function getHarvestProgressResultModel(){
+function getHarvestProgressResultModel(currentHarvestTotal = null){
   const state = normalizeHarvestProgressState(harvestProgressState);
   const casePlan = getHarvestCasePlan();
   if(!harvestFillKeys.length || casePlan.totalCases <= 0){
@@ -2547,7 +2578,7 @@ function getHarvestProgressResultModel(){
   }
 
   const actualCases = getHarvestProgressActualCases();
-  const selectedRemainingCases = getHarvestProgressSelectedRemainingHeads() / CASE_SIZE;
+  const selectedRemainingCases = getHarvestProgressSelectedRemainingHeads(currentHarvestTotal) / CASE_SIZE;
   if(isReverseHarvestProgressState(state)){
     const remainingPlanKeys = getHarvestProgressRemainingSelectionKeys();
     return {
@@ -2613,7 +2644,7 @@ function updateHarvestProgressVisibility(){
   return shouldShow;
 }
 
-function updateHarvestProgressUi(){
+function updateHarvestProgressUi(options = {}){
   const shouldShow = updateHarvestProgressVisibility();
   const state = normalizeHarvestProgressState(harvestProgressState);
   if(state) harvestProgressState = state;
@@ -2652,7 +2683,7 @@ function updateHarvestProgressUi(){
   }
   const result = document.getElementById("harvestProgressResult");
   if(result){
-    const model = getHarvestProgressResultModel();
+    const model = getHarvestProgressResultModel(options.currentHarvestTotal);
     const entryLines = getHarvestProgressEntryDisplayLines(state);
     const entryText = entryLines.length ? `入力済み\n${entryLines.join("\n")}` : "";
     result.textContent = [entryText, model.text].filter(Boolean).join("\n\n");
@@ -3607,10 +3638,14 @@ function setWorkflowGuideStage(stage, options = {}){
   return true;
 }
 
-function hasWorkflowCalculationResult(){
+function hasWorkflowCalculationResult(currentHarvestTotal = null){
   const selectedKeyCount = Array.isArray(harvestFillKeys) ? harvestFillKeys.length : 0;
   const expectedNeedHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
-  const currentHarvestTotal = Math.round(getCurrentHarvestTotal() * 10) / 10;
+  const resolvedHarvestTotal = currentHarvestTotal !== null
+    && typeof currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(currentHarvestTotal))
+    ? Math.round(Number(currentHarvestTotal) * 10) / 10
+    : Math.round(getCurrentHarvestTotal() * 10) / 10;
   const summaryHarvestTotal = Number(harvestSummary?.totalHarvest);
   return expectedNeedHeads > 0
     && selectedKeyCount > 0
@@ -3618,10 +3653,10 @@ function hasWorkflowCalculationResult(){
     && Number(harvestSummary.filledCount) === selectedKeyCount
     && Number(harvestSummary.needHeads) === expectedNeedHeads
     && Number.isFinite(summaryHarvestTotal)
-    && Math.abs(summaryHarvestTotal - currentHarvestTotal) < 0.11;
+    && Math.abs(summaryHarvestTotal - resolvedHarvestTotal) < 0.11;
 }
 
-function getWorkflowGuideState(){
+function getWorkflowGuideState(currentHarvestTotal = null){
   if(workflowGuideStage === WORKFLOW_GUIDE_COMPLETE_STAGE){
     return {
       stage: WORKFLOW_GUIDE_COMPLETE_STAGE,
@@ -3644,7 +3679,7 @@ function getWorkflowGuideState(){
     ...definition,
     title,
     actionLabel:isCompletedReview ? "次へ" : definition.actionLabel,
-    actionEnabled: isCompletedReview || stage !== 2 || hasWorkflowCalculationResult(),
+    actionEnabled: isCompletedReview || stage !== 2 || hasWorkflowCalculationResult(currentHarvestTotal),
     showBack: stage > 1,
     progress: stage * 20,
     isCompletedReview
@@ -3667,14 +3702,14 @@ function showWorkflowCompletionCelebration(){
   setWorkflowGuideStage(WORKFLOW_GUIDE_COMPLETE_STAGE);
 }
 
-function updateWorkflowGuide(){
+function updateWorkflowGuide(options = {}){
   if(workflowGuideUpdateFrame !== null && typeof cancelAnimationFrame === "function"){
     cancelAnimationFrame(workflowGuideUpdateFrame);
   }
   workflowGuideUpdateFrame = null;
   const bar = document.getElementById("workflowBar");
   if(!bar) return;
-  const state = getWorkflowGuideState();
+  const state = getWorkflowGuideState(options.currentHarvestTotal);
   bar.dataset.currentStep = state.key;
   const title = document.getElementById("workflowNextTitle");
   if(title) title.textContent = state.title;
@@ -3709,14 +3744,25 @@ function updateWorkflowGuide(){
   }
 }
 
-function scheduleWorkflowGuideUpdate(){
+function scheduleWorkflowGuideUpdate(options = {}){
   if(!document.getElementById("workflowBar")) return;
+  if(options.currentHarvestTotal !== null
+    && typeof options.currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(options.currentHarvestTotal))){
+    pendingWorkflowGuideCurrentHarvestTotal = Number(options.currentHarvestTotal);
+  }
   if(workflowGuideUpdateFrame !== null) return;
   if(typeof requestAnimationFrame !== "function"){
-    updateWorkflowGuide();
+    const currentHarvestTotal = pendingWorkflowGuideCurrentHarvestTotal;
+    pendingWorkflowGuideCurrentHarvestTotal = null;
+    updateWorkflowGuide({ currentHarvestTotal });
     return;
   }
-  workflowGuideUpdateFrame = requestAnimationFrame(updateWorkflowGuide);
+  workflowGuideUpdateFrame = requestAnimationFrame(() => {
+    const currentHarvestTotal = pendingWorkflowGuideCurrentHarvestTotal;
+    pendingWorkflowGuideCurrentHarvestTotal = null;
+    updateWorkflowGuide({ currentHarvestTotal });
+  });
 }
 
 function syncAppTopChromeHeight(){

@@ -3442,7 +3442,6 @@ function runHarvestPrediction(options = {}){
     selectionChangeSource: shouldPreserveProgress ? "progress-auto" : "auto",
     currentHarvestTotal:(completedProgressCases * CASE_SIZE) + selection.totalHarvest
   });
-  if(shouldPreserveProgress) updateHarvestProgressUi();
   completeWorkflowGuideCalculation();
   return selection;
 }

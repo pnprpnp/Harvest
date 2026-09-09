@@ -5385,6 +5385,199 @@
         }, "配置図の計算結果を残りケース数へ再利用できていません");
       });
 
+      await runTest("シミュの選択変更は該当ベッドだけを差分描画する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            activeTab:activeAppTab,
+            building:currentBuilding,
+            keys:[...harvestFillKeys],
+            overage:[...harvestOverageKeys],
+            progress:harvestProgressState
+          };
+          try{
+            activeAppTab = "forecast";
+            currentBuilding = 2;
+            harvestFillKeys = [];
+            harvestOverageKeys = [];
+            harvestProgressState = null;
+            drawBeds();
+            const before = [...document.querySelectorAll("#beds > .simulationBedOverview")];
+            harvestFillKeys = [getPalletKey(2, "A", 1)];
+            const updated = updateForecastBeds();
+            const after = [...document.querySelectorAll("#beds > .simulationBedOverview")];
+            return {
+              updated,
+              sameNodes:before.map((element, index) => element === after[index]),
+              selectedCells:document.querySelectorAll("#beds .simulationBedMapCell.is-selected").length
+            };
+          }finally{
+            activeAppTab = previous.activeTab;
+            currentBuilding = previous.building;
+            harvestFillKeys = previous.keys;
+            harvestOverageKeys = previous.overage;
+            harvestProgressState = previous.progress;
+            if(activeAppTab === "forecast") drawBeds();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          updated:true,
+          sameNodes:[true, true, true, true, true, false],
+          selectedCells:1
+        }, "選択変更で配置図全体を作り直しています");
+      });
+
+      await runTest("収穫場所の変更時は表示中のタブだけを更新する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            activeTab:activeAppTab,
+            drawForecast:drawBeds,
+            drawRecord:drawRecordBeds,
+            buildMonitor:buildCurrentMonitorRemoteContent
+          };
+          try{
+            let forecastMapCount = 0;
+            let recordMapCount = 0;
+            let forecastSummaryCount = 0;
+            drawBeds = () => { forecastMapCount++; return true; };
+            drawRecordBeds = () => { recordMapCount++; };
+            buildCurrentMonitorRemoteContent = (...args) => {
+              forecastSummaryCount++;
+              return previous.buildMonitor(...args);
+            };
+            activeAppTab = "record";
+            renderHarvestSelectionMapsForActiveTab();
+            renderForecastSummary();
+            activeAppTab = "forecast";
+            renderHarvestSelectionMapsForActiveTab();
+            renderForecastSummary();
+            activeAppTab = "monitor";
+            renderForecastSummary();
+            return { forecastMapCount, recordMapCount, forecastSummaryCount };
+          }finally{
+            activeAppTab = previous.activeTab;
+            drawBeds = previous.drawForecast;
+            drawRecordBeds = previous.drawRecord;
+            buildCurrentMonitorRemoteContent = previous.buildMonitor;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          forecastMapCount:1,
+          recordMapCount:1,
+          forecastSummaryCount:1
+        }, "非表示タブまで同時に更新しています");
+      });
+
+      await runTest("選択済み合計を計算ボタン・工程・途中経過で再利用する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            getTotal:getCurrentHarvestTotal,
+            getPredicted:getPredictedHarvestForPallet,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            stage:workflowGuideStage,
+            cases:document.getElementById("casesInput")?.value || "",
+            progress:harvestProgressState
+          };
+          try{
+            let totalCalculationCount = 0;
+            let palletPredictionCount = 0;
+            getCurrentHarvestTotal = () => { totalCalculationCount++; return 12; };
+            getPredictedHarvestForPallet = () => { palletPredictionCount++; return 12; };
+            harvestFillKeys = ["2-A-1"];
+            harvestSummary = { start:"2-A-1", end:"2-A-1", filledCount:1, totalHarvest:12, needHeads:12 };
+            workflowGuideStage = 2;
+            harvestProgressState = null;
+            document.getElementById("casesInput").value = "1";
+            const calculationReady = hasWorkflowCalculationResult(12);
+            const guideReady = getWorkflowGuideState(12).actionEnabled;
+            updateHarvestCalculationButtonState(12);
+            const remainingHeads = getHarvestProgressSelectedRemainingHeads(12);
+            return { calculationReady, guideReady, remainingHeads, totalCalculationCount, palletPredictionCount };
+          }finally{
+            getCurrentHarvestTotal = previous.getTotal;
+            getPredictedHarvestForPallet = previous.getPredicted;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            workflowGuideStage = previous.stage;
+            harvestProgressState = previous.progress;
+            document.getElementById("casesInput").value = previous.cases;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          calculationReady:true,
+          guideReady:true,
+          remainingHeads:12,
+          totalCalculationCount:0,
+          palletPredictionCount:0
+        }, "同じ選択合計を工程ごとに計算し直しています");
+      });
+
+      await runTest("苗取り計画は画面を開くまで遅らせても次回開始位置が進む", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            activeTab:activeAppTab,
+            getPlan:getCurrentSeedlingHousePlan,
+            modalOpen:document.getElementById("seedlingHouseModal")?.classList.contains("show") || false
+          };
+          const modal = document.getElementById("seedlingHouseModal");
+          try{
+            activeAppTab = "forecast";
+            modal?.classList.remove("show");
+            let planCalculationCount = 0;
+            getCurrentSeedlingHousePlan = () => {
+              planCalculationCount++;
+              return previous.getPlan();
+            };
+            renderForecastSummary();
+            const whileClosed = planCalculationCount;
+            modal?.classList.add("show");
+            renderForecastSummary();
+            const afterOpen = planCalculationCount;
+
+            const firstPlan = getSeedlingHousePlanForHarvestKeys(["2-A-1"], {
+              takeCount:2,
+              sourceEvents:[],
+              sourceRecords:[],
+              allocationMode:"sequential"
+            });
+            const nextPlan = getSeedlingHousePlanForHarvestKeys(["2-A-2"], {
+              takeCount:1,
+              sourceEvents:[{
+                eventId:1,
+                plantingDate:"2026-09-08",
+                actualSeedlingTrayCount:2,
+                seedlingHousePalletKeys:firstPlan.selectedKeys,
+                detailsUnknown:false
+              }],
+              sourceRecords:[],
+              allocationMode:"sequential"
+            });
+            return {
+              whileClosed,
+              afterOpen,
+              firstSelection:firstPlan.selectedKeys,
+              nextStart:nextPlan.nextKey,
+              nextSelection:nextPlan.selectedKeys
+            };
+          }finally{
+            activeAppTab = previous.activeTab;
+            getCurrentSeedlingHousePlan = previous.getPlan;
+            modal?.classList.toggle("show", previous.modalOpen);
+            if(!previous.modalOpen){
+              const beds = document.getElementById("seedlingHouseBeds");
+              if(beds) beds.innerHTML = "";
+            }
+          }
+        })()`));
+        assertDeepEqual(state, {
+          whileClosed:0,
+          afterOpen:1,
+          firstSelection:["1-A-1", "1-A-2"],
+          nextStart:"1-A-3",
+          nextSelection:["1-A-3"]
+        }, "苗取り画面を表示しない日の記録を次回開始位置へ反映できません");
+      });
+
       await runTest("逆算時の途中経過は最初の選択場所を固定して反映する", () => {
         const reverseProgress = comparable(app.eval(`(() => {
           const previous = {
@@ -12962,18 +13155,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "6289c82f", elements: 2242, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "dfd03345", elements: 2311, visible: 670, viewport: "390x844" },
-          cssFocus: { hash: "c65eedae", elements: 2311, visible: 670, viewport: "390x844" },
-          mobileRecord: { hash: "88257a46", elements: 2246, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "e092de6e", elements: 2263, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "6a930c6e", elements: 2346, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "4f02139e", elements: 2361, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "b4d18e6b", elements: 2361, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "145896c2", elements: 2361, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "4396c501", elements: 2361, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "ca141d4f", elements: 2361, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "444ce761", elements: 2361, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "76de9646", elements: 2198, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "7d67249c", elements: 2267, visible: 670, viewport: "390x844" },
+          cssFocus: { hash: "0c407a57", elements: 2267, visible: 670, viewport: "390x844" },
+          mobileRecord: { hash: "9639c6c7", elements: 2202, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "97b7704a", elements: 2219, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "1f7d9a69", elements: 2302, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "08b12ab8", elements: 2317, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "c2beb8f5", elements: 2317, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "d845bf8c", elements: 2317, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "26bc1cee", elements: 2361, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "9d22620c", elements: 2361, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "e5690812", elements: 2361, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

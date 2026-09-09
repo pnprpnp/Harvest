@@ -34,8 +34,30 @@ function setSeedlingHouseAllocationMode(mode){
   scheduleHarvestStateSave();
 }
 
+function renderSeedlingHouseOpenButtonState(){
+  const openButton = document.getElementById("seedlingHouseOpenBtn");
+  if(!openButton) return;
+  const initialStartKey = String(settings.seedlingHouseInitialStartKey || "");
+  if(seedlingHouseNextKeyCacheEvents !== plantingEvents
+    || seedlingHouseNextKeyCacheInitialStart !== initialStartKey
+    || !seedlingHouseNextKeyCache){
+    seedlingHouseNextKeyCache = getSeedlingHouseUsageState(plantingEvents, {
+      initialStartKey
+    }).nextKey;
+    seedlingHouseNextKeyCacheEvents = plantingEvents;
+    seedlingHouseNextKeyCacheInitialStart = initialStartKey;
+  }
+  openButton.setAttribute(
+    "aria-label",
+    `1号棟の苗取り場所。次回開始 ${formatSeedlingHousePosition(seedlingHouseNextKeyCache)}`
+  );
+}
+
 function renderSeedlingHouseUi(plan = getCurrentSeedlingHousePlan()){
   const nextPosition = formatSeedlingHousePosition(plan.nextKey);
+  seedlingHouseNextKeyCache = plan.nextKey;
+  seedlingHouseNextKeyCacheEvents = plantingEvents;
+  seedlingHouseNextKeyCacheInitialStart = String(settings.seedlingHouseInitialStartKey || "");
   const openButton = document.getElementById("seedlingHouseOpenBtn");
   if(openButton){
     openButton.setAttribute("aria-label", `1号棟の苗取り場所。次回開始 ${nextPosition}`);
@@ -410,12 +432,59 @@ function getMonitorSendSummaryLabelHtml(label, iconKind){
   return `<span class="monitorSendSummaryLabel"><svg class="monitorSendSummaryIcon" viewBox="0 0 20 20" aria-hidden="true">${iconPaths[iconKind] || iconPaths.remaining}</svg><span>${escapeHtml(label)}</span></span>`;
 }
 
+function renderMonitorInstructionSummary(){
+  const instructionBox = document.getElementById("instructionSummary");
+  if(instructionBox){
+    const monitorContent = buildCurrentMonitorRemoteContent();
+    const monitorFields = parseMonitorInstructionFields(monitorContent.instructionText);
+    const seedlingValueHtml = formatMonitorTabMetricValueHtml(monitorFields.seedling, "枚");
+    const caseValueHtml = formatMonitorTabMetricValueHtml(monitorFields.cases, "ケース");
+    const harvestLocationValue = monitorFields.harvestLocation || "-";
+    const remainingCasesValue = monitorFields.remainingCases || "なし";
+    const caseSummarySections = getMonitorTabCaseSummarySections(remainingCasesValue);
+    instructionBox.innerHTML = `
+      <div class="monitorSendMetricGrid">
+        <div class="monitorSendMetricItem">
+          ${getMonitorSendSummaryLabelHtml("苗枚数", "seedling")}
+          <div class="monitorSendSummaryValue">${seedlingValueHtml}</div>
+        </div>
+        <div class="monitorSendMetricItem">
+          ${getMonitorSendSummaryLabelHtml("収穫ケース数", "cases")}
+          <div class="monitorSendSummaryValue">${caseValueHtml}</div>
+        </div>
+      </div>
+      <div class="monitorSendDetailItem">
+        ${getMonitorSendSummaryLabelHtml("収穫場所", "location")}
+        <div class="monitorSendDetailValue">${formatMonitorTabDetailValueHtml(harvestLocationValue)}</div>
+      </div>
+      <div class="monitorSendDetailItem">
+        ${getMonitorSendSummaryLabelHtml("配置コンテナ数", "cases")}
+        <div class="monitorSendDetailValue casePlacementContainerValue">${formatMonitorTabDetailValueHtml(caseSummarySections.placement)}</div>
+      </div>
+      <div class="monitorSendDetailItem">
+        ${getMonitorSendSummaryLabelHtml("残すコンテナ数", "remaining")}
+        <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(caseSummarySections.remaining)}</div>
+      </div>`;
+    renderMonitorMemoReadOnly(monitorContent);
+  }
+  renderMonitorTabControls();
+}
+
 function renderForecastSummary(options = {}){
+  if(options.force !== true && activeAppTab !== "forecast" && activeAppTab !== "monitor") return;
+  if(activeAppTab === "monitor" && options.force !== true){
+    renderMonitorInstructionSummary();
+    if(isMonitorModeOpen) renderMonitorMode();
+    scheduleMainTabViewportScrollLock();
+    return;
+  }
   const casePlan = getHarvestCasePlan();
-  updateHarvestCalculationButtonState();
+  updateHarvestCalculationButtonState(options.currentHarvestTotal);
   updatePartialHarvestDeductionNote(options.currentHarvestTotal);
   updateRecordPartialHarvestIncludedNote();
-  renderSeedlingHouseUi();
+  const seedlingHouseModal = document.getElementById("seedlingHouseModal");
+  if(seedlingHouseModal?.classList.contains("show")) renderSeedlingHouseUi();
+  else renderSeedlingHouseOpenButtonState();
   const resultActions = document.getElementById("forecastResultActions");
   const hasForecastResult = !!harvestSummary
     && Array.isArray(harvestFillKeys)
@@ -456,42 +525,6 @@ function renderForecastSummary(options = {}){
     "選択枚数: " + filledCount + "\n" +
     endLabel;
 
-  const instructionBox = document.getElementById("instructionSummary");
-  if(instructionBox){
-    const monitorContent = buildCurrentMonitorRemoteContent();
-    const monitorFields = parseMonitorInstructionFields(monitorContent.instructionText);
-    const seedlingValueHtml = formatMonitorTabMetricValueHtml(monitorFields.seedling, "枚");
-    const caseValueHtml = formatMonitorTabMetricValueHtml(monitorFields.cases, "ケース");
-    const harvestLocationValue = monitorFields.harvestLocation || "-";
-    const remainingCasesValue = monitorFields.remainingCases || "なし";
-    const caseSummarySections = getMonitorTabCaseSummarySections(remainingCasesValue);
-    instructionBox.innerHTML = `
-      <div class="monitorSendMetricGrid">
-        <div class="monitorSendMetricItem">
-          ${getMonitorSendSummaryLabelHtml("苗枚数", "seedling")}
-          <div class="monitorSendSummaryValue">${seedlingValueHtml}</div>
-        </div>
-        <div class="monitorSendMetricItem">
-          ${getMonitorSendSummaryLabelHtml("収穫ケース数", "cases")}
-          <div class="monitorSendSummaryValue">${caseValueHtml}</div>
-        </div>
-      </div>
-      <div class="monitorSendDetailItem">
-        ${getMonitorSendSummaryLabelHtml("収穫場所", "location")}
-        <div class="monitorSendDetailValue">${formatMonitorTabDetailValueHtml(harvestLocationValue)}</div>
-      </div>
-      <div class="monitorSendDetailItem">
-        ${getMonitorSendSummaryLabelHtml("配置コンテナ数", "cases")}
-        <div class="monitorSendDetailValue casePlacementContainerValue">${formatMonitorTabDetailValueHtml(caseSummarySections.placement)}</div>
-      </div>
-      <div class="monitorSendDetailItem">
-        ${getMonitorSendSummaryLabelHtml("残すコンテナ数", "remaining")}
-        <div class="monitorSendDetailValue remainingCaseValue">${formatMonitorTabDetailValueHtml(caseSummarySections.remaining)}</div>
-      </div>`;
-    renderMonitorMemoReadOnly(monitorContent);
-  }
-  renderMonitorTabControls();
-
   const remainingBox = document.getElementById("remainingCasesSummary");
   if(remainingBox){
     remainingBox.textContent = remainingCases + "ケース";
@@ -507,14 +540,12 @@ function renderForecastSummary(options = {}){
   if(isMonitorModeOpen){
     renderMonitorMode();
   }
-  updateHarvestProgressUi();
-  scheduleWorkflowGuideUpdate();
+  updateHarvestProgressUi({ currentHarvestTotal:options.currentHarvestTotal });
+  scheduleWorkflowGuideUpdate({ currentHarvestTotal:options.currentHarvestTotal });
   scheduleMainTabViewportScrollLock();
 }
 
-function drawBeds(options = {}){
-  const container = document.getElementById("beds");
-  container.innerHTML = "";
+function getForecastBedRenderContext(options = {}){
   const targetDate = getHarvestTargetDate();
   const availabilityState = getHarvestAvailabilityState(targetDate);
   const recordedSet = availabilityState.unavailableSet;
@@ -529,64 +560,150 @@ function drawBeds(options = {}){
   const plantingStateByPallet = getLatestPlantingStateByPallet(targetDate);
   const harvestableHeadsByPallet = options.harvestableHeadsByPallet instanceof Map
     ? options.harvestableHeadsByPallet
-    : new Map();
+    : forecastHarvestableHeadsByPalletCache;
+  return {
+    targetDate,
+    availabilityState,
+    recordedSet,
+    selectedSet,
+    overageSet,
+    progressCompletedSet,
+    partialHarvestSourceRecords,
+    hasPartialHarvestRecords,
+    partialHarvestLookup,
+    plantingStateByPallet,
+    harvestableHeadsByPallet
+  };
+}
 
-  bedMap.forEach(b => {
-    const bed = document.createElement("div");
-    const isProgressCompleted = isHarvestProgressCompletedBed(currentBuilding, b);
-    const summaryCounts = getBedSummaryCounts(currentBuilding, b, {
-      selectedSet,
-      recordedSet,
+function createForecastBedElement(bedName, context){
+  const bed = document.createElement("div");
+  const isProgressCompleted = isHarvestProgressCompletedBed(currentBuilding, bedName);
+  const summaryCounts = getBedSummaryCounts(currentBuilding, bedName, {
+      selectedSet:context.selectedSet,
+      recordedSet:context.recordedSet,
       calculateHarvestableCases:true,
-      targetDate,
-      plantingStateByPallet,
-      hasPartialHarvestRecords,
-      partialHarvestSourceRecords,
-      partialHarvestLookup,
-      harvestableHeadsByPallet
-    });
-    const displayedHarvestableCases = Math.round(summaryCounts.harvestableCases);
-    const collapsedStateClass = isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)
-      ? " bedCollapsedFull"
-      : "";
-    bed.className = "bed bedCollapsed simulationBedOverview" + collapsedStateClass
-      + (isProgressCompleted ? " harvestProgressCompletedBed" : "");
-
-    const title = document.createElement("div");
-    let titleCls = "bedTitle";
-    if(isBedFullyFilledInCurrentBuilding(b, recordedSet, selectedSet)) titleCls += " bedFullySelected";
-    title.className = titleCls;
-    title.innerHTML = `<span class="bedTitleMain">${b}</span>${isProgressCompleted ? '<span class="harvestProgressCompletedBadge">完了</span>' : ''}`;
-    bed.appendChild(title);
-
-    appendBedOverviewMap(bed, currentBuilding, b, {
-      selectedSet,
-      recordedSet,
-      unplantedSet:availabilityState.unplantedSet,
-      plantingLockInfoByPallet:availabilityState.replantingInfoByPallet,
-      progressCompletedSet,
-      overageSet,
-      hasPartialHarvestRecords,
-      targetDate,
-      partialHarvestSourceRecords,
-      partialHarvestLookup
-    });
-    const counts = document.createElement("div");
-    counts.className = "simulationBedOverviewCounts";
-    counts.innerHTML = summaryCounts.selectable > 0
-      ? `
-        <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-        <span class="simulationBedOverviewCountHarvestable">収穫可 ${displayedHarvestableCases}</span>
-      `
-      : "";
-    bed.appendChild(counts);
-    attachBedDetailOpenTapHandler(bed, "forecast", currentBuilding, b);
-    bed.setAttribute(
-      "aria-label",
-      `${currentBuilding}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット、収穫可能 ${displayedHarvestableCases}ケース。タップで拡大してパレットを選択`
-    );
-    container.appendChild(bed);
+      targetDate:context.targetDate,
+      plantingStateByPallet:context.plantingStateByPallet,
+      hasPartialHarvestRecords:context.hasPartialHarvestRecords,
+      partialHarvestSourceRecords:context.partialHarvestSourceRecords,
+      partialHarvestLookup:context.partialHarvestLookup,
+      harvestableHeadsByPallet:context.harvestableHeadsByPallet
   });
+  const displayedHarvestableCases = Math.round(summaryCounts.harvestableCases);
+  const isFullySelected = isBedFullyFilledInCurrentBuilding(
+    bedName,
+    context.recordedSet,
+    context.selectedSet
+  );
+  bed.className = "bed bedCollapsed simulationBedOverview"
+    + (isFullySelected ? " bedCollapsedFull" : "")
+    + (isProgressCompleted ? " harvestProgressCompletedBed" : "");
+
+  const title = document.createElement("div");
+  title.className = "bedTitle" + (isFullySelected ? " bedFullySelected" : "");
+  title.innerHTML = `<span class="bedTitleMain">${bedName}</span>${isProgressCompleted ? '<span class="harvestProgressCompletedBadge">完了</span>' : ''}`;
+  bed.appendChild(title);
+
+  appendBedOverviewMap(bed, currentBuilding, bedName, {
+    selectedSet:context.selectedSet,
+    recordedSet:context.recordedSet,
+    unplantedSet:context.availabilityState.unplantedSet,
+    plantingLockInfoByPallet:context.availabilityState.replantingInfoByPallet,
+    progressCompletedSet:context.progressCompletedSet,
+    overageSet:context.overageSet,
+    hasPartialHarvestRecords:context.hasPartialHarvestRecords,
+    targetDate:context.targetDate,
+    partialHarvestSourceRecords:context.partialHarvestSourceRecords,
+    partialHarvestLookup:context.partialHarvestLookup
+  });
+  const counts = document.createElement("div");
+  counts.className = "simulationBedOverviewCounts";
+  counts.innerHTML = summaryCounts.selectable > 0
+    ? `
+      <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
+      <span class="simulationBedOverviewCountHarvestable">収穫可 ${displayedHarvestableCases}</span>
+    `
+    : "";
+  bed.appendChild(counts);
+  attachBedDetailOpenTapHandler(bed, "forecast", currentBuilding, bedName);
+  bed.setAttribute(
+    "aria-label",
+    `${currentBuilding}号棟 ${bedName}ベッド。選択 ${summaryCounts.selected}パレット、収穫可能 ${displayedHarvestableCases}ケース。タップで拡大してパレットを選択`
+  );
+  return bed;
+}
+
+function rememberForecastBedRenderState(context){
+  lastRenderedForecastBuilding = currentBuilding;
+  lastRenderedForecastSelectionSet = new Set(context.selectedSet);
+  lastRenderedForecastOverageSet = new Set(context.overageSet);
+  lastRenderedForecastProgressSet = new Set(context.progressCompletedSet);
+  forecastHarvestableHeadsByPalletCache = context.harvestableHeadsByPallet;
+  lastRenderedForecastAvailabilityState = context.availabilityState;
+  lastRenderedForecastTimelineRecords = context.partialHarvestSourceRecords;
+  lastRenderedForecastPlantingState = context.plantingStateByPallet;
+  lastRenderedForecastTargetDateKey = formatDateOnlyString(context.targetDate);
+  lastRenderedForecastSettings = settings;
+}
+
+function addChangedForecastBeds(target, previousSet, nextSet){
+  previousSet.forEach(key => {
+    if(nextSet.has(key)) return;
+    const pallet = parsePalletKey(key);
+    if(pallet.building === currentBuilding) target.add(pallet.bed);
+  });
+  nextSet.forEach(key => {
+    if(previousSet.has(key)) return;
+    const pallet = parsePalletKey(key);
+    if(pallet.building === currentBuilding) target.add(pallet.bed);
+  });
+}
+
+function updateForecastBeds(options = {}){
+  const container = document.getElementById("beds");
+  if(!container
+    || lastRenderedForecastBuilding !== currentBuilding
+    || container.children.length !== bedMap.length){
+    return false;
+  }
+  const context = getForecastBedRenderContext({
+    ...options,
+    harvestableHeadsByPallet:forecastHarvestableHeadsByPalletCache
+  });
+  if(context.availabilityState !== lastRenderedForecastAvailabilityState
+    || context.partialHarvestSourceRecords !== lastRenderedForecastTimelineRecords
+    || context.plantingStateByPallet !== lastRenderedForecastPlantingState
+    || formatDateOnlyString(context.targetDate) !== lastRenderedForecastTargetDateKey
+    || settings !== lastRenderedForecastSettings){
+    return false;
+  }
+  const changedBeds = new Set();
+  addChangedForecastBeds(changedBeds, lastRenderedForecastSelectionSet, context.selectedSet);
+  addChangedForecastBeds(changedBeds, lastRenderedForecastOverageSet, context.overageSet);
+  addChangedForecastBeds(changedBeds, lastRenderedForecastProgressSet, context.progressCompletedSet);
+  changedBeds.forEach(bedName => {
+    const previousBed = container.children[bedMap.indexOf(bedName)];
+    if(previousBed) previousBed.replaceWith(createForecastBedElement(bedName, context));
+  });
+  rememberForecastBedRenderState(context);
+  return true;
+}
+
+function drawBeds(options = {}){
+  if(options.force !== true && activeAppTab !== "forecast") return false;
+  const container = document.getElementById("beds");
+  if(!container) return false;
+  container.innerHTML = "";
+  const context = getForecastBedRenderContext({
+    ...options,
+    harvestableHeadsByPallet:options.harvestableHeadsByPallet instanceof Map
+      ? options.harvestableHeadsByPallet
+      : new Map()
+  });
+  bedMap.forEach(bedName => container.appendChild(createForecastBedElement(bedName, context)));
+  rememberForecastBedRenderState(context);
+  return true;
 }
 
 
