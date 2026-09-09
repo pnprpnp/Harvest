@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260909-exclude-regular-partial-targets">
+<meta name="harvestnavi-version" content="20260909-edit-progress-entries">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8079,6 +8079,7 @@ button.forecastClearBtn{border-radius:10px;}
 .harvestProgressPanel[hidden]{display:none;}
 .harvestProgressWindow{width:min(520px,100%);}
 .harvestProgressModal .harvestProgressPanel{
+  position:relative;
   width:auto;
   max-width:none;
   margin:0;
@@ -8315,6 +8316,100 @@ button.harvestProgressBed.is-applied{
   line-height:1.55;
   white-space:pre-line;
 }
+.harvestProgressResultHeading{
+  margin-bottom:4px;
+}
+.harvestProgressEntryList{
+  display:grid;
+  gap:3px;
+}
+button.harvestProgressEntryLine{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  width:100%;
+  min-height:36px;
+  margin:0;
+  padding:5px 7px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:inherit;
+  font:inherit;
+  line-height:1.45;
+  text-align:left;
+}
+button.harvestProgressEntryLine:hover,
+button.harvestProgressEntryLine:focus-visible{background:rgba(15,118,110,.08);}
+.harvestProgressEntryLineChevron{
+  flex:0 0 auto;
+  color:var(--ui-text-tertiary);
+  font-size:18px;
+}
+.harvestProgressEntryLineChevron::before{content:"›";}
+.harvestProgressResultMessage{margin-top:10px;}
+.harvestProgressEntryDetails{
+  position:absolute;
+  inset:0;
+  z-index:3;
+  min-height:100%;
+  padding:14px;
+  background:var(--ui-surface-solid);
+  overflow:auto;
+}
+.harvestProgressEntryDetailsHeader{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.harvestProgressEntryDetailsTitle{
+  color:var(--ui-text);
+  font-size:16px;
+  font-weight:800;
+}
+.harvestProgressEntryDetailsLocation{
+  margin-top:3px;
+  color:var(--ui-accent-dark);
+  font-size:14px;
+  font-weight:750;
+}
+button.harvestProgressEntryDetailsClose{
+  flex:0 0 auto;
+  min-height:36px;
+  margin:0;
+  padding:6px 14px;
+}
+.harvestProgressEntryDetailsRows{display:grid;gap:8px;}
+.harvestProgressEntryDetailRow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:10px;
+  padding:12px;
+  border:1px solid var(--ui-line);
+  border-radius:10px;
+  background:var(--ui-surface-muted);
+}
+.harvestProgressEntryDetailType{
+  color:var(--ui-text-tertiary);
+  font-size:11px;
+  font-weight:700;
+}
+.harvestProgressEntryDetailCases{
+  margin-top:2px;
+  color:var(--ui-text);
+  font-size:15px;
+  font-weight:800;
+}
+button.harvestProgressEntryDetailEdit{
+  min-width:64px;
+  min-height:38px;
+  margin:0;
+  padding:6px 12px;
+}
 .harvestProgressResult.needs-selection{background:#fff7ed;color:#9a4f00;}
 .harvestProgressResult.is-complete{background:#ecfdf5;color:#0f766e;}
 .harvestProgressActions{
@@ -8331,6 +8426,10 @@ button.harvestProgressResetBtn{color:var(--ui-red);}
   color:var(--ui-text);
 }
 .harvestProgressActions.is-partial-mode #harvestProgressApplyBtn{order:2;}
+.harvestProgressActions.is-entry-edit-mode{grid-template-columns:1fr 1fr 1fr;}
+.harvestProgressActions.is-entry-edit-mode #harvestProgressApplyBtn{order:3;}
+.harvestProgressActions.is-entry-edit-mode .harvestProgressResetBtn{order:1;color:var(--ui-text);}
+.harvestProgressActions.is-entry-edit-mode .harvestProgressEntryDeleteBtn{order:2;color:var(--ui-red);}
 .harvestProgressPartialHarvestBtn{
   display:flex;
   align-items:center;
@@ -14883,11 +14982,22 @@ requestAnimationFrame(function(){
         <div class="harvestProgressActions">
           <button id="harvestProgressApplyBtn" type="button" class="actionBtn" data-ui-click="recalculateFromHarvestProgress">追加して再計算する</button>
           <button id="harvestProgressResetBtn" type="button" class="actionBtn secondaryBtn harvestProgressResetBtn" data-ui-click="resetHarvestProgress" hidden>取り消す</button>
+          <button id="harvestProgressEntryDeleteBtn" type="button" class="actionBtn secondaryBtn harvestProgressEntryDeleteBtn" data-ui-click="deleteHarvestProgressEntryEdit" hidden>削除</button>
         </div>
         <button id="harvestProgressPartialHarvestBtn" type="button" class="actionBtn secondaryBtn harvestProgressPartialHarvestBtn" data-ui-click="startHarvestProgressPartialHarvestSelection" aria-pressed="false">
           <span>部分収穫</span>
           <strong id="harvestProgressPartialHarvestStatus">追加</strong>
         </button>
+        <section id="harvestProgressEntryDetails" class="harvestProgressEntryDetails" aria-labelledby="harvestProgressEntryDetailsTitle" hidden>
+          <div class="harvestProgressEntryDetailsHeader">
+            <div>
+              <div id="harvestProgressEntryDetailsTitle" class="harvestProgressEntryDetailsTitle">入力済みの内訳</div>
+              <div id="harvestProgressEntryDetailsLocation" class="harvestProgressEntryDetailsLocation"></div>
+            </div>
+            <button id="harvestProgressEntryDetailsClose" type="button" class="secondaryBtn harvestProgressEntryDetailsClose" data-ui-click="closeHarvestProgressEntryDetails">戻る</button>
+          </div>
+          <div id="harvestProgressEntryDetailsRows" class="harvestProgressEntryDetailsRows"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -15478,6 +15588,8 @@ let harvestProgressAvailable = false;
 let harvestProgressBuilding = 2;
 let harvestProgressPartialSelectionMode = false;
 let harvestProgressPartialDraftSnapshot = null;
+let harvestProgressEntryDetailGroupKey = "";
+let harvestProgressEntryEditState = null;
 let recordPlantingSummaryEdited = false;
 let activeAppTab = "forecast";
 let lastRenderedForecastBuilding = null;
@@ -17657,7 +17769,25 @@ function syncHarvestProgressPartialEntriesFromRecordDraft(){
   return true;
 }
 
-function getHarvestProgressEntryDisplayLines(state = harvestProgressState){
+function ensureHarvestProgressEntriesForEditing(){
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  if(!state) return null;
+  if(!state.entries.length
+    && state.appliedSelectedBeds.length
+    && state.appliedActualCases !== null){
+    const legacyEntry = normalizeHarvestProgressEntry({
+      type:"regular",
+      bedKeys:state.appliedSelectedBeds,
+      cases:state.appliedActualCases,
+      recordedAt:Date.now()
+    });
+    if(legacyEntry) state.entries = [legacyEntry];
+  }
+  harvestProgressState = state;
+  return state;
+}
+
+function getHarvestProgressEntryDisplayGroups(state = harvestProgressState){
   const normalized = normalizeHarvestProgressState(state);
   if(!normalized) return [];
   let entries = normalized.entries;
@@ -17672,25 +17802,391 @@ function getHarvestProgressEntryDisplayLines(state = harvestProgressState){
     }];
   }
   const grouped = new Map();
-  entries.forEach(entry => {
+  entries.forEach((entry, entryIndex) => {
     const bedKeys = [...new Set(entry.bedKeys || [])].sort();
     const key = bedKeys.join("|");
     if(!key) return;
     if(!grouped.has(key)){
-      grouped.set(key, { bedKeys, totalCases:0, partialCases:0 });
+      grouped.set(key, { key, bedKeys, totalCases:0, partialCases:0, entries:[] });
     }
     const group = grouped.get(key);
     const cases = Math.max(0, Number(entry.cases) || 0);
     group.totalCases += cases;
     if(entry.type === "partial") group.partialCases += cases;
+    group.entries.push({
+      entryIndex,
+      type:entry.type,
+      bedKeys:[...bedKeys],
+      cases,
+      recordedAt:entry.recordedAt
+    });
   });
   return [...grouped.values()].map(group => {
     const location = formatHarvestProgressEntryLocation(group.bedKeys);
     const partialText = group.partialCases > 0
       ? `（うち部分収穫${formatHarvestProgressCases(group.partialCases)}ケース）`
       : "";
-    return `${location}：${formatHarvestProgressCases(group.totalCases)}ケース${partialText}`;
+    return {
+      ...group,
+      location,
+      label:`${location}：${formatHarvestProgressCases(group.totalCases)}ケース${partialText}`
+    };
   });
+}
+
+function getHarvestProgressEntryDisplayLines(state = harvestProgressState){
+  return getHarvestProgressEntryDisplayGroups(state).map(group => group.label);
+}
+
+function renderHarvestProgressEntryResult(result, state, model){
+  if(!result) return;
+  const groups = getHarvestProgressEntryDisplayGroups(state);
+  result.replaceChildren();
+  if(groups.length){
+    const heading = document.createElement("div");
+    heading.className = "harvestProgressResultHeading";
+    heading.textContent = "入力済み";
+    result.appendChild(heading);
+    result.appendChild(document.createTextNode("\n"));
+    const list = document.createElement("div");
+    list.className = "harvestProgressEntryList";
+    groups.forEach(group => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "harvestProgressEntryLine";
+      button.setAttribute("aria-label", `${group.label}。内訳を表示`);
+      const label = document.createElement("span");
+      label.textContent = group.label;
+      const chevron = document.createElement("span");
+      chevron.className = "harvestProgressEntryLineChevron";
+      chevron.setAttribute("aria-hidden", "true");
+      button.append(label, chevron);
+      button.onclick = () => openHarvestProgressEntryDetails(group.key);
+      list.appendChild(button);
+      if(group !== groups[groups.length - 1]) list.appendChild(document.createTextNode("\n"));
+    });
+    result.appendChild(list);
+  }
+  if(model.text){
+    if(groups.length) result.appendChild(document.createTextNode("\n\n"));
+    const message = document.createElement("div");
+    message.className = "harvestProgressResultMessage";
+    message.textContent = model.text;
+    result.appendChild(message);
+  }
+}
+
+function renderHarvestProgressEntryDetails(){
+  const panel = document.getElementById("harvestProgressEntryDetails");
+  const rows = document.getElementById("harvestProgressEntryDetailsRows");
+  const location = document.getElementById("harvestProgressEntryDetailsLocation");
+  if(!panel || !rows || !location) return;
+  const group = getHarvestProgressEntryDisplayGroups()
+    .find(item => item.key === harvestProgressEntryDetailGroupKey);
+  if(!group){
+    panel.hidden = true;
+    harvestProgressEntryDetailGroupKey = "";
+    return;
+  }
+  location.textContent = group.location;
+  rows.replaceChildren();
+  group.entries.forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "harvestProgressEntryDetailRow";
+    const summary = document.createElement("div");
+    const type = document.createElement("div");
+    type.className = "harvestProgressEntryDetailType";
+    const sameTypeCount = group.entries.filter(item => item.type === entry.type).length;
+    const sameTypeNumber = group.entries
+      .slice(0, index + 1)
+      .filter(item => item.type === entry.type).length;
+    type.textContent = (entry.type === "partial" ? "部分収穫" : "通常収穫")
+      + (sameTypeCount > 1 ? ` ${sameTypeNumber}` : "");
+    const cases = document.createElement("div");
+    cases.className = "harvestProgressEntryDetailCases";
+    cases.textContent = `${formatHarvestProgressCases(entry.cases)}ケース`;
+    summary.append(type, cases);
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "secondaryBtn harvestProgressEntryDetailEdit";
+    edit.textContent = "修正";
+    edit.onclick = () => startHarvestProgressEntryEdit(entry.entryIndex);
+    row.append(summary, edit);
+    rows.appendChild(row);
+  });
+  panel.hidden = false;
+}
+
+function openHarvestProgressEntryDetails(groupKey){
+  const state = ensureHarvestProgressEntriesForEditing();
+  if(!state) return false;
+  harvestProgressEntryDetailGroupKey = String(groupKey || "");
+  renderHarvestProgressEntryDetails();
+  document.getElementById("harvestProgressEntryDetailsClose")?.focus();
+  return !document.getElementById("harvestProgressEntryDetails")?.hidden;
+}
+
+function closeHarvestProgressEntryDetails(options = {}){
+  const panel = document.getElementById("harvestProgressEntryDetails");
+  if(panel) panel.hidden = true;
+  const groupKey = harvestProgressEntryDetailGroupKey;
+  harvestProgressEntryDetailGroupKey = "";
+  if(options.restoreFocus !== false){
+    const button = [...document.querySelectorAll("#harvestProgressResult .harvestProgressEntryLine")]
+      .find(item => item.getAttribute("aria-label")?.startsWith(
+        getHarvestProgressEntryDisplayGroups().find(group => group.key === groupKey)?.label || "\u0000"
+      ));
+    button?.focus();
+  }
+  return true;
+}
+
+function getHarvestProgressEntryEditModel(){
+  const source = harvestProgressEntryEditState;
+  if(!source || typeof source !== "object") return null;
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  const entryIndex = Number(source.entryIndex);
+  const entry = Number.isInteger(entryIndex) ? state?.entries?.[entryIndex] : null;
+  if(!state || !entry || entry.type !== source.type) return null;
+  return {
+    entryIndex,
+    partialEntryIndex:Number(source.partialEntryIndex),
+    type:entry.type,
+    bedKeys:[...new Set((source.bedKeys || []).map(normalizeHarvestProgressBedKey).filter(Boolean))],
+    cases:String(source.cases ?? "").trim()
+  };
+}
+
+function startHarvestProgressEntryEdit(entryIndex){
+  const state = ensureHarvestProgressEntriesForEditing();
+  const safeIndex = Number(entryIndex);
+  const entry = Number.isInteger(safeIndex) ? state?.entries?.[safeIndex] : null;
+  if(!state || !entry){
+    showToast("修正する入力を読み込めませんでした");
+    return false;
+  }
+  const partialEntryIndex = entry.type === "partial"
+    ? state.entries.slice(0, safeIndex).filter(item => item.type === "partial").length
+    : -1;
+  harvestProgressEntryEditState = {
+    entryIndex:safeIndex,
+    partialEntryIndex,
+    type:entry.type,
+    bedKeys:[...entry.bedKeys],
+    cases:formatHarvestProgressCases(entry.cases)
+  };
+  closeHarvestProgressEntryDetails({ restoreFocus:false });
+  const firstBuilding = Number(String(entry.bedKeys[0] || "").split("-")[0]);
+  if(BUILDINGS.includes(firstBuilding)) harvestProgressBuilding = firstBuilding;
+  updateHarvestProgressUi();
+  document.getElementById("harvestProgressCasesInput")?.focus();
+  return true;
+}
+
+function cancelHarvestProgressEntryEdit(){
+  if(!harvestProgressEntryEditState) return false;
+  harvestProgressEntryEditState = null;
+  updateHarvestProgressUi();
+  return true;
+}
+
+function getHarvestProgressEntryAssignedBedSet(type, excludedEntryIndex){
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  const assigned = new Set();
+  state?.entries?.forEach((entry, index) => {
+    if(index === excludedEntryIndex || entry.type !== type) return;
+    entry.bedKeys.forEach(key => assigned.add(key));
+  });
+  return assigned;
+}
+
+function toggleHarvestProgressEntryEditBed(building, bed){
+  const edit = getHarvestProgressEntryEditModel();
+  if(!edit) return false;
+  const bedKey = getHarvestProgressBedKey(building, bed);
+  const selected = new Set(edit.bedKeys);
+  if(selected.has(bedKey)){
+    selected.delete(bedKey);
+  }else{
+    const assigned = getHarvestProgressEntryAssignedBedSet(edit.type, edit.entryIndex);
+    if(assigned.has(bedKey)){
+      showToast(edit.type === "partial"
+        ? "このベッドは別の部分収穫へ入力済みです"
+        : "このベッドは別の途中経過へ入力済みです");
+      return false;
+    }
+    if(edit.type === "regular"
+      && isReverseHarvestProgressState()
+      && !hasHarvestProgressPlannedPalletInBed(harvestProgressState, building, bed)){
+      showToast("逆算時に選択した場所を含むベッドだけ指定できます");
+      return false;
+    }
+    selected.add(bedKey);
+  }
+  harvestProgressEntryEditState = { ...edit, bedKeys:[...selected] };
+  updateHarvestProgressUi();
+  return true;
+}
+
+function rebuildHarvestProgressAfterRegularEntryChange(){
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  if(!state || !isHarvestProgressContextCurrent(state)) return false;
+  const regularEntries = state.entries.filter(entry => entry.type === "regular");
+  const completedBeds = [...new Set(regularEntries.flatMap(entry => entry.bedKeys))];
+  const actualCases = regularEntries.reduce((total, entry) => total + Number(entry.cases || 0), 0);
+  state.selectedBeds = [...completedBeds];
+  state.appliedSelectedBeds = [...completedBeds];
+  state.appliedActualCases = regularEntries.length ? Math.min(999999, actualCases) : null;
+  state.actualCasesInput = "";
+  harvestProgressState = state;
+
+  const completedKeys = getHarvestProgressKeysForBeds(completedBeds, state);
+  const completedSet = new Set(completedKeys);
+  const remainingNeedHeads = Math.max(0, getHarvestCasePlan().regularCases - actualCases) * CASE_SIZE;
+  let remainingKeys = [];
+  let selection = null;
+  if(state.baseSelectionMode === "auto"){
+    if(remainingNeedHeads > 0){
+      selection = calculateHarvestSelectionFromRecords({
+        referenceDate:getHarvestTargetDate(),
+        sourceRecords:getForecastHarvestTimelineRecords(records),
+        needHeads:remainingNeedHeads,
+        partialTargetDate:getHarvestTargetDate(),
+        additionalExcludedPalletKeys:completedSet
+      });
+      remainingKeys = selection?.palletKeys || [];
+    }
+    harvestSelectionMode = "auto";
+  }else{
+    const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
+    remainingKeys = state.planKeys.filter(key => !completedSet.has(key) && !recordedSet.has(key));
+    harvestSelectionMode = "manual";
+  }
+  harvestFillKeys = [...new Set([...completedKeys, ...remainingKeys])]
+    .sort((left, right) => getOrderIndexFromKey(left) - getOrderIndexFromKey(right));
+
+  if(state.baseSelectionMode === "auto" && selection?.start){
+    const nextBuildingValue = parsePalletKey(selection.start).building;
+    if(BUILDINGS.includes(nextBuildingValue)){
+      syncCurrentCasePlacementFromInputs();
+      currentBuilding = nextBuildingValue;
+      casePlacementBuilding = nextBuildingValue;
+      updateBuildingLabel();
+      updateCasePlacementBuildingLabel();
+      populateCasePlacementInputs();
+    }
+  }
+  refreshAfterHarvestSelectionChanged({
+    selectionChangeSource:state.baseSelectionMode === "auto" ? "progress-auto" : "progress-manual"
+  });
+  if(activeAppTab !== "forecast") updateHarvestProgressUi();
+  return true;
+}
+
+function saveHarvestProgressEntryEdit(){
+  const edit = getHarvestProgressEntryEditModel();
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  if(!edit || !state){
+    cancelHarvestProgressEntryEdit();
+    return false;
+  }
+  if(!edit.bedKeys.length){
+    showToast("収穫したベッドを1つ以上選択してください");
+    return false;
+  }
+  const assignedBeds = getHarvestProgressEntryAssignedBedSet(edit.type, edit.entryIndex);
+  if(edit.bedKeys.some(key => assignedBeds.has(key))){
+    showToast("同じ種類の別の入力で使用中のベッドがあります");
+    return false;
+  }
+  const cases = edit.type === "partial"
+    ? getStrictIntegerInRange(edit.cases, 1, RECORD_MAX_CASES)
+    : Number(edit.cases);
+  if(cases === null || !Number.isFinite(cases) || cases <= 0 || cases > 999999){
+    showToast(edit.type === "partial"
+      ? "部分収穫のケース数を1以上の整数で入力してください"
+      : "収穫したケース数を1以上で入力してください");
+    document.getElementById("harvestProgressCasesInput")?.focus();
+    return false;
+  }
+
+  if(edit.type === "partial"){
+    const draft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
+    if(!Number.isInteger(edit.partialEntryIndex)
+      || edit.partialEntryIndex < 0
+      || edit.partialEntryIndex >= draft.entries.length){
+      showToast("部分収穫の入力を読み込めませんでした");
+      return false;
+    }
+    const entries = draft.entries.map(entry => ({ ...entry, bedKeys:[...entry.bedKeys] }));
+    entries[edit.partialEntryIndex] = { bedKeys:[...edit.bedKeys], cases:String(cases) };
+    recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft({
+      entries,
+      bedKeys:[],
+      cases:"",
+      editingEntryIndex:-1
+    });
+    harvestProgressEntryEditState = null;
+    syncHarvestProgressPartialEntriesFromRecordDraft();
+    const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([getHarvestTargetDateString()]);
+    renderRecordPartialHarvestControl();
+    if(!predictionUpdate.recalculated){
+      renderForecastSummary();
+      updateHarvestProgressUi();
+    }
+  }else{
+    const replacement = normalizeHarvestProgressEntry({
+      type:"regular",
+      bedKeys:edit.bedKeys,
+      cases,
+      recordedAt:state.entries[edit.entryIndex].recordedAt || Date.now()
+    });
+    if(!replacement) return false;
+    state.entries[edit.entryIndex] = replacement;
+    harvestProgressState = state;
+    harvestProgressEntryEditState = null;
+    rebuildHarvestProgressAfterRegularEntryChange();
+  }
+  scheduleHarvestStateSave();
+  showToast("途中経過を修正しました");
+  return true;
+}
+
+function deleteHarvestProgressEntryEdit(){
+  const edit = getHarvestProgressEntryEditModel();
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  if(!edit || !state) return false;
+  if(edit.type === "partial"){
+    const draft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
+    if(!Number.isInteger(edit.partialEntryIndex)
+      || edit.partialEntryIndex < 0
+      || edit.partialEntryIndex >= draft.entries.length) return false;
+    const entries = draft.entries
+      .filter((entry, index) => index !== edit.partialEntryIndex)
+      .map(entry => ({ ...entry, bedKeys:[...entry.bedKeys] }));
+    recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft({
+      entries,
+      bedKeys:[],
+      cases:"",
+      editingEntryIndex:-1
+    });
+    harvestProgressEntryEditState = null;
+    syncHarvestProgressPartialEntriesFromRecordDraft();
+    const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([getHarvestTargetDateString()]);
+    renderRecordPartialHarvestControl();
+    if(!predictionUpdate.recalculated){
+      renderForecastSummary();
+      updateHarvestProgressUi();
+    }
+  }else{
+    state.entries = state.entries.filter((entry, index) => index !== edit.entryIndex);
+    harvestProgressState = state;
+    harvestProgressEntryEditState = null;
+    rebuildHarvestProgressAfterRegularEntryChange();
+  }
+  scheduleHarvestStateSave();
+  showToast("途中経過の入力を削除しました");
+  return true;
 }
 
 function renderHarvestProgressBeds(){
@@ -17708,16 +18204,26 @@ function renderHarvestProgressBeds(){
   container.innerHTML = "";
   const state = normalizeHarvestProgressState(harvestProgressState);
   const partialDraft = getRecordPartialHarvestDraftModel();
+  const entryEdit = getHarvestProgressEntryEditModel();
+  const isEntryEditMode = !!entryEdit;
   const selectedBedSet = new Set(
-    harvestProgressPartialSelectionMode ? partialDraft.bedKeys : (state?.selectedBeds || [])
+    isEntryEditMode
+      ? entryEdit.bedKeys
+      : (harvestProgressPartialSelectionMode ? partialDraft.bedKeys : (state?.selectedBeds || []))
   );
   const assignedPartialEntryByBed = new Map();
-  if(harvestProgressPartialSelectionMode){
+  if(harvestProgressPartialSelectionMode || entryEdit?.type === "partial"){
     partialDraft.committedEntries.forEach((entry, index) => {
-      if(index === partialDraft.editingEntryIndex) return;
+      const excludedIndex = entryEdit?.type === "partial"
+        ? entryEdit.partialEntryIndex
+        : partialDraft.editingEntryIndex;
+      if(index === excludedIndex) return;
       entry.bedKeys.forEach(key => assignedPartialEntryByBed.set(key, entry));
     });
   }
+  const assignedRegularBedSet = entryEdit?.type === "regular"
+    ? getHarvestProgressEntryAssignedBedSet("regular", entryEdit.entryIndex)
+    : new Set();
   const planSet = new Set(harvestFillKeys || []);
   const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
 
@@ -17726,7 +18232,8 @@ function renderHarvestProgressBeds(){
     const isSelected = selectedBedSet.has(bedKey);
     const assignedPartialEntry = assignedPartialEntryByBed.get(bedKey) || null;
     const isPartialAssigned = !!assignedPartialEntry;
-    const isApplied = !harvestProgressPartialSelectionMode
+    const isRegularAssigned = assignedRegularBedSet.has(bedKey);
+    const isApplied = !harvestProgressPartialSelectionMode && !isEntryEditMode
       && (state?.appliedSelectedBeds.includes(bedKey) || false);
     const availableCount = PALLETS_PER_BED - getBedSummaryCounts(
       harvestProgressBuilding,
@@ -17735,20 +18242,31 @@ function renderHarvestProgressBeds(){
     ).recorded;
     const plannedCount = getSelectedNumbersForBed(harvestProgressBuilding, bedName, planSet).length;
     const reverseMode = isReverseHarvestProgressState(state);
-    const canSelectBed = harvestProgressPartialSelectionMode
-      || (reverseMode ? plannedCount > 0 : availableCount > 0);
+    const canSelectBed = entryEdit?.type === "partial"
+      ? (!isPartialAssigned || isSelected)
+      : (entryEdit?.type === "regular"
+          ? ((!isRegularAssigned || isSelected)
+            && (reverseMode ? plannedCount > 0 : availableCount > 0))
+          : (harvestProgressPartialSelectionMode
+              || (reverseMode ? plannedCount > 0 : availableCount > 0)));
     const button = document.createElement("button");
     button.type = "button";
     button.className = "harvestProgressBed"
       + (isSelected ? " is-selected" : "")
       + (isApplied ? " is-applied" : "")
       + (isPartialAssigned ? " is-partial-assigned" : "")
-      + (harvestProgressPartialSelectionMode ? " is-partial-selectable" : "");
+      + ((harvestProgressPartialSelectionMode || entryEdit?.type === "partial") ? " is-partial-selectable" : "");
     button.disabled = !canSelectBed;
     button.setAttribute("aria-pressed", String(isSelected));
     button.setAttribute(
       "aria-label",
-      harvestProgressPartialSelectionMode
+      entryEdit
+        ? `${harvestProgressBuilding}号棟 ${bedName}ベッド。${isSelected
+            ? "修正する場所として選択中。タップで切り替え"
+            : ((isPartialAssigned || isRegularAssigned)
+                ? "別の入力で使用中"
+                : "タップして修正する場所に選択")}`
+        : harvestProgressPartialSelectionMode
         ? `${harvestProgressBuilding}号棟 ${bedName}ベッド。${isSelected
             ? "部分収穫場所として選択中。タップで切り替え"
             : (isPartialAssigned
@@ -17756,9 +18274,11 @@ function renderHarvestProgressBeds(){
                 : "部分収穫場所として未選択。タップで選択")}`
         : `${harvestProgressBuilding}号棟 ${bedName}ベッド。${isApplied ? "途中経過へ反映済み" : (isSelected ? "今回追加する完了ベッドとして選択済み" : "タップして今回の完了に追加する")}`
     );
-    button.onclick = () => harvestProgressPartialSelectionMode
-      ? toggleHarvestProgressPartialHarvestBed(harvestProgressBuilding, bedName)
-      : toggleHarvestProgressBed(harvestProgressBuilding, bedName);
+    button.onclick = () => entryEdit
+      ? toggleHarvestProgressEntryEditBed(harvestProgressBuilding, bedName)
+      : (harvestProgressPartialSelectionMode
+          ? toggleHarvestProgressPartialHarvestBed(harvestProgressBuilding, bedName)
+          : toggleHarvestProgressBed(harvestProgressBuilding, bedName));
 
     const title = document.createElement("div");
     title.className = "harvestProgressBedTitle";
@@ -17767,7 +18287,15 @@ function renderHarvestProgressBeds(){
     appendBedMiniMap(button, harvestProgressBuilding, bedName, { selectedSet: planSet, recordedSet });
     const meta = document.createElement("div");
     meta.className = "harvestProgressBedMeta";
-    meta.textContent = harvestProgressPartialSelectionMode
+    meta.textContent = entryEdit
+      ? (isSelected
+          ? "修正後の場所"
+          : ((isPartialAssigned || isRegularAssigned)
+              ? "別の入力で使用中"
+              : (!canSelectBed
+                  ? (reverseMode ? "対象外" : "収穫済み")
+                  : "タップで選択")))
+      : harvestProgressPartialSelectionMode
       ? (isSelected
           ? "部分収穫 選択中"
           : (isPartialAssigned
@@ -17877,14 +18405,29 @@ function updateHarvestProgressUi(options = {}){
   if(!shouldShow) return;
   const partialDraft = getRecordPartialHarvestDraftModel();
   const isPartialMode = harvestProgressPartialSelectionMode;
+  const entryEdit = getHarvestProgressEntryEditModel();
+  const isEntryEditMode = !!entryEdit;
+  if(harvestProgressEntryEditState && !entryEdit) harvestProgressEntryEditState = null;
   const input = document.getElementById("harvestProgressCasesInput");
-  if(input && document.activeElement !== input){
-    input.value = isPartialMode ? partialDraft.cases : (state?.actualCasesInput || "");
-    input.min = isPartialMode ? "1" : "0";
+  const inputMode = isEntryEditMode
+    ? `entry-${entryEdit.entryIndex}`
+    : (isPartialMode ? "partial" : "regular");
+  if(input){
+    const inputModeChanged = input.dataset.harvestProgressInputMode !== inputMode;
+    if(document.activeElement !== input || inputModeChanged){
+      input.value = isEntryEditMode
+        ? entryEdit.cases
+        : (isPartialMode ? partialDraft.cases : (state?.actualCasesInput || ""));
+    }
+    input.min = (isPartialMode || isEntryEditMode) ? "1" : "0";
+    input.step = entryEdit?.type === "regular" ? "0.1" : "1";
+    input.dataset.harvestProgressInputMode = inputMode;
   }
   const casesLabel = document.getElementById("harvestProgressCasesLabel");
   if(casesLabel){
-    casesLabel.textContent = isPartialMode
+    casesLabel.textContent = isEntryEditMode
+      ? `${entryEdit.type === "partial" ? "部分収穫" : "通常収穫"}のケース数`
+      : isPartialMode
       ? (partialDraft.bedKeys.length > 1
           ? `選択した${partialDraft.bedKeys.length}ベッド合計の部分収穫ケース数`
           : (partialDraft.bedKeys.length === 1
@@ -17895,7 +18438,11 @@ function updateHarvestProgressUi(options = {}){
   const selectionText = document.getElementById("harvestProgressSelectionText");
   if(selectionText){
     const pendingBedKeys = getPendingHarvestProgressBedKeys(state);
-    selectionText.textContent = isPartialMode
+    selectionText.textContent = isEntryEditMode
+      ? (entryEdit.bedKeys.length
+          ? `修正後: ${formatHarvestProgressBedSelection(entryEdit.bedKeys)}`
+          : "修正後の収穫場所を選択してください")
+      : isPartialMode
       ? (partialDraft.bedKeys.length > 1
           ? `選択した${partialDraft.bedKeys.length}ベッド合計のケース数を入力して下さい`
           : (partialDraft.bedKeys.length === 1
@@ -17909,30 +18456,44 @@ function updateHarvestProgressUi(options = {}){
   }
   const result = document.getElementById("harvestProgressResult");
   if(result){
-    const model = getHarvestProgressResultModel(options.currentHarvestTotal);
-    const entryLines = getHarvestProgressEntryDisplayLines(state);
-    const entryText = entryLines.length ? `入力済み\n${entryLines.join("\n")}` : "";
-    result.textContent = [entryText, model.text].filter(Boolean).join("\n\n");
-    result.hidden = isPartialMode || !result.textContent;
+    const model = (isPartialMode || isEntryEditMode)
+      ? { text:"", className:"" }
+      : getHarvestProgressResultModel(options.currentHarvestTotal);
+    if(!isEntryEditMode && !isPartialMode) renderHarvestProgressEntryResult(result, state, model);
+    else result.replaceChildren();
+    result.hidden = isPartialMode || isEntryEditMode || !result.textContent;
     result.classList.toggle("needs-selection", model.className === "needs-selection");
     result.classList.toggle("is-complete", model.className === "is-complete");
   }
   const actions = document.querySelector("#harvestProgressPanel .harvestProgressActions");
   actions?.classList.toggle("is-partial-mode", isPartialMode);
+  actions?.classList.toggle("is-entry-edit-mode", isEntryEditMode);
   const resetButton = document.getElementById("harvestProgressResetBtn");
   if(resetButton){
-    resetButton.hidden = isPartialMode ? false : !state;
-    resetButton.textContent = isPartialMode && partialDraft.committedEntries.length ? "完了" : (isPartialMode ? "キャンセル" : "取り消す");
+    resetButton.hidden = isEntryEditMode ? false : (isPartialMode ? false : !state);
+    resetButton.setAttribute("data-ui-click", isEntryEditMode
+      ? "cancelHarvestProgressEntryEdit"
+      : "resetHarvestProgress");
+    resetButton.textContent = isEntryEditMode
+      ? "キャンセル"
+      : (isPartialMode && partialDraft.committedEntries.length ? "完了" : (isPartialMode ? "キャンセル" : "取り消す"));
   }
   const applyButton = document.getElementById("harvestProgressApplyBtn");
   if(applyButton){
-    applyButton.textContent = isPartialMode ? "決定" : getHarvestProgressApplyLabel(state);
-    applyButton.disabled = isPartialMode && !partialDraft.activeIsValid;
+    applyButton.setAttribute("data-ui-click", isEntryEditMode
+      ? "saveHarvestProgressEntryEdit"
+      : "recalculateFromHarvestProgress");
+    applyButton.textContent = isEntryEditMode ? "保存" : (isPartialMode ? "決定" : getHarvestProgressApplyLabel(state));
+    applyButton.disabled = isEntryEditMode
+      ? (!entryEdit.bedKeys.length || !String(entryEdit.cases || "").trim())
+      : (isPartialMode && !partialDraft.activeIsValid);
   }
+  const deleteButton = document.getElementById("harvestProgressEntryDeleteBtn");
+  if(deleteButton) deleteButton.hidden = !isEntryEditMode;
   const partialButton = document.getElementById("harvestProgressPartialHarvestBtn");
   const partialStatus = document.getElementById("harvestProgressPartialHarvestStatus");
   if(partialButton){
-    partialButton.hidden = isPartialMode;
+    partialButton.hidden = isPartialMode || isEntryEditMode;
     partialButton.classList.toggle("has-draft", partialDraft.isValid);
     partialButton.setAttribute("aria-pressed", String(isPartialMode));
   }
@@ -17942,9 +18503,19 @@ function updateHarvestProgressUi(options = {}){
       : "追加";
   }
   const windowTitle = document.getElementById("harvestProgressWindowTitle");
-  if(windowTitle) windowTitle.textContent = isPartialMode ? "部分収穫を入力" : "途中経過を入力";
+  if(windowTitle){
+    windowTitle.textContent = isEntryEditMode
+      ? `${entryEdit.type === "partial" ? "部分収穫" : "通常収穫"}を修正`
+      : (isPartialMode ? "部分収穫を入力" : "途中経過を入力");
+  }
+  if(!harvestProgressEntryDetailGroupKey){
+    const details = document.getElementById("harvestProgressEntryDetails");
+    if(details) details.hidden = true;
+  }else{
+    renderHarvestProgressEntryDetails();
+  }
   const modal = document.getElementById("harvestProgressModal");
-  if(modal?.classList.contains("show")) renderHarvestProgressBeds();
+  if(modal?.classList.contains("show") && !options.skipBeds) renderHarvestProgressBeds();
 }
 
 function syncHarvestProgressModalState(){
@@ -17977,6 +18548,8 @@ function closeHarvestProgressWindow(options = {}){
   if(harvestProgressPartialSelectionMode){
     finishHarvestProgressPartialHarvestSelection({ recalculate:true });
   }
+  harvestProgressEntryEditState = null;
+  closeHarvestProgressEntryDetails({ restoreFocus:false });
   const modal = document.getElementById("harvestProgressModal");
   hidePageBlockingUi(modal);
   syncHarvestProgressModalState();
@@ -18000,7 +18573,9 @@ function startHarvestProgressPartialHarvestSelection(){
     showToast("現在の記録作業を終了してから部分収穫を入力してください");
     return;
   }
+  if(harvestProgressEntryEditState) return;
   if(harvestProgressPartialSelectionMode) return;
+  closeHarvestProgressEntryDetails({ restoreFocus:false });
   syncRecordCasesFromMain(false);
   recordPartialHarvestDraft = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
   harvestProgressPartialDraftSnapshot = normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft);
@@ -18103,11 +18678,21 @@ function toggleHarvestProgressBed(building, bed){
 }
 
 function handleHarvestProgressCasesInput(){
+  const entryEdit = getHarvestProgressEntryEditModel();
+  if(entryEdit){
+    harvestProgressEntryEditState = {
+      ...entryEdit,
+      cases:document.getElementById("harvestProgressCasesInput")?.value || ""
+    };
+    updateHarvestProgressUi({ skipBeds:true });
+    scheduleHarvestStateSave();
+    return;
+  }
   if(harvestProgressPartialSelectionMode){
     setSharedPartialHarvestDraftCases(
       document.getElementById("harvestProgressCasesInput")?.value || ""
     );
-    updateHarvestProgressUi();
+    updateHarvestProgressUi({ skipBeds:true });
     scheduleHarvestStateSave();
     return;
   }
@@ -18115,7 +18700,7 @@ function handleHarvestProgressCasesInput(){
   if(!state) return;
   state.actualCasesInput = document.getElementById("harvestProgressCasesInput")?.value || "";
   harvestProgressState = state;
-  updateHarvestProgressUi();
+  updateHarvestProgressUi({ skipBeds:true });
   scheduleHarvestStateSave();
 }
 
@@ -18158,6 +18743,10 @@ function markForecastHarvestSelectionAsManual(){
 }
 
 function recalculateFromHarvestProgress(){
+  if(harvestProgressEntryEditState){
+    saveHarvestProgressEntryEdit();
+    return;
+  }
   if(harvestProgressPartialSelectionMode){
     completeHarvestProgressPartialHarvestSelection();
     return;
@@ -18261,6 +18850,8 @@ function resetHarvestProgress(options = {}){
     harvestSelectionMode = state.baseSelectionMode;
   }
   harvestProgressState = null;
+  harvestProgressEntryEditState = null;
+  harvestProgressEntryDetailGroupKey = "";
   const input = document.getElementById("harvestProgressCasesInput");
   if(input) input.value = "";
   if(options.render !== false){
@@ -32650,6 +33241,8 @@ function clearHarvestPrediction(){
   harvestProgressAvailable = false;
   harvestProgressPartialSelectionMode = false;
   harvestProgressPartialDraftSnapshot = null;
+  harvestProgressEntryEditState = null;
+  harvestProgressEntryDetailGroupKey = "";
   harvestFillKeys = [];
   harvestOverageKeys = [];
   harvestSummary = null;
@@ -40411,6 +41004,8 @@ function saveRecord(){
     harvestProgressAvailable = false;
     harvestProgressPartialSelectionMode = false;
     harvestProgressPartialDraftSnapshot = null;
+    harvestProgressEntryEditState = null;
+    harvestProgressEntryDetailGroupKey = "";
     clearRecordForm();
     const dateInput = document.getElementById("recordDateInput");
     if(dateInput) dateInput.value = editedRecordDate;
@@ -40491,6 +41086,8 @@ function saveRecord(){
   harvestProgressAvailable = false;
   harvestProgressPartialSelectionMode = false;
   harvestProgressPartialDraftSnapshot = null;
+  harvestProgressEntryEditState = null;
+  harvestProgressEntryDetailGroupKey = "";
   completeWorkflowGuideHarvestRecord();
   if(record){
     enterPlantingRecordMode(record);
@@ -45592,6 +46189,8 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   if(!savedHarvestState) return;
   harvestProgressPartialSelectionMode = false;
   harvestProgressPartialDraftSnapshot = null;
+  harvestProgressEntryEditState = null;
+  harvestProgressEntryDetailGroupKey = "";
   currentBuilding = savedHarvestState.currentBuilding;
   casePlacementBuilding = savedHarvestState.casePlacementBuilding || savedHarvestState.currentBuilding;
   harvestFillKeys = savedHarvestState.harvestFillKeys;
@@ -46056,6 +46655,15 @@ function handleStartupEscapeKey(event){
   }
   const harvestProgressModal = document.getElementById("harvestProgressModal");
   if(harvestProgressModal?.classList.contains("show")){
+    const entryDetails = document.getElementById("harvestProgressEntryDetails");
+    if(entryDetails && !entryDetails.hidden){
+      closeHarvestProgressEntryDetails();
+      return;
+    }
+    if(harvestProgressEntryEditState){
+      cancelHarvestProgressEntryEdit();
+      return;
+    }
     closeHarvestProgressWindow();
     return;
   }

@@ -54,6 +54,8 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   if(!savedHarvestState) return;
   harvestProgressPartialSelectionMode = false;
   harvestProgressPartialDraftSnapshot = null;
+  harvestProgressEntryEditState = null;
+  harvestProgressEntryDetailGroupKey = "";
   currentBuilding = savedHarvestState.currentBuilding;
   casePlacementBuilding = savedHarvestState.casePlacementBuilding || savedHarvestState.currentBuilding;
   harvestFillKeys = savedHarvestState.harvestFillKeys;

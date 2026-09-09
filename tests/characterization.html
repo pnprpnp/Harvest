@@ -5118,6 +5118,182 @@
         }, "途中経過の部分収穫が記録タブの下書きだけへ同期されていません");
       });
 
+      await runTest("途中経過の入力を内訳から個別に修正・削除する", () => {
+        const edited = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            getHarvested:getHarvestedPalletSet,
+            refresh:refreshAfterHarvestSelectionChanged,
+            recalculate:recalculateHarvestPredictionAfterPartialHarvest,
+            renderForecast:renderForecastSummary,
+            renderPartial:renderRecordPartialHarvestControl,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            building:harvestProgressBuilding,
+            partialMode:harvestProgressPartialSelectionMode,
+            partialDraft:normalizeRecordPartialHarvestDraft(recordPartialHarvestDraft),
+            detailKey:harvestProgressEntryDetailGroupKey,
+            editState:harvestProgressEntryEditState,
+            input:document.getElementById("harvestProgressCasesInput")?.value || ""
+          };
+          let refreshCount = 0;
+          let recalculateCount = 0;
+          try{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = () => ({ totalCases:100, regularCases:93, date:"2026-09-09" });
+            getHarvestedPalletSet = () => new Set();
+            refreshAfterHarvestSelectionChanged = () => { refreshCount++; };
+            recalculateHarvestPredictionAfterPartialHarvest = () => {
+              recalculateCount++;
+              updateHarvestProgressUi();
+              return { attempted:true, recalculated:true, changed:true, hasEnough:true };
+            };
+            renderForecastSummary = () => {};
+            renderRecordPartialHarvestControl = () => {};
+            harvestFillKeys = ["2-A-1", "2-B-1", "2-C-1"];
+            harvestSummary = { start:"2-A-1", end:"2-C-1", filledCount:3, totalHarvest:36, needHeads:1116 };
+            harvestSelectionMode = "manual";
+            harvestProgressAvailable = true;
+            harvestProgressBuilding = 2;
+            harvestProgressPartialSelectionMode = false;
+            recordPartialHarvestDraft = {
+              entries:[
+                { bedKeys:["2-A"], cases:"5" },
+                { bedKeys:["2-C"], cases:"2" }
+              ],
+              bedKeys:[],
+              cases:"",
+              editingEntryIndex:-1
+            };
+            harvestProgressState = {
+              inputMode:"incremental",
+              baseSelectionMode:"manual",
+              fixedReversePlan:false,
+              planKeys:[...harvestFillKeys],
+              selectedBeds:["2-A"],
+              appliedSelectedBeds:["2-A"],
+              actualCasesInput:"",
+              appliedActualCases:40,
+              entries:[
+                { type:"regular", bedKeys:["2-A"], cases:40, recordedAt:1 },
+                { type:"partial", bedKeys:["2-A"], cases:5, recordedAt:2 },
+                { type:"partial", bedKeys:["2-C"], cases:2, recordedAt:3 }
+              ],
+              targetDate:"2026-09-09",
+              targetCases:100
+            };
+
+            updateHarvestProgressUi();
+            const entryButtons = [...document.querySelectorAll("#harvestProgressResult .harvestProgressEntryLine")];
+            entryButtons[0]?.click();
+            const detailBefore = {
+              buttonCount:entryButtons.length,
+              detailsOpen:!document.getElementById("harvestProgressEntryDetails").hidden,
+              detailRows:document.querySelectorAll("#harvestProgressEntryDetailsRows .harvestProgressEntryDetailRow").length,
+              labels:getHarvestProgressEntryDisplayLines()
+            };
+
+            startHarvestProgressEntryEdit(0);
+            toggleHarvestProgressEntryEditBed(2, "A");
+            toggleHarvestProgressEntryEditBed(2, "B");
+            const input = document.getElementById("harvestProgressCasesInput");
+            input.value = "30";
+            handleHarvestProgressCasesInput();
+            recalculateFromHarvestProgress();
+            const regularAfter = {
+              beds:[...harvestProgressState.appliedSelectedBeds],
+              cases:harvestProgressState.appliedActualCases,
+              entry:harvestProgressState.entries[0],
+              refreshCount
+            };
+
+            startHarvestProgressEntryEdit(1);
+            toggleHarvestProgressEntryEditBed(2, "A");
+            toggleHarvestProgressEntryEditBed(2, "D");
+            input.value = "4";
+            handleHarvestProgressCasesInput();
+            recalculateFromHarvestProgress();
+            const partialAfter = {
+              entries:getRecordPartialHarvestDraftModel().committedEntries,
+              progressLines:getHarvestProgressEntryDisplayLines(),
+              recalculateCount
+            };
+
+            startHarvestProgressEntryEdit(2);
+            deleteHarvestProgressEntryEdit();
+            return {
+              detailBefore,
+              regularAfter,
+              partialAfter,
+              finalDraft:getRecordPartialHarvestDraftModel().committedEntries,
+              finalLines:getHarvestProgressEntryDisplayLines(),
+              recalculateCount,
+              editClosed:harvestProgressEntryEditState === null,
+              actionLabels:[
+                document.getElementById("harvestProgressResetBtn")?.textContent.trim() || "",
+                document.getElementById("harvestProgressEntryDeleteBtn")?.textContent.trim() || "",
+                document.getElementById("harvestProgressApplyBtn")?.textContent.trim() || ""
+              ]
+            };
+          }finally{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = previous.getPlan;
+            getHarvestedPalletSet = previous.getHarvested;
+            refreshAfterHarvestSelectionChanged = previous.refresh;
+            recalculateHarvestPredictionAfterPartialHarvest = previous.recalculate;
+            renderForecastSummary = previous.renderForecast;
+            renderRecordPartialHarvestControl = previous.renderPartial;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            harvestProgressBuilding = previous.building;
+            harvestProgressPartialSelectionMode = previous.partialMode;
+            recordPartialHarvestDraft = previous.partialDraft;
+            harvestProgressEntryDetailGroupKey = previous.detailKey;
+            harvestProgressEntryEditState = previous.editState;
+            const input = document.getElementById("harvestProgressCasesInput");
+            if(input) input.value = previous.input;
+            updateHarvestProgressUi();
+          }
+        })()`));
+        assertDeepEqual(edited, {
+          detailBefore:{
+            buttonCount:2,
+            detailsOpen:true,
+            detailRows:2,
+            labels:["2号棟A：45ケース（うち部分収穫5ケース）", "2号棟C：2ケース（うち部分収穫2ケース）"]
+          },
+          regularAfter:{
+            beds:["2-B"],
+            cases:30,
+            entry:{ type:"regular", bedKeys:["2-B"], cases:30, recordedAt:1 },
+            refreshCount:1
+          },
+          partialAfter:{
+            entries:[
+              { bedKeys:["2-D"], cases:"4" },
+              { bedKeys:["2-C"], cases:"2" }
+            ],
+            progressLines:[
+              "2号棟B：30ケース",
+              "2号棟D：4ケース（うち部分収穫4ケース）",
+              "2号棟C：2ケース（うち部分収穫2ケース）"
+            ],
+            recalculateCount:1
+          },
+          finalDraft:[{ bedKeys:["2-D"], cases:"4" }],
+          finalLines:["2号棟B：30ケース", "2号棟D：4ケース（うち部分収穫4ケース）"],
+          recalculateCount:2,
+          editClosed:true,
+          actionLabels:["取り消す", "削除", "追加して反映する"]
+        }, "途中経過の通常収穫・部分収穫を個別に修正または削除できません");
+      });
+
       await runTest("部分収穫を追加しても途中経過と入力履歴を残す", () => {
         const preserved = comparable(app.eval(`(() => {
           const previous = {
@@ -13215,18 +13391,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "76de9646", elements: 2198, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "7d67249c", elements: 2267, visible: 670, viewport: "390x844" },
-          cssFocus: { hash: "0c407a57", elements: 2267, visible: 670, viewport: "390x844" },
-          mobileRecord: { hash: "9639c6c7", elements: 2202, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "97b7704a", elements: 2219, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "1f7d9a69", elements: 2302, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "08b12ab8", elements: 2317, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "c2beb8f5", elements: 2317, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "d845bf8c", elements: 2317, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "26bc1cee", elements: 2361, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "9d22620c", elements: 2361, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "e5690812", elements: 2361, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "82c4e6b8", elements: 2206, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "6aed41d7", elements: 2275, visible: 670, viewport: "390x844" },
+          cssFocus: { hash: "e1f05a14", elements: 2275, visible: 670, viewport: "390x844" },
+          mobileRecord: { hash: "dc61a95b", elements: 2210, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "1eaffdd7", elements: 2227, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "ac7ef049", elements: 2310, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "42e48a39", elements: 2325, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "a6861a86", elements: 2325, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "1bed911d", elements: 2325, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "6ad49c1a", elements: 2369, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "6804c0bc", elements: 2369, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "bfe9c662", elements: 2369, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

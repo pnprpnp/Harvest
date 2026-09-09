@@ -302,6 +302,15 @@ function handleStartupEscapeKey(event){
   }
   const harvestProgressModal = document.getElementById("harvestProgressModal");
   if(harvestProgressModal?.classList.contains("show")){
+    const entryDetails = document.getElementById("harvestProgressEntryDetails");
+    if(entryDetails && !entryDetails.hidden){
+      closeHarvestProgressEntryDetails();
+      return;
+    }
+    if(harvestProgressEntryEditState){
+      cancelHarvestProgressEntryEdit();
+      return;
+    }
     closeHarvestProgressWindow();
     return;
   }

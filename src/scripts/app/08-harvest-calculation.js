@@ -2562,6 +2562,8 @@ function clearHarvestPrediction(){
   harvestProgressAvailable = false;
   harvestProgressPartialSelectionMode = false;
   harvestProgressPartialDraftSnapshot = null;
+  harvestProgressEntryEditState = null;
+  harvestProgressEntryDetailGroupKey = "";
   harvestFillKeys = [];
   harvestOverageKeys = [];
   harvestSummary = null;

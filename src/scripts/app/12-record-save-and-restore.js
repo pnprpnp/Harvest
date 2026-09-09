@@ -156,6 +156,8 @@ function saveRecord(){
     harvestProgressAvailable = false;
     harvestProgressPartialSelectionMode = false;
     harvestProgressPartialDraftSnapshot = null;
+    harvestProgressEntryEditState = null;
+    harvestProgressEntryDetailGroupKey = "";
     clearRecordForm();
     const dateInput = document.getElementById("recordDateInput");
     if(dateInput) dateInput.value = editedRecordDate;
@@ -236,6 +238,8 @@ function saveRecord(){
   harvestProgressAvailable = false;
   harvestProgressPartialSelectionMode = false;
   harvestProgressPartialDraftSnapshot = null;
+  harvestProgressEntryEditState = null;
+  harvestProgressEntryDetailGroupKey = "";
   completeWorkflowGuideHarvestRecord();
   if(record){
     enterPlantingRecordMode(record);
