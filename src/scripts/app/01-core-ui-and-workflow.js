@@ -335,6 +335,7 @@ let plantingAllowedPalletSetCacheEventId = null;
 let plantingEventStateCache = null;
 let plantingEventStateCacheKey = "";
 let harvestRecordLookupCache = new Map();
+let harvestRecordLookupSourceCache = new WeakMap();
 let partialHarvestEffectiveCountCache = new WeakMap();
 let partialHarvestEffectiveCountCachePlantingEvents = plantingEvents;
 let harvestLossEstimatedRecordCache = new WeakMap();
@@ -348,6 +349,9 @@ let plantingDateByPalletCache = new Map();
 let plantingStateByPalletCache = new Map();
 let harvestAvailabilityStateCache = new WeakMap();
 let harvestAvailabilityStateCachePlantingEvents = plantingEvents;
+let forecastHarvestTimelineCache = null;
+let forecastHarvestTimelineCacheRecords = records;
+let forecastHarvestTimelineCacheSignature = "";
 let currentPalletLifecycleState = null;
 let currentPalletLifecycleStateRecords = records;
 let currentPalletLifecycleStatePlantingEvents = plantingEvents;
@@ -2233,27 +2237,31 @@ function hasAppliedHarvestProgress(){
 }
 
 function getHarvestProgressKeysForBeds(bedKeys, state = harvestProgressState){
-  const selectedBedSet = new Set(
+  const selectedBeds = [...new Set(
     (Array.isArray(bedKeys) ? bedKeys : [])
       .map(normalizeHarvestProgressBedKey)
       .filter(Boolean)
-  );
-  if(!selectedBedSet.size) return [];
+  )].sort((left, right) => {
+    const [leftBuilding, leftBed] = left.split("-");
+    const [rightBuilding, rightBed] = right.split("-");
+    return Number(leftBuilding) - Number(rightBuilding)
+      || bedOrder.indexOf(leftBed) - bedOrder.indexOf(rightBed);
+  });
+  if(!selectedBeds.length) return [];
   const normalizedState = normalizeHarvestProgressState(state);
   const reversePlanSet = isReverseHarvestProgressState(normalizedState)
     ? new Set(normalizedState.planKeys)
     : null;
   const recordedSet = getHarvestedPalletSet(getHarvestTargetDate());
   const keys = [];
-  BUILDINGS.forEach(building => {
-    bedOrder.forEach(bed => {
-      if(!selectedBedSet.has(getHarvestProgressBedKey(building, bed))) return;
-      for(let number = 1; number <= PALLETS_PER_BED; number++){
-        const key = getPalletKey(building, bed, number);
-        if(reversePlanSet && !reversePlanSet.has(key)) continue;
-        if(!recordedSet.has(key)) keys.push(key);
-      }
-    });
+  selectedBeds.forEach(bedKey => {
+    const [buildingText, bed] = bedKey.split("-");
+    const building = Number(buildingText);
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      const key = getPalletKey(building, bed, number);
+      if(reversePlanSet && !reversePlanSet.has(key)) continue;
+      if(!recordedSet.has(key)) keys.push(key);
+    }
   });
   return keys;
 }
@@ -2312,14 +2320,20 @@ function getHarvestProgressRemainingTargetCases(){
 
 function getHarvestProgressSelectedRemainingHeads(){
   const sourceRecords = getForecastHarvestTimelineRecords(records);
+  const targetDate = getHarvestTargetDate();
+  const predictionOptions = {
+    plantingStateByPallet:getLatestPlantingStateByPallet(targetDate),
+    lookup:getHarvestRecordLookup(targetDate, sourceRecords)
+  };
   return getHarvestProgressRemainingSelectionKeys().reduce((total, key) => {
     const pallet = parsePalletKey(key);
     return total + getPredictedHarvestForPallet(
       pallet.building,
       pallet.bed,
       pallet.number,
-      null,
-      sourceRecords
+      targetDate,
+      sourceRecords,
+      predictionOptions
     );
   }, 0);
 }
@@ -2657,7 +2671,8 @@ function updateHarvestProgressUi(){
   }
   const windowTitle = document.getElementById("harvestProgressWindowTitle");
   if(windowTitle) windowTitle.textContent = isPartialMode ? "部分収穫を入力" : "途中経過を入力";
-  renderHarvestProgressBeds();
+  const modal = document.getElementById("harvestProgressModal");
+  if(modal?.classList.contains("show")) renderHarvestProgressBeds();
 }
 
 function syncHarvestProgressModalState(){

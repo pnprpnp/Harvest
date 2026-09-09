@@ -841,6 +841,10 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
     : getHarvestedPalletSet(referenceDate);
   const excludedSet = new Set(Array.isArray(options.excludedPalletKeys) ? options.excludedPalletKeys : []);
   const hasPartialHarvestRecords = sourceRecords.some(record => record.type === "partialHarvest");
+  const predictionOptions = {
+    plantingStateByPallet:getLatestPlantingStateByPallet(referenceDate),
+    lookup:hasPartialHarvestRecords ? getHarvestRecordLookup(referenceDate, sourceRecords) : null
+  };
   let remainingHeads = 0;
 
   for(const bed of bedOrder){
@@ -849,8 +853,21 @@ function getRemainingHarvestableCasesForBuilding(building, options = {}){
       if(recordedSet.has(key)) continue;
       if(excludedSet.has(key)) continue;
       remainingHeads += hasPartialHarvestRecords
-        ? getPredictedHarvestForPallet(normalizedBuilding, bed, number, referenceDate, sourceRecords)
-        : getPredictedHarvestForBed(normalizedBuilding, bed, number, referenceDate);
+        ? getPredictedHarvestForPallet(
+            normalizedBuilding,
+            bed,
+            number,
+            referenceDate,
+            sourceRecords,
+            predictionOptions
+          )
+        : getPredictedHarvestForBed(
+            normalizedBuilding,
+            bed,
+            number,
+            referenceDate,
+            predictionOptions
+          );
     }
   }
 
@@ -2035,10 +2052,39 @@ function getRecordPartialHarvestDraftTimelineRecords(
   })).filter(record => record.targets.length > 0);
 }
 
+function invalidateForecastHarvestTimelineCache(){
+  forecastHarvestTimelineCache = null;
+  forecastHarvestTimelineCacheRecords = records;
+  forecastHarvestTimelineCacheSignature = "";
+}
+
 function getForecastHarvestTimelineRecords(sourceRecords = records){
   if(sourceRecords !== records) return sourceRecords;
   const draftRecords = getRecordPartialHarvestDraftTimelineRecords();
-  return draftRecords.length ? [...draftRecords, ...sourceRecords] : sourceRecords;
+  if(!draftRecords.length){
+    invalidateForecastHarvestTimelineCache();
+    return sourceRecords;
+  }
+  const signature = JSON.stringify(draftRecords.map(record => [
+    record.date,
+    record.cases,
+    record.targets.map(target => [
+      target.building,
+      target.bed,
+      target.start,
+      target.end,
+      target.plantsPerPallet
+    ])
+  ]));
+  if(forecastHarvestTimelineCache
+    && forecastHarvestTimelineCacheRecords === sourceRecords
+    && forecastHarvestTimelineCacheSignature === signature){
+    return forecastHarvestTimelineCache;
+  }
+  forecastHarvestTimelineCache = [...draftRecords, ...sourceRecords];
+  forecastHarvestTimelineCacheRecords = sourceRecords;
+  forecastHarvestTimelineCacheSignature = signature;
+  return forecastHarvestTimelineCache;
 }
 
 function getRecordRegularHarvestCases(totalCases, dateStr, options = {}){

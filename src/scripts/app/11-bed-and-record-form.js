@@ -1170,15 +1170,25 @@ function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, so
   let plantedTotal = 0;
   let partialHarvestTotal = 0;
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
+  const timelineRecords = getActiveHarvestTimelineRecords(sourceRecords);
+  const plantingStateByPallet = getLatestPlantingStateByPallet(targetDay);
+  const lookup = getHarvestRecordLookup(targetDay, timelineRecords);
   normalizedKeys.forEach(key => {
     const p = parsePalletKey(key);
-    plantedTotal += getHarvestPlantCountForPallet(p.building, p.bed, p.number, targetDay);
+    plantedTotal += getHarvestPlantCountForPallet(
+      p.building,
+      p.bed,
+      p.number,
+      targetDay,
+      { plantingStateByPallet }
+    );
     partialHarvestTotal += getPartialHarvestCountForPallet(
       p.building,
       p.bed,
       p.number,
       targetDay,
-      sourceRecords
+      timelineRecords,
+      { lookup }
     );
   });
 

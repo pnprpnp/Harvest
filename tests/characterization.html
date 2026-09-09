@@ -4893,6 +4893,7 @@
             handleHarvestProgressCasesInput();
             const secondInputIsAdditional = harvestProgressState.actualCasesInput;
             recalculateFromHarvestProgress();
+            renderHarvestProgressBeds();
             const second = {
               totalCases:harvestProgressState.appliedActualCases,
               appliedBeds:[...harvestProgressState.appliedSelectedBeds],
@@ -5222,6 +5223,116 @@
           available:true,
           refreshSource:"progress-auto"
         }, "部分収穫後に途中経過が初期化されるか、入力内容を表示できません");
+      });
+
+      await runTest("部分収穫の仮履歴と検索表をシミュ中に再利用する", () => {
+        const cacheState = comparable(app.eval(`(() => {
+          const previous = {
+            draft:recordPartialHarvestDraft,
+            keys:harvestFillKeys,
+            progress:harvestProgressState,
+            selectionMode:recordSelectionMode,
+            recordDate:document.getElementById("recordDateInput")?.value || "",
+            casesInput:document.getElementById("casesInput")?.value || "",
+            buildLookup:buildHarvestRecordLookup,
+            getPlantingState:getLatestPlantingStateByPallet,
+            renderBeds:renderHarvestProgressBeds,
+            validationRemaining:harvestRecordLookupValidationRemaining,
+            progressOpen:document.getElementById("harvestProgressModal")?.classList.contains("show") || false
+          };
+          try{
+            recordPartialHarvestDraft = {
+              entries:[{ bedKeys:["2-A"], cases:"5" }],
+              bedKeys:[],
+              cases:"",
+              editingEntryIndex:-1
+            };
+            harvestFillKeys = Array.from({ length:78 }, (_, index) => getPalletKey(2, "B", index + 1));
+            harvestProgressState = null;
+            recordSelectionMode = "harvest";
+            document.getElementById("recordDateInput").value = "2026-09-08";
+            invalidateForecastHarvestTimelineCache();
+            invalidateHarvestRecordLookupCache();
+            invalidateHarvestAvailabilityStateCache();
+            harvestRecordLookupValidationRemaining = 0;
+
+            let lookupBuildCount = 0;
+            buildHarvestRecordLookup = targetDate => {
+              lookupBuildCount++;
+              return {
+                targetDay:startOfLocalDay(targetDate),
+                latestFullHarvestDateByPallet:new Map(),
+                partialHarvestCountByPallet:new Map()
+              };
+            };
+            getLatestPlantingStateByPallet = () => new Map();
+            const firstTimeline = getForecastHarvestTimelineRecords(records);
+            const secondTimeline = getForecastHarvestTimelineRecords(records);
+            getCurrentHarvestTotalRaw(harvestFillKeys, {
+              sourceRecords:firstTimeline,
+              targetDate:parseDateOnlyString("2026-09-08")
+            });
+            const buildsAfterFirstTotal = lookupBuildCount;
+            getCurrentHarvestTotalRaw(harvestFillKeys, {
+              sourceRecords:secondTimeline,
+              targetDate:parseDateOnlyString("2026-09-08")
+            });
+            const buildsAfterSecondTotal = lookupBuildCount;
+
+            recordPartialHarvestDraft = {
+              ...recordPartialHarvestDraft,
+              entries:[{ bedKeys:["2-A"], cases:"6" }]
+            };
+            const changedTimeline = getForecastHarvestTimelineRecords(records);
+
+            const progressModal = document.getElementById("harvestProgressModal");
+            progressModal?.classList.remove("show");
+            let hiddenMapRenderCount = 0;
+            renderHarvestProgressBeds = () => { hiddenMapRenderCount++; };
+            harvestFillKeys = [getPalletKey(2, "B", 1)];
+            document.getElementById("casesInput").value = "1";
+            updateHarvestProgressUi();
+            const rendersWhileHidden = hiddenMapRenderCount;
+            progressModal?.classList.add("show");
+            updateHarvestProgressUi();
+            const rendersAfterOpen = hiddenMapRenderCount;
+            renderHarvestProgressBeds = previous.renderBeds;
+            if(!previous.progressOpen) progressModal?.classList.remove("show");
+
+            return {
+              sameTimeline:firstTimeline === secondTimeline,
+              changedDraftCreatesTimeline:changedTimeline !== firstTimeline,
+              buildsAfterFirstTotal,
+              buildsAfterSecondTotal,
+              rendersWhileHidden,
+              rendersAfterOpen
+            };
+          }finally{
+            buildHarvestRecordLookup = previous.buildLookup;
+            getLatestPlantingStateByPallet = previous.getPlantingState;
+            renderHarvestProgressBeds = previous.renderBeds;
+            harvestRecordLookupValidationRemaining = previous.validationRemaining;
+            recordPartialHarvestDraft = previous.draft;
+            harvestFillKeys = previous.keys;
+            harvestProgressState = previous.progress;
+            recordSelectionMode = previous.selectionMode;
+            document.getElementById("recordDateInput").value = previous.recordDate;
+            document.getElementById("casesInput").value = previous.casesInput;
+            const progressModal = document.getElementById("harvestProgressModal");
+            progressModal?.classList.toggle("show", previous.progressOpen);
+            invalidateForecastHarvestTimelineCache();
+            invalidateHarvestRecordLookupCache();
+            invalidateHarvestAvailabilityStateCache();
+          }
+        })()`));
+        assertDeepEqual(cacheState, {
+          sameTimeline:true,
+          changedDraftCreatesTimeline:true,
+          buildsAfterFirstTotal:1,
+          buildsAfterSecondTotal:1,
+          rendersWhileHidden:0,
+          rendersAfterOpen:1
+        }, "部分収穫後のシミュで仮履歴・検索表を再利用できていません");
       });
 
       await runTest("逆算時の途中経過は最初の選択場所を固定して反映する", () => {
@@ -12716,9 +12827,13 @@
 
       await runTest("記録変更後の派生キャッシュを一括で解除する", () => {
         app.eval(`
+          window.__characterizationLookupSource = [];
           harvestRecordEditTimelineCache = {};
           harvestRecordEditTimelineCacheId = 1;
           harvestRecordLookupCache.set("test", {});
+          harvestRecordLookupSourceCache.set(window.__characterizationLookupSource, new Map([["test", {}]]));
+          forecastHarvestTimelineCache = [];
+          forecastHarvestTimelineCacheSignature = "test";
           recordHistoryCache = {};
           plantingEventStateCache = {};
           plantingEventStateCacheKey = "test";
@@ -12736,6 +12851,9 @@
           editTimeline: harvestRecordEditTimelineCache,
           editTimelineId: harvestRecordEditTimelineCacheId,
           lookupSize: harvestRecordLookupCache.size,
+          sourceLookup: harvestRecordLookupSourceCache.has(window.__characterizationLookupSource),
+          forecastTimeline: forecastHarvestTimelineCache,
+          forecastTimelineSignature: forecastHarvestTimelineCacheSignature,
           history: recordHistoryCache,
           planting: plantingEventStateCache,
           plantingKey: plantingEventStateCacheKey,
@@ -12752,6 +12870,9 @@
           editTimeline: null,
           editTimelineId: null,
           lookupSize: 0,
+          sourceLookup: false,
+          forecastTimeline: null,
+          forecastTimelineSignature: "",
           history: null,
           planting: null,
           plantingKey: "",

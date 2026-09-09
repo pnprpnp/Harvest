@@ -1295,6 +1295,13 @@ function getCurrentHarvestTotalRaw(keys = harvestFillKeys, options = {}){
   const sourceRecords = Array.isArray(options.sourceRecords)
     ? options.sourceRecords
     : getForecastHarvestTimelineRecords(records);
+  const targetDate = options.targetDate || getHarvestTargetDate();
+  const predictionOptions = sourceKeys.length
+    ? {
+        plantingStateByPallet:getLatestPlantingStateByPallet(targetDate),
+        lookup:getHarvestRecordLookup(targetDate, sourceRecords)
+      }
+    : {};
   const useProgressActual = recordSelectionMode !== "planting"
     && (sourceKeys === harvestFillKeys || options.includeProgressActual)
     && hasAppliedHarvestProgress();
@@ -1305,7 +1312,14 @@ function getCurrentHarvestTotalRaw(keys = harvestFillKeys, options = {}){
   sourceKeys.forEach(key => {
     if(completedSet.has(key)) return;
     const p = parsePalletKey(key);
-    total += getPredictedHarvestForPallet(p.building, p.bed, p.number, null, sourceRecords);
+    total += getPredictedHarvestForPallet(
+      p.building,
+      p.bed,
+      p.number,
+      targetDate,
+      sourceRecords,
+      predictionOptions
+    );
   });
   return total;
 }
@@ -2752,6 +2766,7 @@ function getPartialHarvestCountForPalletReference(building, bed, number, targetD
 
 function invalidateHarvestRecordLookupCache(){
   harvestRecordLookupCache.clear();
+  harvestRecordLookupSourceCache = new WeakMap();
   partialHarvestEffectiveCountCache = new WeakMap();
   partialHarvestEffectiveCountCachePlantingEvents = plantingEvents;
 }
@@ -2814,21 +2829,28 @@ function buildHarvestRecordLookup(targetDate, sourceRecords = records){
 function getHarvestRecordLookup(targetDate, sourceRecords = records){
   if(!harvestRecordLookupEnabled) return null;
   const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
-  const isEditTimeline = sourceRecords === harvestRecordEditTimelineCache;
-  const useCache = sourceRecords === records || isEditTimeline;
+  const source = Array.isArray(sourceRecords) ? sourceRecords : [];
+  const isEditTimeline = source === harvestRecordEditTimelineCache;
+  const useSharedCache = source === records || isEditTimeline;
   const cacheKey = isEditTimeline
     ? `edit:${harvestRecordEditTimelineCacheId}:${harvestRecordEditTimelineCacheDate}:${formatDateOnlyString(targetDay)}`
     : formatDateOnlyString(targetDay);
   try{
-    if(useCache && harvestRecordLookupCache.has(cacheKey)){
-      return harvestRecordLookupCache.get(cacheKey);
-    }
-    const lookup = buildHarvestRecordLookup(targetDay, sourceRecords);
-    if(useCache){
-      harvestRecordLookupCache.set(cacheKey, lookup);
-      if(harvestRecordLookupCache.size > 16){
-        harvestRecordLookupCache.delete(harvestRecordLookupCache.keys().next().value);
+    let lookupCache = harvestRecordLookupCache;
+    if(!useSharedCache){
+      lookupCache = harvestRecordLookupSourceCache.get(source);
+      if(!lookupCache){
+        lookupCache = new Map();
+        harvestRecordLookupSourceCache.set(source, lookupCache);
       }
+    }
+    if(lookupCache.has(cacheKey)){
+      return lookupCache.get(cacheKey);
+    }
+    const lookup = buildHarvestRecordLookup(targetDay, source);
+    lookupCache.set(cacheKey, lookup);
+    if(lookupCache.size > 16){
+      lookupCache.delete(lookupCache.keys().next().value);
     }
     return lookup;
   }catch(error){
@@ -2882,9 +2904,23 @@ function getPartialHarvestCountForPallet(building, bed, number, targetDate = nul
   return fastTotal;
 }
 
-function getPredictedHarvestForPallet(building, bed, number, targetDate = null, sourceRecords = records){
-  const baseHarvest = getPredictedHarvestForBed(building, bed, number, targetDate);
-  const partialCount = getPartialHarvestCountForPallet(building, bed, number, targetDate, sourceRecords);
+function getPredictedHarvestForPallet(
+  building,
+  bed,
+  number,
+  targetDate = null,
+  sourceRecords = records,
+  options = {}
+){
+  const baseHarvest = getPredictedHarvestForBed(building, bed, number, targetDate, options);
+  const partialCount = getPartialHarvestCountForPallet(
+    building,
+    bed,
+    number,
+    targetDate,
+    sourceRecords,
+    options
+  );
   return Math.max(0, baseHarvest - partialCount);
 }
 
@@ -3190,7 +3226,7 @@ function calculateHarvestSelectionFromRecords(options = {}){
       ? options.additionalExcludedPalletKeys
       : []
   );
-  const currentAvailabilityState = sourceRecords === records
+  const currentAvailabilityState = sourceRecords === records || !options.releaseOldestIfBlocked
     ? getHarvestAvailabilityState(referenceDate, sourceRecords)
     : null;
   const buildProgressRecordedSet = harvestRecords => {

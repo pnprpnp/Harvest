@@ -61,6 +61,11 @@ function buildPartialHarvestTargetsForRecordBeds(bedKeys, cases){
 
 function getRecordPartialHarvestRemainingCaseEstimate(bedKeys, cases, date, sourceRecords = records){
   const targetDate = parseDateOnlyString(date) || new Date();
+  const timelineRecords = getActiveHarvestTimelineRecords(sourceRecords);
+  const predictionOptions = {
+    plantingStateByPallet:getLatestPlantingStateByPallet(targetDate),
+    lookup:getHarvestRecordLookup(targetDate, timelineRecords)
+  };
   let predictedHeads = 0;
   normalizeRecordPartialHarvestBedKeys(bedKeys).forEach(key => {
     const target = parseRecordPartialHarvestBedKey(key);
@@ -71,7 +76,8 @@ function getRecordPartialHarvestRemainingCaseEstimate(bedKeys, cases, date, sour
         target.bed,
         number,
         targetDate,
-        sourceRecords
+        timelineRecords,
+        predictionOptions
       );
     }
   });
@@ -313,10 +319,22 @@ function stripPartialHarvestAutoMemo(memo){
 
 function getPartialHarvestRemainingCaseEstimate(building, beds, cases, date, sourceRecords = records){
   const targetDate = parseDateOnlyString(date) || new Date();
+  const timelineRecords = getActiveHarvestTimelineRecords(sourceRecords);
+  const predictionOptions = {
+    plantingStateByPallet:getLatestPlantingStateByPallet(targetDate),
+    lookup:getHarvestRecordLookup(targetDate, timelineRecords)
+  };
   let predictedHeads = 0;
   beds.forEach(bed => {
     for(let number = 1; number <= PALLETS_PER_BED; number++){
-      predictedHeads += getPredictedHarvestForPallet(building, bed, number, targetDate, sourceRecords);
+      predictedHeads += getPredictedHarvestForPallet(
+        building,
+        bed,
+        number,
+        targetDate,
+        timelineRecords,
+        predictionOptions
+      );
     }
   });
   const predictedCasesBefore = predictedHeads / CASE_SIZE;

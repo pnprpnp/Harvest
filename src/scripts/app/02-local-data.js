@@ -1424,6 +1424,7 @@ function invalidateWorkflowPendingRecordCache(){
 }
 
 function invalidateRecordDerivedCaches(options = {}){
+  invalidateForecastHarvestTimelineCache();
   if(options.harvestRecords === true){
     invalidateHarvestRecordEditTimelineCache();
   }
