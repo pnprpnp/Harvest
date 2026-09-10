@@ -1892,6 +1892,7 @@ function enterHarvestRecordMode(){
 function enterPlantingRecordMode(record, options = {}){
   if(!record) return;
   closeRecordFloatingUi();
+  harvestEditReturnPlantingRecordId = null;
   recordViewMode = "entry";
   recordSelectionMode = "planting";
   activePlantingRecordId = Number(record.id);
@@ -1907,7 +1908,7 @@ function enterPlantingRecordMode(record, options = {}){
   }
   updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
-  saveHarvestStateToStorage();
+  if(options.save !== false) saveHarvestStateToStorage();
   drawRecordBeds();
   runAfterUiSettles(() => {
     drawBeds();
@@ -3011,8 +3012,18 @@ function handleRecordClearAction(){
 function discardRecordEditChanges(){
   if(!isRecordEditMode()) return;
   const editingDate = editingHarvestRecordId ? getRecordById(editingHarvestRecordId)?.date || "" : "";
+  const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
+  const returnPlantingRecordId = pendingReturnPlantingRecordId !== null
+    && pendingReturnPlantingRecordId === getSafePositiveRecordId(editingHarvestRecordId)
+    ? pendingReturnPlantingRecordId
+    : null;
   closeRecordFloatingUi();
-  clearRecordForm();
+  clearRecordForm({ save:returnPlantingRecordId === null });
+  if(returnPlantingRecordId !== null && getRecordById(returnPlantingRecordId)){
+    resumePlantingRecord(returnPlantingRecordId, { auto:true });
+    showToast("編集内容を破棄して苗植え記録へ戻りました");
+    return;
+  }
   if(editingDate){
     const dateInput = document.getElementById("recordDateInput");
     if(dateInput) dateInput.value = editingDate;

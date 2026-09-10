@@ -156,6 +156,7 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   });
   if(Number(activePlantingRecordId) === safeOldId) activePlantingRecordId = safeNewId;
   if(Number(editingHarvestRecordId) === safeOldId) editingHarvestRecordId = safeNewId;
+  if(Number(harvestEditReturnPlantingRecordId) === safeOldId) harvestEditReturnPlantingRecordId = safeNewId;
   if(Number(editingPartialHarvestRecordId) === safeOldId) editingPartialHarvestRecordId = safeNewId;
   if(Number(splittingHarvestRecordId) === safeOldId) splittingHarvestRecordId = safeNewId;
   if(Number(plantingRecordDraft?.recordId) === safeOldId) plantingRecordDraft.recordId = safeNewId;

@@ -1989,12 +1989,13 @@ function setTodayToRecordDate(){
   updateRecordWeekdayDisplay();
 }
 
-function clearRecordForm(){
+function clearRecordForm(options = {}){
   const wasEditingRecord = isRecordEditMode();
   if(wasEditingRecord && restoreForecastSelectionState()){
     captureRecordBaseSelection();
   }
   editingHarvestRecordId = null;
+  harvestEditReturnPlantingRecordId = null;
   editingHarvestSelectionKeys = null;
   recordHarvestStage = "location";
   recordHarvestPrimaryInputsExpanded = false;
@@ -2020,7 +2021,7 @@ function clearRecordForm(){
   setSelectedQualityMemo(null);
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();
-  saveHarvestStateToStorage();
+  if(options.save !== false) saveHarvestStateToStorage();
 }
 
 function resetPlantingRecordChanges(){

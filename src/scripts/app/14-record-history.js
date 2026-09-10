@@ -121,6 +121,9 @@ function editHarvestRecord(id, options = {}){
 
   const wasAlreadyEditingHarvestRecord = !!editingHarvestRecordId;
   if(switchTab("record") === false) return;
+  harvestEditReturnPlantingRecordId = options.returnFromPlantingClear
+    ? Number(record.id)
+    : null;
   if(!wasAlreadyEditingHarvestRecord && !options.skipForecastCapture) captureForecastSelectionState();
   resetRecordPartialHarvestDraft();
   enterHarvestRecordMode();

@@ -10247,6 +10247,7 @@
           const previous = {
             records,
             editingHarvestRecordId,
+            harvestEditReturnPlantingRecordId,
             keys:[...harvestFillKeys],
             mode:recordSelectionMode,
             view:recordViewMode,
@@ -10284,6 +10285,7 @@
               plantingPalletKeys:[]
             }];
             editingHarvestRecordId = 20000000000991;
+            harvestEditReturnPlantingRecordId = null;
             harvestFillKeys = ["2-A-1"];
             recordSelectionMode = "harvest";
             recordViewMode = "entry";
@@ -10326,6 +10328,7 @@
           }finally{
             records = previous.records;
             editingHarvestRecordId = previous.editingHarvestRecordId;
+            harvestEditReturnPlantingRecordId = previous.harvestEditReturnPlantingRecordId;
             harvestFillKeys = previous.keys;
             recordSelectionMode = previous.mode;
             recordViewMode = previous.view;
@@ -10358,6 +10361,226 @@
           editingId:null,
           updatedDate:"2026-08-18"
         }, "収穫記録の更新後に苗植えへ移るか、元の日付の記録一覧へ戻れていません");
+      });
+
+      await runTest("苗植えから戻った収穫記録は更新・破棄後に同じ苗植えへ戻る", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            records,
+            editingHarvestRecordId,
+            harvestEditReturnPlantingRecordId,
+            activePlantingRecordId,
+            plantingRecordDraft,
+            workflowPlantingSessionActive,
+            keys:[...harvestFillKeys],
+            mode:recordSelectionMode,
+            view:recordViewMode,
+            date:document.getElementById("recordDateInput").value,
+            cases:document.getElementById("recordCasesInput").value,
+            summary:document.getElementById("recordPalletSummaryInput").value,
+            ensureAccess:ensureProtectedOperationAccess,
+            ensureMutation:ensureGoogleSheetLocalMutationAllowed,
+            conflict:ensureSyncConflictResolvedBeforeChange,
+            switchTab,
+            warnings:confirmHarvestRecordWarnings,
+            dependencies:getRemotePlantingEventDependenciesForHarvest,
+            saveStorage:saveRecordsToStorage,
+            syncPending:syncHarvestPlantingPendingFlags,
+            queue:queueGoogleSheetRecordSend,
+            clear:clearRecordForm,
+            history:showRecordHistoryView,
+            refreshDate:refreshRecordDateDependentUi,
+            saveState:saveHarvestStateToStorage,
+            scheduleRefresh:scheduleRecordDataUiRefresh,
+            toast:showToast,
+            resume:resumePlantingRecord,
+            closeFloating:closeRecordFloatingUi,
+            refreshMode:refreshRecordModeUi,
+            refreshMaps:refreshHarvestMapViews,
+            updateLoss:updateRecordActualLoss,
+            updateSeedlings:updateRecordActualSeedlingDisplays,
+            recalc:recalcHarvestSummary,
+            loss:getRecordActualLossValue
+          };
+          const recordId = 20000000000992;
+          const resumeCalls = [];
+          const historyDates = [];
+          const toasts = [];
+          let clearCalls = 0;
+          try{
+            records = [{
+              id:recordId,
+              type:"fullHarvest",
+              date:"2026-09-11",
+              cases:1,
+              palletSummary:"2号棟A:1",
+              palletKeys:["2-A-1"],
+              plantingPending:true,
+              plantingPalletKeys:[]
+            }];
+            editingHarvestRecordId = null;
+            harvestEditReturnPlantingRecordId = null;
+            activePlantingRecordId = recordId;
+            plantingRecordDraft = { recordId, keys:[] };
+            workflowPlantingSessionActive = true;
+            harvestFillKeys = ["2-A-1"];
+            recordSelectionMode = "planting";
+            recordViewMode = "entry";
+            document.getElementById("recordDateInput").value = "2026-09-11";
+            document.getElementById("recordCasesInput").value = "1";
+            document.getElementById("recordPalletSummaryInput").value = "2号棟A:1";
+            ensureProtectedOperationAccess = () => true;
+            ensureGoogleSheetLocalMutationAllowed = () => true;
+            ensureSyncConflictResolvedBeforeChange = () => true;
+            switchTab = () => true;
+            confirmHarvestRecordWarnings = () => true;
+            getRemotePlantingEventDependenciesForHarvest = () => [];
+            saveRecordsToStorage = () => {};
+            syncHarvestPlantingPendingFlags = () => {};
+            queueGoogleSheetRecordSend = () => false;
+            saveHarvestStateToStorage = () => {};
+            scheduleRecordDataUiRefresh = () => {};
+            showToast = message => { toasts.push(message); };
+            closeRecordFloatingUi = () => {};
+            refreshRecordModeUi = () => {};
+            refreshHarvestMapViews = () => {};
+            updateRecordActualLoss = () => {};
+            updateRecordActualSeedlingDisplays = () => {};
+            recalcHarvestSummary = () => { harvestSummary = { filledCount:1 }; };
+            getRecordActualLossValue = () => "0";
+            clearRecordForm = () => {
+              clearCalls++;
+              editingHarvestRecordId = null;
+              harvestEditReturnPlantingRecordId = null;
+              activePlantingRecordId = null;
+              workflowPlantingSessionActive = false;
+              recordSelectionMode = "harvest";
+              recordViewMode = "entry";
+            };
+            showRecordHistoryView = options => {
+              historyDates.push(options?.date || "");
+              recordViewMode = "history";
+            };
+            resumePlantingRecord = (id, options = {}) => {
+              resumeCalls.push({ id:Number(id), auto:options.auto === true });
+              editingHarvestRecordId = null;
+              harvestEditReturnPlantingRecordId = null;
+              activePlantingRecordId = Number(id);
+              workflowPlantingSessionActive = true;
+              recordSelectionMode = "planting";
+              recordViewMode = "entry";
+            };
+
+            resetPlantingRecordChanges();
+            const editState = {
+              editingId:editingHarvestRecordId,
+              returnPlantingId:harvestEditReturnPlantingRecordId,
+              mode:recordSelectionMode
+            };
+            saveRecord();
+            const updatedState = {
+              recordCount:records.length,
+              recordId:records[0].id,
+              editingId:editingHarvestRecordId,
+              returnPlantingId:harvestEditReturnPlantingRecordId,
+              activePlantingId:activePlantingRecordId,
+              mode:recordSelectionMode,
+              view:recordViewMode,
+              clearCalls,
+              resumeCalls:[...resumeCalls],
+              historyDates:[...historyDates]
+            };
+
+            editingHarvestRecordId = recordId;
+            harvestEditReturnPlantingRecordId = recordId;
+            activePlantingRecordId = null;
+            workflowPlantingSessionActive = false;
+            recordSelectionMode = "harvest";
+            recordViewMode = "entry";
+            discardRecordEditChanges();
+            const discardedState = {
+              editingId:editingHarvestRecordId,
+              returnPlantingId:harvestEditReturnPlantingRecordId,
+              activePlantingId:activePlantingRecordId,
+              mode:recordSelectionMode,
+              view:recordViewMode,
+              clearCalls,
+              resumeCalls:[...resumeCalls],
+              historyDates:[...historyDates],
+              finalToast:toasts.at(-1)
+            };
+            return { editState, updatedState, discardedState };
+          }finally{
+            records = previous.records;
+            editingHarvestRecordId = previous.editingHarvestRecordId;
+            harvestEditReturnPlantingRecordId = previous.harvestEditReturnPlantingRecordId;
+            activePlantingRecordId = previous.activePlantingRecordId;
+            plantingRecordDraft = previous.plantingRecordDraft;
+            workflowPlantingSessionActive = previous.workflowPlantingSessionActive;
+            harvestFillKeys = previous.keys;
+            recordSelectionMode = previous.mode;
+            recordViewMode = previous.view;
+            document.getElementById("recordDateInput").value = previous.date;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            document.getElementById("recordPalletSummaryInput").value = previous.summary;
+            ensureProtectedOperationAccess = previous.ensureAccess;
+            ensureGoogleSheetLocalMutationAllowed = previous.ensureMutation;
+            ensureSyncConflictResolvedBeforeChange = previous.conflict;
+            switchTab = previous.switchTab;
+            confirmHarvestRecordWarnings = previous.warnings;
+            getRemotePlantingEventDependenciesForHarvest = previous.dependencies;
+            saveRecordsToStorage = previous.saveStorage;
+            syncHarvestPlantingPendingFlags = previous.syncPending;
+            queueGoogleSheetRecordSend = previous.queue;
+            clearRecordForm = previous.clear;
+            showRecordHistoryView = previous.history;
+            refreshRecordDateDependentUi = previous.refreshDate;
+            saveHarvestStateToStorage = previous.saveState;
+            scheduleRecordDataUiRefresh = previous.scheduleRefresh;
+            showToast = previous.toast;
+            resumePlantingRecord = previous.resume;
+            closeRecordFloatingUi = previous.closeFloating;
+            refreshRecordModeUi = previous.refreshMode;
+            refreshHarvestMapViews = previous.refreshMaps;
+            updateRecordActualLoss = previous.updateLoss;
+            updateRecordActualSeedlingDisplays = previous.updateSeedlings;
+            recalcHarvestSummary = previous.recalc;
+            getRecordActualLossValue = previous.loss;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          editState:{
+            editingId:20000000000992,
+            returnPlantingId:20000000000992,
+            mode:"harvest"
+          },
+          updatedState:{
+            recordCount:1,
+            recordId:20000000000992,
+            editingId:null,
+            returnPlantingId:null,
+            activePlantingId:20000000000992,
+            mode:"planting",
+            view:"entry",
+            clearCalls:1,
+            resumeCalls:[{ id:20000000000992, auto:true }],
+            historyDates:[]
+          },
+          discardedState:{
+            editingId:null,
+            returnPlantingId:null,
+            activePlantingId:20000000000992,
+            mode:"planting",
+            view:"entry",
+            clearCalls:2,
+            resumeCalls:[
+              { id:20000000000992, auto:true },
+              { id:20000000000992, auto:true }
+            ],
+            historyDates:[],
+            finalToast:"編集内容を破棄して苗植え記録へ戻りました"
+          }
+        }, "苗植えから収穫記録へ戻った後、同じ記録の苗植えへ復帰できません");
       });
 
       await runTest("記録の工程表示をヘッダー直下へ配置する", () => {

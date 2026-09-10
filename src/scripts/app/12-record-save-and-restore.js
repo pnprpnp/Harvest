@@ -121,6 +121,10 @@ function saveRecord(){
 
   if(editingRecord && editingRecord.type === "fullHarvest"){
     const editedRecordDate = date;
+    const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
+    const returnPlantingRecordId = pendingReturnPlantingRecordId === Number(editingRecord.id)
+      ? pendingReturnPlantingRecordId
+      : null;
     const allocatedKeys = getRemotePlantingEventDependenciesForHarvest(editingRecord.id)
       .flatMap(event => event.sourceAllocations
         .filter(allocation => Number(allocation.harvestRecordId) === Number(editingRecord.id))
@@ -158,16 +162,24 @@ function saveRecord(){
     harvestProgressPartialDraftSnapshot = null;
     harvestProgressEntryEditState = null;
     harvestProgressEntryDetailGroupKey = "";
-    clearRecordForm();
-    const dateInput = document.getElementById("recordDateInput");
-    if(dateInput) dateInput.value = editedRecordDate;
-    refreshRecordDateDependentUi();
-    showRecordHistoryView({ date:editedRecordDate });
-    saveHarvestStateToStorage();
+    clearRecordForm({ save:false });
+    if(returnPlantingRecordId !== null){
+      resumePlantingRecord(returnPlantingRecordId, { auto:true });
+    }else{
+      const dateInput = document.getElementById("recordDateInput");
+      if(dateInput) dateInput.value = editedRecordDate;
+      refreshRecordDateDependentUi();
+      showRecordHistoryView({ date:editedRecordDate });
+      saveHarvestStateToStorage();
+    }
     scheduleRecordDataUiRefresh();
-    showToast(sendQueued
-      ? "収穫記録を更新しました。スプレッドシートへ送信中です"
-      : "収穫記録を更新しました。スプレッドシートは未送信です");
+    showToast(returnPlantingRecordId !== null
+      ? (sendQueued
+          ? "収穫記録を更新しました。続けて苗植え場所を選択してください"
+          : "収穫記録を更新しました。スプレッドシートは未送信です。続けて苗植え場所を選択してください")
+      : (sendQueued
+          ? "収穫記録を更新しました。スプレッドシートへ送信中です"
+          : "収穫記録を更新しました。スプレッドシートは未送信です"));
     return;
   }
 
@@ -586,7 +598,7 @@ function resumePlantingRecord(id, options = {}){
   if(recordMemoInput) recordMemoInput.value = record.memo || "";
   editingPlantingEventId = null;
   invalidatePlantingAllowedPalletSetCache();
-  enterPlantingRecordMode(record, { resumeFlow: options.auto === true });
+  enterPlantingRecordMode(record, { resumeFlow:options.auto === true, save:false });
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();
   saveHarvestStateToStorage();

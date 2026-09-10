@@ -380,6 +380,7 @@ let recordHistoryRenderScheduleId = 0;
 let recordHistoryRenderPending = false;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
+let harvestEditReturnPlantingRecordId = null;
 let editingPartialHarvestRecordId = null;
 let splittingHarvestRecordId = null;
 let editingHarvestSelectionKeys = null;
@@ -617,6 +618,7 @@ function reloadRoleScopedRecordData(){
   deletedRecords = loadDeletedRecords();
   syncConflicts = loadSyncConflicts();
   editingHarvestRecordId = null;
+  harvestEditReturnPlantingRecordId = null;
   editingPartialHarvestRecordId = null;
   splittingHarvestRecordId = null;
   editingPlantingEventId = null;

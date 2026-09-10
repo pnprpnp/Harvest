@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260910-dashboard-planting-record-link">
+<meta name="harvestnavi-version" content="20260911-resume-planting-after-harvest-edit">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -15745,6 +15745,7 @@ let recordHistoryRenderScheduleId = 0;
 let recordHistoryRenderPending = false;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
+let harvestEditReturnPlantingRecordId = null;
 let editingPartialHarvestRecordId = null;
 let splittingHarvestRecordId = null;
 let editingHarvestSelectionKeys = null;
@@ -15982,6 +15983,7 @@ function reloadRoleScopedRecordData(){
   deletedRecords = loadDeletedRecords();
   syncConflicts = loadSyncConflicts();
   editingHarvestRecordId = null;
+  harvestEditReturnPlantingRecordId = null;
   editingPartialHarvestRecordId = null;
   splittingHarvestRecordId = null;
   editingPlantingEventId = null;
@@ -36199,6 +36201,7 @@ function enterHarvestRecordMode(){
 function enterPlantingRecordMode(record, options = {}){
   if(!record) return;
   closeRecordFloatingUi();
+  harvestEditReturnPlantingRecordId = null;
   recordViewMode = "entry";
   recordSelectionMode = "planting";
   activePlantingRecordId = Number(record.id);
@@ -36214,7 +36217,7 @@ function enterPlantingRecordMode(record, options = {}){
   }
   updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
-  saveHarvestStateToStorage();
+  if(options.save !== false) saveHarvestStateToStorage();
   drawRecordBeds();
   runAfterUiSettles(() => {
     drawBeds();
@@ -37318,8 +37321,18 @@ function handleRecordClearAction(){
 function discardRecordEditChanges(){
   if(!isRecordEditMode()) return;
   const editingDate = editingHarvestRecordId ? getRecordById(editingHarvestRecordId)?.date || "" : "";
+  const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
+  const returnPlantingRecordId = pendingReturnPlantingRecordId !== null
+    && pendingReturnPlantingRecordId === getSafePositiveRecordId(editingHarvestRecordId)
+    ? pendingReturnPlantingRecordId
+    : null;
   closeRecordFloatingUi();
-  clearRecordForm();
+  clearRecordForm({ save:returnPlantingRecordId === null });
+  if(returnPlantingRecordId !== null && getRecordById(returnPlantingRecordId)){
+    resumePlantingRecord(returnPlantingRecordId, { auto:true });
+    showToast("編集内容を破棄して苗植え記録へ戻りました");
+    return;
+  }
   if(editingDate){
     const dateInput = document.getElementById("recordDateInput");
     if(dateInput) dateInput.value = editingDate;
@@ -40858,12 +40871,13 @@ function setTodayToRecordDate(){
   updateRecordWeekdayDisplay();
 }
 
-function clearRecordForm(){
+function clearRecordForm(options = {}){
   const wasEditingRecord = isRecordEditMode();
   if(wasEditingRecord && restoreForecastSelectionState()){
     captureRecordBaseSelection();
   }
   editingHarvestRecordId = null;
+  harvestEditReturnPlantingRecordId = null;
   editingHarvestSelectionKeys = null;
   recordHarvestStage = "location";
   recordHarvestPrimaryInputsExpanded = false;
@@ -40889,7 +40903,7 @@ function clearRecordForm(){
   setSelectedQualityMemo(null);
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();
-  saveHarvestStateToStorage();
+  if(options.save !== false) saveHarvestStateToStorage();
 }
 
 function resetPlantingRecordChanges(){
@@ -41035,6 +41049,10 @@ function saveRecord(){
 
   if(editingRecord && editingRecord.type === "fullHarvest"){
     const editedRecordDate = date;
+    const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
+    const returnPlantingRecordId = pendingReturnPlantingRecordId === Number(editingRecord.id)
+      ? pendingReturnPlantingRecordId
+      : null;
     const allocatedKeys = getRemotePlantingEventDependenciesForHarvest(editingRecord.id)
       .flatMap(event => event.sourceAllocations
         .filter(allocation => Number(allocation.harvestRecordId) === Number(editingRecord.id))
@@ -41072,16 +41090,24 @@ function saveRecord(){
     harvestProgressPartialDraftSnapshot = null;
     harvestProgressEntryEditState = null;
     harvestProgressEntryDetailGroupKey = "";
-    clearRecordForm();
-    const dateInput = document.getElementById("recordDateInput");
-    if(dateInput) dateInput.value = editedRecordDate;
-    refreshRecordDateDependentUi();
-    showRecordHistoryView({ date:editedRecordDate });
-    saveHarvestStateToStorage();
+    clearRecordForm({ save:false });
+    if(returnPlantingRecordId !== null){
+      resumePlantingRecord(returnPlantingRecordId, { auto:true });
+    }else{
+      const dateInput = document.getElementById("recordDateInput");
+      if(dateInput) dateInput.value = editedRecordDate;
+      refreshRecordDateDependentUi();
+      showRecordHistoryView({ date:editedRecordDate });
+      saveHarvestStateToStorage();
+    }
     scheduleRecordDataUiRefresh();
-    showToast(sendQueued
-      ? "収穫記録を更新しました。スプレッドシートへ送信中です"
-      : "収穫記録を更新しました。スプレッドシートは未送信です");
+    showToast(returnPlantingRecordId !== null
+      ? (sendQueued
+          ? "収穫記録を更新しました。続けて苗植え場所を選択してください"
+          : "収穫記録を更新しました。スプレッドシートは未送信です。続けて苗植え場所を選択してください")
+      : (sendQueued
+          ? "収穫記録を更新しました。スプレッドシートへ送信中です"
+          : "収穫記録を更新しました。スプレッドシートは未送信です"));
     return;
   }
 
@@ -41500,7 +41526,7 @@ function resumePlantingRecord(id, options = {}){
   if(recordMemoInput) recordMemoInput.value = record.memo || "";
   editingPlantingEventId = null;
   invalidatePlantingAllowedPalletSetCache();
-  enterPlantingRecordMode(record, { resumeFlow: options.auto === true });
+  enterPlantingRecordMode(record, { resumeFlow:options.auto === true, save:false });
   updateRecordActualLoss();
   updateRecordActualSeedlingDisplays();
   saveHarvestStateToStorage();
@@ -42990,6 +43016,9 @@ function editHarvestRecord(id, options = {}){
 
   const wasAlreadyEditingHarvestRecord = !!editingHarvestRecordId;
   if(switchTab("record") === false) return;
+  harvestEditReturnPlantingRecordId = options.returnFromPlantingClear
+    ? Number(record.id)
+    : null;
   if(!wasAlreadyEditingHarvestRecord && !options.skipForecastCapture) captureForecastSelectionState();
   resetRecordPartialHarvestDraft();
   enterHarvestRecordMode();
@@ -45406,6 +45435,7 @@ function remapHarvestRecordIdReferences(oldId, newId, status){
   });
   if(Number(activePlantingRecordId) === safeOldId) activePlantingRecordId = safeNewId;
   if(Number(editingHarvestRecordId) === safeOldId) editingHarvestRecordId = safeNewId;
+  if(Number(harvestEditReturnPlantingRecordId) === safeOldId) harvestEditReturnPlantingRecordId = safeNewId;
   if(Number(editingPartialHarvestRecordId) === safeOldId) editingPartialHarvestRecordId = safeNewId;
   if(Number(splittingHarvestRecordId) === safeOldId) splittingHarvestRecordId = safeNewId;
   if(Number(plantingRecordDraft?.recordId) === safeOldId) plantingRecordDraft.recordId = safeNewId;
