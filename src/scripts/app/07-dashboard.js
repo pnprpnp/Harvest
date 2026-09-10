@@ -2852,6 +2852,7 @@ function getDashboardSeedlingBedAgeSummary(lots){
 
 function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
   const ageText = lot.isUnplanted ? "" : `${lot.ageDays}日経過`;
+  const plantingDateText = lot.isUnplanted ? "" : formatDateOnlyString(lot.plantingDate);
   const ariaLabel = [
     lot.qualityText,
     lot.isUnplanted ? "" : lot.plantingCountText,
@@ -2860,24 +2861,44 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
     "パレット位置を表示"
   ].filter(Boolean).join("、");
   return `
-    <button type="button"
-      class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}${isSelected ? " is-selected" : ""}"
-      data-dashboard-seedling-lot-index="${index}"
-      data-ui-click="setDashboardSeedlingStatusLot" data-ui-number="${index}"
-      aria-pressed="${isSelected ? "true" : "false"}"
-      aria-label="${escapeHtml(ariaLabel)}">
-      <span class="dashboardSeedlingStatusLotHeader">
-        <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
-        <span class="dashboardSeedlingStatusLotBadges">
-          ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCount${lot.plantingCount === null ? " is-unrecorded" : ""}">${escapeHtml(lot.plantingCountText)}</span>`}
+    <div class="dashboardSeedlingStatusLotItem${lot.isUnplanted ? " is-unplanted" : " has-record-link"}">
+      <button type="button"
+        class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}${isSelected ? " is-selected" : ""}"
+        data-dashboard-seedling-lot-index="${index}"
+        data-ui-click="setDashboardSeedlingStatusLot" data-ui-number="${index}"
+        aria-pressed="${isSelected ? "true" : "false"}"
+        aria-label="${escapeHtml(ariaLabel)}">
+        <span class="dashboardSeedlingStatusLotHeader">
+          <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
+          <span class="dashboardSeedlingStatusLotBadges">
+            ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCount${lot.plantingCount === null ? " is-unrecorded" : ""}">${escapeHtml(lot.plantingCountText)}</span>`}
+          </span>
         </span>
-      </span>
-      ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
-      <span class="dashboardSeedlingStatusCount">
-        <span>${lot.palletCount}パレット</span>
-      </span>
-    </button>
+        ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
+        <span class="dashboardSeedlingStatusCount">
+          <span>${lot.palletCount}パレット</span>
+        </span>
+      </button>
+      ${lot.isUnplanted ? "" : `
+        <button type="button" class="dashboardSeedlingStatusRecordLink"
+          data-ui-click="openRecordHistoryFromDashboardSeedlingStatus" data-ui-arg="${escapeHtml(plantingDateText)}"
+          aria-label="${escapeHtml(plantingDateText)}の記録へ移動">
+          記録へ <span aria-hidden="true">›</span>
+        </button>
+      `}
+    </div>
   `;
+}
+
+function openRecordHistoryFromDashboardSeedlingStatus(dateString){
+  const date = String(dateString || "").trim();
+  if(!parseDateOnlyString(date)){
+    showToast("移動する記録の日付を確認できませんでした");
+    return false;
+  }
+  if(!switchTab("record")) return false;
+  showRecordHistoryView({ date, scroll:true });
+  return true;
 }
 
 function clearDashboardSeedlingStatusLotSelectionUi(){

@@ -2411,6 +2411,29 @@
           assert(!lotHtml.includes("番号 "), "二次定植の詳細にパレット番号が残っています");
           assert(lotHtml.includes(">1パレット<"), "二次定植の詳細にパレット数が表示されません");
           assert(!lotHtml.includes(">選択中<"), "二次定植の詳細に選択中ラベルが残っています");
+          const recordLinkState = comparable(app.eval(`(() => {
+            const mount = document.createElement("div");
+            const lots = buildDashboardSeedlingStatusModel(new Date(2026, 7, 10))
+              .bedLots.get("3-B");
+            mount.innerHTML = lots.map(
+              (lot, index) => getDashboardSeedlingStatusLotHtml(lot, index, false)
+            ).join("");
+            const links = [...mount.querySelectorAll(".dashboardSeedlingStatusRecordLink")];
+            return {
+              dates: links.map(link => link.dataset.uiArg),
+              labels: links.map(link => link.textContent.trim().replace(/\\s+/g, " ")),
+              nestedButtonCount: mount.querySelectorAll("button button").length,
+              unplantedHasLink: !!mount.querySelector(
+                ".dashboardSeedlingStatusLotItem.is-unplanted .dashboardSeedlingStatusRecordLink"
+              )
+            };
+          })()`));
+          assertDeepEqual(recordLinkState, {
+            dates: ["2026-06-30", "2026-08-01", "2026-08-01"],
+            labels: ["記録へ ›", "記録へ ›", "記録へ ›"],
+            nestedButtonCount: 0,
+            unplantedHasLink: false
+          }, "二次定植の日付から記録へ移動するボタンが正しく表示されません");
           const ageStyle = comparable(app.eval(`(() => {
             const mount = document.createElement("div");
             mount.className = "dashboardSeedlingStatusPopover";
@@ -2546,6 +2569,34 @@
         }
       });
 
+      await runTest("二次定植の日付から該当日の記録一覧へ移動する", () => {
+        const routeState = comparable(app.eval(`(() => {
+          const previousSwitchTab = window.switchTab;
+          const previousShowRecordHistoryView = window.showRecordHistoryView;
+          let switchedTab = "";
+          let historyOptions = null;
+          try{
+            window.switchTab = tabName => {
+              switchedTab = tabName;
+              return true;
+            };
+            window.showRecordHistoryView = options => {
+              historyOptions = options;
+            };
+            const opened = openRecordHistoryFromDashboardSeedlingStatus("2026-08-01");
+            return { opened, switchedTab, historyOptions };
+          }finally{
+            window.switchTab = previousSwitchTab;
+            window.showRecordHistoryView = previousShowRecordHistoryView;
+          }
+        })()`));
+        assertDeepEqual(routeState, {
+          opened: true,
+          switchedTab: "record",
+          historyOptions: { date: "2026-08-01", scroll: true }
+        }, "二次定植の日付から該当日の記録一覧へ移動できません");
+      });
+
       await runTest("二次定植の苗サイズを同系色の明暗で表示する", () => {
         const colors = comparable(app.eval(`(() => {
           const previousTheme = document.documentElement.getAttribute("data-theme");
@@ -2590,35 +2641,69 @@
       });
 
       await runTest("二次定植の浮動詳細を選択ベッドと重ねず画面内に表示する", async () => {
-        const visualFrame = await loadVisualAppFrame(390, 844);
-        const visualApp = visualFrame.contentWindow;
-        try{
-          visualApp.eval("protectedAccessUnlocked = true");
-          visualApp.document.getElementById("welcomeScreen")?.remove();
-          visualApp.switchTab("dashboard");
-          visualApp.setDashboardSubtab("seedlings");
-          await settleVisualApp(visualApp);
-          const bed = visualApp.document.querySelector(".dashboardSeedlingStatusBed.is-selected");
-          assert(bed, "選択中の二次定植ベッドがありません");
-          visualApp.setDashboardSeedlingStatusBed(bed.dataset.dashboardSeedlingBed);
-          await settleVisualApp(visualApp);
-          const detail = visualApp.document.getElementById("dashboardSeedlingStatusDetail");
-          const tabBar = visualApp.document.querySelector(".tabBar");
-          const bedRect = bed.getBoundingClientRect();
-          const detailRect = detail.getBoundingClientRect();
-          const tabBarRect = tabBar.getBoundingClientRect();
-          const overlaps = bedRect.left < detailRect.right
-            && bedRect.right > detailRect.left
-            && bedRect.top < detailRect.bottom
-            && bedRect.bottom > detailRect.top;
-          assert(!detail.hidden, "二次定植の浮動詳細が開きません");
-          assert(!overlaps, "浮動詳細が選択中のベッドを隠しています");
-          assert(bedRect.top >= 0 && bedRect.bottom <= tabBarRect.top,
-            "選択中のベッドが画面内に収まっていません");
-          assert(detailRect.top >= 0 && detailRect.bottom <= tabBarRect.top,
-            "浮動詳細が画面内に収まっていません");
-        }finally{
-          visualFrame.remove();
+        for(const width of [320, 390]){
+          const visualFrame = await loadVisualAppFrame(width, 844);
+          const visualApp = visualFrame.contentWindow;
+          try{
+            visualApp.eval("protectedAccessUnlocked = true");
+            visualApp.document.getElementById("welcomeScreen")?.remove();
+            visualApp.switchTab("dashboard");
+            visualApp.setDashboardSubtab("seedlings");
+            await settleVisualApp(visualApp);
+            const building = visualApp.eval("dashboardSeedlingStatusBuilding");
+            const selectedBed = visualApp.eval("dashboardSeedlingStatusSelectedBed");
+            const palletKey = `${building}-${selectedBed}-1`;
+            replaceAppHistory(visualApp, [], [{
+              palletNumberingVersion: 2,
+              eventId: 20000000000013,
+              plantingDate: "2020-08-01",
+              sourceAllocations: [{
+                harvestRecordId: 20000000000003,
+                palletKeys: [palletKey]
+              }],
+              plantingPalletKeys: [palletKey],
+              plantingCountsByPallet: { [palletKey]: 16 },
+              actualSeedlingTrayCount: 1,
+              actualTakenSeedlingCount: 120,
+              actualPlantedSeedlingCount: 16,
+              actualSeedlingCarryoverMode: "loss",
+              actualSeedlingLossRate: "0",
+              qualityMemo: null,
+              detailsUnknown: false
+            }]);
+            visualApp.eval("dashboardSeedlingStatusModelCache = null; renderDashboardSeedlingStatus();");
+            const bed = visualApp.document.querySelector(".dashboardSeedlingStatusBed.is-selected");
+            assert(bed, `${width}px幅で選択中の二次定植ベッドがありません`);
+            visualApp.setDashboardSeedlingStatusBed(bed.dataset.dashboardSeedlingBed);
+            await settleVisualApp(visualApp);
+            const detail = visualApp.document.getElementById("dashboardSeedlingStatusDetail");
+            const tabBar = visualApp.document.querySelector(".tabBar");
+            const bedRect = bed.getBoundingClientRect();
+            const detailRect = detail.getBoundingClientRect();
+            const tabBarRect = tabBar.getBoundingClientRect();
+            const recordLink = detail.querySelector(".dashboardSeedlingStatusRecordLink");
+            const lotItem = recordLink?.closest(".dashboardSeedlingStatusLotItem");
+            const recordLinkRect = recordLink?.getBoundingClientRect();
+            const lotItemRect = lotItem?.getBoundingClientRect();
+            const overlaps = bedRect.left < detailRect.right
+              && bedRect.right > detailRect.left
+              && bedRect.top < detailRect.bottom
+              && bedRect.bottom > detailRect.top;
+            assert(!detail.hidden, `${width}px幅で二次定植の浮動詳細が開きません`);
+            assert(!overlaps, `${width}px幅で浮動詳細が選択中のベッドを隠しています`);
+            assert(bedRect.top >= 0 && bedRect.bottom <= tabBarRect.top,
+              `${width}px幅で選択中のベッドが画面内に収まっていません`);
+            assert(detailRect.top >= 0 && detailRect.bottom <= tabBarRect.top,
+              `${width}px幅で浮動詳細が画面内に収まっていません`);
+            assert(recordLink && lotItem, `${width}px幅で記録へボタンが表示されません`);
+            assert(recordLinkRect.height >= 36, `${width}px幅で記録へボタンの押せる高さが不足しています`);
+            assert(recordLinkRect.left >= lotItemRect.left && recordLinkRect.right <= lotItemRect.right,
+              `${width}px幅で記録へボタンが定植情報からはみ出しています`);
+            assert(lotItem.scrollWidth <= lotItem.clientWidth,
+              `${width}px幅で二次定植の詳細が横にはみ出しています`);
+          }finally{
+            visualFrame.remove();
+          }
         }
       });
 
