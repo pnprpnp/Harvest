@@ -2361,16 +2361,20 @@
             plantingDate: "2026-08-01",
             sourceAllocations: [{
               harvestRecordId: 20000000000003,
-              palletKeys: ["3-B-4", "3-B-5"]
+              palletKeys: ["3-B-3", "3-B-4", "3-B-5"]
             }],
-            plantingPalletKeys: ["3-B-4", "3-B-5"],
-            plantingCountsByPallet: { "3-B-4": 16, "3-B-5": 20 },
+            plantingPalletKeys: ["3-B-3", "3-B-4", "3-B-5"],
+            plantingCountsByPallet: { "3-B-3": 16, "3-B-4": 16, "3-B-5": 20 },
             actualSeedlingTrayCount: 1,
             actualTakenSeedlingCount: 120,
-            actualPlantedSeedlingCount: 36,
+            actualPlantedSeedlingCount: 52,
             actualSeedlingCarryoverMode: "loss",
             actualSeedlingLossRate: "0",
-            qualityMemo: null,
+            qualityMemo: { tags: ["medium"], other: "" },
+            qualityMemoByPallet: {
+              "3-B-4": { tags: ["large"], other: "" },
+              "3-B-5": { tags: ["small"], other: "" }
+            },
             detailsUnknown: false
           }, {
             palletNumberingVersion: 2,
@@ -2398,51 +2402,64 @@
           assertDeepEqual(lots, [
             { plantingCountText: "株数未記録", palletNumbers: [6] },
             { plantingCountText: "20植え", palletNumbers: [5] },
-            { plantingCountText: "16植え", palletNumbers: [4] }
+            { plantingCountText: "16植え", palletNumbers: [3, 4] }
           ], "二次定植が植え付け数ごとの表示に分かれません");
-          const lotHtml = app.eval(`buildDashboardSeedlingStatusModel(
-            new Date(2026, 7, 10)
-          ).bedLots.get("3-B").filter(lot => !lot.isUnplanted).map(
-            (lot, index) => getDashboardSeedlingStatusLotHtml(lot, index, false)
-          ).join("")`);
-          assert(lotHtml.includes(">16植え<"), "二次定植に16植えバッジが表示されません");
-          assert(lotHtml.includes(">20植え<"), "二次定植に20植えバッジが表示されません");
-          assert(lotHtml.includes(">株数未記録<"), "二次定植に未記録バッジが表示されません");
-          assert(!lotHtml.includes("番号 "), "二次定植の詳細にパレット番号が残っています");
-          assert(lotHtml.includes(">1パレット<"), "二次定植の詳細にパレット数が表示されません");
-          assert(!lotHtml.includes(">選択中<"), "二次定植の詳細に選択中ラベルが残っています");
-          const recordLinkState = comparable(app.eval(`(() => {
+          const detailState = comparable(app.eval(`(() => {
             const mount = document.createElement("div");
             const lots = buildDashboardSeedlingStatusModel(new Date(2026, 7, 10))
               .bedLots.get("3-B");
-            mount.innerHTML = lots.map(
-              (lot, index) => getDashboardSeedlingStatusLotHtml(lot, index, false)
-            ).join("");
+            const groups = getDashboardSeedlingStatusDateGroups(lots);
+            mount.innerHTML = groups.map(group => (
+              getDashboardSeedlingStatusDateGroupHtml(group, null)
+            )).join("");
             const links = [...mount.querySelectorAll(".dashboardSeedlingStatusRecordLink")];
+            const plantedGroups = [...mount.querySelectorAll(
+              ".dashboardSeedlingStatusDateGroup:not(.is-unplanted)"
+            )];
+            const augustGroup = plantedGroups.find(group => (
+              group.querySelector(".dashboardSeedlingStatusRecordLink")?.dataset.uiArg === "2026-08-01"
+            ));
             return {
+              plantingCounts: [...mount.querySelectorAll(".dashboardSeedlingStatusPlantingCount")]
+                .map(item => item.textContent.trim().replace(/\\s+/g, " ")),
+              palletCounts: [...mount.querySelectorAll(".dashboardSeedlingStatusCount")]
+                .map(item => item.textContent.trim()),
+              plantedGroupCount: plantedGroups.length,
+              augustAgeCount: augustGroup?.querySelectorAll(".dashboardSeedlingStatusAge").length || 0,
+              augustCountRows: augustGroup?.querySelectorAll(".dashboardSeedlingStatusLot").length || 0,
+              augustQuality: [...(augustGroup?.querySelectorAll(".dashboardSeedlingStatusQuality") || [])]
+                .map(item => item.textContent.trim()),
               dates: links.map(link => link.dataset.uiArg),
               labels: links.map(link => link.textContent.trim().replace(/\\s+/g, " ")),
               nestedButtonCount: mount.querySelectorAll("button button").length,
               unplantedHasLink: !!mount.querySelector(
-                ".dashboardSeedlingStatusLotItem.is-unplanted .dashboardSeedlingStatusRecordLink"
-              )
+                ".dashboardSeedlingStatusDateGroup.is-unplanted .dashboardSeedlingStatusRecordLink"
+              ),
+              hasPalletNumbers: mount.textContent.includes("番号 "),
+              hasSelectedLabel: mount.textContent.includes("選択中")
             };
           })()`));
-          assertDeepEqual(recordLinkState, {
-            dates: ["2026-06-30", "2026-08-01", "2026-08-01"],
-            labels: ["記録へ ›", "記録へ ›", "記録へ ›"],
+          assertDeepEqual(detailState, {
+            plantingCounts: ["株数未記録", "16植え", "20植え", "未定植"],
+            palletCounts: ["1パレット", "2パレット", "1パレット", "74パレット"],
+            plantedGroupCount: 2,
+            augustAgeCount: 1,
+            augustCountRows: 2,
+            augustQuality: ["大きい 1", "中 1", "小さい 1"],
+            dates: ["2026-06-30", "2026-08-01"],
+            labels: ["記録へ ›", "記録へ ›"],
             nestedButtonCount: 0,
-            unplantedHasLink: false
-          }, "二次定植の日付から記録へ移動するボタンが正しく表示されません");
+            unplantedHasLink: false,
+            hasPalletNumbers: false,
+            hasSelectedLabel: false
+          }, "二次定植が日付ごとのカードと植え付け数・品質の内訳で表示されません");
           const ageStyle = comparable(app.eval(`(() => {
             const mount = document.createElement("div");
             mount.className = "dashboardSeedlingStatusPopover";
-            mount.innerHTML = getDashboardSeedlingStatusLotHtml(
-              buildDashboardSeedlingStatusModel(new Date(2026, 7, 10))
-                .bedLots.get("3-B").find(lot => !lot.isUnplanted),
-              0,
-              false
-            );
+            const lots = buildDashboardSeedlingStatusModel(new Date(2026, 7, 10))
+              .bedLots.get("3-B");
+            const group = getDashboardSeedlingStatusDateGroups(lots).find(item => !item.isUnplanted);
+            mount.innerHTML = getDashboardSeedlingStatusDateGroupHtml(group, null);
             document.body.appendChild(mount);
             const style = getComputedStyle(mount.querySelector(".dashboardSeedlingStatusAge"));
             const result = {
@@ -2534,8 +2551,8 @@
             selections: [
               { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 },
               { index: 1, plantingCountText: "20植え", selectedPalletCount: 1, selectedCardCount: 1 },
-              { index: 2, plantingCountText: "16植え", selectedPalletCount: 1, selectedCardCount: 1 },
-              { index: 3, plantingCountText: "未定植", selectedPalletCount: 75, selectedCardCount: 1 },
+              { index: 2, plantingCountText: "16植え", selectedPalletCount: 2, selectedCardCount: 1 },
+              { index: 3, plantingCountText: "未定植", selectedPalletCount: 74, selectedCardCount: 1 },
               { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 }
             ],
             openState: {
@@ -2550,7 +2567,7 @@
                 hasSelectedLabel: false,
                 selectedOpacity: "1",
                 selectedFilter: "none",
-                selectedBorderColor: "rgb(187, 247, 208)",
+                selectedBorderColor: "rgb(226, 232, 240)",
                 selectedBoxShadow: "none",
                 unselectedOpacity: "0.38"
               }
@@ -2597,30 +2614,36 @@
         }, "二次定植の日付から該当日の記録一覧へ移動できません");
       });
 
-      await runTest("二次定植の苗サイズを同系色の明暗で表示する", () => {
+      await runTest("二次定植を苗植え記録と同じ植え付け数の色で表示する", () => {
         const colors = comparable(app.eval(`(() => {
           const previousTheme = document.documentElement.getAttribute("data-theme");
           const fixture = document.createElement("div");
           fixture.innerHTML = [
-            '<span class="dashboardSeedlingStatusMapGuideSwatch is-small"></span>',
-            '<span class="dashboardSeedlingStatusMapGuideSwatch"></span>',
-            '<span class="dashboardSeedlingStatusMapGuideSwatch is-large"></span>',
-            '<span class="dashboardSeedlingStatusQuality is-small"></span>',
-            '<span class="dashboardSeedlingStatusQuality"></span>',
-            '<span class="dashboardSeedlingStatusQuality is-large"></span>'
+            '<span class="dashboardSeedlingStatusMapGuideSwatch is-planting-count-12"></span>',
+            '<span class="dashboardSeedlingStatusMapGuideSwatch is-planting-count-16"></span>',
+            '<span class="dashboardSeedlingStatusMapGuideSwatch is-planting-count-20"></span>',
+            '<span class="dashboardSeedlingBedMapCell is-planting-count-12"></span>',
+            '<span class="dashboardSeedlingBedMapCell is-planting-count-16"></span>',
+            '<span class="dashboardSeedlingBedMapCell is-planting-count-20"></span>',
+            '<span class="recordLegendSwatch count12"></span>',
+            '<span class="recordLegendSwatch count16"></span>',
+            '<span class="recordLegendSwatch count20"></span>'
           ].join("");
           document.body.appendChild(fixture);
-          const readColors = () => ({
-            fills: [...fixture.querySelectorAll(".dashboardSeedlingStatusMapGuideSwatch")]
-              .map(item => getComputedStyle(item).backgroundColor),
-            texts: [...fixture.querySelectorAll(".dashboardSeedlingStatusQuality")]
-              .map(item => getComputedStyle(item).color)
-          });
+          const readColors = selector => [...fixture.querySelectorAll(selector)]
+            .map(item => getComputedStyle(item).backgroundColor);
           try{
             document.documentElement.setAttribute("data-theme", "light");
-            const light = readColors();
+            const light = {
+              guide: readColors(".dashboardSeedlingStatusMapGuideSwatch"),
+              map: readColors(".dashboardSeedlingBedMapCell"),
+              record: readColors(".recordLegendSwatch")
+            };
             document.documentElement.setAttribute("data-theme", "dark");
-            const dark = readColors();
+            const dark = {
+              guide: readColors(".dashboardSeedlingStatusMapGuideSwatch"),
+              map: readColors(".dashboardSeedlingBedMapCell")
+            };
             return { light, dark };
           }finally{
             fixture.remove();
@@ -2630,14 +2653,15 @@
         })()`));
         assertDeepEqual(colors, {
           light: {
-            fills: ["rgb(187, 247, 208)", "rgb(74, 222, 128)", "rgb(21, 128, 61)"],
-            texts: ["rgb(63, 143, 91)", "rgb(22, 101, 52)", "rgb(20, 83, 45)"]
+            guide: ["rgb(37, 99, 235)", "rgb(15, 118, 110)", "rgb(124, 58, 237)"],
+            map: ["rgb(37, 99, 235)", "rgb(15, 118, 110)", "rgb(124, 58, 237)"],
+            record: ["rgb(37, 99, 235)", "rgb(15, 118, 110)", "rgb(124, 58, 237)"]
           },
           dark: {
-            fills: ["rgb(134, 239, 172)", "rgb(34, 197, 94)", "rgb(21, 128, 61)"],
-            texts: ["rgb(187, 247, 208)", "rgb(134, 239, 172)", "rgb(74, 222, 128)"]
+            guide: ["rgb(37, 99, 235)", "rgb(15, 118, 110)", "rgb(124, 58, 237)"],
+            map: ["rgb(37, 99, 235)", "rgb(15, 118, 110)", "rgb(124, 58, 237)"]
           }
-        }, "二次定植の小・中・大が同系色の明暗になっていません");
+        }, "二次定植と苗植え記録の12・16・20植えの色が一致していません");
       });
 
       await runTest("二次定植の浮動詳細を選択ベッドと重ねず画面内に表示する", async () => {
@@ -2682,7 +2706,7 @@
             const detailRect = detail.getBoundingClientRect();
             const tabBarRect = tabBar.getBoundingClientRect();
             const recordLink = detail.querySelector(".dashboardSeedlingStatusRecordLink");
-            const lotItem = recordLink?.closest(".dashboardSeedlingStatusLotItem");
+            const lotItem = recordLink?.closest(".dashboardSeedlingStatusDateGroup");
             const recordLinkRect = recordLink?.getBoundingClientRect();
             const lotItemRect = lotItem?.getBoundingClientRect();
             const overlaps = bedRect.left < detailRect.right
@@ -13699,18 +13723,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "82c4e6b8", elements: 2206, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "6aed41d7", elements: 2275, visible: 670, viewport: "390x844" },
-          cssFocus: { hash: "e1f05a14", elements: 2275, visible: 670, viewport: "390x844" },
-          mobileRecord: { hash: "dc61a95b", elements: 2210, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "1eaffdd7", elements: 2227, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "ac7ef049", elements: 2310, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "42e48a39", elements: 2325, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "a6861a86", elements: 2325, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "1bed911d", elements: 2325, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "6ad49c1a", elements: 2369, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "6804c0bc", elements: 2369, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "bfe9c662", elements: 2369, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "bd7c5dcf", elements: 2202, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "2e1dd668", elements: 2271, visible: 670, viewport: "390x844" },
+          cssFocus: { hash: "70d30e3b", elements: 2271, visible: 670, viewport: "390x844" },
+          mobileRecord: { hash: "c9c4dcb8", elements: 2206, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "e1e8b360", elements: 2223, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "325b83ee", elements: 2306, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "d1a1da80", elements: 2321, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "e54d027b", elements: 2321, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "30e58fe0", elements: 2321, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "499d94b9", elements: 2365, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "36acc29f", elements: 2365, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "442906c1", elements: 2365, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

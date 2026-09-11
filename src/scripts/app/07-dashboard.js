@@ -2709,6 +2709,25 @@ function getDashboardSeedlingQualityClass(value){
   return "";
 }
 
+function getDashboardSeedlingPlantingCountClass(value){
+  const plantingCount = Number(value);
+  return ALLOWED_YIELDS.includes(plantingCount)
+    ? `is-planting-count-${plantingCount}`
+    : "is-planting-count-unrecorded";
+}
+
+function getDashboardSeedlingQualitySortOrder(qualityClass){
+  const order = {
+    "is-large": 0,
+    "": 1,
+    "is-small": 2,
+    "is-problem": 3,
+    "is-mixed": 4,
+    "is-unknown": 5
+  };
+  return Object.prototype.hasOwnProperty.call(order, qualityClass) ? order[qualityClass] : 6;
+}
+
 function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
   const referenceDay = startOfLocalDay(referenceDate);
   const currentByPallet = getCurrentPlantingEventByPallet(referenceDay);
@@ -2729,21 +2748,31 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
     const plantingCountText = normalizedPlantingCount === null
       ? "株数未記録"
       : `${normalizedPlantingCount}植え`;
-    const lotKey = `${plantingDateText}\n${qualityText}\n${plantingCountText}`;
+    const qualityClass = getDashboardSeedlingQualityClass(qualityMemo);
+    const lotKey = `${plantingDateText}\n${plantingCountText}`;
     const lots = bedLotMaps.get(bedKey);
     if(!lots.has(lotKey)){
       lots.set(lotKey, {
         plantingDate: status.plantingDate,
         plantingCount: normalizedPlantingCount,
         plantingCountText,
-        qualityText,
-        qualityClass: getDashboardSeedlingQualityClass(qualityMemo),
+        plantingCountClass: getDashboardSeedlingPlantingCountClass(normalizedPlantingCount),
+        qualityGroupsByKey: new Map(),
         palletCount: 0,
         firstPalletNumber: pallet.number,
         palletNumbers: []
       });
     }
     const lot = lots.get(lotKey);
+    const qualityKey = `${qualityClass}\n${qualityText}`;
+    if(!lot.qualityGroupsByKey.has(qualityKey)){
+      lot.qualityGroupsByKey.set(qualityKey, {
+        qualityText,
+        qualityClass,
+        palletCount: 0
+      });
+    }
+    lot.qualityGroupsByKey.get(qualityKey).palletCount += 1;
     lot.palletCount += 1;
     lot.firstPalletNumber = Math.min(lot.firstPalletNumber, pallet.number);
     lot.palletNumbers.push(pallet.number);
@@ -2763,8 +2792,9 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
       const lots = bedLotMaps.get(bedKey);
       lots.set("unplanted", {
         plantingDate: null,
-        qualityText: "未定植",
-        qualityClass: "is-unplanted",
+        plantingCountText: "未定植",
+        plantingCountClass: "is-unplanted",
+        qualityGroups: [],
         palletCount: unplantedNumbers.length,
         firstPalletNumber: unplantedNumbers[0],
         palletNumbers: unplantedNumbers,
@@ -2776,12 +2806,22 @@ function buildDashboardSeedlingStatusModel(referenceDate = new Date()){
   const bedLots = new Map();
   bedLotMaps.forEach((lots, bedKey) => {
     bedLots.set(bedKey, [...lots.values()]
-      .map(lot => ({
-        ...lot,
-        ageDays: lot.isUnplanted
-          ? null
-          : Math.max(0, getLocalDayDiff(lot.plantingDate, referenceDay))
-      }))
+      .map(lot => {
+        const { qualityGroupsByKey, ...statusLot } = lot;
+        return {
+          ...statusLot,
+          qualityGroups: lot.isUnplanted
+            ? []
+            : [...qualityGroupsByKey.values()].sort((left, right) => (
+              getDashboardSeedlingQualitySortOrder(left.qualityClass)
+              - getDashboardSeedlingQualitySortOrder(right.qualityClass)
+              || left.qualityText.localeCompare(right.qualityText, "ja")
+            )),
+          ageDays: lot.isUnplanted
+            ? null
+            : Math.max(0, getLocalDayDiff(lot.plantingDate, referenceDay))
+        };
+      })
       .sort((left, right) => (
         right.firstPalletNumber - left.firstPalletNumber
         || (right.plantingDate?.getTime?.() || 0) - (left.plantingDate?.getTime?.() || 0)
@@ -2804,12 +2844,13 @@ function getDashboardSeedlingBedMapCellHtml(model, building, bed, number, sectio
 
   const qualityMemo = getPlantingQualityMemoForPallet(status.event, getPalletKey(building, bed, number));
   const qualityText = formatPlantingQualityMemo(qualityMemo);
-  const qualityClass = getDashboardSeedlingQualityClass(qualityMemo);
   const plantingCount = Number(status.event?.plantingCountsByPallet?.[getPalletKey(building, bed, number)]);
-  const plantingCountText = ALLOWED_YIELDS.includes(plantingCount) ? `${plantingCount}植え` : "株数未記録";
+  const normalizedPlantingCount = ALLOWED_YIELDS.includes(plantingCount) ? plantingCount : null;
+  const plantingCountText = normalizedPlantingCount === null ? "株数未記録" : `${normalizedPlantingCount}植え`;
+  const plantingCountClass = getDashboardSeedlingPlantingCountClass(normalizedPlantingCount);
   const ageDays = Math.max(0, getLocalDayDiff(status.plantingDate, model.referenceDate));
   const label = `${number}番 ${qualityText} ${plantingCountText} ${ageDays}日経過`;
-  return `<span class="dashboardSeedlingBedMapCell ${qualityClass}${sectionStart ? " is-section-start" : ""}" data-dashboard-seedling-pallet-number="${number}" title="${escapeHtml(label)}"></span>`;
+  return `<span class="dashboardSeedlingBedMapCell ${plantingCountClass}${sectionStart ? " is-section-start" : ""}" data-dashboard-seedling-pallet-number="${number}" title="${escapeHtml(label)}"></span>`;
 }
 
 function getDashboardSeedlingBedMapHtml(model, building, bed){
@@ -2851,17 +2892,18 @@ function getDashboardSeedlingBedAgeSummary(lots){
 }
 
 function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
-  const ageText = lot.isUnplanted ? "" : `${lot.ageDays}日経過`;
-  const plantingDateText = lot.isUnplanted ? "" : formatDateOnlyString(lot.plantingDate);
+  const qualityGroups = Array.isArray(lot.qualityGroups) ? lot.qualityGroups : [];
+  const qualityText = qualityGroups.map(group => (
+    `${group.qualityText} ${group.palletCount}`
+  )).join("、");
   const ariaLabel = [
-    lot.qualityText,
-    lot.isUnplanted ? "" : lot.plantingCountText,
-    ageText,
+    lot.plantingCountText,
+    qualityText ? `品質 ${qualityText}` : "",
     `${lot.palletCount}パレット`,
     "パレット位置を表示"
   ].filter(Boolean).join("、");
   return `
-    <div class="dashboardSeedlingStatusLotItem${lot.isUnplanted ? " is-unplanted" : " has-record-link"}">
+    <div class="dashboardSeedlingStatusLotItem${lot.isUnplanted ? " is-unplanted" : ""}">
       <button type="button"
         class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}${isSelected ? " is-selected" : ""}"
         data-dashboard-seedling-lot-index="${index}"
@@ -2869,24 +2911,83 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
         aria-pressed="${isSelected ? "true" : "false"}"
         aria-label="${escapeHtml(ariaLabel)}">
         <span class="dashboardSeedlingStatusLotHeader">
-          <span class="dashboardSeedlingStatusQuality ${lot.qualityClass}">${escapeHtml(lot.qualityText)}</span>
-          <span class="dashboardSeedlingStatusLotBadges">
-            ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCount${lot.plantingCount === null ? " is-unrecorded" : ""}">${escapeHtml(lot.plantingCountText)}</span>`}
+          <span class="dashboardSeedlingStatusPlantingCount ${lot.plantingCountClass}">
+            ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCountSwatch" aria-hidden="true"></span>`}
+            ${escapeHtml(lot.plantingCountText)}
           </span>
+          <span class="dashboardSeedlingStatusCount">${lot.palletCount}パレット</span>
         </span>
-        ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusAge">${lot.ageDays}日経過</span>`}
-        <span class="dashboardSeedlingStatusCount">
-          <span>${lot.palletCount}パレット</span>
-        </span>
+        ${lot.isUnplanted ? "" : `
+          <span class="dashboardSeedlingStatusQualitySummary">
+            <span class="dashboardSeedlingStatusQualityLabel">品質</span>
+            ${qualityGroups.map(group => `
+              <span class="dashboardSeedlingStatusQuality ${group.qualityClass}">${escapeHtml(group.qualityText)} ${group.palletCount}</span>
+            `).join("")}
+          </span>
+        `}
       </button>
-      ${lot.isUnplanted ? "" : `
+    </div>
+  `;
+}
+
+function getDashboardSeedlingStatusDateGroups(lots){
+  const groups = [];
+  const groupsByDate = new Map();
+  (Array.isArray(lots) ? lots : []).forEach((lot, index) => {
+    if(lot.isUnplanted){
+      groups.push({ isUnplanted: true, entries: [{ lot, index }] });
+      return;
+    }
+    const plantingDateText = formatDateOnlyString(lot.plantingDate);
+    if(!groupsByDate.has(plantingDateText)){
+      const group = {
+        plantingDateText,
+        ageDays: lot.ageDays,
+        entries: []
+      };
+      groupsByDate.set(plantingDateText, group);
+      groups.push(group);
+    }
+    groupsByDate.get(plantingDateText).entries.push({ lot, index });
+  });
+  const plantingCountOrder = new Map([12, 16, 20].map((count, index) => [count, index]));
+  groups.forEach(group => {
+    if(group.isUnplanted) return;
+    group.entries.sort((left, right) => (
+      (plantingCountOrder.get(left.lot.plantingCount) ?? ALLOWED_YIELDS.length)
+      - (plantingCountOrder.get(right.lot.plantingCount) ?? ALLOWED_YIELDS.length)
+    ));
+  });
+  return groups;
+}
+
+function getDashboardSeedlingStatusDateGroupHtml(group, selectedIndex){
+  if(group.isUnplanted){
+    const entry = group.entries[0];
+    return `<section class="dashboardSeedlingStatusDateGroup is-unplanted">${getDashboardSeedlingStatusLotHtml(
+      entry.lot,
+      entry.index,
+      selectedIndex === entry.index
+    )}</section>`;
+  }
+  return `
+    <section class="dashboardSeedlingStatusDateGroup">
+      <div class="dashboardSeedlingStatusDateHeader">
+        <span class="dashboardSeedlingStatusAge">${group.ageDays}日経過</span>
         <button type="button" class="dashboardSeedlingStatusRecordLink"
-          data-ui-click="openRecordHistoryFromDashboardSeedlingStatus" data-ui-arg="${escapeHtml(plantingDateText)}"
-          aria-label="${escapeHtml(plantingDateText)}の記録へ移動">
+          data-ui-click="openRecordHistoryFromDashboardSeedlingStatus" data-ui-arg="${escapeHtml(group.plantingDateText)}"
+          aria-label="${escapeHtml(group.plantingDateText)}の記録へ移動">
           記録へ <span aria-hidden="true">›</span>
         </button>
-      `}
-    </div>
+      </div>
+      <div class="dashboardSeedlingStatusCountGroups">
+        ${group.entries.map(entry => getDashboardSeedlingStatusLotHtml(
+          entry.lot,
+          entry.index,
+          selectedIndex === entry.index
+        )).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -3071,10 +3172,8 @@ function renderDashboardSeedlingStatusDetail(model, building){
         data-ui-click="closeDashboardSeedlingStatusDetail" aria-label="詳細を閉じる">×</button>
     </div>
     <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
-      ${lots.map((lot, index) => getDashboardSeedlingStatusLotHtml(
-        lot,
-        index,
-        dashboardSeedlingStatusSelectedLotIndex === index
+      ${getDashboardSeedlingStatusDateGroups(lots).map(group => (
+        getDashboardSeedlingStatusDateGroupHtml(group, dashboardSeedlingStatusSelectedLotIndex)
       )).join("")}
     </div>
   `;
