@@ -2655,8 +2655,88 @@
         assertDeepEqual(routeState, {
           opened: true,
           switchedTab: "record",
-          historyOptions: { date: "2026-08-01", scroll: true }
+          historyOptions: { date: "2026-08-01", scroll: true, returnTo: "dashboard-seedlings" }
         }, "二次定植の日付から該当日の記録一覧へ移動できません");
+      });
+
+      await runTest("二次定植から開いた記録は集計へ戻し、タブ移動時に一覧を閉じる", () => {
+        const previous = comparable(app.eval(`({
+          tab: activeAppTab,
+          dashboardSubtab: dashboardFilter.dashboardSubtab,
+          view: recordViewMode,
+          returnContext: recordHistoryReturnContext
+        })`));
+        app.eval("protectedAccessUnlocked = true");
+        try{
+          app.switchTab("dashboard");
+          app.setDashboardSubtab("seedlings");
+          assertEqual(
+            app.eval('openRecordHistoryFromDashboardSeedlingStatus("2026-08-01")'),
+            true,
+            "二次定植から記録一覧を開けません"
+          );
+          const linkedState = comparable(app.eval(`({
+            activeTab: activeAppTab,
+            view: recordViewMode,
+            returnContext: recordHistoryReturnContext,
+            label: document.getElementById("recordHistoryToggleLabel").textContent,
+            ariaLabel: document.getElementById("recordHistoryOpenBtn").getAttribute("aria-label"),
+            historyVisible: !document.getElementById("recordHistoryCard").hidden
+          })`));
+          app.toggleRecordHistoryView();
+          const returnedState = comparable(app.eval(`({
+            activeTab: activeAppTab,
+            dashboardSubtab: dashboardFilter.dashboardSubtab,
+            view: recordViewMode,
+            returnContext: recordHistoryReturnContext,
+            label: document.getElementById("recordHistoryToggleLabel").textContent,
+            historyHidden: document.getElementById("recordHistoryCard").hidden
+          })`));
+
+          app.eval('openRecordHistoryFromDashboardSeedlingStatus("2026-08-01")');
+          app.switchTab("monitor");
+          const tabLeaveState = comparable(app.eval(`({
+            activeTab: activeAppTab,
+            view: recordViewMode,
+            returnContext: recordHistoryReturnContext,
+            label: document.getElementById("recordHistoryToggleLabel").textContent,
+            historyHidden: document.getElementById("recordHistoryCard").hidden,
+            historyBusy: document.getElementById("recordHistoryCard").hasAttribute("aria-busy")
+          })`));
+
+          assertDeepEqual(linkedState, {
+            activeTab: "record",
+            view: "history",
+            returnContext: "dashboard-seedlings",
+            label: "集計へ戻る",
+            ariaLabel: "集計の二次定植へ戻る",
+            historyVisible: true
+          }, "二次定植から開いた記録一覧の戻り先が集計になっていません");
+          assertDeepEqual(returnedState, {
+            activeTab: "dashboard",
+            dashboardSubtab: "seedlings",
+            view: "entry",
+            returnContext: null,
+            label: "記録一覧",
+            historyHidden: true
+          }, "集計へ戻る操作で二次定植へ戻れません");
+          assertDeepEqual(tabLeaveState, {
+            activeTab: "monitor",
+            view: "entry",
+            returnContext: null,
+            label: "記録一覧",
+            historyHidden: true,
+            historyBusy: false
+          }, "別タブへ移動した後も記録一覧が開いたままです");
+        }finally{
+          app.switchTab(previous.tab || "forecast");
+          app.setDashboardSubtab(previous.dashboardSubtab);
+          app.eval(`
+            recordViewMode = ${JSON.stringify(previous.view)};
+            recordHistoryReturnContext = ${JSON.stringify(previous.returnContext)};
+            refreshRecordModeUi();
+          `);
+        }
       });
 
       await runTest("二次定植を苗植え記録と同じ植え付け数の色で表示する", () => {

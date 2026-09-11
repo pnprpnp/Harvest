@@ -332,6 +332,7 @@ let recordPartialHarvestSelectionMode = false;
 let recordPartialHarvestDraft = { entries: [], bedKeys: [], cases: "", editingEntryIndex: -1 };
 let recordPartialHarvestDraftSnapshot = null;
 let recordViewMode = "entry";
+let recordHistoryReturnContext = null;
 let recordPlantingCountPreset = 20;
 let recordPlantingCountsByPallet = {};
 let recordPlantingFlowEnabled = false;
@@ -3890,6 +3891,10 @@ function preserveStateBeforeMainTabSwitch(previousTab, nextTab){
   }else if(previousTab === "record" && nextTab !== "record" && editingHarvestRecordId){
     editingHarvestSelectionKeys = [...harvestFillKeys];
     restoreForecastSelectionState({ render: false });
+  }
+  if(previousTab === "record" && nextTab !== "record"
+    && typeof closeRecordHistoryForMainTabSwitch === "function"){
+    closeRecordHistoryForMainTabSwitch();
   }
 }
 

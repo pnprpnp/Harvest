@@ -2999,7 +2999,7 @@ function openRecordHistoryFromDashboardSeedlingStatus(dateString){
     return false;
   }
   if(!switchTab("record")) return false;
-  showRecordHistoryView({ date, scroll:true });
+  showRecordHistoryView({ date, scroll:true, returnTo:"dashboard-seedlings" });
   return true;
 }
 

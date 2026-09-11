@@ -2744,10 +2744,39 @@ function renderRecordHistoryToggle(){
   const label = document.getElementById("recordHistoryToggleLabel");
   if(!button || !label) return;
   const isHistoryOpen = recordViewMode === "history";
-  label.textContent = isHistoryOpen ? "入力へ戻る" : "記録一覧";
+  const returnsToDashboard = isHistoryOpen
+    && recordHistoryReturnContext === "dashboard-seedlings";
+  label.textContent = isHistoryOpen
+    ? (returnsToDashboard ? "集計へ戻る" : "入力へ戻る")
+    : "記録一覧";
   button.classList.toggle("is-history-open", isHistoryOpen);
-  button.setAttribute("aria-label", isHistoryOpen ? "記録入力へ戻る" : "記録一覧を開く");
+  button.setAttribute(
+    "aria-label",
+    isHistoryOpen
+      ? (returnsToDashboard ? "集計の二次定植へ戻る" : "記録入力へ戻る")
+      : "記録一覧を開く"
+  );
   button.setAttribute("aria-pressed", String(isHistoryOpen));
+}
+
+function closeRecordHistoryForMainTabSwitch(){
+  if(recordViewMode !== "history" && recordHistoryReturnContext === null) return false;
+  recordHistoryRenderScheduleId++;
+  recordHistoryRenderPending = false;
+  const historyCard = document.getElementById("recordHistoryCard");
+  historyCard?.removeAttribute("aria-busy");
+  historyCard?.querySelectorAll("[data-record-history-date][aria-busy]").forEach(group => (
+    group.removeAttribute("aria-busy")
+  ));
+  recordViewMode = "entry";
+  recordHistoryReturnContext = null;
+  const saveCard = document.getElementById("recordSaveCard");
+  if(saveCard) saveCard.hidden = false;
+  if(historyCard) historyCard.hidden = true;
+  renderRecordHistoryToggle();
+  const loadingState = document.getElementById("mainTabLoadingState");
+  if(loadingState?.dataset.loadingTab === "record") setMainTabLoadingState("record", false);
+  return true;
 }
 
 function finishRecordHistoryListRender(scheduleId){
@@ -2804,11 +2833,21 @@ function scheduleRecordHistoryListRender(options = {}){
 }
 
 function toggleRecordHistoryView(){
-  if(recordViewMode === "history") showRecordEntryView();
-  else showRecordHistoryView();
+  if(recordViewMode !== "history"){
+    showRecordHistoryView();
+    return;
+  }
+  if(recordHistoryReturnContext === "dashboard-seedlings"){
+    switchTab("dashboard");
+    return;
+  }
+  showRecordEntryView();
 }
 
 function showRecordHistoryView(options = {}){
+  if(options && typeof options === "object" && options.returnTo === "dashboard-seedlings"){
+    recordHistoryReturnContext = "dashboard-seedlings";
+  }
   recordViewMode = "history";
   const saveCard = document.getElementById("recordSaveCard");
   const historyCard = document.getElementById("recordHistoryCard");
