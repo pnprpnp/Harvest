@@ -410,7 +410,7 @@ function invalidateDashboardDerivedData(){
   if(typeof closeDashboardSeedlingStatusDetail === "function"){
     closeDashboardSeedlingStatusDetail({ restoreFocus: false });
   }else{
-    dashboardSeedlingStatusSelectedLotIndex = null;
+    dashboardSeedlingStatusSelectedDateIndex = null;
     dashboardSeedlingStatusDetailOpen = false;
     if(dashboardSeedlingStatusDetailPositionFrame){
       cancelAnimationFrame(dashboardSeedlingStatusDetailPositionFrame);
@@ -2891,25 +2891,11 @@ function getDashboardSeedlingBedAgeSummary(lots){
   return `${ages.join("、")}日経過`;
 }
 
-function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
+function getDashboardSeedlingStatusLotHtml(lot){
   const qualityGroups = Array.isArray(lot.qualityGroups) ? lot.qualityGroups : [];
-  const qualityText = qualityGroups.map(group => (
-    `${group.qualityText} ${group.palletCount}`
-  )).join("、");
-  const ariaLabel = [
-    lot.plantingCountText,
-    qualityText ? `品質 ${qualityText}` : "",
-    `${lot.palletCount}パレット`,
-    "パレット位置を表示"
-  ].filter(Boolean).join("、");
   return `
-    <div class="dashboardSeedlingStatusLotItem${lot.isUnplanted ? " is-unplanted" : ""}">
-      <button type="button"
-        class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}${isSelected ? " is-selected" : ""}"
-        data-dashboard-seedling-lot-index="${index}"
-        data-ui-click="setDashboardSeedlingStatusLot" data-ui-number="${index}"
-        aria-pressed="${isSelected ? "true" : "false"}"
-        aria-label="${escapeHtml(ariaLabel)}">
+    <span class="dashboardSeedlingStatusLotItem${lot.isUnplanted ? " is-unplanted" : ""}">
+      <span class="dashboardSeedlingStatusLot${lot.isUnplanted ? " is-unplanted" : ""}">
         <span class="dashboardSeedlingStatusLotHeader">
           <span class="dashboardSeedlingStatusPlantingCount ${lot.plantingCountClass}">
             ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCountSwatch" aria-hidden="true"></span>`}
@@ -2925,8 +2911,8 @@ function getDashboardSeedlingStatusLotHtml(lot, index, isSelected){
             `).join("")}
           </span>
         `}
-      </button>
-    </div>
+      </span>
+    </span>
   `;
 }
 
@@ -2957,37 +2943,53 @@ function getDashboardSeedlingStatusDateGroups(lots){
       (plantingCountOrder.get(left.lot.plantingCount) ?? ALLOWED_YIELDS.length)
       - (plantingCountOrder.get(right.lot.plantingCount) ?? ALLOWED_YIELDS.length)
     ));
+    group.palletNumbers = group.entries.flatMap(entry => entry.lot.palletNumbers);
+    group.palletCount = group.palletNumbers.length;
   });
-  return groups;
+  const plantedGroups = groups
+    .filter(group => !group.isUnplanted)
+    .sort((left, right) => (
+      left.ageDays - right.ageDays
+      || right.plantingDateText.localeCompare(left.plantingDateText)
+    ));
+  plantedGroups.forEach((group, index) => {
+    group.selectionIndex = index;
+  });
+  return [
+    ...plantedGroups,
+    ...groups.filter(group => group.isUnplanted)
+  ];
 }
 
 function getDashboardSeedlingStatusDateGroupHtml(group, selectedIndex){
   if(group.isUnplanted){
     const entry = group.entries[0];
-    return `<section class="dashboardSeedlingStatusDateGroup is-unplanted">${getDashboardSeedlingStatusLotHtml(
-      entry.lot,
-      entry.index,
-      selectedIndex === entry.index
-    )}</section>`;
+    return `<div class="dashboardSeedlingStatusDateGroup is-unplanted">${getDashboardSeedlingStatusLotHtml(
+      entry.lot
+    )}</div>`;
   }
+  const isSelected = selectedIndex === group.selectionIndex;
+  const countSummary = group.entries.map(entry => entry.lot.plantingCountText).join("、");
   return `
-    <section class="dashboardSeedlingStatusDateGroup">
-      <div class="dashboardSeedlingStatusDateHeader">
-        <span class="dashboardSeedlingStatusAge">${group.ageDays}日経過</span>
-        <button type="button" class="dashboardSeedlingStatusRecordLink"
-          data-ui-click="openRecordHistoryFromDashboardSeedlingStatus" data-ui-arg="${escapeHtml(group.plantingDateText)}"
-          aria-label="${escapeHtml(group.plantingDateText)}の記録へ移動">
-          記録へ <span aria-hidden="true">›</span>
-        </button>
-      </div>
-      <div class="dashboardSeedlingStatusCountGroups">
-        ${group.entries.map(entry => getDashboardSeedlingStatusLotHtml(
-          entry.lot,
-          entry.index,
-          selectedIndex === entry.index
-        )).join("")}
-      </div>
-    </section>
+    <div class="dashboardSeedlingStatusDateGroup${isSelected ? " is-selected" : ""}"
+      data-dashboard-seedling-date-index="${group.selectionIndex}">
+      <button type="button" class="dashboardSeedlingStatusDateSelect"
+        data-ui-click="setDashboardSeedlingStatusDate" data-ui-number="${group.selectionIndex}"
+        aria-pressed="${isSelected ? "true" : "false"}"
+        aria-label="${group.ageDays}日経過、${escapeHtml(countSummary)}、合計${group.palletCount}パレットを配置図で表示">
+        <span class="dashboardSeedlingStatusDateHeader">
+          <span class="dashboardSeedlingStatusAge">${group.ageDays}日経過</span>
+        </span>
+        <span class="dashboardSeedlingStatusCountGroups">
+          ${group.entries.map(entry => getDashboardSeedlingStatusLotHtml(entry.lot)).join("")}
+        </span>
+      </button>
+      <button type="button" class="dashboardSeedlingStatusRecordLink"
+        data-ui-click="openRecordHistoryFromDashboardSeedlingStatus" data-ui-arg="${escapeHtml(group.plantingDateText)}"
+        aria-label="${escapeHtml(group.plantingDateText)}の記録へ移動">
+        記録へ <span aria-hidden="true">›</span>
+      </button>
+    </div>
   `;
 }
 
@@ -3002,59 +3004,63 @@ function openRecordHistoryFromDashboardSeedlingStatus(dateString){
   return true;
 }
 
-function clearDashboardSeedlingStatusLotSelectionUi(){
-  document.querySelectorAll("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusLots.has-selection")
-    .forEach(container => container.classList.remove("has-selection"));
-  document.querySelectorAll("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusLot.is-selected")
+function clearDashboardSeedlingStatusDateSelectionUi(){
+  document.querySelectorAll("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusLots.has-date-selection")
+    .forEach(container => container.classList.remove("has-date-selection"));
+  document.querySelectorAll("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusDateGroup.is-selected")
+    .forEach(group => group.classList.remove("is-selected"));
+  document.querySelectorAll("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusDateSelect[aria-pressed='true']")
     .forEach(button => {
-      button.classList.remove("is-selected");
       button.setAttribute("aria-pressed", "false");
     });
-  document.querySelectorAll(".dashboardSeedlingStatusBed.has-lot-selection").forEach(bedButton => {
-    bedButton.classList.remove("has-lot-selection");
+  document.getElementById("dashboardSeedlingStatusBeds")?.classList.remove("has-date-selection");
+  document.querySelectorAll(".dashboardSeedlingStatusBed.has-date-selection").forEach(bedButton => {
+    bedButton.classList.remove("has-date-selection");
     bedButton.querySelectorAll(".dashboardSeedlingBedMapCell").forEach(cell => {
       cell.classList.remove(
-        "is-lot-selected",
-        "is-lot-edge-top",
-        "is-lot-edge-right",
-        "is-lot-edge-bottom",
-        "is-lot-edge-left"
+        "is-date-selected",
+        "is-date-edge-top",
+        "is-date-edge-right",
+        "is-date-edge-bottom",
+        "is-date-edge-left"
       );
     });
   });
 }
 
-function applyDashboardSeedlingStatusLotSelection(lots, bed){
-  clearDashboardSeedlingStatusLotSelectionUi();
-  const selectedIndex = dashboardSeedlingStatusSelectedLotIndex;
-  if(!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= lots.length) return;
+function applyDashboardSeedlingStatusDateSelection(dateGroups, bed){
+  clearDashboardSeedlingStatusDateSelectionUi();
+  const selectedIndex = dashboardSeedlingStatusSelectedDateIndex;
+  const selectedGroup = (Array.isArray(dateGroups) ? dateGroups : [])
+    .find(group => !group.isUnplanted && group.selectionIndex === selectedIndex);
+  if(!selectedGroup) return;
 
-  const selectedLot = lots[selectedIndex];
-  const selectedNumbers = new Set((selectedLot?.palletNumbers || [])
+  const selectedNumbers = new Set((selectedGroup.palletNumbers || [])
     .map(Number)
     .filter(number => Number.isInteger(number) && number >= 1 && number <= PALLETS_PER_BED));
   if(!selectedNumbers.size) return;
 
-  const lotButton = document.querySelector(`[data-dashboard-seedling-lot-index="${selectedIndex}"]`);
-  if(lotButton){
-    lotButton.closest(".dashboardSeedlingStatusLots")?.classList.add("has-selection");
-    lotButton.classList.add("is-selected");
-    lotButton.setAttribute("aria-pressed", "true");
+  const dateGroup = document.querySelector(`[data-dashboard-seedling-date-index="${selectedIndex}"]`);
+  if(dateGroup){
+    dateGroup.closest(".dashboardSeedlingStatusLots")?.classList.add("has-date-selection");
+    dateGroup.classList.add("is-selected");
+    dateGroup.querySelector(".dashboardSeedlingStatusDateSelect")?.setAttribute("aria-pressed", "true");
   }
 
+  document.getElementById("dashboardSeedlingStatusBeds")?.classList.add("has-date-selection");
   const bedButton = document.querySelector(`[data-dashboard-seedling-bed="${bed}"]`);
   if(!bedButton) return;
-  bedButton.classList.add("has-lot-selection");
+  bedButton.classList.add("has-date-selection");
   bedButton.querySelectorAll("[data-dashboard-seedling-pallet-number]").forEach(cell => {
     const number = Number(cell.dataset.dashboardSeedlingPalletNumber);
     const isSelected = selectedNumbers.has(number);
     const hasLeftNeighbor = number % 2 === 0 && selectedNumbers.has(number - 1);
     const hasRightNeighbor = number % 2 === 1 && selectedNumbers.has(number + 1);
-    cell.classList.toggle("is-lot-selected", isSelected);
-    cell.classList.toggle("is-lot-edge-top", isSelected && !selectedNumbers.has(number + 2));
-    cell.classList.toggle("is-lot-edge-right", isSelected && !hasRightNeighbor);
-    cell.classList.toggle("is-lot-edge-bottom", isSelected && !selectedNumbers.has(number - 2));
-    cell.classList.toggle("is-lot-edge-left", isSelected && !hasLeftNeighbor);
+    cell.classList.toggle("is-date-selected", isSelected);
+    cell.classList.toggle("is-date-edge-top", isSelected && !selectedNumbers.has(number + 2));
+    cell.classList.toggle("is-date-edge-right", isSelected && !hasRightNeighbor);
+    cell.classList.toggle("is-date-edge-bottom", isSelected && !selectedNumbers.has(number - 2));
+    cell.classList.toggle("is-date-edge-left", isSelected && !hasLeftNeighbor);
   });
 }
 
@@ -3130,12 +3136,12 @@ function closeDashboardSeedlingStatusDetail(options = {}){
   const detail = document.getElementById("dashboardSeedlingStatusDetail");
   const selectedBed = dashboardSeedlingStatusSelectedBed;
   dashboardSeedlingStatusDetailOpen = false;
-  dashboardSeedlingStatusSelectedLotIndex = null;
+  dashboardSeedlingStatusSelectedDateIndex = null;
   if(dashboardSeedlingStatusDetailPositionFrame){
     cancelAnimationFrame(dashboardSeedlingStatusDetailPositionFrame);
     dashboardSeedlingStatusDetailPositionFrame = 0;
   }
-  clearDashboardSeedlingStatusLotSelectionUi();
+  clearDashboardSeedlingStatusDateSelectionUi();
   document.querySelectorAll("[data-dashboard-seedling-bed]").forEach(button => {
     button.setAttribute("aria-expanded", "false");
   });
@@ -3158,10 +3164,12 @@ function renderDashboardSeedlingStatusDetail(model, building){
     ? dashboardSeedlingStatusSelectedBed
     : bedMap[0];
   const lots = model.bedLots.get(`${building}-${bed}`) || [];
-  if(!Number.isInteger(dashboardSeedlingStatusSelectedLotIndex)
-    || dashboardSeedlingStatusSelectedLotIndex < 0
-    || dashboardSeedlingStatusSelectedLotIndex >= lots.length){
-    dashboardSeedlingStatusSelectedLotIndex = null;
+  const dateGroups = getDashboardSeedlingStatusDateGroups(lots);
+  const selectableDateCount = dateGroups.filter(group => !group.isUnplanted).length;
+  if(!Number.isInteger(dashboardSeedlingStatusSelectedDateIndex)
+    || dashboardSeedlingStatusSelectedDateIndex < 0
+    || dashboardSeedlingStatusSelectedDateIndex >= selectableDateCount){
+    dashboardSeedlingStatusSelectedDateIndex = null;
   }
   detail.innerHTML = `
     <div class="dashboardSeedlingStatusDetailHeader">
@@ -3172,13 +3180,13 @@ function renderDashboardSeedlingStatusDetail(model, building){
         data-ui-click="closeDashboardSeedlingStatusDetail" aria-label="詳細を閉じる">×</button>
     </div>
     <div class="dashboardSeedlingStatusLots dashboardSeedlingStatusDetailLots">
-      ${getDashboardSeedlingStatusDateGroups(lots).map(group => (
-        getDashboardSeedlingStatusDateGroupHtml(group, dashboardSeedlingStatusSelectedLotIndex)
+      ${dateGroups.map(group => (
+        getDashboardSeedlingStatusDateGroupHtml(group, dashboardSeedlingStatusSelectedDateIndex)
       )).join("")}
     </div>
   `;
   detail.hidden = !dashboardSeedlingStatusDetailOpen;
-  applyDashboardSeedlingStatusLotSelection(lots, bed);
+  applyDashboardSeedlingStatusDateSelection(dateGroups, bed);
   if(dashboardSeedlingStatusDetailOpen){
     scheduleDashboardSeedlingStatusDetailPosition();
   }
@@ -3224,7 +3232,7 @@ function renderDashboardSeedlingStatusBeds(model){
   renderDashboardSeedlingStatusDetail(model, building);
 }
 
-function setDashboardSeedlingStatusLot(index){
+function setDashboardSeedlingStatusDate(index){
   const normalized = Number(index);
   if(!Number.isInteger(normalized)) return;
   const building = BUILDINGS.includes(dashboardSeedlingStatusBuilding)
@@ -3235,28 +3243,31 @@ function setDashboardSeedlingStatusLot(index){
     : bedMap[0];
   const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
   const lots = model.bedLots.get(`${building}-${bed}`) || [];
-  if(normalized < 0 || normalized >= lots.length) return;
+  const dateGroups = getDashboardSeedlingStatusDateGroups(lots);
+  const selectableDateCount = dateGroups.filter(group => !group.isUnplanted).length;
+  if(normalized < 0 || normalized >= selectableDateCount) return;
 
-  dashboardSeedlingStatusSelectedLotIndex = dashboardSeedlingStatusSelectedLotIndex === normalized
+  dashboardSeedlingStatusSelectedDateIndex = dashboardSeedlingStatusSelectedDateIndex === normalized
     ? null
     : normalized;
-  applyDashboardSeedlingStatusLotSelection(lots, bed);
+  applyDashboardSeedlingStatusDateSelection(dateGroups, bed);
 }
 
-function getNextDashboardSeedlingStatusLotIndex(lots){
-  const lotCount = Array.isArray(lots) ? lots.length : 0;
-  if(!lotCount) return null;
-  const currentIndex = dashboardSeedlingStatusSelectedLotIndex;
-  if(!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= lotCount){
+function getNextDashboardSeedlingStatusDateIndex(dateGroups){
+  const dateCount = (Array.isArray(dateGroups) ? dateGroups : [])
+    .filter(group => !group.isUnplanted).length;
+  if(!dateCount) return null;
+  const currentIndex = dashboardSeedlingStatusSelectedDateIndex;
+  if(!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= dateCount){
     return 0;
   }
-  return (currentIndex + 1) % lotCount;
+  return (currentIndex + 1) % dateCount;
 }
 
 function setDashboardSeedlingStatusBed(bed){
   if(!bedMap.includes(bed)) return;
   const isSameBed = dashboardSeedlingStatusSelectedBed === bed;
-  if(!isSameBed) dashboardSeedlingStatusSelectedLotIndex = null;
+  if(!isSameBed) dashboardSeedlingStatusSelectedDateIndex = null;
   dashboardSeedlingStatusSelectedBed = bed;
   dashboardSeedlingStatusDetailOpen = true;
   document.querySelectorAll("[data-dashboard-seedling-bed]").forEach(button => {
@@ -3269,10 +3280,9 @@ function setDashboardSeedlingStatusBed(bed){
     ? dashboardSeedlingStatusBuilding
     : BUILDINGS[0];
   const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
-  if(isSameBed){
-    const lots = model.bedLots.get(`${building}-${bed}`) || [];
-    dashboardSeedlingStatusSelectedLotIndex = getNextDashboardSeedlingStatusLotIndex(lots);
-  }
+  const lots = model.bedLots.get(`${building}-${bed}`) || [];
+  const dateGroups = getDashboardSeedlingStatusDateGroups(lots);
+  dashboardSeedlingStatusSelectedDateIndex = getNextDashboardSeedlingStatusDateIndex(dateGroups);
   renderDashboardSeedlingStatusDetail(model, building);
   scheduleDashboardSeedlingStatusDetailPosition({ ensureBedVisible: true });
 }
@@ -3281,7 +3291,7 @@ function setDashboardSeedlingStatusBuilding(building){
   const normalized = Number(building);
   if(!BUILDINGS.includes(normalized)) return;
   if(dashboardSeedlingStatusBuilding !== normalized){
-    dashboardSeedlingStatusSelectedLotIndex = null;
+    dashboardSeedlingStatusSelectedDateIndex = null;
     dashboardSeedlingStatusDetailOpen = false;
   }
   dashboardSeedlingStatusBuilding = normalized;

@@ -349,9 +349,11 @@
         <label class="qualityChoice"><input type="checkbox">通常</label>
         <label class="qualityChoice"><input type="checkbox" checked>選択</label>
         <label class="qualityChoice qualityProblem"><input type="checkbox" checked>問題</label>
-        <div class="dashboardSeedlingStatusBed has-lot-selection">
-          <span class="dashboardSeedlingBedMapCell"></span>
-          <span class="dashboardSeedlingBedMapCell is-lot-selected is-lot-edge-top"></span>
+        <div class="dashboardSeedlingStatusBeds has-date-selection">
+          <div class="dashboardSeedlingStatusBed has-date-selection">
+            <span class="dashboardSeedlingBedMapCell"></span>
+            <span class="dashboardSeedlingBedMapCell is-date-selected is-date-edge-top"></span>
+          </div>
         </div>
         <div class="recordLegendItem" hidden>非表示</div>
         <div class="recordStageSection" hidden>非表示</div>
@@ -2440,13 +2442,13 @@
             };
           })()`));
           assertDeepEqual(detailState, {
-            plantingCounts: ["株数未記録", "16植え", "20植え", "未定植"],
-            palletCounts: ["1パレット", "2パレット", "1パレット", "74パレット"],
+            plantingCounts: ["16植え", "20植え", "株数未記録", "未定植"],
+            palletCounts: ["2パレット", "1パレット", "1パレット", "74パレット"],
             plantedGroupCount: 2,
             augustAgeCount: 1,
             augustCountRows: 2,
             augustQuality: ["大きい 1", "中 1", "小さい 1"],
-            dates: ["2026-06-30", "2026-08-01"],
+            dates: ["2026-08-01", "2026-06-30"],
             labels: ["記録へ ›", "記録へ ›"],
             nestedButtonCount: 0,
             unplantedHasLink: false,
@@ -2480,7 +2482,7 @@
           const bedTapState = comparable(app.eval(`(() => {
             dashboardSeedlingStatusBuilding = 3;
             dashboardSeedlingStatusSelectedBed = "B";
-            dashboardSeedlingStatusSelectedLotIndex = null;
+            dashboardSeedlingStatusSelectedDateIndex = null;
             dashboardSeedlingStatusDetailOpen = false;
             dashboardSeedlingStatusModelCache = buildDashboardSeedlingStatusModel(
               new Date(2026, 7, 10)
@@ -2489,18 +2491,20 @@
             const detail = document.getElementById("dashboardSeedlingStatusDetail");
             const initialHidden = detail.hidden;
             const selections = [];
-            for(let index = 0; index < 5; index++){
+            for(let index = 0; index < 3; index++){
               setDashboardSeedlingStatusBed("B");
-              const selectedLot = dashboardSeedlingStatusModelCache.bedLots
-                .get("3-B")[dashboardSeedlingStatusSelectedLotIndex];
+              const selectedDate = getDashboardSeedlingStatusDateGroups(
+                dashboardSeedlingStatusModelCache.bedLots.get("3-B")
+              ).find(group => group.selectionIndex === dashboardSeedlingStatusSelectedDateIndex);
               selections.push({
-                index: dashboardSeedlingStatusSelectedLotIndex,
-                plantingCountText: selectedLot.plantingCountText || "未定植",
+                index: dashboardSeedlingStatusSelectedDateIndex,
+                ageDays: selectedDate.ageDays,
+                plantingCounts: selectedDate.entries.map(entry => entry.lot.plantingCountText),
                 selectedPalletCount: document.querySelectorAll(
-                  ".dashboardSeedlingStatusBed.has-lot-selection .dashboardSeedlingBedMapCell.is-lot-selected"
+                  ".dashboardSeedlingStatusBed.has-date-selection .dashboardSeedlingBedMapCell.is-date-selected"
                 ).length,
-                selectedCardCount: document.querySelectorAll(
-                  ".dashboardSeedlingStatusLot.is-selected"
+                selectedDateCount: document.querySelectorAll(
+                  ".dashboardSeedlingStatusDateGroup.is-selected"
                 ).length
               });
             }
@@ -2514,21 +2518,31 @@
               hasAgeSummary: !!detail.querySelector(".dashboardSeedlingStatusDetailSummary"),
               hasHint: !!detail.querySelector(".dashboardSeedlingStatusDetailHint"),
               selectionAppearance: (() => {
-                const selectedCard = detail.querySelector(".dashboardSeedlingStatusLot.is-selected");
+                const selectedCard = detail.querySelector(".dashboardSeedlingStatusDateGroup.is-selected");
                 const unselectedCard = detail.querySelector(
-                  ".dashboardSeedlingStatusLot:not(.is-selected)"
+                  ".dashboardSeedlingStatusDateGroup:not(.is-selected):not(.is-unplanted)"
                 );
                 const selectedStyle = getComputedStyle(selectedCard);
                 const unselectedStyle = getComputedStyle(unselectedCard);
+                const selectedMapCell = document.querySelector(
+                  '.dashboardSeedlingStatusBed.has-date-selection .dashboardSeedlingBedMapCell.is-date-selected'
+                );
+                const selectedBedUnselectedCell = document.querySelector(
+                  '.dashboardSeedlingStatusBed.has-date-selection .dashboardSeedlingBedMapCell:not(.is-date-selected)'
+                );
+                const otherBedCell = document.querySelector(
+                  '[data-dashboard-seedling-bed="A"] .dashboardSeedlingBedMapCell'
+                );
                 return {
                   listHasSelection: selectedCard.closest(".dashboardSeedlingStatusLots")
-                    .classList.contains("has-selection"),
+                    .classList.contains("has-date-selection"),
                   hasSelectedLabel: !!detail.querySelector(".dashboardSeedlingStatusSelectedLabel"),
                   selectedOpacity: selectedStyle.opacity,
                   selectedFilter: selectedStyle.filter,
-                  selectedBorderColor: selectedStyle.borderColor,
-                  selectedBoxShadow: selectedStyle.boxShadow,
-                  unselectedOpacity: unselectedStyle.opacity
+                  unselectedOpacity: unselectedStyle.opacity,
+                  selectedMapOpacity: getComputedStyle(selectedMapCell).opacity,
+                  selectedBedUnselectedMapOpacity: getComputedStyle(selectedBedUnselectedCell).opacity,
+                  otherBedMapOpacity: getComputedStyle(otherBedCell).opacity
                 };
               })()
             };
@@ -2542,18 +2556,16 @@
                 selectedBedExpanded: document.querySelector(
                   '[data-dashboard-seedling-bed="B"]'
                 ).getAttribute("aria-expanded"),
-                selectedLotIndex: dashboardSeedlingStatusSelectedLotIndex
+                selectedDateIndex: dashboardSeedlingStatusSelectedDateIndex
               }
             };
           })()`));
           assertDeepEqual(bedTapState, {
             initialHidden: true,
             selections: [
-              { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 },
-              { index: 1, plantingCountText: "20植え", selectedPalletCount: 1, selectedCardCount: 1 },
-              { index: 2, plantingCountText: "16植え", selectedPalletCount: 2, selectedCardCount: 1 },
-              { index: 3, plantingCountText: "未定植", selectedPalletCount: 74, selectedCardCount: 1 },
-              { index: 0, plantingCountText: "株数未記録", selectedPalletCount: 1, selectedCardCount: 1 }
+              { index: 0, ageDays: 9, plantingCounts: ["16植え", "20植え"], selectedPalletCount: 3, selectedDateCount: 1 },
+              { index: 1, ageDays: 41, plantingCounts: ["株数未記録"], selectedPalletCount: 1, selectedDateCount: 1 },
+              { index: 0, ageDays: 9, plantingCounts: ["16植え", "20植え"], selectedPalletCount: 3, selectedDateCount: 1 }
             ],
             openState: {
               hidden: false,
@@ -2567,20 +2579,21 @@
                 hasSelectedLabel: false,
                 selectedOpacity: "1",
                 selectedFilter: "none",
-                selectedBorderColor: "rgb(226, 232, 240)",
-                selectedBoxShadow: "none",
-                unselectedOpacity: "0.38"
+                unselectedOpacity: "0.38",
+                selectedMapOpacity: "1",
+                selectedBedUnselectedMapOpacity: "0.42",
+                otherBedMapOpacity: "0.42"
               }
             },
             closedState: {
               hidden: true,
               selectedBedExpanded: "false",
-              selectedLotIndex: null
+              selectedDateIndex: null
             }
-          }, "同じベッドの連続タップで浮動詳細を順番に切り替えられません");
+          }, "同じベッドの連続タップで定植日ごとのパレットを順番に強調できません");
         }finally{
           app.eval(`dashboardSeedlingStatusModelCache = null;
-            dashboardSeedlingStatusSelectedLotIndex = null;
+            dashboardSeedlingStatusSelectedDateIndex = null;
             dashboardSeedlingStatusDetailOpen = false;`);
           replaceAppHistory(app, previousRecords, previousEvents);
         }
@@ -13724,8 +13737,8 @@
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
           mobileForecast: { hash: "bd7c5dcf", elements: 2202, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "2e1dd668", elements: 2271, visible: 670, viewport: "390x844" },
-          cssFocus: { hash: "70d30e3b", elements: 2271, visible: 670, viewport: "390x844" },
+          cssStates: { hash: "c1fc57e1", elements: 2272, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "1f48fa02", elements: 2272, visible: 671, viewport: "390x844" },
           mobileRecord: { hash: "c9c4dcb8", elements: 2206, visible: 75, viewport: "390x844" },
           mobileDashboard: { hash: "e1e8b360", elements: 2223, visible: 104, viewport: "390x844" },
           mobileDashboardRecord: { hash: "325b83ee", elements: 2306, visible: 168, viewport: "390x844" },
