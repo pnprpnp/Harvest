@@ -2435,6 +2435,11 @@
               augustCountRows: augustGroup?.querySelectorAll(".dashboardSeedlingStatusLot").length || 0,
               augustQuality: [...(augustGroup?.querySelectorAll(".dashboardSeedlingStatusQuality") || [])]
                 .map(item => item.textContent.trim()),
+              augustAgeSharesRow: Math.round(
+                augustGroup.querySelector(".dashboardSeedlingStatusDateHeader").getBoundingClientRect().top
+              ) === Math.round(
+                augustGroup.querySelector(".dashboardSeedlingStatusCountGroups").getBoundingClientRect().top
+              ),
               augustCountsShareRow: new Set(augustCountItems.map(item => (
                 Math.round(item.getBoundingClientRect().top)
               ))).size === 1,
@@ -2459,7 +2464,8 @@
             plantedGroupCount: 2,
             augustAgeCount: 1,
             augustCountRows: 2,
-            augustQuality: ["大きい", "中", "小さい"],
+            augustQuality: ["大きい 1", "中 1", "小さい 1"],
+            augustAgeSharesRow: true,
             augustCountsShareRow: true,
             countGroupFlow: "column",
             dates: ["2026-08-01", "2026-06-30"],
@@ -2715,26 +2721,35 @@
             await settleVisualApp(visualApp);
             const building = visualApp.eval("dashboardSeedlingStatusBuilding");
             const selectedBed = visualApp.eval("dashboardSeedlingStatusSelectedBed");
-            const palletKey12 = `${building}-${selectedBed}-1`;
-            const palletKey16 = `${building}-${selectedBed}-2`;
-            replaceAppHistory(visualApp, [], [{
-              palletNumberingVersion: 2,
-              eventId: 20000000000013,
-              plantingDate: "2020-08-01",
-              sourceAllocations: [{
-                harvestRecordId: 20000000000003,
-                palletKeys: [palletKey12, palletKey16]
-              }],
-              plantingPalletKeys: [palletKey12, palletKey16],
-              plantingCountsByPallet: { [palletKey12]: 12, [palletKey16]: 16 },
-              actualSeedlingTrayCount: 1,
-              actualTakenSeedlingCount: 120,
-              actualPlantedSeedlingCount: 28,
-              actualSeedlingCarryoverMode: "loss",
-              actualSeedlingLossRate: "0",
-              qualityMemo: null,
-              detailsUnknown: false
-            }]);
+            const palletNumberGroups = [[1, 2, 3], [4, 5], [6, 7]];
+            const plantingEvents = ["2020-08-01", "2020-08-02", "2020-08-03"].map((date, index) => {
+              const palletKeys = palletNumberGroups[index].map(number => (
+                `${building}-${selectedBed}-${number}`
+              ));
+              const plantingCountsByPallet = Object.fromEntries(palletKeys.map((key, keyIndex) => (
+                [key, [12, 16, 20][keyIndex]]
+              )));
+              return {
+                palletNumberingVersion: 2,
+                eventId: 20000000000013 + index,
+                plantingDate: date,
+                sourceAllocations: [{
+                  harvestRecordId: 20000000000003 + index,
+                  palletKeys
+                }],
+                plantingPalletKeys: palletKeys,
+                plantingCountsByPallet,
+                actualSeedlingTrayCount: 1,
+                actualTakenSeedlingCount: 120,
+                actualPlantedSeedlingCount: Object.values(plantingCountsByPallet)
+                  .reduce((sum, count) => sum + count, 0),
+                actualSeedlingCarryoverMode: "loss",
+                actualSeedlingLossRate: "0",
+                qualityMemo: index === 0 ? { tags: ["large"], other: "" } : null,
+                detailsUnknown: false
+              };
+            });
+            replaceAppHistory(visualApp, [], plantingEvents);
             visualApp.eval("dashboardSeedlingStatusModelCache = null; renderDashboardSeedlingStatus();");
             const bed = visualApp.document.querySelector(".dashboardSeedlingStatusBed.is-selected");
             assert(bed, `${width}px幅で選択中の二次定植ベッドがありません`);
@@ -2765,6 +2780,10 @@
               `${width}px幅で記録へボタンが定植情報からはみ出しています`);
             assert(lotItem.scrollWidth <= lotItem.clientWidth,
               `${width}px幅で二次定植の詳細が横にはみ出しています`);
+            assert(detail.querySelectorAll(".dashboardSeedlingStatusDateGroup:not(.is-unplanted)").length === 3,
+              `${width}px幅の確認用に3日分の二次定植詳細が表示されていません`);
+            assert(detail.scrollHeight <= detail.clientHeight + 1,
+              `${width}px幅で3日分の二次定植詳細が縦スクロールになっています（内容${detail.scrollHeight}px／表示${detail.clientHeight}px）`);
           }finally{
             visualFrame.remove();
           }
@@ -13763,18 +13782,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "bd7c5dcf", elements: 2202, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "c1fc57e1", elements: 2272, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "1f48fa02", elements: 2272, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "c9c4dcb8", elements: 2206, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "e1e8b360", elements: 2223, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "325b83ee", elements: 2306, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "d1a1da80", elements: 2321, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "e54d027b", elements: 2321, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "30e58fe0", elements: 2321, visible: 180, viewport: "390x844" },
-          mobileMonitor: { hash: "499d94b9", elements: 2365, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "36acc29f", elements: 2365, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "442906c1", elements: 2365, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "f691c09f", elements: 2202, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "d9367951", elements: 2272, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "37676e32", elements: 2272, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "79b33c78", elements: 2206, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "24e59e28", elements: 2223, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "2dff6f06", elements: 2306, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "3c4fb788", elements: 2321, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "cb8b86bb", elements: 2321, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "55165320", elements: 2321, visible: 180, viewport: "390x844" },
+          mobileMonitor: { hash: "ab2adbd9", elements: 2365, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "92d8e047", elements: 2365, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "c16ab9c9", elements: 2365, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

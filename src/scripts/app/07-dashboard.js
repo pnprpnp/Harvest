@@ -2906,7 +2906,7 @@ function getDashboardSeedlingStatusLotHtml(lot){
           <span class="dashboardSeedlingStatusQualitySummary">
             <span class="dashboardSeedlingStatusQualityLabel">品質</span>
             ${qualityGroups.map(group => `
-              <span class="dashboardSeedlingStatusQuality ${group.qualityClass}">${escapeHtml(group.qualityText)}</span>
+              <span class="dashboardSeedlingStatusQuality ${group.qualityClass}">${escapeHtml(group.qualityText)} ${group.palletCount}</span>
             `).join("")}
           </span>
         `}
