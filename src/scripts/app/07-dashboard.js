@@ -2901,13 +2901,12 @@ function getDashboardSeedlingStatusLotHtml(lot){
             ${lot.isUnplanted ? "" : `<span class="dashboardSeedlingStatusPlantingCountSwatch" aria-hidden="true"></span>`}
             ${escapeHtml(lot.plantingCountText)}
           </span>
-          <span class="dashboardSeedlingStatusCount">${lot.palletCount}パレット</span>
         </span>
         ${lot.isUnplanted ? "" : `
           <span class="dashboardSeedlingStatusQualitySummary">
             <span class="dashboardSeedlingStatusQualityLabel">品質</span>
             ${qualityGroups.map(group => `
-              <span class="dashboardSeedlingStatusQuality ${group.qualityClass}">${escapeHtml(group.qualityText)} ${group.palletCount}</span>
+              <span class="dashboardSeedlingStatusQuality ${group.qualityClass}">${escapeHtml(group.qualityText)}</span>
             `).join("")}
           </span>
         `}
@@ -2976,7 +2975,7 @@ function getDashboardSeedlingStatusDateGroupHtml(group, selectedIndex){
       <button type="button" class="dashboardSeedlingStatusDateSelect"
         data-ui-click="setDashboardSeedlingStatusDate" data-ui-number="${group.selectionIndex}"
         aria-pressed="${isSelected ? "true" : "false"}"
-        aria-label="${group.ageDays}日経過、${escapeHtml(countSummary)}、合計${group.palletCount}パレットを配置図で表示">
+        aria-label="${group.ageDays}日経過、${escapeHtml(countSummary)}を配置図で表示">
         <span class="dashboardSeedlingStatusDateHeader">
           <span class="dashboardSeedlingStatusAge">${group.ageDays}日経過</span>
         </span>

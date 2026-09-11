@@ -2414,6 +2414,7 @@
             mount.innerHTML = groups.map(group => (
               getDashboardSeedlingStatusDateGroupHtml(group, null)
             )).join("");
+            document.body.appendChild(mount);
             const links = [...mount.querySelectorAll(".dashboardSeedlingStatusRecordLink")];
             const plantedGroups = [...mount.querySelectorAll(
               ".dashboardSeedlingStatusDateGroup:not(.is-unplanted)"
@@ -2421,7 +2422,10 @@
             const augustGroup = plantedGroups.find(group => (
               group.querySelector(".dashboardSeedlingStatusRecordLink")?.dataset.uiArg === "2026-08-01"
             ));
-            return {
+            const augustCountItems = [...(augustGroup?.querySelectorAll(
+              ".dashboardSeedlingStatusLotItem"
+            ) || [])];
+            const result = {
               plantingCounts: [...mount.querySelectorAll(".dashboardSeedlingStatusPlantingCount")]
                 .map(item => item.textContent.trim().replace(/\\s+/g, " ")),
               palletCounts: [...mount.querySelectorAll(".dashboardSeedlingStatusCount")]
@@ -2431,6 +2435,12 @@
               augustCountRows: augustGroup?.querySelectorAll(".dashboardSeedlingStatusLot").length || 0,
               augustQuality: [...(augustGroup?.querySelectorAll(".dashboardSeedlingStatusQuality") || [])]
                 .map(item => item.textContent.trim()),
+              augustCountsShareRow: new Set(augustCountItems.map(item => (
+                Math.round(item.getBoundingClientRect().top)
+              ))).size === 1,
+              countGroupFlow: getComputedStyle(
+                augustGroup.querySelector(".dashboardSeedlingStatusCountGroups")
+              ).gridAutoFlow,
               dates: links.map(link => link.dataset.uiArg),
               labels: links.map(link => link.textContent.trim().replace(/\\s+/g, " ")),
               nestedButtonCount: mount.querySelectorAll("button button").length,
@@ -2440,14 +2450,18 @@
               hasPalletNumbers: mount.textContent.includes("番号 "),
               hasSelectedLabel: mount.textContent.includes("選択中")
             };
+            mount.remove();
+            return result;
           })()`));
           assertDeepEqual(detailState, {
             plantingCounts: ["16植え", "20植え", "株数未記録", "未定植"],
-            palletCounts: ["2パレット", "1パレット", "1パレット", "74パレット"],
+            palletCounts: [],
             plantedGroupCount: 2,
             augustAgeCount: 1,
             augustCountRows: 2,
-            augustQuality: ["大きい 1", "中 1", "小さい 1"],
+            augustQuality: ["大きい", "中", "小さい"],
+            augustCountsShareRow: true,
+            countGroupFlow: "column",
             dates: ["2026-08-01", "2026-06-30"],
             labels: ["記録へ ›", "記録へ ›"],
             nestedButtonCount: 0,
@@ -2701,20 +2715,21 @@
             await settleVisualApp(visualApp);
             const building = visualApp.eval("dashboardSeedlingStatusBuilding");
             const selectedBed = visualApp.eval("dashboardSeedlingStatusSelectedBed");
-            const palletKey = `${building}-${selectedBed}-1`;
+            const palletKey12 = `${building}-${selectedBed}-1`;
+            const palletKey16 = `${building}-${selectedBed}-2`;
             replaceAppHistory(visualApp, [], [{
               palletNumberingVersion: 2,
               eventId: 20000000000013,
               plantingDate: "2020-08-01",
               sourceAllocations: [{
                 harvestRecordId: 20000000000003,
-                palletKeys: [palletKey]
+                palletKeys: [palletKey12, palletKey16]
               }],
-              plantingPalletKeys: [palletKey],
-              plantingCountsByPallet: { [palletKey]: 16 },
+              plantingPalletKeys: [palletKey12, palletKey16],
+              plantingCountsByPallet: { [palletKey12]: 12, [palletKey16]: 16 },
               actualSeedlingTrayCount: 1,
               actualTakenSeedlingCount: 120,
-              actualPlantedSeedlingCount: 16,
+              actualPlantedSeedlingCount: 28,
               actualSeedlingCarryoverMode: "loss",
               actualSeedlingLossRate: "0",
               qualityMemo: null,
