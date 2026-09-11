@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260911-seedling-date-highlights">
+<meta name="harvestnavi-version" content="20260911-fast-seedling-highlights">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -5677,14 +5677,17 @@ button.monitorSaveBtn:active{
 .dashboardSeedlingBedMapCell.is-planting-count-unrecorded{
   background:repeating-linear-gradient(135deg, #e2e8f0 0 3px, #cbd5e1 3px 6px);
 }
-.dashboardSeedlingStatusBeds.has-date-selection .dashboardSeedlingBedMapCell{
+.dashboardSeedlingStatusBeds.has-date-selection .dashboardSeedlingStatusBed:not(.has-date-selection) .dashboardSeedlingBedMapGrid{
   opacity:.42;
-  filter:saturate(.65) brightness(1.06);
 }
-.dashboardSeedlingStatusBeds.has-date-selection .dashboardSeedlingBedMapCell.is-date-selected{
+.dashboardSeedlingStatusBeds.has-date-selection .dashboardSeedlingStatusBed.has-date-selection .dashboardSeedlingBedMapCell{
+  opacity:.42;
+  transition:none;
+}
+.dashboardSeedlingStatusBeds.has-date-selection .dashboardSeedlingStatusBed.has-date-selection .dashboardSeedlingBedMapCell.is-date-selected{
   z-index:1;
   opacity:1;
-  filter:saturate(1.18) brightness(1.14);
+  filter:none;
   border-color:transparent;
 }
 .dashboardSeedlingBedMapCell.is-date-selected::after{
@@ -30609,27 +30612,44 @@ function clearDashboardSeedlingStatusDateSelectionUi(){
 }
 
 function applyDashboardSeedlingStatusDateSelection(dateGroups, bed){
-  clearDashboardSeedlingStatusDateSelectionUi();
   const selectedIndex = dashboardSeedlingStatusSelectedDateIndex;
   const selectedGroup = (Array.isArray(dateGroups) ? dateGroups : [])
     .find(group => !group.isUnplanted && group.selectionIndex === selectedIndex);
-  if(!selectedGroup) return;
-
-  const selectedNumbers = new Set((selectedGroup.palletNumbers || [])
+  const selectedNumbers = new Set((selectedGroup?.palletNumbers || [])
     .map(Number)
     .filter(number => Number.isInteger(number) && number >= 1 && number <= PALLETS_PER_BED));
-  if(!selectedNumbers.size) return;
+  const hasSelection = selectedNumbers.size > 0;
 
-  const dateGroup = document.querySelector(`[data-dashboard-seedling-date-index="${selectedIndex}"]`);
-  if(dateGroup){
-    dateGroup.closest(".dashboardSeedlingStatusLots")?.classList.add("has-date-selection");
-    dateGroup.classList.add("is-selected");
-    dateGroup.querySelector(".dashboardSeedlingStatusDateSelect")?.setAttribute("aria-pressed", "true");
-  }
+  const detailLots = document.querySelector("#dashboardSeedlingStatusDetail .dashboardSeedlingStatusLots");
+  detailLots?.classList.toggle("has-date-selection", hasSelection);
+  detailLots?.querySelectorAll("[data-dashboard-seedling-date-index]").forEach(dateGroup => {
+    const isSelected = hasSelection
+      && Number(dateGroup.dataset.dashboardSeedlingDateIndex) === selectedIndex;
+    dateGroup.classList.toggle("is-selected", isSelected);
+    dateGroup.querySelector(".dashboardSeedlingStatusDateSelect")
+      ?.setAttribute("aria-pressed", isSelected ? "true" : "false");
+  });
 
-  document.getElementById("dashboardSeedlingStatusBeds")?.classList.add("has-date-selection");
+  document.getElementById("dashboardSeedlingStatusBeds")
+    ?.classList.toggle("has-date-selection", hasSelection);
   const bedButton = document.querySelector(`[data-dashboard-seedling-bed="${bed}"]`);
-  if(!bedButton) return;
+  document.querySelectorAll(".dashboardSeedlingStatusBed.has-date-selection").forEach(previousBed => {
+    if(hasSelection && previousBed === bedButton) return;
+    previousBed.classList.remove("has-date-selection");
+    previousBed.querySelectorAll(
+      ".is-date-selected, .is-date-edge-top, .is-date-edge-right, .is-date-edge-bottom, .is-date-edge-left"
+    ).forEach(cell => {
+      cell.classList.remove(
+        "is-date-selected",
+        "is-date-edge-top",
+        "is-date-edge-right",
+        "is-date-edge-bottom",
+        "is-date-edge-left"
+      );
+    });
+  });
+  if(!hasSelection || !bedButton) return;
+
   bedButton.classList.add("has-date-selection");
   bedButton.querySelectorAll("[data-dashboard-seedling-pallet-number]").forEach(cell => {
     const number = Number(cell.dataset.dashboardSeedlingPalletNumber);
@@ -30847,6 +30867,11 @@ function getNextDashboardSeedlingStatusDateIndex(dateGroups){
 function setDashboardSeedlingStatusBed(bed){
   if(!bedMap.includes(bed)) return;
   const isSameBed = dashboardSeedlingStatusSelectedBed === bed;
+  const detail = document.getElementById("dashboardSeedlingStatusDetail");
+  const canUpdateSelectionOnly = isSameBed
+    && dashboardSeedlingStatusDetailOpen
+    && detail
+    && !detail.hidden;
   if(!isSameBed) dashboardSeedlingStatusSelectedDateIndex = null;
   dashboardSeedlingStatusSelectedBed = bed;
   dashboardSeedlingStatusDetailOpen = true;
@@ -30863,6 +30888,10 @@ function setDashboardSeedlingStatusBed(bed){
   const lots = model.bedLots.get(`${building}-${bed}`) || [];
   const dateGroups = getDashboardSeedlingStatusDateGroups(lots);
   dashboardSeedlingStatusSelectedDateIndex = getNextDashboardSeedlingStatusDateIndex(dateGroups);
+  if(canUpdateSelectionOnly){
+    applyDashboardSeedlingStatusDateSelection(dateGroups, bed);
+    return;
+  }
   renderDashboardSeedlingStatusDetail(model, building);
   scheduleDashboardSeedlingStatusDetailPosition({ ensureBedVisible: true });
 }

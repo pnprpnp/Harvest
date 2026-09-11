@@ -2491,8 +2491,16 @@
             const detail = document.getElementById("dashboardSeedlingStatusDetail");
             const initialHidden = detail.hidden;
             const selections = [];
+            let firstRenderedDateCard = null;
+            let reusedDateCards = true;
             for(let index = 0; index < 3; index++){
               setDashboardSeedlingStatusBed("B");
+              const currentFirstDateCard = detail.querySelector("[data-dashboard-seedling-date-index='0']");
+              if(index === 0){
+                firstRenderedDateCard = currentFirstDateCard;
+              }else{
+                reusedDateCards = reusedDateCards && currentFirstDateCard === firstRenderedDateCard;
+              }
               const selectedDate = getDashboardSeedlingStatusDateGroups(
                 dashboardSeedlingStatusModelCache.bedLots.get("3-B")
               ).find(group => group.selectionIndex === dashboardSeedlingStatusSelectedDateIndex);
@@ -2530,8 +2538,8 @@
                 const selectedBedUnselectedCell = document.querySelector(
                   '.dashboardSeedlingStatusBed.has-date-selection .dashboardSeedlingBedMapCell:not(.is-date-selected)'
                 );
-                const otherBedCell = document.querySelector(
-                  '[data-dashboard-seedling-bed="A"] .dashboardSeedlingBedMapCell'
+                const otherBedMap = document.querySelector(
+                  '[data-dashboard-seedling-bed="A"] .dashboardSeedlingBedMapGrid'
                 );
                 return {
                   listHasSelection: selectedCard.closest(".dashboardSeedlingStatusLots")
@@ -2542,7 +2550,8 @@
                   unselectedOpacity: unselectedStyle.opacity,
                   selectedMapOpacity: getComputedStyle(selectedMapCell).opacity,
                   selectedBedUnselectedMapOpacity: getComputedStyle(selectedBedUnselectedCell).opacity,
-                  otherBedMapOpacity: getComputedStyle(otherBedCell).opacity
+                  otherBedMapOpacity: getComputedStyle(otherBedMap).opacity,
+                  selectedBedTransitionDuration: getComputedStyle(selectedBedUnselectedCell).transitionDuration
                 };
               })()
             };
@@ -2550,6 +2559,7 @@
             return {
               initialHidden,
               selections,
+              reusedDateCards,
               openState,
               closedState: {
                 hidden: detail.hidden,
@@ -2567,6 +2577,7 @@
               { index: 1, ageDays: 41, plantingCounts: ["株数未記録"], selectedPalletCount: 1, selectedDateCount: 1 },
               { index: 0, ageDays: 9, plantingCounts: ["16植え", "20植え"], selectedPalletCount: 3, selectedDateCount: 1 }
             ],
+            reusedDateCards: true,
             openState: {
               hidden: false,
               position: "fixed",
@@ -2582,7 +2593,8 @@
                 unselectedOpacity: "0.38",
                 selectedMapOpacity: "1",
                 selectedBedUnselectedMapOpacity: "0.42",
-                otherBedMapOpacity: "0.42"
+                otherBedMapOpacity: "0.42",
+                selectedBedTransitionDuration: "0s"
               }
             },
             closedState: {
