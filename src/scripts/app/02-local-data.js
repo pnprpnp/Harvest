@@ -1341,12 +1341,15 @@ function resolvePlantingEventAllocations(selectedKeys, options = {}){
   [...new Set(Array.isArray(selectedKeys) ? selectedKeys : [])].forEach(palletKey => {
     const owners = state.pendingOwnersByPalletKey.get(palletKey) || [];
     const existingOwnerId = existingOwnerByPalletKey.get(palletKey);
-    const owner = owners.find(item => Number(item.harvestRecordId) === Number(existingOwnerId))
-      || owners.find(item => preferredHarvestId !== null && item.harvestRecordId === preferredHarvestId)
-      || owners[0];
-    if(!owner) return;
-    if(!groups.has(owner.harvestRecordId)) groups.set(owner.harvestRecordId, []);
-    groups.get(owner.harvestRecordId).push(palletKey);
+    const ownerId = getSafePositiveRecordId(existingOwnerId)
+      ?? getSafePositiveRecordId(
+        owners.find(item => preferredHarvestId !== null && item.harvestRecordId === preferredHarvestId)
+          ?.harvestRecordId
+        ?? owners[0]?.harvestRecordId
+      );
+    if(ownerId === null) return;
+    if(!groups.has(ownerId)) groups.set(ownerId, []);
+    groups.get(ownerId).push(palletKey);
   });
 
   return [...groups.entries()].map(([harvestRecordId, palletKeys]) => ({

@@ -1922,6 +1922,90 @@
         }
       });
 
+      await runTest("植え数だけの過去編集は保存済みの収穫元を再利用する", () => {
+        const oldHarvest = {
+          palletNumberingVersion: 2,
+          id: 20000000000031,
+          recordUuid: "31313131-3131-4131-8131-313131313131",
+          type: "fullHarvest",
+          date: "2026-06-01",
+          cases: 1,
+          palletRanges: ["2-A-1"],
+          plantingPending: false
+        };
+        const newerHarvest = {
+          palletNumberingVersion: 2,
+          id: 20000000000032,
+          recordUuid: "32323232-3232-4232-8232-323232323232",
+          type: "fullHarvest",
+          date: "2026-07-01",
+          cases: 1,
+          palletRanges: ["2-A-1"],
+          plantingPending: false
+        };
+        const makeEvent = (eventId, plantingDate, harvestRecordId, count) => ({
+          palletNumberingVersion: 2,
+          eventId,
+          plantingDate,
+          sourceAllocations: [{ harvestRecordId, palletKeys: ["2-A-1"] }],
+          plantingPalletKeys: ["2-A-1"],
+          plantingCountsByPallet: { "2-A-1": count },
+          actualSeedlingTrayCount: 1,
+          actualTakenSeedlingCount: 120,
+          actualPlantedSeedlingCount: count,
+          actualSeedlingCarryoverMode: "loss",
+          actualSeedlingLossRate: "0",
+          qualityMemo: null,
+          detailsUnknown: false
+        });
+        const oldPlanting = makeEvent(20000000000033, "2026-06-01", oldHarvest.id, 12);
+        const newerPlanting = makeEvent(20000000000034, "2026-07-01", newerHarvest.id, 20);
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const originalResolve = app.resolvePlantingEventAllocations;
+        let resolveCalls = 0;
+        try{
+          replaceAppHistory(app, [oldHarvest, newerHarvest], [oldPlanting, newerPlanting]);
+          app.invalidatePlantingEventStateCache();
+          const retainedAllocation = comparable(app.eval(`(() => {
+            const event = getPlantingEventById(${oldPlanting.eventId});
+            return resolvePlantingEventAllocations(["2-A-1"], {
+              preferredHarvestId: ${oldHarvest.id},
+              excludeEventId: event.eventId,
+              existingEvent: event
+            });
+          })()`));
+          app.resolvePlantingEventAllocations = () => {
+            resolveCalls++;
+            return [];
+          };
+          const saveState = comparable(app.eval(`(() => {
+            const event = getPlantingEventById(${oldPlanting.eventId});
+            const record = getRecordById(${oldHarvest.id});
+            const state = getPlantingSaveAllocationState(["2-A-1"], record, event, false);
+            return {
+              samePlantingKeys: state.samePlantingKeys,
+              normalizedSelectedKeys: state.normalizedSelectedKeys,
+              sourceAllocations: state.sourceAllocations
+            };
+          })()`));
+          assertDeepEqual(retainedAllocation, [{
+            harvestRecordId: oldHarvest.id,
+            palletKeys: ["2-A-1"]
+          }], "後の収穫周期があると保存済みの収穫元を復元できません");
+          assertDeepEqual(saveState, {
+            samePlantingKeys: true,
+            normalizedSelectedKeys: ["2-A-1"],
+            sourceAllocations: [{ harvestRecordId: oldHarvest.id, palletKeys: ["2-A-1"] }]
+          }, "植え数だけの編集で元の収穫記録が変わっています");
+          assertEqual(resolveCalls, 0, "場所を変えていない編集で収穫元を全履歴から再計算しました");
+        }finally{
+          app.resolvePlantingEventAllocations = originalResolve;
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.invalidatePlantingEventStateCache();
+        }
+      });
+
       await runTest("定植後10日未満を選択不可にし10日後も自動選択順を維持する", () => {
         const harvestRecord = {
           palletNumberingVersion: 2,

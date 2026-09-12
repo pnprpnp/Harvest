@@ -333,6 +333,39 @@ function applyPlantingSelectionToRecord(targetRecord, keysToApply, options = {})
   return options.isActiveRecord || beforePending;
 }
 
+function getPlantingSaveAllocationState(selectedKeys, record, existingEvent, noPlantingEvent){
+  const normalizedSelectedKeys = [...new Set(Array.isArray(selectedKeys) ? selectedKeys : [])]
+    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  const existingPlantingKeys = existingEvent
+    ? [...new Set(existingEvent.plantingPalletKeys || [])]
+        .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b))
+    : [];
+  const samePlantingKeys = !!existingEvent
+    && existingPlantingKeys.length === normalizedSelectedKeys.length
+    && existingPlantingKeys.every((key, index) => key === normalizedSelectedKeys[index]);
+
+  let sourceAllocations;
+  if(noPlantingEvent){
+    sourceAllocations = [{ harvestRecordId: Number(record?.id), palletKeys: [] }];
+  }else if(samePlantingKeys){
+    // 植え数・品質だけの編集では、後の収穫周期に左右されない保存済みの収穫元を使う。
+    // 現在の未定植状態を再走査しないため、過去記録の編集も軽く保てる。
+    sourceAllocations = existingEvent.sourceAllocations.map(allocation => ({
+      harvestRecordId: Number(allocation.harvestRecordId),
+      palletKeys: [...allocation.palletKeys]
+        .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b))
+    }));
+  }else{
+    sourceAllocations = resolvePlantingEventAllocations(normalizedSelectedKeys, {
+      preferredHarvestId: record?.id,
+      excludeEventId: existingEvent?.eventId,
+      existingEvent
+    });
+  }
+
+  return { normalizedSelectedKeys, samePlantingKeys, sourceAllocations };
+}
+
 async function savePlantingRecord(){
   if(!ensureProtectedOperationAccess("苗植え場所の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("苗植え場所を保存", { allowBackgroundSend: true })) return;
@@ -402,16 +435,14 @@ async function savePlantingRecord(){
     showToast("1,000件以前の繰越基準より前の日付では、新しい苗植え記録を作成できません");
     return;
   }
-  const sourceAllocations = noPlantingEvent
-    ? [{ harvestRecordId: Number(record.id), palletKeys: [] }]
-    : resolvePlantingEventAllocations(selectedKeys, {
-        preferredHarvestId: record.id,
-        excludeEventId: existingEvent?.eventId,
-        existingEvent
-      });
+  const allocationState = getPlantingSaveAllocationState(
+    selectedKeys,
+    record,
+    existingEvent,
+    noPlantingEvent
+  );
+  const { sourceAllocations, normalizedSelectedKeys, samePlantingKeys } = allocationState;
   const allocatedKeys = [...new Set(sourceAllocations.flatMap(allocation => allocation.palletKeys))]
-    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
-  const normalizedSelectedKeys = [...new Set(selectedKeys)]
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   if(allocatedKeys.length !== normalizedSelectedKeys.length
     || allocatedKeys.some((key, index) => key !== normalizedSelectedKeys[index])){
@@ -421,9 +452,6 @@ async function savePlantingRecord(){
 
   const sameTrayCount = existingEvent
     && Number(existingEvent.actualSeedlingTrayCount) === Number(actualSeedlingTrayCount);
-  const samePlantingKeys = existingEvent
-    && existingEvent.plantingPalletKeys.length === normalizedSelectedKeys.length
-    && existingEvent.plantingPalletKeys.every((key, index) => key === normalizedSelectedKeys[index]);
   const plantingCountsByPallet = buildPlantingCountsByPalletForKeys(normalizedSelectedKeys);
   const existingPlantingCountsByPallet = existingEvent
     ? buildPlantingCountsByPalletForKeys(existingEvent.plantingPalletKeys, existingEvent.plantingCountsByPallet)
