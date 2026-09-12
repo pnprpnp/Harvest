@@ -1113,8 +1113,9 @@ function buildRecordDetailLocationModel(kind, entity){
         }
       ].filter(group => group.keys.length > 0)
     : [{ label: qualityText, className: qualityClass, keys: palletKeys }];
-  const canEditPlanting = kind === "planting" && getSafePositiveRecordId(entity?.eventId) !== null;
-  const locationGroups = kind === "planting" && canEditPlanting
+  const isIndividualPlantingRecord = kind === "planting"
+    && getSafePositiveRecordId(entity?.eventId) !== null;
+  const locationGroups = isIndividualPlantingRecord
     ? [{
         label: "すべて",
         className: "is-planting-count-all",
@@ -1135,8 +1136,6 @@ function buildRecordDetailLocationModel(kind, entity){
     qualityByPallet,
     plantingCountsByPallet,
     countGroups,
-    eventId: canEditPlanting ? Number(entity.eventId) : null,
-    canEditPlanting,
     locationGroups,
     actionLabel: kind === "planting" ? "苗植え" : (kind === "partialHarvest" ? "部分収穫" : "収穫"),
     emptyText: String(entity?.locationEmptyText || "").trim()
@@ -1190,13 +1189,7 @@ function getRecordDetailLocationMapCellHtml(model, building, bed, number, sectio
   const stateText = isIncluded
     ? `今回の${model.actionLabel}${group?.label ? `、${group.label}` : ""}${model.kind === "planting" ? `、${formatPlantingQualityMemo(model.qualityByPallet?.[key])}` : ""}`
     : "対象外";
-  const isSelectedForEdit = model.kind === "planting"
-    && model.canEditPlanting
-    && recordDetailLocationSelectedPalletKeys.has(key);
-  const editAttributes = model.kind === "planting" && model.canEditPlanting
-    ? ` data-ui-click="toggleRecordDetailLocationPallet" data-ui-arg="${escapeHtml(key)}" role="button" tabindex="0" aria-pressed="${isSelectedForEdit ? "true" : "false"}"`
-    : "";
-  return `<span class="dashboardSeedlingBedMapCell ${stateClass}${sectionStart ? " is-section-start" : ""}${isSelectedForEdit ? " is-record-detail-edit-selected" : ""}" data-record-detail-pallet-number="${number}" title="${number}番 ${escapeHtml(stateText)}"${editAttributes}></span>`;
+  return `<span class="dashboardSeedlingBedMapCell ${stateClass}${sectionStart ? " is-section-start" : ""}" data-record-detail-pallet-number="${number}" title="${number}番 ${escapeHtml(stateText)}"></span>`;
 }
 
 function getRecordDetailLocationGroupsForBed(model, building, bed, selectedGroup = null){
@@ -1235,7 +1228,7 @@ function getRecordDetailLocationBedMapHtml(model, building, bed, selectedGroup){
     cells.push(getRecordDetailLocationMapCellHtml(model, building, bed, row * 2, sectionStart, selectedGroup));
   }
   return `
-    <div class="dashboardSeedlingBedMap"${model.kind === "planting" && model.canEditPlanting ? "" : " aria-hidden=\"true\""}>
+    <div class="dashboardSeedlingBedMap" aria-hidden="true">
       <div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>
     </div>
   `;
@@ -1279,27 +1272,6 @@ function renderRecordDetailLocationDisplay(){
           `;
         }).join("")}
       </div>
-      ${model.canEditPlanting ? `
-        <div class="recordDetailPlantingEditTools" aria-label="苗植え記録の編集">
-          <div class="recordDetailPlantingEditHint">配置図のパレットをタップして選択し、植え付け数や品質を変更できます</div>
-          <div class="recordDetailPlantingEditSummary">選択中 ${recordDetailLocationSelectedPalletKeys.size}枚</div>
-          <div class="recordDetailPlantingEditActions">
-            ${[12, 16, 20].map(count => `
-              <button type="button" class="recordDetailPlantingEditBtn" data-ui-click="applyRecordDetailLocationPlantingCount" data-ui-number="${count}">${count}植え</button>
-            `).join("")}
-            ${[
-              ["large", "大きい"],
-              ["medium", "中"],
-              ["small", "小さい"],
-              ["elongated", "徒長"],
-              ["other", "その他"],
-              ["none", "品質不明"]
-            ].map(([tag, label]) => `
-              <button type="button" class="recordDetailPlantingEditBtn recordDetailPlantingQualityBtn" data-ui-click="applyRecordDetailLocationQuality" data-ui-arg="${tag}">${label}</button>
-            `).join("")}
-          </div>
-        </div>
-      ` : ""}
     ` : ""}
     <div class="dashboardForecastBuildingTabs recordDetailLocationBuildingTabs" aria-label="場所を表示する号棟">
       ${visibleBuildings.map(item => `
@@ -1416,135 +1388,6 @@ function setRecordDetailLocationBed(bed){
   renderRecordDetailLocationDisplay();
 }
 
-function getRecordDetailEditablePlantingEvent(){
-  const model = recordDetailLocationModel;
-  if(model?.kind !== "planting" || !model.canEditPlanting || !model.eventId) return null;
-  const event = getPlantingEventById(model.eventId);
-  if(!event) return null;
-  if(isPlantingEventBeforeLatestOpeningBoundary(event)){
-    showToast("この履歴は新しい繰越基準より前にあるため編集できません");
-    return null;
-  }
-  if(!ensureProtectedOperationAccess("苗植え記録の編集")) return null;
-  if(!ensureGoogleSheetLocalMutationAllowed("苗植え記録を編集")) return null;
-  if(!ensureSyncConflictResolvedBeforeChange("planting", event, "苗植え記録を編集")) return null;
-  return event;
-}
-
-function refreshRecordDetailPlantingInfo(event){
-  const rows = Array.from(document.querySelectorAll("#recordDetailWindowBody .recordDetailInfoRow"));
-  const values = new Map([
-    ["苗植えした株数", event?.detailsUnknown ? "不明" : `${event?.actualPlantedSeedlingCount ?? 0}株`],
-    ["苗の品質メモ", formatPlantingQualityMemo(getPlantingQualityMemoSummary(event))]
-  ]);
-  rows.forEach(row => {
-    const label = String(row.querySelector(".recordDetailInfoLabel")?.textContent || "").trim();
-    if(!values.has(label)) return;
-    const value = row.querySelector(".recordDetailInfoValue");
-    if(value) value.textContent = values.get(label);
-  });
-}
-
-function saveRecordDetailPlantingEvent(nextEvent, successMessage){
-  if(!nextEvent) return false;
-  const normalized = normalizePlantingEvent(nextEvent);
-  if(!normalized) return false;
-  const index = plantingEvents.findIndex(item => Number(item.eventId) === Number(normalized.eventId));
-  if(index < 0) return false;
-  plantingEvents[index] = normalized;
-  savePlantingEventsToStorage();
-  setPlantingEventSyncStatus(normalized, "edited");
-  syncHarvestPlantingPendingFlags();
-  refreshRecordDataUi({ maps: false });
-  recordDetailLocationModel = buildRecordDetailLocationModel("planting", normalized);
-  recordDetailLocationSelectedPalletKeys = new Set();
-  refreshRecordDetailPlantingInfo(normalized);
-  renderRecordDetailLocationDisplay();
-  const sendQueued = queueGoogleSheetPlantingEventSend(normalized, {
-    successMessage: `${successMessage}。スプレッドシートへ送信しました`,
-    failureMessage: `${successMessage}。スプレッドシートは未送信です`
-  });
-  showToast(sendQueued ? `${successMessage}。スプレッドシートへ送信中です` : `${successMessage}。スプレッドシートは未送信です`);
-  return true;
-}
-
-function toggleRecordDetailLocationPallet(palletKey){
-  const model = recordDetailLocationModel;
-  if(model?.kind !== "planting" || !model.canEditPlanting || !model.keySet.has(palletKey)) return;
-  if(recordDetailLocationSelectedPalletKeys.has(palletKey)){
-    recordDetailLocationSelectedPalletKeys.delete(palletKey);
-  }else{
-    recordDetailLocationSelectedPalletKeys.add(palletKey);
-  }
-  renderRecordDetailLocationDisplay();
-}
-
-function applyRecordDetailLocationPlantingCount(count){
-  const event = getRecordDetailEditablePlantingEvent();
-  const normalizedCount = normalizePlantingCountPreset(count);
-  const selectedKeys = [...recordDetailLocationSelectedPalletKeys]
-    .filter(key => event?.plantingPalletKeys?.includes(key));
-  if(!event || !selectedKeys.length){
-    showToast("変更するパレットを配置図から選択してください");
-    return;
-  }
-  const nextCounts = {
-    ...normalizePlantingCountsByPallet(event.plantingCountsByPallet, event.plantingPalletKeys)
-  };
-  selectedKeys.forEach(key => {
-    nextCounts[key] = normalizedCount;
-  });
-  const actualPlantedSeedlingCount = getActualPlantedSeedlingTotal(
-    event.plantingPalletKeys,
-    nextCounts
-  );
-  if(!event.detailsUnknown
-    && Number.isFinite(Number(event.actualTakenSeedlingCount))
-    && actualPlantedSeedlingCount > Number(event.actualTakenSeedlingCount)){
-    showToast("変更後の苗株数が、実際に取った苗株数を超えています");
-    return;
-  }
-  saveRecordDetailPlantingEvent({
-    ...event,
-    plantingCountsByPallet: nextCounts,
-    actualPlantedSeedlingCount
-  }, `${selectedKeys.length}枚を${normalizedCount}植えに変更しました`);
-}
-
-function applyRecordDetailLocationQuality(tag){
-  const event = getRecordDetailEditablePlantingEvent();
-  const selectedKeys = [...recordDetailLocationSelectedPalletKeys]
-    .filter(key => event?.plantingPalletKeys?.includes(key));
-  if(!event || !selectedKeys.length){
-    showToast("品質を変更するパレットを配置図から選択してください");
-    return;
-  }
-  const normalizedTag = normalizeQualityTag(tag);
-  let memo = normalizedTag
-    ? { tags: [normalizedTag], other: "" }
-    : { tags: [], other: "" };
-  if(tag === "other"){
-    const other = window.prompt("場所別の苗品質を入力してください", "");
-    if(other === null) return;
-    memo = { tags: [], other: String(other || "").trim() };
-  }
-  const qualityMemoByPallet = normalizeQualityMemoByPallet(
-    event.qualityMemoByPallet,
-    event.plantingPalletKeys
-  );
-  selectedKeys.forEach(key => {
-    qualityMemoByPallet[key] = memo;
-  });
-  saveRecordDetailPlantingEvent({
-    ...event,
-    qualityMemo: getPlantingQualityMemoSummary({
-      ...event,
-      qualityMemoByPallet
-    }),
-    qualityMemoByPallet
-  }, `${selectedKeys.length}枚の品質を${normalizedTag ? getQualityTagLabel(normalizedTag) : (tag === "other" ? (memo.other || "その他") : "不明")}に変更しました`);
-}
-
 function loadRecordDetailLocation(kind, id, loadToken){
   if(loadToken !== recordDetailLoadToken
     || !document.getElementById("recordDetailModal")?.classList.contains("show")) return;
@@ -1556,7 +1399,6 @@ function loadRecordDetailLocation(kind, id, loadToken){
   }
   try{
     recordDetailLocationModel = buildRecordDetailLocationModel(kind, entity);
-    recordDetailLocationSelectedPalletKeys = new Set();
     recordDetailLocationSelectedGroupClass = recordDetailLocationModel.kind === "planting"
       ? (recordDetailLocationModel.locationGroups[0]?.className || null)
       : null;
@@ -1689,7 +1531,6 @@ function setRecordDetailDayLocationView(view){
   });
   const entity = buildDashboardDayRecordLocationEntity(recordDetailDayContext, recordDetailDayLocationView);
   recordDetailLocationModel = buildRecordDetailLocationModel(recordDetailDayLocationView, entity);
-  recordDetailLocationSelectedPalletKeys = new Set();
   recordDetailLocationSelectedGroupClass = recordDetailLocationModel.kind === "planting"
     ? (recordDetailLocationModel.locationGroups[0]?.className || null)
     : null;
@@ -1721,7 +1562,6 @@ function openDashboardDayRecordDetail(dateString){
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
   recordDetailLocationSelectedGroupClass = null;
-  recordDetailLocationSelectedPalletKeys = new Set();
   recordDetailReturnFocus = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null;
@@ -1820,7 +1660,6 @@ function openRecordDetailWindow(kind, id){
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
   recordDetailLocationSelectedGroupClass = null;
-  recordDetailLocationSelectedPalletKeys = new Set();
   recordDetailReturnFocus = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : null;
@@ -1846,7 +1685,6 @@ function closeRecordDetailWindow(options = {}){
   recordDetailLocationBuilding = null;
   recordDetailLocationSelectedBed = null;
   recordDetailLocationSelectedGroupClass = null;
-  recordDetailLocationSelectedPalletKeys = new Set();
   recordDetailDayContext = null;
   recordDetailDayLocationView = "harvest";
   hidePageBlockingUi(modal);

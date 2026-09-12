@@ -248,7 +248,6 @@ let recordDetailLocationModel = null;
 let recordDetailLocationBuilding = null;
 let recordDetailLocationSelectedBed = null;
 let recordDetailLocationSelectedGroupClass = null;
-let recordDetailLocationSelectedPalletKeys = new Set();
 let recordDetailDayContext = null;
 let recordDetailDayLocationView = "harvest";
 let recordDetailLoadToken = 0;

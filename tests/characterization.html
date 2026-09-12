@@ -12961,16 +12961,13 @@
         assertEqual(locationState.twenty.activeButtonBackground, locationState.twelve.activeButtonBackground, "20植えボタンだけ別の選択色になっています");
       });
 
-      await runTest("苗植え詳細から場所別品質と植え付け数を変更できる", () => {
+      await runTest("苗植え詳細の配置図は閲覧専用で通常の編集導線を残す", () => {
         const state = comparable(app.eval(`(() => {
           const previous = {
-            plantingEvents,
             model: recordDetailLocationModel,
             building: recordDetailLocationBuilding,
             bed: recordDetailLocationSelectedBed,
-            groupClass: recordDetailLocationSelectedGroupClass,
-            selected: recordDetailLocationSelectedPalletKeys,
-            protectedAccessUnlocked
+            groupClass: recordDetailLocationSelectedGroupClass
           };
           const event = normalizePlantingEvent({
             palletNumberingVersion: CURRENT_PALLET_NUMBERING_VERSION,
@@ -12994,42 +12991,41 @@
           const mount = document.createElement("div");
           mount.id = "recordDetailLocationMount";
           document.body.appendChild(mount);
+          const actionHost = document.createElement("div");
+          actionHost.innerHTML = getRecordDetailActionsHtml("planting", event.eventId);
           try{
-            protectedAccessUnlocked = true;
-            plantingEvents = [event];
             recordDetailLocationModel = buildRecordDetailLocationModel("planting", event);
             recordDetailLocationBuilding = 2;
             recordDetailLocationSelectedBed = "A";
             recordDetailLocationSelectedGroupClass = "is-planting-count-all";
-            recordDetailLocationSelectedPalletKeys = new Set(["2-A-1"]);
             renderRecordDetailLocationDisplay();
-            const controls = [...mount.querySelectorAll(".recordDetailPlantingEditBtn")].map(button => button.textContent.trim());
-            applyRecordDetailLocationPlantingCount(16);
-            recordDetailLocationSelectedPalletKeys = new Set(["2-A-1"]);
-            applyRecordDetailLocationQuality("small");
-            const updated = plantingEvents[0];
             return {
-              controls,
-              count: updated.plantingCountsByPallet["2-A-1"],
-              quality: formatPlantingQualityMemo(getPlantingQualityMemoForPallet(updated, "2-A-1")),
-              otherQuality: formatPlantingQualityMemo(getPlantingQualityMemoForPallet(updated, "2-A-2"))
+              viewButtons: [...mount.querySelectorAll(".recordDetailLocationCountBtn")]
+                .map(button => button.textContent.trim()),
+              editTools: mount.querySelectorAll(".recordDetailPlantingEditTools").length,
+              editButtons: mount.querySelectorAll(".recordDetailPlantingEditBtn").length,
+              interactivePallets: mount.querySelectorAll([
+                ".dashboardSeedlingBedMapCell[data-ui-click]",
+                ".dashboardSeedlingBedMapCell[role='button']",
+                ".dashboardSeedlingBedMapCell[tabindex]"
+              ].join(",")).length,
+              mapAriaHidden: mount.querySelector(".dashboardSeedlingBedMap")?.getAttribute("aria-hidden"),
+              regularEditAction: !!actionHost.querySelector('[data-ui-click="runRecordDetailAction"][data-ui-arg="edit"]')
             };
           }finally{
             mount.remove();
-            plantingEvents = previous.plantingEvents;
             recordDetailLocationModel = previous.model;
             recordDetailLocationBuilding = previous.building;
             recordDetailLocationSelectedBed = previous.bed;
             recordDetailLocationSelectedGroupClass = previous.groupClass;
-            recordDetailLocationSelectedPalletKeys = previous.selected;
-            protectedAccessUnlocked = previous.protectedAccessUnlocked;
           }
         })()`));
-        assert(state.controls.includes("12植え") && state.controls.includes("16植え") && state.controls.includes("20植え"), "詳細表示に植え付け数の変更ボタンがありません");
-        assert(state.controls.includes("大きい") && state.controls.includes("小さい"), "詳細表示に品質変更ボタンがありません");
-        assertEqual(state.count, 16, "詳細表示から植え付け数を変更できません");
-        assertEqual(state.quality, "小さい", "詳細表示から場所別品質を変更できません");
-        assertEqual(state.otherQuality, "小さい", "別パレットの品質が意図せず変わりました");
+        assertDeepEqual(state.viewButtons, ["すべて", "12植え", "20植え"], "苗植え詳細の表示切り替えが維持されていません");
+        assertEqual(state.editTools, 0, "苗植え詳細に場所別の編集欄が残っています");
+        assertEqual(state.editButtons, 0, "苗植え詳細に植え付け数・品質の変更ボタンが残っています");
+        assertEqual(state.interactivePallets, 0, "苗植え詳細の配置図がタップ操作を受け付けます");
+        assertEqual(state.mapAriaHidden, "true", "閲覧専用の配置図が操作対象として読み上げられます");
+        assert(state.regularEditAction, "通常の苗植え記録編集ボタンがなくなっています");
       });
 
       await runTest("12植えと16植えの色を入れ替えて統一する", () => {
