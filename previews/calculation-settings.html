@@ -58,6 +58,9 @@
     .settingSectionName{display:block;font-size:15px;font-weight:800;}
     .settingSectionNote{display:block;margin-top:3px;color:#7a857d;font-size:11px;font-weight:550;}
     .settingSectionSummary{max-width:166px;color:#287b47;font-size:11px;font-weight:750;line-height:1.35;text-align:right;}
+    .settingSectionHeader[data-section="loss"]{grid-template-columns:minmax(0,1fr) 18px;}
+    .settingSectionHeader[data-section="loss"] .settingSectionSummary{grid-column:1/-1;grid-row:2;max-width:none;font-size:10px;white-space:nowrap;}
+    .settingSectionHeader[data-section="loss"] .settingSectionChevron{grid-column:2;grid-row:1;}
     .settingSectionChevron{color:#89938c;font-size:16px;text-align:center;transition:transform .18s ease;}
     .settingSectionHeader[aria-expanded="true"] .settingSectionChevron{transform:rotate(180deg);}
     .settingSectionBody{padding:0 14px 15px;border-top:1px solid #edf0ee;}
@@ -123,7 +126,7 @@
         <section class="settingSection">
           <button class="settingSectionHeader" type="button" aria-expanded="true" data-section="loss">
             <span><span class="settingSectionName">収穫ロス率</span><span class="settingSectionNote">収穫見込みに使用</span></span>
-            <span class="settingSectionSummary" data-loss-summary>全体 8%・12植え 3%・16植え 6%・20植え 9%</span>
+            <span class="settingSectionSummary" data-loss-summary>12植え 3%・16植え 10%・20植え 6%</span>
             <span class="settingSectionChevron">⌄</span>
           </button>
           <div class="settingSectionBody" data-section-body="loss">
@@ -131,7 +134,7 @@
               <div class="settingGroupTitle">全体</div>
               <div class="settingFieldRow">
                 <label class="settingLabel" for="lossAll">基本のロス率</label>
-                <span class="settingInputWrap"><input id="lossAll" type="number" min="0" max="100" step="0.1" value="8"><span class="settingUnit">%</span></span>
+                <span class="settingInputWrap"><input id="lossAll" type="number" min="0" max="100" step="0.1" value="10"><span class="settingUnit">%</span></span>
               </div>
             </div>
 
@@ -144,8 +147,8 @@
                 <div class="settingGroupHelp">入力した植え数だけ、全体ロス率より優先します。</div>
                 <div class="plantingCountGrid">
                   <div class="plantingCountField"><label for="loss12">12植え</label><span class="settingInputWrap"><input id="loss12" type="number" min="0" max="100" step="0.1" value="3"><span class="settingUnit">%</span></span></div>
-                  <div class="plantingCountField"><label for="loss16">16植え</label><span class="settingInputWrap"><input id="loss16" type="number" min="0" max="100" step="0.1" value="6"><span class="settingUnit">%</span></span></div>
-                  <div class="plantingCountField"><label for="loss20">20植え</label><span class="settingInputWrap"><input id="loss20" type="number" min="0" max="100" step="0.1" value="9"><span class="settingUnit">%</span></span></div>
+                  <div class="plantingCountField"><label for="loss16">16植え</label><span class="settingInputWrap"><input id="loss16" type="number" min="0" max="100" step="0.1"><span class="settingUnit">%</span></span></div>
+                  <div class="plantingCountField"><label for="loss20">20植え</label><span class="settingInputWrap"><input id="loss20" type="number" min="0" max="100" step="0.1" value="6"><span class="settingUnit">%</span></span></div>
                 </div>
               </div>
             </div>
@@ -240,13 +243,17 @@
     function updateLossSummary(){
       const value = input => String(input.value || "未入力");
       const plantingCountSwitch = root.querySelector('[data-controls="planting-count-loss-settings"]');
-      const plantingCountSummary = plantingCountSwitch?.getAttribute("aria-checked") === "true"
-        ? lossInputs.slice(1).map((input, index) => {
-            const inputValue = input.value.trim();
-            return inputValue ? `${[12, 16, 20][index]}植え ${inputValue}%` : "";
-          }).filter(Boolean).map(summary => `・${summary}`).join("")
-        : "";
-      root.querySelector("[data-loss-summary]").textContent = `全体 ${value(lossInputs[0])}%${plantingCountSummary}`;
+      const plantingCountEnabled = plantingCountSwitch?.getAttribute("aria-checked") === "true";
+      if(plantingCountEnabled){
+        const overallValue = lossInputs[0].value.trim();
+        const plantingCountSummary = lossInputs.slice(1).map((input, index) => {
+          const effectiveValue = input.value.trim() || overallValue;
+          return effectiveValue ? `${[12, 16, 20][index]}植え ${effectiveValue}%` : "";
+        }).filter(Boolean).join("・");
+        root.querySelector("[data-loss-summary]").textContent = plantingCountSummary;
+        return;
+      }
+      root.querySelector("[data-loss-summary]").textContent = `全体 ${value(lossInputs[0])}%`;
     }
     lossInputs.forEach(input => input.addEventListener("input", updateLossSummary));
     root.querySelectorAll("[data-preview-message]").forEach(button => button.addEventListener("click", () => showPreviewMessage(button.dataset.previewMessage)));
