@@ -41,6 +41,11 @@
     .previewClose{border:0;background:transparent;color:#218147;font-size:13px;font-weight:750;text-align:left;}
     .previewMark{color:#8a948d;font-size:10px;font-weight:750;letter-spacing:.08em;text-align:right;}
     .previewScroll{overflow:auto;padding:12px 12px 24px;}
+    .previewStateControl{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding:7px 8px 7px 11px;border-radius:12px;background:#e9eeea;}
+    .previewStateLabel{color:#657168;font-size:10px;font-weight:750;}
+    .previewStateButtons{display:grid;grid-template-columns:repeat(2,1fr);padding:2px;border-radius:9px;background:#d9e0db;}
+    .previewStateButton{min-width:62px;height:28px;padding:0 9px;border:0;border-radius:7px;background:transparent;color:#68736b;font-size:10px;font-weight:750;}
+    .previewStateButton[aria-pressed="true"]{background:#fff;color:#237e45;}
     .settingSection{margin-bottom:9px;overflow:hidden;border:1px solid #dce4de;border-radius:16px;background:#fff;}
     .settingSectionHeader{
       width:100%;
@@ -128,6 +133,13 @@
       </header>
 
       <div class="previewScroll">
+        <div class="previewStateControl" aria-label="見出し表示の確認用切り替え">
+          <span class="previewStateLabel">プレビュー表示</span>
+          <div class="previewStateButtons" role="group" aria-label="計算状態">
+            <button class="previewStateButton" type="button" aria-pressed="true" data-preview-calculation-state="before">計算前</button>
+            <button class="previewStateButton" type="button" aria-pressed="false" data-preview-calculation-state="after">計算後</button>
+          </div>
+        </div>
         <section class="settingSection">
           <button class="settingSectionHeader" type="button" aria-expanded="true" data-section="loss">
             <span><span class="settingSectionName">収穫ロス率</span><span class="settingSectionNote">収穫見込みに使用</span></span>
@@ -205,6 +217,8 @@
   <script>
     const root = document.querySelector(".previewPhone");
     const toast = root.querySelector(".previewToast");
+    const previewPalletCounts = { 12:4, 16:6, 20:2 };
+    let previewCalculationComplete = false;
     let toastTimer = null;
 
     function showPreviewMessage(message){
@@ -245,8 +259,38 @@
     });
 
     const lossInputs = ["lossAll", "loss12", "loss16", "loss20"].map(id => document.getElementById(id));
+    function formatLossRate(value){
+      const rounded = Math.round(Number(value) * 10) / 10;
+      return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    }
+
+    function getPreviewCalculatedLossRate(){
+      const overallValue = Number(lossInputs[0].value);
+      const plantingCountEnabled = root.querySelector('[data-controls="planting-count-loss-settings"]')?.getAttribute("aria-checked") === "true";
+      let totalHeads = 0;
+      let totalLostHeads = 0;
+      lossInputs.slice(1).forEach((input, index) => {
+        const plantingCount = [12, 16, 20][index];
+        const palletCount = previewPalletCounts[plantingCount] || 0;
+        const individualValue = plantingCountEnabled ? input.value.trim() : "";
+        const lossRate = individualValue === "" ? overallValue : Number(individualValue);
+        if(!Number.isFinite(lossRate) || palletCount <= 0) return;
+        const heads = plantingCount * palletCount;
+        totalHeads += heads;
+        totalLostHeads += heads * lossRate / 100;
+      });
+      return totalHeads > 0 ? totalLostHeads / totalHeads * 100 : null;
+    }
+
     function updateLossSummary(){
       const value = input => String(input.value || "未入力");
+      if(previewCalculationComplete){
+        const calculatedLossRate = getPreviewCalculatedLossRate();
+        root.querySelector("[data-loss-summary]").textContent = calculatedLossRate === null
+          ? "全体 -"
+          : `全体 ${formatLossRate(calculatedLossRate)}%`;
+        return;
+      }
       const plantingCountSwitch = root.querySelector('[data-controls="planting-count-loss-settings"]');
       const plantingCountEnabled = plantingCountSwitch?.getAttribute("aria-checked") === "true";
       if(plantingCountEnabled){
@@ -261,6 +305,15 @@
       root.querySelector("[data-loss-summary]").textContent = `全体 ${value(lossInputs[0])}%`;
     }
     lossInputs.forEach(input => input.addEventListener("input", updateLossSummary));
+    root.querySelectorAll("[data-preview-calculation-state]").forEach(button => {
+      button.addEventListener("click", () => {
+        previewCalculationComplete = button.dataset.previewCalculationState === "after";
+        root.querySelectorAll("[data-preview-calculation-state]").forEach(item => {
+          item.setAttribute("aria-pressed", item === button ? "true" : "false");
+        });
+        updateLossSummary();
+      });
+    });
     root.querySelectorAll("[data-preview-message]").forEach(button => button.addEventListener("click", () => showPreviewMessage(button.dataset.previewMessage)));
   </script>
 </body>

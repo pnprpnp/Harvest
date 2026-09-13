@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>シミュタブ 計算後プレビュー</title>
+  <style>html{background:#edf1ee;}body{margin:0;}</style>
+</head>
+<body>
+<div id="harvest-simulation-calculated">
+  <style>
+    #harvest-simulation-calculated{
+      color-scheme:light dark;
+      width:100%;
+      padding:8px 0;
+      background:transparent;
+      color:light-dark(#222824,#eef4ef);
+      font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif;
+    }
+    #harvest-simulation-calculated *{box-sizing:border-box;}
+    #harvest-simulation-calculated button{font:inherit;}
+    #harvest-simulation-calculated .hs-phone{
+      width:min(100%,430px);
+      margin:0 auto;
+      overflow:hidden;
+      border:1px solid light-dark(#dfe4e1,#354039);
+      border-radius:24px;
+      background:light-dark(#f7f7f9,#171b18);
+      box-shadow:0 16px 42px light-dark(rgba(31,55,40,.16),rgba(0,0,0,.38));
+    }
+    #harvest-simulation-calculated .hs-header{
+      display:grid;
+      grid-template-columns:44px 1fr 64px;
+      align-items:center;
+      min-height:58px;
+      padding:7px 12px;
+      background:light-dark(#fff,#202622);
+    }
+    #harvest-simulation-calculated .hs-menu,
+    #harvest-simulation-calculated .hs-yesterday{
+      border:0;
+      background:transparent;
+      color:light-dark(#222824,#eef4ef);
+    }
+    #harvest-simulation-calculated .hs-menu{font-size:27px;text-align:left;}
+    #harvest-simulation-calculated .hs-title{font-size:18px;font-weight:500;text-align:center;}
+    #harvest-simulation-calculated .hs-yesterday{color:#22874a;font-size:12px;font-weight:500;white-space:nowrap;}
+    #harvest-simulation-calculated .hs-workflow{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      padding:9px 13px;
+      border-top:1px solid light-dark(#edf0ee,#2d3530);
+      border-bottom:1px solid light-dark(#e4e8e5,#303934);
+      background:light-dark(#fbfcfb,#1d231f);
+      color:light-dark(#526057,#bac4bd);
+      font-size:11px;
+    }
+    #harvest-simulation-calculated .hs-workflow strong{color:#1f7d45;font-weight:500;}
+    #harvest-simulation-calculated .hs-content{padding:8px 10px 10px;}
+    #harvest-simulation-calculated .hs-case-row{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 128px;
+      align-items:center;
+      gap:9px;
+      min-height:58px;
+      padding:4px 5px;
+    }
+    #harvest-simulation-calculated .hs-case-label{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;}
+    #harvest-simulation-calculated .hs-case-icon{display:grid;place-items:center;width:23px;height:23px;color:#23894b;}
+    #harvest-simulation-calculated .hs-case-icon svg{width:100%;height:100%;}
+    #harvest-simulation-calculated .hs-case-value{
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:5px;
+      min-height:42px;
+      padding:5px 10px;
+      border:1px solid #56a975;
+      border-radius:10px;
+      background:light-dark(#fbfffc,#1d2821);
+      font-size:20px;
+      font-weight:500;
+    }
+    #harvest-simulation-calculated .hs-case-unit{font-size:11px;color:light-dark(#6d776f,#aeb8b1);}
+    #harvest-simulation-calculated .hs-quiet-actions{display:grid;grid-template-columns:72px 1fr 70px;gap:7px;padding:3px 4px 5px;}
+    #harvest-simulation-calculated .hs-quiet-actions button{
+      min-height:32px;
+      border:1px solid light-dark(#d9dfdb,#3a453e);
+      border-radius:8px;
+      background:transparent;
+      color:light-dark(#677169,#aeb8b1);
+      font-size:11px;
+    }
+    #harvest-simulation-calculated .hs-pager{display:grid;grid-template-columns:42px 1fr 42px;align-items:center;gap:6px;padding:5px 0;}
+    #harvest-simulation-calculated .hs-pager button{
+      min-height:38px;
+      border:0;
+      border-radius:10px;
+      background:transparent;
+      color:light-dark(#778078,#adb7b0);
+      font-size:22px;
+    }
+    #harvest-simulation-calculated .hs-building{
+      padding:8px;
+      border:1px solid #299657;
+      border-radius:11px;
+      background:light-dark(#eaf8ee,#193222);
+      color:#23874a;
+      font-size:14px;
+      font-weight:500;
+      text-align:center;
+    }
+    #harvest-simulation-calculated .hs-status{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      overflow:hidden;
+      margin-bottom:5px;
+      border:1px solid light-dark(#dfe4e1,#354039);
+      border-radius:12px;
+      background:light-dark(#fff,#202622);
+    }
+    #harvest-simulation-calculated .hs-status > div{padding:7px 4px;text-align:center;}
+    #harvest-simulation-calculated .hs-status > div + div{border-left:1px solid light-dark(#e2e7e3,#354039);}
+    #harvest-simulation-calculated .hs-status-label{display:block;color:light-dark(#7a837c,#a7b1aa);font-size:10px;}
+    #harvest-simulation-calculated .hs-status-value{display:block;margin-top:3px;color:#23874a;font-size:15px;font-weight:500;}
+    #harvest-simulation-calculated .hs-beds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;}
+    #harvest-simulation-calculated .hs-bed{
+      padding:6px 7px 7px;
+      border:1px solid light-dark(#dfe4e1,#354039);
+      border-radius:12px;
+      background:light-dark(#fff,#202622);
+    }
+    #harvest-simulation-calculated .hs-bed-name{margin-bottom:5px;color:light-dark(#4d5650,#d4dcd6);font-size:14px;font-weight:500;text-align:center;}
+    #harvest-simulation-calculated .hs-pallet-grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:1px;
+      padding:3px;
+      border:1px solid light-dark(#bdc9c1,#46534b);
+      border-radius:7px;
+      background:light-dark(#edf1ee,#29312c);
+    }
+    #harvest-simulation-calculated .hs-pallet{height:5px;border-radius:1px;background:#dcfce7;}
+    #harvest-simulation-calculated .hs-pallet.hs-selected{background:#22c55e;}
+    #harvest-simulation-calculated .hs-pallet.hs-unavailable{background:#a9afb0;}
+    #harvest-simulation-calculated .hs-pallet.hs-overage{background:#f97316;}
+    #harvest-simulation-calculated .hs-bed-stat{margin-top:5px;color:light-dark(#68736b,#aeb8b1);font-size:9px;text-align:center;}
+    #harvest-simulation-calculated .hs-legend{display:flex;justify-content:center;gap:12px;padding:8px 2px 4px;color:light-dark(#717b73,#aeb8b1);font-size:9px;}
+    #harvest-simulation-calculated .hs-legend-item{display:flex;align-items:center;gap:4px;}
+    #harvest-simulation-calculated .hs-dot{width:9px;height:9px;border-radius:3px;background:#dcfce7;}
+    #harvest-simulation-calculated .hs-dot.hs-selected{background:#22c55e;}
+    #harvest-simulation-calculated .hs-dot.hs-unavailable{background:#a9afb0;}
+    #harvest-simulation-calculated .hs-action-bar{
+      display:grid;
+      grid-template-columns:minmax(0,2fr) minmax(92px,1fr);
+      gap:8px;
+      padding:7px 11px;
+      border-top:1px solid light-dark(#dfe4e1,#354039);
+      background:light-dark(rgba(255,255,255,.98),rgba(29,35,31,.98));
+    }
+    #harvest-simulation-calculated .hs-settings{
+      display:grid;
+      grid-template-columns:30px minmax(0,1fr);
+      align-items:center;
+      gap:6px;
+      min-height:46px;
+      padding:4px 8px;
+      border:1px solid light-dark(#ccd4ce,#455149);
+      border-radius:12px;
+      background:light-dark(#fff,#202622);
+      color:light-dark(#4f5952,#cad3cc);
+    }
+    #harvest-simulation-calculated .hs-sliders{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:light-dark(#eaf7ee,#1b3825);color:#24884a;}
+    #harvest-simulation-calculated .hs-sliders svg{width:16px;height:16px;}
+    #harvest-simulation-calculated .hs-settings-text{min-width:0;font-size:11px;font-weight:500;text-align:center;white-space:nowrap;}
+    #harvest-simulation-calculated .hs-calculated{
+      min-height:46px;
+      border:0;
+      border-radius:12px;
+      background:light-dark(#d5dbd7,#3a433d);
+      color:light-dark(#89928c,#909a93);
+      font-size:16px;
+      font-weight:500;
+    }
+    #harvest-simulation-calculated .hs-nav{display:grid;grid-template-columns:repeat(4,1fr);padding:6px 4px 8px;border-top:1px solid light-dark(#e0e5e2,#343e37);background:light-dark(#fbfbfd,#1b201d);}
+    #harvest-simulation-calculated .hs-nav button{display:grid;place-items:center;gap:2px;border:0;background:transparent;color:light-dark(#8a8e90,#8e9791);font-size:10px;}
+    #harvest-simulation-calculated .hs-nav button[aria-current="page"]{color:#238b4b;}
+    #harvest-simulation-calculated .hs-nav svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;}
+    @media(max-width:360px){
+      #harvest-simulation-calculated .hs-content{padding-right:7px;padding-left:7px;}
+      #harvest-simulation-calculated .hs-case-row{grid-template-columns:minmax(0,1fr) 112px;}
+      #harvest-simulation-calculated .hs-settings-text{font-size:10px;letter-spacing:-.03em;}
+      #harvest-simulation-calculated .hs-beds{gap:5px;}
+      #harvest-simulation-calculated .hs-bed{padding-right:5px;padding-left:5px;}
+    }
+  </style>
+
+  <section class="hs-phone" aria-label="シミュタブの計算後プレビュー">
+    <header class="hs-header">
+      <button class="hs-menu" type="button" aria-label="メニュー">☰</button>
+      <div class="hs-title">Harvestnavi⌄</div>
+      <button class="hs-yesterday" type="button">↻ 昨日</button>
+    </header>
+
+    <div class="hs-workflow"><span><strong>3</strong> 内容を確認し、モニターに送信</span><span>⌃</span></div>
+
+    <div class="hs-content">
+      <div class="hs-case-row">
+        <div class="hs-case-label">
+          <span class="hs-case-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.7 21 7.4v9.2L12 21.3 3 16.6V7.4L12 2.7Z"/><path fill="none" stroke="white" stroke-width="1.2" d="m3.8 7.8 8.2 4.3 8.2-4.3M12 12.1v8.2"/></svg>
+          </span>
+          収穫ケース数
+        </div>
+        <div class="hs-case-value"><span>100</span><span class="hs-case-unit">ケース</span></div>
+      </div>
+
+      <div class="hs-quiet-actions">
+        <button type="button">🌱 1号棟</button>
+        <button type="button">途中経過を入力</button>
+        <button type="button">クリア</button>
+      </div>
+
+      <div class="hs-pager">
+        <button type="button" aria-label="前の号棟">‹</button>
+        <div class="hs-building">2号棟</div>
+        <button type="button" aria-label="次の号棟">›</button>
+      </div>
+
+      <div class="hs-status">
+        <div><span class="hs-status-label">定植日数の詳細</span><span class="hs-status-value">12〜20日</span></div>
+        <div><span class="hs-status-label">ケース配置</span><span class="hs-status-value">100ケース</span></div>
+        <div><span class="hs-status-label">収穫可能</span><span class="hs-status-value">118ケース</span></div>
+      </div>
+
+      <div class="hs-beds" aria-label="2号棟のベッド配置図">
+        <div class="hs-bed" data-bed="F"><div class="hs-bed-name">F</div><div class="hs-pallet-grid"></div><div class="hs-bed-stat">収穫可 22</div></div>
+        <div class="hs-bed" data-bed="D"><div class="hs-bed-name">D</div><div class="hs-pallet-grid"></div><div class="hs-bed-stat">収穫可 20</div></div>
+        <div class="hs-bed" data-bed="B"><div class="hs-bed-name">B</div><div class="hs-pallet-grid"></div><div class="hs-bed-stat">収穫可 18</div></div>
+        <div class="hs-bed" data-bed="E"><div class="hs-bed-name">E</div><div class="hs-pallet-grid"></div><div class="hs-bed-stat">収穫可 21</div></div>
+        <div class="hs-bed" data-bed="C"><div class="hs-bed-name">C</div><div class="hs-pallet-grid"></div><div class="hs-bed-stat">収穫可 19</div></div>
+        <div class="hs-bed" data-bed="A"><div class="hs-bed-name">A</div><div class="hs-pallet-grid"></div><div class="hs-bed-stat">収穫可 18</div></div>
+      </div>
+
+      <div class="hs-legend" aria-label="色の凡例">
+        <span class="hs-legend-item"><span class="hs-dot"></span>収穫可能</span>
+        <span class="hs-legend-item"><span class="hs-dot hs-selected"></span>選択中</span>
+        <span class="hs-legend-item"><span class="hs-dot hs-unavailable"></span>収穫不可能</span>
+      </div>
+    </div>
+
+    <div class="hs-action-bar">
+      <button class="hs-settings" type="button">
+        <span class="hs-sliders" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="18" r="2"/></svg></span>
+        <span class="hs-settings-text">ロス 全体 7.3%・20 / 16 / 60(2/3)</span>
+      </button>
+      <button class="hs-calculated" type="button" disabled aria-label="計算済み">計算済み</button>
+    </div>
+
+    <nav class="hs-nav" aria-label="メインタブ">
+      <button type="button" aria-current="page"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M7 7h10M8 11h2m4 0h2m-8 4h2m4 0h2m-8 4h2m4 0h2"/></svg><span>シミュ</span></button>
+      <button type="button"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="1"/><path d="M8 21h8M12 17v4"/></svg><span>モニター</span></button>
+      <button type="button"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8m-8 4h8m-8 4h5"/></svg><span>記録</span></button>
+      <button type="button"><svg viewBox="0 0 24 24"><path d="M5 20V10m7 10V4m7 16v-7"/></svg><span>集計</span></button>
+    </nav>
+  </section>
+
+  <script>
+    (() => {
+      const root = document.getElementById("harvest-simulation-calculated");
+      const bedPatterns = {
+        F:{ selected:12, unavailable:3, overage:0 },
+        D:{ selected:16, unavailable:5, overage:0 },
+        B:{ selected:18, unavailable:7, overage:0 },
+        E:{ selected:14, unavailable:4, overage:0 },
+        C:{ selected:13, unavailable:6, overage:1 },
+        A:{ selected:10, unavailable:8, overage:0 }
+      };
+      root.querySelectorAll("[data-bed]").forEach(bed => {
+        const grid = bed.querySelector(".hs-pallet-grid");
+        const pattern = bedPatterns[bed.dataset.bed];
+        for(let index = 0; index < 36; index += 1){
+          const pallet = document.createElement("span");
+          pallet.className = "hs-pallet";
+          if(index < pattern.unavailable) pallet.classList.add("hs-unavailable");
+          else if(index < pattern.unavailable + pattern.selected) pallet.classList.add("hs-selected");
+          else if(index < pattern.unavailable + pattern.selected + pattern.overage) pallet.classList.add("hs-overage");
+          grid.appendChild(pallet);
+        }
+      });
+    })();
+  </script>
+</div>
+</body>
+</html>

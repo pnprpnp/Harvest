@@ -10,9 +10,15 @@ function loadSettings(){
         parsed.harvestLossRatesByPlantingCount?.[count]
       );
     });
+    const hasSavedPlantingCountLossRate = ALLOWED_YIELDS.some(count => (
+      merged.harvestLossRatesByPlantingCount[count] !== ""
+    ));
+    merged.usePlantingCountLossSettings = typeof parsed.usePlantingCountLossSettings === "boolean"
+      ? parsed.usePlantingCountLossSettings
+      : hasSavedPlantingCountLossRate;
     merged.defaultYieldPerPallet = normalizeYield(parsed.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
     merged.defaultPlantingCount = normalizeYield(parsed.defaultPlantingCount, defaultSettings.defaultPlantingCount);
-    merged.useBedLossSettings = !!parsed.useBedLossSettings;
+    merged.useBedLossSettings = false;
     merged.useBedYieldSettings = !!parsed.useBedYieldSettings;
     merged.useBedPlantSettings = !!parsed.useBedPlantSettings;
     merged.seedlingLossRate = clampNumber(parsed.seedlingLossRate, 0, 100, defaultSettings.seedlingLossRate);

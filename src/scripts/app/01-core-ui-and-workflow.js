@@ -198,6 +198,7 @@ function getActivePalletLifecycleStateStorageKey(){ return getRoleScopedStorageK
 const defaultSettings = {
   defaultLossRate: 0,
   harvestLossRatesByPlantingCount: { 12: "", 16: "", 20: "" },
+  usePlantingCountLossSettings: false,
   defaultYieldPerPallet: 20,
   defaultPlantingCount: 20,
   useBedLossSettings: false,
@@ -1647,7 +1648,14 @@ function getBedTabSummaryText(groupName, bedName){
   return value === "" ? "未入力" : `${value}個`;
 }
 
-function getForecastSettingsSummaryText(){
+function formatForecastLossRate(value){
+  const numericValue = Number(value);
+  if(!Number.isFinite(numericValue)) return "-";
+  const rounded = Math.round(numericValue * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function getForecastSettingsSummaryText(options = {}){
   const lossInput = document.getElementById("defaultLossRateInput");
   const yieldInput = document.getElementById("defaultYieldInput");
   const plantInput = document.getElementById("defaultPlantingCountInput");
@@ -1656,19 +1664,41 @@ function getForecastSettingsSummaryText(){
   const yieldValue = String(yieldInput?.value || "").trim() || "-";
   const plantValue = String(plantInput?.value || "").trim() || "-";
   const special60 = String(special60Input?.value || "0").trim() || "0";
-  const hasPlantingCountLossRate = [12, 16, 20].some(count => (
-    String(document.getElementById(`lossByPlantingCount_${count}`)?.value ?? "").trim() !== ""
-  ));
-  const lossMark = document.getElementById("useBedLossSettings")?.checked || hasPlantingCountLossRate ? "*" : "";
+  const hasCurrentHarvestTotal = options.currentHarvestTotal !== null
+    && typeof options.currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(options.currentHarvestTotal));
+  const currentHarvestTotal = hasCurrentHarvestTotal
+    ? Number(options.currentHarvestTotal)
+    : Number(harvestSummary?.totalHarvest);
+  const isCalculated = options.isCalculated === true || (
+    options.isCalculated !== false
+    && hasWorkflowCalculationResult(currentHarvestTotal)
+  );
+  const calculatedLossRate = isCalculated ? getHarvestSummaryAppliedLossRate() : null;
+  const hasCalculatedLossRate = calculatedLossRate !== null
+    && calculatedLossRate !== ""
+    && Number.isFinite(Number(calculatedLossRate));
+  const lossSummary = hasCalculatedLossRate
+    ? `全体 ${formatForecastLossRate(calculatedLossRate)}%`
+    : (document.getElementById("usePlantingCountLossSettings")?.checked
+      ? "個別"
+      : `${loss}%`);
   const yieldMark = document.getElementById("useBedYieldSettings")?.checked ? "*" : "";
   const plantMark = document.getElementById("useBedPlantSettings")?.checked ? "*" : "";
-  return `ロス ${loss}%${lossMark}・${yieldValue}${yieldMark} / ${plantValue}${plantMark} / 60(${special60}/3)`;
+  return `ロス ${lossSummary}・${yieldValue}${yieldMark} / ${plantValue}${plantMark} / 60(${special60}/3)`;
 }
 
-function updateForecastSettingsSummary(){
+function updateForecastSettingsSummary(currentHarvestTotal = null){
   const el = document.getElementById("forecastSettingsSummary");
-  if(el) el.textContent = getForecastSettingsSummaryText();
-  updateHarvestCalculationButtonState();
+  const summaryTotal = Number(harvestSummary?.totalHarvest);
+  const resolvedHarvestTotal = currentHarvestTotal !== null
+    && typeof currentHarvestTotal !== "undefined"
+    && Number.isFinite(Number(currentHarvestTotal))
+    ? Number(currentHarvestTotal)
+    : (Number.isFinite(summaryTotal) ? summaryTotal : null);
+  const isCalculated = hasWorkflowCalculationResult(resolvedHarvestTotal);
+  if(el) el.textContent = getForecastSettingsSummaryText({ currentHarvestTotal:resolvedHarvestTotal, isCalculated });
+  updateHarvestCalculationButtonState(resolvedHarvestTotal);
 }
 
 function getCalculationSettingValue(inputId, fallback = "-"){
@@ -1679,30 +1709,29 @@ function getCalculationSettingValue(inputId, fallback = "-"){
 function getCalculationSettingsClusterValues(title){
   const values = [];
   if(title === "収穫ロス率"){
-    values.push(["全体", `${getCalculationSettingValue("defaultLossRateInput", "0")}%`]);
-    [12, 16, 20].forEach(count => {
-      const inputId = `lossByPlantingCount_${count}`;
-      const rawValue = getCalculationSettingValue(inputId, "");
-      if(rawValue !== "") values.push([`${count}植え`, `${rawValue}%`]);
-    });
-    if(document.getElementById("useBedLossSettings")?.checked){
-      bedOrder.forEach(bedName => {
-        values.push([bedName, getBedTabSummaryText("loss", bedName)]);
+    const summaryTotal = Number(harvestSummary?.totalHarvest);
+    const isCalculated = hasWorkflowCalculationResult(Number.isFinite(summaryTotal) ? summaryTotal : null);
+    const calculatedLossRate = isCalculated ? getHarvestSummaryAppliedLossRate() : null;
+    if(calculatedLossRate !== null && calculatedLossRate !== "" && Number.isFinite(Number(calculatedLossRate))){
+      values.push(["全体", `${formatForecastLossRate(calculatedLossRate)}%`]);
+    }else if(document.getElementById("usePlantingCountLossSettings")?.checked){
+      const overallLossRate = getCalculationSettingValue("defaultLossRateInput", "0");
+      [12, 16, 20].forEach(count => {
+        const rawValue = getCalculationSettingValue(`lossByPlantingCount_${count}`, "");
+        values.push([`${count}植え`, `${rawValue === "" ? overallLossRate : rawValue}%`]);
       });
+    }else{
+      values.push(["全体", `${getCalculationSettingValue("defaultLossRateInput", "0")}%`]);
     }
   }else if(title === "収穫時の個数"){
     values.push(["全体", `${getCalculationSettingValue("defaultYieldInput")}個`]);
     if(document.getElementById("useBedYieldSettings")?.checked){
-      bedOrder.forEach(bedName => {
-        values.push([bedName, getBedTabSummaryText("yield", bedName)]);
-      });
+      values.push(["", "個別"]);
     }
   }else if(title === "苗の個数"){
     values.push(["全体", `${getCalculationSettingValue("defaultPlantingCountInput")}個`]);
     if(document.getElementById("useBedPlantSettings")?.checked){
-      bedOrder.forEach(bedName => {
-        values.push([bedName, getBedTabSummaryText("plant", bedName)]);
-      });
+      values.push(["", "個別"]);
     }
   }else if(title === "苗取り補足"){
     values.push(["苗ロス", `${getCalculationSettingValue("seedlingLossRateInput", "0")}%`]);
@@ -1716,6 +1745,7 @@ function refreshCalculationSettingsClusterValues(){
     const header = details.querySelector(":scope > .settingClusterSummary .clusterHeader");
     const title = header?.querySelector(".clusterTitle")?.textContent?.trim() || "";
     if(!header || !title) return;
+    details.dataset.settingClusterType = title === "収穫ロス率" ? "loss" : "default";
 
     let valuesWrap = header.querySelector(":scope > .settingClusterValues");
     if(!valuesWrap){
@@ -1725,7 +1755,12 @@ function refreshCalculationSettingsClusterValues(){
     }
     valuesWrap.replaceChildren();
 
-    getCalculationSettingsClusterValues(title).forEach(([label, value]) => {
+    const clusterValues = getCalculationSettingsClusterValues(title);
+    valuesWrap.classList.toggle(
+      "is-planting-count-loss-summary",
+      title === "収穫ロス率" && clusterValues.length === ALLOWED_YIELDS.length
+    );
+    clusterValues.forEach(([label, value]) => {
       const item = document.createElement("span");
       item.className = "settingClusterValueItem";
       const labelEl = document.createElement("span");
@@ -1776,24 +1811,27 @@ function syncAccordionOpenState(groupId, shouldOpen){
 }
 
 function refreshOverrideControls(){
-  const useBedLoss = !!document.getElementById("useBedLossSettings")?.checked;
+  const usePlantingCountLoss = !!document.getElementById("usePlantingCountLossSettings")?.checked;
   const useBedYield = !!document.getElementById("useBedYieldSettings")?.checked;
   const useBedPlant = !!document.getElementById("useBedPlantSettings")?.checked;
 
-  setDisabledState("defaultLossRateWrap", useBedLoss);
+  setDisabledState("defaultLossRateWrap", false);
   setDisabledState("defaultYieldWrap", useBedYield);
   setDisabledState("defaultPlantWrap", useBedPlant);
-  setDisabledState("bedLossAccordion", !useBedLoss);
+  setDisabledState("plantingCountLossSettingsBody", !usePlantingCountLoss);
+  setDisabledState("bedLossAccordion", true);
   setDisabledState("bedYieldAccordion", !useBedYield);
   setDisabledState("bedPlantAccordion", !useBedPlant);
   const bedLossAccordion = document.getElementById("bedLossAccordion");
   const bedYieldAccordion = document.getElementById("bedYieldAccordion");
   const bedPlantAccordion = document.getElementById("bedPlantAccordion");
-  if(bedLossAccordion) bedLossAccordion.hidden = !useBedLoss;
+  const plantingCountLossSettingsBody = document.getElementById("plantingCountLossSettingsBody");
+  if(plantingCountLossSettingsBody) plantingCountLossSettingsBody.hidden = !usePlantingCountLoss;
+  if(bedLossAccordion) bedLossAccordion.hidden = true;
   if(bedYieldAccordion) bedYieldAccordion.hidden = !useBedYield;
   if(bedPlantAccordion) bedPlantAccordion.hidden = !useBedPlant;
 
-  syncAccordionOpenState("bedLossAccordion", useBedLoss);
+  syncAccordionOpenState("bedLossAccordion", false);
   syncAccordionOpenState("bedYieldAccordion", useBedYield);
   syncAccordionOpenState("bedPlantAccordion", useBedPlant);
 
@@ -1861,7 +1899,7 @@ function installSettingsDirtyWatchers(){
     "defaultLossRateInput","lossByPlantingCount_12","lossByPlantingCount_16","lossByPlantingCount_20",
     "defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
     "accessPasswordInput",
-    "useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
+    "usePlantingCountLossSettings","useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
     "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",
     "yield_D","loss_D","plant_D","yield_E","loss_E","plant_E","yield_F","loss_F","plant_F",
     "yieldUseFrontBack_A","yieldFrontCount_A","yieldFront_A","yieldBack_A",
@@ -4154,16 +4192,14 @@ function setWorkflowGuideStage(stage, options = {}){
 function hasWorkflowCalculationResult(currentHarvestTotal = null){
   const selectedKeyCount = Array.isArray(harvestFillKeys) ? harvestFillKeys.length : 0;
   const expectedNeedHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
+  if(expectedNeedHeads <= 0 || selectedKeyCount <= 0 || !harvestSummary) return false;
   const resolvedHarvestTotal = currentHarvestTotal !== null
     && typeof currentHarvestTotal !== "undefined"
     && Number.isFinite(Number(currentHarvestTotal))
     ? Math.round(Number(currentHarvestTotal) * 10) / 10
     : Math.round(getCurrentHarvestTotal() * 10) / 10;
   const summaryHarvestTotal = Number(harvestSummary?.totalHarvest);
-  return expectedNeedHeads > 0
-    && selectedKeyCount > 0
-    && !!harvestSummary
-    && Number(harvestSummary.filledCount) === selectedKeyCount
+  return Number(harvestSummary.filledCount) === selectedKeyCount
     && Number(harvestSummary.needHeads) === expectedNeedHeads
     && Number.isFinite(summaryHarvestTotal)
     && Math.abs(summaryHarvestTotal - resolvedHarvestTotal) < 0.11;

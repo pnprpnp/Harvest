@@ -3,21 +3,29 @@
       <div class="settingCluster">
         <div class="clusterHeader">
           <div class="clusterTitle">収穫ロス率</div>
-          <div class="clusterNote">収穫時のロス率を設定します。</div>
+          <div class="clusterNote">収穫見込みに使用</div>
         </div>
-        <label>全体ロス率（%）</label>
+        <label>基本のロス率（%）</label>
         <div id="defaultLossRateWrap">
         <input id="defaultLossRateInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら0%">
         </div>
-        <div class="plantingCountLossSettings">
-          <div class="bedInlineTitle">植え数別に設定する</div>
-          <div class="clusterNote">入力した値はベッド別・全体ロス率より優先します。未入力の植え数は従来の設定を使います。</div>
+        <div class="overrideToggle plantingCountLossToggle">
+          <label class="calculationSettingsToggle">
+            <span class="calculationSettingsToggleText"><strong>植え数別</strong><small>12・16・20植えごとに設定</small></span>
+            <input type="checkbox" id="usePlantingCountLossSettings">
+            <span class="calculationSettingsSwitchVisual" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div id="plantingCountLossSettingsBody" class="plantingCountLossSettings">
+          <div class="clusterNote">入力した植え数だけ、全体ロス率より優先します。</div>
           <div class="plantingCountLossGrid">
             <div class="bedFieldItem"><label for="lossByPlantingCount_12">12植え</label><input id="lossByPlantingCount_12" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力"></div>
             <div class="bedFieldItem"><label for="lossByPlantingCount_16">16植え</label><input id="lossByPlantingCount_16" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力"></div>
             <div class="bedFieldItem"><label for="lossByPlantingCount_20">20植え</label><input id="lossByPlantingCount_20" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力"></div>
           </div>
         </div>
+        <div class="calculationSettingsPriority">適用順　植え数別 → 全体</div>
+        <div class="legacyBedLossSettings" hidden>
         <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedLossSettings"><span class="checkText">ベッド別設定を有効にする</span></label></div>
         <div class="accordionGroup" id="bedLossAccordion">
         <div class="bedInlineTitle">ベッド別に設定する</div>
@@ -40,14 +48,15 @@
           </div>
         </div>
         </div>
+        </div>
       </div>
 
       <div class="settingCluster">
         <div class="clusterHeader">
           <div class="clusterTitle">収穫時の個数</div>
-          <div class="clusterNote">１パレットで収穫できる理想個数を設定します。収穫予測では、苗植え記録に苗株数がある場合、その記録値がこの設定より優先されます。</div>
+          <div class="clusterNote">1パレットの理想個数</div>
         </div>
-        <label>収穫する時１パレットあたり植えられている個数</label>
+        <label>全体の個数</label>
       <div id="defaultYieldWrap">
       <select id="defaultYieldInput">
         <option value="20">20</option>
@@ -55,7 +64,14 @@
         <option value="12">12</option>
       </select>
       </div>
-      <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedYieldSettings"><span class="checkText">ベッド別設定を有効にする</span></label></div>
+      <div class="clusterNote calculationSettingsDetailNote">苗植え記録に苗株数がある場合、その記録値がこの設定より優先されます。</div>
+      <div class="overrideToggle">
+        <label class="calculationSettingsToggle">
+          <span class="calculationSettingsToggleText"><strong>ベッド別</strong><small>必要な場合だけ場所ごとに調整</small></span>
+          <input type="checkbox" id="useBedYieldSettings">
+          <span class="calculationSettingsSwitchVisual" aria-hidden="true"></span>
+        </label>
+      </div>
       <div class="accordionGroup" id="bedYieldAccordion">
         <div class="bedInlineTitle">ベッド別に設定する（収穫する時1パレットあたり植えられている個数）</div>
         <div class="accordionContent">
@@ -160,9 +176,9 @@
       <div class="settingCluster">
         <div class="clusterHeader">
           <div class="clusterTitle">苗の個数</div>
-          <div class="clusterNote">二次定植で１パレットに植える株数を設定します。</div>
+          <div class="clusterNote">二次定植に使用</div>
         </div>
-        <label>収穫後に植える苗の1パレットあたり個数</label>
+        <label>全体の植え付け数</label>
       <div id="defaultPlantWrap">
       <select id="defaultPlantingCountInput">
         <option value="20">20</option>
@@ -170,7 +186,13 @@
         <option value="12">12</option>
       </select>
       </div>
-      <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedPlantSettings"><span class="checkText">ベッド別設定を有効にする</span></label></div>
+      <div class="overrideToggle">
+        <label class="calculationSettingsToggle">
+          <span class="calculationSettingsToggleText"><strong>ベッド別</strong><small>必要な場合だけ場所ごとに調整</small></span>
+          <input type="checkbox" id="useBedPlantSettings">
+          <span class="calculationSettingsSwitchVisual" aria-hidden="true"></span>
+        </label>
+      </div>
       <div class="accordionGroup" id="bedPlantAccordion">
         <div class="bedInlineTitle">ベッド別に設定する（収穫後に植える苗の1パレットあたり個数）</div>
         <div class="accordionContent">
@@ -275,7 +297,7 @@
       <div class="settingCluster">
         <div class="clusterHeader">
           <div class="clusterTitle">苗取り補足</div>
-          <div class="clusterNote">二次定植時の苗のロス率や、一次定植時の60個用パレットの組み合わせを設定します。</div>
+          <div class="clusterNote">苗枚数の計算に使用</div>
         </div>
         <label>苗のロス率（%）</label>
       <input id="seedlingLossRateInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら0%">

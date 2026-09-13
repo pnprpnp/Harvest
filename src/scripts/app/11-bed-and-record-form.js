@@ -479,7 +479,7 @@ function renderForecastSummary(options = {}){
     return;
   }
   const casePlan = getHarvestCasePlan();
-  updateHarvestCalculationButtonState(options.currentHarvestTotal);
+  updateForecastSettingsSummary(options.currentHarvestTotal);
   updatePartialHarvestDeductionNote(options.currentHarvestTotal);
   updateRecordPartialHarvestIncludedNote();
   const seedlingHouseModal = document.getElementById("seedlingHouseModal");

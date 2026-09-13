@@ -2955,6 +2955,11 @@
       });
 
       await runTest("計算設定に各値を表示し無効なベッド別設定を隠す", () => {
+        const previousCalculationState = comparable(app.eval(`({
+          keys:[...harvestFillKeys],
+          summary:harvestSummary,
+          cases:document.getElementById("casesInput").value
+        })`));
         const findCluster = title => Array.from(app.document.querySelectorAll("#forecastSettingsWindowBody .settingClusterDetails"))
           .find(cluster => cluster.querySelector(".clusterTitle")?.textContent.trim() === title);
         const readItems = title => Array.from(findCluster(title)?.querySelectorAll(".settingClusterValueItem") || [])
@@ -2963,27 +2968,34 @@
             item.querySelector(".settingClusterValueText")?.textContent || ""
           ]);
         const useBedLoss = app.document.getElementById("useBedLossSettings");
+        const usePlantingCountLoss = app.document.getElementById("usePlantingCountLossSettings");
         const useBedYield = app.document.getElementById("useBedYieldSettings");
         const useBedPlant = app.document.getElementById("useBedPlantSettings");
         const plantingCountLossInputs = [12, 16, 20].map(count => (
           app.document.getElementById(`lossByPlantingCount_${count}`)
         ));
         try{
+          app.eval(`harvestFillKeys=[]; harvestSummary=null; document.getElementById("casesInput").value="";`);
           useBedLoss.checked = false;
+          usePlantingCountLoss.checked = false;
           useBedYield.checked = false;
           useBedPlant.checked = false;
           plantingCountLossInputs.forEach(input => { input.value = ""; });
+          app.openForecastSettingsWindow();
           app.document.getElementById("defaultLossRateInput").value = "12.5";
           app.document.getElementById("defaultYieldInput").value = "16";
           app.document.getElementById("defaultPlantingCountInput").value = "12";
           app.document.getElementById("seedlingLossRateInput").value = "7.5";
           app.document.getElementById("specialPallet60CountInput").value = "2";
           app.refreshOverrideControls();
-          app.openForecastSettingsWindow();
+          app.refreshBedTabSummaries();
+          app.refreshCalculationSettingsClusterValues();
 
           const plantingCountLossGrid = app.document.querySelector(".plantingCountLossGrid");
+          const plantingCountLossSettingsBody = app.document.getElementById("plantingCountLossSettingsBody");
           assert(plantingCountLossInputs.every(Boolean), "12・16・20植えのロス率入力欄が揃っていません");
           assert(plantingCountLossGrid, "植え数別ロス率の入力欄が表示されません");
+          assert(plantingCountLossSettingsBody.hidden, "植え数別ロス率が無効時に入力欄を隠していません");
           assert(plantingCountLossGrid.scrollWidth <= plantingCountLossGrid.clientWidth,
             "植え数別ロス率の入力欄がスマートフォン幅からはみ出しています");
           assertDeepEqual(readItems("収穫ロス率"), [["全体", "12.5%"]],
@@ -3001,10 +3013,11 @@
           });
 
           useBedLoss.checked = true;
+          usePlantingCountLoss.checked = true;
           useBedYield.checked = true;
           useBedPlant.checked = true;
           plantingCountLossInputs[0].value = "4";
-          plantingCountLossInputs[1].value = "6";
+          plantingCountLossInputs[1].value = "";
           plantingCountLossInputs[2].value = "8";
           app.document.getElementById("loss_A").value = "8";
           app.document.getElementById("yield_A").value = "20";
@@ -3013,25 +3026,37 @@
           app.refreshBedTabSummaries();
 
           assertDeepEqual(
-            readItems("収穫ロス率").slice(0, 4),
-            [["全体", "12.5%"], ["12植え", "4%"], ["16植え", "6%"], ["20植え", "8%"]],
-            "収穫ロス率の植え数別設定が要約に表示されていません"
+            readItems("収穫ロス率"),
+            [["12植え", "4%"], ["16植え", "12.5%"], ["20植え", "8%"]],
+            "収穫ロス率の植え数別設定と全体へのフォールバックが要約に表示されていません"
           );
-          assertEqual(readItems("収穫ロス率").length, 10, "植え数別とベッド別の収穫ロス率が一緒に表示されていません");
-          assertDeepEqual(readItems("収穫ロス率")[4], ["A", "8%"], "Aベッドの収穫ロス率が違います");
+          assert(!plantingCountLossSettingsBody.hidden, "植え数別ロス率が有効時に入力欄を表示していません");
+          assert(app.document.querySelector(".legacyBedLossSettings").hidden,
+            "廃止した収穫ロス率のベッド別設定が表示されています");
           assertDeepEqual(
             comparable(app.readSettingsForm().harvestLossRatesByPlantingCount),
-            { 12: 4, 16: 6, 20: 8 },
+            { 12: 4, 16: "", 20: 8 },
             "植え数別の収穫ロス率を設定値として読み取れません"
           );
-          assertEqual(readItems("収穫時の個数").length, 7, "有効な収穫時個数のベッド別6値が表示されていません");
-          assertDeepEqual(readItems("収穫時の個数")[1], ["A", "20個"], "Aベッドの収穫時個数が違います");
-          assertEqual(readItems("苗の個数").length, 7, "有効な苗個数のベッド別6値が表示されていません");
-          assertDeepEqual(readItems("苗の個数")[1], ["A", "16個"], "Aベッドの苗個数が違います");
-          ["bedLossAccordion", "bedYieldAccordion", "bedPlantAccordion"].forEach(id => {
+          assertEqual(app.readSettingsForm().usePlantingCountLossSettings, true,
+            "植え数別ロス率の有効状態を設定値として読み取れません");
+          assertEqual(app.readSettingsForm().useBedLossSettings, false,
+            "廃止したベッド別ロス率が設定値として残っています");
+          assertDeepEqual(readItems("収穫時の個数"), [["全体", "16個"], ["", "個別"]],
+            "収穫時個数の見出しが全体値と個別表示になっていません");
+          assertDeepEqual(readItems("苗の個数"), [["全体", "12個"], ["", "個別"]],
+            "苗個数の見出しが全体値と個別表示になっていません");
+          assert(app.document.getElementById("bedLossAccordion").hidden,
+            "廃止したベッド別ロス率の詳細が表示されています");
+          ["bedYieldAccordion", "bedPlantAccordion"].forEach(id => {
             assert(!app.document.getElementById(id).hidden, `${id}が有効時に表示されません`);
           });
         }finally{
+          app.eval(`
+            harvestFillKeys=${JSON.stringify(previousCalculationState.keys)};
+            harvestSummary=${JSON.stringify(previousCalculationState.summary)};
+            document.getElementById("casesInput").value=${JSON.stringify(previousCalculationState.cases)};
+          `);
           app.populateSettingsForm();
           app.closeForecastSettingsWindow();
         }
@@ -3049,6 +3074,7 @@
           app.eval(`
             settings = {
               ...settings,
+              defaultLossRate: 10,
               useBedYieldSettings: true,
               useBedPlantSettings: true,
               useBedLossSettings: true,
@@ -3077,7 +3103,7 @@
           assertEqual(app.getConfiguredHarvestPlantCountForPallet("A", 78), 20, "奥の収穫個数が違います");
           assertEqual(app.getPlantingCountForPallet("A", 1), 16, "手前の苗個数が違います");
           assertEqual(app.getPlantingCountForPallet("A", 78), 12, "奥の苗個数が違います");
-          assertEqual(app.getAppliedLossRateForBed("A"), 5, "ベッド別ロス率が違います");
+          assertEqual(app.getAppliedLossRateForBed("A"), 10, "廃止したベッド別ロス率が計算へ残っています");
           const firstNormalizeCount = normalizeCount;
           for(let number = 1; number <= app.eval("PALLETS_PER_BED"); number++){
             app.getConfiguredHarvestPlantCountForPallet("A", number);
@@ -3159,12 +3185,13 @@
         }
       });
 
-      await runTest("植え数別収穫ロス率をベッド別より優先し未入力なら従来設定へ戻す", () => {
+      await runTest("植え数別収穫ロス率を有効時だけ適用し未入力なら全体へ戻す", () => {
         const originalSettings = comparable(app.eval("settings"));
         try{
           app.eval(`settings = {
             ...settings,
             defaultLossRate: 10,
+            usePlantingCountLossSettings: true,
             useBedLossSettings: true,
             harvestLossRatesByPlantingCount: { 12: "", 16: 25, 20: "" },
             beds: {
@@ -3193,17 +3220,97 @@
           app.invalidatePlantingEventStateCache();
           const nextHarvestDate = new Date(2026, 7, 10);
           assertEqual(app.getAppliedLossRateForPlantingCount("B", 16), 25,
-            "16植えのロス率がベッド別設定より優先されません");
+            "有効な16植えのロス率が適用されません");
           assertEqual(app.getPredictedHarvestForBed(3, "B", 4, nextHarvestDate), 12,
             "16植えの実績へ植え数別ロス率を適用できません");
-          assertEqual(app.getAppliedLossRateForPlantingCount("B", 20), 5,
-            "未入力の20植えがベッド別ロス率へ戻りません");
-          assertEqual(app.getPredictedHarvestForBed(3, "B", 5, nextHarvestDate), 19,
-            "20植えの実績へ従来のベッド別ロス率を適用できません");
+          assertEqual(app.getAppliedLossRateForPlantingCount("B", 20), 10,
+            "未入力の20植えが全体ロス率へ戻りません");
+          assertEqual(app.getPredictedHarvestForBed(3, "B", 5, nextHarvestDate), 18,
+            "20植えの実績へ全体ロス率を適用できません");
+          app.eval(`settings = { ...settings, usePlantingCountLossSettings: false }; invalidateNormalizedBedCalculationSettings();`);
+          assertEqual(app.getAppliedLossRateForPlantingCount("B", 16), 10,
+            "植え数別を無効にしても個別ロス率が適用されています");
         }finally{
           app.eval(`settings = ${JSON.stringify(originalSettings)}; invalidateNormalizedBedCalculationSettings();`);
           replaceAppHistory(app, [], []);
           app.invalidatePlantingEventStateCache();
+        }
+      });
+
+      await runTest("計算後のロス率を選択パレットの植え数で加重平均して表示する", () => {
+        const originalSettings = comparable(app.eval("settings"));
+        const originalGetHarvestPlantCountForPallet = app.getHarvestPlantCountForPallet;
+        const originalSelection = comparable(app.eval(`({
+          keys:[...harvestFillKeys],
+          summary:harvestSummary,
+          cases:document.getElementById("casesInput").value,
+          recordDate:document.getElementById("recordDateInput").value
+        })`));
+        const palletKeys = Array.from({ length:12 }, (_, index) => `3-A-${index + 1}`);
+        const plantingCountsByPallet = {};
+        palletKeys.forEach((key, index) => {
+          plantingCountsByPallet[key] = index < 4 ? 12 : (index < 10 ? 16 : 20);
+        });
+        try{
+          app.getHarvestPlantCountForPallet = (building, bed, number) => (
+            plantingCountsByPallet[`${building}-${bed}-${number}`] || 20
+          );
+          app.eval(`settings = {
+            ...settings,
+            defaultLossRate:10,
+            usePlantingCountLossSettings:true,
+            useBedLossSettings:false,
+            harvestLossRatesByPlantingCount:{12:3,16:"",20:6}
+          }; invalidateNormalizedBedCalculationSettings();`);
+          replaceAppHistory(app, [], [{
+            palletNumberingVersion:2,
+            eventId:20000000000008,
+            plantingDate:"2026-08-09",
+            sourceAllocations:[],
+            plantingPalletKeys:palletKeys,
+            plantingCountsByPallet,
+            actualSeedlingTrayCount:2,
+            actualTakenSeedlingCount:240,
+            actualPlantedSeedlingCount:184,
+            actualSeedlingCarryoverMode:"loss",
+            actualSeedlingLossRate:"0",
+            qualityMemo:null,
+            detailsUnknown:false
+          }]);
+          app.invalidatePlantingEventStateCache();
+          app.document.getElementById("recordDateInput").value = "2026-08-10";
+          app.document.getElementById("casesInput").value = "1";
+          app.eval(`harvestFillKeys=${JSON.stringify(palletKeys)}; recalcHarvestSummary();`);
+
+          const effectiveRate = app.getEffectiveHarvestLossRateForKeys(
+            palletKeys,
+            app.eval("new Date(2026, 7, 10)")
+          );
+          assert(Math.abs(effectiveRate - 7.304347826) < 0.0001,
+            `植え数別ロス率が理想株数に応じた加重平均になっていません（実際: ${effectiveRate}）`);
+          app.updateForecastSettingsSummary(app.eval("harvestSummary.totalHarvest"));
+          assert(
+            app.document.getElementById("forecastSettingsSummary").textContent.startsWith("ロス 全体 7.3%・"),
+            "計算後の操作設定バーに全体ロス率が表示されていません"
+          );
+          app.refreshCalculationSettingsClusterValues();
+          const lossCluster = Array.from(app.document.querySelectorAll("#forecastSettingsWindowBody .settingClusterDetails"))
+            .find(cluster => cluster.querySelector(".clusterTitle")?.textContent.trim() === "収穫ロス率");
+          assertEqual(lossCluster.querySelector(".settingClusterValues").textContent, "全体7.3%",
+            "計算後の計算設定見出しに全体ロス率が表示されていません");
+        }finally{
+          app.getHarvestPlantCountForPallet = originalGetHarvestPlantCountForPallet;
+          app.eval(`
+            settings=${JSON.stringify(originalSettings)};
+            harvestFillKeys=${JSON.stringify(originalSelection.keys)};
+            harvestSummary=${JSON.stringify(originalSelection.summary)};
+            document.getElementById("casesInput").value=${JSON.stringify(originalSelection.cases)};
+            document.getElementById("recordDateInput").value=${JSON.stringify(originalSelection.recordDate)};
+            invalidateNormalizedBedCalculationSettings();
+          `);
+          replaceAppHistory(app, [], []);
+          app.invalidatePlantingEventStateCache();
+          app.populateSettingsForm();
         }
       });
 
@@ -14012,18 +14119,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "d268310d", elements: 2215, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "14040b8c", elements: 2285, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "5a1ac97b", elements: 2285, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "c22807ac", elements: 2219, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "d5c86416", elements: 2236, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "605d82f3", elements: 2319, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "3b936cb1", elements: 2334, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "d94ea716", elements: 2334, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "33703f8e", elements: 2334, visible: 193, viewport: "390x844" },
-          mobileMonitor: { hash: "38814230", elements: 2378, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "72deb430", elements: 2378, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "2e413f22", elements: 2378, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "e675c5eb", elements: 2230, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "fc3ebb2b", elements: 2300, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "0dbba184", elements: 2300, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "0691b920", elements: 2234, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "fd995597", elements: 2251, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "e31e1812", elements: 2334, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "a00454ec", elements: 2349, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "55ad59a3", elements: 2349, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "b3369c26", elements: 2349, visible: 191, viewport: "390x844" },
+          mobileMonitor: { hash: "aa35ae40", elements: 2393, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "b20c2404", elements: 2393, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "cd6c005e", elements: 2393, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

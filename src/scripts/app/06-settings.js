@@ -3,9 +3,10 @@ function populateSettingsForm(){
   ALLOWED_YIELDS.forEach(count => {
     document.getElementById(`lossByPlantingCount_${count}`).value = settings.harvestLossRatesByPlantingCount?.[count] ?? "";
   });
+  document.getElementById("usePlantingCountLossSettings").checked = !!settings.usePlantingCountLossSettings;
   document.getElementById("defaultYieldInput").value = String(settings.defaultYieldPerPallet);
   document.getElementById("defaultPlantingCountInput").value = String(settings.defaultPlantingCount);
-  document.getElementById("useBedLossSettings").checked = !!settings.useBedLossSettings;
+  document.getElementById("useBedLossSettings").checked = false;
   document.getElementById("useBedYieldSettings").checked = !!settings.useBedYieldSettings;
   document.getElementById("useBedPlantSettings").checked = !!settings.useBedPlantSettings;
   document.getElementById("seedlingLossRateInput").value = settings.seedlingLossRate;
@@ -44,9 +45,10 @@ function readSettingsForm(){
       document.getElementById(`lossByPlantingCount_${count}`).value
     );
   });
+  next.usePlantingCountLossSettings = !!document.getElementById("usePlantingCountLossSettings").checked;
   next.defaultYieldPerPallet = normalizeYield(document.getElementById("defaultYieldInput").value, defaultSettings.defaultYieldPerPallet);
   next.defaultPlantingCount = normalizeYield(document.getElementById("defaultPlantingCountInput").value, defaultSettings.defaultPlantingCount);
-  next.useBedLossSettings = !!document.getElementById("useBedLossSettings").checked;
+  next.useBedLossSettings = false;
   next.useBedYieldSettings = !!document.getElementById("useBedYieldSettings").checked;
   next.useBedPlantSettings = !!document.getElementById("useBedPlantSettings").checked;
   next.seedlingLossRate = clampNumber(document.getElementById("seedlingLossRateInput").value, 0, 100, defaultSettings.seedlingLossRate);
@@ -93,10 +95,12 @@ function getNormalizedBedCalculationSettings(){
     defaultSettings.defaultPlantingCount
   );
   const defaultLossRate = clampNumber(settings?.defaultLossRate, 0, 100, 0);
+  const usePlantingCountLossSettings = !!settings?.usePlantingCountLossSettings;
   const harvestLossRatesByPlantingCount = {};
   ALLOWED_YIELDS.forEach(count => {
     const rawLossRate = settings?.harvestLossRatesByPlantingCount?.[count];
-    harvestLossRatesByPlantingCount[count] = rawLossRate !== ""
+    harvestLossRatesByPlantingCount[count] = usePlantingCountLossSettings
+      && rawLossRate !== ""
       && rawLossRate !== null
       && typeof rawLossRate !== "undefined"
       ? clampNumber(rawLossRate, 0, 100, defaultLossRate)
@@ -104,7 +108,6 @@ function getNormalizedBedCalculationSettings(){
   });
   const useBedYieldSettings = !!settings?.useBedYieldSettings;
   const useBedPlantSettings = !!settings?.useBedPlantSettings;
-  const useBedLossSettings = !!settings?.useBedLossSettings;
   const beds = {};
 
   bedOrder.forEach(bed => {
@@ -123,13 +126,7 @@ function getNormalizedBedCalculationSettings(){
     const plantingFrontCount = plantingUseFrontBack
       ? clampNumber(bedSettings.plantFrontCount, 0, PALLETS_PER_BED, 39)
       : PALLETS_PER_BED;
-    const rawLossRate = bedSettings.lossRate;
-    const lossRate = useBedLossSettings
-      && rawLossRate !== ""
-      && rawLossRate !== null
-      && typeof rawLossRate !== "undefined"
-      ? clampNumber(rawLossRate, 0, 100, defaultLossRate)
-      : defaultLossRate;
+    const lossRate = defaultLossRate;
 
     beds[bed] = {
       harvest: {

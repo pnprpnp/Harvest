@@ -2645,6 +2645,47 @@ function getAppliedLossRateForPlantingCount(bed, plantingCount){
   return countLossRate ?? normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
 }
 
+function getEffectiveHarvestLossRateForKeys(keys = harvestFillKeys, targetDate = null){
+  const sourceKeys = [...new Set(Array.isArray(keys) ? keys : [])];
+  if(!sourceKeys.length) return null;
+
+  const targetDay = startOfLocalDay(targetDate || getHarvestTargetDate());
+  const plantingStateByPallet = getLatestPlantingStateByPallet(targetDay);
+  let totalPlantCount = 0;
+  let totalLostCount = 0;
+
+  sourceKeys.forEach(key => {
+    if(!isValidPalletKeyString(key)) return;
+    const pallet = parsePalletKey(key);
+    const plantCount = getHarvestPlantCountForPallet(
+      pallet.building,
+      pallet.bed,
+      pallet.number,
+      targetDay,
+      { plantingStateByPallet }
+    );
+    const lossRate = getAppliedLossRateForPlantingCount(pallet.bed, plantCount);
+    totalPlantCount += plantCount;
+    totalLostCount += plantCount * lossRate / 100;
+  });
+
+  return totalPlantCount > 0 ? totalLostCount / totalPlantCount * 100 : null;
+}
+
+function getHarvestSummaryAppliedLossRate(){
+  const storedRate = harvestSummary?.appliedLossRate;
+  if(storedRate !== null && storedRate !== "" && Number.isFinite(Number(storedRate))){
+    return Number(storedRate);
+  }
+  if(!harvestSummary || !harvestFillKeys.length) return null;
+  const calculatedRate = getEffectiveHarvestLossRateForKeys(harvestFillKeys);
+  if(calculatedRate !== null && calculatedRate !== "" && Number.isFinite(Number(calculatedRate))){
+    harvestSummary.appliedLossRate = Number(calculatedRate);
+    return Number(calculatedRate);
+  }
+  return null;
+}
+
 function getPredictedHarvestForBed(building, bed, number, targetDate = null, options = {}){
   const plantCount = getHarvestPlantCountForPallet(building, bed, number, targetDate, options);
   const lossRate = getAppliedLossRateForPlantingCount(bed, plantCount);
@@ -3432,7 +3473,8 @@ function runHarvestPrediction(options = {}){
     end: selection.end || harvestFillKeys[harvestFillKeys.length - 1] || "-",
     filledCount: harvestFillKeys.length,
     totalHarvest: selection.totalHarvest,
-    needHeads: casePlan.regularCases * CASE_SIZE
+    needHeads: casePlan.regularCases * CASE_SIZE,
+    appliedLossRate: getEffectiveHarvestLossRateForKeys(harvestFillKeys)
   };
   harvestSelectionMode = "auto";
   harvestProgressAvailable = true;
@@ -3554,7 +3596,10 @@ function recalcHarvestSummary(currentHarvestTotal = null){
     totalHarvest: Number.isFinite(Number(currentHarvestTotal))
       ? Math.round(Number(currentHarvestTotal) * 10) / 10
       : getCurrentHarvestTotal(),
-    needHeads: getHarvestCasePlan().regularCases * CASE_SIZE
+    needHeads: getHarvestCasePlan().regularCases * CASE_SIZE,
+    appliedLossRate: recordSelectionMode === "planting"
+      ? null
+      : getEffectiveHarvestLossRateForKeys(harvestFillKeys)
   };
 }
 
