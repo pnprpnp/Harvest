@@ -136,12 +136,17 @@
             </div>
 
             <div class="settingGroup">
-              <div class="settingGroupTitle">植え数別</div>
-              <div class="settingGroupHelp">入力した植え数だけ、全体ロス率より優先します。</div>
-              <div class="plantingCountGrid">
-                <div class="plantingCountField"><label for="loss12">12植え</label><span class="settingInputWrap"><input id="loss12" type="number" min="0" max="100" step="0.1" value="3"><span class="settingUnit">%</span></span></div>
-                <div class="plantingCountField"><label for="loss16">16植え</label><span class="settingInputWrap"><input id="loss16" type="number" min="0" max="100" step="0.1" value="6"><span class="settingUnit">%</span></span></div>
-                <div class="plantingCountField"><label for="loss20">20植え</label><span class="settingInputWrap"><input id="loss20" type="number" min="0" max="100" step="0.1" value="9"><span class="settingUnit">%</span></span></div>
+              <div class="settingToggleRow">
+                <span><span class="settingGroupTitle">植え数別</span><span class="settingGroupHelp">12・16・20植えごとに設定</span></span>
+                <button class="settingSwitch" type="button" role="switch" aria-checked="true" aria-label="植え数別設定を有効にする" data-controls="planting-count-loss-settings"></button>
+              </div>
+              <div data-controlled="planting-count-loss-settings">
+                <div class="settingGroupHelp">入力した植え数だけ、全体ロス率より優先します。</div>
+                <div class="plantingCountGrid">
+                  <div class="plantingCountField"><label for="loss12">12植え</label><span class="settingInputWrap"><input id="loss12" type="number" min="0" max="100" step="0.1" value="3"><span class="settingUnit">%</span></span></div>
+                  <div class="plantingCountField"><label for="loss16">16植え</label><span class="settingInputWrap"><input id="loss16" type="number" min="0" max="100" step="0.1" value="6"><span class="settingUnit">%</span></span></div>
+                  <div class="plantingCountField"><label for="loss20">20植え</label><span class="settingInputWrap"><input id="loss20" type="number" min="0" max="100" step="0.1" value="9"><span class="settingUnit">%</span></span></div>
+                </div>
               </div>
             </div>
 
@@ -214,13 +219,23 @@
       button.addEventListener("click", () => {
         const enabled = button.getAttribute("aria-checked") !== "true";
         button.setAttribute("aria-checked", enabled ? "true" : "false");
+        const controls = button.dataset.controls;
+        if(controls){
+          const controlled = root.querySelector(`[data-controlled="${controls}"]`);
+          if(controlled) controlled.hidden = !enabled;
+        }
+        updateLossSummary();
       });
     });
 
     const lossInputs = ["lossAll", "loss12", "loss16", "loss20"].map(id => document.getElementById(id));
     function updateLossSummary(){
       const value = input => String(input.value || "未入力");
-      root.querySelector("[data-loss-summary]").textContent = `全体 ${value(lossInputs[0])}%・12植え ${value(lossInputs[1])}%・16植え ${value(lossInputs[2])}%・20植え ${value(lossInputs[3])}%`;
+      const plantingCountSwitch = root.querySelector('[data-controls="planting-count-loss-settings"]');
+      const plantingCountSummary = plantingCountSwitch?.getAttribute("aria-checked") === "true"
+        ? `・12植え ${value(lossInputs[1])}%・16植え ${value(lossInputs[2])}%・20植え ${value(lossInputs[3])}%`
+        : "";
+      root.querySelector("[data-loss-summary]").textContent = `全体 ${value(lossInputs[0])}%${plantingCountSummary}`;
     }
     lossInputs.forEach(input => input.addEventListener("input", updateLossSummary));
     root.querySelectorAll("[data-preview-message]").forEach(button => button.addEventListener("click", () => showPreviewMessage(button.dataset.previewMessage)));
