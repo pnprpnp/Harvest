@@ -99,11 +99,6 @@
     .settingSwitch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);transition:transform .18s ease;}
     .settingSwitch[aria-checked="true"]{background:#299657;}
     .settingSwitch[aria-checked="true"]::after{transform:translateX(18px);}
-    .bedSettings{margin-top:10px;}
-    .bedSettings[hidden]{display:none;}
-    .bedTabs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:8px;}
-    .bedTab{height:32px;border:1px solid #d8dfda;border-radius:8px;background:transparent;color:#67736b;font-size:12px;font-weight:730;}
-    .bedTab.active{border-color:#299657;background:#eaf7ee;color:#18723b;}
     .settingPriority{margin-top:11px;padding:8px 10px;border-radius:9px;background:#eef7f0;color:#39714c;font-size:10px;font-weight:680;text-align:center;}
     .previewFooter{padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #dde4df;background:rgba(255,255,255,.97);}
     .previewSave{width:100%;min-height:48px;border:0;border-radius:13px;background:#23884a;color:#fff;font-size:15px;font-weight:800;}
@@ -142,7 +137,7 @@
 
             <div class="settingGroup">
               <div class="settingGroupTitle">植え数別</div>
-              <div class="settingGroupHelp">入力した植え数だけ、全体・ベッド別より優先します。</div>
+              <div class="settingGroupHelp">入力した植え数だけ、全体ロス率より優先します。</div>
               <div class="plantingCountGrid">
                 <div class="plantingCountField"><label for="loss12">12植え</label><span class="settingInputWrap"><input id="loss12" type="number" min="0" max="100" step="0.1" value="3"><span class="settingUnit">%</span></span></div>
                 <div class="plantingCountField"><label for="loss16">16植え</label><span class="settingInputWrap"><input id="loss16" type="number" min="0" max="100" step="0.1" value="6"><span class="settingUnit">%</span></span></div>
@@ -150,22 +145,7 @@
               </div>
             </div>
 
-            <div class="settingGroup">
-              <div class="settingToggleRow">
-                <span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">場所による差を調整</span></span>
-                <button class="settingSwitch" type="button" role="switch" aria-checked="true" aria-label="ベッド別設定" data-bed-switch></button>
-              </div>
-              <div class="bedSettings" data-bed-settings>
-                <div class="bedTabs" aria-label="ベッドを選択">
-                  <button class="bedTab active" type="button">A</button><button class="bedTab" type="button">B</button><button class="bedTab" type="button">C</button><button class="bedTab" type="button">D</button><button class="bedTab" type="button">E</button><button class="bedTab" type="button">F</button>
-                </div>
-                <div class="settingFieldRow">
-                  <span class="settingLabel"><span data-bed-name>A</span>ベッドのロス率</span>
-                  <span class="settingInputWrap"><input type="number" min="0" max="100" step="0.1" value="8"><span class="settingUnit">%</span></span>
-                </div>
-              </div>
-            </div>
-            <div class="settingPriority">適用順　植え数別 → ベッド別 → 全体</div>
+            <div class="settingPriority">適用順　植え数別 → 全体</div>
           </div>
         </section>
 
@@ -234,14 +214,6 @@
       button.addEventListener("click", () => {
         const enabled = button.getAttribute("aria-checked") !== "true";
         button.setAttribute("aria-checked", enabled ? "true" : "false");
-        if(button.hasAttribute("data-bed-switch")) root.querySelector("[data-bed-settings]").hidden = !enabled;
-      });
-    });
-
-    root.querySelectorAll(".bedTab").forEach(button => {
-      button.addEventListener("click", () => {
-        root.querySelectorAll(".bedTab").forEach(tab => tab.classList.toggle("active", tab === button));
-        root.querySelector("[data-bed-name]").textContent = button.textContent.trim();
       });
     });
 
