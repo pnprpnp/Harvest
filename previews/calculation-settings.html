@@ -157,22 +157,22 @@
         <section class="settingSection">
           <button class="settingSectionHeader" type="button" aria-expanded="false" data-section="harvest-count">
             <span><span class="settingSectionName">収穫時の個数</span><span class="settingSectionNote">1パレットの理想個数</span></span>
-            <span class="settingSectionSummary">全体 20個</span><span class="settingSectionChevron">⌄</span>
+            <span class="settingSectionSummary" data-base-summary="全体 20個">全体 20個</span><span class="settingSectionChevron">⌄</span>
           </button>
           <div class="settingSectionBody" data-section-body="harvest-count" hidden>
             <div class="settingGroup"><div class="settingFieldRow"><label class="settingLabel">全体の個数</label><select><option>20個</option><option>16個</option><option>12個</option></select></div></div>
-            <div class="settingGroup"><div class="settingToggleRow"><span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">必要な場合だけ場所ごとに調整</span></span><button class="settingSwitch" type="button" role="switch" aria-checked="false"></button></div></div>
+            <div class="settingGroup"><div class="settingToggleRow"><span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">必要な場合だけ場所ごとに調整</span></span><button class="settingSwitch" type="button" role="switch" aria-checked="false" aria-label="収穫時の個数をベッド別に設定する" data-summary-label="個別"></button></div></div>
           </div>
         </section>
 
         <section class="settingSection">
           <button class="settingSectionHeader" type="button" aria-expanded="false" data-section="plant-count">
             <span><span class="settingSectionName">苗の個数</span><span class="settingSectionNote">二次定植に使用</span></span>
-            <span class="settingSectionSummary">全体 16個</span><span class="settingSectionChevron">⌄</span>
+            <span class="settingSectionSummary" data-base-summary="全体 16個">全体 16個</span><span class="settingSectionChevron">⌄</span>
           </button>
           <div class="settingSectionBody" data-section-body="plant-count" hidden>
             <div class="settingGroup"><div class="settingFieldRow"><label class="settingLabel">全体の植え付け数</label><select><option>16個</option><option>20個</option><option>12個</option></select></div></div>
-            <div class="settingGroup"><div class="settingToggleRow"><span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">必要な場合だけ場所ごとに調整</span></span><button class="settingSwitch" type="button" role="switch" aria-checked="false"></button></div></div>
+            <div class="settingGroup"><div class="settingToggleRow"><span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">必要な場合だけ場所ごとに調整</span></span><button class="settingSwitch" type="button" role="switch" aria-checked="false" aria-label="苗の個数をベッド別に設定する" data-summary-label="個別"></button></div></div>
           </div>
         </section>
 
@@ -224,6 +224,14 @@
           const controlled = root.querySelector(`[data-controlled="${controls}"]`);
           if(controlled) controlled.hidden = !enabled;
         }
+        const summaryLabel = button.dataset.summaryLabel;
+        if(summaryLabel){
+          const summary = button.closest(".settingSection")?.querySelector(".settingSectionSummary");
+          if(summary){
+            const baseSummary = summary.dataset.baseSummary || summary.textContent;
+            summary.textContent = enabled ? `${baseSummary}・${summaryLabel}` : baseSummary;
+          }
+        }
         updateLossSummary();
       });
     });
@@ -233,7 +241,10 @@
       const value = input => String(input.value || "未入力");
       const plantingCountSwitch = root.querySelector('[data-controls="planting-count-loss-settings"]');
       const plantingCountSummary = plantingCountSwitch?.getAttribute("aria-checked") === "true"
-        ? `・12植え ${value(lossInputs[1])}%・16植え ${value(lossInputs[2])}%・20植え ${value(lossInputs[3])}%`
+        ? lossInputs.slice(1).map((input, index) => {
+            const inputValue = input.value.trim();
+            return inputValue ? `${[12, 16, 20][index]}植え ${inputValue}%` : "";
+          }).filter(Boolean).map(summary => `・${summary}`).join("")
         : "";
       root.querySelector("[data-loss-summary]").textContent = `全体 ${value(lossInputs[0])}%${plantingCountSummary}`;
     }
