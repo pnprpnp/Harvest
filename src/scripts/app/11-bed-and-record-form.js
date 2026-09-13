@@ -1285,10 +1285,10 @@ function syncRecordCasesFromMain(force = false){
   updateRecordAutoValueNotes();
 }
 
-function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, sourceRecords = records){
+function getActualLossDetailsForPalletKeys(palletKeys, cases, targetDate = null, sourceRecords = records){
   const normalizedKeys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])]
     .filter(key => isValidPalletKeyString(String(key || "")));
-  if(!normalizedKeys.length || cases <= 0) return "";
+  if(!normalizedKeys.length || cases <= 0) return null;
 
   let plantedTotal = 0;
   let partialHarvestTotal = 0;
@@ -1315,13 +1315,22 @@ function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, so
     );
   });
 
-  if(plantedTotal <= 0) return "";
+  if(plantedTotal <= 0) return null;
 
   const shippedHeads = cases * CASE_SIZE + partialHarvestTotal;
   const actualHarvestRate = (shippedHeads / plantedTotal) * 100;
   const actualLossRate = 100 - actualHarvestRate;
 
-  return (Math.round(actualLossRate * 10) / 10).toFixed(1);
+  return {
+    lossRate:(Math.round(actualLossRate * 10) / 10).toFixed(1),
+    plantedTotal,
+    partialHarvestTotal,
+    palletCount:normalizedKeys.length
+  };
+}
+
+function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, sourceRecords = records){
+  return getActualLossDetailsForPalletKeys(palletKeys, cases, targetDate, sourceRecords)?.lossRate || "";
 }
 
 function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRecords = records){

@@ -5470,6 +5470,131 @@
         }, "途中経過を70ケースと75ケースに分けて追加できません");
       });
 
+      await runTest("途中経過の選択場所とケース数からロス率を表示する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            getRecorded:getHarvestedPalletSet,
+            getLossDetails:getActualLossDetailsForPalletKeys,
+            keys:[...harvestFillKeys],
+            summary:harvestSummary,
+            mode:harvestSelectionMode,
+            progress:harvestProgressState,
+            available:harvestProgressAvailable,
+            building:harvestProgressBuilding,
+            partialMode:harvestProgressPartialSelectionMode,
+            editState:harvestProgressEntryEditState,
+            inputValue:document.getElementById("harvestProgressCasesInput")?.value || ""
+          };
+          try{
+            getHarvestCasePlan = () => ({ totalCases:200, regularCases:200, date:"2026-09-14" });
+            getHarvestedPalletSet = () => new Set();
+            getActualLossDetailsForPalletKeys = (keys, cases) => {
+              const plantedTotal = keys.length * 16;
+              const lossRate = 100 - Number(cases) * CASE_SIZE / plantedTotal * 100;
+              return {
+                lossRate:(Math.round(lossRate * 10) / 10).toFixed(1),
+                plantedTotal,
+                partialHarvestTotal:0,
+                palletCount:keys.length
+              };
+            };
+            harvestFillKeys = ["4-A-1"];
+            harvestSummary = { start:"4-A-1", end:"4-A-1", filledCount:1, totalHarvest:16, needHeads:2400 };
+            harvestSelectionMode = "manual";
+            harvestProgressAvailable = true;
+            harvestProgressBuilding = 4;
+            harvestProgressPartialSelectionMode = false;
+            harvestProgressEntryEditState = null;
+            harvestProgressState = {
+              inputMode:"incremental",
+              baseSelectionMode:"manual",
+              fixedReversePlan:false,
+              planKeys:[...harvestFillKeys],
+              selectedBeds:["4-A"],
+              appliedSelectedBeds:[],
+              actualCasesInput:"96",
+              appliedActualCases:null,
+              entries:[],
+              targetDate:"2026-09-14",
+              targetCases:200
+            };
+            const input = document.getElementById("harvestProgressCasesInput");
+            input.value = "96";
+            updateHarvestProgressUi();
+            const single = {
+              hidden:document.getElementById("harvestProgressLossResult").hidden,
+              label:document.getElementById("harvestProgressLossLabel").textContent.trim(),
+              value:document.getElementById("harvestProgressLossValue").textContent.trim(),
+              meta:document.getElementById("harvestProgressLossMeta").textContent.trim()
+            };
+
+            harvestProgressState.selectedBeds = ["4-A", "4-C"];
+            updateHarvestProgressUi({ skipBeds:true });
+            const combined = {
+              label:document.getElementById("harvestProgressLossLabel").textContent.trim(),
+              value:document.getElementById("harvestProgressLossValue").textContent.trim(),
+              meta:document.getElementById("harvestProgressLossMeta").textContent.trim()
+            };
+
+            harvestProgressState = {
+              ...harvestProgressState,
+              selectedBeds:["4-A"],
+              appliedSelectedBeds:["4-A"],
+              actualCasesInput:"",
+              appliedActualCases:96,
+              entries:[{ type:"regular", bedKeys:["4-A"], cases:96, recordedAt:1 }]
+            };
+            input.value = "";
+            updateHarvestProgressUi({ skipBeds:true });
+            const saved = {
+              liveHidden:document.getElementById("harvestProgressLossResult").hidden,
+              rowText:document.querySelector("#harvestProgressResult .harvestProgressEntryLine")?.textContent.trim() || "",
+              lossText:document.querySelector("#harvestProgressResult .harvestProgressEntryLineLoss")?.textContent.trim() || ""
+            };
+
+            harvestProgressPartialSelectionMode = true;
+            updateHarvestProgressUi({ skipBeds:true });
+            const partialHidden = document.getElementById("harvestProgressLossResult").hidden;
+            return { single, combined, saved, partialHidden };
+          }finally{
+            getHarvestCasePlan = previous.getPlan;
+            getHarvestedPalletSet = previous.getRecorded;
+            getActualLossDetailsForPalletKeys = previous.getLossDetails;
+            harvestFillKeys = previous.keys;
+            harvestSummary = previous.summary;
+            harvestSelectionMode = previous.mode;
+            harvestProgressState = previous.progress;
+            harvestProgressAvailable = previous.available;
+            harvestProgressBuilding = previous.building;
+            harvestProgressPartialSelectionMode = previous.partialMode;
+            harvestProgressEntryEditState = previous.editState;
+            const input = document.getElementById("harvestProgressCasesInput");
+            if(input) input.value = previous.inputValue;
+            renderForecastSummary();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          single:{
+            hidden:false,
+            label:"今回のロス率",
+            value:"7.7%",
+            meta:"4号棟A・1,248株から計算"
+          },
+          combined:{
+            label:"今回の合計ロス率",
+            value:"53.8%",
+            meta:"4号棟AC・2,496株から計算"
+          },
+          saved:{
+            liveHidden:true,
+            rowText:"4号棟A96ケースロス率 7.7%",
+            lossText:"ロス率 7.7%"
+          },
+          partialHidden:true
+        }, "途中経過のロス率を入力中と入力済み行へ正しく表示できません");
+      });
+
       await runTest("途中経過の部分収穫を送信せず記録タブの下書きへ同期する", () => {
         const state = comparable(app.eval(`(() => {
           const previous = {
@@ -6379,7 +6504,7 @@
           selectionKeys:["2-A-1", "2-A-2", "2-B-1"],
           reverseBedKeys:["2-A-1", "2-A-2"],
           autoBedKeyCount:78,
-          resultText:"入力済み\n2号棟A：1ケース\n\n実績 1ケース / 逆算予測 3ケース\n残りの選択場所は変更していません（残り予測 約1ケース）",
+          resultText:"入力済み\n2号棟A1ケースロス率 70.0%\n\n実績 1ケース / 逆算予測 3ケース\n残りの選択場所は変更していません（残り予測 約1ケース）",
           applyLabel:"追加して反映する"
         }, "逆算時の途中経過が未選択パレットを巻き込むか、残りの選択場所を変えています");
       });
@@ -14119,18 +14244,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e675c5eb", elements: 2230, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "fc3ebb2b", elements: 2300, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "0dbba184", elements: 2300, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "0691b920", elements: 2234, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "fd995597", elements: 2251, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "e31e1812", elements: 2334, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "a00454ec", elements: 2349, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "55ad59a3", elements: 2349, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "b3369c26", elements: 2349, visible: 191, viewport: "390x844" },
-          mobileMonitor: { hash: "aa35ae40", elements: 2393, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "b20c2404", elements: 2393, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "cd6c005e", elements: 2393, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "274c1b9c", elements: 2236, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "160e25b2", elements: 2306, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "6cec50bd", elements: 2306, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "f913acc3", elements: 2240, visible: 75, viewport: "390x844" },
+          mobileDashboard: { hash: "5655475c", elements: 2257, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f434e529", elements: 2340, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "987a6c82", elements: 2355, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "7756a547", elements: 2355, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "93b6ad78", elements: 2355, visible: 191, viewport: "390x844" },
+          mobileMonitor: { hash: "c2e4c88f", elements: 2399, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "3375aa3b", elements: 2399, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "ee142135", elements: 2399, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>途中経過 ロス率表示 UIプレビュー</title>
+  <style>
+    :root{
+      color-scheme:light;
+      font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif;
+      background:#edf1ee;
+      color:#202a23;
+      --green:#137847;
+      --teal:#0f766e;
+      --line:#d8dfda;
+      --muted:#718078;
+      --surface:#fff;
+      --tint:#ecf8f2;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:#edf1ee;color:#202a23;}
+    button,input{font:inherit;}
+    button{cursor:pointer;}
+    .previewShell{min-height:100dvh;display:grid;place-items:center;padding:24px;}
+    .previewPhone{
+      position:relative;
+      width:min(100%,430px);
+      height:min(900px,calc(100dvh - 48px));
+      display:grid;
+      grid-template-rows:auto 1fr;
+      overflow:hidden;
+      border:1px solid #d8e0da;
+      border-radius:28px;
+      background:#f4f6f4;
+      box-shadow:0 20px 60px rgba(24,53,34,.16);
+    }
+    .previewHeader{
+      display:grid;
+      grid-template-columns:74px 1fr 74px;
+      align-items:center;
+      min-height:58px;
+      padding:8px 13px;
+      border-bottom:1px solid #e0e6e2;
+      background:#fff;
+    }
+    .previewHeaderTitle{font-size:18px;font-weight:800;text-align:center;}
+    .previewClose{border:0;background:transparent;color:var(--green);font-size:13px;font-weight:750;text-align:left;}
+    .previewMark{color:#8a948d;font-size:9px;font-weight:750;letter-spacing:.07em;text-align:right;}
+    .previewScroll{overflow:auto;overscroll-behavior:contain;}
+    .harvestProgressBody{padding:12px 14px 24px;}
+    .selectionText{min-height:22px;margin:0 2px 9px;color:var(--teal);font-size:13px;font-weight:750;line-height:1.5;}
+    .buildingSwitch{display:grid;grid-template-columns:38px minmax(0,110px) 38px;justify-content:center;gap:8px;margin-bottom:11px;}
+    .buildingSwitch button{height:36px;border:1px solid var(--line);border-radius:10px;background:#fff;color:#546159;font-weight:750;}
+    .buildingSwitch .building{border-color:#53a482;background:#eef9f3;color:var(--green);}
+    .buildingSwitch .arrow{color:#849087;}
+    .beds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:11px;}
+    .bed{
+      position:relative;
+      min-width:0;
+      min-height:116px;
+      padding:7px;
+      border:1px solid #cbd4cd;
+      border-radius:12px;
+      background:#fafcfb;
+      color:#364139;
+      box-shadow:none;
+    }
+    .bed.is-selected{border-color:var(--teal);background:#ecfdf5;box-shadow:0 0 0 2px rgba(15,118,110,.12);}
+    .bedTitle{min-height:22px;display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;font-size:15px;font-weight:800;}
+    .check{display:none;width:17px;height:17px;align-items:center;justify-content:center;border-radius:50%;background:var(--teal);color:#fff;font-size:10px;}
+    .bed.is-selected .check{display:inline-flex;}
+    .miniMap{width:46px;height:68px;display:grid;grid-template-columns:1fr 1fr;gap:1px;margin:auto;padding:3px;border:1px solid #aebcb3;border-radius:7px;background:#fff;}
+    .miniMap span{background:#b9f2cd;border-radius:1px;}
+    .bed.is-selected .miniMap span{background:#14b8a6;}
+    .bedMeta{margin-top:5px;color:#7b867f;font-size:9px;font-weight:700;text-align:center;}
+    .bed.is-selected .bedMeta{color:var(--teal);}
+    .caseCard{padding:12px;border-radius:12px;background:#e9eeea;}
+    .caseRow{display:grid;grid-template-columns:minmax(0,1fr) minmax(116px,148px);align-items:center;gap:12px;}
+    .caseLabel{font-size:13px;font-weight:740;line-height:1.45;}
+    .inputWrap{position:relative;}
+    .inputWrap input{
+      width:100%;height:48px;padding:7px 38px 7px 10px;border:1px solid #b9c6bd;border-radius:9px;outline:none;background:#fff;color:#17231b;font-size:19px;font-weight:780;text-align:right;
+    }
+    .inputWrap input:focus{border-color:#299657;box-shadow:0 0 0 3px rgba(41,150,87,.12);}
+    input[type="number"]{-moz-appearance:textfield;}
+    input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+    .unit{position:absolute;right:11px;top:50%;color:#59665e;font-size:12px;font-weight:700;transform:translateY(-50%);pointer-events:none;}
+    .lossResult{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #d4dcd6;}
+    .lossLabel{color:#59665e;font-size:12px;font-weight:700;}
+    .lossValue{color:var(--teal);font-size:18px;font-weight:850;letter-spacing:.01em;}
+    .lossMeta{margin-top:3px;color:#718078;font-size:10px;font-weight:650;text-align:right;}
+    .inputResult{margin-top:10px;padding:11px 12px;border-radius:10px;background:var(--tint);color:var(--teal);font-size:13px;font-weight:700;line-height:1.45;}
+    .inputResultTitle{margin-bottom:4px;color:#52635a;font-size:11px;}
+    .entry{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;min-height:39px;padding:5px 7px;border:0;border-radius:7px;background:transparent;color:inherit;text-align:left;}
+    .entry:hover{background:rgba(15,118,110,.07);}
+    .entryText{min-width:0;}
+    .entryLocation{display:block;color:#2e3d34;font-size:11px;font-weight:700;}
+    .entryNumbers{display:flex;align-items:baseline;gap:7px;margin-top:1px;}
+    .entryCases{font-size:14px;font-weight:820;}
+    .entryLoss{color:var(--teal);font-size:12px;font-weight:800;}
+    .chevron{color:#849087;font-size:19px;}
+    .actions{display:grid;grid-template-columns:minmax(0,2.5fr) minmax(82px,1fr);gap:8px;margin-top:12px;}
+    .action{min-height:49px;border:0;border-radius:12px;background:var(--green);color:#fff;font-size:14px;font-weight:800;}
+    .reset{border:1px solid #d1d8d3;background:#fff;color:#c33b32;}
+    .partial{width:100%;min-height:48px;display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:10px 14px;border:1px solid #cbd5ce;border-radius:12px;background:#fff;color:var(--green);font-size:13px;font-weight:750;}
+    .partial strong{font-weight:850;}
+    .previewHint{margin:14px 3px 0;color:#879189;font-size:10px;line-height:1.55;text-align:center;}
+    @media(max-width:520px){
+      .previewShell{padding:0;}
+      .previewPhone{width:100%;height:100dvh;border:0;border-radius:0;box-shadow:none;}
+    }
+    @media(max-width:360px){
+      .harvestProgressBody{padding-right:10px;padding-left:10px;}
+      .caseRow{grid-template-columns:minmax(0,1fr) 112px;gap:8px;}
+      .lossValue{font-size:16px;}
+    }
+  </style>
+</head>
+<body>
+  <main class="previewShell">
+    <section class="previewPhone" aria-label="途中経過のロス率表示プレビュー">
+      <header class="previewHeader">
+        <button class="previewClose" type="button">閉じる</button>
+        <div class="previewHeaderTitle">途中経過を入力</div>
+        <div class="previewMark">UI PREVIEW</div>
+      </header>
+
+      <div class="previewScroll">
+        <div class="harvestProgressBody">
+          <div class="selectionText" data-selection-text>今回追加：4号棟 A</div>
+
+          <div class="buildingSwitch" aria-label="号棟切り替え">
+            <button class="arrow" type="button">‹</button>
+            <button class="building" type="button">4号棟</button>
+            <button class="arrow" type="button">›</button>
+          </div>
+
+          <div class="beds" aria-label="完了したベッド">
+            <button class="bed is-selected" type="button" data-bed="A" aria-pressed="true">
+              <span class="bedTitle">A <span class="check">✓</span></span>
+              <span class="miniMap" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+              <span class="bedMeta">78枚を対象</span>
+            </button>
+            <button class="bed" type="button" data-bed="C" aria-pressed="false">
+              <span class="bedTitle">C <span class="check">✓</span></span>
+              <span class="miniMap" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+              <span class="bedMeta">78枚を対象</span>
+            </button>
+            <button class="bed" type="button" data-bed="E" aria-pressed="false">
+              <span class="bedTitle">E <span class="check">✓</span></span>
+              <span class="miniMap" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+              <span class="bedMeta">78枚を対象</span>
+            </button>
+          </div>
+
+          <div class="caseCard">
+            <div class="caseRow">
+              <label class="caseLabel" for="cases">選択場所で収穫したケース数</label>
+              <span class="inputWrap"><input id="cases" type="number" min="0" step="0.1" value="96" inputmode="decimal"><span class="unit">ケース</span></span>
+            </div>
+            <div class="lossResult" aria-live="polite">
+              <span class="lossLabel" data-loss-label>今回のロス率</span>
+              <span>
+                <span class="lossValue" data-loss-value>7.7%</span>
+                <span class="lossMeta" data-loss-meta>4号棟A・1,248株から計算</span>
+              </span>
+            </div>
+          </div>
+
+          <section class="inputResult" aria-label="入力済み">
+            <div class="inputResultTitle">入力済み</div>
+            <button class="entry" type="button">
+              <span class="entryText">
+                <span class="entryLocation">2号棟A</span>
+                <span class="entryNumbers"><span class="entryCases">88ケース</span><span class="entryLoss">ロス率 9.7%</span></span>
+              </span>
+              <span class="chevron" aria-hidden="true">›</span>
+            </button>
+          </section>
+
+          <div class="actions">
+            <button class="action" type="button" data-apply>追加して再計算する</button>
+            <button class="action reset" type="button">取り消す</button>
+          </div>
+          <button class="partial" type="button"><span>部分収穫を記録</span><strong>追加</strong></button>
+          <p class="previewHint">A・Cなどを同時に選ぶと「合計ロス率」に切り替わります。<br>ベッドをタップして表示を確認できます。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const beds = [...document.querySelectorAll("[data-bed]")];
+    const casesInput = document.getElementById("cases");
+    const selectionText = document.querySelector("[data-selection-text]");
+    const lossLabel = document.querySelector("[data-loss-label]");
+    const lossValue = document.querySelector("[data-loss-value]");
+    const lossMeta = document.querySelector("[data-loss-meta]");
+    const inputResult = document.querySelector(".inputResult");
+    const plantedHeadsPerBed = 1248;
+
+    function formatNumber(value){
+      return new Intl.NumberFormat("ja-JP").format(value);
+    }
+
+    function getSelectedBeds(){
+      return beds.filter(bed => bed.getAttribute("aria-pressed") === "true");
+    }
+
+    function updatePreview(){
+      const selected = getSelectedBeds();
+      const bedNames = selected.map(bed => bed.dataset.bed);
+      selectionText.textContent = bedNames.length
+        ? `今回追加：4号棟 ${bedNames.join("・")}`
+        : "完了したベッドを選択してください";
+      lossLabel.textContent = selected.length > 1 ? "今回の合計ロス率" : "今回のロス率";
+
+      const cases = Number(casesInput.value);
+      const plantedHeads = selected.length * plantedHeadsPerBed;
+      if(!selected.length || !Number.isFinite(cases) || cases < 0){
+        lossValue.textContent = "--";
+        lossMeta.textContent = "場所とケース数を入力すると表示";
+        return;
+      }
+      const rate = 100 - cases * 12 / plantedHeads * 100;
+      lossValue.textContent = `${(Math.round(rate * 10) / 10).toFixed(1)}%`;
+      lossMeta.textContent = `4号棟${bedNames.join("・")}・${formatNumber(plantedHeads)}株から計算`;
+    }
+
+    beds.forEach(bed => {
+      bed.addEventListener("click", () => {
+        const selected = bed.getAttribute("aria-pressed") === "true";
+        bed.setAttribute("aria-pressed", selected ? "false" : "true");
+        bed.classList.toggle("is-selected", !selected);
+        updatePreview();
+      });
+    });
+    casesInput.addEventListener("input", updatePreview);
+    document.querySelector("[data-apply]").addEventListener("click", () => {
+      const selected = getSelectedBeds();
+      if(!selected.length || casesInput.value === "") return;
+      const location = `4号棟${selected.map(bed => bed.dataset.bed).join("・")}`;
+      const lossPrefix = selected.length > 1 ? "合計ロス率" : "ロス率";
+      const entry = document.createElement("button");
+      entry.className = "entry";
+      entry.type = "button";
+      entry.innerHTML = `<span class="entryText"><span class="entryLocation">${location}</span><span class="entryNumbers"><span class="entryCases">${casesInput.value}ケース</span><span class="entryLoss">${lossPrefix} ${lossValue.textContent}</span></span></span><span class="chevron" aria-hidden="true">›</span>`;
+      inputResult.appendChild(entry);
+    });
+    document.querySelector(".previewClose").addEventListener("click", () => window.history.back());
+  </script>
+</body>
+</html>

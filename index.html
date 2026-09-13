@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260914-calculated-loss-summary">
+<meta name="harvestnavi-version" content="20260914-harvest-progress-loss">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -8465,13 +8465,16 @@ button.harvestProgressBed.is-applied{
   line-height:1.5;
 }
 .harvestProgressCaseField{
+  display:block;
+  padding:12px;
+  border-radius:12px;
+  background:var(--ui-surface-muted);
+}
+.harvestProgressCaseInputRow{
   display:grid;
   grid-template-columns:minmax(0,1fr) minmax(112px,150px);
   align-items:center;
   gap:12px;
-  padding:12px;
-  border-radius:12px;
-  background:var(--ui-surface-muted);
 }
 .harvestProgressCaseField label{
   color:var(--ui-text);
@@ -8484,6 +8487,42 @@ button.harvestProgressBed.is-applied{
   background:#fff;
   font-size:19px;
   font-weight:760;
+}
+.harvestProgressLossResult{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid var(--ui-line);
+}
+.harvestProgressLossResult[hidden]{display:none;}
+.harvestProgressLossLabel{
+  color:var(--ui-text-secondary);
+  font-size:12px;
+  font-weight:700;
+}
+.harvestProgressLossSummary{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+}
+.harvestProgressLossValue{
+  color:#0f766e;
+  font-size:18px;
+  font-weight:850;
+  letter-spacing:.01em;
+  line-height:1.15;
+}
+.harvestProgressLossMeta{
+  margin-top:3px;
+  color:var(--ui-text-tertiary);
+  font-size:10px;
+  font-weight:650;
+  line-height:1.35;
+  text-align:right;
 }
 .harvestProgressResult{
   margin-top:10px;
@@ -8519,6 +8558,29 @@ button.harvestProgressEntryLine{
   font:inherit;
   line-height:1.45;
   text-align:left;
+}
+.harvestProgressEntryLineText{min-width:0;}
+.harvestProgressEntryLineLocation{
+  display:block;
+  color:var(--ui-text);
+  font-size:11px;
+  font-weight:700;
+}
+.harvestProgressEntryLineNumbers{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:2px 7px;
+  margin-top:1px;
+}
+.harvestProgressEntryLineCases{
+  font-size:14px;
+  font-weight:820;
+}
+.harvestProgressEntryLineLoss{
+  color:#0f766e;
+  font-size:12px;
+  font-weight:800;
 }
 button.harvestProgressEntryLine:hover,
 button.harvestProgressEntryLine:focus-visible{background:rgba(15,118,110,.08);}
@@ -8583,6 +8645,12 @@ button.harvestProgressEntryDetailsClose{
   color:var(--ui-text);
   font-size:15px;
   font-weight:800;
+}
+.harvestProgressEntryDetailLoss{
+  margin-top:2px;
+  color:#0f766e;
+  font-size:12px;
+  font-weight:750;
 }
 button.harvestProgressEntryDetailEdit{
   min-width:64px;
@@ -13167,6 +13235,11 @@ html[data-theme="dark"] .harvestProgressSelectionText,
 html[data-theme="dark"] .simulationBedOverviewCountSelected{
   color:var(--ui-accent-dark);
 }
+html[data-theme="dark"] .harvestProgressLossValue,
+html[data-theme="dark"] .harvestProgressEntryLineLoss,
+html[data-theme="dark"] .harvestProgressEntryDetailLoss{
+  color:var(--ui-accent-dark);
+}
 html[data-theme="dark"] .simulationBedOverviewCountHarvestable,
 html[data-theme="dark"] .simulationBedOverviewCountRecorded{
   color:var(--ui-text-secondary);
@@ -15292,11 +15365,20 @@ requestAnimationFrame(function(){
         </div>
         <div id="harvestProgressBeds" class="bedWrap harvestProgressBeds"></div>
         <div class="harvestProgressCaseField">
-          <label id="harvestProgressCasesLabel" for="harvestProgressCasesInput">選択場所で収穫したケース数</label>
-          <span class="inputUnitWrap">
-            <input id="harvestProgressCasesInput" type="number" min="0" step="1" inputmode="numeric" data-ui-input="handleHarvestProgressCasesInput">
-            <span class="inputUnitSuffix">ケース</span>
-          </span>
+          <div class="harvestProgressCaseInputRow">
+            <label id="harvestProgressCasesLabel" for="harvestProgressCasesInput">選択場所で収穫したケース数</label>
+            <span class="inputUnitWrap">
+              <input id="harvestProgressCasesInput" type="number" min="0" step="1" inputmode="numeric" data-ui-input="handleHarvestProgressCasesInput">
+              <span class="inputUnitSuffix">ケース</span>
+            </span>
+          </div>
+          <div id="harvestProgressLossResult" class="harvestProgressLossResult" aria-live="polite" hidden>
+            <span id="harvestProgressLossLabel" class="harvestProgressLossLabel">今回のロス率</span>
+            <span class="harvestProgressLossSummary">
+              <strong id="harvestProgressLossValue" class="harvestProgressLossValue">--</strong>
+              <small id="harvestProgressLossMeta" class="harvestProgressLossMeta"></small>
+            </span>
+          </div>
         </div>
         <div id="harvestProgressResult" class="harvestProgressResult" hidden></div>
         <div class="harvestProgressActions">
@@ -18082,6 +18164,63 @@ function formatHarvestProgressCases(value){
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
+function getHarvestProgressLossDetails(bedKeys, cases, state = harvestProgressState){
+  const normalized = normalizeHarvestProgressState(state);
+  const safeCases = Number(cases);
+  if(!normalized || !Number.isFinite(safeCases) || safeCases <= 0) return null;
+  const normalizedBeds = [...new Set(
+    (Array.isArray(bedKeys) ? bedKeys : [])
+      .map(normalizeHarvestProgressBedKey)
+      .filter(Boolean)
+  )];
+  if(!normalizedBeds.length) return null;
+  const palletKeys = getHarvestProgressKeysForBeds(normalizedBeds, normalized);
+  const targetDate = parseDateOnlyString(normalized.targetDate) || getHarvestTargetDate();
+  const details = getActualLossDetailsForPalletKeys(
+    palletKeys,
+    safeCases,
+    targetDate,
+    records
+  );
+  if(!details) return null;
+  return {
+    ...details,
+    bedKeys:normalizedBeds,
+    location:formatHarvestProgressEntryLocation(normalizedBeds),
+    isCombined:normalizedBeds.length > 1
+  };
+}
+
+function getHarvestProgressActiveLossModel(state, isPartialMode, entryEdit, inputValue){
+  if(isPartialMode || entryEdit?.type === "partial") return null;
+  const bedKeys = entryEdit?.type === "regular"
+    ? entryEdit.bedKeys
+    : getPendingHarvestProgressBedKeys(state);
+  const details = getHarvestProgressLossDetails(bedKeys, inputValue, state);
+  if(!details) return null;
+  return {
+    label:entryEdit
+      ? (details.isCombined ? "修正後の合計ロス率" : "修正後のロス率")
+      : (details.isCombined ? "今回の合計ロス率" : "今回のロス率"),
+    value:`${details.lossRate}%`,
+    meta:`${details.location}・${Number(details.plantedTotal).toLocaleString("ja-JP")}株から計算`
+  };
+}
+
+function renderHarvestProgressLossResult(state, isPartialMode, entryEdit, inputValue){
+  const result = document.getElementById("harvestProgressLossResult");
+  const label = document.getElementById("harvestProgressLossLabel");
+  const value = document.getElementById("harvestProgressLossValue");
+  const meta = document.getElementById("harvestProgressLossMeta");
+  if(!result || !label || !value || !meta) return;
+  const model = getHarvestProgressActiveLossModel(state, isPartialMode, entryEdit, inputValue);
+  result.hidden = !model;
+  if(!model) return;
+  label.textContent = model.label;
+  value.textContent = model.value;
+  meta.textContent = model.meta;
+}
+
 function formatHarvestProgressBedSelection(bedKeys){
   const selectedSet = new Set(
     (Array.isArray(bedKeys) ? bedKeys : [])
@@ -18177,12 +18316,13 @@ function getHarvestProgressEntryDisplayGroups(state = harvestProgressState){
     const key = bedKeys.join("|");
     if(!key) return;
     if(!grouped.has(key)){
-      grouped.set(key, { key, bedKeys, totalCases:0, partialCases:0, entries:[] });
+      grouped.set(key, { key, bedKeys, totalCases:0, regularCases:0, partialCases:0, entries:[] });
     }
     const group = grouped.get(key);
     const cases = Math.max(0, Number(entry.cases) || 0);
     group.totalCases += cases;
     if(entry.type === "partial") group.partialCases += cases;
+    else group.regularCases += cases;
     group.entries.push({
       entryIndex,
       type:entry.type,
@@ -18196,9 +18336,14 @@ function getHarvestProgressEntryDisplayGroups(state = harvestProgressState){
     const partialText = group.partialCases > 0
       ? `（うち部分収穫${formatHarvestProgressCases(group.partialCases)}ケース）`
       : "";
+    const lossDetails = group.regularCases > 0
+      ? getHarvestProgressLossDetails(group.bedKeys, group.totalCases, normalized)
+      : null;
     return {
       ...group,
       location,
+      casesText:`${formatHarvestProgressCases(group.totalCases)}ケース${partialText}`,
+      lossDetails,
       label:`${location}：${formatHarvestProgressCases(group.totalCases)}ケース${partialText}`
     };
   });
@@ -18226,7 +18371,23 @@ function renderHarvestProgressEntryResult(result, state, model){
       button.className = "harvestProgressEntryLine";
       button.setAttribute("aria-label", `${group.label}。内訳を表示`);
       const label = document.createElement("span");
-      label.textContent = group.label;
+      label.className = "harvestProgressEntryLineText";
+      const location = document.createElement("span");
+      location.className = "harvestProgressEntryLineLocation";
+      location.textContent = group.location;
+      const numbers = document.createElement("span");
+      numbers.className = "harvestProgressEntryLineNumbers";
+      const cases = document.createElement("span");
+      cases.className = "harvestProgressEntryLineCases";
+      cases.textContent = group.casesText;
+      numbers.appendChild(cases);
+      if(group.lossDetails){
+        const loss = document.createElement("span");
+        loss.className = "harvestProgressEntryLineLoss";
+        loss.textContent = `${group.lossDetails.isCombined ? "合計ロス率" : "ロス率"} ${group.lossDetails.lossRate}%`;
+        numbers.appendChild(loss);
+      }
+      label.append(location, numbers);
       const chevron = document.createElement("span");
       chevron.className = "harvestProgressEntryLineChevron";
       chevron.setAttribute("aria-hidden", "true");
@@ -18276,6 +18437,15 @@ function renderHarvestProgressEntryDetails(){
     cases.className = "harvestProgressEntryDetailCases";
     cases.textContent = `${formatHarvestProgressCases(entry.cases)}ケース`;
     summary.append(type, cases);
+    if(entry.type === "regular"){
+      const lossDetails = getHarvestProgressLossDetails(entry.bedKeys, entry.cases);
+      if(lossDetails){
+        const loss = document.createElement("div");
+        loss.className = "harvestProgressEntryDetailLoss";
+        loss.textContent = `${lossDetails.isCombined ? "合計ロス率" : "ロス率"} ${lossDetails.lossRate}%`;
+        summary.appendChild(loss);
+      }
+    }
     const edit = document.createElement("button");
     edit.type = "button";
     edit.className = "secondaryBtn harvestProgressEntryDetailEdit";
@@ -18805,6 +18975,7 @@ function updateHarvestProgressUi(options = {}){
               : "部分収穫のケース数"))
       : "選択場所で収穫したケース数";
   }
+  renderHarvestProgressLossResult(state, isPartialMode, entryEdit, input?.value || "");
   const selectionText = document.getElementById("harvestProgressSelectionText");
   if(selectionText){
     const pendingBedKeys = getPendingHarvestProgressBedKeys(state);
@@ -40749,10 +40920,10 @@ function syncRecordCasesFromMain(force = false){
   updateRecordAutoValueNotes();
 }
 
-function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, sourceRecords = records){
+function getActualLossDetailsForPalletKeys(palletKeys, cases, targetDate = null, sourceRecords = records){
   const normalizedKeys = [...new Set(Array.isArray(palletKeys) ? palletKeys : [])]
     .filter(key => isValidPalletKeyString(String(key || "")));
-  if(!normalizedKeys.length || cases <= 0) return "";
+  if(!normalizedKeys.length || cases <= 0) return null;
 
   let plantedTotal = 0;
   let partialHarvestTotal = 0;
@@ -40779,13 +40950,22 @@ function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, so
     );
   });
 
-  if(plantedTotal <= 0) return "";
+  if(plantedTotal <= 0) return null;
 
   const shippedHeads = cases * CASE_SIZE + partialHarvestTotal;
   const actualHarvestRate = (shippedHeads / plantedTotal) * 100;
   const actualLossRate = 100 - actualHarvestRate;
 
-  return (Math.round(actualLossRate * 10) / 10).toFixed(1);
+  return {
+    lossRate:(Math.round(actualLossRate * 10) / 10).toFixed(1),
+    plantedTotal,
+    partialHarvestTotal,
+    palletCount:normalizedKeys.length
+  };
+}
+
+function getActualLossRateForPalletKeys(palletKeys, cases, targetDate = null, sourceRecords = records){
+  return getActualLossDetailsForPalletKeys(palletKeys, cases, targetDate, sourceRecords)?.lossRate || "";
 }
 
 function getActualLossRateFromSelectedPallets(cases, targetDate = null, sourceRecords = records){

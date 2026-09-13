@@ -6,7 +6,10 @@ Run the local preview server from the repository root (Python 3 only):
 python3 tools/serve_preview.py
 ```
 
-Then open <http://127.0.0.1:4173/previews/calculation-settings.html>.
+Then open one of these previews:
+
+- <http://127.0.0.1:4173/previews/calculation-settings.html>
+- <http://127.0.0.1:4173/previews/harvest-progress-loss.html>
 
 If npm is available, `npm run preview` starts the same server.
 
