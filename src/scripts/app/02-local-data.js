@@ -5,6 +5,11 @@ function loadSettings(){
 
     const merged = deepClone(defaultSettings);
     if(Number.isFinite(Number(parsed.defaultLossRate))) merged.defaultLossRate = Number(parsed.defaultLossRate);
+    ALLOWED_YIELDS.forEach(count => {
+      merged.harvestLossRatesByPlantingCount[count] = normalizeLossInput(
+        parsed.harvestLossRatesByPlantingCount?.[count]
+      );
+    });
     merged.defaultYieldPerPallet = normalizeYield(parsed.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
     merged.defaultPlantingCount = normalizeYield(parsed.defaultPlantingCount, defaultSettings.defaultPlantingCount);
     merged.useBedLossSettings = !!parsed.useBedLossSettings;

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260912-readonly-planting-details">
+<meta name="harvestnavi-version" content="20260913-planting-count-loss-rates">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -11464,6 +11464,14 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .settingClusterSummary{padding:18px;}
 .settingClusterSummary::after{color:var(--ui-text-tertiary);}
 .settingClusterDetailsBody{padding:0 18px 18px;}
+.plantingCountLossSettings{margin-top:14px;}
+.plantingCountLossSettings > .clusterNote{margin-top:4px;}
+.plantingCountLossGrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-top:8px;
+}
 .combinedSettingsSection + .combinedSettingsSection{
   margin-top:18px;
   padding-top:18px;
@@ -13979,6 +13987,15 @@ requestAnimationFrame(function(){
         <div id="defaultLossRateWrap">
         <input id="defaultLossRateInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力なら0%">
         </div>
+        <div class="plantingCountLossSettings">
+          <div class="bedInlineTitle">植え数別に設定する</div>
+          <div class="clusterNote">入力した値はベッド別・全体ロス率より優先します。未入力の植え数は従来の設定を使います。</div>
+          <div class="plantingCountLossGrid">
+            <div class="bedFieldItem"><label for="lossByPlantingCount_12">12植え</label><input id="lossByPlantingCount_12" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力"></div>
+            <div class="bedFieldItem"><label for="lossByPlantingCount_16">16植え</label><input id="lossByPlantingCount_16" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力"></div>
+            <div class="bedFieldItem"><label for="lossByPlantingCount_20">20植え</label><input id="lossByPlantingCount_20" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="未入力"></div>
+          </div>
+        </div>
         <div class="overrideToggle"><label class="checkLine"><input type="checkbox" id="useBedLossSettings"><span class="checkText">ベッド別設定を有効にする</span></label></div>
         <div class="accordionGroup" id="bedLossAccordion">
         <div class="bedInlineTitle">ベッド別に設定する</div>
@@ -14538,7 +14555,7 @@ requestAnimationFrame(function(){
             <details class="recordToggleWrap">
               <summary class="recordToggleSummary">計算式について</summary>
               <div class="recordToggleBody">
-                <p class="calculationHelpIntro">アプリ内で自動計算する主な値の計算式です。共通して「1ケース＝12株」で換算します。収穫時・定植時の株数は、計算設定の「全体設定」より「ベッド別設定」、さらに有効な場合は「手前・奥の設定」を優先します。収穫ロス率は、有効なベッド別設定がなければ全体設定を使います。</p>
+                <p class="calculationHelpIntro">アプリ内で自動計算する主な値の計算式です。共通して「1ケース＝12株」で換算します。収穫時・定植時の株数は、計算設定の「全体設定」より「ベッド別設定」、さらに有効な場合は「手前・奥の設定」を優先します。収穫ロス率は「植え数別設定」を最優先し、未入力ならベッド別設定、全体設定の順に使います。</p>
 
                 <section class="calculationHelpSection" aria-labelledby="calculationHelpHarvestTitle">
                   <h4 id="calculationHelpHarvestTitle" class="calculationHelpTitle">収穫場所の計算</h4>
@@ -15687,6 +15704,7 @@ function getActivePalletLifecycleStateStorageKey(){ return getRoleScopedStorageK
 
 const defaultSettings = {
   defaultLossRate: 0,
+  harvestLossRatesByPlantingCount: { 12: "", 16: "", 20: "" },
   defaultYieldPerPallet: 20,
   defaultPlantingCount: 20,
   useBedLossSettings: false,
@@ -17145,7 +17163,10 @@ function getForecastSettingsSummaryText(){
   const yieldValue = String(yieldInput?.value || "").trim() || "-";
   const plantValue = String(plantInput?.value || "").trim() || "-";
   const special60 = String(special60Input?.value || "0").trim() || "0";
-  const lossMark = document.getElementById("useBedLossSettings")?.checked ? "*" : "";
+  const hasPlantingCountLossRate = [12, 16, 20].some(count => (
+    String(document.getElementById(`lossByPlantingCount_${count}`)?.value ?? "").trim() !== ""
+  ));
+  const lossMark = document.getElementById("useBedLossSettings")?.checked || hasPlantingCountLossRate ? "*" : "";
   const yieldMark = document.getElementById("useBedYieldSettings")?.checked ? "*" : "";
   const plantMark = document.getElementById("useBedPlantSettings")?.checked ? "*" : "";
   return `ロス ${loss}%${lossMark}・${yieldValue}${yieldMark} / ${plantValue}${plantMark} / 60(${special60}/3)`;
@@ -17166,6 +17187,11 @@ function getCalculationSettingsClusterValues(title){
   const values = [];
   if(title === "収穫ロス率"){
     values.push(["全体", `${getCalculationSettingValue("defaultLossRateInput", "0")}%`]);
+    [12, 16, 20].forEach(count => {
+      const inputId = `lossByPlantingCount_${count}`;
+      const rawValue = getCalculationSettingValue(inputId, "");
+      if(rawValue !== "") values.push([`${count}植え`, `${rawValue}%`]);
+    });
     if(document.getElementById("useBedLossSettings")?.checked){
       bedOrder.forEach(bedName => {
         values.push([bedName, getBedTabSummaryText("loss", bedName)]);
@@ -17339,7 +17365,8 @@ function moveCalculationSettingsToForecast(){
 
 function installSettingsDirtyWatchers(){
   [
-    "defaultLossRateInput","defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
+    "defaultLossRateInput","lossByPlantingCount_12","lossByPlantingCount_16","lossByPlantingCount_20",
+    "defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
     "accessPasswordInput",
     "useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
     "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",
@@ -19947,6 +19974,11 @@ function loadSettings(){
 
     const merged = deepClone(defaultSettings);
     if(Number.isFinite(Number(parsed.defaultLossRate))) merged.defaultLossRate = Number(parsed.defaultLossRate);
+    ALLOWED_YIELDS.forEach(count => {
+      merged.harvestLossRatesByPlantingCount[count] = normalizeLossInput(
+        parsed.harvestLossRatesByPlantingCount?.[count]
+      );
+    });
     merged.defaultYieldPerPallet = normalizeYield(parsed.defaultYieldPerPallet, defaultSettings.defaultYieldPerPallet);
     merged.defaultPlantingCount = normalizeYield(parsed.defaultPlantingCount, defaultSettings.defaultPlantingCount);
     merged.useBedLossSettings = !!parsed.useBedLossSettings;
@@ -27149,6 +27181,9 @@ function importRecentRecordsFromGoogleSheetOnStartup(){
 
 function populateSettingsForm(){
   document.getElementById("defaultLossRateInput").value = settings.defaultLossRate;
+  ALLOWED_YIELDS.forEach(count => {
+    document.getElementById(`lossByPlantingCount_${count}`).value = settings.harvestLossRatesByPlantingCount?.[count] ?? "";
+  });
   document.getElementById("defaultYieldInput").value = String(settings.defaultYieldPerPallet);
   document.getElementById("defaultPlantingCountInput").value = String(settings.defaultPlantingCount);
   document.getElementById("useBedLossSettings").checked = !!settings.useBedLossSettings;
@@ -27181,6 +27216,15 @@ function readSettingsForm(){
   const next = deepClone(settings);
 
   next.defaultLossRate = clampNumber(document.getElementById("defaultLossRateInput").value, 0, 100, defaultSettings.defaultLossRate);
+  next.harvestLossRatesByPlantingCount = {
+    ...defaultSettings.harvestLossRatesByPlantingCount,
+    ...(next.harvestLossRatesByPlantingCount || {})
+  };
+  ALLOWED_YIELDS.forEach(count => {
+    next.harvestLossRatesByPlantingCount[count] = normalizeLossInput(
+      document.getElementById(`lossByPlantingCount_${count}`).value
+    );
+  });
   next.defaultYieldPerPallet = normalizeYield(document.getElementById("defaultYieldInput").value, defaultSettings.defaultYieldPerPallet);
   next.defaultPlantingCount = normalizeYield(document.getElementById("defaultPlantingCountInput").value, defaultSettings.defaultPlantingCount);
   next.useBedLossSettings = !!document.getElementById("useBedLossSettings").checked;
@@ -27230,6 +27274,15 @@ function getNormalizedBedCalculationSettings(){
     defaultSettings.defaultPlantingCount
   );
   const defaultLossRate = clampNumber(settings?.defaultLossRate, 0, 100, 0);
+  const harvestLossRatesByPlantingCount = {};
+  ALLOWED_YIELDS.forEach(count => {
+    const rawLossRate = settings?.harvestLossRatesByPlantingCount?.[count];
+    harvestLossRatesByPlantingCount[count] = rawLossRate !== ""
+      && rawLossRate !== null
+      && typeof rawLossRate !== "undefined"
+      ? clampNumber(rawLossRate, 0, 100, defaultLossRate)
+      : null;
+  });
   const useBedYieldSettings = !!settings?.useBedYieldSettings;
   const useBedPlantSettings = !!settings?.useBedPlantSettings;
   const useBedLossSettings = !!settings?.useBedLossSettings;
@@ -27291,6 +27344,7 @@ function getNormalizedBedCalculationSettings(){
     defaultHarvestPlantCount,
     defaultPlantingCount,
     defaultLossRate,
+    harvestLossRatesByPlantingCount,
     beds
   };
   return normalizedBedCalculationSettingsCache;
@@ -33652,9 +33706,15 @@ function getAppliedLossRateForBed(bed){
   return normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
 }
 
+function getAppliedLossRateForPlantingCount(bed, plantingCount){
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  const countLossRate = normalizedSettings.harvestLossRatesByPlantingCount?.[Number(plantingCount)];
+  return countLossRate ?? normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
+}
+
 function getPredictedHarvestForBed(building, bed, number, targetDate = null, options = {}){
   const plantCount = getHarvestPlantCountForPallet(building, bed, number, targetDate, options);
-  const lossRate = getAppliedLossRateForBed(bed);
+  const lossRate = getAppliedLossRateForPlantingCount(bed, plantCount);
   return plantCount * (100 - lossRate) / 100;
 }
 

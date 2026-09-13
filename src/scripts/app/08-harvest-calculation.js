@@ -2639,9 +2639,15 @@ function getAppliedLossRateForBed(bed){
   return normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
 }
 
+function getAppliedLossRateForPlantingCount(bed, plantingCount){
+  const normalizedSettings = getNormalizedBedCalculationSettings();
+  const countLossRate = normalizedSettings.harvestLossRatesByPlantingCount?.[Number(plantingCount)];
+  return countLossRate ?? normalizedSettings.beds[bed]?.lossRate ?? normalizedSettings.defaultLossRate;
+}
+
 function getPredictedHarvestForBed(building, bed, number, targetDate = null, options = {}){
   const plantCount = getHarvestPlantCountForPallet(building, bed, number, targetDate, options);
-  const lossRate = getAppliedLossRateForBed(bed);
+  const lossRate = getAppliedLossRateForPlantingCount(bed, plantCount);
   return plantCount * (100 - lossRate) / 100;
 }
 

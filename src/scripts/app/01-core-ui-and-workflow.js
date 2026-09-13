@@ -197,6 +197,7 @@ function getActivePalletLifecycleStateStorageKey(){ return getRoleScopedStorageK
 
 const defaultSettings = {
   defaultLossRate: 0,
+  harvestLossRatesByPlantingCount: { 12: "", 16: "", 20: "" },
   defaultYieldPerPallet: 20,
   defaultPlantingCount: 20,
   useBedLossSettings: false,
@@ -1655,7 +1656,10 @@ function getForecastSettingsSummaryText(){
   const yieldValue = String(yieldInput?.value || "").trim() || "-";
   const plantValue = String(plantInput?.value || "").trim() || "-";
   const special60 = String(special60Input?.value || "0").trim() || "0";
-  const lossMark = document.getElementById("useBedLossSettings")?.checked ? "*" : "";
+  const hasPlantingCountLossRate = [12, 16, 20].some(count => (
+    String(document.getElementById(`lossByPlantingCount_${count}`)?.value ?? "").trim() !== ""
+  ));
+  const lossMark = document.getElementById("useBedLossSettings")?.checked || hasPlantingCountLossRate ? "*" : "";
   const yieldMark = document.getElementById("useBedYieldSettings")?.checked ? "*" : "";
   const plantMark = document.getElementById("useBedPlantSettings")?.checked ? "*" : "";
   return `ロス ${loss}%${lossMark}・${yieldValue}${yieldMark} / ${plantValue}${plantMark} / 60(${special60}/3)`;
@@ -1676,6 +1680,11 @@ function getCalculationSettingsClusterValues(title){
   const values = [];
   if(title === "収穫ロス率"){
     values.push(["全体", `${getCalculationSettingValue("defaultLossRateInput", "0")}%`]);
+    [12, 16, 20].forEach(count => {
+      const inputId = `lossByPlantingCount_${count}`;
+      const rawValue = getCalculationSettingValue(inputId, "");
+      if(rawValue !== "") values.push([`${count}植え`, `${rawValue}%`]);
+    });
     if(document.getElementById("useBedLossSettings")?.checked){
       bedOrder.forEach(bedName => {
         values.push([bedName, getBedTabSummaryText("loss", bedName)]);
@@ -1849,7 +1858,8 @@ function moveCalculationSettingsToForecast(){
 
 function installSettingsDirtyWatchers(){
   [
-    "defaultLossRateInput","defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
+    "defaultLossRateInput","lossByPlantingCount_12","lossByPlantingCount_16","lossByPlantingCount_20",
+    "defaultYieldInput","defaultPlantingCountInput","seedlingLossRateInput","specialPallet60CountInput",
     "accessPasswordInput",
     "useBedLossSettings","useBedYieldSettings","useBedPlantSettings",
     "yield_A","loss_A","plant_A","yield_B","loss_B","plant_B","yield_C","loss_C","plant_C",

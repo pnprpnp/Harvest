@@ -1,5 +1,8 @@
 function populateSettingsForm(){
   document.getElementById("defaultLossRateInput").value = settings.defaultLossRate;
+  ALLOWED_YIELDS.forEach(count => {
+    document.getElementById(`lossByPlantingCount_${count}`).value = settings.harvestLossRatesByPlantingCount?.[count] ?? "";
+  });
   document.getElementById("defaultYieldInput").value = String(settings.defaultYieldPerPallet);
   document.getElementById("defaultPlantingCountInput").value = String(settings.defaultPlantingCount);
   document.getElementById("useBedLossSettings").checked = !!settings.useBedLossSettings;
@@ -32,6 +35,15 @@ function readSettingsForm(){
   const next = deepClone(settings);
 
   next.defaultLossRate = clampNumber(document.getElementById("defaultLossRateInput").value, 0, 100, defaultSettings.defaultLossRate);
+  next.harvestLossRatesByPlantingCount = {
+    ...defaultSettings.harvestLossRatesByPlantingCount,
+    ...(next.harvestLossRatesByPlantingCount || {})
+  };
+  ALLOWED_YIELDS.forEach(count => {
+    next.harvestLossRatesByPlantingCount[count] = normalizeLossInput(
+      document.getElementById(`lossByPlantingCount_${count}`).value
+    );
+  });
   next.defaultYieldPerPallet = normalizeYield(document.getElementById("defaultYieldInput").value, defaultSettings.defaultYieldPerPallet);
   next.defaultPlantingCount = normalizeYield(document.getElementById("defaultPlantingCountInput").value, defaultSettings.defaultPlantingCount);
   next.useBedLossSettings = !!document.getElementById("useBedLossSettings").checked;
@@ -81,6 +93,15 @@ function getNormalizedBedCalculationSettings(){
     defaultSettings.defaultPlantingCount
   );
   const defaultLossRate = clampNumber(settings?.defaultLossRate, 0, 100, 0);
+  const harvestLossRatesByPlantingCount = {};
+  ALLOWED_YIELDS.forEach(count => {
+    const rawLossRate = settings?.harvestLossRatesByPlantingCount?.[count];
+    harvestLossRatesByPlantingCount[count] = rawLossRate !== ""
+      && rawLossRate !== null
+      && typeof rawLossRate !== "undefined"
+      ? clampNumber(rawLossRate, 0, 100, defaultLossRate)
+      : null;
+  });
   const useBedYieldSettings = !!settings?.useBedYieldSettings;
   const useBedPlantSettings = !!settings?.useBedPlantSettings;
   const useBedLossSettings = !!settings?.useBedLossSettings;
@@ -142,6 +163,7 @@ function getNormalizedBedCalculationSettings(){
     defaultHarvestPlantCount,
     defaultPlantingCount,
     defaultLossRate,
+    harvestLossRatesByPlantingCount,
     beds
   };
   return normalizedBedCalculationSettingsCache;
