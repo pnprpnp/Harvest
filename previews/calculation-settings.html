@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>計算設定 UIプレビュー</title>
+  <style>
+    :root{
+      color-scheme:light;
+      font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif;
+      background:#edf1ee;
+      color:#17231b;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:#edf1ee;color:#17231b;}
+    button,input,select{font:inherit;}
+    button{cursor:pointer;}
+    .previewShell{min-height:100dvh;display:grid;place-items:center;padding:24px;}
+    .previewPhone{
+      position:relative;
+      width:min(100%,430px);
+      height:min(900px,calc(100dvh - 48px));
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      overflow:hidden;
+      border:1px solid #d8e0da;
+      border-radius:28px;
+      background:#f5f7f5;
+      box-shadow:0 20px 60px rgba(24,53,34,.16);
+    }
+    .previewHeader{
+      display:grid;
+      grid-template-columns:70px 1fr 70px;
+      align-items:center;
+      min-height:58px;
+      padding:8px 12px;
+      border-bottom:1px solid #e0e6e2;
+      background:#fff;
+    }
+    .previewHeaderTitle{font-size:18px;font-weight:800;text-align:center;}
+    .previewClose{border:0;background:transparent;color:#218147;font-size:13px;font-weight:750;text-align:left;}
+    .previewMark{color:#8a948d;font-size:10px;font-weight:750;letter-spacing:.08em;text-align:right;}
+    .previewScroll{overflow:auto;padding:12px 12px 24px;}
+    .previewIntro{margin:0 2px 10px;color:#68736b;font-size:12px;line-height:1.55;}
+    .settingSection{margin-bottom:9px;overflow:hidden;border:1px solid #dce4de;border-radius:16px;background:#fff;}
+    .settingSectionHeader{
+      width:100%;
+      min-height:66px;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto 18px;
+      align-items:center;
+      gap:8px;
+      padding:13px 14px;
+      border:0;
+      background:transparent;
+      color:inherit;
+      text-align:left;
+    }
+    .settingSectionName{display:block;font-size:15px;font-weight:800;}
+    .settingSectionNote{display:block;margin-top:3px;color:#7a857d;font-size:11px;font-weight:550;}
+    .settingSectionSummary{max-width:166px;color:#287b47;font-size:11px;font-weight:750;line-height:1.35;text-align:right;}
+    .settingSectionChevron{color:#89938c;font-size:16px;text-align:center;transition:transform .18s ease;}
+    .settingSectionHeader[aria-expanded="true"] .settingSectionChevron{transform:rotate(180deg);}
+    .settingSectionBody{padding:0 14px 15px;border-top:1px solid #edf0ee;}
+    .settingSectionBody[hidden]{display:none;}
+    .settingGroup{padding-top:13px;}
+    .settingGroup + .settingGroup{margin-top:13px;border-top:1px solid #edf0ee;}
+    .settingGroupTitle{margin-bottom:3px;color:#26342b;font-size:13px;font-weight:780;}
+    .settingGroupHelp{color:#7a857d;font-size:10px;line-height:1.45;}
+    .settingFieldRow{display:grid;grid-template-columns:minmax(0,1fr) 106px;align-items:center;gap:12px;margin-top:9px;}
+    .settingLabel{color:#4c5950;font-size:12px;font-weight:680;}
+    .settingInputWrap{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;}
+    input,select{
+      width:100%;
+      min-width:0;
+      height:38px;
+      padding:6px 9px;
+      border:1px solid #cad4cd;
+      border-radius:10px;
+      outline:none;
+      background:#f9fbfa;
+      color:#17231b;
+      font-size:14px;
+      font-weight:750;
+      text-align:right;
+    }
+    input:focus,select:focus{border-color:#299657;box-shadow:0 0 0 3px rgba(41,150,87,.12);}
+    .settingUnit{color:#657168;font-size:12px;font-weight:650;}
+    .plantingCountGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:9px;}
+    .plantingCountField{padding:8px;border:1px solid #dce4de;border-radius:11px;background:#f7f9f7;}
+    .plantingCountField label{display:block;margin-bottom:5px;color:#536057;font-size:11px;font-weight:730;text-align:center;}
+    .plantingCountField .settingInputWrap{gap:3px;}
+    .plantingCountField input{height:34px;padding:5px 6px;font-size:13px;}
+    .plantingCountField .settingUnit{font-size:10px;}
+    .settingToggleRow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;}
+    .settingSwitch{position:relative;width:44px;height:26px;flex:0 0 auto;border:0;border-radius:999px;background:#cbd2cd;transition:background .18s ease;}
+    .settingSwitch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18);transition:transform .18s ease;}
+    .settingSwitch[aria-checked="true"]{background:#299657;}
+    .settingSwitch[aria-checked="true"]::after{transform:translateX(18px);}
+    .bedSettings{margin-top:10px;}
+    .bedSettings[hidden]{display:none;}
+    .bedTabs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:8px;}
+    .bedTab{height:32px;border:1px solid #d8dfda;border-radius:8px;background:transparent;color:#67736b;font-size:12px;font-weight:730;}
+    .bedTab.active{border-color:#299657;background:#eaf7ee;color:#18723b;}
+    .settingPriority{margin-top:11px;padding:8px 10px;border-radius:9px;background:#eef7f0;color:#39714c;font-size:10px;font-weight:680;text-align:center;}
+    .previewFooter{padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #dde4df;background:rgba(255,255,255,.97);}
+    .previewSave{width:100%;min-height:48px;border:0;border-radius:13px;background:#23884a;color:#fff;font-size:15px;font-weight:800;}
+    .previewToast{position:absolute;left:50%;bottom:82px;z-index:2;width:max-content;max-width:calc(100% - 32px);padding:9px 13px;border-radius:10px;background:#26342b;color:#fff;font-size:12px;font-weight:700;opacity:0;pointer-events:none;transform:translate(-50%,8px);transition:opacity .18s ease,transform .18s ease;}
+    .previewToast.show{opacity:1;transform:translate(-50%,0);}
+    @media(max-width:520px){
+      .previewShell{padding:0;}
+      .previewPhone{width:100%;height:100dvh;border:0;border-radius:0;box-shadow:none;}
+    }
+  </style>
+</head>
+<body>
+  <main class="previewShell">
+    <section class="previewPhone" aria-label="Harvestnavi 計算設定プレビュー">
+      <header class="previewHeader">
+        <button class="previewClose" type="button" data-preview-message="プレビュー画面です">閉じる</button>
+        <div class="previewHeaderTitle">計算設定</div>
+        <div class="previewMark">UI PREVIEW</div>
+      </header>
+
+      <div class="previewScroll">
+        <p class="previewIntro">見出しで現在値を確認し、変更したい項目だけ開きます。</p>
+
+        <section class="settingSection">
+          <button class="settingSectionHeader" type="button" aria-expanded="true" data-section="loss">
+            <span><span class="settingSectionName">収穫ロス率</span><span class="settingSectionNote">収穫見込みに使用</span></span>
+            <span class="settingSectionSummary" data-loss-summary>全体 8%・12植え 3%・16植え 6%・20植え 9%</span>
+            <span class="settingSectionChevron">⌄</span>
+          </button>
+          <div class="settingSectionBody" data-section-body="loss">
+            <div class="settingGroup">
+              <div class="settingGroupTitle">全体</div>
+              <div class="settingFieldRow">
+                <label class="settingLabel" for="lossAll">基本のロス率</label>
+                <span class="settingInputWrap"><input id="lossAll" type="number" min="0" max="100" step="0.1" value="8"><span class="settingUnit">%</span></span>
+              </div>
+            </div>
+
+            <div class="settingGroup">
+              <div class="settingGroupTitle">植え数別</div>
+              <div class="settingGroupHelp">入力した植え数だけ、全体・ベッド別より優先します。</div>
+              <div class="plantingCountGrid">
+                <div class="plantingCountField"><label for="loss12">12植え</label><span class="settingInputWrap"><input id="loss12" type="number" min="0" max="100" step="0.1" value="3"><span class="settingUnit">%</span></span></div>
+                <div class="plantingCountField"><label for="loss16">16植え</label><span class="settingInputWrap"><input id="loss16" type="number" min="0" max="100" step="0.1" value="6"><span class="settingUnit">%</span></span></div>
+                <div class="plantingCountField"><label for="loss20">20植え</label><span class="settingInputWrap"><input id="loss20" type="number" min="0" max="100" step="0.1" value="9"><span class="settingUnit">%</span></span></div>
+              </div>
+            </div>
+
+            <div class="settingGroup">
+              <div class="settingToggleRow">
+                <span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">場所による差を調整</span></span>
+                <button class="settingSwitch" type="button" role="switch" aria-checked="true" aria-label="ベッド別設定" data-bed-switch></button>
+              </div>
+              <div class="bedSettings" data-bed-settings>
+                <div class="bedTabs" aria-label="ベッドを選択">
+                  <button class="bedTab active" type="button">A</button><button class="bedTab" type="button">B</button><button class="bedTab" type="button">C</button><button class="bedTab" type="button">D</button><button class="bedTab" type="button">E</button><button class="bedTab" type="button">F</button>
+                </div>
+                <div class="settingFieldRow">
+                  <span class="settingLabel"><span data-bed-name>A</span>ベッドのロス率</span>
+                  <span class="settingInputWrap"><input type="number" min="0" max="100" step="0.1" value="8"><span class="settingUnit">%</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="settingPriority">適用順　植え数別 → ベッド別 → 全体</div>
+          </div>
+        </section>
+
+        <section class="settingSection">
+          <button class="settingSectionHeader" type="button" aria-expanded="false" data-section="harvest-count">
+            <span><span class="settingSectionName">収穫時の個数</span><span class="settingSectionNote">1パレットの理想個数</span></span>
+            <span class="settingSectionSummary">全体 20個</span><span class="settingSectionChevron">⌄</span>
+          </button>
+          <div class="settingSectionBody" data-section-body="harvest-count" hidden>
+            <div class="settingGroup"><div class="settingFieldRow"><label class="settingLabel">全体の個数</label><select><option>20個</option><option>16個</option><option>12個</option></select></div></div>
+            <div class="settingGroup"><div class="settingToggleRow"><span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">必要な場合だけ場所ごとに調整</span></span><button class="settingSwitch" type="button" role="switch" aria-checked="false"></button></div></div>
+          </div>
+        </section>
+
+        <section class="settingSection">
+          <button class="settingSectionHeader" type="button" aria-expanded="false" data-section="plant-count">
+            <span><span class="settingSectionName">苗の個数</span><span class="settingSectionNote">二次定植に使用</span></span>
+            <span class="settingSectionSummary">全体 16個</span><span class="settingSectionChevron">⌄</span>
+          </button>
+          <div class="settingSectionBody" data-section-body="plant-count" hidden>
+            <div class="settingGroup"><div class="settingFieldRow"><label class="settingLabel">全体の植え付け数</label><select><option>16個</option><option>20個</option><option>12個</option></select></div></div>
+            <div class="settingGroup"><div class="settingToggleRow"><span><span class="settingGroupTitle">ベッド別</span><span class="settingGroupHelp">必要な場合だけ場所ごとに調整</span></span><button class="settingSwitch" type="button" role="switch" aria-checked="false"></button></div></div>
+          </div>
+        </section>
+
+        <section class="settingSection">
+          <button class="settingSectionHeader" type="button" aria-expanded="false" data-section="seedling">
+            <span><span class="settingSectionName">苗取り補足</span><span class="settingSectionNote">苗枚数の計算に使用</span></span>
+            <span class="settingSectionSummary">苗ロス 2%・60個用 2/3枚</span><span class="settingSectionChevron">⌄</span>
+          </button>
+          <div class="settingSectionBody" data-section-body="seedling" hidden>
+            <div class="settingGroup">
+              <div class="settingFieldRow"><label class="settingLabel">苗のロス率</label><span class="settingInputWrap"><input type="number" min="0" max="100" value="2"><span class="settingUnit">%</span></span></div>
+              <div class="settingFieldRow"><label class="settingLabel">60個用パレット</label><span class="settingInputWrap"><input type="number" min="0" max="3" value="2"><span class="settingUnit">/ 3枚</span></span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="previewFooter"><button class="previewSave" type="button" data-preview-message="プレビューのため保存されません">設定を保存</button></footer>
+      <div class="previewToast" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+  <script>
+    const root = document.querySelector(".previewPhone");
+    const toast = root.querySelector(".previewToast");
+    let toastTimer = null;
+
+    function showPreviewMessage(message){
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    root.querySelectorAll("[data-section]").forEach(button => {
+      button.addEventListener("click", () => {
+        const open = button.getAttribute("aria-expanded") === "true";
+        const body = root.querySelector(`[data-section-body="${button.dataset.section}"]`);
+        button.setAttribute("aria-expanded", open ? "false" : "true");
+        body.hidden = open;
+      });
+    });
+
+    root.querySelectorAll(".settingSwitch").forEach(button => {
+      button.addEventListener("click", () => {
+        const enabled = button.getAttribute("aria-checked") !== "true";
+        button.setAttribute("aria-checked", enabled ? "true" : "false");
+        if(button.hasAttribute("data-bed-switch")) root.querySelector("[data-bed-settings]").hidden = !enabled;
+      });
+    });
+
+    root.querySelectorAll(".bedTab").forEach(button => {
+      button.addEventListener("click", () => {
+        root.querySelectorAll(".bedTab").forEach(tab => tab.classList.toggle("active", tab === button));
+        root.querySelector("[data-bed-name]").textContent = button.textContent.trim();
+      });
+    });
+
+    const lossInputs = ["lossAll", "loss12", "loss16", "loss20"].map(id => document.getElementById(id));
+    function updateLossSummary(){
+      const value = input => String(input.value || "未入力");
+      root.querySelector("[data-loss-summary]").textContent = `全体 ${value(lossInputs[0])}%・12植え ${value(lossInputs[1])}%・16植え ${value(lossInputs[2])}%・20植え ${value(lossInputs[3])}%`;
+    }
+    lossInputs.forEach(input => input.addEventListener("input", updateLossSummary));
+    root.querySelectorAll("[data-preview-message]").forEach(button => button.addEventListener("click", () => showPreviewMessage(button.dataset.previewMessage)));
+  </script>
+</body>
+</html>
