@@ -576,12 +576,13 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
 
   if(!configValidation.ok){
     if(showConfigNotice) showToast(configValidation.message);
-    return { ...emptyTotals, errorMessage: configValidation.message };
+    return { ...emptyTotals, errorMessage: configValidation.message, retryableFailure: false };
   }
-  if(!list.length) return { ...emptyTotals, failCount: 0, errorMessage: "" };
+  if(!list.length) return { ...emptyTotals, failCount: 0, errorMessage: "", retryableFailure: false };
   const config = configValidation.config;
   const validSnapshots = [];
   let firstError = "";
+  let retryableFailure = false;
   let invalidCount = 0;
 
   list.forEach(record => {
@@ -614,6 +615,7 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
       Object.keys(totals).forEach(key => { totals[key] += chunkTotals[key] || 0; });
       firstError ||= String(chunkTotals.errorMessage || "").trim();
     }catch(e){
+      retryableFailure = isRetryableGoogleSheetSendError(e);
       firstError ||= String(e?.name === "AbortError" ? "スプレッドシートとの通信がタイムアウトしました" : (e?.message || e));
       totals.failCount += chunk.length;
       const remaining = batchPlan.chunks.slice(chunkIndex + 1).flat();
@@ -626,7 +628,9 @@ async function sendRecordsBatchToGoogleSheet(recordsToSend, options = {}){
   if(firstError && showFailureDialog){
     showRecordImportError("スプレッドシートへの一括送信に失敗しました。\n\n詳細: " + firstError, "送信失敗");
   }
-  return { ...totals, errorMessage: firstError };
+  retryableFailure ||= totals.failCount > 0
+    && isRetryableGoogleSheetSendError(new Error(firstError));
+  return { ...totals, errorMessage: firstError, retryableFailure };
 }
 
 function cloneGoogleSheetPlantingEventForSend(event){
@@ -889,13 +893,15 @@ async function confirmGoogleSheetDayBatchAfterTimeout(
   recordSnapshots,
   plantingEventSnapshots,
   sentRecordSignatures,
-  config
+  config,
+  batchId
 ){
   showToast("送信結果を確認中です");
   const payload = buildGoogleSheetDayBatchStatusPayload(
     recordSnapshots,
     plantingEventSnapshots,
-    config
+    config,
+    { batchId }
   );
   for(const delayMs of getGoogleSheetDayBatchConfirmationDelays()){
     await waitForGoogleSheetDayBatchConfirmation(delayMs);
@@ -939,9 +945,15 @@ async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapsh
   markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_BATCH_TIMEOUT_MS);
+  const batchId = createGoogleSheetDayBatchId();
 
   try{
-    const payloadObject = buildGoogleSheetDayBatchPayload(recordSnapshots, plantingEventSnapshots, config);
+    const payloadObject = buildGoogleSheetDayBatchPayload(
+      recordSnapshots,
+      plantingEventSnapshots,
+      config,
+      { batchId }
+    );
     const response = await fetch(config.url, {
       method: "POST",
       mode: "cors",
@@ -965,6 +977,9 @@ async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapsh
         error.googleSheetDayBatchUnsupported = true;
       }
       throw error;
+    }
+    if(result.serverTiming && typeof result.serverTiming === "object"){
+      console.info("Google Sheet当日一括送信の処理時間", result.serverTiming);
     }
     googleSheetDayBatchSupportState = "supported";
     if(!Array.isArray(result.recordResults) || result.recordResults.length > recordSnapshots.length
@@ -1063,7 +1078,8 @@ async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapsh
         recordSnapshots,
         plantingEventSnapshots,
         sentRecordSignatures,
-        config
+        config,
+        batchId
       );
       if(confirmed) return confirmed;
     }
@@ -1088,6 +1104,7 @@ async function sendGoogleSheetLegacyMixedBatches(recordSnapshots, plantingEventS
     plantingFailCount: 0
   };
   let firstError = "";
+  let retryableFailure = false;
   const recordResult = await sendRecordsBatchToGoogleSheet(recordSnapshots, {
     showFailureDialog: false,
     showConfigNotice: false
@@ -1097,6 +1114,7 @@ async function sendGoogleSheetLegacyMixedBatches(recordSnapshots, plantingEventS
   totals.duplicateCount += recordResult.duplicateCount || 0;
   totals.failCount += recordResult.failCount || 0;
   firstError ||= String(recordResult.errorMessage || "").trim();
+  retryableFailure ||= recordResult.retryableFailure === true;
 
   for(const eventSnapshot of plantingEventSnapshots){
     const currentEvent = getPlantingEventById(eventSnapshot.eventId);
@@ -1114,7 +1132,7 @@ async function sendGoogleSheetLegacyMixedBatches(recordSnapshots, plantingEventS
       firstError ||= String(result.message || "苗植え記録を送信できませんでした");
     }
   }
-  return { ...totals, errorMessage: firstError };
+  return { ...totals, errorMessage: firstError, retryableFailure };
 }
 
 function includeUnsentPlantingSourceRecords(recordsToSend, plantingEventsToSend){
@@ -1190,6 +1208,7 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
   const recordSnapshots = [];
   const plantingEventSnapshots = [];
   let firstError = plantingDependencyFailures[0]?.message || "";
+  let retryableFailure = false;
 
   recordList.forEach(record => {
     const snapshot = cloneGoogleSheetRecordForSend(record);
@@ -1228,6 +1247,7 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
     );
     Object.keys(totals).forEach(key => { totals[key] += legacyResult[key] || 0; });
     firstError ||= String(legacyResult.errorMessage || "").trim();
+    retryableFailure ||= legacyResult.retryableFailure === true;
   };
 
   if(googleSheetDayBatchSupportState === "unsupported"){
@@ -1235,7 +1255,7 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
     if(firstError && showFailureDialog){
       showRecordImportError("記録の送信に失敗しました。\n\n詳細: " + firstError, "送信失敗");
     }
-    return { ...totals, errorMessage: firstError };
+    return { ...totals, errorMessage: firstError, retryableFailure };
   }
 
   for(let chunkIndex = 0; chunkIndex < batchPlan.chunks.length; chunkIndex++){
@@ -1258,6 +1278,7 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
         await sendWithLegacyApi();
         break;
       }
+      retryableFailure ||= isRetryableGoogleSheetSendError(e);
       firstError ||= String(e?.name === "AbortError"
         ? "スプレッドシートとの通信がタイムアウトしました"
         : (e?.message || e));
@@ -1277,7 +1298,9 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
   if(firstError && showFailureDialog){
     showRecordImportError("当日の記録の一括送信に失敗しました。\n\n詳細: " + firstError, "送信失敗");
   }
-  return { ...totals, errorMessage: firstError };
+  retryableFailure ||= (totals.failCount > 0 || totals.plantingFailCount > 0)
+    && isRetryableGoogleSheetSendError(new Error(firstError));
+  return { ...totals, errorMessage: firstError, retryableFailure };
 }
 
 async function sendPendingRecordsToGoogleSheet(){

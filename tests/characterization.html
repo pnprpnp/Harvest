@@ -133,6 +133,7 @@
         app.eval(`
           if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
           googleSheetBackgroundSendTimer = null;
+          googleSheetBackgroundSendTimerDueAt = 0;
           googleSheetBackgroundRecordQueue.clear();
           googleSheetBackgroundPlantingQueue.clear();
           googleSheetBackgroundSendRunning = false;
@@ -155,6 +156,7 @@
         app.eval(`
           if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
           googleSheetBackgroundSendTimer = null;
+          googleSheetBackgroundSendTimerDueAt = 0;
           googleSheetBackgroundRecordQueue.clear();
           googleSheetBackgroundPlantingQueue.clear();
           googleSheetBackgroundSendRunning = false;
@@ -697,7 +699,12 @@
           "getWorkerSnapshotHarvestRecordGroups",
           "getCompletedRecordWriteStates",
           "getKnownRecordColumnSegments",
+          "getKnownPlantingEventColumnSegments",
+          "writeKnownPlantingEventRows",
           "setHarvestRecordRangeValuesWithValidationRecovery",
+          "buildHarvestDayBatchReceipt",
+          "buildHarvestDayBatchStatusFromReceipt",
+          "recordHarvestSyncChangesWithinWriteLockSafely",
           "setupHarvestWorkerApiToken",
           "assertApiOperationAllowedForRole",
           "analyzePlantingEventTrashHeaders",
@@ -778,6 +785,71 @@
           { row: 2, column: 25, rowCount: 2, columnCount: 1 }
         ], "標準列が最小限の連続範囲にまとまっていません");
         assertEqual(result.customColumnProtected, true, "独自列が書き込み範囲に含まれています");
+      });
+
+      await runTest("Apps Scriptが苗植え記録の連続列を一括書き込みする", () => {
+        const result = comparable(appsScript.eval(`(() => {
+          const previousFlush = SpreadsheetApp.flush;
+          const writeCalls = [];
+          let flushCount = 0;
+          SpreadsheetApp.flush = () => { flushCount++; };
+          try{
+            const sheet = {
+              getMaxColumns(){ return PLANTING_EVENT_HEADERS.length; },
+              getMaxRows(){ return 100; },
+              insertColumnsAfter(){ throw new Error("列の拡張は不要です"); },
+              insertRowsAfter(){ throw new Error("行の拡張は不要です"); },
+              getRange(row, column, rowCount, columnCount){
+                const call = { row, column, rowCount, columnCount };
+                return {
+                  setValues(values){
+                    call.values = values;
+                    writeCalls.push(call);
+                  },
+                  setValue(value){
+                    call.values = [[value]];
+                    writeCalls.push(call);
+                  },
+                  clearDataValidations(){ call.cleared = true; }
+                };
+              }
+            };
+            const updatedAtIndex = PLANTING_EVENT_FIELD_KEYS.indexOf("updatedAt");
+            const rows = [0, 1].map(rowIndex => PLANTING_EVENT_HEADERS.map((header, columnIndex) => (
+              columnIndex === updatedAtIndex
+                ? new Date("2026-09-14T00:00:0" + rowIndex + ".000Z")
+                : "p" + rowIndex + "c" + columnIndex
+            )));
+            writeKnownPlantingEventRows(sheet, 2, PLANTING_EVENT_HEADERS, rows, ["marker-1", "marker-2"]);
+
+            const customHeaders = PLANTING_EVENT_HEADERS.slice();
+            customHeaders.splice(2, 0, "独自メモ列");
+            const customSegments = getKnownPlantingEventColumnSegments(customHeaders);
+            return {
+              flushCount,
+              writeRanges: writeCalls.map(call => ({
+                row: call.row,
+                column: call.column,
+                rowCount: call.rowCount,
+                columnCount: call.columnCount
+              })),
+              customColumnProtected: customSegments.every(segment => !(
+                2 >= segment.startIndex && 2 < segment.startIndex + segment.length
+              ))
+            };
+          }finally{
+            if(typeof previousFlush === "undefined") delete SpreadsheetApp.flush;
+            else SpreadsheetApp.flush = previousFlush;
+          }
+        })()`));
+        assertEqual(result.flushCount, 1, "苗植え未完了マーカーの反映回数が違います");
+        assertDeepEqual(result.writeRanges, [
+          { row: 2, column: 17, rowCount: 2, columnCount: 1 },
+          { row: 2, column: 1, rowCount: 2, columnCount: 16 },
+          { row: 2, column: 18, rowCount: 2, columnCount: 2 },
+          { row: 2, column: 17, rowCount: 2, columnCount: 1 }
+        ], "苗植えの標準列が最小限の連続範囲にまとまっていません");
+        assertEqual(result.customColumnProtected, true, "苗植えの独自列が書き込み範囲に含まれています");
       });
 
       await runTest("Apps Scriptが収穫記録の入力規則エラーを復旧する", () => {
@@ -1111,6 +1183,68 @@
         );
       });
 
+      await runTest("当日一括送信の受付番号だけで保存済み結果を確認する", () => {
+        const record = createBackgroundFullRecord(88, "2026-09-14");
+        const event = createBackgroundPlantingEvent(88, record, "2026-09-14");
+        const payloadText = JSON.stringify({ records: [record], plantingEvents: [event] });
+        const result = comparable(appsScript.eval(`(() => {
+          const payload = ${payloadText};
+          const canonicalId = Number(payload.records[0].id) + 5000;
+          const canonicalRecord = normalizeHarvestRecord({
+            ...payload.records[0],
+            id: canonicalId,
+            createdAt: "2026-09-14T00:00:00.000Z",
+            updatedAt: "2026-09-14T00:00:01.000Z"
+          });
+          const canonicalEvent = normalizePlantingEvent({
+            ...payload.plantingEvents[0],
+            sourceAllocations: payload.plantingEvents[0].sourceAllocations.map(allocation => ({
+              ...allocation,
+              harvestRecordId: canonicalId
+            })),
+            createdAt: "2026-09-14T00:00:02.000Z",
+            updatedAt: "2026-09-14T00:00:03.000Z"
+          });
+          const saveResult = {
+            recordResults: [{ index: 0, ok: true, record: canonicalRecord }],
+            plantingResults: [{ index: 0, ok: true, event: canonicalEvent }]
+          };
+          const saved = saveHarvestDayBatchReceipt(
+            "day-characterization-receipt",
+            payload.records,
+            payload.plantingEvents,
+            saveResult
+          );
+          const receipt = loadHarvestDayBatchReceipt(
+            "day-characterization-receipt",
+            payload.records,
+            payload.plantingEvents
+          );
+          const status = buildHarvestDayBatchStatusFromReceipt(
+            receipt,
+            payload.records,
+            payload.plantingEvents
+          );
+          const mismatch = loadHarvestDayBatchReceipt(
+            "day-characterization-receipt",
+            [{ ...payload.records[0], cases: Number(payload.records[0].cases) + 1 }],
+            payload.plantingEvents
+          );
+          return {
+            saved,
+            confirmedByReceipt: status && status.confirmedByReceipt,
+            canonicalRecordId: status && status.recordResults[0].record.id,
+            canonicalSourceId: status && status.plantingResults[0].event.sourceAllocations[0].harvestRecordId,
+            mismatchAccepted: !!mismatch
+          };
+        })()`));
+        assertEqual(result.saved, true, "一括送信の受付情報を保存できません");
+        assertEqual(result.confirmedByReceipt, true, "受付情報から送信済み結果を復元できません");
+        assertEqual(result.canonicalRecordId, Number(record.id) + 5000, "確定した収穫記録IDを受付情報から復元できません");
+        assertEqual(result.canonicalSourceId, Number(record.id) + 5000, "苗植え元の確定IDを受付情報へ反映できません");
+        assertEqual(result.mismatchAccepted, false, "異なる送信内容を同じ受付番号で確認しています");
+      });
+
       await runTest("当日一括送信では苗植え割当と収穫元の集計結果を読み直さない", () => {
         const result = comparable(appsScript.eval(`(() => {
           const previousBuildRow = buildPlantingEventRow;
@@ -1185,11 +1319,12 @@
                 ok: true,
                 previousSyncRevision: payload.syncRevision,
                 syncRevision: payload.syncRevision + 1,
-                results: payload.records.map((record, index) => ({
+                recordResults: payload.records.map((record, index) => ({
                   index,
                   ok: true,
                   record: createBackgroundServerRecord(record)
-                }))
+                })),
+                plantingResults: []
               })
             };
           };
@@ -1201,7 +1336,7 @@
           await app.runGoogleSheetBackgroundSendQueue();
 
           assertEqual(payloads.length, 1, "収穫記録ごとに通信しています");
-          assertEqual(payloads[0].type, "harvest-record-batch", "一括保存APIを使用していません");
+          assertEqual(payloads[0].type, "harvest-day-batch", "タイムアウト確認に対応した一括保存APIを使用していません");
           assertDeepEqual(
             payloads[0].records.map(record => record.recordUuid),
             [firstRecord.recordUuid, secondRecord.recordUuid],
@@ -1210,6 +1345,114 @@
           assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(firstRecord.recordUuid)), "confirmed", "1件目が送信済みになりません");
           assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(secondRecord.recordUuid)), "confirmed", "2件目が送信済みになりません");
           assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "完了した背景送信がキューに残っています");
+        });
+      });
+
+      await runTest("通常収穫は苗植え完了まで待って部分収穫も1回で送信する", async () => {
+        const today = app.formatDateOnlyString(new Date());
+        const fullRecord = createBackgroundFullRecord(31, today);
+        const partialRecord = createBackgroundPartialRecord(32, 5, "", today);
+        const plantingEvent = createBackgroundPlantingEvent(31, fullRecord, today);
+        await withBackgroundSendTestState(app, [fullRecord, partialRecord], async () => {
+          const payloads = [];
+          const outboxKey = app.getActiveGoogleSheetSendOutboxStorageKey();
+          try{
+            app.eval(`
+              recordSelectionMode = "planting";
+              workflowPlantingSessionActive = true;
+              activePlantingRecordId = ${Number(fullRecord.id)};
+            `);
+            app.fetch = async (_url, options) => {
+              const payload = JSON.parse(options.body);
+              payloads.push(payload);
+              return {
+                text: async () => JSON.stringify({
+                  ok: true,
+                  previousSyncRevision: payload.syncRevision,
+                  syncRevision: payload.syncRevision + payload.records.length + payload.plantingEvents.length,
+                  recordResults: payload.records.map((record, index) => ({
+                    index,
+                    ok: true,
+                    record: createBackgroundServerRecord(record)
+                  })),
+                  plantingResults: payload.plantingEvents.map((event, index) => ({
+                    index,
+                    ok: true,
+                    event: {
+                      ...event,
+                      createdAt: "2026-09-14T00:00:00.000Z",
+                      updatedAt: "2026-09-14T00:00:01.000Z"
+                    }
+                  }))
+                })
+              };
+            };
+
+            assertEqual(app.queueGoogleSheetRecordBatchSend(
+              [app.getRecordByUuid(fullRecord.recordUuid), app.getRecordByUuid(partialRecord.recordUuid)],
+              { waitForPlantingRecordId: fullRecord.id }
+            ), 2, "収穫記録を送信待ちへ追加できません");
+            await app.runGoogleSheetBackgroundSendQueue();
+            assertEqual(payloads.length, 0, "苗植え操作中に収穫記録だけを先に送信しています");
+            const storedBeforePlanting = JSON.parse(app.localStorage.getItem(outboxKey));
+            assertEqual(storedBeforePlanting.records.length, 2, "送信待ちが端末内に保存されていません");
+            app.eval(`
+              googleSheetBackgroundRecordQueue.clear();
+              googleSheetBackgroundPlantingQueue.clear();
+              loadGoogleSheetBackgroundSendOutbox();
+            `);
+            assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 2, "再起動後に収穫の送信待ちを復元できません");
+
+            assert(app.queueGoogleSheetPlantingEventSend(app.getPlantingEventById(plantingEvent.eventId)), "苗植えを送信待ちへ追加できません");
+            await app.runGoogleSheetBackgroundSendQueue();
+            assertEqual(payloads.length, 1, "収穫と苗植えを複数回に分けて通信しています");
+            assertEqual(payloads[0].records.length, 2, "通常収穫と部分収穫を同じ便へ入れていません");
+            assertEqual(payloads[0].plantingEvents.length, 1, "苗植えを同じ便へ入れていません");
+            const storedAfterPlanting = JSON.parse(app.localStorage.getItem(outboxKey));
+            assertEqual(storedAfterPlanting.records.length + storedAfterPlanting.plantingEvents.length, 0, "送信済みの待ちデータが端末に残っています");
+          }finally{
+            app.eval(`
+              recordSelectionMode = "harvest";
+              workflowPlantingSessionActive = false;
+              activePlantingRecordId = null;
+            `);
+          }
+        }, [plantingEvent]);
+      });
+
+      await runTest("通信失敗時は送信待ちを保持して自動再送する", async () => {
+        const record = createBackgroundPartialRecord(33, 7);
+        await withBackgroundSendTestState(app, [record], async () => {
+          const originalRetryDelays = app.getGoogleSheetBackgroundRetryDelays;
+          let fetchCount = 0;
+          try{
+            app.getGoogleSheetBackgroundRetryDelays = () => [0];
+            app.fetch = async (_url, options) => {
+              fetchCount++;
+              if(fetchCount === 1) throw new TypeError("Failed to fetch");
+              const payload = JSON.parse(options.body);
+              return {
+                text: async () => JSON.stringify({
+                  ok: true,
+                  previousSyncRevision: payload.syncRevision,
+                  syncRevision: payload.syncRevision + 1,
+                  recordResults: payload.records.map((item, index) => ({
+                    index,
+                    ok: true,
+                    record: createBackgroundServerRecord(item)
+                  })),
+                  plantingResults: []
+                })
+              };
+            };
+            assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(record.recordUuid)), "自動再送する記録を追加できません");
+            await app.runGoogleSheetBackgroundSendQueue();
+            assertEqual(fetchCount, 2, "一時的な通信失敗を1回だけ自動再送していません");
+            assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(record.recordUuid)), "confirmed", "自動再送後に送信済みになりません");
+            assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "自動再送済みの記録が送信待ちに残っています");
+          }finally{
+            app.getGoogleSheetBackgroundRetryDelays = originalRetryDelays;
+          }
         });
       });
 
@@ -1505,11 +1748,12 @@
                 ok: true,
                 previousSyncRevision: payload.syncRevision,
                 syncRevision: payload.syncRevision + 1,
-                results: payload.records.map((record, index) => ({
+                recordResults: payload.records.map((record, index) => ({
                   index,
                   ok: true,
                   record: createBackgroundServerRecord(record)
-                }))
+                })),
+                plantingResults: []
               })
             };
           };
@@ -1547,10 +1791,11 @@
                 ok: true,
                 previousSyncRevision: payload.syncRevision,
                 syncRevision: payload.syncRevision + 1,
-                results: [
+                recordResults: [
                   { index: 0, ok: true, record: createBackgroundServerRecord(payload.records[0]) },
                   { index: 1, ok: false, message: "characterization failure" }
-                ]
+                ],
+                plantingResults: []
               })
             };
           };

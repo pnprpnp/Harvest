@@ -468,20 +468,20 @@ function writeKnownPlantingEventRows(sheet, startRow, headers, rows, writeMarker
     throw new Error("苗植えイベントシートに書き込み可能な既知列がありません");
   }
 
-  const writeColumn = (item, columnValues) => {
-    const targetRange = sheet.getRange(startRow, item.index + 1, safeRows.length, 1);
+  const writeRange = (startIndex, columnCount, rangeValues, rangeLabel) => {
+    const targetRange = sheet.getRange(startRow, startIndex + 1, safeRows.length, columnCount);
     try {
-      targetRange.setValues(columnValues);
+      targetRange.setValues(rangeValues);
     } catch (err) {
       // 古い入力規則が残っているシートでは、正しい値でも汎用的な
       // 「引数が無効です」になることがある。アプリ管理列だけ解除して再試行する。
       try {
         targetRange.clearDataValidations();
-        if (columnValues.length === 1) targetRange.setValue(columnValues[0][0]);
-        else targetRange.setValues(columnValues);
+        if (rangeValues.length === 1 && columnCount === 1) targetRange.setValue(rangeValues[0][0]);
+        else targetRange.setValues(rangeValues);
       } catch (retryErr) {
         throw new Error(
-          "列「" + (PLANTING_EVENT_HEADER_LABELS[item.key] || item.key) + "」の更新に失敗しました: " +
+          rangeLabel + "の更新に失敗しました: " +
           String(retryErr && retryErr.message || retryErr) +
           "（初回: " + String(err && err.message || err) + "）"
         );
@@ -496,9 +496,11 @@ function writeKnownPlantingEventRows(sheet, startRow, headers, rows, writeMarker
   if (!Array.isArray(writeMarkers) || writeMarkers.length !== safeRows.length) {
     throw new Error("苗植えイベントの未完了マーカーが正しくありません");
   }
-  writeColumn(
-    updatedAtColumn,
-    writeMarkers.map(marker => [String(marker || "")])
+  writeRange(
+    updatedAtColumn.index,
+    1,
+    writeMarkers.map(marker => [String(marker || "")]),
+    "更新日時列"
   );
   try {
     SpreadsheetApp.flush();
@@ -507,17 +509,25 @@ function writeKnownPlantingEventRows(sheet, startRow, headers, rows, writeMarker
       String(err && err.message || err));
   }
 
-  knownColumnIndexes
-    .filter(item => item.key !== "updatedAt")
-    .forEach(item => {
-      writeColumn(
-        item,
-        safeRows.map(row => [normalizePlantingEventCellValue(row[item.index])])
-      );
-    });
-  writeColumn(
-    updatedAtColumn,
-    safeRows.map(row => [normalizePlantingEventCellValue(row[updatedAtColumn.index])])
+  getKnownPlantingEventColumnSegments(headers).forEach(segment => {
+    const rangeLabel = segment.length === 1
+      ? "列「" + (PLANTING_EVENT_HEADER_LABELS[getPlantingEventHeaderKey(headers[segment.startIndex])]
+          || getPlantingEventHeaderKey(headers[segment.startIndex])) + "」"
+      : "苗植えイベント列" + (segment.startIndex + 1) + "〜" + (segment.startIndex + segment.length);
+    writeRange(
+      segment.startIndex,
+      segment.length,
+      safeRows.map(row => row
+        .slice(segment.startIndex, segment.startIndex + segment.length)
+        .map(normalizePlantingEventCellValue)),
+      rangeLabel
+    );
+  });
+  writeRange(
+    updatedAtColumn.index,
+    1,
+    safeRows.map(row => [normalizePlantingEventCellValue(row[updatedAtColumn.index])]),
+    "更新日時列"
   );
 }
 

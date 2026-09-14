@@ -592,6 +592,204 @@ function findGoogleSheetBackgroundRecord(job){
   );
 }
 
+function getGoogleSheetBackgroundRetryDelays(){
+  return [...GOOGLE_SHEET_SEND_RETRY_DELAYS_MS];
+}
+
+function normalizeGoogleSheetBackgroundRecordJob(value){
+  if(!value || typeof value !== "object") return null;
+  const recordUuid = normalizeRecordUuid(value.recordUuid);
+  const recordId = getSafePositiveRecordId(value.recordId);
+  if(!recordUuid && recordId === null) return null;
+  const waitForPlantingRecordId = getSafePositiveRecordId(value.waitForPlantingRecordId);
+  const retryCount = clampNumber(
+    value.retryCount,
+    0,
+    getGoogleSheetBackgroundRetryDelays().length,
+    0
+  );
+  return {
+    recordUuid,
+    recordId,
+    waitForPlantingRecordId,
+    retryCount: Math.trunc(retryCount),
+    nextAttemptAt: Math.max(0, Number(value.nextAttemptAt) || 0),
+    successMessage: String(value.successMessage || "").slice(0, 500),
+    failureMessage: String(value.failureMessage || "記録は端末内に保存されています。スプレッドシートは未送信です").slice(0, 500)
+  };
+}
+
+function normalizeGoogleSheetBackgroundPlantingJob(value){
+  if(!value || typeof value !== "object") return null;
+  const eventId = getSafePositiveRecordId(value.eventId);
+  if(eventId === null) return null;
+  const retryCount = clampNumber(
+    value.retryCount,
+    0,
+    getGoogleSheetBackgroundRetryDelays().length,
+    0
+  );
+  return {
+    eventId,
+    retryCount: Math.trunc(retryCount),
+    nextAttemptAt: Math.max(0, Number(value.nextAttemptAt) || 0),
+    successMessage: String(value.successMessage || "").slice(0, 500),
+    failureMessage: String(value.failureMessage || "苗植え記録は端末内に保存されています。スプレッドシートは未送信です").slice(0, 500),
+    showFailureDetails: value.showFailureDetails !== false
+  };
+}
+
+function saveGoogleSheetBackgroundSendOutbox(){
+  try{
+    harvestnaviLocalStorage.writeJson(getActiveGoogleSheetSendOutboxStorageKey(), {
+      version: 1,
+      records: [...googleSheetBackgroundRecordQueue.entries()].map(([key, job]) => ({
+        key,
+        ...job
+      })),
+      plantingEvents: [...googleSheetBackgroundPlantingQueue.entries()].map(([key, job]) => ({
+        key,
+        ...job
+      }))
+    });
+    return true;
+  }catch(error){
+    console.error("Google Sheet送信待ちの保存に失敗しました", error);
+    return false;
+  }
+}
+
+function loadGoogleSheetBackgroundSendOutbox(){
+  let stored = null;
+  try{
+    stored = harvestnaviLocalStorage.readJson(getActiveGoogleSheetSendOutboxStorageKey(), null);
+  }catch(error){
+    console.error("Google Sheet送信待ちを読み込めませんでした", error);
+  }
+  if(!stored || Number(stored.version) !== 1) return;
+
+  (Array.isArray(stored.records) ? stored.records : []).forEach(value => {
+    const job = normalizeGoogleSheetBackgroundRecordJob(value);
+    const key = String(value?.key || "").trim()
+      || (job ? getHarvestRecordIdentityKey(job) : "");
+    if(job && key) googleSheetBackgroundRecordQueue.set(key, job);
+  });
+  (Array.isArray(stored.plantingEvents) ? stored.plantingEvents : []).forEach(value => {
+    const job = normalizeGoogleSheetBackgroundPlantingJob(value);
+    if(!job) return;
+    googleSheetBackgroundPlantingQueue.set(String(job.eventId), job);
+  });
+}
+
+function isGoogleSheetBackgroundNetworkAvailable(){
+  return typeof navigator === "undefined" || navigator.onLine !== false;
+}
+
+function isGoogleSheetBackgroundRecordDeferred(job){
+  const waitForPlantingRecordId = getSafePositiveRecordId(job?.waitForPlantingRecordId);
+  if(waitForPlantingRecordId === null) return false;
+  return recordSelectionMode === "planting"
+    && workflowPlantingSessionActive
+    && Number(activePlantingRecordId) === waitForPlantingRecordId;
+}
+
+function getGoogleSheetBackgroundJobWaitMs(job, now = Date.now()){
+  return Math.max(0, (Number(job?.nextAttemptAt) || 0) - now);
+}
+
+function isGoogleSheetBackgroundRecordReady(job, now = Date.now()){
+  return !isGoogleSheetBackgroundRecordDeferred(job)
+    && getGoogleSheetBackgroundJobWaitMs(job, now) === 0;
+}
+
+function isGoogleSheetBackgroundPlantingReady(job, now = Date.now()){
+  return getGoogleSheetBackgroundJobWaitMs(job, now) === 0;
+}
+
+function getNextGoogleSheetBackgroundSendDelay(){
+  if(!isGoogleSheetBackgroundNetworkAvailable()) return null;
+  const now = Date.now();
+  let nextDelay = null;
+  googleSheetBackgroundRecordQueue.forEach(job => {
+    if(isGoogleSheetBackgroundRecordDeferred(job)) return;
+    const delay = getGoogleSheetBackgroundJobWaitMs(job, now);
+    nextDelay = nextDelay === null ? delay : Math.min(nextDelay, delay);
+  });
+  googleSheetBackgroundPlantingQueue.forEach(job => {
+    const delay = getGoogleSheetBackgroundJobWaitMs(job, now);
+    nextDelay = nextDelay === null ? delay : Math.min(nextDelay, delay);
+  });
+  return nextDelay;
+}
+
+function hasReadyGoogleSheetBackgroundRecordJob(){
+  const now = Date.now();
+  return [...googleSheetBackgroundRecordQueue.values()]
+    .some(job => isGoogleSheetBackgroundRecordReady(job, now));
+}
+
+function hasReadyGoogleSheetBackgroundPlantingJob(){
+  const now = Date.now();
+  return [...googleSheetBackgroundPlantingQueue.values()]
+    .some(job => isGoogleSheetBackgroundPlantingReady(job, now));
+}
+
+function scheduleGoogleSheetBackgroundJobRetry(job){
+  const delays = getGoogleSheetBackgroundRetryDelays();
+  const retryCount = Math.max(0, Math.trunc(Number(job?.retryCount) || 0));
+  if(retryCount >= delays.length) return false;
+  job.retryCount = retryCount + 1;
+  job.nextAttemptAt = Date.now() + Math.max(0, Number(delays[retryCount]) || 0);
+  return true;
+}
+
+function releaseGoogleSheetBackgroundRecordsForPlantingEvent(event){
+  const sourceRecordIds = new Set((event?.sourceAllocations || [])
+    .map(allocation => getSafePositiveRecordId(allocation?.harvestRecordId))
+    .filter(id => id !== null));
+  if(!sourceRecordIds.size) return false;
+  let changed = false;
+  googleSheetBackgroundRecordQueue.forEach(job => {
+    const waitForPlantingRecordId = getSafePositiveRecordId(job?.waitForPlantingRecordId);
+    if(waitForPlantingRecordId === null || !sourceRecordIds.has(waitForPlantingRecordId)) return;
+    job.waitForPlantingRecordId = null;
+    job.retryCount = 0;
+    job.nextAttemptAt = 0;
+    changed = true;
+  });
+  return changed;
+}
+
+function wakeGoogleSheetBackgroundSendQueue(){
+  googleSheetBackgroundRecordQueue.forEach(job => { job.nextAttemptAt = 0; });
+  googleSheetBackgroundPlantingQueue.forEach(job => { job.nextAttemptAt = 0; });
+  saveGoogleSheetBackgroundSendOutbox();
+  scheduleGoogleSheetBackgroundSend();
+}
+
+function initializeGoogleSheetBackgroundSendQueue(){
+  if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
+  googleSheetBackgroundSendTimer = null;
+  googleSheetBackgroundSendTimerDueAt = 0;
+  googleSheetBackgroundRecordQueue.clear();
+  googleSheetBackgroundPlantingQueue.clear();
+  loadGoogleSheetBackgroundSendOutbox();
+  pruneConfirmedGoogleSheetBackgroundSendJobs();
+
+  if(!googleSheetBackgroundSendEventsInstalled){
+    window.addEventListener("online", wakeGoogleSheetBackgroundSendQueue);
+    document.addEventListener("visibilitychange", () => {
+      if(document.visibilityState === "visible") scheduleGoogleSheetBackgroundSend();
+    });
+    googleSheetBackgroundSendEventsInstalled = true;
+  }
+  scheduleGoogleSheetBackgroundSend();
+}
+
+function reloadGoogleSheetBackgroundSendQueue(){
+  initializeGoogleSheetBackgroundSendQueue();
+}
+
 function setGoogleSheetRecordBatchSyncStatus(recordsToUpdate, state){
   const normalizedRecords = Array.isArray(recordsToUpdate) ? recordsToUpdate : [];
   if(!normalizedRecords.length) return;
@@ -630,16 +828,21 @@ function queueGoogleSheetRecordBatchSend(recordsToQueue, options = {}){
   }
 
   setGoogleSheetRecordBatchSyncStatus(queueableRecords.map(item => item.record), "edited");
+  const waitForPlantingRecordId = getSafePositiveRecordId(options.waitForPlantingRecordId);
   queueableRecords.forEach(({ key, record }, index) => {
     googleSheetBackgroundRecordQueue.set(key, {
       recordUuid: normalizeRecordUuid(record?.recordUuid),
       recordId: getSafePositiveRecordId(record?.id),
+      waitForPlantingRecordId,
+      retryCount: 0,
+      nextAttemptAt: 0,
       successMessage: index === queueableRecords.length - 1
         ? String(options.successMessage || "")
         : "",
       failureMessage: String(options.failureMessage || "記録は端末内に保存されています。スプレッドシートは未送信です")
     });
   });
+  saveGoogleSheetBackgroundSendOutbox();
   scheduleGoogleSheetBackgroundSend();
   return queueableRecords.length;
 }
@@ -662,52 +865,74 @@ function queueGoogleSheetPlantingEventSend(event, options = {}){
   }
   const job = {
     eventId,
+    retryCount: 0,
+    nextAttemptAt: 0,
     successMessage: String(options.successMessage || ""),
     failureMessage: String(options.failureMessage || "苗植え記録は端末内に保存されています。スプレッドシートは未送信です"),
     showFailureDetails: options.showFailureDetails !== false
   };
   setPlantingEventSyncStatus(event, "edited");
+  releaseGoogleSheetBackgroundRecordsForPlantingEvent(event);
   googleSheetBackgroundPlantingQueue.set(String(eventId), job);
+  saveGoogleSheetBackgroundSendOutbox();
   scheduleGoogleSheetBackgroundSend();
   return true;
 }
 
 function scheduleGoogleSheetBackgroundSend(delay = 0){
-  if(googleSheetBackgroundSendRunning || googleSheetBackgroundSendTimer !== null) return;
-  if(!googleSheetBackgroundRecordQueue.size && !googleSheetBackgroundPlantingQueue.size) return;
+  if(googleSheetBackgroundSendRunning) return;
+  const queueDelay = getNextGoogleSheetBackgroundSendDelay();
+  if(queueDelay === null) return;
+  const effectiveDelay = Math.max(0, Number(delay) || 0, queueDelay);
+  const dueAt = Date.now() + effectiveDelay;
+  if(googleSheetBackgroundSendTimer !== null){
+    if(googleSheetBackgroundSendTimerDueAt <= dueAt) return;
+    clearTimeout(googleSheetBackgroundSendTimer);
+  }
+  googleSheetBackgroundSendTimerDueAt = dueAt;
   googleSheetBackgroundSendTimer = setTimeout(() => {
     googleSheetBackgroundSendTimer = null;
+    googleSheetBackgroundSendTimerDueAt = 0;
     runGoogleSheetBackgroundSendQueue().catch(error => {
       console.error("Background Google Sheet send failed", error);
     });
-  }, Math.max(0, Number(delay) || 0));
+  }, effectiveDelay);
 }
 
 function collectGoogleSheetBackgroundRecordBatch(){
   const batch = [];
+  const now = Date.now();
+  let removedMissingJob = false;
   for(const [key, job] of googleSheetBackgroundRecordQueue){
     if(batch.length >= GOOGLE_SHEET_MAX_BATCH_RECORDS) break;
+    if(!isGoogleSheetBackgroundRecordReady(job, now)) continue;
     const record = findGoogleSheetBackgroundRecord(job);
     if(!record){
       if(googleSheetBackgroundRecordQueue.get(key) === job){
         googleSheetBackgroundRecordQueue.delete(key);
+        removedMissingJob = true;
       }
       continue;
     }
     batch.push({ key, job, record });
   }
+  if(removedMissingJob) saveGoogleSheetBackgroundSendOutbox();
   return batch;
 }
 
 function collectGoogleSheetBackgroundDayBatch(){
   const today = formatDateOnlyString(new Date());
+  const now = Date.now();
   const candidates = [];
   let order = 0;
+  let removedMissingJob = false;
   googleSheetBackgroundRecordQueue.forEach((job, key) => {
+    if(!isGoogleSheetBackgroundRecordReady(job, now)) return;
     const record = findGoogleSheetBackgroundRecord(job);
     if(!record){
       if(googleSheetBackgroundRecordQueue.get(key) === job){
         googleSheetBackgroundRecordQueue.delete(key);
+        removedMissingJob = true;
       }
       return;
     }
@@ -721,10 +946,12 @@ function collectGoogleSheetBackgroundDayBatch(){
     });
   });
   googleSheetBackgroundPlantingQueue.forEach((job, key) => {
+    if(!isGoogleSheetBackgroundPlantingReady(job, now)) return;
     const event = getPlantingEventById(job.eventId);
     if(!event){
       if(googleSheetBackgroundPlantingQueue.get(key) === job){
         googleSheetBackgroundPlantingQueue.delete(key);
+        removedMissingJob = true;
       }
       return;
     }
@@ -742,6 +969,7 @@ function collectGoogleSheetBackgroundDayBatch(){
     || (left.type === right.type ? 0 : (left.type === "record" ? -1 : 1))
     || left.order - right.order
   ));
+  if(removedMissingJob) saveGoogleSheetBackgroundSendOutbox();
   const selected = candidates.slice(0, GOOGLE_SHEET_MAX_BATCH_RECORDS);
   return {
     records: selected.filter(item => item.type === "record"),
@@ -750,11 +978,13 @@ function collectGoogleSheetBackgroundDayBatch(){
 }
 
 function pruneConfirmedGoogleSheetBackgroundSendJobs(){
+  let changed = false;
   googleSheetBackgroundRecordQueue.forEach((job, key) => {
     const record = findGoogleSheetBackgroundRecord(job);
     if(!record || getGoogleSheetRecordSyncState(record) !== "confirmed") return;
     if(googleSheetBackgroundRecordQueue.get(key) === job){
       googleSheetBackgroundRecordQueue.delete(key);
+      changed = true;
     }
   });
   const plantingStatus = loadPlantingEventSyncStatus();
@@ -763,8 +993,10 @@ function pruneConfirmedGoogleSheetBackgroundSendJobs(){
     if(!event || isPlantingEventUnsent(event, plantingStatus)) return;
     if(googleSheetBackgroundPlantingQueue.get(key) === job){
       googleSheetBackgroundPlantingQueue.delete(key);
+      changed = true;
     }
   });
+  if(changed) saveGoogleSheetBackgroundSendOutbox();
 }
 
 async function sendGoogleSheetBackgroundRecordBatch(){
@@ -775,15 +1007,19 @@ async function sendGoogleSheetBackgroundRecordBatch(){
   if(!operationOwner) return false;
 
   try{
+    let result = null;
+    let retryableFailure = false;
     try{
-      await sendRecordsBatchToGoogleSheet(
+      result = await sendRecordsBatchToGoogleSheet(
         batch.map(item => item.record),
         { showFailureDialog: false, showConfigNotice: false }
       );
+      retryableFailure = result?.retryableFailure === true;
     }catch(error){
       // 通常の通信失敗は一括送信側で処理される。想定外の例外でも即時再試行を
       // 繰り返さず、「修正・未送信」から安全に再送できる状態へ戻す。
       console.error("Background Google Sheet batch send failed", error);
+      retryableFailure = isRetryableGoogleSheetSendError(error);
       batch.forEach(({ key, job }) => {
         if(googleSheetBackgroundRecordQueue.get(key) !== job) return;
         const currentRecord = findGoogleSheetBackgroundRecord(job);
@@ -793,20 +1029,27 @@ async function sendGoogleSheetBackgroundRecordBatch(){
 
     let successMessage = "";
     let failureMessage = "";
+    let retryScheduled = false;
     batch.forEach(({ key, job }) => {
       // 送信中に同じ記録が編集された場合、Map内には新しいjobが入っている。
       // 古い送信完了で最新版のjobを消さず、次の一括送信へ残す。
       if(googleSheetBackgroundRecordQueue.get(key) !== job) return;
-      googleSheetBackgroundRecordQueue.delete(key);
       const currentRecord = findGoogleSheetBackgroundRecord(job);
       if(currentRecord && getGoogleSheetRecordSyncState(currentRecord) === "confirmed"){
+        googleSheetBackgroundRecordQueue.delete(key);
         if(job.successMessage) successMessage = job.successMessage;
-      }else if(job.failureMessage && !failureMessage){
-        failureMessage = job.failureMessage;
+      }else if(retryableFailure && scheduleGoogleSheetBackgroundJobRetry(job)){
+        retryScheduled = true;
+      }else{
+        googleSheetBackgroundRecordQueue.delete(key);
+        if(job.failureMessage && !failureMessage) failureMessage = job.failureMessage;
       }
     });
+    saveGoogleSheetBackgroundSendOutbox();
 
-    if(failureMessage){
+    if(retryScheduled){
+      console.warn("Google Sheetへの送信を自動で再試行します", result?.errorMessage || "通信エラー");
+    }else if(failureMessage){
       showToast(failureMessage);
     }else if(successMessage){
       showToast(successMessage);
@@ -817,6 +1060,27 @@ async function sendGoogleSheetBackgroundRecordBatch(){
   }
 }
 
+function isRetryableGoogleSheetSendError(error){
+  if(error?.name === "AbortError" || error instanceof TypeError) return true;
+  const message = String(error?.message || error || "").toLowerCase();
+  return [
+    "failed to fetch",
+    "load failed",
+    "networkerror",
+    "network error",
+    "通信",
+    "タイムアウト",
+    "ロック取得",
+    "一時的",
+    "temporarily",
+    "service invoked too many times"
+  ].some(pattern => message.includes(pattern));
+}
+
+function getGoogleSheetBackgroundResultRetryableFailure(result, error){
+  return result?.retryableFailure === true || isRetryableGoogleSheetSendError(error);
+}
+
 async function sendGoogleSheetBackgroundDayBatch(){
   const batch = collectGoogleSheetBackgroundDayBatch();
   if(!batch.records.length && !batch.plantingEvents.length) return false;
@@ -825,6 +1089,7 @@ async function sendGoogleSheetBackgroundDayBatch(){
   if(!operationOwner) return false;
   try{
     let result = null;
+    let sendError = null;
     try{
       result = await sendGoogleSheetDayBatchesToGoogleSheet(
         batch.records.map(item => item.value),
@@ -832,34 +1097,46 @@ async function sendGoogleSheetBackgroundDayBatch(){
         { showFailureDialog: false, showConfigNotice: false }
       );
     }catch(error){
+      sendError = error;
       console.error("Background Google Sheet day batch send failed", error);
     }
 
+    const retryableFailure = getGoogleSheetBackgroundResultRetryableFailure(result, sendError);
     let successMessage = "";
     let failureMessage = "";
+    let retryScheduled = false;
     batch.records.forEach(({ key, job }) => {
       if(googleSheetBackgroundRecordQueue.get(key) !== job) return;
-      googleSheetBackgroundRecordQueue.delete(key);
       const currentRecord = findGoogleSheetBackgroundRecord(job);
       if(currentRecord && getGoogleSheetRecordSyncState(currentRecord) === "confirmed"){
+        googleSheetBackgroundRecordQueue.delete(key);
         if(job.successMessage) successMessage = job.successMessage;
-      }else if(job.failureMessage && !failureMessage){
-        failureMessage = job.failureMessage;
+      }else if(retryableFailure && scheduleGoogleSheetBackgroundJobRetry(job)){
+        retryScheduled = true;
+      }else{
+        googleSheetBackgroundRecordQueue.delete(key);
+        if(job.failureMessage && !failureMessage) failureMessage = job.failureMessage;
       }
     });
     batch.plantingEvents.forEach(({ key, job }) => {
       if(googleSheetBackgroundPlantingQueue.get(key) !== job) return;
-      googleSheetBackgroundPlantingQueue.delete(key);
       const currentEvent = getPlantingEventById(job.eventId);
       const plantingStatus = loadPlantingEventSyncStatus();
       if(currentEvent && !isPlantingEventUnsent(currentEvent, plantingStatus)){
+        googleSheetBackgroundPlantingQueue.delete(key);
         if(job.successMessage) successMessage = job.successMessage;
-      }else if(job.failureMessage && !failureMessage){
-        failureMessage = job.failureMessage;
+      }else if(retryableFailure && scheduleGoogleSheetBackgroundJobRetry(job)){
+        retryScheduled = true;
+      }else{
+        googleSheetBackgroundPlantingQueue.delete(key);
+        if(job.failureMessage && !failureMessage) failureMessage = job.failureMessage;
       }
     });
+    saveGoogleSheetBackgroundSendOutbox();
 
-    if(failureMessage || result?.failCount > 0 || result?.plantingFailCount > 0){
+    if(retryScheduled){
+      console.warn("当日の記録を自動で再送します", result?.errorMessage || sendError || "通信エラー");
+    }else if(failureMessage || result?.failCount > 0 || result?.plantingFailCount > 0){
       showToast(failureMessage || "一部の記録は端末内に保存されています。スプレッドシートは未送信です");
       if(batch.plantingEvents.some(item => item.job.showFailureDetails)){
         showRecordImportError(
@@ -885,14 +1162,8 @@ async function runGoogleSheetBackgroundSendQueue(){
 
   try{
     while(googleSheetSendState === "idle" && !googleSheetOperationOwner){
-      if(googleSheetBackgroundPlantingQueue.size){
+      if(hasReadyGoogleSheetBackgroundPlantingJob() || hasReadyGoogleSheetBackgroundRecordJob()){
         const batchProcessed = await sendGoogleSheetBackgroundDayBatch();
-        if(!batchProcessed) break;
-        continue;
-      }
-
-      if(googleSheetBackgroundRecordQueue.size){
-        const batchProcessed = await sendGoogleSheetBackgroundRecordBatch();
         if(!batchProcessed) break;
         continue;
       }
@@ -1722,26 +1993,37 @@ function buildGoogleSheetBatchPayload(recordsToSend, config){
   };
 }
 
-function buildGoogleSheetDayBatchPayload(recordsToSend, plantingEventsToSend, config){
+function createGoogleSheetDayBatchId(){
+  const randomPart = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID().replaceAll("-", "")
+    : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  return `day-${Date.now().toString(36)}-${randomPart}`.slice(0, 80);
+}
+
+function buildGoogleSheetDayBatchPayload(recordsToSend, plantingEventsToSend, config, options = {}){
+  const batchId = String(options.batchId || "").trim();
   return {
     app: "Harvestnavi",
     type: "harvest-day-batch",
     action: "saveDayBatch",
     version: 1,
     token: config.token || "",
+    ...(batchId ? { batchId } : {}),
     syncRevision: getGoogleSheetMutationSyncRevision(config),
     records: recordsToSend.map(record => buildGoogleSheetRecordPayload(record, config).record),
     plantingEvents: plantingEventsToSend.map(getPlantingEventForGoogleTransfer)
   };
 }
 
-function buildGoogleSheetDayBatchStatusPayload(recordsToConfirm, plantingEventsToConfirm, config){
+function buildGoogleSheetDayBatchStatusPayload(recordsToConfirm, plantingEventsToConfirm, config, options = {}){
+  const batchId = String(options.batchId || "").trim();
   return {
     app: "Harvestnavi",
     type: "harvest-day-batch-status",
     action: "checkDayBatchStatus",
     version: 1,
     token: config.token || "",
+    ...(batchId ? { batchId } : {}),
     records: recordsToConfirm.map(record => buildGoogleSheetRecordPayload(record, config).record),
     plantingEvents: plantingEventsToConfirm.map(getPlantingEventForGoogleTransfer)
   };

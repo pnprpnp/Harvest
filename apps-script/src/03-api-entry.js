@@ -238,7 +238,8 @@ function doPost(e) {
       apiStage = "当日の一括送信結果を確認中";
       const result = getHarvestDayBatchSendStatus(
         body.records,
-        body.plantingEvents
+        body.plantingEvents,
+        body.batchId
       );
       return jsonResponse({
         ok: true,
@@ -265,15 +266,11 @@ function doPost(e) {
 
     if (operation === "saveDayBatch") {
       apiStage = "当日の収穫・苗植え記録の一括保存中";
-      const result = saveHarvestDayBatch(body.records, body.plantingEvents);
-      const revisionAcknowledgement = recordHarvestSyncChangesSafely(
-        buildHarvestDayBatchSyncChanges(result)
-      );
+      const result = saveHarvestDayBatch(body.records, body.plantingEvents, body.batchId);
       apiStage = "当日の収穫・苗植え記録の応答作成中";
       return jsonResponse({
         ok: true,
         ...result,
-        ...revisionAcknowledgement,
         recordResults: result.recordResults.map(item => ({
           ...item,
           record: item.record ? compactHarvestRecordForApi(item.record) : item.record
@@ -522,6 +519,10 @@ function resolveApiOperation(body) {
     if (body.records.length > API_BATCH_RECORD_LIMIT || itemCount > API_DAY_BATCH_ITEM_LIMIT) {
       throw new Error("一度に送信できる当日の記録は" + API_DAY_BATCH_ITEM_LIMIT + "件までです");
     }
+    if (Object.prototype.hasOwnProperty.call(body, "batchId")) {
+      body.batchId = normalizeHarvestDayBatchId(body.batchId);
+      if (!body.batchId) throw new Error("一括送信IDの形式が正しくありません");
+    }
   }
   if (operation === "checkDayBatchStatus") {
     if (!Array.isArray(body.records)) {
@@ -541,6 +542,10 @@ function resolveApiOperation(body) {
     body.plantingEvents.forEach(event => {
       if (!isPlainObject(event)) throw new Error("確認する苗植え記録が正しくありません");
     });
+    if (Object.prototype.hasOwnProperty.call(body, "batchId")) {
+      body.batchId = normalizeHarvestDayBatchId(body.batchId);
+      if (!body.batchId) throw new Error("一括送信IDの形式が正しくありません");
+    }
   }
   if (operation === "saveMonitorContent" && !isPlainObject(body.content)) {
     throw new Error("モニター内容がありません");
@@ -613,19 +618,179 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
   }
 }
 
-function saveHarvestDayBatch(records, plantingEvents) {
-  return withRecordWriteLock(() => {
+function normalizeHarvestDayBatchId(value) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text || text.length > HARVEST_DAY_BATCH_ID_MAX_LENGTH) return "";
+  return /^[A-Za-z0-9_-]+$/.test(text) ? text : "";
+}
+
+function getHarvestDayBatchRequestFingerprint(records, plantingEvents) {
+  const text = JSON.stringify({
+    records: Array.isArray(records) ? records : [],
+    plantingEvents: Array.isArray(plantingEvents) ? plantingEvents : []
+  });
+  let first = 2166136261;
+  let second = 2246822519;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    first = Math.imul(first ^ code, 16777619) >>> 0;
+    second = Math.imul(second ^ (code + index), 3266489917) >>> 0;
+  }
+  return text.length.toString(36) + "-" + first.toString(36) + "-" + second.toString(36);
+}
+
+function getHarvestDayBatchReceiptCacheKey(batchId) {
+  const normalizedId = normalizeHarvestDayBatchId(batchId);
+  return normalizedId ? HARVEST_DAY_BATCH_RECEIPT_CACHE_PREFIX + normalizedId : "";
+}
+
+function buildHarvestDayBatchReceipt(batchId, records, plantingEvents, result) {
+  const normalizedId = normalizeHarvestDayBatchId(batchId);
+  if (!normalizedId || !result) return null;
+  const recordResults = Array.isArray(result.recordResults) ? result.recordResults : [];
+  const plantingResults = Array.isArray(result.plantingResults) ? result.plantingResults : [];
+  if (recordResults.length !== records.length || plantingResults.length !== plantingEvents.length) return null;
+  if (recordResults.some(item => !item || item.ok !== true || !item.record)) return null;
+  if (plantingResults.some(item => !item || item.ok !== true || !item.event)) return null;
+
+  const now = Date.now();
+  return {
+    version: 1,
+    batchId: normalizedId,
+    savedAt: now,
+    expiresAt: now + HARVEST_DAY_BATCH_RECEIPT_TTL_MS,
+    requestFingerprint: getHarvestDayBatchRequestFingerprint(records, plantingEvents),
+    recordResults: recordResults.map((item, index) => ({
+      index,
+      requestedId: Number(records[index] && records[index].id),
+      canonicalId: Number(item.record.id),
+      recordUuid: String(item.record.recordUuid || "").trim().toLowerCase(),
+      duplicateKey: String(item.record.duplicateKey || ""),
+      createdAt: String(item.record.createdAt || ""),
+      updatedAt: String(item.record.updatedAt || "")
+    })),
+    plantingResults: plantingResults.map((item, index) => ({
+      index,
+      eventId: Number(item.event.eventId),
+      createdAt: String(item.event.createdAt || ""),
+      updatedAt: String(item.event.updatedAt || "")
+    }))
+  };
+}
+
+function saveHarvestDayBatchReceipt(batchId, records, plantingEvents, result) {
+  try {
+    const receipt = buildHarvestDayBatchReceipt(batchId, records, plantingEvents, result);
+    if (!receipt) return false;
+    const serialized = JSON.stringify(receipt);
+    if (serialized.length > HARVEST_DAY_BATCH_RECEIPT_MAX_CHARACTERS) return false;
+    CacheService.getScriptCache().put(
+      getHarvestDayBatchReceiptCacheKey(batchId),
+      serialized,
+      HARVEST_DAY_BATCH_RECEIPT_TTL_SECONDS
+    );
+    return true;
+  } catch (err) {
+    console.warn("当日一括送信の受付情報を保存できませんでした: " + String(err && err.message || err));
+    return false;
+  }
+}
+
+function loadHarvestDayBatchReceipt(batchId, records, plantingEvents) {
+  const key = getHarvestDayBatchReceiptCacheKey(batchId);
+  if (!key) return null;
+  try {
+    const cache = CacheService.getScriptCache();
+    const serialized = cache.get(key);
+    if (!serialized) return null;
+    const receipt = JSON.parse(serialized);
+    if (!receipt || receipt.version !== 1 || Number(receipt.expiresAt) <= Date.now()) {
+      cache.remove(key);
+      return null;
+    }
+    const fingerprint = getHarvestDayBatchRequestFingerprint(records, plantingEvents);
+    return receipt.requestFingerprint === fingerprint ? receipt : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function buildHarvestDayBatchStatusFromReceipt(receipt, records, plantingEvents) {
+  if (!receipt || !Array.isArray(receipt.recordResults) || !Array.isArray(receipt.plantingResults)) {
+    return null;
+  }
+  if (receipt.recordResults.length !== records.length || receipt.plantingResults.length !== plantingEvents.length) {
+    return null;
+  }
+  try {
+    const recordIdMappings = new Map();
+    const recordResults = records.map((requestedRecord, index) => {
+      const metadata = receipt.recordResults[index];
+      if (!metadata || Number(metadata.index) !== index) throw new Error("収穫記録の受付情報が正しくありません");
+      const normalized = normalizeHarvestRecord(requestedRecord);
+      const canonicalId = Number(metadata.canonicalId);
+      const requestedId = Number(metadata.requestedId);
+      if (!Number.isSafeInteger(canonicalId) || canonicalId <= 0) throw new Error("確定した収穫記録IDが正しくありません");
+      if (Number.isSafeInteger(requestedId) && requestedId > 0) {
+        recordIdMappings.set(requestedId, { ok: true, canonicalId });
+      }
+      return {
+        index,
+        ok: true,
+        pending: false,
+        record: {
+          ...normalized,
+          id: canonicalId,
+          recordUuid: metadata.recordUuid || normalized.recordUuid,
+          duplicateKey: metadata.duplicateKey || normalized.duplicateKey,
+          createdAt: metadata.createdAt || normalized.createdAt,
+          updatedAt: metadata.updatedAt || normalized.updatedAt
+        }
+      };
+    });
+    const plantingResults = plantingEvents.map((requestedEvent, index) => {
+      const metadata = receipt.plantingResults[index];
+      if (!metadata || Number(metadata.index) !== index) throw new Error("苗植え記録の受付情報が正しくありません");
+      const event = normalizePlantingEvent(
+        remapHarvestDayBatchPlantingEvent(requestedEvent, recordIdMappings)
+      );
+      if (Number(event.eventId) !== Number(metadata.eventId)) throw new Error("苗植えイベントIDが一致しません");
+      return {
+        index,
+        ok: true,
+        pending: false,
+        event: {
+          ...event,
+          createdAt: metadata.createdAt || event.createdAt,
+          updatedAt: metadata.updatedAt || event.updatedAt
+        }
+      };
+    });
+    return { recordResults, plantingResults, confirmedByReceipt: true };
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveHarvestDayBatch(records, plantingEvents, batchId) {
+  const startedAt = Date.now();
+  let operationFinishedAt = startedAt;
+  const result = withRecordWriteLock(() => {
+    const lockAcquiredAt = Date.now();
     const dayBatchContext = createHarvestDayBatchSaveContext(records, plantingEvents);
+    const contextReadyAt = Date.now();
     const recordBatch = records.length
       ? saveHarvestRecordsBatchUnlocked(records, { dayBatchContext })
       : { total: 0, saved: 0, updated: 0, duplicate: 0, failed: 0, results: [] };
+    const recordsSavedAt = Date.now();
     const plantingBatch = savePlantingEventsBatchUnlocked(
       plantingEvents,
       records,
       recordBatch.results,
       dayBatchContext
     );
-    return {
+    const plantingSavedAt = Date.now();
+    const batchResult = {
       total: recordBatch.total + plantingBatch.total,
       saved: recordBatch.saved + plantingBatch.saved,
       updated: recordBatch.updated + plantingBatch.updated,
@@ -635,10 +800,39 @@ function saveHarvestDayBatch(records, plantingEvents) {
       recordResults: recordBatch.results,
       plantingResults: plantingBatch.results
     };
+    const revisionAcknowledgement = recordHarvestSyncChangesWithinWriteLockSafely(
+      buildHarvestDayBatchSyncChanges(batchResult)
+    );
+    operationFinishedAt = Date.now();
+    return {
+      ...batchResult,
+      ...revisionAcknowledgement,
+      serverTiming: {
+        lockWaitMs: lockAcquiredAt - startedAt,
+        contextMs: contextReadyAt - lockAcquiredAt,
+        harvestWriteMs: recordsSavedAt - contextReadyAt,
+        plantingWriteMs: plantingSavedAt - recordsSavedAt,
+        revisionMs: operationFinishedAt - plantingSavedAt
+      }
+    };
   });
+  const flushedAt = Date.now();
+  result.serverTiming.flushAndReleaseMs = flushedAt - operationFinishedAt;
+  const receiptStartedAt = Date.now();
+  result.receiptSaved = saveHarvestDayBatchReceipt(batchId, records, plantingEvents, result);
+  result.serverTiming.receiptMs = Date.now() - receiptStartedAt;
+  result.serverTiming.totalMs = Date.now() - startedAt;
+  console.log("saveDayBatch timing: " + JSON.stringify(result.serverTiming));
+  return result;
 }
 
-function getHarvestDayBatchSendStatus(records, plantingEvents) {
+function getHarvestDayBatchSendStatus(records, plantingEvents, batchId) {
+  const receiptStatus = buildHarvestDayBatchStatusFromReceipt(
+    loadHarvestDayBatchReceipt(batchId, records, plantingEvents),
+    records,
+    plantingEvents
+  );
+  if (receiptStatus) return receiptStatus;
   return withRecordReadLock(() => {
     const recordsByUuid = new Map();
     const recordsById = new Map();

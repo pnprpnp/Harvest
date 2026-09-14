@@ -50,6 +50,7 @@ function initializeHarvestnaviApp(){
     initializeStartupViews(savedHarvestState);
     installStartupRecordFormEvents();
     resumeStartupPlantingRecord(savedHarvestState);
+    initializeGoogleSheetBackgroundSendQueue();
     installStartupDashboardEvents();
     installStartupImportEvent();
     installStartupGlobalEvents();

@@ -1887,6 +1887,9 @@ function enterHarvestRecordMode(){
   if(input) delete input.dataset.userEdited;
   updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
+  if(typeof scheduleGoogleSheetBackgroundSend === "function"){
+    scheduleGoogleSheetBackgroundSend();
+  }
 }
 
 function enterPlantingRecordMode(record, options = {}){

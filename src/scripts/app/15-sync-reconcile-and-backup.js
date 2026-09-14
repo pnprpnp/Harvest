@@ -731,6 +731,7 @@ function getBackupImportRollbackStorageKeys(){
     getActivePlantingEventsStorageKey(),
     getActivePlantingEventTrashStorageKey(),
     getActiveGoogleSheetSyncStatusStorageKey(),
+    getActiveGoogleSheetSendOutboxStorageKey(),
     getActiveGoogleSheetSyncRevisionStorageKey(),
     getActiveGoogleSheetSyncConflictsStorageKey(),
     getActivePlantingEventSyncStatusStorageKey(),
@@ -778,6 +779,7 @@ function restoreBackupImportSnapshot(snapshot){
   }finally{
     // 再描画処理に保存処理が追加されても、退避時点の値を最後に必ず戻す。
     restoreBackupImportStorageSnapshot(snapshot.storageValues || {});
+    reloadGoogleSheetBackgroundSendQueue();
   }
 }
 

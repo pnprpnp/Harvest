@@ -88,35 +88,121 @@ function normalizeSyncChangeEntry(value) {
   };
 }
 
-function invalidateHarvestSyncRevision(reason) {
-  return withRecordWriteLock(() => {
-    const state = getHarvestSyncRevisionState();
-    const nextRevision = state.revision + 1;
-    if (!Number.isSafeInteger(nextRevision)) throw new Error("同期番号が上限に達しました");
-    setHarvestSyncRevisionState(nextRevision, nextRevision);
-    try {
-      const sheet = getExistingSyncChangeLogSheet();
-      if (sheet && sheet.getLastRow() > 1) {
-        sheet.getRange(
-          2,
-          1,
-          sheet.getLastRow() - 1,
-          SYNC_CHANGE_LOG_HEADERS.length
-        ).clearContent();
-      }
-    } catch (err) {
-      // floorRevisionは先に進めているため、クライアントは安全に全件同期へ切り替わる。
-      console.warn("古い同期変更履歴を消去できませんでした: " + String(err && err.message || err));
+function invalidateHarvestSyncRevisionUnlocked(reason) {
+  const state = getHarvestSyncRevisionState();
+  const nextRevision = state.revision + 1;
+  if (!Number.isSafeInteger(nextRevision)) throw new Error("同期番号が上限に達しました");
+  setHarvestSyncRevisionState(nextRevision, nextRevision);
+  try {
+    const sheet = getExistingSyncChangeLogSheet();
+    if (sheet && sheet.getLastRow() > 1) {
+      sheet.getRange(
+        2,
+        1,
+        sheet.getLastRow() - 1,
+        SYNC_CHANGE_LOG_HEADERS.length
+      ).clearContent();
     }
-    if (reason) console.warn("次回同期を全件確認へ切り替えました: " + String(reason));
-    return nextRevision;
+  } catch (err) {
+    // floorRevisionは先に進めているため、クライアントは安全に全件同期へ切り替わる。
+    console.warn("古い同期変更履歴を消去できませんでした: " + String(err && err.message || err));
+  }
+  if (reason) console.warn("次回同期を全件確認へ切り替えました: " + String(reason));
+  return nextRevision;
+}
+
+function invalidateHarvestSyncRevision(reason) {
+  return withRecordWriteLock(() => invalidateHarvestSyncRevisionUnlocked(reason));
+}
+
+function normalizeHarvestSyncChangeEntries(values) {
+  return (Array.isArray(values) ? values : [values])
+    .map(normalizeSyncChangeEntry)
+    .filter(Boolean);
+}
+
+function recordHarvestSyncChangesUnlocked(values) {
+  const entries = normalizeHarvestSyncChangeEntries(values);
+  if (!entries.length) {
+    const currentRevision = getHarvestSyncRevisionState().revision;
+    return {
+      previousSyncRevision: currentRevision,
+      syncRevision: currentRevision
+    };
+  }
+  const state = getHarvestSyncRevisionState();
+  const sheet = ensureSyncChangeLogSheet();
+  const lastChangeRow = sheet.getLastRow();
+  if (lastChangeRow > 1) {
+    const lastLoggedRevision = normalizeHarvestSyncRevision(
+      sheet.getRange(lastChangeRow, 1).getValue()
+    );
+    if (lastLoggedRevision === null || lastLoggedRevision !== state.revision) {
+      sheet.getRange(
+        2,
+        1,
+        lastChangeRow - 1,
+        SYNC_CHANGE_LOG_HEADERS.length
+      ).clearContent();
+    }
+  }
+  const rows = entries.map((entry, index) => {
+    const revision = state.revision + index + 1;
+    if (!Number.isSafeInteger(revision)) throw new Error("同期番号が上限に達しました");
+    return [
+      revision,
+      entry.entityType,
+      entry.recordUuid,
+      entry.entityId,
+      entry.action,
+      entry.changedAt
+    ];
   });
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SYNC_CHANGE_LOG_HEADERS.length)
+    .setValues(rows);
+  const nextRevision = rows[rows.length - 1][0];
+  let nextFloorRevision = state.floorRevision;
+  const changeRowCount = sheet.getLastRow() - 1;
+  if (changeRowCount > SYNC_CHANGE_LOG_MAX_ROWS) {
+    const rowsToDelete = changeRowCount - SYNC_CHANGE_LOG_RETAINED_ROWS;
+    const firstRetainedRevision = normalizeHarvestSyncRevision(
+      sheet.getRange(rowsToDelete + 2, 1).getValue()
+    );
+    if (firstRetainedRevision === null) {
+      throw new Error("同期変更履歴の保持位置が正しくありません");
+    }
+    sheet.deleteRows(2, rowsToDelete);
+    nextFloorRevision = Math.max(nextFloorRevision, firstRetainedRevision - 1);
+  }
+  setHarvestSyncRevisionState(nextRevision, nextFloorRevision);
+  return {
+    previousSyncRevision: state.revision,
+    syncRevision: nextRevision
+  };
+}
+
+function recordHarvestSyncChangesWithinWriteLockSafely(values) {
+  try {
+    return recordHarvestSyncChangesUnlocked(values);
+  } catch (err) {
+    console.error("同期変更履歴を保存できませんでした", err);
+    try {
+      return {
+        previousSyncRevision: null,
+        syncRevision: invalidateHarvestSyncRevisionUnlocked(err && err.message || err)
+      };
+    } catch (invalidateError) {
+      console.error("同期番号の全件確認切り替えにも失敗しました", invalidateError);
+      return {
+        previousSyncRevision: null,
+        syncRevision: null
+      };
+    }
+  }
 }
 
 function recordHarvestSyncChangesSafely(values) {
-  const entries = (Array.isArray(values) ? values : [values])
-    .map(normalizeSyncChangeEntry)
-    .filter(Boolean);
+  const entries = normalizeHarvestSyncChangeEntries(values);
   if (!entries.length) {
     const currentRevision = getHarvestSyncRevisionState().revision;
     return {
@@ -125,57 +211,7 @@ function recordHarvestSyncChangesSafely(values) {
     };
   }
   try {
-    return withRecordWriteLock(() => {
-      const state = getHarvestSyncRevisionState();
-      const sheet = ensureSyncChangeLogSheet();
-      const lastChangeRow = sheet.getLastRow();
-      if (lastChangeRow > 1) {
-        const lastLoggedRevision = normalizeHarvestSyncRevision(
-          sheet.getRange(lastChangeRow, 1).getValue()
-        );
-        if (lastLoggedRevision === null || lastLoggedRevision !== state.revision) {
-          sheet.getRange(
-            2,
-            1,
-            lastChangeRow - 1,
-            SYNC_CHANGE_LOG_HEADERS.length
-          ).clearContent();
-        }
-      }
-      const rows = entries.map((entry, index) => {
-        const revision = state.revision + index + 1;
-        if (!Number.isSafeInteger(revision)) throw new Error("同期番号が上限に達しました");
-        return [
-          revision,
-          entry.entityType,
-          entry.recordUuid,
-          entry.entityId,
-          entry.action,
-          entry.changedAt
-        ];
-      });
-      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SYNC_CHANGE_LOG_HEADERS.length)
-        .setValues(rows);
-      const nextRevision = rows[rows.length - 1][0];
-      let nextFloorRevision = state.floorRevision;
-      const changeRowCount = sheet.getLastRow() - 1;
-      if (changeRowCount > SYNC_CHANGE_LOG_MAX_ROWS) {
-        const rowsToDelete = changeRowCount - SYNC_CHANGE_LOG_RETAINED_ROWS;
-        const firstRetainedRevision = normalizeHarvestSyncRevision(
-          sheet.getRange(rowsToDelete + 2, 1).getValue()
-        );
-        if (firstRetainedRevision === null) {
-          throw new Error("同期変更履歴の保持位置が正しくありません");
-        }
-        sheet.deleteRows(2, rowsToDelete);
-        nextFloorRevision = Math.max(nextFloorRevision, firstRetainedRevision - 1);
-      }
-      setHarvestSyncRevisionState(nextRevision, nextFloorRevision);
-      return {
-        previousSyncRevision: state.revision,
-        syncRevision: nextRevision
-      };
-    });
+    return withRecordWriteLock(() => recordHarvestSyncChangesUnlocked(entries));
   } catch (err) {
     console.error("同期変更履歴を保存できませんでした", err);
     try {

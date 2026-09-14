@@ -1722,6 +1722,9 @@ function upsertSyncConflict(value){
   }else{
     googleSheetBackgroundPlantingQueue.delete(String(next.entityId));
   }
+  if(typeof saveGoogleSheetBackgroundSendOutbox === "function"){
+    saveGoogleSheetBackgroundSendOutbox();
+  }
   return next;
 }
 

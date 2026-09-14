@@ -11,6 +11,7 @@
 
     const state = {
       propertyValues: {},
+      cacheValues: {},
       openedSpreadsheetIds: [],
       activeSpreadsheet: null
     };
@@ -38,6 +39,14 @@
     window.__appsScriptTestState = state;
     window.PropertiesService = {
       getScriptProperties(){ return scriptProperties; }
+    };
+    const scriptCache = {
+      get(key){ return Object.prototype.hasOwnProperty.call(state.cacheValues, key) ? state.cacheValues[key] : null; },
+      put(key, value){ state.cacheValues[key] = String(value); },
+      remove(key){ delete state.cacheValues[key]; }
+    };
+    window.CacheService = {
+      getScriptCache(){ return scriptCache; }
     };
     window.SpreadsheetApp = {
       openById(id){
@@ -93,6 +102,7 @@
   window.resetAppsScriptTestState = function(){
     const state = window.__appsScriptTestState;
     state.propertyValues = {};
+    state.cacheValues = {};
     state.openedSpreadsheetIds.length = 0;
     state.activeSpreadsheet = null;
     requestScopedSpreadsheet = null;

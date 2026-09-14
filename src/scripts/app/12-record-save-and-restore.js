@@ -151,6 +151,7 @@ function saveRecord(){
     saveRecordsToStorage();
     syncHarvestPlantingPendingFlags();
     const sendQueued = queueGoogleSheetRecordSend(editingRecord, {
+      waitForPlantingRecordId: returnPlantingRecordId,
       successMessage: "収穫記録を更新して送信しました",
       failureMessage: "収穫記録は更新済みです。スプレッドシートは未送信です"
     });
@@ -240,6 +241,7 @@ function saveRecord(){
   saveRecordsToStorage();
   maybePromptRecordExport();
   const sendQueuedCount = queueGoogleSheetRecordBatchSend(newRecords, {
+    waitForPlantingRecordId: record?.id,
     failureMessage: "収穫記録は保存済みです。スプレッドシートは未送信です"
   });
   resetRecordPartialHarvestDraft();

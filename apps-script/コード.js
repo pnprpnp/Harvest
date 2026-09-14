@@ -32,7 +32,12 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-09-14-day-batch-timeout-recovery";
+const HARVEST_DAY_BATCH_RECEIPT_CACHE_PREFIX = "HARVEST_DAY_BATCH_RECEIPT_V1_";
+const HARVEST_DAY_BATCH_RECEIPT_TTL_SECONDS = 6 * 60 * 60;
+const HARVEST_DAY_BATCH_RECEIPT_TTL_MS = HARVEST_DAY_BATCH_RECEIPT_TTL_SECONDS * 1000;
+const HARVEST_DAY_BATCH_RECEIPT_MAX_CHARACTERS = 7500;
+const HARVEST_DAY_BATCH_ID_MAX_LENGTH = 80;
+const API_BUILD_VERSION = "2026-09-14-fast-reliable-record-send";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -340,35 +345,121 @@ function normalizeSyncChangeEntry(value) {
   };
 }
 
-function invalidateHarvestSyncRevision(reason) {
-  return withRecordWriteLock(() => {
-    const state = getHarvestSyncRevisionState();
-    const nextRevision = state.revision + 1;
-    if (!Number.isSafeInteger(nextRevision)) throw new Error("同期番号が上限に達しました");
-    setHarvestSyncRevisionState(nextRevision, nextRevision);
-    try {
-      const sheet = getExistingSyncChangeLogSheet();
-      if (sheet && sheet.getLastRow() > 1) {
-        sheet.getRange(
-          2,
-          1,
-          sheet.getLastRow() - 1,
-          SYNC_CHANGE_LOG_HEADERS.length
-        ).clearContent();
-      }
-    } catch (err) {
-      // floorRevisionは先に進めているため、クライアントは安全に全件同期へ切り替わる。
-      console.warn("古い同期変更履歴を消去できませんでした: " + String(err && err.message || err));
+function invalidateHarvestSyncRevisionUnlocked(reason) {
+  const state = getHarvestSyncRevisionState();
+  const nextRevision = state.revision + 1;
+  if (!Number.isSafeInteger(nextRevision)) throw new Error("同期番号が上限に達しました");
+  setHarvestSyncRevisionState(nextRevision, nextRevision);
+  try {
+    const sheet = getExistingSyncChangeLogSheet();
+    if (sheet && sheet.getLastRow() > 1) {
+      sheet.getRange(
+        2,
+        1,
+        sheet.getLastRow() - 1,
+        SYNC_CHANGE_LOG_HEADERS.length
+      ).clearContent();
     }
-    if (reason) console.warn("次回同期を全件確認へ切り替えました: " + String(reason));
-    return nextRevision;
+  } catch (err) {
+    // floorRevisionは先に進めているため、クライアントは安全に全件同期へ切り替わる。
+    console.warn("古い同期変更履歴を消去できませんでした: " + String(err && err.message || err));
+  }
+  if (reason) console.warn("次回同期を全件確認へ切り替えました: " + String(reason));
+  return nextRevision;
+}
+
+function invalidateHarvestSyncRevision(reason) {
+  return withRecordWriteLock(() => invalidateHarvestSyncRevisionUnlocked(reason));
+}
+
+function normalizeHarvestSyncChangeEntries(values) {
+  return (Array.isArray(values) ? values : [values])
+    .map(normalizeSyncChangeEntry)
+    .filter(Boolean);
+}
+
+function recordHarvestSyncChangesUnlocked(values) {
+  const entries = normalizeHarvestSyncChangeEntries(values);
+  if (!entries.length) {
+    const currentRevision = getHarvestSyncRevisionState().revision;
+    return {
+      previousSyncRevision: currentRevision,
+      syncRevision: currentRevision
+    };
+  }
+  const state = getHarvestSyncRevisionState();
+  const sheet = ensureSyncChangeLogSheet();
+  const lastChangeRow = sheet.getLastRow();
+  if (lastChangeRow > 1) {
+    const lastLoggedRevision = normalizeHarvestSyncRevision(
+      sheet.getRange(lastChangeRow, 1).getValue()
+    );
+    if (lastLoggedRevision === null || lastLoggedRevision !== state.revision) {
+      sheet.getRange(
+        2,
+        1,
+        lastChangeRow - 1,
+        SYNC_CHANGE_LOG_HEADERS.length
+      ).clearContent();
+    }
+  }
+  const rows = entries.map((entry, index) => {
+    const revision = state.revision + index + 1;
+    if (!Number.isSafeInteger(revision)) throw new Error("同期番号が上限に達しました");
+    return [
+      revision,
+      entry.entityType,
+      entry.recordUuid,
+      entry.entityId,
+      entry.action,
+      entry.changedAt
+    ];
   });
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SYNC_CHANGE_LOG_HEADERS.length)
+    .setValues(rows);
+  const nextRevision = rows[rows.length - 1][0];
+  let nextFloorRevision = state.floorRevision;
+  const changeRowCount = sheet.getLastRow() - 1;
+  if (changeRowCount > SYNC_CHANGE_LOG_MAX_ROWS) {
+    const rowsToDelete = changeRowCount - SYNC_CHANGE_LOG_RETAINED_ROWS;
+    const firstRetainedRevision = normalizeHarvestSyncRevision(
+      sheet.getRange(rowsToDelete + 2, 1).getValue()
+    );
+    if (firstRetainedRevision === null) {
+      throw new Error("同期変更履歴の保持位置が正しくありません");
+    }
+    sheet.deleteRows(2, rowsToDelete);
+    nextFloorRevision = Math.max(nextFloorRevision, firstRetainedRevision - 1);
+  }
+  setHarvestSyncRevisionState(nextRevision, nextFloorRevision);
+  return {
+    previousSyncRevision: state.revision,
+    syncRevision: nextRevision
+  };
+}
+
+function recordHarvestSyncChangesWithinWriteLockSafely(values) {
+  try {
+    return recordHarvestSyncChangesUnlocked(values);
+  } catch (err) {
+    console.error("同期変更履歴を保存できませんでした", err);
+    try {
+      return {
+        previousSyncRevision: null,
+        syncRevision: invalidateHarvestSyncRevisionUnlocked(err && err.message || err)
+      };
+    } catch (invalidateError) {
+      console.error("同期番号の全件確認切り替えにも失敗しました", invalidateError);
+      return {
+        previousSyncRevision: null,
+        syncRevision: null
+      };
+    }
+  }
 }
 
 function recordHarvestSyncChangesSafely(values) {
-  const entries = (Array.isArray(values) ? values : [values])
-    .map(normalizeSyncChangeEntry)
-    .filter(Boolean);
+  const entries = normalizeHarvestSyncChangeEntries(values);
   if (!entries.length) {
     const currentRevision = getHarvestSyncRevisionState().revision;
     return {
@@ -377,57 +468,7 @@ function recordHarvestSyncChangesSafely(values) {
     };
   }
   try {
-    return withRecordWriteLock(() => {
-      const state = getHarvestSyncRevisionState();
-      const sheet = ensureSyncChangeLogSheet();
-      const lastChangeRow = sheet.getLastRow();
-      if (lastChangeRow > 1) {
-        const lastLoggedRevision = normalizeHarvestSyncRevision(
-          sheet.getRange(lastChangeRow, 1).getValue()
-        );
-        if (lastLoggedRevision === null || lastLoggedRevision !== state.revision) {
-          sheet.getRange(
-            2,
-            1,
-            lastChangeRow - 1,
-            SYNC_CHANGE_LOG_HEADERS.length
-          ).clearContent();
-        }
-      }
-      const rows = entries.map((entry, index) => {
-        const revision = state.revision + index + 1;
-        if (!Number.isSafeInteger(revision)) throw new Error("同期番号が上限に達しました");
-        return [
-          revision,
-          entry.entityType,
-          entry.recordUuid,
-          entry.entityId,
-          entry.action,
-          entry.changedAt
-        ];
-      });
-      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SYNC_CHANGE_LOG_HEADERS.length)
-        .setValues(rows);
-      const nextRevision = rows[rows.length - 1][0];
-      let nextFloorRevision = state.floorRevision;
-      const changeRowCount = sheet.getLastRow() - 1;
-      if (changeRowCount > SYNC_CHANGE_LOG_MAX_ROWS) {
-        const rowsToDelete = changeRowCount - SYNC_CHANGE_LOG_RETAINED_ROWS;
-        const firstRetainedRevision = normalizeHarvestSyncRevision(
-          sheet.getRange(rowsToDelete + 2, 1).getValue()
-        );
-        if (firstRetainedRevision === null) {
-          throw new Error("同期変更履歴の保持位置が正しくありません");
-        }
-        sheet.deleteRows(2, rowsToDelete);
-        nextFloorRevision = Math.max(nextFloorRevision, firstRetainedRevision - 1);
-      }
-      setHarvestSyncRevisionState(nextRevision, nextFloorRevision);
-      return {
-        previousSyncRevision: state.revision,
-        syncRevision: nextRevision
-      };
-    });
+    return withRecordWriteLock(() => recordHarvestSyncChangesUnlocked(entries));
   } catch (err) {
     console.error("同期変更履歴を保存できませんでした", err);
     try {
@@ -1007,7 +1048,8 @@ function doPost(e) {
       apiStage = "当日の一括送信結果を確認中";
       const result = getHarvestDayBatchSendStatus(
         body.records,
-        body.plantingEvents
+        body.plantingEvents,
+        body.batchId
       );
       return jsonResponse({
         ok: true,
@@ -1034,15 +1076,11 @@ function doPost(e) {
 
     if (operation === "saveDayBatch") {
       apiStage = "当日の収穫・苗植え記録の一括保存中";
-      const result = saveHarvestDayBatch(body.records, body.plantingEvents);
-      const revisionAcknowledgement = recordHarvestSyncChangesSafely(
-        buildHarvestDayBatchSyncChanges(result)
-      );
+      const result = saveHarvestDayBatch(body.records, body.plantingEvents, body.batchId);
       apiStage = "当日の収穫・苗植え記録の応答作成中";
       return jsonResponse({
         ok: true,
         ...result,
-        ...revisionAcknowledgement,
         recordResults: result.recordResults.map(item => ({
           ...item,
           record: item.record ? compactHarvestRecordForApi(item.record) : item.record
@@ -1291,6 +1329,10 @@ function resolveApiOperation(body) {
     if (body.records.length > API_BATCH_RECORD_LIMIT || itemCount > API_DAY_BATCH_ITEM_LIMIT) {
       throw new Error("一度に送信できる当日の記録は" + API_DAY_BATCH_ITEM_LIMIT + "件までです");
     }
+    if (Object.prototype.hasOwnProperty.call(body, "batchId")) {
+      body.batchId = normalizeHarvestDayBatchId(body.batchId);
+      if (!body.batchId) throw new Error("一括送信IDの形式が正しくありません");
+    }
   }
   if (operation === "checkDayBatchStatus") {
     if (!Array.isArray(body.records)) {
@@ -1310,6 +1352,10 @@ function resolveApiOperation(body) {
     body.plantingEvents.forEach(event => {
       if (!isPlainObject(event)) throw new Error("確認する苗植え記録が正しくありません");
     });
+    if (Object.prototype.hasOwnProperty.call(body, "batchId")) {
+      body.batchId = normalizeHarvestDayBatchId(body.batchId);
+      if (!body.batchId) throw new Error("一括送信IDの形式が正しくありません");
+    }
   }
   if (operation === "saveMonitorContent" && !isPlainObject(body.content)) {
     throw new Error("モニター内容がありません");
@@ -1382,19 +1428,179 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
   }
 }
 
-function saveHarvestDayBatch(records, plantingEvents) {
-  return withRecordWriteLock(() => {
+function normalizeHarvestDayBatchId(value) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text || text.length > HARVEST_DAY_BATCH_ID_MAX_LENGTH) return "";
+  return /^[A-Za-z0-9_-]+$/.test(text) ? text : "";
+}
+
+function getHarvestDayBatchRequestFingerprint(records, plantingEvents) {
+  const text = JSON.stringify({
+    records: Array.isArray(records) ? records : [],
+    plantingEvents: Array.isArray(plantingEvents) ? plantingEvents : []
+  });
+  let first = 2166136261;
+  let second = 2246822519;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    first = Math.imul(first ^ code, 16777619) >>> 0;
+    second = Math.imul(second ^ (code + index), 3266489917) >>> 0;
+  }
+  return text.length.toString(36) + "-" + first.toString(36) + "-" + second.toString(36);
+}
+
+function getHarvestDayBatchReceiptCacheKey(batchId) {
+  const normalizedId = normalizeHarvestDayBatchId(batchId);
+  return normalizedId ? HARVEST_DAY_BATCH_RECEIPT_CACHE_PREFIX + normalizedId : "";
+}
+
+function buildHarvestDayBatchReceipt(batchId, records, plantingEvents, result) {
+  const normalizedId = normalizeHarvestDayBatchId(batchId);
+  if (!normalizedId || !result) return null;
+  const recordResults = Array.isArray(result.recordResults) ? result.recordResults : [];
+  const plantingResults = Array.isArray(result.plantingResults) ? result.plantingResults : [];
+  if (recordResults.length !== records.length || plantingResults.length !== plantingEvents.length) return null;
+  if (recordResults.some(item => !item || item.ok !== true || !item.record)) return null;
+  if (plantingResults.some(item => !item || item.ok !== true || !item.event)) return null;
+
+  const now = Date.now();
+  return {
+    version: 1,
+    batchId: normalizedId,
+    savedAt: now,
+    expiresAt: now + HARVEST_DAY_BATCH_RECEIPT_TTL_MS,
+    requestFingerprint: getHarvestDayBatchRequestFingerprint(records, plantingEvents),
+    recordResults: recordResults.map((item, index) => ({
+      index,
+      requestedId: Number(records[index] && records[index].id),
+      canonicalId: Number(item.record.id),
+      recordUuid: String(item.record.recordUuid || "").trim().toLowerCase(),
+      duplicateKey: String(item.record.duplicateKey || ""),
+      createdAt: String(item.record.createdAt || ""),
+      updatedAt: String(item.record.updatedAt || "")
+    })),
+    plantingResults: plantingResults.map((item, index) => ({
+      index,
+      eventId: Number(item.event.eventId),
+      createdAt: String(item.event.createdAt || ""),
+      updatedAt: String(item.event.updatedAt || "")
+    }))
+  };
+}
+
+function saveHarvestDayBatchReceipt(batchId, records, plantingEvents, result) {
+  try {
+    const receipt = buildHarvestDayBatchReceipt(batchId, records, plantingEvents, result);
+    if (!receipt) return false;
+    const serialized = JSON.stringify(receipt);
+    if (serialized.length > HARVEST_DAY_BATCH_RECEIPT_MAX_CHARACTERS) return false;
+    CacheService.getScriptCache().put(
+      getHarvestDayBatchReceiptCacheKey(batchId),
+      serialized,
+      HARVEST_DAY_BATCH_RECEIPT_TTL_SECONDS
+    );
+    return true;
+  } catch (err) {
+    console.warn("当日一括送信の受付情報を保存できませんでした: " + String(err && err.message || err));
+    return false;
+  }
+}
+
+function loadHarvestDayBatchReceipt(batchId, records, plantingEvents) {
+  const key = getHarvestDayBatchReceiptCacheKey(batchId);
+  if (!key) return null;
+  try {
+    const cache = CacheService.getScriptCache();
+    const serialized = cache.get(key);
+    if (!serialized) return null;
+    const receipt = JSON.parse(serialized);
+    if (!receipt || receipt.version !== 1 || Number(receipt.expiresAt) <= Date.now()) {
+      cache.remove(key);
+      return null;
+    }
+    const fingerprint = getHarvestDayBatchRequestFingerprint(records, plantingEvents);
+    return receipt.requestFingerprint === fingerprint ? receipt : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function buildHarvestDayBatchStatusFromReceipt(receipt, records, plantingEvents) {
+  if (!receipt || !Array.isArray(receipt.recordResults) || !Array.isArray(receipt.plantingResults)) {
+    return null;
+  }
+  if (receipt.recordResults.length !== records.length || receipt.plantingResults.length !== plantingEvents.length) {
+    return null;
+  }
+  try {
+    const recordIdMappings = new Map();
+    const recordResults = records.map((requestedRecord, index) => {
+      const metadata = receipt.recordResults[index];
+      if (!metadata || Number(metadata.index) !== index) throw new Error("収穫記録の受付情報が正しくありません");
+      const normalized = normalizeHarvestRecord(requestedRecord);
+      const canonicalId = Number(metadata.canonicalId);
+      const requestedId = Number(metadata.requestedId);
+      if (!Number.isSafeInteger(canonicalId) || canonicalId <= 0) throw new Error("確定した収穫記録IDが正しくありません");
+      if (Number.isSafeInteger(requestedId) && requestedId > 0) {
+        recordIdMappings.set(requestedId, { ok: true, canonicalId });
+      }
+      return {
+        index,
+        ok: true,
+        pending: false,
+        record: {
+          ...normalized,
+          id: canonicalId,
+          recordUuid: metadata.recordUuid || normalized.recordUuid,
+          duplicateKey: metadata.duplicateKey || normalized.duplicateKey,
+          createdAt: metadata.createdAt || normalized.createdAt,
+          updatedAt: metadata.updatedAt || normalized.updatedAt
+        }
+      };
+    });
+    const plantingResults = plantingEvents.map((requestedEvent, index) => {
+      const metadata = receipt.plantingResults[index];
+      if (!metadata || Number(metadata.index) !== index) throw new Error("苗植え記録の受付情報が正しくありません");
+      const event = normalizePlantingEvent(
+        remapHarvestDayBatchPlantingEvent(requestedEvent, recordIdMappings)
+      );
+      if (Number(event.eventId) !== Number(metadata.eventId)) throw new Error("苗植えイベントIDが一致しません");
+      return {
+        index,
+        ok: true,
+        pending: false,
+        event: {
+          ...event,
+          createdAt: metadata.createdAt || event.createdAt,
+          updatedAt: metadata.updatedAt || event.updatedAt
+        }
+      };
+    });
+    return { recordResults, plantingResults, confirmedByReceipt: true };
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveHarvestDayBatch(records, plantingEvents, batchId) {
+  const startedAt = Date.now();
+  let operationFinishedAt = startedAt;
+  const result = withRecordWriteLock(() => {
+    const lockAcquiredAt = Date.now();
     const dayBatchContext = createHarvestDayBatchSaveContext(records, plantingEvents);
+    const contextReadyAt = Date.now();
     const recordBatch = records.length
       ? saveHarvestRecordsBatchUnlocked(records, { dayBatchContext })
       : { total: 0, saved: 0, updated: 0, duplicate: 0, failed: 0, results: [] };
+    const recordsSavedAt = Date.now();
     const plantingBatch = savePlantingEventsBatchUnlocked(
       plantingEvents,
       records,
       recordBatch.results,
       dayBatchContext
     );
-    return {
+    const plantingSavedAt = Date.now();
+    const batchResult = {
       total: recordBatch.total + plantingBatch.total,
       saved: recordBatch.saved + plantingBatch.saved,
       updated: recordBatch.updated + plantingBatch.updated,
@@ -1404,10 +1610,39 @@ function saveHarvestDayBatch(records, plantingEvents) {
       recordResults: recordBatch.results,
       plantingResults: plantingBatch.results
     };
+    const revisionAcknowledgement = recordHarvestSyncChangesWithinWriteLockSafely(
+      buildHarvestDayBatchSyncChanges(batchResult)
+    );
+    operationFinishedAt = Date.now();
+    return {
+      ...batchResult,
+      ...revisionAcknowledgement,
+      serverTiming: {
+        lockWaitMs: lockAcquiredAt - startedAt,
+        contextMs: contextReadyAt - lockAcquiredAt,
+        harvestWriteMs: recordsSavedAt - contextReadyAt,
+        plantingWriteMs: plantingSavedAt - recordsSavedAt,
+        revisionMs: operationFinishedAt - plantingSavedAt
+      }
+    };
   });
+  const flushedAt = Date.now();
+  result.serverTiming.flushAndReleaseMs = flushedAt - operationFinishedAt;
+  const receiptStartedAt = Date.now();
+  result.receiptSaved = saveHarvestDayBatchReceipt(batchId, records, plantingEvents, result);
+  result.serverTiming.receiptMs = Date.now() - receiptStartedAt;
+  result.serverTiming.totalMs = Date.now() - startedAt;
+  console.log("saveDayBatch timing: " + JSON.stringify(result.serverTiming));
+  return result;
 }
 
-function getHarvestDayBatchSendStatus(records, plantingEvents) {
+function getHarvestDayBatchSendStatus(records, plantingEvents, batchId) {
+  const receiptStatus = buildHarvestDayBatchStatusFromReceipt(
+    loadHarvestDayBatchReceipt(batchId, records, plantingEvents),
+    records,
+    plantingEvents
+  );
+  if (receiptStatus) return receiptStatus;
   return withRecordReadLock(() => {
     const recordsByUuid = new Map();
     const recordsById = new Map();
@@ -7318,20 +7553,20 @@ function writeKnownPlantingEventRows(sheet, startRow, headers, rows, writeMarker
     throw new Error("苗植えイベントシートに書き込み可能な既知列がありません");
   }
 
-  const writeColumn = (item, columnValues) => {
-    const targetRange = sheet.getRange(startRow, item.index + 1, safeRows.length, 1);
+  const writeRange = (startIndex, columnCount, rangeValues, rangeLabel) => {
+    const targetRange = sheet.getRange(startRow, startIndex + 1, safeRows.length, columnCount);
     try {
-      targetRange.setValues(columnValues);
+      targetRange.setValues(rangeValues);
     } catch (err) {
       // 古い入力規則が残っているシートでは、正しい値でも汎用的な
       // 「引数が無効です」になることがある。アプリ管理列だけ解除して再試行する。
       try {
         targetRange.clearDataValidations();
-        if (columnValues.length === 1) targetRange.setValue(columnValues[0][0]);
-        else targetRange.setValues(columnValues);
+        if (rangeValues.length === 1 && columnCount === 1) targetRange.setValue(rangeValues[0][0]);
+        else targetRange.setValues(rangeValues);
       } catch (retryErr) {
         throw new Error(
-          "列「" + (PLANTING_EVENT_HEADER_LABELS[item.key] || item.key) + "」の更新に失敗しました: " +
+          rangeLabel + "の更新に失敗しました: " +
           String(retryErr && retryErr.message || retryErr) +
           "（初回: " + String(err && err.message || err) + "）"
         );
@@ -7346,9 +7581,11 @@ function writeKnownPlantingEventRows(sheet, startRow, headers, rows, writeMarker
   if (!Array.isArray(writeMarkers) || writeMarkers.length !== safeRows.length) {
     throw new Error("苗植えイベントの未完了マーカーが正しくありません");
   }
-  writeColumn(
-    updatedAtColumn,
-    writeMarkers.map(marker => [String(marker || "")])
+  writeRange(
+    updatedAtColumn.index,
+    1,
+    writeMarkers.map(marker => [String(marker || "")]),
+    "更新日時列"
   );
   try {
     SpreadsheetApp.flush();
@@ -7357,17 +7594,25 @@ function writeKnownPlantingEventRows(sheet, startRow, headers, rows, writeMarker
       String(err && err.message || err));
   }
 
-  knownColumnIndexes
-    .filter(item => item.key !== "updatedAt")
-    .forEach(item => {
-      writeColumn(
-        item,
-        safeRows.map(row => [normalizePlantingEventCellValue(row[item.index])])
-      );
-    });
-  writeColumn(
-    updatedAtColumn,
-    safeRows.map(row => [normalizePlantingEventCellValue(row[updatedAtColumn.index])])
+  getKnownPlantingEventColumnSegments(headers).forEach(segment => {
+    const rangeLabel = segment.length === 1
+      ? "列「" + (PLANTING_EVENT_HEADER_LABELS[getPlantingEventHeaderKey(headers[segment.startIndex])]
+          || getPlantingEventHeaderKey(headers[segment.startIndex])) + "」"
+      : "苗植えイベント列" + (segment.startIndex + 1) + "〜" + (segment.startIndex + segment.length);
+    writeRange(
+      segment.startIndex,
+      segment.length,
+      safeRows.map(row => row
+        .slice(segment.startIndex, segment.startIndex + segment.length)
+        .map(normalizePlantingEventCellValue)),
+      rangeLabel
+    );
+  });
+  writeRange(
+    updatedAtColumn.index,
+    1,
+    safeRows.map(row => [normalizePlantingEventCellValue(row[updatedAtColumn.index])]),
+    "更新日時列"
   );
 }
 
