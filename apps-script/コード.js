@@ -32,7 +32,7 @@ const SYNC_CHANGE_LOG_PAGE_LIMIT = 100;
 const SYNC_CHANGE_LOG_RESPONSE_CHAR_LIMIT = 800000;
 const SYNC_CHANGE_LOG_MAX_ROWS = 20000;
 const SYNC_CHANGE_LOG_RETAINED_ROWS = 10000;
-const API_BUILD_VERSION = "2026-08-25-planting-trash-header-repair";
+const API_BUILD_VERSION = "2026-09-14-day-batch-timeout-recovery";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -1003,6 +1003,25 @@ function doPost(e) {
       });
     }
 
+    if (operation === "checkDayBatchStatus") {
+      apiStage = "当日の一括送信結果を確認中";
+      const result = getHarvestDayBatchSendStatus(
+        body.records,
+        body.plantingEvents
+      );
+      return jsonResponse({
+        ok: true,
+        recordResults: result.recordResults.map(item => ({
+          ...item,
+          record: item.record ? compactHarvestRecordForApi(item.record) : null
+        })),
+        plantingResults: result.plantingResults.map(item => ({
+          ...item,
+          event: item.event ? compactPlantingEventForApi(item.event) : null
+        }))
+      });
+    }
+
     if (operation === "listMonitorHistory") {
       apiStage = "モニター履歴の読み込み中";
       return jsonResponse({
@@ -1208,7 +1227,8 @@ function resolveApiOperation(body) {
     getMonitorContent: "getMonitorContent",
     saveMonitorContent: "saveMonitorContent",
     listMonitorHistory: "listMonitorHistory",
-    saveDayBatch: "saveDayBatch"
+    saveDayBatch: "saveDayBatch",
+    checkDayBatchStatus: "checkDayBatchStatus"
   };
   const operationByType = {
     "harvest-access-role": "identifyAccessRole",
@@ -1218,6 +1238,7 @@ function resolveApiOperation(body) {
     "harvest-record": "saveRecord",
     "harvest-record-batch": "saveRecordBatch",
     "harvest-day-batch": "saveDayBatch",
+    "harvest-day-batch-status": "checkDayBatchStatus",
     "harvest-record-list": "listRecords",
     "harvest-record-delete": "deleteRecord",
     "harvest-record-restore": "restoreRecord",
@@ -1270,6 +1291,25 @@ function resolveApiOperation(body) {
     if (body.records.length > API_BATCH_RECORD_LIMIT || itemCount > API_DAY_BATCH_ITEM_LIMIT) {
       throw new Error("一度に送信できる当日の記録は" + API_DAY_BATCH_ITEM_LIMIT + "件までです");
     }
+  }
+  if (operation === "checkDayBatchStatus") {
+    if (!Array.isArray(body.records)) {
+      throw new Error("recordsが配列ではありません");
+    }
+    if (!Array.isArray(body.plantingEvents)) {
+      throw new Error("plantingEventsが配列ではありません");
+    }
+    const itemCount = body.records.length + body.plantingEvents.length;
+    if (itemCount < 1) throw new Error("確認する記録がありません");
+    if (itemCount > API_DAY_BATCH_ITEM_LIMIT) {
+      throw new Error("一度に確認できる当日の記録は" + API_DAY_BATCH_ITEM_LIMIT + "件までです");
+    }
+    body.records.forEach(record => {
+      if (!isPlainObject(record)) throw new Error("確認する収穫記録が正しくありません");
+    });
+    body.plantingEvents.forEach(event => {
+      if (!isPlainObject(event)) throw new Error("確認する苗植え記録が正しくありません");
+    });
   }
   if (operation === "saveMonitorContent" && !isPlainObject(body.content)) {
     throw new Error("モニター内容がありません");
@@ -1332,6 +1372,7 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
     "saveRecord",
     "saveRecordBatch",
     "saveDayBatch",
+    "checkDayBatchStatus",
     "savePlantingEvent",
     "getMonitorContent",
     "saveMonitorContent"
@@ -1343,13 +1384,15 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
 
 function saveHarvestDayBatch(records, plantingEvents) {
   return withRecordWriteLock(() => {
+    const dayBatchContext = createHarvestDayBatchSaveContext(records, plantingEvents);
     const recordBatch = records.length
-      ? saveHarvestRecordsBatchUnlocked(records)
+      ? saveHarvestRecordsBatchUnlocked(records, { dayBatchContext })
       : { total: 0, saved: 0, updated: 0, duplicate: 0, failed: 0, results: [] };
     const plantingBatch = savePlantingEventsBatchUnlocked(
       plantingEvents,
       records,
-      recordBatch.results
+      recordBatch.results,
+      dayBatchContext
     );
     return {
       total: recordBatch.total + plantingBatch.total,
@@ -1360,6 +1403,109 @@ function saveHarvestDayBatch(records, plantingEvents) {
       failed: recordBatch.failed + plantingBatch.failed,
       recordResults: recordBatch.results,
       plantingResults: plantingBatch.results
+    };
+  });
+}
+
+function getHarvestDayBatchSendStatus(records, plantingEvents) {
+  return withRecordReadLock(() => {
+    const recordsByUuid = new Map();
+    const recordsById = new Map();
+    const recordSheet = getExistingRecordSheet();
+    if (recordSheet && recordSheet.getLastRow() >= 2) {
+      const headers = getRecordHeadersForRead(recordSheet);
+      readHarvestRecordRows(recordSheet, headers).forEach(row => {
+        if (!isCommittedHarvestRecordRow(headers, row)) return;
+        const record = rowToRecord(headers, row);
+        const recordUuid = String(record.recordUuid || "").trim().toLowerCase();
+        const recordId = Number(record.id);
+        if (recordUuid) recordsByUuid.set(recordUuid, record);
+        if (Number.isSafeInteger(recordId) && recordId > 0) recordsById.set(recordId, record);
+      });
+    }
+
+    const plantingEventsById = new Map();
+    const plantingSheet = getExistingPlantingEventSheet();
+    if (plantingSheet && plantingSheet.getLastRow() >= 2) {
+      const headers = getPlantingEventHeadersForRead(plantingSheet);
+      const rows = plantingSheet
+        .getRange(2, 1, plantingSheet.getLastRow() - 1, headers.length)
+        .getValues();
+      rows.forEach(row => {
+        if (!isCommittedPlantingEventRow(headers, row)) return;
+        const event = rowToPlantingEvent(headers, row);
+        plantingEventsById.set(Number(event.eventId), event);
+      });
+    }
+
+    const allocationContext = { plantingEventsById };
+    const allocatedKeysByHarvestRecord = rebuildHarvestDayBatchPlantingAllocationMap(
+      allocationContext
+    );
+    const recordIdMappings = new Map();
+    const recordResults = records.map((requestedRecord, index) => {
+      let normalizedRequest;
+      try {
+        normalizedRequest = normalizeHarvestRecord(requestedRecord);
+      } catch (err) {
+        return { index, ok: false, pending: true, record: null };
+      }
+      const recordUuid = String(normalizedRequest.recordUuid || "").trim().toLowerCase();
+      const recordId = Number(normalizedRequest.id);
+      const record = recordUuid
+        ? recordsByUuid.get(recordUuid)
+        : recordsById.get(recordId);
+      if (!record) return { index, ok: false, pending: true, record: null };
+
+      const suppliedSyncFields = getSuppliedRecordSyncFields(requestedRecord);
+      const recordForComparison = applyPlantingLocationSummaryToHarvestRecord({
+        ...mergeOmittedSyncFieldsFromExistingRecord(
+          normalizedRequest,
+          suppliedSyncFields,
+          record
+        ),
+        id: record.id,
+        recordUuid: record.recordUuid,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt
+      }, allocatedKeysByHarvestRecord);
+      const matches = getHarvestRecordContentSignature(recordForComparison) ===
+        getHarvestRecordContentSignature(record);
+      if (matches && Number.isSafeInteger(recordId) && recordId > 0) {
+        recordIdMappings.set(recordId, {
+          ok: true,
+          canonicalId: Number(record.id)
+        });
+      }
+      return {
+        index,
+        ok: matches,
+        pending: !matches,
+        record: matches ? record : null
+      };
+    });
+
+    return {
+      recordResults,
+      plantingResults: plantingEvents.map((requestedEvent, index) => {
+        let normalizedRequest;
+        try {
+          normalizedRequest = normalizePlantingEvent(
+            remapHarvestDayBatchPlantingEvent(requestedEvent, recordIdMappings)
+          );
+        } catch (err) {
+          return { index, ok: false, pending: true, event: null };
+        }
+        const event = plantingEventsById.get(Number(normalizedRequest.eventId));
+        const matches = !!event && getPlantingEventContentSignature(normalizedRequest) ===
+          getPlantingEventContentSignature(event);
+        return {
+          index,
+          ok: matches,
+          pending: !matches,
+          event: matches ? event : null
+        };
+      })
     };
   });
 }
@@ -3432,6 +3578,134 @@ function purgeExpiredTrashRecords(sheet) {
   return prepareDeletedHarvestRecordState(sheet).purged;
 }
 
+function rebuildHarvestDayBatchPlantingAllocationMap(context) {
+  const allocatedByHarvestRecord = new Map();
+  if (!context || !(context.plantingEventsById instanceof Map)) return allocatedByHarvestRecord;
+  context.plantingEventsById.forEach(event => {
+    (event && Array.isArray(event.sourceAllocations) ? event.sourceAllocations : [])
+      .forEach(allocation => {
+        const harvestRecordId = Number(allocation && allocation.harvestRecordId);
+        if (!Number.isSafeInteger(harvestRecordId) || harvestRecordId <= 0) return;
+        if (!allocatedByHarvestRecord.has(harvestRecordId)) {
+          allocatedByHarvestRecord.set(harvestRecordId, new Set());
+        }
+        (Array.isArray(allocation.palletKeys) ? allocation.palletKeys : [])
+          .forEach(key => allocatedByHarvestRecord.get(harvestRecordId).add(key));
+      });
+  });
+  context.plantingAllocatedKeysByHarvestRecord = allocatedByHarvestRecord;
+  return allocatedByHarvestRecord;
+}
+
+function createHarvestDayBatchSaveContext(records, plantingEvents) {
+  const recordList = Array.isArray(records) ? records : [];
+  const plantingList = Array.isArray(plantingEvents) ? plantingEvents : [];
+  const context = {
+    plantingSheet: null,
+    plantingHeaders: [],
+    plantingRows: [],
+    plantingRowByEventId: new Map(),
+    plantingEventsById: new Map(),
+    plantingAllocatedKeysByHarvestRecord: new Map(),
+    deletedPlantingEventIds: null,
+    plantingDeletionStatePrepared: false,
+    recordSheet: null,
+    recordHeaders: [],
+    recordRows: [],
+    recordRowLookup: null,
+    recordsById: null
+  };
+
+  const needsPlantingState = plantingList.length > 0 || recordList.some(record => (
+    record && String(record.type || "").trim() === "fullHarvest"
+  ));
+  if (needsPlantingState) {
+    const sheet = plantingList.length ? getPlantingEventSheet() : getExistingPlantingEventSheet();
+    if (sheet) {
+      const headers = plantingList.length
+        ? ensurePlantingEventHeaders(sheet)
+        : getPlantingEventHeadersForRead(sheet);
+      const rowCount = Math.max(0, sheet.getLastRow() - 1);
+      const rows = rowCount
+        ? sheet.getRange(2, 1, rowCount, headers.length).getValues()
+        : [];
+      context.plantingSheet = sheet;
+      context.plantingHeaders = headers;
+      context.plantingRows = rows;
+      const idColumn = getPlantingEventHeaderColumn(headers, "eventId");
+      rows.forEach((row, index) => {
+        let eventId = String(
+          idColumn > 0 && row[idColumn - 1] != null ? row[idColumn - 1] : ""
+        ).trim();
+        if (!eventId) {
+          const marker = getPlantingWriteMarker(headers, row);
+          eventId = String(marker && marker.eventId || "").trim();
+        }
+        if (!eventId) return;
+        if (context.plantingRowByEventId.has(eventId)) {
+          throw new Error("苗植えイベントシートに同じ苗植えイベントIDが重複しています: " + eventId);
+        }
+        context.plantingRowByEventId.set(eventId, index + 2);
+        if (!isCommittedPlantingEventRow(headers, row)) return;
+        const event = rowToPlantingEvent(headers, row);
+        context.plantingEventsById.set(String(event.eventId), event);
+      });
+      rebuildHarvestDayBatchPlantingAllocationMap(context);
+    }
+  }
+
+  if (!recordList.length && plantingList.length) {
+    const recordSheet = getExistingRecordSheet();
+    if (recordSheet) {
+      const recordHeaders = getRecordHeadersForRead(recordSheet);
+      const recordRows = readHarvestRecordRows(recordSheet, recordHeaders);
+      const recordSnapshot = buildHarvestRecordBatchSnapshot(recordHeaders, recordRows);
+      context.recordSheet = recordSheet;
+      context.recordHeaders = recordHeaders;
+      context.recordRows = recordRows;
+      context.recordRowLookup = recordSnapshot.recordRowLookup;
+      context.recordsById = new Map();
+      recordSnapshot.recordsByRowNumber.forEach(record => {
+        const id = Number(record && record.id);
+        if (Number.isSafeInteger(id) && id > 0) context.recordsById.set(id, record);
+      });
+    }
+  }
+  return context;
+}
+
+function rememberHarvestDayBatchPlantingEvent(context, event, rowNumber) {
+  if (!context || !(context.plantingEventsById instanceof Map)) return;
+  const eventId = String(event && event.eventId || "").trim();
+  if (!eventId || !Number.isSafeInteger(rowNumber) || rowNumber < 2) return;
+  const previousEvent = context.plantingEventsById.get(eventId);
+  const allocationMap = context.plantingAllocatedKeysByHarvestRecord instanceof Map
+    ? context.plantingAllocatedKeysByHarvestRecord
+    : new Map();
+  (previousEvent && Array.isArray(previousEvent.sourceAllocations)
+    ? previousEvent.sourceAllocations
+    : []).forEach(allocation => {
+      const harvestRecordId = Number(allocation && allocation.harvestRecordId);
+      const allocatedKeys = allocationMap.get(harvestRecordId);
+      if (!(allocatedKeys instanceof Set)) return;
+      (Array.isArray(allocation.palletKeys) ? allocation.palletKeys : [])
+        .forEach(key => allocatedKeys.delete(key));
+      if (!allocatedKeys.size) allocationMap.delete(harvestRecordId);
+    });
+  (event && Array.isArray(event.sourceAllocations) ? event.sourceAllocations : [])
+    .forEach(allocation => {
+      const harvestRecordId = Number(allocation && allocation.harvestRecordId);
+      if (!Number.isSafeInteger(harvestRecordId) || harvestRecordId <= 0) return;
+      if (!allocationMap.has(harvestRecordId)) allocationMap.set(harvestRecordId, new Set());
+      (Array.isArray(allocation.palletKeys) ? allocation.palletKeys : [])
+        .forEach(key => allocationMap.get(harvestRecordId).add(key));
+    });
+  context.plantingRowByEventId.set(eventId, rowNumber);
+  context.plantingEventsById.set(eventId, event);
+  context.plantingAllocatedKeysByHarvestRecord = allocationMap;
+  context.plantingRows[rowNumber - 2] = buildPlantingEventRow(context.plantingHeaders, event);
+}
+
 function savePlantingEvent(event) {
   let normalizedEvent;
   try {
@@ -3443,41 +3717,57 @@ function savePlantingEvent(event) {
 }
 
 function savePlantingEventUnlocked(event, options) {
+  const dayBatchContext = options && options.dayBatchContext;
   let sheet;
   let headers;
   try {
-    sheet = getPlantingEventSheet();
-    headers = ensurePlantingEventHeaders(sheet);
+    sheet = dayBatchContext && dayBatchContext.plantingSheet
+      ? dayBatchContext.plantingSheet
+      : getPlantingEventSheet();
+    headers = dayBatchContext && dayBatchContext.plantingHeaders.length
+      ? dayBatchContext.plantingHeaders
+      : ensurePlantingEventHeaders(sheet);
   } catch (err) {
     throw new Error("苗植えイベントシートの準備中に失敗しました: " + String(err && err.message || err));
   }
-  let existingTrashSheet;
-  try {
-    existingTrashSheet = getExistingPlantingEventTrashSheet();
-  } catch (err) {
-    throw new Error("削除済み苗植えイベントシートの確認中に失敗しました: " +
-      String(err && err.message || err));
-  }
-  if (existingTrashSheet) {
+  if (!dayBatchContext || !dayBatchContext.plantingDeletionStatePrepared) {
+    let existingTrashSheet;
     try {
-      ensurePlantingEventTrashSheet(existingTrashSheet);
-      purgeExpiredPlantingEventTrash(existingTrashSheet);
+      existingTrashSheet = getExistingPlantingEventTrashSheet();
     } catch (err) {
-      throw new Error("削除済み苗植えイベントの整理中に失敗しました: " + String(err && err.message || err));
+      throw new Error("削除済み苗植えイベントシートの確認中に失敗しました: " +
+        String(err && err.message || err));
+    }
+    if (existingTrashSheet) {
+      try {
+        ensurePlantingEventTrashSheet(existingTrashSheet);
+        purgeExpiredPlantingEventTrash(existingTrashSheet);
+      } catch (err) {
+        throw new Error("削除済み苗植えイベントの整理中に失敗しました: " + String(err && err.message || err));
+      }
+    }
+    if (dayBatchContext) {
+      dayBatchContext.deletedPlantingEventIds = getDeletedPlantingEventIdSet();
+      dayBatchContext.plantingDeletionStatePrepared = true;
     }
   }
   try {
-    assertPlantingEventIsNotDeleted(event, getDeletedPlantingEventIdSet());
+    assertPlantingEventIsNotDeleted(
+      event,
+      dayBatchContext && dayBatchContext.deletedPlantingEventIds
+        ? dayBatchContext.deletedPlantingEventIds
+        : getDeletedPlantingEventIdSet()
+    );
   } catch (err) {
     throw new Error("苗植えイベントの削除状態確認中に失敗しました: " + String(err && err.message || err));
   }
   try {
-    assertPlantingEventSourcesExist(event);
+    assertPlantingEventSourcesExist(event, dayBatchContext);
   } catch (err) {
     throw new Error("苗植え元の収穫記録の確認中に失敗しました: " + String(err && err.message || err));
   }
   try {
-    assertPlantingEventAllocationsAvailable(event, sheet, headers);
+    assertPlantingEventAllocationsAvailable(event, sheet, headers, dayBatchContext);
   } catch (err) {
     throw new Error("苗植え済みパレットの確認中に失敗しました: " + String(err && err.message || err));
   }
@@ -3486,7 +3776,9 @@ function savePlantingEventUnlocked(event, options) {
   const now = new Date().toISOString();
   let existingRowNumber;
   try {
-    existingRowNumber = findPlantingEventRowById(sheet, headers, event.eventId, true);
+    existingRowNumber = dayBatchContext && dayBatchContext.plantingRowByEventId
+      ? (dayBatchContext.plantingRowByEventId.get(String(event.eventId)) || 0)
+      : findPlantingEventRowById(sheet, headers, event.eventId, true);
   } catch (err) {
     throw new Error("苗植えイベントIDの検索中に失敗しました: " + String(err && err.message || err));
   }
@@ -3496,7 +3788,9 @@ function savePlantingEventUnlocked(event, options) {
     let existingEvent;
     let existingRow;
     try {
-      existingRow = readPlantingEventRowValues(sheet, existingRowNumber, headers);
+      existingRow = dayBatchContext && dayBatchContext.plantingRows[existingRowNumber - 2]
+        ? dayBatchContext.plantingRows[existingRowNumber - 2]
+        : readPlantingEventRowValues(sheet, existingRowNumber, headers);
     } catch (err) {
       throw new Error("既存の苗植えイベント行の読み取り中に失敗しました: " + String(err && err.message || err));
     }
@@ -3558,14 +3852,18 @@ function savePlantingEventUnlocked(event, options) {
     createdAt,
     updatedAt: getNextPlantingEventUpdatedAt(previousUpdatedAt)
   };
+  let writtenRowNumber = existingRowNumber;
   try {
     if (existingRowNumber > 0) {
       writePlantingEventRow(sheet, existingRowNumber, headers, eventToWrite, event);
     } else {
-      appendPlantingEventRow(sheet, headers, eventToWrite, event);
+      writtenRowNumber = appendPlantingEventRow(sheet, headers, eventToWrite, event);
     }
   } catch (err) {
     throw new Error("苗植えイベント行の更新中に失敗しました: " + String(err && err.message || err));
+  }
+  if (dayBatchContext) {
+    rememberHarvestDayBatchPlantingEvent(dayBatchContext, eventToWrite, writtenRowNumber);
   }
   try {
     syncOrDeferPlantingLocationSummaries(affectedHarvestRecordIds, options);
@@ -3650,7 +3948,7 @@ function remapHarvestDayBatchPlantingEvent(event, recordIdMappings) {
   };
 }
 
-function savePlantingEventsBatchUnlocked(events, records, recordResults) {
+function savePlantingEventsBatchUnlocked(events, records, recordResults, dayBatchContext) {
   if (!Array.isArray(events)) throw new Error("plantingEventsが配列ではありません");
   const recordIdMappings = buildHarvestDayBatchRecordIdMappings(records, recordResults);
   const deferredHarvestRecordIds = new Set();
@@ -3659,7 +3957,8 @@ function savePlantingEventsBatchUnlocked(events, records, recordResults) {
       const remappedEvent = remapHarvestDayBatchPlantingEvent(event, recordIdMappings);
       const normalizedEvent = normalizePlantingEvent(remappedEvent);
       const result = savePlantingEventUnlocked(normalizedEvent, {
-        deferredHarvestRecordIds
+        deferredHarvestRecordIds,
+        dayBatchContext
       });
       return {
         index,
@@ -3687,7 +3986,10 @@ function savePlantingEventsBatchUnlocked(events, records, recordResults) {
 
   if (deferredHarvestRecordIds.size) {
     try {
-      syncRecordSheetPlantingLocationSummaries(deferredHarvestRecordIds);
+      syncRecordSheetPlantingLocationSummaries(
+        deferredHarvestRecordIds,
+        { dayBatchContext }
+      );
     } catch (err) {
       throw new Error("苗植え記録の収穫元への一括反映中に失敗しました: " +
         String(err && err.message || err));
@@ -4470,7 +4772,27 @@ function getNextPlantingEventUpdatedAt(previousValue) {
   return new Date(nextTime).toISOString();
 }
 
-function assertPlantingEventSourcesExist(event) {
+function assertPlantingEventSourcesExist(event, dayBatchContext) {
+  if (dayBatchContext && dayBatchContext.recordsById instanceof Map) {
+    event.sourceAllocations.forEach(allocation => {
+      const record = dayBatchContext.recordsById.get(Number(allocation.harvestRecordId));
+      if (!record) {
+        throw new Error("収穫記録ID " + allocation.harvestRecordId + " が見つかりません");
+      }
+      if (String(record.type || "").trim() !== "fullHarvest") {
+        throw new Error("先取り収穫には苗植えイベントを割り当てられません");
+      }
+      const harvestKeySet = new Set(getHarvestRecordPalletKeysForPlantingSource(record));
+      const invalidKey = allocation.palletKeys.find(key => !harvestKeySet.has(key));
+      if (invalidKey) {
+        throw new Error(
+          "収穫記録ID " + allocation.harvestRecordId +
+          " に含まれないパレットが割り当てられています: " + invalidKey
+        );
+      }
+    });
+    return;
+  }
   const recordSheet = getExistingRecordSheet();
   if (!recordSheet) throw new Error("収穫記録シートがないため苗植えイベントを保存できません");
   const recordHeaders = getRecordHeadersForRead(recordSheet);
@@ -4564,7 +4886,7 @@ function applyPlantingLocationSummaryToHarvestRecord(record, allocatedKeysByHarv
   };
 }
 
-function syncRecordSheetPlantingLocationSummaries(harvestRecordIds) {
+function syncRecordSheetPlantingLocationSummaries(harvestRecordIds, options) {
   const targetIds = new Set(
     Array.from(harvestRecordIds || [])
       .map(Number)
@@ -4572,17 +4894,25 @@ function syncRecordSheetPlantingLocationSummaries(harvestRecordIds) {
   );
 
   if (!targetIds.size) return 0;
-  // 直前の苗植えイベント追加・削除を確定させてから正本を再集計する。
-  SpreadsheetApp.flush();
-  const allocatedKeysByHarvestRecord = buildPlantingEventAllocatedKeysByHarvestRecord({
-    targetHarvestRecordIds: targetIds
-  });
-  const recordSheet = getExistingRecordSheet();
+  const dayBatchContext = options && options.dayBatchContext;
+  // 通常操作では直前の書き込みを確定してから正本を再集計する。当日一括送信では、
+  // 同じリクエスト内で更新済みの読み込み結果を使うため再読み込みとflushを省ける。
+  if (!dayBatchContext) SpreadsheetApp.flush();
+  const allocatedKeysByHarvestRecord = dayBatchContext
+    ? dayBatchContext.plantingAllocatedKeysByHarvestRecord
+    : buildPlantingEventAllocatedKeysByHarvestRecord({ targetHarvestRecordIds: targetIds });
+  const recordSheet = dayBatchContext && dayBatchContext.recordSheet
+    ? dayBatchContext.recordSheet
+    : getExistingRecordSheet();
   if (!recordSheet) throw new Error("苗植え場所を反映する記録シートがありません");
-  const recordHeaders = getRecordHeadersForRead(recordSheet);
+  const recordHeaders = dayBatchContext && dayBatchContext.recordHeaders.length
+    ? dayBatchContext.recordHeaders
+    : getRecordHeadersForRead(recordSheet);
   const summaryColumn = getHeaderColumn(recordHeaders, "plantingSummary");
   if (summaryColumn <= 0) throw new Error("記録シートに苗植え場所列がありません");
-  const recordRows = buildHarvestRecordRowLookup(recordSheet, recordHeaders);
+  const recordRows = dayBatchContext && dayBatchContext.recordRowLookup
+    ? dayBatchContext.recordRowLookup
+    : buildHarvestRecordRowLookup(recordSheet, recordHeaders);
   let changed = 0;
 
   targetIds.forEach(id => {
@@ -4592,7 +4922,12 @@ function syncRecordSheetPlantingLocationSummaries(harvestRecordIds) {
     }
     const keys = Array.from(allocatedKeysByHarvestRecord.get(id) || []);
     const nextSummary = formatRecordedPalletSummary(keys);
-    const currentSummary = String(recordSheet.getRange(rowNumber, summaryColumn).getValue() || "")
+    const cachedRow = dayBatchContext && dayBatchContext.recordRows[rowNumber - 2];
+    const currentSummary = String(
+      cachedRow
+        ? cachedRow[summaryColumn - 1]
+        : recordSheet.getRange(rowNumber, summaryColumn).getValue()
+    )
       .replace(/^'(?=[=+\-@])/, "");
     if (currentSummary === nextSummary) return;
     setHarvestRecordColumnValuesWithValidationRecovery(
@@ -4603,6 +4938,11 @@ function syncRecordSheetPlantingLocationSummaries(harvestRecordIds) {
       HEADER_LABELS.plantingSummary,
       "苗植え場所の反映"
     );
+    if (cachedRow) cachedRow[summaryColumn - 1] = escapeSpreadsheetFormulaText(nextSummary);
+    if (dayBatchContext && dayBatchContext.recordsById instanceof Map) {
+      const record = dayBatchContext.recordsById.get(id);
+      if (record) dayBatchContext.recordsById.set(id, { ...record, plantingSummary: nextSummary });
+    }
     requestScopedChangedHarvestRecordIds.add(id);
     changed++;
   });
@@ -4630,7 +4970,38 @@ function assertHarvestRecordHasNoPlantingEvents(harvestRecordId) {
   }
 }
 
-function assertPlantingEventAllocationsAvailable(event, sheet, headers) {
+function assertPlantingEventAllocationsAvailable(event, sheet, headers, dayBatchContext) {
+  if (dayBatchContext && dayBatchContext.plantingEventsById instanceof Map) {
+    const allocatedByHarvestRecord = dayBatchContext.plantingAllocatedKeysByHarvestRecord;
+    const previousEvent = dayBatchContext.plantingEventsById.get(String(event.eventId));
+    const previousKeysByHarvestRecord = new Map();
+    (previousEvent && Array.isArray(previousEvent.sourceAllocations)
+      ? previousEvent.sourceAllocations
+      : []).forEach(allocation => {
+        const harvestRecordId = Number(allocation.harvestRecordId);
+        if (!previousKeysByHarvestRecord.has(harvestRecordId)) {
+          previousKeysByHarvestRecord.set(harvestRecordId, new Set());
+        }
+        allocation.palletKeys.forEach(key => (
+          previousKeysByHarvestRecord.get(harvestRecordId).add(key)
+        ));
+      });
+    event.sourceAllocations.forEach(allocation => {
+      const harvestRecordId = Number(allocation.harvestRecordId);
+      const allocatedKeys = allocatedByHarvestRecord.get(harvestRecordId) || new Set();
+      const previousKeys = previousKeysByHarvestRecord.get(harvestRecordId) || new Set();
+      const duplicateKey = allocation.palletKeys.find(key => (
+        allocatedKeys.has(key) && !previousKeys.has(key)
+      ));
+      if (duplicateKey) {
+        throw new Error(
+          "収穫記録ID " + allocation.harvestRecordId +
+          " のパレット " + duplicateKey + " は別の苗植えイベントで記録済みです"
+        );
+      }
+    });
+    return;
+  }
   if (!sheet || sheet.getLastRow() < 2) return;
   const occupied = new Set();
   const eventIdIndex = headers.findIndex(
@@ -4836,7 +5207,8 @@ function saveHarvestRecordsBatch(records) {
   return withRecordWriteLock(() => saveHarvestRecordsBatchUnlocked(records));
 }
 
-function saveHarvestRecordsBatchUnlocked(records) {
+function saveHarvestRecordsBatchUnlocked(records, options) {
+  const dayBatchContext = options && options.dayBatchContext;
   let sheet;
   let headers;
   let deletedRecordIdentities;
@@ -4857,7 +5229,9 @@ function saveHarvestRecordsBatchUnlocked(records) {
       record && String(record.type || "").trim() === "fullHarvest"
     ));
     plantingAllocatedKeysByHarvest = needsPlantingAllocationCheck
-      ? buildPlantingEventAllocatedKeysByHarvestRecord()
+      ? (dayBatchContext && dayBatchContext.plantingAllocatedKeysByHarvestRecord instanceof Map
+          ? dayBatchContext.plantingAllocatedKeysByHarvestRecord
+          : buildPlantingEventAllocatedKeysByHarvestRecord())
       : new Map();
     recordRowLookup = recordSnapshot.recordRowLookup;
   } catch (err) {
@@ -4865,6 +5239,7 @@ function saveHarvestRecordsBatchUnlocked(records) {
       String(err && err.message || err));
   }
   const rowsToAppend = [];
+  const recordsToAppend = [];
   const writeMarkersToAppend = [];
   const results = [];
   const queuedUuids = new Set();
@@ -4993,6 +5368,12 @@ function saveHarvestRecordsBatchUnlocked(records) {
           suppliedSyncFields
         );
         recordSnapshot.recordsByRowNumber.set(existingRowNumber, canonicalRecord);
+        recordSnapshot.rows[existingRowNumber - 2] = buildRecordRow(
+          headers,
+          canonicalRecord,
+          duplicateKey,
+          new Date(updatedAt)
+        );
         results.push({
           index,
           id: canonicalRecord.id,
@@ -5061,6 +5442,7 @@ function saveHarvestRecordsBatchUnlocked(records) {
       }, plantingAllocatedKeysByHarvest);
       assertHarvestRecordSupportsPlantingEvents(canonicalRecord, plantingAllocatedKeysByHarvest);
       rowsToAppend.push(buildRecordRow(headers, canonicalRecord, duplicateKey, new Date(now)));
+      recordsToAppend.push(canonicalRecord);
       writeMarkersToAppend.push(
         buildHarvestWriteMarker(normalizedRecord, canonicalRecord, suppliedSyncFields)
       );
@@ -5092,11 +5474,31 @@ function saveHarvestRecordsBatchUnlocked(records) {
 
   if (rowsToAppend.length) {
     try {
-      appendKnownRecordRows(sheet, headers, rowsToAppend, writeMarkersToAppend);
+      const startRow = appendKnownRecordRows(sheet, headers, rowsToAppend, writeMarkersToAppend);
+      recordsToAppend.forEach((record, index) => {
+        const rowNumber = startRow + index;
+        const row = rowsToAppend[index];
+        recordSnapshot.rows[rowNumber - 2] = row;
+        recordSnapshot.recordsByRowNumber.set(rowNumber, record);
+        recordRowLookup.byUuid.set(record.recordUuid, rowNumber);
+        recordRowLookup.byId.set(String(record.id), rowNumber);
+      });
     } catch (err) {
       throw new Error("収穫記録の新規行の書き込み中に失敗しました: " +
         String(err && err.message || err));
     }
+  }
+
+  if (dayBatchContext) {
+    dayBatchContext.recordSheet = sheet;
+    dayBatchContext.recordHeaders = headers;
+    dayBatchContext.recordRows = recordSnapshot.rows;
+    dayBatchContext.recordRowLookup = recordRowLookup;
+    dayBatchContext.recordsById = new Map();
+    recordSnapshot.recordsByRowNumber.forEach(record => {
+      const id = Number(record && record.id);
+      if (Number.isSafeInteger(id) && id > 0) dayBatchContext.recordsById.set(id, record);
+    });
   }
 
   return {
@@ -5237,6 +5639,7 @@ function appendKnownRecordRows(sheet, headers, rows, writeMarkers) {
     throw new Error("収穫記録行が完了状態になっていません: 行" +
       (startRow + incompleteIndex));
   }
+  return startRow;
 }
 
 function getLastRecordRow(sheet, headers) {
@@ -6866,6 +7269,7 @@ function appendPlantingEventRow(sheet, headers, event, requestEvent, writeOperat
   if (!hasCompletedPlantingEventWrite(sheet, rowNumber, headers)) {
     throw new Error("苗植えイベント行が完了状態になっていません");
   }
+  return rowNumber;
 }
 
 function hasCompletedPlantingEventWrite(sheet, rowNumber, headers) {

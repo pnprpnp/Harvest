@@ -1735,6 +1735,18 @@ function buildGoogleSheetDayBatchPayload(recordsToSend, plantingEventsToSend, co
   };
 }
 
+function buildGoogleSheetDayBatchStatusPayload(recordsToConfirm, plantingEventsToConfirm, config){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-day-batch-status",
+    action: "checkDayBatchStatus",
+    version: 1,
+    token: config.token || "",
+    records: recordsToConfirm.map(record => buildGoogleSheetRecordPayload(record, config).record),
+    plantingEvents: plantingEventsToConfirm.map(getPlantingEventForGoogleTransfer)
+  };
+}
+
 function buildGoogleSheetRecordDeletePayload(record, config){
   return {
     app: "Harvestnavi",

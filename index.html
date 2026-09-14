@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260914-harvest-progress-loss">
+<meta name="harvestnavi-version" content="20260914-day-batch-timeout-recovery">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -15772,6 +15772,7 @@ const MONITOR_MAX_SCALE = 2;
 const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 3 * 60 * 1000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
+const GOOGLE_SHEET_SEND_CONFIRM_TIMEOUT_MS = 15000;
 const RECORD_AVAILABILITY_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const APP_UPDATE_AUTO_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const GOOGLE_SHEET_MAX_REQUEST_CHARS = 500000;
@@ -23843,6 +23844,18 @@ function buildGoogleSheetDayBatchPayload(recordsToSend, plantingEventsToSend, co
   };
 }
 
+function buildGoogleSheetDayBatchStatusPayload(recordsToConfirm, plantingEventsToConfirm, config){
+  return {
+    app: "Harvestnavi",
+    type: "harvest-day-batch-status",
+    action: "checkDayBatchStatus",
+    version: 1,
+    token: config.token || "",
+    records: recordsToConfirm.map(record => buildGoogleSheetRecordPayload(record, config).record),
+    plantingEvents: plantingEventsToConfirm.map(getPlantingEventForGoogleTransfer)
+  };
+}
+
 function buildGoogleSheetRecordDeletePayload(record, config){
   return {
     app: "Harvestnavi",
@@ -25981,6 +25994,162 @@ function isGoogleSheetDayBatchUnsupportedMessage(message){
     || text.includes("対応していないリクエスト形式");
 }
 
+function getGoogleSheetDayBatchConfirmationDelays(){
+  return [1200, 2500];
+}
+
+function waitForGoogleSheetDayBatchConfirmation(delayMs){
+  return new Promise(resolve => setTimeout(resolve, Math.max(0, Number(delayMs) || 0)));
+}
+
+function applyGoogleSheetDayBatchConfirmation(
+  recordSnapshots,
+  plantingEventSnapshots,
+  sentRecordSignatures,
+  config,
+  result
+){
+  if(!Array.isArray(result?.recordResults)
+    || result.recordResults.length !== recordSnapshots.length
+    || !Array.isArray(result?.plantingResults)
+    || result.plantingResults.length !== plantingEventSnapshots.length){
+    return null;
+  }
+
+  const recordResultsByIndex = new Map();
+  const recordIdMappings = [];
+  for(const item of result.recordResults){
+    const index = Number(item?.index);
+    if(!Number.isSafeInteger(index) || index < 0 || index >= recordSnapshots.length
+      || recordResultsByIndex.has(index) || item?.ok !== true || !item?.record){
+      return null;
+    }
+    recordResultsByIndex.set(index, item);
+    const oldId = recordSnapshots[index]?.id;
+    const serverId = getSafePositiveRecordId(item.record?.id);
+    if(serverId !== null && Number(oldId) !== serverId){
+      recordIdMappings.push({ oldId, newId: serverId });
+    }
+  }
+  const plantingSnapshotsForComparison = plantingEventSnapshots.map(event => (
+    cloneGoogleSheetPlantingEventForSend(event)
+  ));
+  recordIdMappings.forEach(mapping => {
+    remapGoogleSheetDayBatchPlantingSnapshots(
+      plantingSnapshotsForComparison,
+      mapping.oldId,
+      mapping.newId
+    );
+  });
+  const plantingResultsByIndex = new Map();
+  for(const item of result.plantingResults){
+    const index = Number(item?.index);
+    if(!Number.isSafeInteger(index) || index < 0 || index >= plantingEventSnapshots.length
+      || plantingResultsByIndex.has(index) || item?.ok !== true || !item?.event){
+      return null;
+    }
+    const snapshot = plantingSnapshotsForComparison[index];
+    const serverEvent = normalizePlantingEvent(item.event);
+    if(!serverEvent
+      || getPlantingEventSendSignature(serverEvent) !== getPlantingEventSendSignature(snapshot)){
+      return null;
+    }
+    plantingResultsByIndex.set(index, item);
+  }
+
+  const totals = {
+    successCount: 0,
+    updatedCount: 0,
+    duplicateCount: 0,
+    failCount: 0,
+    plantingSuccessCount: 0,
+    plantingUpdatedCount: 0,
+    plantingFailCount: 0
+  };
+  recordIdMappings.forEach(mapping => {
+    remapGoogleSheetDayBatchPlantingSnapshots(
+      plantingEventSnapshots,
+      mapping.oldId,
+      mapping.newId
+    );
+  });
+  for(let index = 0; index < recordSnapshots.length; index++){
+    const snapshot = recordSnapshots[index];
+    const item = recordResultsByIndex.get(index);
+    if(!setGoogleSheetSyncStatusAfterSend(
+      snapshot,
+      sentRecordSignatures[index],
+      config,
+      "confirmed",
+      item.record
+    )){
+      return null;
+    }
+    totals.successCount++;
+  }
+  for(let index = 0; index < plantingEventSnapshots.length; index++){
+    const item = plantingResultsByIndex.get(index);
+    if(!setPlantingEventSyncStatusAfterDayBatch(
+      plantingEventSnapshots[index],
+      "confirmed",
+      item.event
+    )){
+      return null;
+    }
+    totals.plantingSuccessCount++;
+  }
+  return { ...totals, recordIdMappings, errorMessage: "", confirmedAfterTimeout: true };
+}
+
+async function confirmGoogleSheetDayBatchAfterTimeout(
+  recordSnapshots,
+  plantingEventSnapshots,
+  sentRecordSignatures,
+  config
+){
+  showToast("送信結果を確認中です");
+  const payload = buildGoogleSheetDayBatchStatusPayload(
+    recordSnapshots,
+    plantingEventSnapshots,
+    config
+  );
+  for(const delayMs of getGoogleSheetDayBatchConfirmationDelays()){
+    await waitForGoogleSheetDayBatchConfirmation(delayMs);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_SEND_CONFIRM_TIMEOUT_MS);
+    try{
+      const response = await fetch(config.url, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: buildValidatedGoogleSheetRequestBody(payload),
+        signal: controller.signal
+      });
+      const text = await response.text();
+      if(!isWithinGoogleSheetResponseLimits(text)) continue;
+      const result = text ? JSON.parse(text) : {};
+      if(result.ok !== true) continue;
+      const confirmed = applyGoogleSheetDayBatchConfirmation(
+        recordSnapshots,
+        plantingEventSnapshots,
+        sentRecordSignatures,
+        config,
+        result
+      );
+      if(confirmed){
+        googleSheetDayBatchSupportState = "supported";
+        showToast("送信済みを確認しました");
+        return confirmed;
+      }
+    }catch(confirmError){
+      console.warn("当日の記録の送信結果を確認できませんでした", confirmError);
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
 async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapshots, config){
   const sentRecordSignatures = recordSnapshots.map(record => getGoogleSheetRecordSendSignature(record, config));
   markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots);
@@ -26105,6 +26274,15 @@ async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapsh
     });
     return { ...totals, recordIdMappings, errorMessage: firstError };
   }catch(e){
+    if(e?.name === "AbortError"){
+      const confirmed = await confirmGoogleSheetDayBatchAfterTimeout(
+        recordSnapshots,
+        plantingEventSnapshots,
+        sentRecordSignatures,
+        config
+      );
+      if(confirmed) return confirmed;
+    }
     recordSnapshots.forEach((record, index) => {
       setGoogleSheetSyncStatusAfterSend(record, sentRecordSignatures[index], config, "failed");
     });

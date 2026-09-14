@@ -419,6 +419,7 @@ function appendPlantingEventRow(sheet, headers, event, requestEvent, writeOperat
   if (!hasCompletedPlantingEventWrite(sheet, rowNumber, headers)) {
     throw new Error("苗植えイベント行が完了状態になっていません");
   }
+  return rowNumber;
 }
 
 function hasCompletedPlantingEventWrite(sheet, rowNumber, headers) {

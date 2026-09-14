@@ -9,7 +9,8 @@ function saveHarvestRecordsBatch(records) {
   return withRecordWriteLock(() => saveHarvestRecordsBatchUnlocked(records));
 }
 
-function saveHarvestRecordsBatchUnlocked(records) {
+function saveHarvestRecordsBatchUnlocked(records, options) {
+  const dayBatchContext = options && options.dayBatchContext;
   let sheet;
   let headers;
   let deletedRecordIdentities;
@@ -30,7 +31,9 @@ function saveHarvestRecordsBatchUnlocked(records) {
       record && String(record.type || "").trim() === "fullHarvest"
     ));
     plantingAllocatedKeysByHarvest = needsPlantingAllocationCheck
-      ? buildPlantingEventAllocatedKeysByHarvestRecord()
+      ? (dayBatchContext && dayBatchContext.plantingAllocatedKeysByHarvestRecord instanceof Map
+          ? dayBatchContext.plantingAllocatedKeysByHarvestRecord
+          : buildPlantingEventAllocatedKeysByHarvestRecord())
       : new Map();
     recordRowLookup = recordSnapshot.recordRowLookup;
   } catch (err) {
@@ -38,6 +41,7 @@ function saveHarvestRecordsBatchUnlocked(records) {
       String(err && err.message || err));
   }
   const rowsToAppend = [];
+  const recordsToAppend = [];
   const writeMarkersToAppend = [];
   const results = [];
   const queuedUuids = new Set();
@@ -166,6 +170,12 @@ function saveHarvestRecordsBatchUnlocked(records) {
           suppliedSyncFields
         );
         recordSnapshot.recordsByRowNumber.set(existingRowNumber, canonicalRecord);
+        recordSnapshot.rows[existingRowNumber - 2] = buildRecordRow(
+          headers,
+          canonicalRecord,
+          duplicateKey,
+          new Date(updatedAt)
+        );
         results.push({
           index,
           id: canonicalRecord.id,
@@ -234,6 +244,7 @@ function saveHarvestRecordsBatchUnlocked(records) {
       }, plantingAllocatedKeysByHarvest);
       assertHarvestRecordSupportsPlantingEvents(canonicalRecord, plantingAllocatedKeysByHarvest);
       rowsToAppend.push(buildRecordRow(headers, canonicalRecord, duplicateKey, new Date(now)));
+      recordsToAppend.push(canonicalRecord);
       writeMarkersToAppend.push(
         buildHarvestWriteMarker(normalizedRecord, canonicalRecord, suppliedSyncFields)
       );
@@ -265,11 +276,31 @@ function saveHarvestRecordsBatchUnlocked(records) {
 
   if (rowsToAppend.length) {
     try {
-      appendKnownRecordRows(sheet, headers, rowsToAppend, writeMarkersToAppend);
+      const startRow = appendKnownRecordRows(sheet, headers, rowsToAppend, writeMarkersToAppend);
+      recordsToAppend.forEach((record, index) => {
+        const rowNumber = startRow + index;
+        const row = rowsToAppend[index];
+        recordSnapshot.rows[rowNumber - 2] = row;
+        recordSnapshot.recordsByRowNumber.set(rowNumber, record);
+        recordRowLookup.byUuid.set(record.recordUuid, rowNumber);
+        recordRowLookup.byId.set(String(record.id), rowNumber);
+      });
     } catch (err) {
       throw new Error("収穫記録の新規行の書き込み中に失敗しました: " +
         String(err && err.message || err));
     }
+  }
+
+  if (dayBatchContext) {
+    dayBatchContext.recordSheet = sheet;
+    dayBatchContext.recordHeaders = headers;
+    dayBatchContext.recordRows = recordSnapshot.rows;
+    dayBatchContext.recordRowLookup = recordRowLookup;
+    dayBatchContext.recordsById = new Map();
+    recordSnapshot.recordsByRowNumber.forEach(record => {
+      const id = Number(record && record.id);
+      if (Number.isSafeInteger(id) && id > 0) dayBatchContext.recordsById.set(id, record);
+    });
   }
 
   return {
@@ -410,6 +441,7 @@ function appendKnownRecordRows(sheet, headers, rows, writeMarkers) {
     throw new Error("収穫記録行が完了状態になっていません: 行" +
       (startRow + incompleteIndex));
   }
+  return startRow;
 }
 
 function getLastRecordRow(sheet, headers) {
