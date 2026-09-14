@@ -1680,7 +1680,7 @@ function getForecastSettingsSummaryText(options = {}){
     && calculatedLossRate !== ""
     && Number.isFinite(Number(calculatedLossRate));
   const lossSummary = hasCalculatedLossRate
-    ? `全体 ${formatForecastLossRate(calculatedLossRate)}%`
+    ? `${formatForecastLossRate(calculatedLossRate)}%`
     : (document.getElementById("usePlantingCountLossSettings")?.checked
       ? "個別"
       : `${loss}%`);
@@ -1714,7 +1714,7 @@ function getCalculationSettingsClusterValues(title){
     const isCalculated = hasWorkflowCalculationResult(Number.isFinite(summaryTotal) ? summaryTotal : null);
     const calculatedLossRate = isCalculated ? getHarvestSummaryAppliedLossRate() : null;
     if(calculatedLossRate !== null && calculatedLossRate !== "" && Number.isFinite(Number(calculatedLossRate))){
-      values.push(["全体", `${formatForecastLossRate(calculatedLossRate)}%`]);
+      values.push(["", `${formatForecastLossRate(calculatedLossRate)}%`]);
     }else if(document.getElementById("usePlantingCountLossSettings")?.checked){
       const overallLossRate = getCalculationSettingValue("defaultLossRateInput", "0");
       [12, 16, 20].forEach(count => {
