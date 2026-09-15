@@ -798,34 +798,34 @@ function saveHarvestPartialSplit(){
   }
 
   records = plan.records;
-  saveRecordsToStorage();
-  syncHarvestPlantingPendingFlags();
-  maybePromptRecordExport();
+  saveRecordsToStorage({ deferLifecycle: true });
+  const queuedCount = queueGoogleSheetRecordBatchSend(plan.recordsToSync, {
+    failureMessage: "変更は端末内に保存されています。スプレッドシートは未送信です"
+  });
   closeHarvestPartialSplitWindow();
-  const queuedCount = plan.recordsToSync.reduce((count, record) => (
-    count + Number(queueGoogleSheetRecordSend(record, {
-      successMessage: record === plan.recordsToSync[plan.recordsToSync.length - 1]
-        ? "通常収穫と部分収穫への分割を送信しました"
-        : "",
-      failureMessage: "変更は端末内に保存されています。スプレッドシートは未送信です"
-    }))
-  ), 0);
-  const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([sourceRecord.date]);
-  refreshRecordDataUi({ actualLoss: true });
 
   const otherLossCount = plan.recordChanges.filter(change => !change.isSource && change.actualLossChange).length;
-  const predictionText = predictionUpdate.recalculated && predictionUpdate.changed
-    ? " 収穫予想も変わったため、収穫場所を確認してください。"
-    : "";
   const otherLossText = otherLossCount
     ? ` 別の通常収穫${otherLossCount}件のロス率も更新しました。`
     : "";
   showToast(
     `${sourceCases}ケースを通常${plan.regularCases}・部分${partialCases}ケースに分けました。`
     + otherLossText
-    + predictionText
-    + (queuedCount ? " スプレッドシートへ送信中です。" : " スプレッドシートは未送信です。")
+    + (queuedCount === plan.recordsToSync.length ? "" : " スプレッドシートは未送信です。")
   );
+  runAfterUiSettles(() => {
+    try{
+      syncHarvestPlantingPendingFlags({ deferLifecycle:true });
+    }catch(error){
+      console.error("分割後の苗植え状態を更新できませんでした", error);
+    }
+    const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([sourceRecord.date]);
+    maybePromptRecordExport();
+    scheduleRecordDataUiRefresh({ maps:true, actualLoss:true });
+    if(predictionUpdate.recalculated && predictionUpdate.changed){
+      showToast("収穫予想も変わったため、収穫場所を確認してください");
+    }
+  });
 }
 
 function editPartialHarvestRecord(id){
@@ -952,25 +952,22 @@ function savePartialHarvestRecordEdit(){
   record.duplicateKey = getRecordDuplicateKey(record);
 
   records.sort(compareRecordsByDateDesc);
-  saveRecordsToStorage();
-  closePartialHarvestEditWindow();
-  const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([previousDate, date]);
+  saveRecordsToStorage({ deferLifecycle: true });
   const sendQueued = queueGoogleSheetRecordSend(record, {
-    successMessage: getPartialHarvestSaveToastMessage({
-      edited: true,
-      syncState: "送信済み",
-      predictionUpdate
-    }),
-    failureMessage: getPartialHarvestSaveToastMessage({
-      edited: true,
-      syncState: "未送信",
-      predictionUpdate
-    })
+    failureMessage: "部分収穫記録は更新済みです。スプレッドシートは未送信です"
   });
-  refreshRecordDataUi({ actualLoss: true });
+  closePartialHarvestEditWindow();
   showToast(getPartialHarvestSaveToastMessage({
     edited: true,
-    sendQueued,
-    predictionUpdate
+    sendQueued
   }));
+  runAfterUiSettles(() => {
+    const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([previousDate, date]);
+    scheduleRecordDataUiRefresh({ maps:true, actualLoss:true });
+    if(predictionUpdate.recalculated && predictionUpdate.changed){
+      showToast("収穫予想も変わったため、収穫場所を確認してください");
+    }else if(predictionUpdate.attempted && !predictionUpdate.recalculated){
+      showToast("収穫予想を更新できなかったため、「計算する」を押してください");
+    }
+  });
 }

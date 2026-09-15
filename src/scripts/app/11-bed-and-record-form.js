@@ -294,7 +294,6 @@ function saveSeedlingHousePrimaryPlantingDate(eventId){
   savePlantingEventsToStorage();
   setPlantingEventSyncStatus(updatedEvent, "edited");
   queueGoogleSheetPlantingEventSend(updatedEvent, {
-    successMessage: "1号棟の一次定植日を更新して送信しました",
     failureMessage: "一次定植日は端末内に保存済みです。スプレッドシートは未送信です"
   });
   seedlingHousePrimaryDateEditingEventId = null;
@@ -338,7 +337,6 @@ function saveSeedlingHouseStartCorrection(){
     savePlantingEventsToStorage();
     setPlantingEventSyncStatus(updatedEvent, "edited");
     queueGoogleSheetPlantingEventSend(updatedEvent, {
-      successMessage: "1号棟の開始位置を修正して送信しました",
       failureMessage: "開始位置は端末内に保存済みです。スプレッドシートは未送信です"
     });
   }else{
@@ -1964,16 +1962,18 @@ function updateRecordWeekdayDisplay(){
   display.textContent = `（${weekdays[date.getDay()]}）`;
 }
 
-function refreshRecordDateDependentUi(){
+function refreshRecordDateDependentUi(options = {}){
   updateRecordWeekdayDisplay();
   updateRecordPastDateNotice();
-  renderRecordList();
+  if(recordViewMode === "history" && activeAppTab === "record"){
+    scheduleRecordHistoryListRender({ scroll: false });
+  }
   renderForecastSummary();
   updateRecordActualLoss();
   updateRecordSeedlingCarryoverHint();
   updateRecordActualSeedlingDisplays();
   updateBuildingLastHarvestInfo();
-  drawRecordBeds();
+  if(options.maps !== false) drawRecordBeds();
 }
 
 function handleRecordDateUpdate(saveImmediately = false){
@@ -2000,7 +2000,7 @@ function setTodayToRecordDate(){
 
 function clearRecordForm(options = {}){
   const wasEditingRecord = isRecordEditMode();
-  if(wasEditingRecord && restoreForecastSelectionState()){
+  if(wasEditingRecord && restoreForecastSelectionState({ render: options.render !== false })){
     captureRecordBaseSelection();
   }
   editingHarvestRecordId = null;
@@ -2013,7 +2013,7 @@ function clearRecordForm(options = {}){
   resetRecordPartialHarvestDraft();
   recordViewMode = "entry";
   enterHarvestRecordMode();
-  restoreRecordSelectionToBase();
+  restoreRecordSelectionToBase({ render: options.render !== false });
   setTodayToRecordDate();
   recordCasesEdited = false;
   recordPlantingSummaryEdited = false;
@@ -2028,8 +2028,10 @@ function clearRecordForm(options = {}){
   }
   setRecordSeedlingCarryoverMode("loss", { silent: true });
   setSelectedQualityMemo(null);
-  updateRecordActualLoss();
-  updateRecordActualSeedlingDisplays();
+  if(options.render !== false){
+    updateRecordActualLoss();
+    updateRecordActualSeedlingDisplays();
+  }
   if(options.save !== false) saveHarvestStateToStorage();
 }
 

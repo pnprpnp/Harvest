@@ -2552,7 +2552,7 @@ function appendRecordBedDetail(container, b){
   container.appendChild(bed);
 }
 
-function clearHarvestPrediction(){
+function clearHarvestPrediction(options = {}){
   hideRecordBedActionMenu();
   workflowMonitorCheckpointSignature = "";
   workflowHarvestRecordingActive = false;
@@ -2576,10 +2576,12 @@ function clearHarvestPrediction(){
     updateHarvestCasesAutoEstimatedAppearance();
     syncRecordCasesFromMain(false);
   }
-  refreshHarvestMapViews();
+  if(options.render !== false) refreshHarvestMapViews();
   document.getElementById("recordPalletSummaryInput").value = "";
-  updateRecordActualLoss();
-  updateHarvestProgressUi();
+  if(options.render !== false){
+    updateRecordActualLoss();
+    updateHarvestProgressUi();
+  }
   clearHarvestStateFromStorage();
   scheduleWorkflowGuideUpdate();
 }
@@ -3566,7 +3568,8 @@ function recalculateHarvestPredictionAfterPartialHarvest(affectedDates){
 
 function getPartialHarvestSaveToastMessage(options = {}){
   const actionText = options.edited ? "部分収穫記録を更新しました" : "部分収穫を記録しました";
-  const sendText = String(options.syncState || (options.sendQueued ? "送信中" : "未送信"));
+  const sendText = String(options.syncState || (options.sendQueued === false ? "未送信" : ""));
+  const sendSuffix = sendText ? `（${sendText}）` : "";
   const predictionUpdate = options.predictionUpdate || {};
   if(predictionUpdate.recalculated){
     const resultText = predictionUpdate.changed
@@ -3575,15 +3578,15 @@ function getPartialHarvestSaveToastMessage(options = {}){
     const shortageText = predictionUpdate.hasEnough
       ? ""
       : "。なお、必要個数には届いていません";
-    return `${actionText}。${resultText}${shortageText}（${sendText}）`;
+    return `${actionText}。${resultText}${shortageText}${sendSuffix}`;
   }
   if(predictionUpdate.attempted){
-    return `${actionText}。計算結果を更新できなかったため、「計算する」を押してください（${sendText}）`;
+    return `${actionText}。計算結果を更新できなかったため、「計算する」を押してください${sendSuffix}`;
   }
   if(options.edited){
-    return `${actionText}（${sendText}）`;
+    return `${actionText}${sendSuffix}`;
   }
-  return `${actionText}。残り予想は約${options.remainingEstimate}ケースです（${sendText}）`;
+  return `${actionText}。残り予想は約${options.remainingEstimate}ケースです${sendSuffix}`;
 }
 
 function recalcHarvestSummary(currentHarvestTotal = null){

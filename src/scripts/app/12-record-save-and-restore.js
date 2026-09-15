@@ -2,8 +2,6 @@
 function refreshRecordHistoryViews(){
   if(recordViewMode === "history" && activeAppTab === "record"){
     scheduleRecordHistoryListRender({ scroll: false });
-  }else if(!recordHistoryRenderPending){
-    renderRecordList();
   }
   renderDashboardIfVisible();
 }
@@ -18,13 +16,34 @@ function refreshRecordDataUi(options = {}){
   updateHeaderLatestRecordDate();
 }
 
-function scheduleRecordDataUiRefresh(){
+function scheduleRecordDataUiRefresh(options = {}){
   const skipPendingHistoryRender = recordHistoryRenderPending;
   runAfterUiSettles(() => {
     try{
-      refreshRecordDataUi({ maps: false, history: !skipPendingHistoryRender });
+      refreshRecordDataUi({
+        maps: options.maps === true,
+        history: !skipPendingHistoryRender,
+        actualLoss: options.actualLoss === true
+      });
     }catch(e){
       console.error("Failed to refresh record data UI", e);
+    }
+  });
+}
+
+function scheduleRecordSaveUiTransition(callback){
+  recordSaveUiTransitionPending = true;
+  const saveCard = document.getElementById("recordSaveCard");
+  saveCard?.setAttribute("aria-busy", "true");
+  runAfterUiSettles(() => {
+    try{
+      callback();
+    }catch(error){
+      console.error("Failed to finish record save UI transition", error);
+      showToast("記録は完了しています。画面を再読み込みしてください");
+    }finally{
+      recordSaveUiTransitionPending = false;
+      saveCard?.removeAttribute("aria-busy");
     }
   });
 }
@@ -148,11 +167,16 @@ function saveRecord(){
     editingRecord.plantingCaseInstruction = getRemainingHarvestableCaseInstruction(editingRecord);
     editingRecord.duplicateKey = getRecordDuplicateKey(editingRecord);
 
-    saveRecordsToStorage();
-    syncHarvestPlantingPendingFlags();
+    saveRecordsToStorage({ deferLifecycle: true });
+    if(returnPlantingRecordId !== null){
+      // 配置図の準備を後回しにしても、収穫記録だけが先に送信されないよう
+      // 苗植え工程へ進む論理状態だけは先に切り替える。
+      recordSelectionMode = "planting";
+      activePlantingRecordId = returnPlantingRecordId;
+      workflowPlantingSessionActive = true;
+    }
     const sendQueued = queueGoogleSheetRecordSend(editingRecord, {
       waitForPlantingRecordId: returnPlantingRecordId,
-      successMessage: "収穫記録を更新して送信しました",
       failureMessage: "収穫記録は更新済みです。スプレッドシートは未送信です"
     });
     harvestProgressState = null;
@@ -163,23 +187,34 @@ function saveRecord(){
     harvestProgressPartialDraftSnapshot = null;
     harvestProgressEntryEditState = null;
     harvestProgressEntryDetailGroupKey = "";
-    clearRecordForm({ save:false });
-    if(returnPlantingRecordId !== null){
-      resumePlantingRecord(returnPlantingRecordId, { auto:true });
-    }else{
-      const dateInput = document.getElementById("recordDateInput");
-      if(dateInput) dateInput.value = editedRecordDate;
-      refreshRecordDateDependentUi();
-      showRecordHistoryView({ date:editedRecordDate });
-      saveHarvestStateToStorage();
-    }
-    scheduleRecordDataUiRefresh();
+    scheduleRecordSaveUiTransition(() => {
+      try{
+        syncHarvestPlantingPendingFlags({ deferLifecycle:true });
+      }catch(error){
+        console.error("収穫記録更新後の苗植え状態を更新できませんでした", error);
+      }
+      clearRecordForm({ save:false, render:false });
+      if(returnPlantingRecordId !== null){
+        resumePlantingRecord(returnPlantingRecordId, {
+          auto:true,
+          render:false,
+          showToast:false
+        });
+      }else{
+        const dateInput = document.getElementById("recordDateInput");
+        if(dateInput) dateInput.value = editedRecordDate;
+        refreshRecordDateDependentUi({ maps:false });
+        showRecordHistoryView({ date:editedRecordDate });
+        saveHarvestStateToStorage();
+      }
+      scheduleRecordDataUiRefresh({ maps:returnPlantingRecordId !== null });
+    });
     showToast(returnPlantingRecordId !== null
       ? (sendQueued
           ? "収穫記録を更新しました。続けて苗植え場所を選択してください"
           : "収穫記録を更新しました。スプレッドシートは未送信です。続けて苗植え場所を選択してください")
       : (sendQueued
-          ? "収穫記録を更新しました。スプレッドシートへ送信中です"
+          ? "収穫記録を更新しました"
           : "収穫記録を更新しました。スプレッドシートは未送信です"));
     return;
   }
@@ -238,14 +273,19 @@ function saveRecord(){
     record.duplicateKey = getRecordDuplicateKey(record);
   }
 
-  saveRecordsToStorage();
-  maybePromptRecordExport();
+  saveRecordsToStorage({ deferLifecycle: true });
+  if(record){
+    // 重い苗植え配置の作成は完了表示後に行うが、送信待ちはこの時点から
+    // 苗植え完了まで保持する。
+    recordSelectionMode = "planting";
+    activePlantingRecordId = Number(record.id);
+    workflowPlantingSessionActive = true;
+  }
   const sendQueuedCount = queueGoogleSheetRecordBatchSend(newRecords, {
     waitForPlantingRecordId: record?.id,
     failureMessage: "収穫記録は保存済みです。スプレッドシートは未送信です"
   });
   resetRecordPartialHarvestDraft();
-  if(partialRecords.length) recalculateHarvestPredictionAfterPartialHarvest([date]);
   harvestProgressState = null;
   harvestOverageKeys = [];
   harvestSelectionMode = "none";
@@ -255,22 +295,28 @@ function saveRecord(){
   harvestProgressEntryEditState = null;
   harvestProgressEntryDetailGroupKey = "";
   completeWorkflowGuideHarvestRecord();
-  if(record){
-    enterPlantingRecordMode(record);
-  }else{
-    seedlingHouseAllocationMode = "sequential";
-    clearRecordForm();
-  }
-  saveHarvestStateToStorage();
-  scheduleRecordDataUiRefresh();
+  scheduleRecordSaveUiTransition(() => {
+    if(partialRecords.length) recalculateHarvestPredictionAfterPartialHarvest([date]);
+    if(record){
+      enterPlantingRecordMode(record, { save:false, render:false });
+    }else{
+      seedlingHouseAllocationMode = "sequential";
+      clearRecordForm({ save:false, render:false });
+    }
+    saveHarvestStateToStorage();
+    maybePromptRecordExport();
+    scheduleRecordDataUiRefresh({ maps:true });
+  });
+  const sendFailed = sendQueuedCount !== newRecords.length;
+  const sendFailureSuffix = sendFailed ? "スプレッドシートは未送信です。" : "";
   if(record && partialRecords.length){
-    showToast("通常収穫と部分収穫を記録しました。続けて苗植え場所を選択してください");
+    showToast(`通常収穫と部分収穫を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`);
   }else if(record){
-    showToast("収穫場所を記録しました。続けて苗植え場所を選択してください");
+    showToast(`収穫場所を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`);
   }else{
-    showToast(sendQueuedCount === newRecords.length
-      ? "部分収穫を記録しました。スプレッドシートへ送信中です"
-      : "部分収穫を記録しました。スプレッドシートは未送信です");
+    showToast(sendFailed
+      ? "部分収穫を記録しました。スプレッドシートは未送信です"
+      : "部分収穫を記録しました");
   }
 }
 
@@ -291,7 +337,7 @@ function confirmPlantingRecordBeforeSend(record, selectedKeys, plantingDate, act
   const actualLossText = String(record.actualLoss || "").trim();
 
   return window.confirm([
-    "この内容で苗植え場所を記録して送信しますか？",
+    "この内容で苗植え場所を記録しますか？",
     "",
     `日付: ${plantingDate || "-"}`,
     `収穫ケース数: ${getHarvestRecordCaseDisplayText(record)}ケース`,
@@ -572,7 +618,7 @@ async function savePlantingRecord(){
     event.actualPlantedSeedlingCount,
     event.qualityMemo
   )){
-    showToast("送信をキャンセルしました");
+    showToast("記録をキャンセルしました");
     return;
   }
 
@@ -583,26 +629,30 @@ async function savePlantingRecord(){
     settings.seedlingHouseInitialStartKey = "";
     saveSettingsToStorage();
   }
-  savePlantingEventsToStorage();
-  setPlantingEventSyncStatus(event, "edited");
-  syncHarvestPlantingPendingFlags();
-  maybePromptRecordExport();
-  refreshRecordDataUi({ maps: false });
-  clearHarvestPrediction();
-  resetAllCasePlacements();
-  resetForecastCasesInput();
-  captureRecordBaseSelection();
-  clearRecordForm();
-  if(!existingEvent) showWorkflowCompletionCelebration();
-  saveHarvestStateToStorage();
+  savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
   const sendQueued = queueGoogleSheetPlantingEventSend(event, {
-    successMessage: existingEvent ? "苗植え記録を更新して送信しました" : "苗植え記録を送信しました",
     failureMessage: "苗植え場所はアプリに記録済みです。スプレッドシートは未送信です"
+  });
+  scheduleRecordSaveUiTransition(() => {
+    clearHarvestPrediction({ render:false });
+    resetAllCasePlacements({ render:false });
+    resetForecastCasesInput({ render:false });
+    captureRecordBaseSelection();
+    clearRecordForm({ save:false, render:false });
+    if(!existingEvent) showWorkflowCompletionCelebration();
+    saveHarvestStateToStorage();
+    try{
+      syncHarvestPlantingPendingFlags({ deferLifecycle:true });
+    }catch(error){
+      console.error("苗植え記録後の収穫状態を更新できませんでした", error);
+    }
+    maybePromptRecordExport();
+    scheduleRecordDataUiRefresh({ maps:true, actualLoss:true });
   });
   showToast(sendQueued
     ? (existingEvent
-        ? "苗植え記録を更新しました。スプレッドシートへ送信中です"
-        : "苗植え場所を記録しました。スプレッドシートへ送信中です")
+        ? "苗植え記録を更新しました"
+        : "苗植え場所を記録しました")
     : "苗植え場所を記録しました。スプレッドシートは未送信です");
 }
 
@@ -628,14 +678,22 @@ function resumePlantingRecord(id, options = {}){
   if(recordMemoInput) recordMemoInput.value = record.memo || "";
   editingPlantingEventId = null;
   invalidatePlantingAllowedPalletSetCache();
-  enterPlantingRecordMode(record, { resumeFlow:options.auto === true, save:false });
-  updateRecordActualLoss();
-  updateRecordActualSeedlingDisplays();
+  enterPlantingRecordMode(record, {
+    resumeFlow:options.auto === true,
+    save:false,
+    render:options.render !== false
+  });
+  if(options.render !== false){
+    updateRecordActualLoss();
+    updateRecordActualSeedlingDisplays();
+  }
   saveHarvestStateToStorage();
   if(options.switchToRecordTab){
     switchTab("record");
   }
-  showToast(options.auto ? "未完了の苗植え記録を再開しました" : "苗植え場所の記録を再開しました");
+  if(options.showToast !== false){
+    showToast(options.auto ? "未完了の苗植え記録を再開しました" : "苗植え場所の記録を再開しました");
+  }
 }
 
 function editPlantingEvent(eventId){

@@ -790,7 +790,7 @@ function reloadGoogleSheetBackgroundSendQueue(){
   initializeGoogleSheetBackgroundSendQueue();
 }
 
-function setGoogleSheetRecordBatchSyncStatus(recordsToUpdate, state){
+function setGoogleSheetRecordBatchSyncStatus(recordsToUpdate, state, options = {}){
   const normalizedRecords = Array.isArray(recordsToUpdate) ? recordsToUpdate : [];
   if(!normalizedRecords.length) return;
   const status = loadGoogleSheetSyncStatus();
@@ -801,7 +801,20 @@ function setGoogleSheetRecordBatchSyncStatus(recordsToUpdate, state){
     });
   });
   saveGoogleSheetSyncStatus(status);
-  updateGoogleSheetResendButtonState();
+  if(options.updateUi !== false) updateGoogleSheetResendButtonState();
+}
+
+function scheduleGoogleSheetResendButtonStateUpdate(){
+  if(scheduleGoogleSheetResendButtonStateUpdate.pending) return;
+  scheduleGoogleSheetResendButtonStateUpdate.pending = true;
+  setTimeout(() => {
+    scheduleGoogleSheetResendButtonStateUpdate.pending = false;
+    try{
+      updateGoogleSheetResendButtonState();
+    }catch(error){
+      console.error("送信状態の表示を更新できませんでした", error);
+    }
+  }, 100);
 }
 
 function queueGoogleSheetRecordBatchSend(recordsToQueue, options = {}){
@@ -818,17 +831,51 @@ function queueGoogleSheetRecordBatchSend(recordsToQueue, options = {}){
     if(hasSyncConflictForEntity("record", record)) conflictedRecords.push(record);
     else queueableRecords.push({ key, record });
   });
-  setGoogleSheetRecordBatchSyncStatus(conflictedRecords, "conflict");
-  if(!queueableRecords.length) return 0;
-
-  const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
-  if(!validation.ok){
-    setGoogleSheetRecordBatchSyncStatus(queueableRecords.map(item => item.record), "failed");
+  try{
+    setGoogleSheetRecordBatchSyncStatus(conflictedRecords, "conflict", { updateUi:false });
+  }catch(error){
+    console.error("収穫記録の送信状態を保存できませんでした", error);
+    scheduleGoogleSheetResendButtonStateUpdate();
+    return 0;
+  }
+  if(!queueableRecords.length){
+    scheduleGoogleSheetResendButtonStateUpdate();
     return 0;
   }
 
-  setGoogleSheetRecordBatchSyncStatus(queueableRecords.map(item => item.record), "edited");
+  const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
+  if(!validation.ok){
+    try{
+      setGoogleSheetRecordBatchSyncStatus(
+        queueableRecords.map(item => item.record),
+        "failed",
+        { updateUi:false }
+      );
+    }catch(error){
+      console.error("収穫記録の未送信状態を保存できませんでした", error);
+    }
+    scheduleGoogleSheetResendButtonStateUpdate();
+    return 0;
+  }
+
+  try{
+    setGoogleSheetRecordBatchSyncStatus(
+      queueableRecords.map(item => item.record),
+      "edited",
+      { updateUi:false }
+    );
+  }catch(error){
+    console.error("収穫記録の送信状態を保存できませんでした", error);
+    scheduleGoogleSheetResendButtonStateUpdate();
+    return 0;
+  }
   const waitForPlantingRecordId = getSafePositiveRecordId(options.waitForPlantingRecordId);
+  const previousJobs = new Map(queueableRecords.map(({ key }) => [
+    key,
+    googleSheetBackgroundRecordQueue.has(key)
+      ? { ...googleSheetBackgroundRecordQueue.get(key) }
+      : null
+  ]));
   queueableRecords.forEach(({ key, record }, index) => {
     googleSheetBackgroundRecordQueue.set(key, {
       recordUuid: normalizeRecordUuid(record?.recordUuid),
@@ -842,8 +889,32 @@ function queueGoogleSheetRecordBatchSend(recordsToQueue, options = {}){
       failureMessage: String(options.failureMessage || "記録は端末内に保存されています。スプレッドシートは未送信です")
     });
   });
-  saveGoogleSheetBackgroundSendOutbox();
-  scheduleGoogleSheetBackgroundSend();
+  let outboxSaved = false;
+  try{
+    outboxSaved = saveGoogleSheetBackgroundSendOutbox();
+  }catch(error){
+    console.error("収穫記録の送信待ちを保存できませんでした", error);
+  }
+  if(!outboxSaved){
+    previousJobs.forEach((job, key) => {
+      if(job) googleSheetBackgroundRecordQueue.set(key, job);
+      else googleSheetBackgroundRecordQueue.delete(key);
+    });
+    try{
+      setGoogleSheetRecordBatchSyncStatus(
+        queueableRecords.map(item => item.record),
+        "failed",
+        { updateUi:false }
+      );
+    }catch(error){
+      console.error("収穫記録の未送信状態を保存できませんでした", error);
+    }
+    scheduleGoogleSheetResendButtonStateUpdate();
+    return 0;
+  }
+  scheduleGoogleSheetResendButtonStateUpdate();
+  // 完了表示を先に描画できるよう、通信開始は入力操作のフレームから離す。
+  scheduleGoogleSheetBackgroundSend(100);
   return queueableRecords.length;
 }
 
@@ -855,12 +926,22 @@ function queueGoogleSheetPlantingEventSend(event, options = {}){
   const eventId = getSafePositiveRecordId(event?.eventId);
   if(eventId === null) return false;
   if(hasSyncConflictForEntity("planting", event)){
-    setPlantingEventSyncStatus(event, "conflict");
+    try{
+      setPlantingEventSyncStatus(event, "conflict", { updateUi:false });
+    }catch(error){
+      console.error("苗植え記録の競合状態を保存できませんでした", error);
+    }
+    scheduleGoogleSheetResendButtonStateUpdate();
     return false;
   }
   const validation = validateGoogleSheetConfig(loadGoogleSheetConfig());
   if(!validation.ok){
-    setPlantingEventSyncStatus(event, "failed");
+    try{
+      setPlantingEventSyncStatus(event, "failed", { updateUi:false });
+    }catch(error){
+      console.error("苗植え記録の未送信状態を保存できませんでした", error);
+    }
+    scheduleGoogleSheetResendButtonStateUpdate();
     return false;
   }
   const job = {
@@ -871,11 +952,44 @@ function queueGoogleSheetPlantingEventSend(event, options = {}){
     failureMessage: String(options.failureMessage || "苗植え記録は端末内に保存されています。スプレッドシートは未送信です"),
     showFailureDetails: options.showFailureDetails !== false
   };
-  setPlantingEventSyncStatus(event, "edited");
+  const previousRecordJobs = new Map([...googleSheetBackgroundRecordQueue.entries()]
+    .map(([key, value]) => [key, { ...value }]));
+  const previousPlantingJob = googleSheetBackgroundPlantingQueue.has(String(eventId))
+    ? { ...googleSheetBackgroundPlantingQueue.get(String(eventId)) }
+    : null;
+  try{
+    setPlantingEventSyncStatus(event, "edited", { updateUi:false });
+  }catch(error){
+    console.error("苗植え記録の送信状態を保存できませんでした", error);
+    scheduleGoogleSheetResendButtonStateUpdate();
+    return false;
+  }
   releaseGoogleSheetBackgroundRecordsForPlantingEvent(event);
   googleSheetBackgroundPlantingQueue.set(String(eventId), job);
-  saveGoogleSheetBackgroundSendOutbox();
-  scheduleGoogleSheetBackgroundSend();
+  let outboxSaved = false;
+  try{
+    outboxSaved = saveGoogleSheetBackgroundSendOutbox();
+  }catch(error){
+    console.error("苗植え記録の送信待ちを保存できませんでした", error);
+  }
+  if(!outboxSaved){
+    googleSheetBackgroundRecordQueue.clear();
+    previousRecordJobs.forEach((value, key) => googleSheetBackgroundRecordQueue.set(key, value));
+    if(previousPlantingJob){
+      googleSheetBackgroundPlantingQueue.set(String(eventId), previousPlantingJob);
+    }else{
+      googleSheetBackgroundPlantingQueue.delete(String(eventId));
+    }
+    try{
+      setPlantingEventSyncStatus(event, "failed", { updateUi:false });
+    }catch(error){
+      console.error("苗植え記録の未送信状態を保存できませんでした", error);
+    }
+    scheduleGoogleSheetResendButtonStateUpdate();
+    return false;
+  }
+  scheduleGoogleSheetResendButtonStateUpdate();
+  scheduleGoogleSheetBackgroundSend(100);
   return true;
 }
 
@@ -1027,7 +1141,6 @@ async function sendGoogleSheetBackgroundRecordBatch(){
       });
     }
 
-    let successMessage = "";
     let failureMessage = "";
     let retryScheduled = false;
     batch.forEach(({ key, job }) => {
@@ -1037,7 +1150,6 @@ async function sendGoogleSheetBackgroundRecordBatch(){
       const currentRecord = findGoogleSheetBackgroundRecord(job);
       if(currentRecord && getGoogleSheetRecordSyncState(currentRecord) === "confirmed"){
         googleSheetBackgroundRecordQueue.delete(key);
-        if(job.successMessage) successMessage = job.successMessage;
       }else if(retryableFailure && scheduleGoogleSheetBackgroundJobRetry(job)){
         retryScheduled = true;
       }else{
@@ -1051,8 +1163,6 @@ async function sendGoogleSheetBackgroundRecordBatch(){
       console.warn("Google Sheetへの送信を自動で再試行します", result?.errorMessage || "通信エラー");
     }else if(failureMessage){
       showToast(failureMessage);
-    }else if(successMessage){
-      showToast(successMessage);
     }
     return true;
   }finally{
@@ -1102,7 +1212,6 @@ async function sendGoogleSheetBackgroundDayBatch(){
     }
 
     const retryableFailure = getGoogleSheetBackgroundResultRetryableFailure(result, sendError);
-    let successMessage = "";
     let failureMessage = "";
     let retryScheduled = false;
     batch.records.forEach(({ key, job }) => {
@@ -1110,7 +1219,6 @@ async function sendGoogleSheetBackgroundDayBatch(){
       const currentRecord = findGoogleSheetBackgroundRecord(job);
       if(currentRecord && getGoogleSheetRecordSyncState(currentRecord) === "confirmed"){
         googleSheetBackgroundRecordQueue.delete(key);
-        if(job.successMessage) successMessage = job.successMessage;
       }else if(retryableFailure && scheduleGoogleSheetBackgroundJobRetry(job)){
         retryScheduled = true;
       }else{
@@ -1124,7 +1232,6 @@ async function sendGoogleSheetBackgroundDayBatch(){
       const plantingStatus = loadPlantingEventSyncStatus();
       if(currentEvent && !isPlantingEventUnsent(currentEvent, plantingStatus)){
         googleSheetBackgroundPlantingQueue.delete(key);
-        if(job.successMessage) successMessage = job.successMessage;
       }else if(retryableFailure && scheduleGoogleSheetBackgroundJobRetry(job)){
         retryScheduled = true;
       }else{
@@ -1146,8 +1253,6 @@ async function sendGoogleSheetBackgroundDayBatch(){
           "苗植え記録の送信失敗"
         );
       }
-    }else if(successMessage){
-      showToast(successMessage);
     }
     return true;
   }finally{

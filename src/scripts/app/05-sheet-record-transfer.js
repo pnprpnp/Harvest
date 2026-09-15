@@ -365,7 +365,7 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
       recordIdChanged = true;
     }
     if(eventChanged){
-      savePlantingEventsToStorage();
+      savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
       saveDeletedPlantingEventsToStorage();
     }
     if(recordIdChanged){
@@ -377,7 +377,7 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
     clearGoogleSheetRecordSyncStatus(status, currentRecord);
     records[index] = confirmedRecord;
     records.sort(compareRecordsByDateDesc);
-    saveRecordsToStorage();
+    saveRecordsToStorage({ deferLifecycle: true });
     saveGoogleSheetSyncStatus(status);
     recordForStatus = confirmedRecord;
   }
@@ -768,8 +768,8 @@ function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEve
         ?? null
     };
     plantingEvents[index] = eventForStatus;
-    savePlantingEventsToStorage();
-    syncHarvestPlantingPendingFlags();
+    savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
+    syncHarvestPlantingPendingFlags({ deferLifecycle: true });
   }
   setPlantingEventSyncStatus(eventForStatus, state);
   return true;
@@ -1692,10 +1692,18 @@ function updateHeaderLatestRecordDate(){
 
 function hasCompletedTodayHarvestRecord(referenceDate = new Date()){
   const today = formatDateOnlyString(referenceDate);
-  return records.some(record => (
-    record?.type === "fullHarvest"
-    && String(record.date || "") === today
-    && getPlantingEventsForHarvest(record.id).length > 0
+  const todayRecordIds = new Set(records
+    .filter(record => (
+      record?.type === "fullHarvest"
+      && String(record.date || "") === today
+    ))
+    .map(record => Number(record.id))
+    .filter(Number.isFinite));
+  if(!todayRecordIds.size) return false;
+  return plantingEvents.some(event => (
+    (event?.sourceAllocations || []).some(allocation => (
+      todayRecordIds.has(Number(allocation?.harvestRecordId))
+    ))
   ));
 }
 

@@ -129,6 +129,7 @@
       const previousStorage = snapshotStorage(app.localStorage);
       const originalFetch = app.fetch;
       const originalSchedule = app.scheduleGoogleSheetBackgroundSend;
+      const originalShowToast = app.showToast;
       try{
         app.eval(`
           if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
@@ -153,6 +154,7 @@
       }finally{
         app.fetch = originalFetch;
         app.scheduleGoogleSheetBackgroundSend = originalSchedule;
+        app.showToast = originalShowToast;
         app.eval(`
           if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
           googleSheetBackgroundSendTimer = null;
@@ -474,6 +476,7 @@
         "normalizeRecordSnapshot",
         "normalizeImportedRecord",
         "serializeRecordForStorage",
+        "serializeNormalizedPlantingEventForStorage",
         "buildGoogleSheetRecordPayload",
         "buildGoogleSheetCombinedSyncPayload",
         "buildGoogleSheetUpdateCheckPayload",
@@ -1311,6 +1314,8 @@
         const secondRecord = createBackgroundPartialRecord(2, 12);
         await withBackgroundSendTestState(app, [firstRecord, secondRecord], async () => {
           const payloads = [];
+          const toastMessages = [];
+          app.showToast = message => toastMessages.push(String(message || ""));
           app.fetch = async (_url, options) => {
             const payload = JSON.parse(options.body);
             payloads.push(payload);
@@ -1332,7 +1337,9 @@
           const currentFirst = app.getRecordByUuid(firstRecord.recordUuid);
           const currentSecond = app.getRecordByUuid(secondRecord.recordUuid);
           assert(app.queueGoogleSheetRecordSend(currentFirst), "1件目を背景送信へ追加できません");
-          assert(app.queueGoogleSheetRecordSend(currentSecond), "2件目を背景送信へ追加できません");
+          assert(app.queueGoogleSheetRecordSend(currentSecond, {
+            successMessage:"古い送信待ちに残っていても表示しない成功通知"
+          }), "2件目を背景送信へ追加できません");
           await app.runGoogleSheetBackgroundSendQueue();
 
           assertEqual(payloads.length, 1, "収穫記録ごとに通信しています");
@@ -1345,7 +1352,129 @@
           assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(firstRecord.recordUuid)), "confirmed", "1件目が送信済みになりません");
           assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(secondRecord.recordUuid)), "confirmed", "2件目が送信済みになりません");
           assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "完了した背景送信がキューに残っています");
+          assertDeepEqual(toastMessages, [], "背景送信の完了を遅れて通知しています");
         });
+      });
+
+      await runTest("検査済みの苗植え履歴は再検査せず保存し、重い状態再計算を後回しにする", async () => {
+        const today = app.formatDateOnlyString(new Date());
+        const fullRecord = createBackgroundFullRecord(29, today);
+        const plantingEvent = createBackgroundPlantingEvent(29, fullRecord, today);
+        assertDeepEqual(
+          app.serializeNormalizedPlantingEventForStorage(plantingEvent),
+          app.serializePlantingEventForStorage(plantingEvent),
+          "高速保存で苗植え履歴の保存内容が変わっています"
+        );
+
+        await withBackgroundSendTestState(app, [fullRecord], async () => {
+          const originalRebuild = app.rebuildCurrentPalletLifecycleState;
+          let rebuildCount = 0;
+          try{
+            app.rebuildCurrentPalletLifecycleState = () => { rebuildCount++; };
+            app.localStorage.setItem(app.getActivePalletLifecycleStateStorageKey(), "stale-cache");
+            app.savePlantingEventsToStorage({
+              assumeNormalized:true,
+              deferLifecycle:true
+            });
+            assertEqual(rebuildCount, 0, "保存ボタン内で全パレット状態を再計算しています");
+            assertEqual(
+              app.localStorage.getItem(app.getActivePalletLifecycleStateStorageKey()),
+              null,
+              "古いパレット状態キャッシュが端末に残っています"
+            );
+            const cacheRemovalSurvived = app.eval(`(() => {
+              const originalRemoveItem = harvestnaviLocalStorage.removeItem;
+              try{
+                harvestnaviLocalStorage.removeItem = () => { throw new Error("cache remove failed"); };
+                completeRecordDataMutation({ plantingEvents:true, deferLifecycle:true });
+                return true;
+              }finally{
+                harvestnaviLocalStorage.removeItem = originalRemoveItem;
+              }
+            })()`);
+            assertEqual(cacheRemovalSurvived, true, "派生キャッシュの削除失敗で主記録まで失敗扱いにしています");
+          }finally{
+            app.rebuildCurrentPalletLifecycleState = originalRebuild;
+          }
+        }, [plantingEvent]);
+      });
+
+      await runTest("送信待ちを端末へ保存できない時は完了扱いにせず再送対象へ残す", async () => {
+        const today = app.formatDateOnlyString(new Date());
+        const fullRecord = createBackgroundFullRecord(30, today);
+        const plantingEvent = createBackgroundPlantingEvent(30, fullRecord, today);
+        await withBackgroundSendTestState(app, [fullRecord], async () => {
+          const originalSaveOutbox = app.saveGoogleSheetBackgroundSendOutbox;
+          try{
+            app.saveGoogleSheetBackgroundSendOutbox = () => false;
+            assertEqual(
+              app.queueGoogleSheetRecordSend(app.getRecordByUuid(fullRecord.recordUuid)),
+              false,
+              "収穫の送信待ち保存失敗を成功扱いにしています"
+            );
+            assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "保存できなかった収穫ジョブがメモリーだけに残っています");
+            assertEqual(
+              app.getGoogleSheetRecordSyncState(app.getRecordByUuid(fullRecord.recordUuid)),
+              "failed",
+              "収穫記録を再送対象に残していません"
+            );
+
+            app.saveGoogleSheetBackgroundSendOutbox = originalSaveOutbox;
+            assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(fullRecord.recordUuid), {
+              waitForPlantingRecordId:fullRecord.id
+            }), "復元確認用の収穫ジョブを追加できません");
+            app.saveGoogleSheetBackgroundSendOutbox = () => false;
+            assertEqual(
+              app.queueGoogleSheetPlantingEventSend(app.getPlantingEventById(plantingEvent.eventId)),
+              false,
+              "苗植えの送信待ち保存失敗を成功扱いにしています"
+            );
+            assertEqual(app.eval("googleSheetBackgroundPlantingQueue.size"), 0, "保存できなかった苗植えジョブがメモリーだけに残っています");
+            assertEqual(
+              app.eval("[...googleSheetBackgroundRecordQueue.values()][0]?.waitForPlantingRecordId"),
+              fullRecord.id,
+              "送信待ち保存失敗で既存の収穫ジョブを書き換えています"
+            );
+            assertEqual(
+              app.loadPlantingEventSyncStatus()[String(plantingEvent.eventId)]?.state,
+              "failed",
+              "苗植え記録を再送対象に残していません"
+            );
+          }finally{
+            app.saveGoogleSheetBackgroundSendOutbox = originalSaveOutbox;
+          }
+        }, [plantingEvent]);
+      });
+
+      await runTest("同期状態の保存失敗を端末の記録保存失敗として扱わない", async () => {
+        const today = app.formatDateOnlyString(new Date());
+        const fullRecord = createBackgroundFullRecord(301, today);
+        const plantingEvent = createBackgroundPlantingEvent(301, fullRecord, today);
+        await withBackgroundSendTestState(app, [fullRecord], async () => {
+          const originalRecordStatusSave = app.saveGoogleSheetSyncStatus;
+          const originalPlantingStatusSave = app.savePlantingEventSyncStatus;
+          try{
+            app.saveGoogleSheetSyncStatus = () => { throw new Error("record status failed"); };
+            assertEqual(
+              app.queueGoogleSheetRecordSend(app.getRecordByUuid(fullRecord.recordUuid)),
+              false,
+              "収穫の同期状態を保存できないのに送信待ちを成功扱いにしています"
+            );
+            assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "収穫の同期状態失敗後にメモリーだけの送信待ちが残っています");
+
+            app.saveGoogleSheetSyncStatus = originalRecordStatusSave;
+            app.savePlantingEventSyncStatus = () => { throw new Error("planting status failed"); };
+            assertEqual(
+              app.queueGoogleSheetPlantingEventSend(app.getPlantingEventById(plantingEvent.eventId)),
+              false,
+              "苗植えの同期状態を保存できないのに送信待ちを成功扱いにしています"
+            );
+            assertEqual(app.eval("googleSheetBackgroundPlantingQueue.size"), 0, "苗植えの同期状態失敗後にメモリーだけの送信待ちが残っています");
+          }finally{
+            app.saveGoogleSheetSyncStatus = originalRecordStatusSave;
+            app.savePlantingEventSyncStatus = originalPlantingStatusSave;
+          }
+        }, [plantingEvent]);
       });
 
       await runTest("通常収穫は苗植え完了まで待って部分収穫も1回で送信する", async () => {
@@ -1783,6 +1912,8 @@
         const failedRecord = createBackgroundPartialRecord(5, 15);
         await withBackgroundSendTestState(app, [successRecord, failedRecord], async () => {
           let fetchCount = 0;
+          const toastMessages = [];
+          app.showToast = message => toastMessages.push(String(message || ""));
           app.fetch = async (_url, options) => {
             fetchCount++;
             const payload = JSON.parse(options.body);
@@ -1801,7 +1932,9 @@
           };
 
           assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(successRecord.recordUuid)), "成功側を背景送信へ追加できません");
-          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(failedRecord.recordUuid)), "失敗側を背景送信へ追加できません");
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(failedRecord.recordUuid), {
+            failureMessage:"端末には保存済み・未送信です"
+          }), "失敗側を背景送信へ追加できません");
           await app.runGoogleSheetBackgroundSendQueue();
 
           assertEqual(fetchCount, 1, "一部失敗を即時に無限再試行しています");
@@ -1813,6 +1946,7 @@
             "失敗した記録だけを未送信一覧へ残していません"
           );
           assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "失敗ジョブが背景キューで即時再試行されます");
+          assertDeepEqual(toastMessages, ["端末には保存済み・未送信です"], "送信失敗だけを通知していません");
         });
       });
 
@@ -2148,7 +2282,136 @@
         );
       });
 
-      await runTest("苗0枚・場所未選択の苗植え記録を保存操作で終了できる", async () => {
+      await runTest("収穫記録は端末保存と送信待ち登録後すぐ完了を知らせる", () => {
+        const result = comparable(app.eval(`(() => {
+          const previous = {
+            records,
+            keys:[...harvestFillKeys],
+            mode:recordSelectionMode,
+            activePlantingRecordId,
+            workflowPlantingSessionActive,
+            date:document.getElementById("recordDateInput").value,
+            cases:document.getElementById("recordCasesInput").value,
+            summary:document.getElementById("recordPalletSummaryInput").value,
+            ensureAccess:ensureProtectedOperationAccess,
+            ensureMutation:ensureGoogleSheetLocalMutationAllowed,
+            warnings:confirmHarvestRecordWarnings,
+            loss:getRecordActualLossValue,
+            age:getCurrentPlantingAgeSnapshot,
+            instruction:getRemainingHarvestableCaseInstruction,
+            saveStorage:saveRecordsToStorage,
+            queueBatch:queueGoogleSheetRecordBatchSend,
+            completeGuide:completeWorkflowGuideHarvestRecord,
+            transition:scheduleRecordSaveUiTransition,
+            planting:enterPlantingRecordMode,
+            saveState:saveHarvestStateToStorage,
+            exportPrompt:maybePromptRecordExport,
+            scheduleRefresh:scheduleRecordDataUiRefresh,
+            toast:showToast
+          };
+          const order = [];
+          let transition = null;
+          let plantingCalls = 0;
+          let queueWaitId = null;
+          let storageOptions = null;
+          let toastMessage = "";
+          try{
+            records = [];
+            harvestFillKeys = [getPalletKey(2, "A", 1)];
+            recordSelectionMode = "harvest";
+            activePlantingRecordId = null;
+            workflowPlantingSessionActive = false;
+            resetRecordPartialHarvestDraft();
+            document.getElementById("recordDateInput").value = "2099-12-29";
+            document.getElementById("recordCasesInput").value = "1";
+            document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
+            ensureProtectedOperationAccess = () => true;
+            ensureGoogleSheetLocalMutationAllowed = () => true;
+            confirmHarvestRecordWarnings = () => true;
+            getRecordActualLossValue = () => "5";
+            getCurrentPlantingAgeSnapshot = () => ({});
+            getRemainingHarvestableCaseInstruction = () => "";
+            saveRecordsToStorage = options => {
+              storageOptions = { ...options };
+              order.push("local-save");
+            };
+            queueGoogleSheetRecordBatchSend = (batch, options = {}) => {
+              queueWaitId = Number(options.waitForPlantingRecordId);
+              order.push("outbox");
+              return batch.length;
+            };
+            completeWorkflowGuideHarvestRecord = () => {};
+            scheduleRecordSaveUiTransition = callback => {
+              transition = callback;
+              order.push("transition-scheduled");
+            };
+            enterPlantingRecordMode = () => { plantingCalls++; };
+            saveHarvestStateToStorage = () => {};
+            maybePromptRecordExport = () => {};
+            scheduleRecordDataUiRefresh = () => {};
+            showToast = message => {
+              toastMessage = String(message || "");
+              order.push("toast");
+            };
+
+            saveRecord();
+            const immediate = {
+              order:[...order],
+              recordCount:records.length,
+              plantingCalls,
+              logicalMode:recordSelectionMode,
+              queueWaitId,
+              savedRecordId:Number(records[0]?.id),
+              storageOptions,
+              toastMessage
+            };
+            if(typeof transition === "function") transition();
+            return {
+              immediate,
+              plantingCallsAfterTransition:plantingCalls
+            };
+          }finally{
+            records = previous.records;
+            harvestFillKeys = previous.keys;
+            recordSelectionMode = previous.mode;
+            activePlantingRecordId = previous.activePlantingRecordId;
+            workflowPlantingSessionActive = previous.workflowPlantingSessionActive;
+            document.getElementById("recordDateInput").value = previous.date;
+            document.getElementById("recordCasesInput").value = previous.cases;
+            document.getElementById("recordPalletSummaryInput").value = previous.summary;
+            ensureProtectedOperationAccess = previous.ensureAccess;
+            ensureGoogleSheetLocalMutationAllowed = previous.ensureMutation;
+            confirmHarvestRecordWarnings = previous.warnings;
+            getRecordActualLossValue = previous.loss;
+            getCurrentPlantingAgeSnapshot = previous.age;
+            getRemainingHarvestableCaseInstruction = previous.instruction;
+            saveRecordsToStorage = previous.saveStorage;
+            queueGoogleSheetRecordBatchSend = previous.queueBatch;
+            completeWorkflowGuideHarvestRecord = previous.completeGuide;
+            scheduleRecordSaveUiTransition = previous.transition;
+            enterPlantingRecordMode = previous.planting;
+            saveHarvestStateToStorage = previous.saveState;
+            maybePromptRecordExport = previous.exportPrompt;
+            scheduleRecordDataUiRefresh = previous.scheduleRefresh;
+            showToast = previous.toast;
+          }
+        })()`));
+        assertDeepEqual(result.immediate.order, [
+          "local-save",
+          "outbox",
+          "transition-scheduled",
+          "toast"
+        ], "収穫記録の完了表示が端末保存・送信待ち登録より遅れています");
+        assertEqual(result.immediate.recordCount, 1, "完了表示時点で収穫記録が端末側へ追加されていません");
+        assertEqual(result.immediate.plantingCalls, 0, "完了表示前に重い苗植え画面を作っています");
+        assertEqual(result.immediate.logicalMode, "planting", "画面準備中に収穫記録だけを先行送信できる状態です");
+        assertEqual(result.immediate.queueWaitId, result.immediate.savedRecordId, "苗植え完了まで収穫送信を保持していません");
+        assertDeepEqual(result.immediate.storageOptions, { deferLifecycle:true }, "端末保存中に全パレット状態を再計算しています");
+        assert(result.immediate.toastMessage.includes("収穫場所を記録しました"), "収穫記録の完了をすぐ表示していません");
+        assertEqual(result.plantingCallsAfterTransition, 1, "完了表示後に苗植え画面へ進んでいません");
+      });
+
+      await runTest("苗0枚の苗植え記録は端末保存と送信待ち登録後すぐ完了を知らせる", async () => {
         const today = app.formatDateOnlyString(new Date());
         const harvestRecord = {
           palletNumberingVersion:2,
@@ -2186,6 +2449,7 @@
           confirmPlantingRecordBeforeSend:app.confirmPlantingRecordBeforeSend,
           maybePromptRecordExport:app.maybePromptRecordExport,
           refreshRecordDataUi:app.refreshRecordDataUi,
+          scheduleRecordDataUiRefresh:app.scheduleRecordDataUiRefresh,
           clearHarvestPrediction:app.clearHarvestPrediction,
           resetAllCasePlacements:app.resetAllCasePlacements,
           resetForecastCasesInput:app.resetForecastCasesInput,
@@ -2194,12 +2458,18 @@
           showWorkflowCompletionCelebration:app.showWorkflowCompletionCelebration,
           saveHarvestStateToStorage:app.saveHarvestStateToStorage,
           queueGoogleSheetPlantingEventSend:app.queueGoogleSheetPlantingEventSend,
+          scheduleRecordSaveUiTransition:app.scheduleRecordSaveUiTransition,
           showToast:app.showToast
         };
         let confirmCount = 0;
         let completionCount = 0;
         let clearCount = 0;
+        let scheduledRefreshCount = 0;
+        let plantingStorageOptions = null;
+        let clearOptions = null;
         let toastMessage = "";
+        let deferredTransition = null;
+        const operationOrder = [];
         try{
           replaceAppHistory(app, [harvestRecord], []);
           app.eval(`
@@ -2221,7 +2491,11 @@
 
           app.ensureProtectedOperationAccess = () => true;
           app.ensureGoogleSheetLocalMutationAllowed = () => true;
-          app.savePlantingEventsToStorage = () => app.invalidatePlantingEventStateCache();
+          app.savePlantingEventsToStorage = options => {
+            operationOrder.push("local-save");
+            plantingStorageOptions = { ...options };
+            app.invalidatePlantingEventStateCache();
+          };
           app.saveRecordsToStorage = () => {};
           app.setPlantingEventSyncStatus = () => {};
           app.confirmPlantingRecordBeforeSend = () => {
@@ -2230,12 +2504,14 @@
           };
           app.maybePromptRecordExport = () => {};
           app.refreshRecordDataUi = () => {};
+          app.scheduleRecordDataUiRefresh = () => { scheduledRefreshCount++; };
           app.clearHarvestPrediction = () => {};
           app.resetAllCasePlacements = () => {};
           app.resetForecastCasesInput = () => {};
           app.captureRecordBaseSelection = () => {};
-          app.clearRecordForm = () => {
+          app.clearRecordForm = options => {
             clearCount++;
+            clearOptions = { ...options };
             app.eval(`
               recordSelectionMode = "harvest";
               activePlantingRecordId = null;
@@ -2245,12 +2521,22 @@
           };
           app.showWorkflowCompletionCelebration = () => { completionCount++; };
           app.saveHarvestStateToStorage = () => {};
-          app.queueGoogleSheetPlantingEventSend = () => false;
-          app.showToast = message => { toastMessage = String(message || ""); };
+          app.queueGoogleSheetPlantingEventSend = () => {
+            operationOrder.push("outbox");
+            return true;
+          };
+          app.scheduleRecordSaveUiTransition = callback => {
+            deferredTransition = callback;
+            operationOrder.push("transition-scheduled");
+          };
+          app.showToast = message => {
+            operationOrder.push("toast");
+            toastMessage = String(message || "");
+          };
 
           await app.savePlantingRecord();
 
-          const saved = comparable(app.eval(`({
+          const immediate = comparable(app.eval(`({
             events:plantingEvents.map(event => ({
               harvestRecordId:event.sourceAllocations[0]?.harvestRecordId,
               plantingPalletKeys:event.plantingPalletKeys,
@@ -2261,13 +2547,30 @@
             mode:recordSelectionMode,
             recordedStatusVisible:!document.getElementById("recordTodayRecordedStatus").hidden
           })`));
-          assertDeepEqual(saved, {
+          assertDeepEqual(immediate, {
             events:[{
               harvestRecordId:harvestRecord.id,
               plantingPalletKeys:[],
               actualSeedlingTrayCount:0,
               noPlantingEvent:true
             }],
+            plantingPending:true,
+            mode:"planting",
+            recordedStatusVisible:false
+          }, "端末保存後の完了表示が重い画面更新を待っています");
+          assertDeepEqual(
+            operationOrder,
+            ["local-save", "outbox", "transition-scheduled", "toast"],
+            "端末保存と送信待ち登録より前に完了を表示しています"
+          );
+          assertEqual(typeof deferredTransition, "function", "保存後の画面更新を予約していません");
+          deferredTransition();
+          const completed = comparable(app.eval(`({
+            plantingPending:records[0]?.plantingPending,
+            mode:recordSelectionMode,
+            recordedStatusVisible:!document.getElementById("recordTodayRecordedStatus").hidden
+          })`));
+          assertDeepEqual(completed, {
             plantingPending:false,
             mode:"harvest",
             recordedStatusVisible:true
@@ -2275,7 +2578,14 @@
           assertEqual(confirmCount, 1, "苗0枚の完了確認を通っていません");
           assertEqual(clearCount, 1, "苗0枚の保存後に苗植え工程を終了していません");
           assertEqual(completionCount, 1, "苗0枚の新規保存後に完了処理を実行していません");
+          assertDeepEqual(plantingStorageOptions, {
+            assumeNormalized:true,
+            deferLifecycle:true
+          }, "保存済み苗植え履歴の再検査または全パレット再計算を省略していません");
+          assertDeepEqual(clearOptions, { save:false, render:false }, "保存完了前に配置図を再描画しています");
+          assertEqual(scheduledRefreshCount, 1, "操作完了後の画面更新を予約していません");
           assert(toastMessage.includes("苗植え場所を記録しました"), "苗0枚の保存完了結果が表示されません");
+          assert(!toastMessage.includes("送信"), "クラウド送信の完了を操作完了メッセージにしています");
         }finally{
           Object.entries(originalFunctions).forEach(([name, fn]) => { app[name] = fn; });
           replaceAppHistory(app, previousRecords, previousEvents);
@@ -10630,7 +10940,7 @@
               hidden:true,
               display:"none",
               clear:"収穫記録へ戻る",
-              primary:"苗植え場所を記録して送信する"
+              primary:"苗植え場所を記録する"
             }
           },
           planting:{
@@ -10646,7 +10956,7 @@
               hidden:false,
               display:"grid",
               clear:"収穫記録へ戻る",
-              primary:"苗植え場所を記録して送信する"
+              primary:"苗植え場所を記録する"
             }
           }
         }, "記録タブ上部の工程表示が現在の記録モードに追従していません");
@@ -11097,6 +11407,7 @@
             refreshDate:refreshRecordDateDependentUi,
             saveState:saveHarvestStateToStorage,
             scheduleRefresh:scheduleRecordDataUiRefresh,
+            scheduleTransition:scheduleRecordSaveUiTransition,
             toast:showToast,
             planting:enterPlantingRecordMode,
             loss:getRecordActualLossValue
@@ -11144,6 +11455,7 @@
             refreshRecordDateDependentUi = () => {};
             saveHarvestStateToStorage = () => {};
             scheduleRecordDataUiRefresh = () => {};
+            scheduleRecordSaveUiTransition = callback => callback();
             showToast = () => {};
             enterPlantingRecordMode = () => { plantingCalls++; };
             saveRecord();
@@ -11178,6 +11490,7 @@
             refreshRecordDateDependentUi = previous.refreshDate;
             saveHarvestStateToStorage = previous.saveState;
             scheduleRecordDataUiRefresh = previous.scheduleRefresh;
+            scheduleRecordSaveUiTransition = previous.scheduleTransition;
             showToast = previous.toast;
             enterPlantingRecordMode = previous.planting;
             getRecordActualLossValue = previous.loss;
@@ -11223,6 +11536,7 @@
             refreshDate:refreshRecordDateDependentUi,
             saveState:saveHarvestStateToStorage,
             scheduleRefresh:scheduleRecordDataUiRefresh,
+            scheduleTransition:scheduleRecordSaveUiTransition,
             toast:showToast,
             resume:resumePlantingRecord,
             closeFloating:closeRecordFloatingUi,
@@ -11271,6 +11585,7 @@
             queueGoogleSheetRecordSend = () => false;
             saveHarvestStateToStorage = () => {};
             scheduleRecordDataUiRefresh = () => {};
+            scheduleRecordSaveUiTransition = callback => callback();
             showToast = message => { toasts.push(message); };
             closeRecordFloatingUi = () => {};
             refreshRecordModeUi = () => {};
@@ -11368,6 +11683,7 @@
             refreshRecordDateDependentUi = previous.refreshDate;
             saveHarvestStateToStorage = previous.saveState;
             scheduleRecordDataUiRefresh = previous.scheduleRefresh;
+            scheduleRecordSaveUiTransition = previous.scheduleTransition;
             showToast = previous.toast;
             resumePlantingRecord = previous.resume;
             closeRecordFloatingUi = previous.closeFloating;
@@ -12195,6 +12511,7 @@
             clear:clearRecordForm,
             saveState:saveHarvestStateToStorage,
             scheduleRefresh:scheduleRecordDataUiRefresh,
+            scheduleTransition:scheduleRecordSaveUiTransition,
             toast:showToast,
             loss:getRecordActualLossValue,
             instruction:getRemainingHarvestableCaseInstruction
@@ -12237,6 +12554,7 @@
             };
             saveHarvestStateToStorage = () => {};
             scheduleRecordDataUiRefresh = () => {};
+            scheduleRecordSaveUiTransition = callback => callback();
             showToast = () => {};
             getRecordActualLossValue = () => "5";
             getRemainingHarvestableCaseInstruction = () => "";
@@ -12321,6 +12639,7 @@
             clearRecordForm = previous.clear;
             saveHarvestStateToStorage = previous.saveState;
             scheduleRecordDataUiRefresh = previous.scheduleRefresh;
+            scheduleRecordSaveUiTransition = previous.scheduleTransition;
             showToast = previous.toast;
             getRecordActualLossValue = previous.loss;
             getRemainingHarvestableCaseInstruction = previous.instruction;
@@ -14253,14 +14572,16 @@
         const originalProtectedCheck = app.ensureProtectedOperationAccess;
         const originalMutationCheck = app.ensureGoogleSheetLocalMutationAllowed;
         const originalConflictCheck = app.ensureSyncConflictResolvedBeforeChange;
-        const originalQueue = app.queueGoogleSheetRecordSend;
+        const originalQueue = app.queueGoogleSheetRecordBatchSend;
+        const originalRunAfterUiSettles = app.runAfterUiSettles;
         const originalConfirm = app.confirm;
         let shownConfirmation = "";
         try{
           app.ensureProtectedOperationAccess = () => true;
           app.ensureGoogleSheetLocalMutationAllowed = () => true;
           app.ensureSyncConflictResolvedBeforeChange = () => true;
-          app.queueGoogleSheetRecordSend = () => true;
+          app.queueGoogleSheetRecordBatchSend = recordsToQueue => recordsToQueue.length;
+          app.runAfterUiSettles = callback => callback();
           app.confirm = message => {
             shownConfirmation = message;
             return true;
@@ -14274,7 +14595,8 @@
           app.ensureProtectedOperationAccess = originalProtectedCheck;
           app.ensureGoogleSheetLocalMutationAllowed = originalMutationCheck;
           app.ensureSyncConflictResolvedBeforeChange = originalConflictCheck;
-          app.queueGoogleSheetRecordSend = originalQueue;
+          app.queueGoogleSheetRecordBatchSend = originalQueue;
+          app.runAfterUiSettles = originalRunAfterUiSettles;
           app.confirm = originalConfirm;
         }
         assert(shownConfirmation.includes("この変更を進めますか？"), "保存前に影響警告を表示していません");

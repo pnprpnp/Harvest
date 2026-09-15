@@ -881,6 +881,13 @@ function isNoPlantingEvent(event){
 function serializePlantingEventForStorage(event){
   const normalized = normalizePlantingEvent(event);
   if(!normalized) return null;
+  return serializeNormalizedPlantingEventForStorage(normalized);
+}
+
+// 画面で作成・編集したイベントは保存前に normalizePlantingEvent() 済みなので、
+// 全履歴をもう一度正規化せずに保存できる。取込・復元では従来の厳密経路を使う。
+function serializeNormalizedPlantingEventForStorage(normalized){
+  if(!normalized || typeof normalized !== "object") return null;
   if(normalized.openingCarryoverBefore === null){
     const { openingCarryoverBefore, ...compactEvent } = normalized;
     return compactEvent;
@@ -948,16 +955,26 @@ function loadPlantingEvents(){
   }
 }
 
-function savePlantingEventsToStorage(){
-  plantingEvents = plantingEvents
-    .map(normalizePlantingEvent)
-    .filter(Boolean)
-    .sort(comparePlantingEventsAsc);
+function savePlantingEventsToStorage(options = {}){
+  if(options.assumeNormalized === true){
+    plantingEvents.sort(comparePlantingEventsAsc);
+  }else{
+    plantingEvents = plantingEvents
+      .map(normalizePlantingEvent)
+      .filter(Boolean)
+      .sort(comparePlantingEventsAsc);
+  }
   harvestnaviLocalStorage.writeJson(
     getActivePlantingEventsStorageKey(),
-    plantingEvents.map(serializePlantingEventForStorage).filter(Boolean)
+    plantingEvents.map(options.assumeNormalized === true
+      ? serializeNormalizedPlantingEventForStorage
+      : serializePlantingEventForStorage
+    ).filter(Boolean)
   );
-  completeRecordDataMutation({ plantingEvents: true });
+  completeRecordDataMutation({
+    plantingEvents: true,
+    deferLifecycle: options.deferLifecycle === true
+  });
 }
 
 function loadDeletedPlantingEvents(){
@@ -1037,13 +1054,13 @@ function savePlantingEventSyncStatus(status){
   harvestnaviLocalStorage.writeJson(getActivePlantingEventSyncStatusStorageKey(), status || {});
 }
 
-function setPlantingEventSyncStatus(event, state){
+function setPlantingEventSyncStatus(event, state, options = {}){
   const eventId = getSafePositiveRecordId(event?.eventId);
   if(eventId === null) return;
   const status = loadPlantingEventSyncStatus();
   status[String(eventId)] = { state, updatedAt: new Date().toISOString() };
   savePlantingEventSyncStatus(status);
-  updateGoogleSheetResendButtonState();
+  if(options.updateUi !== false) updateGoogleSheetResendButtonState();
 }
 
 function isPlantingEventUnsent(event, status = loadPlantingEventSyncStatus()){
@@ -1382,7 +1399,9 @@ function syncHarvestPlantingPendingFlags(options = {}){
     changed = true;
   });
   if(changed) invalidateRecordHistoryCache();
-  if(changed && options.persist !== false) saveRecordsToStorage();
+  if(changed && options.persist !== false){
+    saveRecordsToStorage({ deferLifecycle: options.deferLifecycle === true });
+  }
   return changed;
 }
 
@@ -1458,7 +1477,20 @@ function invalidateRecordDerivedCaches(options = {}){
 
 function completeRecordDataMutation(options = {}){
   invalidateRecordDerivedCaches(options);
-  rebuildCurrentPalletLifecycleState({ persist: true });
+  if(options.deferLifecycle === true){
+    // 中間の編集を含む古い派生キャッシュを次回起動時に誤採用しないよう、
+    // メモリーだけでなく保存済みキャッシュも無効にする。
+    try{
+      harvestnaviLocalStorage.removeItem(getActivePalletLifecycleStateStorageKey());
+    }catch(error){
+      // 主履歴はこの時点ですでに保存済み。派生キャッシュの削除失敗で
+      // 記録操作自体を失敗扱いにせず、このセッションでは再利用を禁止する。
+      currentPalletLifecycleStateStorageLoadPending = false;
+      console.warn("古いパレット状態キャッシュを削除できませんでした", error);
+    }
+  }else{
+    rebuildCurrentPalletLifecycleState({ persist: true });
+  }
   scheduleWorkflowGuideUpdate();
   if((activeAppTab === "forecast" || activeAppTab === "monitor")
     && typeof renderSeedlingHouseUi === "function"
@@ -1497,10 +1529,13 @@ function loadRecords(){
   }
 }
 
-function saveRecordsToStorage(){
+function saveRecordsToStorage(options = {}){
   records.sort(compareRecordsByDateDesc);
   harvestnaviLocalStorage.writeJson(getActiveRecordsStorageKey(), records.map(serializeRecordForStorage));
-  completeRecordDataMutation({ harvestRecords: true });
+  completeRecordDataMutation({
+    harvestRecords: true,
+    deferLifecycle: options.deferLifecycle === true
+  });
 }
 
 function loadDeletedRecords(){

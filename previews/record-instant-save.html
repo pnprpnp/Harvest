@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>記録保存・実画面プレビュー</title>
+  <style>
+    :root{
+      color-scheme:light;
+      font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif;
+      background:#edf1ee;
+      color:#243029;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:#edf1ee;}
+    button{font:inherit;}
+    .previewPage{
+      min-height:100dvh;
+      display:grid;
+      justify-items:center;
+      align-content:start;
+      gap:10px;
+      padding:12px;
+    }
+    .previewControls{
+      width:min(100%,393px);
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      align-items:center;
+      gap:10px;
+      min-height:58px;
+      padding:8px 8px 8px 12px;
+      border:1px solid #d6dfd9;
+      border-radius:12px;
+      background:#fff;
+      box-shadow:0 4px 16px rgba(29,64,40,.08);
+    }
+    .previewState{min-width:0;}
+    .previewState strong{
+      display:block;
+      color:#187947;
+      font-size:12px;
+      line-height:1.4;
+    }
+    .previewState span{
+      display:block;
+      overflow:hidden;
+      color:#758179;
+      font-size:10px;
+      font-weight:650;
+      line-height:1.4;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .previewReset{
+      min-height:36px;
+      padding:6px 12px;
+      border:0;
+      border-radius:9px;
+      background:#e8f1eb;
+      color:#137847;
+      font-size:11px;
+      font-weight:800;
+    }
+    .appViewport{
+      position:relative;
+      width:393px;
+      height:852px;
+      max-width:calc(100vw - 24px);
+      overflow:hidden;
+      border:1px solid #d2dad5;
+      border-radius:24px;
+      background:#f7f7f9;
+      box-shadow:0 18px 48px rgba(25,53,35,.16);
+    }
+    .appViewport iframe{
+      display:block;
+      width:393px;
+      height:852px;
+      border:0;
+      background:#f7f7f9;
+    }
+    .previewLoading{
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      padding:24px;
+      background:#f7f7f9;
+      color:#66736b;
+      font-size:13px;
+      font-weight:700;
+      text-align:center;
+      z-index:2;
+    }
+    .previewLoading[hidden]{display:none;}
+    @media(max-width:416px){
+      .previewPage{padding:8px 0 0;}
+      .previewControls{width:calc(100% - 16px);}
+      .appViewport{
+        width:100vw;
+        max-width:100vw;
+        border-right:0;
+        border-bottom:0;
+        border-left:0;
+        border-radius:0;
+        box-shadow:none;
+      }
+      .appViewport iframe{width:100vw;}
+    }
+  </style>
+</head>
+<body>
+  <main class="previewPage">
+    <section class="previewControls" aria-label="保存状態">
+      <div class="previewState" aria-live="polite">
+        <strong id="localState">下の「苗植え場所を記録する」を押してください</strong>
+        <span id="cloudState">疑似通信は8秒です。実データは送信しません</span>
+      </div>
+      <button id="resetPreview" class="previewReset" type="button">もう一度</button>
+    </section>
+
+    <section class="appViewport" aria-label="Harvestnaviの実画面プレビュー">
+      <iframe id="appFrame" title="Harvestnavi 記録保存の実画面"></iframe>
+      <div id="previewLoading" class="previewLoading" role="status">実際のアプリ画面を準備しています…</div>
+    </section>
+  </main>
+
+  <script>
+    const appFrame = document.getElementById("appFrame");
+    const previewLoading = document.getElementById("previewLoading");
+    const localState = document.getElementById("localState");
+    const cloudState = document.getElementById("cloudState");
+    const resetPreview = document.getElementById("resetPreview");
+    let tappedAt = 0;
+    let statusPoll = null;
+    const originalLocalStorage = Object.fromEntries(
+      Array.from({ length:localStorage.length }, (_, index) => localStorage.key(index))
+        .filter(Boolean)
+        .map(key => [key, localStorage.getItem(key)])
+    );
+    const originalSessionStorage = Object.fromEntries(
+      Array.from({ length:sessionStorage.length }, (_, index) => sessionStorage.key(index))
+        .filter(Boolean)
+        .map(key => [key, sessionStorage.getItem(key)])
+    );
+
+    function restoreOriginalStorage(){
+      localStorage.clear();
+      Object.entries(originalLocalStorage).forEach(([key, value]) => localStorage.setItem(key, value));
+      sessionStorage.clear();
+      Object.entries(originalSessionStorage).forEach(([key, value]) => sessionStorage.setItem(key, value));
+    }
+
+    function setPreviewStorage(){
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("harvestnaviThemePreference_v1", "light");
+      localStorage.setItem("harvestnaviWorkflowTitleHintShown_v1", "1");
+      localStorage.setItem("harvestForecastProtectedAccessAuth_v1", "1");
+    }
+
+    function loadPreview(){
+      if(statusPoll !== null) clearInterval(statusPoll);
+      statusPoll = null;
+      tappedAt = 0;
+      localState.textContent = "下の「苗植え場所を記録する」を押してください";
+      cloudState.textContent = "疑似通信は8秒です。実データは送信しません";
+      previewLoading.hidden = false;
+      setPreviewStorage();
+      appFrame.src = `../index.html?record-instant-save-preview=${Date.now()}`;
+    }
+
+    function buildSuccessResponse(payload){
+      const createdAt = new Date().toISOString();
+      return {
+        ok:true,
+        previousSyncRevision:Number(payload.syncRevision) || 0,
+        syncRevision:(Number(payload.syncRevision) || 0)
+          + (payload.records?.length || 0)
+          + (payload.plantingEvents?.length || 0),
+        recordResults:(payload.records || []).map((record, index) => ({
+          index,
+          ok:true,
+          record:{ ...record, createdAt:record.createdAt || createdAt, updatedAt:createdAt }
+        })),
+        plantingResults:(payload.plantingEvents || []).map((event, index) => ({
+          index,
+          ok:true,
+          event:{ ...event, createdAt:event.createdAt || createdAt, updatedAt:createdAt }
+        }))
+      };
+    }
+
+    function seedPlantingRecord(){
+      const app = appFrame.contentWindow;
+      const previewRecordId = 209909160001;
+      app.eval(`(() => {
+        protectedAccessUnlocked = true;
+        settings = { ...settings, seedlingHouseInitialStartKey:"" };
+        const today = formatDateOnlyString(new Date());
+        const previewRecord = normalizeRecordSnapshot({
+          ...getCurrentRecordSyncMetadata(),
+          palletNumberingVersion:CURRENT_PALLET_NUMBERING_VERSION,
+          id:${previewRecordId},
+          recordUuid:"90909090-9090-4090-8090-909090909090",
+          type:"fullHarvest",
+          date:today,
+          cases:100,
+          palletRanges:["2-A-1-40"],
+          palletSummary:"2号棟A:1-40",
+          plannedSeedlingTrayCount:0,
+          plantingPending:true,
+          actualLoss:"5",
+          qualityMemo:{ tags:["medium"], other:"" }
+        });
+        if(!previewRecord) throw new Error("プレビュー用の収穫記録を作成できませんでした");
+        records = [previewRecord];
+        plantingEvents = [];
+        deletedPlantingEvents = [];
+        invalidateRecordDerivedCaches({ harvestRecords:true, plantingEvents:true });
+        saveRecordsToStorage({ deferLifecycle:true });
+        saveGoogleSheetConfigToStorage({
+          url:"https://script.google.com/macros/s/PREVIEW_ONLY/exec",
+          token:"preview-only-token-0000000000000000"
+        });
+        setMainTabSelection("record");
+        activeAppTab = "record";
+        recordSelectionMode = "planting";
+        activePlantingRecordId = previewRecord.id;
+        workflowPlantingSessionActive = true;
+        recordPlantingFlowEnabled = false;
+        editingPlantingEventId = null;
+        plantingRecordDraft = null;
+        harvestFillKeys = [];
+        harvestSummary = null;
+        recordPlantingCountsByPallet = {};
+        document.getElementById("recordDateInput").value = today;
+        document.getElementById("recordActualSeedlingTrayCountInput").value = "0";
+        enterPlantingRecordMode(previewRecord, { save:false });
+        document.getElementById("recordActualSeedlingTrayCountInput").value = "0";
+        confirmPlantingRecordBeforeSend = () => true;
+        document.getElementById("welcomeScreen")?.remove();
+        window.scrollTo(0, 0);
+        queueGoogleSheetRecordSend(previewRecord, {
+          waitForPlantingRecordId:previewRecord.id,
+          failureMessage:"収穫記録は端末に保存済みです。スプレッドシートは未送信です"
+        });
+      })()`);
+
+      const originalToast = app.showToast;
+      app.showToast = message => {
+        originalToast(message);
+        const text = String(message || "");
+        if(text.includes("記録しました") && !text.includes("未送信")){
+          const elapsed = tappedAt ? performance.now() - tappedAt : 0;
+          localState.textContent = `端末への記録が完了（${Math.max(1, Math.round(elapsed))}ms）`;
+        }
+      };
+      app.confirmPlantingRecordBeforeSend = () => true;
+      app.fetch = async (_url, options) => {
+        const payload = JSON.parse(options.body);
+        cloudState.textContent = "スプレッドシートへ背景送信中…（画面操作は続けられます）";
+        await new Promise(resolve => setTimeout(resolve, 8000));
+        return { text:async () => JSON.stringify(buildSuccessResponse(payload)) };
+      };
+
+      const primaryButton = app.document.getElementById("recordPrimaryActionBtn");
+      primaryButton?.addEventListener("click", () => {
+        if(!tappedAt){
+          tappedAt = performance.now();
+          localState.textContent = "端末へ記録中…";
+        }
+      }, { capture:true });
+
+      statusPoll = setInterval(() => {
+        if(!tappedAt) return;
+        const queueSize = app.eval("googleSheetBackgroundRecordQueue.size + googleSheetBackgroundPlantingQueue.size");
+        if(queueSize !== 0) return;
+        clearInterval(statusPoll);
+        statusPoll = null;
+        cloudState.textContent = "スプレッドシートへの背景送信も完了（遅い成功通知は出しません）";
+      }, 150);
+
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        previewLoading.hidden = true;
+        if(new URLSearchParams(location.search).get("auto") === "1") primaryButton?.click();
+      }));
+    }
+
+    resetPreview.addEventListener("click", loadPreview);
+    window.addEventListener("pagehide", restoreOriginalStorage);
+    appFrame.addEventListener("load", () => {
+      try{
+        seedPlantingRecord();
+      }catch(error){
+        console.error(error);
+        previewLoading.textContent = "プレビューの準備に失敗しました。ページを再読み込みしてください。";
+        previewLoading.hidden = false;
+      }
+    });
+
+    loadPreview();
+  </script>
+</body>
+</html>

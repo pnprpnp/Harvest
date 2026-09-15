@@ -385,6 +385,7 @@ let recordHistoryCache = null;
 let recordPartialHarvestTargetContextCache = null;
 let recordHistoryRenderScheduleId = 0;
 let recordHistoryRenderPending = false;
+let recordSaveUiTransitionPending = false;
 let editingPlantingEventId = null;
 let editingHarvestRecordId = null;
 let harvestEditReturnPlantingRecordId = null;
@@ -2080,9 +2081,9 @@ function captureRecordBaseSelection(){
   recordBaseFillKeys = [...harvestFillKeys];
 }
 
-function restoreRecordSelectionToBase(){
+function restoreRecordSelectionToBase(options = {}){
   harvestFillKeys = [...recordBaseFillKeys];
-  refreshAfterHarvestSelectionChanged();
+  if(options.render !== false) refreshAfterHarvestSelectionChanged();
 }
 
 function normalizePlantingRecordDraft(value){

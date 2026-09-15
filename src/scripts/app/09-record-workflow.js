@@ -1912,11 +1912,13 @@ function enterPlantingRecordMode(record, options = {}){
   updateTodayHarvestRecordedStatus();
   refreshRecordModeUi();
   if(options.save !== false) saveHarvestStateToStorage();
-  drawRecordBeds();
-  runAfterUiSettles(() => {
-    drawBeds();
-    renderForecastSummary();
-  });
+  if(options.render !== false){
+    drawRecordBeds();
+    runAfterUiSettles(() => {
+      drawBeds();
+      renderForecastSummary();
+    });
+  }
   requestAnimationFrame(() => requestAnimationFrame(scrollToRecordActiveStage));
 }
 
@@ -3007,8 +3009,8 @@ function refreshRecordModeUi(){
     actionRow.classList.toggle("isEditing", isEditing);
   }
   if(button) button.textContent = editingPlantingEventId
-    ? "苗植え記録を更新して送信する"
-    : "苗植え場所を記録して送信する";
+    ? "苗植え記録を更新する"
+    : "苗植え場所を記録する";
   if(plantingActionCard) plantingActionCard.hidden = !!editingPlantingEventId;
 
   if(isPlantingMode){
@@ -3041,6 +3043,7 @@ function refreshRecordModeUi(){
   renderRecordPartialHarvestControl();
   updateRecordAutoValueNotes();
   scheduleWorkflowGuideUpdate();
+  if(button) button.disabled = recordSaveUiTransitionPending;
 }
 
 function handleRecordClearAction(){
@@ -3076,6 +3079,7 @@ function discardRecordEditChanges(){
 }
 
 async function handleRecordPrimaryAction(){
+  if(recordSaveUiTransitionPending) return;
   try{
     closeRecordFloatingUi();
     if(recordSelectionMode === "planting"){
@@ -3408,16 +3412,16 @@ function setDefaultCasePlacement(){
   saveHarvestStateToStorage();
 }
 
-function resetAllCasePlacements(){
+function resetAllCasePlacements(options = {}){
   casePlacementByBuilding = {};
   BUILDINGS.forEach(building => {
     casePlacementByBuilding[String(building)] = { ...DEFAULT_CASE_PLACEMENT };
   });
   populateCasePlacementInputs();
-  renderForecastSummary();
+  if(options.render !== false) renderForecastSummary();
 }
 
-function resetForecastCasesInput(){
+function resetForecastCasesInput(options = {}){
   invalidateWorkflowMonitorCheckpoint();
   const casesInput = document.getElementById("casesInput");
   if(casesInput) casesInput.value = "";
@@ -3425,7 +3429,7 @@ function resetForecastCasesInput(){
   harvestCasesAutoEstimated = false;
   updateHarvestCasesAutoEstimatedAppearance();
   refreshEmptyInputHighlights();
-  renderForecastSummary();
+  if(options.render !== false) renderForecastSummary();
 }
 
 function clearCasePlacement(){
