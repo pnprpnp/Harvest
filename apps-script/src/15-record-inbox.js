@@ -94,21 +94,11 @@ function findHarvestRecordInboxRow(sheet, batchId) {
   return match ? match.getRow() : 0;
 }
 
-function readHarvestRecordInboxEntryAtRow(sheet, rowNumber) {
+function readHarvestRecordInboxMetadataAtRow(sheet, rowNumber) {
   if (!sheet || !Number.isSafeInteger(rowNumber) || rowNumber < 2) return null;
   const row = sheet
-    .getRange(rowNumber, 1, 1, HARVEST_RECORD_INBOX_HEADERS.length)
+    .getRange(rowNumber, 1, 1, 10)
     .getValues()[0];
-  const payloadText = row
-    .slice(10, 10 + HARVEST_RECORD_INBOX_PAYLOAD_CHUNK_COUNT)
-    .map(decodeHarvestRecordInboxPayloadChunk)
-    .join("");
-  let payload = null;
-  try {
-    payload = payloadText ? JSON.parse(payloadText) : null;
-  } catch (err) {
-    throw new Error("記録受信箱の内容を読み込めません");
-  }
   return {
     rowNumber,
     batchId: String(row[0] || "").trim(),
@@ -120,14 +110,48 @@ function readHarvestRecordInboxEntryAtRow(sheet, rowNumber) {
     attemptCount: Math.max(0, Math.trunc(Number(row[6]) || 0)),
     nextAttemptAt: normalizeHarvestRecordInboxDate(row[7]),
     errorMessage: String(row[8] || "").trim(),
-    resultJson: String(row[9] || "").trim(),
-    payload
+    resultJson: String(row[9] || "").trim()
   };
+}
+
+function readHarvestRecordInboxPayloadAtRow(sheet, rowNumber) {
+  if (!sheet || !Number.isSafeInteger(rowNumber) || rowNumber < 2) return null;
+  const payloadText = sheet
+    .getRange(rowNumber, 11, 1, HARVEST_RECORD_INBOX_PAYLOAD_CHUNK_COUNT)
+    .getValues()[0]
+    .map(decodeHarvestRecordInboxPayloadChunk)
+    .join("");
+  try {
+    return payloadText ? JSON.parse(payloadText) : null;
+  } catch (err) {
+    throw new Error("記録受信箱の内容を読み込めません");
+  }
+}
+
+function readHarvestRecordInboxEntryAtRow(sheet, rowNumber) {
+  const entry = readHarvestRecordInboxMetadataAtRow(sheet, rowNumber);
+  if (!entry) return null;
+  entry.payload = readHarvestRecordInboxPayloadAtRow(sheet, rowNumber);
+  return entry;
+}
+
+function readHarvestRecordInboxStatusEntryAtRow(sheet, rowNumber) {
+  const entry = readHarvestRecordInboxMetadataAtRow(sheet, rowNumber);
+  if (!entry) return null;
+  if (entry.status === HARVEST_RECORD_INBOX_STATUSES.completed) {
+    entry.payload = readHarvestRecordInboxPayloadAtRow(sheet, rowNumber);
+  }
+  return entry;
 }
 
 function getHarvestRecordInboxEntry(sheet, batchId) {
   const rowNumber = findHarvestRecordInboxRow(sheet, batchId);
   return rowNumber ? readHarvestRecordInboxEntryAtRow(sheet, rowNumber) : null;
+}
+
+function getHarvestRecordInboxStatusEntry(sheet, batchId) {
+  const rowNumber = findHarvestRecordInboxRow(sheet, batchId);
+  return rowNumber ? readHarvestRecordInboxStatusEntryAtRow(sheet, rowNumber) : null;
 }
 
 function validateHarvestRecordInboxPayload(records, plantingEvents, batchId) {
@@ -221,17 +245,22 @@ function enqueueHarvestDayBatch(records, plantingEvents, batchId, syncRevision) 
     plantingEvents
   });
   const chunks = getHarvestRecordInboxPayloadChunks(serializedPayload);
-  ensureHarvestRecordInboxTriggerInstalled();
-  const sheet = ensureHarvestRecordInboxSheet();
   // Webアプリを複数端末から同時に使っても、同じ受付IDを重複追加しないよう
   // ユーザー単位ではなくスクリプト全体で排他します。
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error("受信箱が混み合っています。自動で再送します");
   try {
-    const existing = getHarvestRecordInboxEntry(sheet, normalizedId);
+    const sheet = ensureHarvestRecordInboxSheet();
+    const existing = getHarvestRecordInboxStatusEntry(sheet, normalizedId);
     if (existing) {
       if (existing.fingerprint !== fingerprint) {
         throw new Error("同じ受付IDで異なる記録が送信されています");
+      }
+      if ([
+        HARVEST_RECORD_INBOX_STATUSES.queued,
+        HARVEST_RECORD_INBOX_STATUSES.processing
+      ].includes(existing.status)) {
+        ensureHarvestRecordInboxTriggerInstalledUnlocked();
       }
       return buildHarvestRecordInboxStatus(existing);
     }
@@ -250,6 +279,7 @@ function enqueueHarvestDayBatch(records, plantingEvents, batchId, syncRevision) 
       ...chunks
     ]);
     SpreadsheetApp.flush();
+    ensureHarvestRecordInboxTriggerInstalledUnlocked();
     return {
       accepted: true,
       processed: false,
@@ -266,10 +296,26 @@ function enqueueHarvestDayBatch(records, plantingEvents, batchId, syncRevision) 
 function getHarvestDayBatchInboxStatus(batchId) {
   const normalizedId = normalizeHarvestDayBatchId(batchId);
   if (!normalizedId) throw new Error("受信箱の受付IDが正しくありません");
-  ensureHarvestRecordInboxTriggerInstalled();
   const sheet = getSpreadsheet().getSheetByName(HARVEST_RECORD_INBOX_SHEET_NAME);
   if (!sheet) return buildHarvestRecordInboxStatus(null);
-  return buildHarvestRecordInboxStatus(getHarvestRecordInboxEntry(sheet, normalizedId));
+  const entry = getHarvestRecordInboxStatusEntry(sheet, normalizedId);
+  if (shouldRecoverHarvestRecordInboxTrigger(entry)) {
+    ensureHarvestRecordInboxTriggerInstalled();
+  }
+  return buildHarvestRecordInboxStatus(entry);
+}
+
+function shouldRecoverHarvestRecordInboxTrigger(entry, now = Date.now()) {
+  if (!entry) return false;
+  if (entry.status === HARVEST_RECORD_INBOX_STATUSES.queued) {
+    const dueAt = entry.nextAttemptAt || entry.acceptedAt;
+    return !dueAt || now - dueAt.getTime() >= HARVEST_RECORD_INBOX_TRIGGER_RECOVERY_DELAY_MS;
+  }
+  if (entry.status === HARVEST_RECORD_INBOX_STATUSES.processing) {
+    return !entry.processingStartedAt ||
+      now - entry.processingStartedAt.getTime() >= HARVEST_RECORD_INBOX_PROCESSING_LEASE_MS;
+  }
+  return false;
 }
 
 function getHarvestRecordInboxHeadKeyForRecord(record) {
@@ -455,6 +501,7 @@ function processHarvestRecordInbox() {
   const claim = claimNextHarvestRecordInboxEntry();
   if (!claim) {
     cleanupHarvestRecordInbox();
+    removeHarvestRecordInboxTriggerIfIdle();
     return { processed: false };
   }
   const sheet = ensureHarvestRecordInboxSheet();
@@ -474,6 +521,7 @@ function processHarvestRecordInbox() {
       });
     }
     console.warn("記録受信箱の内容を読み込めませんでした: " + String(err && err.message || err));
+    removeHarvestRecordInboxTriggerIfIdle();
     return { processed: true, completed: false };
   }
   if (!entry || !entry.payload || entry.batchId !== entry.payload.batchId) {
@@ -486,6 +534,7 @@ function processHarvestRecordInbox() {
       nextAttemptAt: "",
       errorMessage: message
     });
+    removeHarvestRecordInboxTriggerIfIdle();
     throw new Error(message);
   }
   try {
@@ -521,6 +570,7 @@ function processHarvestRecordInbox() {
       errorMessage: "",
       resultJson
     });
+    removeHarvestRecordInboxTriggerIfIdle();
     return { processed: true, batchId: entry.batchId, completed: true };
   } catch (err) {
     const message = String(err && err.message || err || "受信箱の処理に失敗しました");
@@ -538,6 +588,7 @@ function processHarvestRecordInbox() {
       errorMessage: message
     });
     console.warn("記録受信箱の処理に失敗しました: " + message);
+    removeHarvestRecordInboxTriggerIfIdle();
     return {
       processed: true,
       batchId: entry.batchId,
@@ -593,45 +644,63 @@ function cleanupHarvestRecordInbox() {
 }
 
 function installHarvestRecordInboxTrigger() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const handler = "processHarvestRecordInbox";
+    ScriptApp.getProjectTriggers()
+      .filter(trigger => trigger.getHandlerFunction() === handler)
+      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+    ScriptApp.newTrigger(handler).timeBased().everyMinutes(1).create();
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getHarvestRecordInboxProcessorTriggers() {
   const handler = "processHarvestRecordInbox";
-  ScriptApp.getProjectTriggers()
-    .filter(trigger => trigger.getHandlerFunction() === handler)
-    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  ScriptApp.newTrigger(handler).timeBased().everyMinutes(1).create();
-  PropertiesService.getScriptProperties().setProperty(
-    HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY,
-    String(Date.now())
-  );
+  return ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === handler);
+}
+
+function ensureHarvestRecordInboxTriggerInstalledUnlocked() {
+  const triggers = getHarvestRecordInboxProcessorTriggers();
+  triggers.slice(1).forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  if (!triggers.length) {
+    ScriptApp.newTrigger("processHarvestRecordInbox").timeBased().everyMinutes(1).create();
+  }
   return true;
 }
 
 function ensureHarvestRecordInboxTriggerInstalled() {
-  const properties = PropertiesService.getScriptProperties();
-  const checkedAt = Number(properties.getProperty(
-    HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY
-  )) || 0;
-  if (checkedAt && Date.now() - checkedAt < HARVEST_RECORD_INBOX_TRIGGER_CHECK_INTERVAL_MS) {
-    return true;
-  }
-
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return false;
   try {
-    const latestCheckedAt = Number(properties.getProperty(
-      HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY
-    )) || 0;
-    if (latestCheckedAt &&
-      Date.now() - latestCheckedAt < HARVEST_RECORD_INBOX_TRIGGER_CHECK_INTERVAL_MS) {
-      return true;
-    }
-    const handler = "processHarvestRecordInbox";
-    const exists = ScriptApp.getProjectTriggers()
-      .some(trigger => trigger.getHandlerFunction() === handler);
-    if (!exists) ScriptApp.newTrigger(handler).timeBased().everyMinutes(1).create();
-    properties.setProperty(
-      HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY,
-      String(Date.now())
-    );
+    return ensureHarvestRecordInboxTriggerInstalledUnlocked();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function hasPendingHarvestRecordInboxEntriesUnlocked(sheet) {
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  return sheet.getRange(2, 3, sheet.getLastRow() - 1, 1).getValues()
+    .some(row => [
+      HARVEST_RECORD_INBOX_STATUSES.queued,
+      HARVEST_RECORD_INBOX_STATUSES.processing
+    ].includes(String(row[0] || "").trim()));
+}
+
+function removeHarvestRecordInboxTriggerIfIdle(sheetOverride) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return false;
+  try {
+    const sheet = sheetOverride ||
+      getSpreadsheet().getSheetByName(HARVEST_RECORD_INBOX_SHEET_NAME);
+    if (hasPendingHarvestRecordInboxEntriesUnlocked(sheet)) return false;
+    getHarvestRecordInboxProcessorTriggers()
+      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
     return true;
   } finally {
     lock.releaseLock();

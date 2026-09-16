@@ -51,12 +51,13 @@ container-bound, it can be run without an argument from the Apps Script editor.
 - Run `installHarvestSyncRevisionTrigger` once
   from the Apps Script editor. Direct spreadsheet edits then invalidate the
   incremental history and make the next client perform one safe full sync.
-- The first authenticated inbox request automatically creates the hidden durable
-  inbox sheets and installs the one-minute processor trigger. The helper
-  `setupHarvestRecordInbox` remains available for manual repair, but normal
-  deployment no longer requires running it. The app can close as soon as the
-  inbox acknowledges a record; the trigger writes it to the normal harvest and
-  planting sheets afterward.
+- An authenticated inbox request automatically creates the hidden durable inbox
+  sheets and installs the one-minute processor trigger only while work is
+  pending. The trigger removes itself after the inbox drains, so an empty inbox
+  does not consume daily trigger runtime. The helper `setupHarvestRecordInbox`
+  remains available for manual repair, but normal deployment does not require
+  running it. The app can close as soon as the inbox acknowledges a record; the
+  trigger writes it to the normal harvest and planting sheets afterward.
 - Clients without a saved revision or outside the retained history use the
   full/cursor sync path.
 - Version 75 detects directly added, uncommitted record rows during sync and saves

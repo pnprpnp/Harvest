@@ -797,6 +797,65 @@
           1,
           "反映処理を重複して設定しました"
         );
+        const pendingSheet = {
+          getLastRow(){ return 2; },
+          getRange(){ return { getValues(){ return [["queued"]]; } }; }
+        };
+        assertEqual(
+          appsScript.removeHarvestRecordInboxTriggerIfIdle(pendingSheet),
+          false,
+          "未処理記録があるのに反映処理を停止しました"
+        );
+        assertEqual(
+          appsScript.__appsScriptTestState.triggerHandlers.length,
+          1,
+          "未処理記録があるのにトリガーを削除しました"
+        );
+        const emptySheet = { getLastRow(){ return 1; } };
+        assertEqual(
+          appsScript.removeHarvestRecordInboxTriggerIfIdle(emptySheet),
+          true,
+          "受信箱が空になっても反映処理を停止できません"
+        );
+        assertEqual(
+          appsScript.__appsScriptTestState.triggerHandlers.length,
+          0,
+          "空の受信箱で1分間隔トリガーが残っています"
+        );
+      });
+
+      await runTest("受信箱の処理待ち確認では記録本体を読み込まない", () => {
+        const rangeCalls = [];
+        const metadata = [
+          "day-lightweight-status",
+          "fingerprint",
+          "queued",
+          new Date("2026-09-16T00:00:00.000Z"),
+          "",
+          "",
+          0,
+          new Date("2026-09-16T00:00:00.000Z"),
+          "",
+          ""
+        ];
+        const sheet = {
+          getRange(row, column, rowCount, columnCount){
+            rangeCalls.push({ row, column, rowCount, columnCount });
+            return { getValues(){ return [metadata]; } };
+          }
+        };
+        const entry = appsScript.readHarvestRecordInboxStatusEntryAtRow(sheet, 2);
+        assertEqual(entry.status, "queued", "受信箱の状態を読み取れません");
+        assertEqual(
+          Object.prototype.hasOwnProperty.call(entry, "payload"),
+          false,
+          "処理待ちの状態確認で記録本体を復元しています"
+        );
+        assertDeepEqual(
+          comparable(rangeCalls),
+          [{ row:2, column:1, rowCount:1, columnCount:10 }],
+          "処理待ちの状態確認で記録本体の列まで読み込んでいます"
+        );
       });
 
       await runTest("Apps Scriptが収穫記録の連続列を一括書き込みする", () => {
