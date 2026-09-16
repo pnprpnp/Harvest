@@ -198,7 +198,9 @@ function initializeStartupViews(savedHarvestState){
   }
 
   updateBuildingLastHarvestInfo();
-  renderRecordList();
+  // 記録一覧は画面を開いた時にだけ作る。起動直後に非表示の一覧と
+  // 整合性監査を全件実行すると、記録が増えるほど初期表示を遅らせる。
+  updateTodayHarvestRecordedStatus();
   updateGoogleSheetResendButtonState();
   updateHeaderLatestRecordDate();
   installAvailabilityChecks();

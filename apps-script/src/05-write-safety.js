@@ -355,6 +355,19 @@ function withRecordWriteLock(operation) {
   return withRecordLock(operation, true);
 }
 
+function getSpreadsheetMaintenancePropertyKey(prefix) {
+  let spreadsheetId = "active";
+  try {
+    const spreadsheet = getSpreadsheet();
+    if (spreadsheet && typeof spreadsheet.getId === "function") {
+      spreadsheetId = String(spreadsheet.getId() || "active");
+    }
+  } catch (err) {
+    // 接続先の取得失敗は後続の通常処理で詳しく通知する。
+  }
+  return String(prefix || "HARVEST_MAINTENANCE_") + spreadsheetId;
+}
+
 function withRecordReadLock(operation) {
   return withRecordLock(operation, false);
 }

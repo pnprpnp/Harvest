@@ -17,9 +17,237 @@ function rebuildHarvestDayBatchPlantingAllocationMap(context) {
   return allocatedByHarvestRecord;
 }
 
+function readSparseSheetRows(sheet, rowCount, columnNumbers, totalColumnCount) {
+  const rows = Array.from({ length: rowCount }, () => Array(totalColumnCount).fill(""));
+  const columns = Array.from(new Set(
+    (Array.isArray(columnNumbers) ? columnNumbers : [])
+      .map(Number)
+      .filter(column => Number.isSafeInteger(column) && column > 0 && column <= totalColumnCount)
+  )).sort((a, b) => a - b);
+  if (!rowCount || !columns.length) return rows;
+
+  const segments = [];
+  columns.forEach(column => {
+    const previous = segments[segments.length - 1];
+    if (previous && previous.start + previous.length === column) {
+      previous.length++;
+    } else {
+      segments.push({ start: column, length: 1 });
+    }
+  });
+  segments.forEach(segment => {
+    const values = sheet.getRange(2, segment.start, rowCount, segment.length).getValues();
+    values.forEach((sourceRow, rowIndex) => {
+      sourceRow.forEach((value, columnIndex) => {
+        rows[rowIndex][segment.start - 1 + columnIndex] = value;
+      });
+    });
+  });
+  return rows;
+}
+
+function canUseFastNewHarvestDayBatchContext(records, plantingEvents) {
+  const recordList = Array.isArray(records) ? records : [];
+  const plantingList = Array.isArray(plantingEvents) ? plantingEvents : [];
+  if (!recordList.length) return false;
+  if (recordList.some(record => (
+    !String(record && record.recordUuid || "").trim()
+    || normalizeWriteTimestampToken(record && record.updatedAt)
+  ))) return false;
+  if (plantingList.some(event => (
+    !Number.isSafeInteger(Number(event && event.eventId))
+    || Number(event.eventId) <= 0
+    || normalizeWriteTimestampToken(event && event.updatedAt)
+  ))) return false;
+  const submittedRecordIds = new Set(
+    recordList.map(record => Number(record && record.id))
+      .filter(id => Number.isSafeInteger(id) && id > 0)
+  );
+  return plantingList.every(event => (
+    Array.isArray(event && event.sourceAllocations)
+    && event.sourceAllocations.every(allocation => (
+      submittedRecordIds.has(Number(allocation && allocation.harvestRecordId))
+    ))
+  ));
+}
+
+function createFastNewHarvestDayBatchSaveContext(records, plantingEvents) {
+  if (!canUseFastNewHarvestDayBatchContext(records, plantingEvents)) return null;
+  try {
+    const recordSheet = getRecordSheet();
+    const recordHeaders = ensureHeaders(recordSheet);
+    const recordRowCount = Math.max(0, recordSheet.getLastRow() - 1);
+    const recordColumns = [
+      "duplicateKey",
+      "id",
+      "recordUuid",
+      "type",
+      "date",
+      "cases",
+      "receivedAt"
+    ].map(key => getHeaderColumn(recordHeaders, key));
+    if (recordColumns.some(column => column <= 0)) return null;
+    const recordRows = readSparseSheetRows(
+      recordSheet,
+      recordRowCount,
+      recordColumns,
+      recordHeaders.length
+    );
+    assertNoUnrepairedDirectHarvestRows(recordHeaders, recordRows);
+    const recordRowLookup = { byUuid:new Map(), byId:new Map() };
+    const existingKeys = new Set();
+    const unavailableRecordIds = new Set();
+    const recordsByRowNumber = new Map();
+    const incompleteRecordUuids = new Set();
+    const uuidColumn = getHeaderColumn(recordHeaders, "recordUuid");
+    const idColumn = getHeaderColumn(recordHeaders, "id");
+    const duplicateKeyColumn = getHeaderColumn(recordHeaders, "duplicateKey");
+    let ambiguousRecordIdentity = false;
+    recordRows.forEach((row, index) => {
+      const marker = getHarvestWriteMarker(recordHeaders, row);
+      const rowId = String(row[idColumn - 1] == null ? "" : row[idColumn - 1]).trim();
+      if (rowId) unavailableRecordIds.add(rowId);
+      if (marker) {
+        if (marker.canonicalId) unavailableRecordIds.add(String(marker.canonicalId));
+        [marker.requestUuid, marker.canonicalUuid].forEach(value => {
+          const uuid = String(value || "").trim().toLowerCase();
+          if (uuid) incompleteRecordUuids.add(uuid);
+        });
+      }
+      if (!isCommittedHarvestRecordRow(recordHeaders, row)) return;
+      const rowNumber = index + 2;
+      const rowUuid = String(row[uuidColumn - 1] || "").trim().toLowerCase();
+      const duplicateKey = String(row[duplicateKeyColumn - 1] || "").trim();
+      if (!rowUuid || !rowId) {
+        ambiguousRecordIdentity = true;
+        return;
+      }
+      if (recordRowLookup.byUuid.has(rowUuid) || recordRowLookup.byId.has(rowId)) {
+        ambiguousRecordIdentity = true;
+        return;
+      }
+      recordRowLookup.byUuid.set(rowUuid, rowNumber);
+      recordRowLookup.byId.set(rowId, rowNumber);
+      if (duplicateKey) existingKeys.add(duplicateKey);
+    });
+    if (ambiguousRecordIdentity) return null;
+    const requestUuids = new Set();
+    for (const record of records) {
+      const uuid = String(record.recordUuid || "").trim().toLowerCase();
+      if (requestUuids.has(uuid) || recordRowLookup.byUuid.has(uuid)) return null;
+      if (incompleteRecordUuids.has(uuid)) return null;
+      requestUuids.add(uuid);
+    }
+
+    let plantingSheet = null;
+    let plantingHeaders = [];
+    let plantingRows = [];
+    const plantingRowByEventId = new Map();
+    const plantingEventsById = new Map();
+    const needsPlantingState = plantingEvents.length > 0 || records.some(record => (
+      record && String(record.type || "").trim() === "fullHarvest"
+    ));
+    if (needsPlantingState) {
+      plantingSheet = plantingEvents.length
+        ? getPlantingEventSheet()
+        : getExistingPlantingEventSheet();
+      if (plantingSheet) {
+        plantingHeaders = plantingEvents.length
+          ? ensurePlantingEventHeaders(plantingSheet)
+          : getPlantingEventHeadersForRead(plantingSheet);
+        const eventIdColumn = getPlantingEventHeaderColumn(plantingHeaders, "eventId");
+        const updatedAtColumn = getPlantingEventHeaderColumn(plantingHeaders, "updatedAt");
+        const sourceAllocationsColumn = getPlantingEventHeaderColumn(
+          plantingHeaders,
+          "sourceAllocations"
+        );
+        if (eventIdColumn <= 0 || updatedAtColumn <= 0 || sourceAllocationsColumn <= 0) {
+          return null;
+        }
+        const plantingRowCount = Math.max(0, plantingSheet.getLastRow() - 1);
+        plantingRows = readSparseSheetRows(
+          plantingSheet,
+          plantingRowCount,
+          [eventIdColumn, sourceAllocationsColumn, updatedAtColumn],
+          plantingHeaders.length
+        );
+        let ambiguousPlantingIdentity = false;
+        plantingRows.forEach((row, index) => {
+          let eventId = String(
+            row[eventIdColumn - 1] == null ? "" : row[eventIdColumn - 1]
+          ).trim();
+          if (!eventId) {
+            eventId = String(
+              getPlantingWriteMarker(plantingHeaders, row)?.eventId || ""
+            ).trim();
+          }
+          if (!eventId) return;
+          if (plantingRowByEventId.has(eventId)) {
+            ambiguousPlantingIdentity = true;
+            return;
+          }
+          plantingRowByEventId.set(eventId, index + 2);
+          if (!isCommittedPlantingEventRow(plantingHeaders, row)) return;
+          const numericEventId = Number(eventId);
+          if (!Number.isSafeInteger(numericEventId) || numericEventId <= 0) {
+            ambiguousPlantingIdentity = true;
+            return;
+          }
+          const sourceAllocations = normalizePlantingSourceAllocations(
+            parseStoredJsonArray(row[sourceAllocationsColumn - 1], "収穫元割当"),
+            { allowEmptyPalletKeys:true }
+          );
+          plantingEventsById.set(eventId, {
+            eventId:numericEventId,
+            sourceAllocations
+          });
+        });
+        if (ambiguousPlantingIdentity) return null;
+      }
+      const requestEventIds = new Set();
+      for (const event of plantingEvents) {
+        const eventId = String(event.eventId);
+        if (requestEventIds.has(eventId) || plantingRowByEventId.has(eventId)) return null;
+        requestEventIds.add(eventId);
+      }
+    }
+
+    const fastContext = {
+      fastNewBatch:true,
+      plantingSheet,
+      plantingHeaders,
+      plantingRows,
+      plantingRowByEventId,
+      plantingEventsById,
+      plantingAllocatedKeysByHarvestRecord:new Map(),
+      deletedPlantingEventIds:null,
+      plantingDeletionStatePrepared:false,
+      recordSheet,
+      recordHeaders,
+      recordRows,
+      recordRowLookup,
+      recordSnapshot:{
+        rows:recordRows,
+        recordsByRowNumber,
+        recordRowLookup,
+        existingKeys,
+        unavailableRecordIds
+      },
+      recordsById:new Map()
+    };
+    rebuildHarvestDayBatchPlantingAllocationMap(fastContext);
+    return fastContext;
+  } catch (err) {
+    console.warn("新規記録の高速確認を使わず通常確認へ戻します: " + String(err && err.message || err));
+    return null;
+  }
+}
+
 function createHarvestDayBatchSaveContext(records, plantingEvents) {
   const recordList = Array.isArray(records) ? records : [];
   const plantingList = Array.isArray(plantingEvents) ? plantingEvents : [];
+  const fastContext = createFastNewHarvestDayBatchSaveContext(recordList, plantingList);
+  if (fastContext) return fastContext;
   const context = {
     plantingSheet: null,
     plantingHeaders: [],
@@ -150,6 +378,9 @@ function savePlantingEventUnlocked(event, options) {
   } catch (err) {
     throw new Error("苗植えイベントシートの準備中に失敗しました: " + String(err && err.message || err));
   }
+  let deletedPlantingEventIds = dayBatchContext && dayBatchContext.plantingDeletionStatePrepared
+    ? dayBatchContext.deletedPlantingEventIds
+    : null;
   if (!dayBatchContext || !dayBatchContext.plantingDeletionStatePrepared) {
     let existingTrashSheet;
     try {
@@ -158,25 +389,20 @@ function savePlantingEventUnlocked(event, options) {
       throw new Error("削除済み苗植えイベントシートの確認中に失敗しました: " +
         String(err && err.message || err));
     }
-    if (existingTrashSheet) {
-      try {
-        ensurePlantingEventTrashSheet(existingTrashSheet);
-        purgeExpiredPlantingEventTrash(existingTrashSheet);
-      } catch (err) {
-        throw new Error("削除済み苗植えイベントの整理中に失敗しました: " + String(err && err.message || err));
-      }
+    try {
+      deletedPlantingEventIds = prepareDeletedPlantingEventStateForSave(existingTrashSheet).deletedIds;
+    } catch (err) {
+      throw new Error("削除済み苗植えイベントの整理中に失敗しました: " + String(err && err.message || err));
     }
     if (dayBatchContext) {
-      dayBatchContext.deletedPlantingEventIds = getDeletedPlantingEventIdSet();
+      dayBatchContext.deletedPlantingEventIds = deletedPlantingEventIds;
       dayBatchContext.plantingDeletionStatePrepared = true;
     }
   }
   try {
     assertPlantingEventIsNotDeleted(
       event,
-      dayBatchContext && dayBatchContext.deletedPlantingEventIds
-        ? dayBatchContext.deletedPlantingEventIds
-        : getDeletedPlantingEventIdSet()
+      deletedPlantingEventIds || getDeletedPlantingEventIdSet()
     );
   } catch (err) {
     throw new Error("苗植えイベントの削除状態確認中に失敗しました: " + String(err && err.message || err));

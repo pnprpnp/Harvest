@@ -281,14 +281,28 @@ function getGoogleSheetRecordSendSignature(record, config){
   return JSON.stringify(buildGoogleSheetRecordPayload(record, config).record);
 }
 
-function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config, state, serverRecord = null){
+function setGoogleSheetSyncStatusAfterSend(
+  recordSnapshot,
+  sentSignature,
+  config,
+  state,
+  serverRecord = null,
+  options = {}
+){
   const snapshotUuid = normalizeRecordUuid(recordSnapshot?.recordUuid);
   const currentRecord = (snapshotUuid ? getRecordByUuid(snapshotUuid) : null)
     || getRecordById(recordSnapshot?.id);
   if(!currentRecord) return false;
+  let status = options.recordStatus && typeof options.recordStatus === "object"
+    ? options.recordStatus
+    : null;
 
   if(getGoogleSheetRecordSendSignature(currentRecord, config) !== sentSignature){
-    setGoogleSheetSyncStatus(currentRecord, "edited");
+    setGoogleSheetSyncStatus(currentRecord, "edited", {
+      status:status || undefined,
+      persist:!options.batchState,
+      updateUi:!options.batchState
+    });
     return false;
   }
 
@@ -341,7 +355,7 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
         confirmedRecord.syncProvidedFields = [...RECORD_SYNC_FIELD_KEYS];
       }
     }
-    const status = loadGoogleSheetSyncStatus();
+    status = status || loadGoogleSheetSyncStatus();
     let eventChanged = false;
     let recordIdChanged = false;
     if(Number(currentRecord.id) !== Number(confirmedRecord.id)){
@@ -365,23 +379,38 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
       recordIdChanged = true;
     }
     if(eventChanged){
-      savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
-      saveDeletedPlantingEventsToStorage();
+      if(options.batchState){
+        options.batchState.plantingEventsChanged = true;
+        options.batchState.deletedPlantingEventsChanged = true;
+      }else{
+        savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
+        saveDeletedPlantingEventsToStorage();
+      }
     }
     if(recordIdChanged){
-      saveDeletedRecordsToStorage();
-      saveHarvestStateToStorage();
+      if(options.batchState){
+        options.batchState.deletedRecordsChanged = true;
+        options.batchState.harvestStateChanged = true;
+      }else{
+        saveDeletedRecordsToStorage();
+        saveHarvestStateToStorage();
+      }
     }
     const index = records.indexOf(currentRecord);
     if(index < 0) return false;
     clearGoogleSheetRecordSyncStatus(status, currentRecord);
     records[index] = confirmedRecord;
     records.sort(compareRecordsByDateDesc);
-    saveRecordsToStorage({ deferLifecycle: true });
-    saveGoogleSheetSyncStatus(status);
+    if(options.batchState) options.batchState.recordsChanged = true;
+    else saveRecordsToStorage({ deferLifecycle: true });
     recordForStatus = confirmedRecord;
   }
-  setGoogleSheetSyncStatus(recordForStatus, state);
+  status = status || loadGoogleSheetSyncStatus();
+  setGoogleSheetSyncStatus(recordForStatus, state, {
+    status,
+    persist:!options.batchState,
+    updateUi:!options.batchState
+  });
   return true;
 }
 
@@ -746,12 +775,16 @@ function markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots)
   updateGoogleSheetResendButtonState();
 }
 
-function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEvent = null){
+function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEvent = null, options = {}){
   const eventId = getSafePositiveRecordId(eventSnapshot?.eventId);
   const current = eventId === null ? null : getPlantingEventById(eventId);
   if(!current) return false;
   if(getPlantingEventSendSignature(current) !== getPlantingEventSendSignature(eventSnapshot)){
-    setPlantingEventSyncStatus(current, "edited");
+    setPlantingEventSyncStatus(current, "edited", {
+      status:options.plantingStatus,
+      persist:!options.batchState,
+      updateUi:!options.batchState
+    });
     return false;
   }
 
@@ -768,10 +801,19 @@ function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEve
         ?? null
     };
     plantingEvents[index] = eventForStatus;
-    savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
-    syncHarvestPlantingPendingFlags({ deferLifecycle: true });
+    if(options.batchState){
+      options.batchState.plantingEventsChanged = true;
+      options.batchState.pendingFlagsNeedSync = true;
+    }else{
+      savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
+      syncHarvestPlantingPendingFlags({ deferLifecycle: true });
+    }
   }
-  setPlantingEventSyncStatus(eventForStatus, state);
+  setPlantingEventSyncStatus(eventForStatus, state, {
+    status:options.plantingStatus,
+    persist:!options.batchState,
+    updateUi:!options.batchState
+  });
   return true;
 }
 
@@ -815,23 +857,60 @@ function applyGoogleSheetAcceptedInboxResult(entry, result, config){
     );
   });
 
+  const batchState = {
+    recordsChanged:false,
+    plantingEventsChanged:false,
+    pendingFlagsNeedSync:false,
+    deletedPlantingEventsChanged:false,
+    deletedRecordsChanged:false,
+    harvestStateChanged:false
+  };
+  const recordStatus = loadGoogleSheetSyncStatus();
+  const plantingStatus = loadPlantingEventSyncStatus();
   let confirmedRecords = 0;
   let confirmedPlantingEvents = 0;
   recordSnapshots.forEach((snapshot, index) => {
     const item = recordResultsByIndex.get(index);
     if(item?.ok !== true || !item.record) return;
     const signature = getGoogleSheetRecordSendSignature(snapshot, config);
-    if(setGoogleSheetSyncStatusAfterSend(snapshot, signature, config, "confirmed", item.record)){
+    if(setGoogleSheetSyncStatusAfterSend(
+      snapshot,
+      signature,
+      config,
+      "confirmed",
+      item.record,
+      { batchState, recordStatus }
+    )){
       confirmedRecords++;
     }
   });
   plantingSnapshots.forEach((snapshot, index) => {
     const item = plantingResultsByIndex.get(index);
     if(item?.ok !== true || !item.event) return;
-    if(setPlantingEventSyncStatusAfterDayBatch(snapshot, "confirmed", item.event)){
+    if(setPlantingEventSyncStatusAfterDayBatch(
+      snapshot,
+      "confirmed",
+      item.event,
+      { batchState, plantingStatus }
+    )){
       confirmedPlantingEvents++;
     }
   });
+  if(batchState.plantingEventsChanged){
+    savePlantingEventsToStorage({ assumeNormalized:true, deferLifecycle:true });
+  }
+  if(batchState.pendingFlagsNeedSync
+    && syncHarvestPlantingPendingFlags({ persist:false })){
+    batchState.recordsChanged = true;
+  }
+  if(batchState.recordsChanged){
+    saveRecordsToStorage({ deferLifecycle:true });
+  }
+  if(batchState.deletedPlantingEventsChanged) saveDeletedPlantingEventsToStorage();
+  if(batchState.deletedRecordsChanged) saveDeletedRecordsToStorage();
+  if(batchState.harvestStateChanged) saveHarvestStateToStorage();
+  saveGoogleSheetSyncStatus(recordStatus);
+  savePlantingEventSyncStatus(plantingStatus);
   updateGoogleSheetResendButtonState();
   return { confirmedRecords, confirmedPlantingEvents };
 }
@@ -887,7 +966,7 @@ async function enqueueGoogleSheetDayBatchChunk(
       if(entry) applyGoogleSheetAcceptedInboxResult(entry, result, config);
       acknowledgeGoogleSheetMutationRevision(config, requestedSyncRevision, result);
     }else{
-      rememberGoogleSheetAcceptedDayBatch(
+      const rememberedAcceptedBatch = rememberGoogleSheetAcceptedDayBatch(
         batchId,
         recordSnapshots,
         plantingEventSnapshots,
@@ -897,17 +976,33 @@ async function enqueueGoogleSheetDayBatchChunk(
           acceptedAt:result.acceptedAt
         }
       );
+      if(!rememberedAcceptedBatch){
+        throw new Error("受信済み記録の確認情報を端末に保存できませんでした");
+      }
+      const acceptedBatchState = {};
+      const acceptedRecordStatus = loadGoogleSheetSyncStatus();
+      const acceptedPlantingStatus = loadPlantingEventSyncStatus();
       recordSnapshots.forEach((snapshot, index) => {
         setGoogleSheetSyncStatusAfterSend(
           snapshot,
           sentRecordSignatures[index],
           config,
-          "accepted"
+          "accepted",
+          null,
+          {
+            batchState:acceptedBatchState,
+            recordStatus:acceptedRecordStatus
+          }
         );
       });
       plantingEventSnapshots.forEach(snapshot => {
-        setPlantingEventSyncStatusAfterDayBatch(snapshot, "accepted");
+        setPlantingEventSyncStatusAfterDayBatch(snapshot, "accepted", null, {
+          batchState:acceptedBatchState,
+          plantingStatus:acceptedPlantingStatus
+        });
       });
+      saveGoogleSheetSyncStatus(acceptedRecordStatus);
+      savePlantingEventSyncStatus(acceptedPlantingStatus);
     }
     updateGoogleSheetResendButtonState();
     return {

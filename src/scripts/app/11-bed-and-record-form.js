@@ -714,7 +714,7 @@ function toggleRecordPallet(building, bed, number){
   if(flowAssignmentChanged !== null){
     if(flowAssignmentChanged){
       recalcHarvestSummary();
-      renderHarvestSelectionMapsForActiveTab();
+      renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
       renderForecastSummary();
       syncRecordPlantingSummaryFromSelection();
       updateRecordActualLoss();
@@ -750,7 +750,7 @@ function toggleRecordPallet(building, bed, number){
       }
       setRecordPlantingCountForKey(key);
       recalcHarvestSummary();
-      renderHarvestSelectionMapsForActiveTab();
+      renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
       renderForecastSummary();
       syncRecordPlantingSummaryFromSelection();
       updateRecordActualLoss();
@@ -768,7 +768,7 @@ function toggleRecordPallet(building, bed, number){
     }
     reconcileHarvestSelectionOverage();
     recalcHarvestSummary();
-    renderHarvestSelectionMapsForActiveTab();
+    renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
     renderForecastSummary();
     if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
     syncRecordPlantingSummaryFromSelection();
@@ -793,7 +793,7 @@ function toggleRecordPallet(building, bed, number){
     }
     sortHarvestFillKeys();
     recalcHarvestSummary();
-    renderHarvestSelectionMapsForActiveTab();
+    renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
     renderForecastSummary();
     if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
     syncRecordPlantingSummaryFromSelection();
@@ -1084,6 +1084,194 @@ function handleRecordBuildingBedClick(building, bed){
   openBedDetailWindow("record", bed);
 }
 
+function getRecordBedOverviewRenderContext(plantingAllowedSet = null){
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const partialDraftModel = getRecordPartialHarvestDraftModel();
+  const partialAssignedEntryByBed = new Map();
+  if(recordPartialHarvestSelectionMode){
+    partialDraftModel.committedEntries.forEach((entry, index) => {
+      if(index === partialDraftModel.editingEntryIndex) return;
+      entry.bedKeys.forEach(key => partialAssignedEntryByBed.set(key, entry));
+    });
+  }
+  const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
+  const hasPartialHarvestRecords = recordSelectionMode !== "planting"
+    && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
+  const targetDate = getHarvestTargetDate();
+  return {
+    availabilityState,
+    recordedSet:availabilityState.unavailableSet,
+    selectedSet:new Set(harvestFillKeys || []),
+    partialBedSet:new Set(partialDraftModel.bedKeys),
+    partialAssignedEntryByBed,
+    plantingAllowedSet,
+    plantingQualityByPallet:getRecordPlantingFlowQualityByPallet(),
+    partialHarvestSourceRecords,
+    hasPartialHarvestRecords,
+    targetDate,
+    partialHarvestLookup:hasPartialHarvestRecords
+      ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
+      : null
+  };
+}
+
+function createRecordBedOverviewElement(building, bedName, context){
+  const bed = document.createElement("div");
+  bed.dataset.recordBed = bedName;
+  const partialBedKey = getRecordPartialHarvestBedKey(building, bedName);
+  const isPartialBedSelected = recordPartialHarvestSelectionMode
+    && context.partialBedSet.has(partialBedKey);
+  const assignedPartialEntry = context.partialAssignedEntryByBed.get(partialBedKey) || null;
+  const isPartialBedAssigned = !!assignedPartialEntry;
+  const summaryCounts = getBedSummaryCounts(building, bedName, {
+    selectedSet:context.selectedSet,
+    recordedSet:context.recordedSet
+  });
+  let selectableCount = 0;
+  if(context.plantingAllowedSet){
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      if(context.plantingAllowedSet.has(getPalletKey(building, bedName, number))) selectableCount++;
+    }
+  }
+  const collapsedStateClass = summaryCounts.selected >= PALLETS_PER_BED
+    ? " bedCollapsedFull"
+    : (!summaryCounts.selected
+        && !(context.plantingAllowedSet ? selectableCount : summaryCounts.recorded)
+        ? " bedCollapsedInactive"
+        : "");
+  bed.className = "bed bedCollapsed simulationBedOverview recordBedOverview"
+    + collapsedStateClass
+    + (recordSelectionMode === "planting" ? " plantingBedMap" : "")
+    + (isPartialBedSelected ? " is-record-partial-selected" : "")
+    + (isPartialBedAssigned ? " is-record-partial-assigned" : "")
+    + (recordPartialHarvestSelectionMode ? " is-record-partial-selectable" : "");
+
+  const title = document.createElement("div");
+  title.className = "bedTitle" + (summaryCounts.selected >= PALLETS_PER_BED ? " bedFullySelected" : "");
+  title.innerHTML = `<span class="bedTitleMain">${bedName}</span>`;
+  bed.appendChild(title);
+
+  appendBedOverviewMap(bed, building, bedName, {
+    context:"record",
+    selectedSet:context.selectedSet,
+    overageSet:new Set(),
+    recordedSet:context.recordedSet,
+    unplantedSet:recordSelectionMode === "planting"
+      ? new Set()
+      : context.availabilityState.unplantedSet,
+    plantingLockInfoByPallet:recordSelectionMode === "planting"
+      ? new Map()
+      : context.availabilityState.replantingInfoByPallet,
+    plantingAllowedSet:context.plantingAllowedSet,
+    plantingCountsByPallet:recordPlantingCountsByPallet,
+    plantingFlowStage:isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",
+    plantingQualityByPallet:context.plantingQualityByPallet,
+    hasPartialHarvestRecords:context.hasPartialHarvestRecords,
+    targetDate:context.targetDate,
+    partialHarvestSourceRecords:context.partialHarvestSourceRecords,
+    partialHarvestLookup:context.partialHarvestLookup
+  });
+
+  const bedSelectedKeys = harvestFillKeys.filter(key => {
+    const pallet = parsePalletKey(key);
+    return pallet.building === building && pallet.bed === bedName;
+  });
+  const plantingDistribution = getRecordPlantingCountDistribution(bedSelectedKeys);
+  const plantingCountText = [12, 16, 20]
+    .filter(count => plantingDistribution[count] > 0)
+    .map(count => `${count}×${plantingDistribution[count]}`)
+    .join("/");
+  const qualityText = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
+    ? formatPlantingQualityDistribution(bedSelectedKeys, context.plantingQualityByPallet)
+    : "";
+  const counts = document.createElement("div");
+  counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
+  counts.innerHTML = recordPartialHarvestSelectionMode
+    ? `<span class="recordBedOverviewPartialCount${isPartialBedAssigned ? " is-assigned" : ""}">${
+        isPartialBedSelected
+          ? "部分収穫 選択中"
+          : (isPartialBedAssigned
+              ? (assignedPartialEntry.bedKeys.length > 1
+                  ? `合計 ${assignedPartialEntry.cases}ケース`
+                  : `${assignedPartialEntry.cases}ケース`)
+              : "タップで選択")
+      }</span>`
+    : context.plantingAllowedSet
+      ? ((qualityText || plantingCountText)
+          ? `<span class="recordBedOverviewCountBreakdown">${escapeHtml(qualityText || plantingCountText)}</span>`
+          : "")
+      : `<span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>`;
+  bed.appendChild(counts);
+  attachBedDetailOpenTapHandler(bed, "record", building, bedName);
+  bed.setAttribute(
+    "aria-label",
+    recordPartialHarvestSelectionMode
+      ? (isPartialBedSelected
+          ? `${building}号棟 ${bedName}ベッド。部分収穫場所として選択中。タップで切り替え`
+          : (isPartialBedAssigned
+              ? `${building}号棟 ${bedName}ベッド。${assignedPartialEntry.cases}ケースの部分収穫として追加済み。タップで変更`
+              : `${building}号棟 ${bedName}ベッド。部分収穫場所として未選択。タップで選択`))
+      : context.plantingAllowedSet
+        ? `${building}号棟 ${bedName}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
+        : `${building}号棟 ${bedName}ベッド。選択 ${summaryCounts.selected}パレット。タップで拡大してパレットを選択`
+  );
+  return bed;
+}
+
+function updateRecordBeds(options = {}){
+  const changedKeys = Array.isArray(options.changedPalletKeys)
+    ? options.changedPalletKeys
+    : [];
+  if(!changedKeys.length || recordPartialHarvestSelectionMode) return false;
+  const recordTab = document.getElementById("recordTab");
+  const container = document.getElementById("recordBeds");
+  if(!container || (recordTab && recordTab.style.display === "none")) return false;
+
+  const plantingAllowedSet = recordSelectionMode === "planting"
+    ? getPlantingAllowedPalletSet({ fast:true })
+    : null;
+  const allBuildings = getRecordMapBuildings(plantingAllowedSet);
+  const visibleBuildings = isRecordPlantingFlowActive()
+    ? (recordPlantingFlowStage !== "building" && allBuildings.includes(Number(recordPlantingFlowBuilding))
+        ? [Number(recordPlantingFlowBuilding)]
+        : [])
+    : (recordSelectionMode === "planting"
+        ? allBuildings
+        : (BUILDINGS.includes(Number(recordHarvestActiveBuilding))
+            ? [Number(recordHarvestActiveBuilding)]
+            : []));
+  const changedBedsByBuilding = new Map();
+  changedKeys.forEach(key => {
+    const pallet = parsePalletKey(String(key || ""));
+    if(!visibleBuildings.includes(pallet.building) || !bedMap.includes(pallet.bed)) return;
+    if(!changedBedsByBuilding.has(pallet.building)) changedBedsByBuilding.set(pallet.building, new Set());
+    changedBedsByBuilding.get(pallet.building).add(pallet.bed);
+  });
+  if(!changedBedsByBuilding.size) return false;
+
+  renderRecordBuildingDisplayControls();
+  renderRecordPlantingFlow();
+  if(recordSelectionMode !== "planting"){
+    renderRecordHarvestBuildingPager(allBuildings);
+    renderRecordHarvestFixedNavigation();
+  }else{
+    renderRecordHarvestBuildingPager([]);
+  }
+  renderRecordHarvestStatusBuilding(recordSelectionMode === "planting" ? null : visibleBuildings[0]);
+  const context = getRecordBedOverviewRenderContext(plantingAllowedSet);
+  for(const [building, changedBeds] of changedBedsByBuilding){
+    const section = container.querySelector(`[data-record-building="${building}"]`);
+    if(!section) return false;
+    for(const bedName of changedBeds){
+      const currentBed = section.querySelector(`[data-record-bed="${bedName}"]`);
+      if(!currentBed) return false;
+      currentBed.replaceWith(createRecordBedOverviewElement(building, bedName, context));
+    }
+  }
+  scheduleRecordHarvestViewportLayout();
+  return true;
+}
+
 function drawRecordBeds(){
   const recordTab = document.getElementById("recordTab");
   if(recordTab && recordTab.style.display === "none") return;
@@ -1093,18 +1281,6 @@ function drawRecordBeds(){
   container.innerHTML = "";
   renderRecordBuildingDisplayControls();
   renderRecordPlantingFlow();
-  const availabilityState = getRecordTabHarvestAvailabilityState();
-  const recordedSet = availabilityState.unavailableSet;
-  const selectedSet = new Set(harvestFillKeys || []);
-  const partialDraftModel = getRecordPartialHarvestDraftModel();
-  const partialBedSet = new Set(partialDraftModel.bedKeys);
-  const partialAssignedEntryByBed = new Map();
-  if(recordPartialHarvestSelectionMode){
-    partialDraftModel.committedEntries.forEach((entry, index) => {
-      if(index === partialDraftModel.editingEntryIndex) return;
-      entry.bedKeys.forEach(key => partialAssignedEntryByBed.set(key, entry));
-    });
-  }
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const allBuildings = getRecordMapBuildings(plantingAllowedSet);
   if(recordSelectionMode !== "planting"){
@@ -1131,13 +1307,7 @@ function drawRecordBeds(){
         ? allBuildings
         : (BUILDINGS.includes(Number(recordHarvestActiveBuilding)) ? [Number(recordHarvestActiveBuilding)] : []));
   renderRecordHarvestStatusBuilding(recordSelectionMode === "planting" ? null : buildings[0]);
-  const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
-  const hasPartialHarvestRecords = recordSelectionMode !== "planting"
-    && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
-  const targetDate = getHarvestTargetDate();
-  const partialHarvestLookup = hasPartialHarvestRecords
-    ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
-    : null;
+  const renderContext = getRecordBedOverviewRenderContext(plantingAllowedSet);
 
   if(!buildings.length){
     if(isRecordPlantingFlowActive() && recordPlantingFlowStage === "building") return;
@@ -1153,6 +1323,7 @@ function drawRecordBeds(){
   buildings.forEach(building => {
     const section = document.createElement("div");
     section.className = "recordBuildingMapSection";
+    section.dataset.recordBuilding = String(building);
 
     if(recordSelectionMode === "planting"){
       const buildingTitle = document.createElement("div");
@@ -1168,101 +1339,7 @@ function drawRecordBeds(){
     beds.className = "recordBuildingMapBeds";
 
     bedMap.forEach(b => {
-      const bed = document.createElement("div");
-      const partialBedKey = getRecordPartialHarvestBedKey(building, b);
-      const isPartialBedSelected = recordPartialHarvestSelectionMode && partialBedSet.has(partialBedKey);
-      const assignedPartialEntry = partialAssignedEntryByBed.get(partialBedKey) || null;
-      const isPartialBedAssigned = !!assignedPartialEntry;
-      const summaryCounts = getBedSummaryCounts(building, b, { selectedSet, recordedSet });
-      let selectableCount = 0;
-      if(plantingAllowedSet){
-        for(let number = 1; number <= PALLETS_PER_BED; number++){
-          if(plantingAllowedSet.has(getPalletKey(building, b, number))) selectableCount++;
-        }
-      }
-      const collapsedStateClass = summaryCounts.selected >= PALLETS_PER_BED
-        ? " bedCollapsedFull"
-        : (!summaryCounts.selected && !(plantingAllowedSet ? selectableCount : summaryCounts.recorded)
-            ? " bedCollapsedInactive"
-            : "");
-      bed.className = "bed bedCollapsed simulationBedOverview recordBedOverview"
-        + collapsedStateClass
-        + (recordSelectionMode === "planting" ? " plantingBedMap" : "")
-        + (isPartialBedSelected ? " is-record-partial-selected" : "")
-        + (isPartialBedAssigned ? " is-record-partial-assigned" : "")
-        + (recordPartialHarvestSelectionMode ? " is-record-partial-selectable" : "");
-
-      const title = document.createElement("div");
-      let titleCls = "bedTitle";
-      if(summaryCounts.selected >= PALLETS_PER_BED) titleCls += " bedFullySelected";
-      title.className = titleCls;
-      title.innerHTML = `<span class="bedTitleMain">${b}</span>`;
-      bed.appendChild(title);
-
-      appendBedOverviewMap(bed, building, b, {
-        context: "record",
-        selectedSet,
-        overageSet: new Set(),
-        recordedSet,
-        unplantedSet:recordSelectionMode === "planting" ? new Set() : availabilityState.unplantedSet,
-        plantingLockInfoByPallet:recordSelectionMode === "planting"
-          ? new Map()
-          : availabilityState.replantingInfoByPallet,
-        plantingAllowedSet,
-        plantingCountsByPallet: recordPlantingCountsByPallet,
-        plantingFlowStage: isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",
-        plantingQualityByPallet: getRecordPlantingFlowQualityByPallet(),
-        hasPartialHarvestRecords,
-        targetDate,
-        partialHarvestSourceRecords,
-        partialHarvestLookup
-      });
-      const counts = document.createElement("div");
-      counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
-      const bedSelectedKeys = harvestFillKeys.filter(key => {
-        const pallet = parsePalletKey(key);
-        return pallet.building === building && pallet.bed === b;
-      });
-      const plantingDistribution = getRecordPlantingCountDistribution(bedSelectedKeys);
-      const plantingCountText = [12, 16, 20]
-        .filter(count => plantingDistribution[count] > 0)
-        .map(count => `${count}×${plantingDistribution[count]}`)
-        .join("/");
-      const qualityText = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
-        ? formatPlantingQualityDistribution(bedSelectedKeys, getRecordPlantingFlowQualityByPallet())
-        : "";
-      counts.innerHTML = recordPartialHarvestSelectionMode
-        ? `<span class="recordBedOverviewPartialCount${isPartialBedAssigned ? " is-assigned" : ""}">${
-            isPartialBedSelected
-              ? "部分収穫 選択中"
-              : (isPartialBedAssigned
-                  ? (assignedPartialEntry.bedKeys.length > 1
-                      ? `合計 ${assignedPartialEntry.cases}ケース`
-                      : `${assignedPartialEntry.cases}ケース`)
-                  : "タップで選択")
-          }</span>`
-        : plantingAllowedSet
-        ? ((qualityText || plantingCountText)
-            ? `<span class="recordBedOverviewCountBreakdown">${escapeHtml(qualityText || plantingCountText)}</span>`
-            : "")
-        : `
-          <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-        `;
-      bed.appendChild(counts);
-      attachBedDetailOpenTapHandler(bed, "record", building, b);
-      bed.setAttribute(
-        "aria-label",
-        recordPartialHarvestSelectionMode
-          ? (isPartialBedSelected
-              ? `${building}号棟 ${b}ベッド。部分収穫場所として選択中。タップで切り替え`
-              : (isPartialBedAssigned
-                  ? `${building}号棟 ${b}ベッド。${assignedPartialEntry.cases}ケースの部分収穫として追加済み。タップで変更`
-                  : `${building}号棟 ${b}ベッド。部分収穫場所として未選択。タップで選択`))
-          : plantingAllowedSet
-          ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
-          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット。タップで拡大してパレットを選択`
-      );
-      beds.appendChild(bed);
+      beds.appendChild(createRecordBedOverviewElement(building, b, renderContext));
     });
 
     section.appendChild(beds);

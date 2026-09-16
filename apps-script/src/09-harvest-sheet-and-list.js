@@ -19,13 +19,21 @@ function saveHarvestRecordsBatchUnlocked(records, options) {
   let recordRowLookup;
   let recordSnapshot;
   try {
-    sheet = getRecordSheet();
-    headers = ensureHeaders(sheet);
+    sheet = dayBatchContext && dayBatchContext.recordSheet
+      ? dayBatchContext.recordSheet
+      : getRecordSheet();
+    headers = dayBatchContext && dayBatchContext.recordHeaders.length
+      ? dayBatchContext.recordHeaders
+      : ensureHeaders(sheet);
     const trashSheet = getRecordTrashSheet();
     const deletedRecordState = prepareDeletedHarvestRecordState(trashSheet);
     deletedRecordIdentities = deletedRecordState.identities;
-    const recordRows = readHarvestRecordRows(sheet, headers);
-    recordSnapshot = buildHarvestRecordBatchSnapshot(headers, recordRows);
+    if (dayBatchContext && dayBatchContext.fastNewBatch && dayBatchContext.recordSnapshot) {
+      recordSnapshot = dayBatchContext.recordSnapshot;
+    } else {
+      const recordRows = readHarvestRecordRows(sheet, headers);
+      recordSnapshot = buildHarvestRecordBatchSnapshot(headers, recordRows);
+    }
     existingKeys = recordSnapshot.existingKeys;
     const needsPlantingAllocationCheck = records.some(record => (
       record && String(record.type || "").trim() === "fullHarvest"

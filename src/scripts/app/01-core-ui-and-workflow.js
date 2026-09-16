@@ -20,6 +20,7 @@ const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const GOOGLE_SHEET_SEND_OUTBOX_KEY = "harvestForecastGoogleSheetSendOutbox_v1";
 const GOOGLE_SHEET_ACCEPTED_BATCHES_KEY = "harvestForecastGoogleSheetAcceptedBatches_v1";
+const GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY = "harvestForecastGoogleSheetAcceptedBatchPayloads_v1";
 const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v1";
 const GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestForecastGoogleSheetSyncConflicts_v1";
 const GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS = 2000;
@@ -41,6 +42,7 @@ const WORKER_PLANTING_EVENT_TRASH_KEY = "harvestnaviWorkerPlantingEventTrash_v1"
 const WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestnaviWorkerGoogleSheetSyncStatus_v1";
 const WORKER_GOOGLE_SHEET_SEND_OUTBOX_KEY = "harvestnaviWorkerGoogleSheetSendOutbox_v1";
 const WORKER_GOOGLE_SHEET_ACCEPTED_BATCHES_KEY = "harvestnaviWorkerGoogleSheetAcceptedBatches_v1";
+const WORKER_GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY = "harvestnaviWorkerGoogleSheetAcceptedBatchPayloads_v1";
 const WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestnaviWorkerGoogleSheetSyncRevision_v1";
 const WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestnaviWorkerGoogleSheetSyncConflicts_v1";
 const WORKER_RECORD_TRASH_KEY = "harvestnaviWorkerRecordTrash_v1";
@@ -199,6 +201,12 @@ function getActivePlantingEventTrashStorageKey(){ return getRoleScopedStorageKey
 function getActiveGoogleSheetSyncStatusStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_STATUS_KEY, WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY); }
 function getActiveGoogleSheetSendOutboxStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SEND_OUTBOX_KEY, WORKER_GOOGLE_SHEET_SEND_OUTBOX_KEY); }
 function getActiveGoogleSheetAcceptedBatchesStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_ACCEPTED_BATCHES_KEY, WORKER_GOOGLE_SHEET_ACCEPTED_BATCHES_KEY); }
+function getActiveGoogleSheetAcceptedBatchPayloadsStorageKey(){
+  return getRoleScopedStorageKey(
+    GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY,
+    WORKER_GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY
+  );
+}
 function getActiveGoogleSheetSyncRevisionStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_REVISION_KEY, WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY); }
 function getActiveGoogleSheetSyncConflictsStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_CONFLICTS_KEY, WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY); }
 function getActiveRecordTrashStorageKey(){ return getRoleScopedStorageKey(RECORD_TRASH_KEY, WORKER_RECORD_TRASH_KEY); }
@@ -417,6 +425,7 @@ let googleSheetBackgroundSendEventsInstalled = false;
 let googleSheetDayBatchSupportState = "unknown";
 let googleSheetInboxSupportState = "unknown";
 const googleSheetAcceptedBatchQueue = new Map();
+let googleSheetAcceptedBatchStorageMode = "split";
 let googleSheetAcceptedBatchCheckRunning = false;
 let googleSheetAcceptedBatchCheckTimer = null;
 let googleSheetAcceptedBatchCheckTimerDueAt = 0;
@@ -1576,6 +1585,7 @@ function renderHarvestSelectionMapsForActiveTab(options = {}){
     drawBeds(options);
     return forecastHarvestableHeadsByPalletCache;
   }else if(activeAppTab === "record"){
+    if(options.preferIncremental && updateRecordBeds(options)) return null;
     drawRecordBeds();
   }
   return null;

@@ -1323,6 +1323,34 @@
         );
       });
 
+      await runTest("新規当日記録だけを軽量確認し編集と別収穫元は通常確認へ戻す", () => {
+        const record = createBackgroundFullRecord(87, "2026-09-13");
+        const event = createBackgroundPlantingEvent(87, record, "2026-09-13");
+        const result = comparable(appsScript.eval(`(() => {
+          const record = ${JSON.stringify(record)};
+          const event = ${JSON.stringify(event)};
+          return {
+            newBatch:canUseFastNewHarvestDayBatchContext([record], [event]),
+            editedRecord:canUseFastNewHarvestDayBatchContext([
+              { ...record, updatedAt:"2026-09-13T00:00:00.000Z" }
+            ], [event]),
+            editedEvent:canUseFastNewHarvestDayBatchContext([record], [
+              { ...event, updatedAt:"2026-09-13T00:00:00.000Z" }
+            ]),
+            externalSource:canUseFastNewHarvestDayBatchContext([record], [{
+              ...event,
+              sourceAllocations:[{ harvestRecordId:Number(record.id) + 1, palletKeys:["2-A-1"] }]
+            }])
+          };
+        })()`));
+        assertDeepEqual(result, {
+          newBatch:true,
+          editedRecord:false,
+          editedEvent:false,
+          externalSource:false
+        }, "新規専用の軽量確認と安全な通常確認の切替条件が正しくありません");
+      });
+
       await runTest("当日一括送信の受付番号だけで保存済み結果を確認する", () => {
         const record = createBackgroundFullRecord(88, "2026-09-14");
         const event = createBackgroundPlantingEvent(88, record, "2026-09-14");
@@ -1526,6 +1554,17 @@
           assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "Google受信済みの記録が端末の送信待ちに残っています");
           assertEqual(app.eval("googleSheetAcceptedBatchQueue.size"), 1, "本体反映を確認する受付情報が残っていません");
           assertEqual(app.getGoogleSheetUnsentRecords().length, 0, "Google受信済みの記録を未送信として数えています");
+          const storedAcceptedBatch = comparable(app.eval(`(() => ({
+            metadata:harvestnaviLocalStorage.readJson(getActiveGoogleSheetAcceptedBatchesStorageKey(), null),
+            payloads:harvestnaviLocalStorage.readJson(getActiveGoogleSheetAcceptedBatchPayloadsStorageKey(), null)
+          }))()`));
+          assertEqual(storedAcceptedBatch.metadata.version, 2, "受信確認の小さい管理情報を分離していません");
+          assertEqual(
+            Object.prototype.hasOwnProperty.call(storedAcceptedBatch.metadata.batches[0], "recordSnapshots"),
+            false,
+            "確認時刻と一緒に大きな記録本体を保存しています"
+          );
+          assertEqual(storedAcceptedBatch.payloads.batches[0].recordSnapshots.length, 1, "受信確認用の記録本体を保持できていません");
           assertEqual(
             app.document.getElementById("recordSyncStatusText").textContent,
             "受信済み",
@@ -7188,6 +7227,52 @@
           sameNodes:[true, true, true, true, true, false],
           selectedCells:1
         }, "選択変更で配置図全体を作り直しています");
+      });
+
+      await runTest("記録の選択変更も該当ベッドだけを差分描画する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            activeTab:activeAppTab,
+            mode:recordSelectionMode,
+            activeBuilding:recordHarvestActiveBuilding,
+            additionalBuildings:[...recordAdditionalBuildings],
+            keys:[...harvestFillKeys],
+            partialMode:recordPartialHarvestSelectionMode
+          };
+          try{
+            activeAppTab = "record";
+            recordSelectionMode = "harvest";
+            recordPartialHarvestSelectionMode = false;
+            recordHarvestActiveBuilding = 2;
+            recordAdditionalBuildings = [2];
+            harvestFillKeys = [];
+            document.getElementById("recordTab").style.display = "block";
+            drawRecordBeds();
+            const before = [...document.querySelectorAll("#recordBeds [data-record-building='2'] [data-record-bed]")];
+            harvestFillKeys = [getPalletKey(2, "A", 1)];
+            const updated = updateRecordBeds({ changedPalletKeys:[getPalletKey(2, "A", 1)] });
+            const after = [...document.querySelectorAll("#recordBeds [data-record-building='2'] [data-record-bed]")];
+            return {
+              updated,
+              sameNodes:before.map((element, index) => element === after[index]),
+              selectedCells:document.querySelectorAll("#recordBeds .simulationBedMapCell.is-selected").length
+            };
+          }finally{
+            activeAppTab = previous.activeTab;
+            recordSelectionMode = previous.mode;
+            recordHarvestActiveBuilding = previous.activeBuilding;
+            recordAdditionalBuildings = previous.additionalBuildings;
+            harvestFillKeys = previous.keys;
+            recordPartialHarvestSelectionMode = previous.partialMode;
+            document.getElementById("recordTab").style.display = activeAppTab === "record" ? "block" : "none";
+            if(activeAppTab === "record") drawRecordBeds();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          updated:true,
+          sameNodes:[true, true, true, true, true, false],
+          selectedCells:1
+        }, "記録の選択変更で配置図全体を作り直しています");
       });
 
       await runTest("収穫場所の変更時は表示中のタブだけを更新する", () => {

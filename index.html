@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260916-on-demand-record-inbox">
+<meta name="harvestnavi-version" content="20260916-safe-performance">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -15525,6 +15525,7 @@ const GOOGLE_SHEET_CONFIG_KEY = "harvestForecastGoogleSheetConfig_v1";
 const GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestForecastGoogleSheetSyncStatus_v1";
 const GOOGLE_SHEET_SEND_OUTBOX_KEY = "harvestForecastGoogleSheetSendOutbox_v1";
 const GOOGLE_SHEET_ACCEPTED_BATCHES_KEY = "harvestForecastGoogleSheetAcceptedBatches_v1";
+const GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY = "harvestForecastGoogleSheetAcceptedBatchPayloads_v1";
 const GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestForecastGoogleSheetSyncRevision_v1";
 const GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestForecastGoogleSheetSyncConflicts_v1";
 const GOOGLE_SHEET_SYNC_CONFLICT_MAX_ITEMS = 2000;
@@ -15546,6 +15547,7 @@ const WORKER_PLANTING_EVENT_TRASH_KEY = "harvestnaviWorkerPlantingEventTrash_v1"
 const WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY = "harvestnaviWorkerGoogleSheetSyncStatus_v1";
 const WORKER_GOOGLE_SHEET_SEND_OUTBOX_KEY = "harvestnaviWorkerGoogleSheetSendOutbox_v1";
 const WORKER_GOOGLE_SHEET_ACCEPTED_BATCHES_KEY = "harvestnaviWorkerGoogleSheetAcceptedBatches_v1";
+const WORKER_GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY = "harvestnaviWorkerGoogleSheetAcceptedBatchPayloads_v1";
 const WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY = "harvestnaviWorkerGoogleSheetSyncRevision_v1";
 const WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY = "harvestnaviWorkerGoogleSheetSyncConflicts_v1";
 const WORKER_RECORD_TRASH_KEY = "harvestnaviWorkerRecordTrash_v1";
@@ -15704,6 +15706,12 @@ function getActivePlantingEventTrashStorageKey(){ return getRoleScopedStorageKey
 function getActiveGoogleSheetSyncStatusStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_STATUS_KEY, WORKER_GOOGLE_SHEET_SYNC_STATUS_KEY); }
 function getActiveGoogleSheetSendOutboxStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SEND_OUTBOX_KEY, WORKER_GOOGLE_SHEET_SEND_OUTBOX_KEY); }
 function getActiveGoogleSheetAcceptedBatchesStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_ACCEPTED_BATCHES_KEY, WORKER_GOOGLE_SHEET_ACCEPTED_BATCHES_KEY); }
+function getActiveGoogleSheetAcceptedBatchPayloadsStorageKey(){
+  return getRoleScopedStorageKey(
+    GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY,
+    WORKER_GOOGLE_SHEET_ACCEPTED_BATCH_PAYLOADS_KEY
+  );
+}
 function getActiveGoogleSheetSyncRevisionStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_REVISION_KEY, WORKER_GOOGLE_SHEET_SYNC_REVISION_KEY); }
 function getActiveGoogleSheetSyncConflictsStorageKey(){ return getRoleScopedStorageKey(GOOGLE_SHEET_SYNC_CONFLICTS_KEY, WORKER_GOOGLE_SHEET_SYNC_CONFLICTS_KEY); }
 function getActiveRecordTrashStorageKey(){ return getRoleScopedStorageKey(RECORD_TRASH_KEY, WORKER_RECORD_TRASH_KEY); }
@@ -15922,6 +15930,7 @@ let googleSheetBackgroundSendEventsInstalled = false;
 let googleSheetDayBatchSupportState = "unknown";
 let googleSheetInboxSupportState = "unknown";
 const googleSheetAcceptedBatchQueue = new Map();
+let googleSheetAcceptedBatchStorageMode = "split";
 let googleSheetAcceptedBatchCheckRunning = false;
 let googleSheetAcceptedBatchCheckTimer = null;
 let googleSheetAcceptedBatchCheckTimerDueAt = 0;
@@ -17081,6 +17090,7 @@ function renderHarvestSelectionMapsForActiveTab(options = {}){
     drawBeds(options);
     return forecastHarvestableHeadsByPalletCache;
   }else if(activeAppTab === "record"){
+    if(options.preferIncremental && updateRecordBeds(options)) return null;
     drawRecordBeds();
   }
   return null;
@@ -21169,9 +21179,11 @@ function savePlantingEventSyncStatus(status){
 function setPlantingEventSyncStatus(event, state, options = {}){
   const eventId = getSafePositiveRecordId(event?.eventId);
   if(eventId === null) return;
-  const status = loadPlantingEventSyncStatus();
+  const status = options.status && typeof options.status === "object"
+    ? options.status
+    : loadPlantingEventSyncStatus();
   status[String(eventId)] = { state, updatedAt: new Date().toISOString() };
-  savePlantingEventSyncStatus(status);
+  if(options.persist !== false) savePlantingEventSyncStatus(status);
   if(options.updateUi !== false) updateGoogleSheetResendButtonState();
 }
 
@@ -22402,10 +22414,12 @@ function clearGoogleSheetRecordSyncStatus(status, record){
   getGoogleSheetRecordSyncKeys(record).forEach(key => delete status[key]);
 }
 
-function setGoogleSheetSyncStatus(record, state){
+function setGoogleSheetSyncStatus(record, state, options = {}){
   const keys = getGoogleSheetRecordSyncKeys(record);
   if(!keys.length) return;
-  const status = loadGoogleSheetSyncStatus();
+  const status = options.status && typeof options.status === "object"
+    ? options.status
+    : loadGoogleSheetSyncStatus();
   const updatedAt = new Date().toISOString();
   keys.forEach(key => {
     status[key] = {
@@ -22413,8 +22427,8 @@ function setGoogleSheetSyncStatus(record, state){
       updatedAt
     };
   });
-  saveGoogleSheetSyncStatus(status);
-  updateGoogleSheetResendButtonState();
+  if(options.persist !== false) saveGoogleSheetSyncStatus(status);
+  if(options.updateUi !== false) updateGoogleSheetResendButtonState();
 }
 
 function markGoogleSheetRecordsSynced(recordsToMark, state = "confirmed"){
@@ -22656,11 +22670,51 @@ function normalizeGoogleSheetAcceptedBatchEntry(value){
   };
 }
 
-function saveGoogleSheetAcceptedBatchQueue(){
+function serializeGoogleSheetAcceptedBatchMetadata(entry){
+  return {
+    batchId:entry.batchId,
+    configUrl:entry.configUrl,
+    requestedSyncRevision:entry.requestedSyncRevision,
+    acceptedAt:entry.acceptedAt,
+    checkCount:entry.checkCount,
+    nextCheckAt:entry.nextCheckAt
+  };
+}
+
+function serializeGoogleSheetAcceptedBatchPayload(entry){
+  return {
+    batchId:entry.batchId,
+    recordSnapshots:entry.recordSnapshots,
+    plantingEventSnapshots:entry.plantingEventSnapshots
+  };
+}
+
+function saveGoogleSheetAcceptedBatchPayloads(){
   try{
-    harvestnaviLocalStorage.writeJson(getActiveGoogleSheetAcceptedBatchesStorageKey(), {
+    harvestnaviLocalStorage.writeJson(getActiveGoogleSheetAcceptedBatchPayloadsStorageKey(), {
       version:1,
-      batches:[...googleSheetAcceptedBatchQueue.values()].slice(-12)
+      batches:[...googleSheetAcceptedBatchQueue.values()]
+        .slice(-12)
+        .map(serializeGoogleSheetAcceptedBatchPayload)
+    });
+    return true;
+  }catch(error){
+    console.error("Google受信済み記録の内容を保存できませんでした", error);
+    return false;
+  }
+}
+
+function saveGoogleSheetAcceptedBatchQueue(options = {}){
+  try{
+    if(options.payloads === true && googleSheetAcceptedBatchStorageMode === "split"){
+      if(!saveGoogleSheetAcceptedBatchPayloads()) googleSheetAcceptedBatchStorageMode = "legacy";
+    }
+    const batches = [...googleSheetAcceptedBatchQueue.values()].slice(-12);
+    harvestnaviLocalStorage.writeJson(getActiveGoogleSheetAcceptedBatchesStorageKey(), {
+      version:googleSheetAcceptedBatchStorageMode === "split" ? 2 : 1,
+      batches:googleSheetAcceptedBatchStorageMode === "split"
+        ? batches.map(serializeGoogleSheetAcceptedBatchMetadata)
+        : batches
     });
     return true;
   }catch(error){
@@ -22671,17 +22725,48 @@ function saveGoogleSheetAcceptedBatchQueue(){
 
 function loadGoogleSheetAcceptedBatchQueue(){
   googleSheetAcceptedBatchQueue.clear();
+  googleSheetAcceptedBatchStorageMode = "split";
   let stored = null;
   try{
     stored = harvestnaviLocalStorage.readJson(getActiveGoogleSheetAcceptedBatchesStorageKey(), null);
   }catch(error){
     console.error("Google受信済み記録の確認情報を読み込めませんでした", error);
   }
-  if(!stored || Number(stored.version) !== 1) return;
-  (Array.isArray(stored.batches) ? stored.batches : []).forEach(value => {
+  if(!stored || ![1, 2].includes(Number(stored.version))) return;
+  let values = Array.isArray(stored.batches) ? stored.batches : [];
+  if(Number(stored.version) === 2){
+    let payloads = null;
+    try{
+      payloads = harvestnaviLocalStorage.readJson(
+        getActiveGoogleSheetAcceptedBatchPayloadsStorageKey(),
+        null
+      );
+    }catch(error){
+      console.error("Google受信済み記録の内容を読み込めませんでした", error);
+    }
+    const payloadByBatchId = new Map(
+      (Array.isArray(payloads?.batches) ? payloads.batches : [])
+        .map(value => [String(value?.batchId || ""), value])
+    );
+    values = values.map(value => ({
+      ...value,
+      ...(payloadByBatchId.get(String(value?.batchId || "")) || {})
+    }));
+  }else{
+    googleSheetAcceptedBatchStorageMode = "legacy";
+  }
+  values.forEach(value => {
     const entry = normalizeGoogleSheetAcceptedBatchEntry(value);
     if(entry) googleSheetAcceptedBatchQueue.set(entry.batchId, entry);
   });
+  if(Number(stored.version) === 1){
+    googleSheetAcceptedBatchStorageMode = "split";
+    if(googleSheetAcceptedBatchQueue.size && !saveGoogleSheetAcceptedBatchPayloads()){
+      googleSheetAcceptedBatchStorageMode = "legacy";
+    }else if(googleSheetAcceptedBatchQueue.size){
+      saveGoogleSheetAcceptedBatchQueue();
+    }
+  }
 }
 
 function getGoogleSheetAcceptedBatchCheckDelay(checkCount){
@@ -22709,7 +22794,10 @@ function rememberGoogleSheetAcceptedDayBatch(
   });
   if(!entry) return false;
   googleSheetAcceptedBatchQueue.set(entry.batchId, entry);
-  saveGoogleSheetAcceptedBatchQueue();
+  if(!saveGoogleSheetAcceptedBatchQueue({ payloads:true })){
+    googleSheetAcceptedBatchQueue.delete(entry.batchId);
+    return false;
+  }
   scheduleGoogleSheetAcceptedBatchCheck();
   updateRecordSyncStatusIndicator();
   return true;
@@ -22718,6 +22806,7 @@ function rememberGoogleSheetAcceptedDayBatch(
 function removeGoogleSheetAcceptedDayBatch(batchId){
   if(!googleSheetAcceptedBatchQueue.delete(String(batchId || ""))) return false;
   saveGoogleSheetAcceptedBatchQueue();
+  if(googleSheetAcceptedBatchStorageMode === "split") saveGoogleSheetAcceptedBatchPayloads();
   updateRecordSyncStatusIndicator();
   return true;
 }
@@ -22850,38 +22939,68 @@ async function checkGoogleSheetAcceptedBatches(){
   }
 }
 
-function hasGoogleSheetAcceptedRecordState(){
+function getRecordSyncStatusSummary(){
+  const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
   const recordStatus = loadGoogleSheetSyncStatus();
-  if(records.some(record => getGoogleSheetRecordSyncState(record, recordStatus) === "accepted")) return true;
   const plantingStatus = loadPlantingEventSyncStatus();
-  return plantingEvents.some(event => {
-    const eventId = getSafePositiveRecordId(event?.eventId);
-    return eventId !== null && String(plantingStatus[String(eventId)]?.state || "") === "accepted";
+  const attentionStates = new Set(["failed", "conflict", "remoteDeleted", "dependencyConflict"]);
+  let hasAttention = false;
+  let hasAccepted = false;
+  let unsentRecordCount = 0;
+  let unsentPlantingEventCount = 0;
+
+  records.forEach(record => {
+    const state = getGoogleSheetRecordSyncState(record, recordStatus);
+    if(attentionStates.has(state)) hasAttention = true;
+    if(state === "accepted") hasAccepted = true;
+    if(configValidation.ok
+      && isGoogleSheetRecordUnsent(record, recordStatus)
+      && state !== "accepted"
+      && !hasSyncConflictForEntity("record", record)){
+      unsentRecordCount++;
+    }
   });
+  plantingEvents.forEach(event => {
+    const eventId = getSafePositiveRecordId(event?.eventId);
+    if(eventId === null) return;
+    const state = String(plantingStatus[String(eventId)]?.state || "");
+    if(attentionStates.has(state)) hasAttention = true;
+    if(state === "accepted") hasAccepted = true;
+    if(configValidation.ok
+      && isPlantingEventUnsent(event, plantingStatus)
+      && state !== "accepted"
+      && !hasSyncConflictForEntity("planting", event)){
+      unsentPlantingEventCount++;
+    }
+  });
+  return {
+    configValidation,
+    recordStatus,
+    plantingStatus,
+    hasAttention,
+    hasAccepted,
+    unsentRecordCount,
+    unsentPlantingEventCount,
+    unsentCount:unsentRecordCount + unsentPlantingEventCount
+  };
 }
 
-function getRecordSyncStatusPresentation(){
-  const config = validateGoogleSheetConfig(loadGoogleSheetConfig());
-  if(!config.ok) return { state:"attention", text:"未設定", label:"Google連携が未設定です" };
+function getRecordSyncStatusPresentation(summary = null){
+  const resolvedSummary = summary || getRecordSyncStatusSummary();
+  if(!resolvedSummary.configValidation.ok){
+    return { state:"attention", text:"未設定", label:"Google連携が未設定です" };
+  }
   if(googleSheetSendState === "sending" || googleSheetBackgroundSendRunning){
     return { state:"sending", text:"送信中", label:"Googleの受信箱へ送信中です" };
   }
-  const recordStatus = loadGoogleSheetSyncStatus();
-  const plantingStatus = loadPlantingEventSyncStatus();
-  const hasAttention = records.some(record => ["failed", "conflict", "remoteDeleted", "dependencyConflict"].includes(
-    getGoogleSheetRecordSyncState(record, recordStatus)
-  )) || plantingEvents.some(event => {
-    const eventId = getSafePositiveRecordId(event?.eventId);
-    return eventId !== null && ["failed", "conflict", "remoteDeleted", "dependencyConflict"].includes(
-      String(plantingStatus[String(eventId)]?.state || "")
-    );
-  });
-  if(hasAttention) return { state:"attention", text:"要確認", label:"未送信または競合する記録があります" };
+  if(resolvedSummary.hasAttention){
+    return { state:"attention", text:"要確認", label:"未送信または競合する記録があります" };
+  }
   if(googleSheetBackgroundRecordQueue.size || googleSheetBackgroundPlantingQueue.size
-    || getGoogleSheetUnsentRecords().length || getGoogleSheetUnsentPlantingEvents().length){
+    || resolvedSummary.unsentCount){
     return { state:"waiting", text:"送信待ち", label:"端末に保存済みで、Googleへの送信を待っています" };
   }
-  if(googleSheetAcceptedBatchQueue.size || hasGoogleSheetAcceptedRecordState()){
+  if(googleSheetAcceptedBatchQueue.size || resolvedSummary.hasAccepted){
     return { state:"accepted", text:"受信済み", label:"Google側で受信済みです。アプリを閉じても大丈夫です" };
   }
   if(records.length || plantingEvents.length){
@@ -22890,12 +23009,12 @@ function getRecordSyncStatusPresentation(){
   return { state:"idle", text:"待機中", label:"送信する記録はありません" };
 }
 
-function updateRecordSyncStatusIndicator(){
+function updateRecordSyncStatusIndicator(summary = null){
   const indicator = document.getElementById("recordSyncStatusIndicator");
   const text = document.getElementById("recordSyncStatusText");
   const historyButton = document.getElementById("recordHistoryOpenBtn");
   if(!indicator || !text) return;
-  const presentation = getRecordSyncStatusPresentation();
+  const presentation = getRecordSyncStatusPresentation(summary);
   indicator.className = "recordSyncStatusIndicator is-" + presentation.state;
   text.textContent = presentation.text;
   indicator.title = presentation.label;
@@ -23359,7 +23478,7 @@ function pruneConfirmedGoogleSheetBackgroundSendJobs(){
       acceptedChanged = true;
     }
   });
-  if(acceptedChanged) saveGoogleSheetAcceptedBatchQueue();
+  if(acceptedChanged) saveGoogleSheetAcceptedBatchQueue({ payloads:true });
 }
 
 async function sendGoogleSheetBackgroundRecordBatch(){
@@ -23538,7 +23657,8 @@ async function runGoogleSheetBackgroundSendQueue(){
 
 function updateGoogleSheetResendButtonState(){
   updateSyncConflictButtonState();
-  updateRecordSyncStatusIndicator();
+  const syncSummary = getRecordSyncStatusSummary();
+  updateRecordSyncStatusIndicator(syncSummary);
   const btn = document.getElementById("googleSheetResendBtn");
   if(!btn) return;
 
@@ -23566,9 +23686,8 @@ function updateGoogleSheetResendButtonState(){
     return;
   }
 
-  const config = getValidatedGoogleSheetConfig({ silent: true });
-  const unsentRecordCount = config ? getGoogleSheetUnsentRecords().length : 0;
-  const unsentPlantingEventCount = config ? getGoogleSheetUnsentPlantingEvents().length : 0;
+  const unsentRecordCount = syncSummary.unsentRecordCount;
+  const unsentPlantingEventCount = syncSummary.unsentPlantingEventCount;
   const unsentCount = unsentRecordCount + unsentPlantingEventCount;
   const needsAttention = unsentCount > 0;
 
@@ -26063,14 +26182,28 @@ function getGoogleSheetRecordSendSignature(record, config){
   return JSON.stringify(buildGoogleSheetRecordPayload(record, config).record);
 }
 
-function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config, state, serverRecord = null){
+function setGoogleSheetSyncStatusAfterSend(
+  recordSnapshot,
+  sentSignature,
+  config,
+  state,
+  serverRecord = null,
+  options = {}
+){
   const snapshotUuid = normalizeRecordUuid(recordSnapshot?.recordUuid);
   const currentRecord = (snapshotUuid ? getRecordByUuid(snapshotUuid) : null)
     || getRecordById(recordSnapshot?.id);
   if(!currentRecord) return false;
+  let status = options.recordStatus && typeof options.recordStatus === "object"
+    ? options.recordStatus
+    : null;
 
   if(getGoogleSheetRecordSendSignature(currentRecord, config) !== sentSignature){
-    setGoogleSheetSyncStatus(currentRecord, "edited");
+    setGoogleSheetSyncStatus(currentRecord, "edited", {
+      status:status || undefined,
+      persist:!options.batchState,
+      updateUi:!options.batchState
+    });
     return false;
   }
 
@@ -26123,7 +26256,7 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
         confirmedRecord.syncProvidedFields = [...RECORD_SYNC_FIELD_KEYS];
       }
     }
-    const status = loadGoogleSheetSyncStatus();
+    status = status || loadGoogleSheetSyncStatus();
     let eventChanged = false;
     let recordIdChanged = false;
     if(Number(currentRecord.id) !== Number(confirmedRecord.id)){
@@ -26147,23 +26280,38 @@ function setGoogleSheetSyncStatusAfterSend(recordSnapshot, sentSignature, config
       recordIdChanged = true;
     }
     if(eventChanged){
-      savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
-      saveDeletedPlantingEventsToStorage();
+      if(options.batchState){
+        options.batchState.plantingEventsChanged = true;
+        options.batchState.deletedPlantingEventsChanged = true;
+      }else{
+        savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
+        saveDeletedPlantingEventsToStorage();
+      }
     }
     if(recordIdChanged){
-      saveDeletedRecordsToStorage();
-      saveHarvestStateToStorage();
+      if(options.batchState){
+        options.batchState.deletedRecordsChanged = true;
+        options.batchState.harvestStateChanged = true;
+      }else{
+        saveDeletedRecordsToStorage();
+        saveHarvestStateToStorage();
+      }
     }
     const index = records.indexOf(currentRecord);
     if(index < 0) return false;
     clearGoogleSheetRecordSyncStatus(status, currentRecord);
     records[index] = confirmedRecord;
     records.sort(compareRecordsByDateDesc);
-    saveRecordsToStorage({ deferLifecycle: true });
-    saveGoogleSheetSyncStatus(status);
+    if(options.batchState) options.batchState.recordsChanged = true;
+    else saveRecordsToStorage({ deferLifecycle: true });
     recordForStatus = confirmedRecord;
   }
-  setGoogleSheetSyncStatus(recordForStatus, state);
+  status = status || loadGoogleSheetSyncStatus();
+  setGoogleSheetSyncStatus(recordForStatus, state, {
+    status,
+    persist:!options.batchState,
+    updateUi:!options.batchState
+  });
   return true;
 }
 
@@ -26528,12 +26676,16 @@ function markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots)
   updateGoogleSheetResendButtonState();
 }
 
-function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEvent = null){
+function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEvent = null, options = {}){
   const eventId = getSafePositiveRecordId(eventSnapshot?.eventId);
   const current = eventId === null ? null : getPlantingEventById(eventId);
   if(!current) return false;
   if(getPlantingEventSendSignature(current) !== getPlantingEventSendSignature(eventSnapshot)){
-    setPlantingEventSyncStatus(current, "edited");
+    setPlantingEventSyncStatus(current, "edited", {
+      status:options.plantingStatus,
+      persist:!options.batchState,
+      updateUi:!options.batchState
+    });
     return false;
   }
 
@@ -26550,10 +26702,19 @@ function setPlantingEventSyncStatusAfterDayBatch(eventSnapshot, state, serverEve
         ?? null
     };
     plantingEvents[index] = eventForStatus;
-    savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
-    syncHarvestPlantingPendingFlags({ deferLifecycle: true });
+    if(options.batchState){
+      options.batchState.plantingEventsChanged = true;
+      options.batchState.pendingFlagsNeedSync = true;
+    }else{
+      savePlantingEventsToStorage({ assumeNormalized: true, deferLifecycle: true });
+      syncHarvestPlantingPendingFlags({ deferLifecycle: true });
+    }
   }
-  setPlantingEventSyncStatus(eventForStatus, state);
+  setPlantingEventSyncStatus(eventForStatus, state, {
+    status:options.plantingStatus,
+    persist:!options.batchState,
+    updateUi:!options.batchState
+  });
   return true;
 }
 
@@ -26597,23 +26758,60 @@ function applyGoogleSheetAcceptedInboxResult(entry, result, config){
     );
   });
 
+  const batchState = {
+    recordsChanged:false,
+    plantingEventsChanged:false,
+    pendingFlagsNeedSync:false,
+    deletedPlantingEventsChanged:false,
+    deletedRecordsChanged:false,
+    harvestStateChanged:false
+  };
+  const recordStatus = loadGoogleSheetSyncStatus();
+  const plantingStatus = loadPlantingEventSyncStatus();
   let confirmedRecords = 0;
   let confirmedPlantingEvents = 0;
   recordSnapshots.forEach((snapshot, index) => {
     const item = recordResultsByIndex.get(index);
     if(item?.ok !== true || !item.record) return;
     const signature = getGoogleSheetRecordSendSignature(snapshot, config);
-    if(setGoogleSheetSyncStatusAfterSend(snapshot, signature, config, "confirmed", item.record)){
+    if(setGoogleSheetSyncStatusAfterSend(
+      snapshot,
+      signature,
+      config,
+      "confirmed",
+      item.record,
+      { batchState, recordStatus }
+    )){
       confirmedRecords++;
     }
   });
   plantingSnapshots.forEach((snapshot, index) => {
     const item = plantingResultsByIndex.get(index);
     if(item?.ok !== true || !item.event) return;
-    if(setPlantingEventSyncStatusAfterDayBatch(snapshot, "confirmed", item.event)){
+    if(setPlantingEventSyncStatusAfterDayBatch(
+      snapshot,
+      "confirmed",
+      item.event,
+      { batchState, plantingStatus }
+    )){
       confirmedPlantingEvents++;
     }
   });
+  if(batchState.plantingEventsChanged){
+    savePlantingEventsToStorage({ assumeNormalized:true, deferLifecycle:true });
+  }
+  if(batchState.pendingFlagsNeedSync
+    && syncHarvestPlantingPendingFlags({ persist:false })){
+    batchState.recordsChanged = true;
+  }
+  if(batchState.recordsChanged){
+    saveRecordsToStorage({ deferLifecycle:true });
+  }
+  if(batchState.deletedPlantingEventsChanged) saveDeletedPlantingEventsToStorage();
+  if(batchState.deletedRecordsChanged) saveDeletedRecordsToStorage();
+  if(batchState.harvestStateChanged) saveHarvestStateToStorage();
+  saveGoogleSheetSyncStatus(recordStatus);
+  savePlantingEventSyncStatus(plantingStatus);
   updateGoogleSheetResendButtonState();
   return { confirmedRecords, confirmedPlantingEvents };
 }
@@ -26669,7 +26867,7 @@ async function enqueueGoogleSheetDayBatchChunk(
       if(entry) applyGoogleSheetAcceptedInboxResult(entry, result, config);
       acknowledgeGoogleSheetMutationRevision(config, requestedSyncRevision, result);
     }else{
-      rememberGoogleSheetAcceptedDayBatch(
+      const rememberedAcceptedBatch = rememberGoogleSheetAcceptedDayBatch(
         batchId,
         recordSnapshots,
         plantingEventSnapshots,
@@ -26679,17 +26877,33 @@ async function enqueueGoogleSheetDayBatchChunk(
           acceptedAt:result.acceptedAt
         }
       );
+      if(!rememberedAcceptedBatch){
+        throw new Error("受信済み記録の確認情報を端末に保存できませんでした");
+      }
+      const acceptedBatchState = {};
+      const acceptedRecordStatus = loadGoogleSheetSyncStatus();
+      const acceptedPlantingStatus = loadPlantingEventSyncStatus();
       recordSnapshots.forEach((snapshot, index) => {
         setGoogleSheetSyncStatusAfterSend(
           snapshot,
           sentRecordSignatures[index],
           config,
-          "accepted"
+          "accepted",
+          null,
+          {
+            batchState:acceptedBatchState,
+            recordStatus:acceptedRecordStatus
+          }
         );
       });
       plantingEventSnapshots.forEach(snapshot => {
-        setPlantingEventSyncStatusAfterDayBatch(snapshot, "accepted");
+        setPlantingEventSyncStatusAfterDayBatch(snapshot, "accepted", null, {
+          batchState:acceptedBatchState,
+          plantingStatus:acceptedPlantingStatus
+        });
       });
+      saveGoogleSheetSyncStatus(acceptedRecordStatus);
+      savePlantingEventSyncStatus(acceptedPlantingStatus);
     }
     updateGoogleSheetResendButtonState();
     return {
@@ -41303,7 +41517,7 @@ function toggleRecordPallet(building, bed, number){
   if(flowAssignmentChanged !== null){
     if(flowAssignmentChanged){
       recalcHarvestSummary();
-      renderHarvestSelectionMapsForActiveTab();
+      renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
       renderForecastSummary();
       syncRecordPlantingSummaryFromSelection();
       updateRecordActualLoss();
@@ -41339,7 +41553,7 @@ function toggleRecordPallet(building, bed, number){
       }
       setRecordPlantingCountForKey(key);
       recalcHarvestSummary();
-      renderHarvestSelectionMapsForActiveTab();
+      renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
       renderForecastSummary();
       syncRecordPlantingSummaryFromSelection();
       updateRecordActualLoss();
@@ -41357,7 +41571,7 @@ function toggleRecordPallet(building, bed, number){
     }
     reconcileHarvestSelectionOverage();
     recalcHarvestSummary();
-    renderHarvestSelectionMapsForActiveTab();
+    renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
     renderForecastSummary();
     if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
     syncRecordPlantingSummaryFromSelection();
@@ -41382,7 +41596,7 @@ function toggleRecordPallet(building, bed, number){
     }
     sortHarvestFillKeys();
     recalcHarvestSummary();
-    renderHarvestSelectionMapsForActiveTab();
+    renderHarvestSelectionMapsForActiveTab({ preferIncremental:true, changedPalletKeys:[key] });
     renderForecastSummary();
     if(recordSelectionMode === "harvest") document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
     syncRecordPlantingSummaryFromSelection();
@@ -41673,6 +41887,194 @@ function handleRecordBuildingBedClick(building, bed){
   openBedDetailWindow("record", bed);
 }
 
+function getRecordBedOverviewRenderContext(plantingAllowedSet = null){
+  const availabilityState = getRecordTabHarvestAvailabilityState();
+  const partialDraftModel = getRecordPartialHarvestDraftModel();
+  const partialAssignedEntryByBed = new Map();
+  if(recordPartialHarvestSelectionMode){
+    partialDraftModel.committedEntries.forEach((entry, index) => {
+      if(index === partialDraftModel.editingEntryIndex) return;
+      entry.bedKeys.forEach(key => partialAssignedEntryByBed.set(key, entry));
+    });
+  }
+  const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
+  const hasPartialHarvestRecords = recordSelectionMode !== "planting"
+    && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
+  const targetDate = getHarvestTargetDate();
+  return {
+    availabilityState,
+    recordedSet:availabilityState.unavailableSet,
+    selectedSet:new Set(harvestFillKeys || []),
+    partialBedSet:new Set(partialDraftModel.bedKeys),
+    partialAssignedEntryByBed,
+    plantingAllowedSet,
+    plantingQualityByPallet:getRecordPlantingFlowQualityByPallet(),
+    partialHarvestSourceRecords,
+    hasPartialHarvestRecords,
+    targetDate,
+    partialHarvestLookup:hasPartialHarvestRecords
+      ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
+      : null
+  };
+}
+
+function createRecordBedOverviewElement(building, bedName, context){
+  const bed = document.createElement("div");
+  bed.dataset.recordBed = bedName;
+  const partialBedKey = getRecordPartialHarvestBedKey(building, bedName);
+  const isPartialBedSelected = recordPartialHarvestSelectionMode
+    && context.partialBedSet.has(partialBedKey);
+  const assignedPartialEntry = context.partialAssignedEntryByBed.get(partialBedKey) || null;
+  const isPartialBedAssigned = !!assignedPartialEntry;
+  const summaryCounts = getBedSummaryCounts(building, bedName, {
+    selectedSet:context.selectedSet,
+    recordedSet:context.recordedSet
+  });
+  let selectableCount = 0;
+  if(context.plantingAllowedSet){
+    for(let number = 1; number <= PALLETS_PER_BED; number++){
+      if(context.plantingAllowedSet.has(getPalletKey(building, bedName, number))) selectableCount++;
+    }
+  }
+  const collapsedStateClass = summaryCounts.selected >= PALLETS_PER_BED
+    ? " bedCollapsedFull"
+    : (!summaryCounts.selected
+        && !(context.plantingAllowedSet ? selectableCount : summaryCounts.recorded)
+        ? " bedCollapsedInactive"
+        : "");
+  bed.className = "bed bedCollapsed simulationBedOverview recordBedOverview"
+    + collapsedStateClass
+    + (recordSelectionMode === "planting" ? " plantingBedMap" : "")
+    + (isPartialBedSelected ? " is-record-partial-selected" : "")
+    + (isPartialBedAssigned ? " is-record-partial-assigned" : "")
+    + (recordPartialHarvestSelectionMode ? " is-record-partial-selectable" : "");
+
+  const title = document.createElement("div");
+  title.className = "bedTitle" + (summaryCounts.selected >= PALLETS_PER_BED ? " bedFullySelected" : "");
+  title.innerHTML = `<span class="bedTitleMain">${bedName}</span>`;
+  bed.appendChild(title);
+
+  appendBedOverviewMap(bed, building, bedName, {
+    context:"record",
+    selectedSet:context.selectedSet,
+    overageSet:new Set(),
+    recordedSet:context.recordedSet,
+    unplantedSet:recordSelectionMode === "planting"
+      ? new Set()
+      : context.availabilityState.unplantedSet,
+    plantingLockInfoByPallet:recordSelectionMode === "planting"
+      ? new Map()
+      : context.availabilityState.replantingInfoByPallet,
+    plantingAllowedSet:context.plantingAllowedSet,
+    plantingCountsByPallet:recordPlantingCountsByPallet,
+    plantingFlowStage:isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",
+    plantingQualityByPallet:context.plantingQualityByPallet,
+    hasPartialHarvestRecords:context.hasPartialHarvestRecords,
+    targetDate:context.targetDate,
+    partialHarvestSourceRecords:context.partialHarvestSourceRecords,
+    partialHarvestLookup:context.partialHarvestLookup
+  });
+
+  const bedSelectedKeys = harvestFillKeys.filter(key => {
+    const pallet = parsePalletKey(key);
+    return pallet.building === building && pallet.bed === bedName;
+  });
+  const plantingDistribution = getRecordPlantingCountDistribution(bedSelectedKeys);
+  const plantingCountText = [12, 16, 20]
+    .filter(count => plantingDistribution[count] > 0)
+    .map(count => `${count}×${plantingDistribution[count]}`)
+    .join("/");
+  const qualityText = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
+    ? formatPlantingQualityDistribution(bedSelectedKeys, context.plantingQualityByPallet)
+    : "";
+  const counts = document.createElement("div");
+  counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
+  counts.innerHTML = recordPartialHarvestSelectionMode
+    ? `<span class="recordBedOverviewPartialCount${isPartialBedAssigned ? " is-assigned" : ""}">${
+        isPartialBedSelected
+          ? "部分収穫 選択中"
+          : (isPartialBedAssigned
+              ? (assignedPartialEntry.bedKeys.length > 1
+                  ? `合計 ${assignedPartialEntry.cases}ケース`
+                  : `${assignedPartialEntry.cases}ケース`)
+              : "タップで選択")
+      }</span>`
+    : context.plantingAllowedSet
+      ? ((qualityText || plantingCountText)
+          ? `<span class="recordBedOverviewCountBreakdown">${escapeHtml(qualityText || plantingCountText)}</span>`
+          : "")
+      : `<span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>`;
+  bed.appendChild(counts);
+  attachBedDetailOpenTapHandler(bed, "record", building, bedName);
+  bed.setAttribute(
+    "aria-label",
+    recordPartialHarvestSelectionMode
+      ? (isPartialBedSelected
+          ? `${building}号棟 ${bedName}ベッド。部分収穫場所として選択中。タップで切り替え`
+          : (isPartialBedAssigned
+              ? `${building}号棟 ${bedName}ベッド。${assignedPartialEntry.cases}ケースの部分収穫として追加済み。タップで変更`
+              : `${building}号棟 ${bedName}ベッド。部分収穫場所として未選択。タップで選択`))
+      : context.plantingAllowedSet
+        ? `${building}号棟 ${bedName}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
+        : `${building}号棟 ${bedName}ベッド。選択 ${summaryCounts.selected}パレット。タップで拡大してパレットを選択`
+  );
+  return bed;
+}
+
+function updateRecordBeds(options = {}){
+  const changedKeys = Array.isArray(options.changedPalletKeys)
+    ? options.changedPalletKeys
+    : [];
+  if(!changedKeys.length || recordPartialHarvestSelectionMode) return false;
+  const recordTab = document.getElementById("recordTab");
+  const container = document.getElementById("recordBeds");
+  if(!container || (recordTab && recordTab.style.display === "none")) return false;
+
+  const plantingAllowedSet = recordSelectionMode === "planting"
+    ? getPlantingAllowedPalletSet({ fast:true })
+    : null;
+  const allBuildings = getRecordMapBuildings(plantingAllowedSet);
+  const visibleBuildings = isRecordPlantingFlowActive()
+    ? (recordPlantingFlowStage !== "building" && allBuildings.includes(Number(recordPlantingFlowBuilding))
+        ? [Number(recordPlantingFlowBuilding)]
+        : [])
+    : (recordSelectionMode === "planting"
+        ? allBuildings
+        : (BUILDINGS.includes(Number(recordHarvestActiveBuilding))
+            ? [Number(recordHarvestActiveBuilding)]
+            : []));
+  const changedBedsByBuilding = new Map();
+  changedKeys.forEach(key => {
+    const pallet = parsePalletKey(String(key || ""));
+    if(!visibleBuildings.includes(pallet.building) || !bedMap.includes(pallet.bed)) return;
+    if(!changedBedsByBuilding.has(pallet.building)) changedBedsByBuilding.set(pallet.building, new Set());
+    changedBedsByBuilding.get(pallet.building).add(pallet.bed);
+  });
+  if(!changedBedsByBuilding.size) return false;
+
+  renderRecordBuildingDisplayControls();
+  renderRecordPlantingFlow();
+  if(recordSelectionMode !== "planting"){
+    renderRecordHarvestBuildingPager(allBuildings);
+    renderRecordHarvestFixedNavigation();
+  }else{
+    renderRecordHarvestBuildingPager([]);
+  }
+  renderRecordHarvestStatusBuilding(recordSelectionMode === "planting" ? null : visibleBuildings[0]);
+  const context = getRecordBedOverviewRenderContext(plantingAllowedSet);
+  for(const [building, changedBeds] of changedBedsByBuilding){
+    const section = container.querySelector(`[data-record-building="${building}"]`);
+    if(!section) return false;
+    for(const bedName of changedBeds){
+      const currentBed = section.querySelector(`[data-record-bed="${bedName}"]`);
+      if(!currentBed) return false;
+      currentBed.replaceWith(createRecordBedOverviewElement(building, bedName, context));
+    }
+  }
+  scheduleRecordHarvestViewportLayout();
+  return true;
+}
+
 function drawRecordBeds(){
   const recordTab = document.getElementById("recordTab");
   if(recordTab && recordTab.style.display === "none") return;
@@ -41682,18 +42084,6 @@ function drawRecordBeds(){
   container.innerHTML = "";
   renderRecordBuildingDisplayControls();
   renderRecordPlantingFlow();
-  const availabilityState = getRecordTabHarvestAvailabilityState();
-  const recordedSet = availabilityState.unavailableSet;
-  const selectedSet = new Set(harvestFillKeys || []);
-  const partialDraftModel = getRecordPartialHarvestDraftModel();
-  const partialBedSet = new Set(partialDraftModel.bedKeys);
-  const partialAssignedEntryByBed = new Map();
-  if(recordPartialHarvestSelectionMode){
-    partialDraftModel.committedEntries.forEach((entry, index) => {
-      if(index === partialDraftModel.editingEntryIndex) return;
-      entry.bedKeys.forEach(key => partialAssignedEntryByBed.set(key, entry));
-    });
-  }
   const plantingAllowedSet = recordSelectionMode === "planting" ? getPlantingAllowedPalletSet({ fast: true }) : null;
   const allBuildings = getRecordMapBuildings(plantingAllowedSet);
   if(recordSelectionMode !== "planting"){
@@ -41720,13 +42110,7 @@ function drawRecordBeds(){
         ? allBuildings
         : (BUILDINGS.includes(Number(recordHarvestActiveBuilding)) ? [Number(recordHarvestActiveBuilding)] : []));
   renderRecordHarvestStatusBuilding(recordSelectionMode === "planting" ? null : buildings[0]);
-  const partialHarvestSourceRecords = getActiveHarvestTimelineRecords(records);
-  const hasPartialHarvestRecords = recordSelectionMode !== "planting"
-    && partialHarvestSourceRecords.some(record => record.type === "partialHarvest");
-  const targetDate = getHarvestTargetDate();
-  const partialHarvestLookup = hasPartialHarvestRecords
-    ? getHarvestRecordLookup(targetDate, partialHarvestSourceRecords)
-    : null;
+  const renderContext = getRecordBedOverviewRenderContext(plantingAllowedSet);
 
   if(!buildings.length){
     if(isRecordPlantingFlowActive() && recordPlantingFlowStage === "building") return;
@@ -41742,6 +42126,7 @@ function drawRecordBeds(){
   buildings.forEach(building => {
     const section = document.createElement("div");
     section.className = "recordBuildingMapSection";
+    section.dataset.recordBuilding = String(building);
 
     if(recordSelectionMode === "planting"){
       const buildingTitle = document.createElement("div");
@@ -41757,101 +42142,7 @@ function drawRecordBeds(){
     beds.className = "recordBuildingMapBeds";
 
     bedMap.forEach(b => {
-      const bed = document.createElement("div");
-      const partialBedKey = getRecordPartialHarvestBedKey(building, b);
-      const isPartialBedSelected = recordPartialHarvestSelectionMode && partialBedSet.has(partialBedKey);
-      const assignedPartialEntry = partialAssignedEntryByBed.get(partialBedKey) || null;
-      const isPartialBedAssigned = !!assignedPartialEntry;
-      const summaryCounts = getBedSummaryCounts(building, b, { selectedSet, recordedSet });
-      let selectableCount = 0;
-      if(plantingAllowedSet){
-        for(let number = 1; number <= PALLETS_PER_BED; number++){
-          if(plantingAllowedSet.has(getPalletKey(building, b, number))) selectableCount++;
-        }
-      }
-      const collapsedStateClass = summaryCounts.selected >= PALLETS_PER_BED
-        ? " bedCollapsedFull"
-        : (!summaryCounts.selected && !(plantingAllowedSet ? selectableCount : summaryCounts.recorded)
-            ? " bedCollapsedInactive"
-            : "");
-      bed.className = "bed bedCollapsed simulationBedOverview recordBedOverview"
-        + collapsedStateClass
-        + (recordSelectionMode === "planting" ? " plantingBedMap" : "")
-        + (isPartialBedSelected ? " is-record-partial-selected" : "")
-        + (isPartialBedAssigned ? " is-record-partial-assigned" : "")
-        + (recordPartialHarvestSelectionMode ? " is-record-partial-selectable" : "");
-
-      const title = document.createElement("div");
-      let titleCls = "bedTitle";
-      if(summaryCounts.selected >= PALLETS_PER_BED) titleCls += " bedFullySelected";
-      title.className = titleCls;
-      title.innerHTML = `<span class="bedTitleMain">${b}</span>`;
-      bed.appendChild(title);
-
-      appendBedOverviewMap(bed, building, b, {
-        context: "record",
-        selectedSet,
-        overageSet: new Set(),
-        recordedSet,
-        unplantedSet:recordSelectionMode === "planting" ? new Set() : availabilityState.unplantedSet,
-        plantingLockInfoByPallet:recordSelectionMode === "planting"
-          ? new Map()
-          : availabilityState.replantingInfoByPallet,
-        plantingAllowedSet,
-        plantingCountsByPallet: recordPlantingCountsByPallet,
-        plantingFlowStage: isRecordPlantingFlowActive() ? recordPlantingFlowStage : "",
-        plantingQualityByPallet: getRecordPlantingFlowQualityByPallet(),
-        hasPartialHarvestRecords,
-        targetDate,
-        partialHarvestSourceRecords,
-        partialHarvestLookup
-      });
-      const counts = document.createElement("div");
-      counts.className = "simulationBedOverviewCounts recordBedOverviewCounts";
-      const bedSelectedKeys = harvestFillKeys.filter(key => {
-        const pallet = parsePalletKey(key);
-        return pallet.building === building && pallet.bed === b;
-      });
-      const plantingDistribution = getRecordPlantingCountDistribution(bedSelectedKeys);
-      const plantingCountText = [12, 16, 20]
-        .filter(count => plantingDistribution[count] > 0)
-        .map(count => `${count}×${plantingDistribution[count]}`)
-        .join("/");
-      const qualityText = isRecordPlantingFlowActive() && recordPlantingFlowStage === "quality"
-        ? formatPlantingQualityDistribution(bedSelectedKeys, getRecordPlantingFlowQualityByPallet())
-        : "";
-      counts.innerHTML = recordPartialHarvestSelectionMode
-        ? `<span class="recordBedOverviewPartialCount${isPartialBedAssigned ? " is-assigned" : ""}">${
-            isPartialBedSelected
-              ? "部分収穫 選択中"
-              : (isPartialBedAssigned
-                  ? (assignedPartialEntry.bedKeys.length > 1
-                      ? `合計 ${assignedPartialEntry.cases}ケース`
-                      : `${assignedPartialEntry.cases}ケース`)
-                  : "タップで選択")
-          }</span>`
-        : plantingAllowedSet
-        ? ((qualityText || plantingCountText)
-            ? `<span class="recordBedOverviewCountBreakdown">${escapeHtml(qualityText || plantingCountText)}</span>`
-            : "")
-        : `
-          <span class="simulationBedOverviewCountSelected">選択 ${summaryCounts.selected}</span>
-        `;
-      bed.appendChild(counts);
-      attachBedDetailOpenTapHandler(bed, "record", building, b);
-      bed.setAttribute(
-        "aria-label",
-        recordPartialHarvestSelectionMode
-          ? (isPartialBedSelected
-              ? `${building}号棟 ${b}ベッド。部分収穫場所として選択中。タップで切り替え`
-              : (isPartialBedAssigned
-                  ? `${building}号棟 ${b}ベッド。${assignedPartialEntry.cases}ケースの部分収穫として追加済み。タップで変更`
-                  : `${building}号棟 ${b}ベッド。部分収穫場所として未選択。タップで選択`))
-          : plantingAllowedSet
-          ? `${building}号棟 ${b}ベッド。植え付け数 ${plantingCountText || "未選択"}。タップで拡大してパレットを選択`
-          : `${building}号棟 ${b}ベッド。選択 ${summaryCounts.selected}パレット。タップで拡大してパレットを選択`
-      );
-      beds.appendChild(bed);
+      beds.appendChild(createRecordBedOverviewElement(building, b, renderContext));
     });
 
     section.appendChild(beds);
@@ -48072,7 +48363,9 @@ function initializeStartupViews(savedHarvestState){
   }
 
   updateBuildingLastHarvestInfo();
-  renderRecordList();
+  // 記録一覧は画面を開いた時にだけ作る。起動直後に非表示の一覧と
+  // 整合性監査を全件実行すると、記録が増えるほど初期表示を遅らせる。
+  updateTodayHarvestRecordedStatus();
   updateGoogleSheetResendButtonState();
   updateHeaderLatestRecordDate();
   installAvailabilityChecks();

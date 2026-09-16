@@ -945,6 +945,51 @@ function getDeletedPlantingEventIdSet() {
   return deletedIds;
 }
 
+function prepareDeletedPlantingEventStateForSave(sheet) {
+  const trashSheet = sheet || getExistingPlantingEventTrashSheet();
+  const properties = PropertiesService.getScriptProperties();
+  const migrationKey = getSpreadsheetMaintenancePropertyKey(
+    PLANTING_EVENT_TRASH_MIGRATION_PROPERTY_PREFIX
+  );
+  const cleanupKey = getSpreadsheetMaintenancePropertyKey(
+    PLANTING_EVENT_TRASH_CLEANUP_PROPERTY_PREFIX
+  );
+  let tombstoneItems = getPlantingEventTombstoneItems();
+  const trashRowCount = trashSheet ? Math.max(0, trashSheet.getLastRow() - 1) : 0;
+  const migrationRecorded = properties.getProperty(migrationKey) === "1";
+  if (trashSheet && (!migrationRecorded || tombstoneItems.length < trashRowCount)) {
+    ensurePlantingEventTrashSheet(trashSheet);
+    rememberPlantingEventTombstonesFromTrash(trashSheet);
+    tombstoneItems = getPlantingEventTombstoneItems();
+    properties.setProperty(migrationKey, "1");
+  }
+
+  let purged = 0;
+  const now = Date.now();
+  const lastCleanupAt = Number(properties.getProperty(cleanupKey)) || 0;
+  if (trashSheet && trashRowCount
+    && (!lastCleanupAt || now - lastCleanupAt >= TRASH_MAINTENANCE_INTERVAL_MS)) {
+    ensurePlantingEventTrashSheet(trashSheet);
+    const expiresColumn = PLANTING_EVENT_TRASH_HEADERS.length;
+    const values = trashSheet.getRange(2, expiresColumn, trashRowCount, 1).getValues();
+    const expiredRows = [];
+    values.forEach((row, index) => {
+      const value = row[0];
+      const expiresTime = Object.prototype.toString.call(value) === "[object Date]"
+        ? value.getTime()
+        : new Date(String(value || "")).getTime();
+      if (Number.isFinite(expiresTime) && expiresTime <= now) expiredRows.push(index + 2);
+    });
+    expiredRows.reverse().forEach(rowNumber => trashSheet.deleteRow(rowNumber));
+    purged = expiredRows.length;
+    properties.setProperty(cleanupKey, String(now));
+  }
+  return {
+    deletedIds:new Set(tombstoneItems.map(item => String(item.eventId))),
+    purged
+  };
+}
+
 function listDeletedPlantingEventIds() {
   const deletedItemsById = new Map();
   getPlantingEventTombstoneItems().forEach(item => {

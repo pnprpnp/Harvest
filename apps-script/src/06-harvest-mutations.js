@@ -688,20 +688,52 @@ function findTrashRecordRowById(sheet, id) {
 
 function prepareDeletedHarvestRecordState(sheet) {
   const trashSheet = sheet || getRecordTrashSheet();
-  const tombstoneState = rememberHarvestRecordTombstonesFromTrash(trashSheet);
+  const properties = PropertiesService.getScriptProperties();
+  const migrationKey = getSpreadsheetMaintenancePropertyKey(
+    RECORD_TRASH_MIGRATION_PROPERTY_PREFIX
+  );
+  const cleanupKey = getSpreadsheetMaintenancePropertyKey(
+    RECORD_TRASH_CLEANUP_PROPERTY_PREFIX
+  );
+  let tombstoneItems = getHarvestRecordTombstoneItems();
+  const trashRowCount = Math.max(0, trashSheet.getLastRow() - 1);
+  const migrationRecorded = properties.getProperty(migrationKey) === "1";
+  let tombstoneRows = [];
+  if (!migrationRecorded || tombstoneItems.length < trashRowCount) {
+    const migratedState = rememberHarvestRecordTombstonesFromTrash(trashSheet);
+    tombstoneRows = migratedState.rows;
+    tombstoneItems = getHarvestRecordTombstoneItems();
+    properties.setProperty(migrationKey, "1");
+  }
+  const identities = new Set();
+  tombstoneItems.forEach(item => {
+    if (item.recordUuid) identities.add("u:" + item.recordUuid);
+    if (item.id !== null && typeof item.id !== "undefined") {
+      identities.add("i:" + String(item.id));
+    }
+  });
   const expiresColumn = RECORD_TRASH_HEADERS.length;
   const now = Date.now();
   const expiredRows = [];
-  tombstoneState.rows.forEach((row, index) => {
-    const value = row[expiresColumn - 1];
-    const expiresTime = Object.prototype.toString.call(value) === "[object Date]"
-      ? value.getTime()
-      : new Date(String(value || "")).getTime();
-    if (Number.isFinite(expiresTime) && expiresTime <= now) expiredRows.push(index + 2);
-  });
-  expiredRows.reverse().forEach(rowNumber => trashSheet.deleteRow(rowNumber));
+  const lastCleanupAt = Number(properties.getProperty(cleanupKey)) || 0;
+  if (!lastCleanupAt || now - lastCleanupAt >= TRASH_MAINTENANCE_INTERVAL_MS) {
+    const expiresValues = tombstoneRows.length === trashRowCount
+      ? tombstoneRows.map(row => [row[expiresColumn - 1]])
+      : (trashRowCount
+          ? trashSheet.getRange(2, expiresColumn, trashRowCount, 1).getValues()
+          : []);
+    expiresValues.forEach((row, index) => {
+      const value = row[0];
+      const expiresTime = Object.prototype.toString.call(value) === "[object Date]"
+        ? value.getTime()
+        : new Date(String(value || "")).getTime();
+      if (Number.isFinite(expiresTime) && expiresTime <= now) expiredRows.push(index + 2);
+    });
+    expiredRows.reverse().forEach(rowNumber => trashSheet.deleteRow(rowNumber));
+    properties.setProperty(cleanupKey, String(now));
+  }
   return {
-    identities: tombstoneState.identities,
+    identities,
     purged: expiredRows.length
   };
 }

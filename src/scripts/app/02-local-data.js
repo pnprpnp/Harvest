@@ -1057,9 +1057,11 @@ function savePlantingEventSyncStatus(status){
 function setPlantingEventSyncStatus(event, state, options = {}){
   const eventId = getSafePositiveRecordId(event?.eventId);
   if(eventId === null) return;
-  const status = loadPlantingEventSyncStatus();
+  const status = options.status && typeof options.status === "object"
+    ? options.status
+    : loadPlantingEventSyncStatus();
   status[String(eventId)] = { state, updatedAt: new Date().toISOString() };
-  savePlantingEventSyncStatus(status);
+  if(options.persist !== false) savePlantingEventSyncStatus(status);
   if(options.updateUi !== false) updateGoogleSheetResendButtonState();
 }
 
