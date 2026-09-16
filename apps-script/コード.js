@@ -47,6 +47,9 @@ const HARVEST_RECORD_INBOX_RESULT_MAX_CHARACTERS = 45000;
 const HARVEST_RECORD_INBOX_MAX_ATTEMPTS = 5;
 const HARVEST_RECORD_INBOX_PROCESSING_LEASE_MS = 15 * 60 * 1000;
 const HARVEST_RECORD_INBOX_RETENTION_DAYS = 30;
+const HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY =
+  "HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_V1";
+const HARVEST_RECORD_INBOX_TRIGGER_CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const HARVEST_RECORD_INBOX_STATUSES = Object.freeze({
   queued: "queued",
   processing: "processing",
@@ -75,7 +78,7 @@ const HARVEST_RECORD_INBOX_HEAD_HEADERS = [
   "受付ID",
   "受付日時"
 ];
-const API_BUILD_VERSION = "2026-09-16-durable-record-inbox";
+const API_BUILD_VERSION = "2026-09-16-auto-record-inbox-trigger";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;
@@ -9492,6 +9495,7 @@ function enqueueHarvestDayBatch(records, plantingEvents, batchId, syncRevision) 
     plantingEvents
   });
   const chunks = getHarvestRecordInboxPayloadChunks(serializedPayload);
+  ensureHarvestRecordInboxTriggerInstalled();
   const sheet = ensureHarvestRecordInboxSheet();
   // Webアプリを複数端末から同時に使っても、同じ受付IDを重複追加しないよう
   // ユーザー単位ではなくスクリプト全体で排他します。
@@ -9536,6 +9540,7 @@ function enqueueHarvestDayBatch(records, plantingEvents, batchId, syncRevision) 
 function getHarvestDayBatchInboxStatus(batchId) {
   const normalizedId = normalizeHarvestDayBatchId(batchId);
   if (!normalizedId) throw new Error("受信箱の受付IDが正しくありません");
+  ensureHarvestRecordInboxTriggerInstalled();
   const sheet = getSpreadsheet().getSheetByName(HARVEST_RECORD_INBOX_SHEET_NAME);
   if (!sheet) return buildHarvestRecordInboxStatus(null);
   return buildHarvestRecordInboxStatus(getHarvestRecordInboxEntry(sheet, normalizedId));
@@ -9867,7 +9872,44 @@ function installHarvestRecordInboxTrigger() {
     .filter(trigger => trigger.getHandlerFunction() === handler)
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
   ScriptApp.newTrigger(handler).timeBased().everyMinutes(1).create();
+  PropertiesService.getScriptProperties().setProperty(
+    HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY,
+    String(Date.now())
+  );
   return true;
+}
+
+function ensureHarvestRecordInboxTriggerInstalled() {
+  const properties = PropertiesService.getScriptProperties();
+  const checkedAt = Number(properties.getProperty(
+    HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY
+  )) || 0;
+  if (checkedAt && Date.now() - checkedAt < HARVEST_RECORD_INBOX_TRIGGER_CHECK_INTERVAL_MS) {
+    return true;
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return false;
+  try {
+    const latestCheckedAt = Number(properties.getProperty(
+      HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY
+    )) || 0;
+    if (latestCheckedAt &&
+      Date.now() - latestCheckedAt < HARVEST_RECORD_INBOX_TRIGGER_CHECK_INTERVAL_MS) {
+      return true;
+    }
+    const handler = "processHarvestRecordInbox";
+    const exists = ScriptApp.getProjectTriggers()
+      .some(trigger => trigger.getHandlerFunction() === handler);
+    if (!exists) ScriptApp.newTrigger(handler).timeBased().everyMinutes(1).create();
+    properties.setProperty(
+      HARVEST_RECORD_INBOX_TRIGGER_CHECKED_AT_PROPERTY,
+      String(Date.now())
+    );
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function setupHarvestRecordInbox() {

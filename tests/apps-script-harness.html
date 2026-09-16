@@ -13,7 +13,8 @@
       propertyValues: {},
       cacheValues: {},
       openedSpreadsheetIds: [],
-      activeSpreadsheet: null
+      activeSpreadsheet: null,
+      triggerHandlers: []
     };
     const scriptProperties = {
       getProperty(key){
@@ -47,6 +48,46 @@
     };
     window.CacheService = {
       getScriptCache(){ return scriptCache; }
+    };
+    window.LockService = {
+      getScriptLock(){
+        return {
+          tryLock(){ return true; },
+          waitLock(){ return true; },
+          releaseLock(){}
+        };
+      },
+      getUserLock(){
+        return {
+          tryLock(){ return true; },
+          waitLock(){ return true; },
+          releaseLock(){}
+        };
+      }
+    };
+    window.ScriptApp = {
+      getProjectTriggers(){
+        return state.triggerHandlers.map(handler => ({
+          getHandlerFunction(){ return handler; }
+        }));
+      },
+      newTrigger(handler){
+        return {
+          timeBased(){ return this; },
+          everyMinutes(){ return this; },
+          forSpreadsheet(){ return this; },
+          onChange(){ return this; },
+          create(){
+            state.triggerHandlers.push(String(handler || ""));
+            return this;
+          }
+        };
+      },
+      deleteTrigger(trigger){
+        const handler = String(trigger?.getHandlerFunction?.() || "");
+        const index = state.triggerHandlers.indexOf(handler);
+        if(index >= 0) state.triggerHandlers.splice(index, 1);
+      }
     };
     window.SpreadsheetApp = {
       openById(id){
@@ -105,6 +146,7 @@
     state.cacheValues = {};
     state.openedSpreadsheetIds.length = 0;
     state.activeSpreadsheet = null;
+    state.triggerHandlers.length = 0;
     requestScopedSpreadsheet = null;
     requestScopedChangedHarvestRecordIds = new Set();
   };

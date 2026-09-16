@@ -775,6 +775,30 @@
         assert(chunks.every(chunk => chunk.startsWith("!")), "受信内容を数式として保存する恐れがあります");
       });
 
+      await runTest("最初の受信箱利用時に1分間隔の反映処理を自動設定する", () => {
+        appsScript.resetAppsScriptTestState();
+        assertEqual(
+          appsScript.ensureHarvestRecordInboxTriggerInstalled(),
+          true,
+          "反映処理を自動設定できません"
+        );
+        assertDeepEqual(
+          comparable(appsScript.__appsScriptTestState.triggerHandlers),
+          ["processHarvestRecordInbox"],
+          "受信箱の反映処理以外を設定しました"
+        );
+        assertEqual(
+          appsScript.ensureHarvestRecordInboxTriggerInstalled(),
+          true,
+          "設定済みの反映処理を再利用できません"
+        );
+        assertEqual(
+          appsScript.__appsScriptTestState.triggerHandlers.length,
+          1,
+          "反映処理を重複して設定しました"
+        );
+      });
+
       await runTest("Apps Scriptが収穫記録の連続列を一括書き込みする", () => {
         const result = comparable(appsScript.eval(`(() => {
           const previousFlush = SpreadsheetApp.flush;
