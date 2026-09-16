@@ -11,7 +11,7 @@ Then open one of these previews:
 - <http://127.0.0.1:4173/previews/calculation-settings.html>
 - <http://127.0.0.1:4173/previews/harvest-progress-loss.html>
 - <http://127.0.0.1:4173/previews/simulation-calculated.html>（実際の `index.html` を使った計算後画面）
-- <http://127.0.0.1:4173/previews/record-instant-save.html>（実際の記録画面で即時完了と8秒の疑似背景送信を確認）
+- <http://127.0.0.1:4173/previews/record-instant-save.html>（実際の記録画面で即時完了、Google受信済み、本体反映済みへの変化を確認）
 
 If npm is available, `npm run preview` starts the same server.
 

@@ -115,7 +115,7 @@
     <section class="previewControls" aria-label="保存状態">
       <div class="previewState" aria-live="polite">
         <strong id="localState">下の「苗植え場所を記録する」を押してください</strong>
-        <span id="cloudState">疑似通信は8秒です。実データは送信しません</span>
+        <span id="cloudState">Google受信まで約1秒、本体反映まで約8秒を再現します</span>
       </div>
       <button id="resetPreview" class="previewReset" type="button">もう一度</button>
     </section>
@@ -134,6 +134,9 @@
     const resetPreview = document.getElementById("resetPreview");
     let tappedAt = 0;
     let statusPoll = null;
+    let receivedPayload = null;
+    let receivedAt = "";
+    let reflectAt = 0;
     const originalLocalStorage = Object.fromEntries(
       Array.from({ length:localStorage.length }, (_, index) => localStorage.key(index))
         .filter(Boolean)
@@ -164,8 +167,11 @@
       if(statusPoll !== null) clearInterval(statusPoll);
       statusPoll = null;
       tappedAt = 0;
+      receivedPayload = null;
+      receivedAt = "";
+      reflectAt = 0;
       localState.textContent = "下の「苗植え場所を記録する」を押してください";
-      cloudState.textContent = "疑似通信は8秒です。実データは送信しません";
+      cloudState.textContent = "Google受信まで約1秒、本体反映まで約8秒を再現します";
       previewLoading.hidden = false;
       setPreviewStorage();
       appFrame.src = `../index.html?record-instant-save-preview=${Date.now()}`;
@@ -189,6 +195,29 @@
           ok:true,
           event:{ ...event, createdAt:event.createdAt || createdAt, updatedAt:createdAt }
         }))
+      };
+    }
+
+    function buildInboxResponse(payload){
+      const batchId = String(payload?.batchId || "preview-inbox-batch");
+      if(performance.now() < reflectAt){
+        return {
+          ok:true,
+          accepted:true,
+          processed:false,
+          queueStatus:"queued",
+          batchId,
+          acceptedAt:receivedAt
+        };
+      }
+      return {
+        ...buildSuccessResponse(receivedPayload || payload),
+        accepted:true,
+        processed:true,
+        queueStatus:"completed",
+        batchId,
+        acceptedAt:receivedAt,
+        processedAt:new Date().toISOString()
       };
     }
 
@@ -240,6 +269,7 @@
         enterPlantingRecordMode(previewRecord, { save:false });
         document.getElementById("recordActualSeedlingTrayCountInput").value = "0";
         confirmPlantingRecordBeforeSend = () => true;
+        getGoogleSheetAcceptedBatchCheckDelay = () => 800;
         document.getElementById("welcomeScreen")?.remove();
         window.scrollTo(0, 0);
         queueGoogleSheetRecordSend(previewRecord, {
@@ -260,9 +290,18 @@
       app.confirmPlantingRecordBeforeSend = () => true;
       app.fetch = async (_url, options) => {
         const payload = JSON.parse(options.body);
-        cloudState.textContent = "スプレッドシートへ背景送信中…（画面操作は続けられます）";
-        await new Promise(resolve => setTimeout(resolve, 8000));
-        return { text:async () => JSON.stringify(buildSuccessResponse(payload)) };
+        if(payload.type === "harvest-day-batch-inbox"){
+          cloudState.textContent = "Googleの受信箱へ送信中…";
+          await new Promise(resolve => setTimeout(resolve, 900));
+          receivedPayload = payload;
+          receivedAt = new Date().toISOString();
+          reflectAt = performance.now() + 6900;
+          return { text:async () => JSON.stringify(buildInboxResponse(payload)) };
+        }
+        if(payload.type === "harvest-day-batch-inbox-status"){
+          return { text:async () => JSON.stringify(buildInboxResponse(payload)) };
+        }
+        throw new Error("プレビューでは外部通信を行いません");
       };
 
       const primaryButton = app.document.getElementById("recordPrimaryActionBtn");
@@ -275,11 +314,16 @@
 
       statusPoll = setInterval(() => {
         if(!tappedAt) return;
-        const queueSize = app.eval("googleSheetBackgroundRecordQueue.size + googleSheetBackgroundPlantingQueue.size");
-        if(queueSize !== 0) return;
-        clearInterval(statusPoll);
-        statusPoll = null;
-        cloudState.textContent = "スプレッドシートへの背景送信も完了（遅い成功通知は出しません）";
+        const syncText = app.document.getElementById("recordSyncStatusText")?.textContent || "";
+        if(syncText === "送信中"){
+          cloudState.textContent = "Googleの受信箱へ送信中…";
+        }else if(syncText === "受信済み"){
+          cloudState.textContent = "Google側で保管済み。この時点でアプリを閉じて大丈夫です";
+        }else if(syncText === "反映済み"){
+          cloudState.textContent = "スプレッドシート本体への反映も完了しました";
+          clearInterval(statusPoll);
+          statusPoll = null;
+        }
       }, 150);
 
       requestAnimationFrame(() => requestAnimationFrame(() => {

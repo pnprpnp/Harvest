@@ -37,7 +37,45 @@ const HARVEST_DAY_BATCH_RECEIPT_TTL_SECONDS = 6 * 60 * 60;
 const HARVEST_DAY_BATCH_RECEIPT_TTL_MS = HARVEST_DAY_BATCH_RECEIPT_TTL_SECONDS * 1000;
 const HARVEST_DAY_BATCH_RECEIPT_MAX_CHARACTERS = 7500;
 const HARVEST_DAY_BATCH_ID_MAX_LENGTH = 80;
-const API_BUILD_VERSION = "2026-09-14-fast-reliable-record-send";
+const HARVEST_RECORD_INBOX_SHEET_NAME = "記録受信箱";
+const HARVEST_RECORD_INBOX_HEAD_SHEET_NAME = "記録受信状態";
+// 各セルの先頭に文字列マーカーを1文字付け、数式として解釈されるのを防ぎます。
+const HARVEST_RECORD_INBOX_PAYLOAD_CHUNK_CHARACTERS = 29999;
+const HARVEST_RECORD_INBOX_PAYLOAD_CHUNK_COUNT = 17;
+// 1セルの50,000文字制限に収めつつ、上限100件分の受付結果を保持します。
+const HARVEST_RECORD_INBOX_RESULT_MAX_CHARACTERS = 45000;
+const HARVEST_RECORD_INBOX_MAX_ATTEMPTS = 5;
+const HARVEST_RECORD_INBOX_PROCESSING_LEASE_MS = 15 * 60 * 1000;
+const HARVEST_RECORD_INBOX_RETENTION_DAYS = 30;
+const HARVEST_RECORD_INBOX_STATUSES = Object.freeze({
+  queued: "queued",
+  processing: "processing",
+  completed: "completed",
+  failed: "failed"
+});
+const HARVEST_RECORD_INBOX_HEADERS = [
+  "受付ID",
+  "内容指紋",
+  "状態",
+  "受付日時",
+  "処理開始日時",
+  "処理完了日時",
+  "試行回数",
+  "次回試行日時",
+  "エラー",
+  "処理結果JSON"
+].concat(Array.from(
+  { length: HARVEST_RECORD_INBOX_PAYLOAD_CHUNK_COUNT },
+  (_, index) => "内容" + (index + 1)
+));
+const HARVEST_RECORD_INBOX_HEAD_HEADERS = [
+  "対象キー",
+  "確定ID",
+  "更新日時",
+  "受付ID",
+  "受付日時"
+];
+const API_BUILD_VERSION = "2026-09-16-durable-record-inbox";
 const API_TOKEN_MIN_LENGTH = 32;
 const API_TOKEN_MAX_LENGTH = 512;
 const API_MAX_BODY_CHARACTERS = 500000;

@@ -234,6 +234,29 @@ function doPost(e) {
       });
     }
 
+    if (operation === "enqueueDayBatch") {
+      apiStage = "当日の記録を受信箱へ保存中";
+      const result = enqueueHarvestDayBatch(
+        body.records,
+        body.plantingEvents,
+        body.batchId,
+        body.syncRevision
+      );
+      return jsonResponse({
+        ok: true,
+        ...compactHarvestRecordInboxApiResult(result)
+      });
+    }
+
+    if (operation === "checkDayBatchInboxStatus") {
+      apiStage = "受信箱の処理状況を確認中";
+      const result = getHarvestDayBatchInboxStatus(body.batchId);
+      return jsonResponse({
+        ok: true,
+        ...compactHarvestRecordInboxApiResult(result)
+      });
+    }
+
     if (operation === "checkDayBatchStatus") {
       apiStage = "当日の一括送信結果を確認中";
       const result = getHarvestDayBatchSendStatus(
@@ -456,7 +479,9 @@ function resolveApiOperation(body) {
     saveMonitorContent: "saveMonitorContent",
     listMonitorHistory: "listMonitorHistory",
     saveDayBatch: "saveDayBatch",
-    checkDayBatchStatus: "checkDayBatchStatus"
+    checkDayBatchStatus: "checkDayBatchStatus",
+    enqueueDayBatch: "enqueueDayBatch",
+    checkDayBatchInboxStatus: "checkDayBatchInboxStatus"
   };
   const operationByType = {
     "harvest-access-role": "identifyAccessRole",
@@ -467,6 +492,8 @@ function resolveApiOperation(body) {
     "harvest-record-batch": "saveRecordBatch",
     "harvest-day-batch": "saveDayBatch",
     "harvest-day-batch-status": "checkDayBatchStatus",
+    "harvest-day-batch-inbox": "enqueueDayBatch",
+    "harvest-day-batch-inbox-status": "checkDayBatchInboxStatus",
     "harvest-record-list": "listRecords",
     "harvest-record-delete": "deleteRecord",
     "harvest-record-restore": "restoreRecord",
@@ -523,6 +550,23 @@ function resolveApiOperation(body) {
       body.batchId = normalizeHarvestDayBatchId(body.batchId);
       if (!body.batchId) throw new Error("一括送信IDの形式が正しくありません");
     }
+  }
+  if (operation === "enqueueDayBatch") {
+    if (!Array.isArray(body.records)) throw new Error("recordsが配列ではありません");
+    if (!Array.isArray(body.plantingEvents)) {
+      throw new Error("plantingEventsが配列ではありません");
+    }
+    const itemCount = body.records.length + body.plantingEvents.length;
+    if (itemCount < 1) throw new Error("受信箱へ送る記録がありません");
+    if (body.records.length > API_BATCH_RECORD_LIMIT || itemCount > API_DAY_BATCH_ITEM_LIMIT) {
+      throw new Error("受信箱へ送れる当日の記録は" + API_DAY_BATCH_ITEM_LIMIT + "件までです");
+    }
+    body.batchId = normalizeHarvestDayBatchId(body.batchId);
+    if (!body.batchId) throw new Error("受信箱の受付IDが正しくありません");
+  }
+  if (operation === "checkDayBatchInboxStatus") {
+    body.batchId = normalizeHarvestDayBatchId(body.batchId);
+    if (!body.batchId) throw new Error("受信箱の受付IDが正しくありません");
   }
   if (operation === "checkDayBatchStatus") {
     if (!Array.isArray(body.records)) {
@@ -609,6 +653,8 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
     "saveRecordBatch",
     "saveDayBatch",
     "checkDayBatchStatus",
+    "enqueueDayBatch",
+    "checkDayBatchInboxStatus",
     "savePlantingEvent",
     "getMonitorContent",
     "saveMonitorContent"
@@ -660,6 +706,12 @@ function buildHarvestDayBatchReceipt(batchId, records, plantingEvents, result) {
     savedAt: now,
     expiresAt: now + HARVEST_DAY_BATCH_RECEIPT_TTL_MS,
     requestFingerprint: getHarvestDayBatchRequestFingerprint(records, plantingEvents),
+    previousSyncRevision: Number.isSafeInteger(Number(result.previousSyncRevision))
+      ? Number(result.previousSyncRevision)
+      : null,
+    syncRevision: Number.isSafeInteger(Number(result.syncRevision))
+      ? Number(result.syncRevision)
+      : null,
     recordResults: recordResults.map((item, index) => ({
       index,
       requestedId: Number(records[index] && records[index].id),
@@ -766,7 +818,17 @@ function buildHarvestDayBatchStatusFromReceipt(receipt, records, plantingEvents)
         }
       };
     });
-    return { recordResults, plantingResults, confirmedByReceipt: true };
+    return {
+      recordResults,
+      plantingResults,
+      confirmedByReceipt: true,
+      previousSyncRevision: Number.isSafeInteger(Number(receipt.previousSyncRevision))
+        ? Number(receipt.previousSyncRevision)
+        : null,
+      syncRevision: Number.isSafeInteger(Number(receipt.syncRevision))
+        ? Number(receipt.syncRevision)
+        : null
+    };
   } catch (err) {
     return null;
   }

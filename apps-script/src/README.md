@@ -24,6 +24,7 @@ python3 tools/build_apps_script.py
 - `12-spreadsheet-connection-and-repair.js`: 接続先スプレッドシート、手動修復
 - `13-monitor-sheet.js`: モニター用シートの作成と保存形式
 - `14-record-sheet-format.js`: 収穫記録の列、表示形式、行の変換、API応答
+- `15-record-inbox.js`: 記録の高速受付、非表示の受信箱、後続の本体反映
 
 番号は現在の連結順を表すため、`コード.template.js`の並びを変更しないでください。
 

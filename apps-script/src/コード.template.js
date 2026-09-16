@@ -25,3 +25,5 @@
 <!-- build:include apps-script/src/13-monitor-sheet.js -->
 
 <!-- build:include apps-script/src/14-record-sheet-format.js -->
+
+<!-- build:include apps-script/src/15-record-inbox.js -->

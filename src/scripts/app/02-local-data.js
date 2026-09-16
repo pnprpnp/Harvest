@@ -1076,6 +1076,7 @@ function getGoogleSheetUnsentPlantingEvents(){
   const status = loadPlantingEventSyncStatus();
   return plantingEvents.filter(event => (
     isPlantingEventUnsent(event, status)
+    && String(status[String(event.eventId)]?.state || "") !== "accepted"
     && !hasSyncConflictForEntity("planting", event)
   ));
 }

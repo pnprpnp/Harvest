@@ -2762,6 +2762,7 @@ function renderRecordHistoryToggle(){
       : "記録一覧を開く"
   );
   button.setAttribute("aria-pressed", String(isHistoryOpen));
+  updateRecordSyncStatusIndicator();
 }
 
 function closeRecordHistoryForMainTabSwitch(){

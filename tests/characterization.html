@@ -130,11 +130,16 @@
       const originalFetch = app.fetch;
       const originalSchedule = app.scheduleGoogleSheetBackgroundSend;
       const originalShowToast = app.showToast;
+      const previousInboxSupportState = app.eval("googleSheetInboxSupportState");
       try{
         app.eval(`
           if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
+          if(googleSheetAcceptedBatchCheckTimer !== null) clearTimeout(googleSheetAcceptedBatchCheckTimer);
           googleSheetBackgroundSendTimer = null;
           googleSheetBackgroundSendTimerDueAt = 0;
+          googleSheetAcceptedBatchCheckTimer = null;
+          googleSheetAcceptedBatchCheckTimerDueAt = 0;
+          googleSheetAcceptedBatchCheckRunning = false;
           googleSheetBackgroundRecordQueue.clear();
           googleSheetBackgroundPlantingQueue.clear();
           googleSheetBackgroundSendRunning = false;
@@ -146,6 +151,7 @@
           url: "https://script.google.com/macros/s/characterization-test/exec",
           token: "characterization-test-token-0000000000000000"
         });
+        app.eval('googleSheetInboxSupportState = "unsupported";');
         const testConfig = app.loadGoogleSheetConfig();
         app.saveGoogleSheetSyncRevision(testConfig, 0);
         app.eval("saveGoogleSheetSyncStatus({}); savePlantingEventSyncStatus({});");
@@ -157,13 +163,19 @@
         app.showToast = originalShowToast;
         app.eval(`
           if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
+          if(googleSheetAcceptedBatchCheckTimer !== null) clearTimeout(googleSheetAcceptedBatchCheckTimer);
           googleSheetBackgroundSendTimer = null;
           googleSheetBackgroundSendTimerDueAt = 0;
+          googleSheetAcceptedBatchCheckTimer = null;
+          googleSheetAcceptedBatchCheckTimerDueAt = 0;
+          googleSheetAcceptedBatchCheckRunning = false;
           googleSheetBackgroundRecordQueue.clear();
           googleSheetBackgroundPlantingQueue.clear();
+          googleSheetAcceptedBatchQueue.clear();
           googleSheetBackgroundSendRunning = false;
           googleSheetOperationOwner = null;
           googleSheetSendState = "idle";
+          googleSheetInboxSupportState = ${JSON.stringify(previousInboxSupportState)};
           updateGoogleSheetOperationControls();
         `);
         restoreStorage(app.localStorage, previousStorage);
@@ -707,6 +719,11 @@
           "setHarvestRecordRangeValuesWithValidationRecovery",
           "buildHarvestDayBatchReceipt",
           "buildHarvestDayBatchStatusFromReceipt",
+          "enqueueHarvestDayBatch",
+          "getHarvestDayBatchInboxStatus",
+          "processHarvestRecordInbox",
+          "setupHarvestRecordInbox",
+          "getHarvestRecordInboxPayloadChunks",
           "recordHarvestSyncChangesWithinWriteLockSafely",
           "setupHarvestWorkerApiToken",
           "assertApiOperationAllowedForRole",
@@ -719,6 +736,43 @@
         assertEqual(appsScript.__appsScriptLoadError, "", "Apps Script本体の読み込み中にエラーが発生しました");
         const missing = requiredAppsScriptFunctions.filter(name => typeof appsScript[name] !== "function");
         assertDeepEqual(missing, [], `読み込めないApps Script関数があります: ${missing.join(", ")}`);
+      });
+
+      await runTest("Apps Scriptが高速受付用の記録受信箱APIを解釈する", () => {
+        const enqueueRequest = {
+          action:"enqueueDayBatch",
+          type:"harvest-day-batch-inbox",
+          records:[{}],
+          plantingEvents:[],
+          batchId:"day-characterization-1"
+        };
+        const statusRequest = {
+          action:"checkDayBatchInboxStatus",
+          type:"harvest-day-batch-inbox-status",
+          batchId:"day-characterization-1"
+        };
+        assertEqual(
+          appsScript.resolveApiOperation(enqueueRequest),
+          "enqueueDayBatch",
+          "受信箱への保存操作を解釈できません"
+        );
+        assertEqual(
+          appsScript.resolveApiOperation(statusRequest),
+          "checkDayBatchInboxStatus",
+          "受信箱の状態確認操作を解釈できません"
+        );
+        appsScript.assertApiOperationAllowedForRole("enqueueDayBatch", "worker");
+        appsScript.assertApiOperationAllowedForRole("checkDayBatchInboxStatus", "worker");
+        const source = "x".repeat(65000);
+        const chunks = appsScript.getHarvestRecordInboxPayloadChunks(source);
+        assertEqual(chunks.length, 17, "受信内容の保存列数が一定ではありません");
+        assertEqual(
+          chunks.map(appsScript.decodeHarvestRecordInboxPayloadChunk).join(""),
+          source,
+          "大きい受信内容を欠落なく分割・復元できません"
+        );
+        assert(chunks.every(chunk => chunk.length <= 30000), "Google Sheetsのセル上限を考慮していません");
+        assert(chunks.every(chunk => chunk.startsWith("!")), "受信内容を数式として保存する恐れがあります");
       });
 
       await runTest("Apps Scriptが収穫記録の連続列を一括書き込みする", () => {
@@ -1356,6 +1410,123 @@
         });
       });
 
+      await runTest("記録はGoogle受信箱への到着後に端末の送信待ちを終了する", async () => {
+        const record = createBackgroundPartialRecord(210, 9);
+        await withBackgroundSendTestState(app, [record], async () => {
+          const payloads = [];
+          app.eval('googleSheetInboxSupportState = "unknown";');
+          app.fetch = async (_url, options) => {
+            const payload = JSON.parse(options.body);
+            payloads.push(payload);
+            return {
+              text:async () => JSON.stringify({
+                ok:true,
+                accepted:true,
+                processed:false,
+                queueStatus:"queued",
+                batchId:payload.batchId,
+                acceptedAt:"2026-09-16T00:00:00.000Z"
+              })
+            };
+          };
+
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(record.recordUuid)), "受信箱へ送る記録を追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+
+          assertEqual(payloads.length, 1, "受信箱への送信が1回で完了していません");
+          assertEqual(payloads[0].type, "harvest-day-batch-inbox", "高速受付用の受信箱APIを使用していません");
+          assertEqual(
+            app.getGoogleSheetRecordSyncState(app.getRecordByUuid(record.recordUuid)),
+            "accepted",
+            "Google側で受信済みの状態を保持していません"
+          );
+          assertEqual(app.eval("googleSheetBackgroundRecordQueue.size"), 0, "Google受信済みの記録が端末の送信待ちに残っています");
+          assertEqual(app.eval("googleSheetAcceptedBatchQueue.size"), 1, "本体反映を確認する受付情報が残っていません");
+          assertEqual(app.getGoogleSheetUnsentRecords().length, 0, "Google受信済みの記録を未送信として数えています");
+          assertEqual(
+            app.document.getElementById("recordSyncStatusText").textContent,
+            "受信済み",
+            "記録一覧を開かずにGoogle受信済みを確認できません"
+          );
+        });
+      });
+
+      await runTest("受信箱の本体反映完了を確認して同期済みに切り替える", async () => {
+        const record = createBackgroundPartialRecord(211, 11);
+        await withBackgroundSendTestState(app, [record], async () => {
+          app.eval('googleSheetInboxSupportState = "unknown";');
+          let acceptedPayload = null;
+          app.fetch = async (_url, options) => {
+            const payload = JSON.parse(options.body);
+            if(payload.type === "harvest-day-batch-inbox"){
+              acceptedPayload = payload;
+              return {
+                text:async () => JSON.stringify({
+                  ok:true,
+                  accepted:true,
+                  processed:false,
+                  queueStatus:"queued",
+                  batchId:payload.batchId,
+                  acceptedAt:"2026-09-16T00:00:00.000Z"
+                })
+              };
+            }
+            if(payload.type === "harvest-day-batch-inbox-status"){
+              const storedRecord = createBackgroundServerRecord(acceptedPayload.records[0]);
+              return {
+                text:async () => JSON.stringify({
+                  ok:true,
+                  accepted:true,
+                  processed:true,
+                  queueStatus:"completed",
+                  batchId:payload.batchId,
+                  previousSyncRevision:0,
+                  syncRevision:1,
+                  recordResults:[{ index:0, ok:true, record:storedRecord }],
+                  plantingResults:[]
+                })
+              };
+            }
+            throw new Error("想定外の送信形式です: " + String(payload.type));
+          };
+
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(record.recordUuid)), "受信箱へ送る記録を追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+          app.eval(`
+            googleSheetAcceptedBatchQueue.forEach(entry => { entry.nextCheckAt = 0; });
+            if(googleSheetAcceptedBatchCheckTimer !== null) clearTimeout(googleSheetAcceptedBatchCheckTimer);
+            googleSheetAcceptedBatchCheckTimer = null;
+            googleSheetAcceptedBatchCheckTimerDueAt = 0;
+          `);
+          await app.checkGoogleSheetAcceptedBatches();
+
+          assertEqual(
+            app.getGoogleSheetRecordSyncState(app.getRecordByUuid(record.recordUuid)),
+            "confirmed",
+            "本体反映済みの記録を同期済みに切り替えていません"
+          );
+          assertEqual(app.eval("googleSheetAcceptedBatchQueue.size"), 0, "完了した受信確認が端末に残っています");
+          assertEqual(
+            app.document.getElementById("recordSyncStatusText").textContent,
+            "反映済み",
+            "スプレッドシート本体への反映完了を表示していません"
+          );
+        });
+      });
+
+      await runTest("同じ記録内容の再送は同じ受信箱IDを使用する", () => {
+        const record = createBackgroundPartialRecord(212, 13);
+        const config = {
+          url:"https://script.google.com/macros/s/characterization-test/exec",
+          token:"characterization-test-token-0000000000000000"
+        };
+        const first = app.createGoogleSheetDayBatchId([record], [], config);
+        const retry = app.createGoogleSheetDayBatchId([app.deepClone(record)], [], config);
+        const edited = app.createGoogleSheetDayBatchId([{ ...record, cases:record.cases + 1 }], [], config);
+        assertEqual(first, retry, "同じ内容の再送で受付IDが変わっています");
+        assert(first !== edited, "記録内容を変更しても受付IDが変わりません");
+      });
+
       await runTest("検査済みの苗植え履歴は再検査せず保存し、重い状態再計算を後回しにする", async () => {
         const today = app.formatDateOnlyString(new Date());
         const fullRecord = createBackgroundFullRecord(29, today);
@@ -1799,9 +1970,13 @@
         const plantingEvent = createBackgroundPlantingEvent(3, fullRecord, today);
         await withBackgroundSendTestState(app, [fullRecord], async () => {
           const payloads = [];
+          app.eval('googleSheetInboxSupportState = "unknown";');
           app.fetch = async (_url, options) => {
             const payload = JSON.parse(options.body);
             payloads.push(payload);
+            if(payload.type === "harvest-day-batch-inbox"){
+              return { text: async () => JSON.stringify({ ok: false, message: "許可されていない操作です" }) };
+            }
             if(payload.type === "harvest-day-batch"){
               return { text: async () => JSON.stringify({ ok: false, message: "許可されていない操作です" }) };
             }
@@ -1845,9 +2020,10 @@
 
           assertDeepEqual(
             payloads.map(payload => payload.type),
-            ["harvest-day-batch", "harvest-record-batch", "planting-event"],
+            ["harvest-day-batch-inbox", "harvest-day-batch", "harvest-record-batch", "planting-event"],
             "未対応サーバーで既存の安全な送信方法へ切り替えていません"
           );
+          assertEqual(app.eval("googleSheetInboxSupportState"), "unsupported", "未対応の受信箱APIを繰り返し呼ぶ状態です");
           assertEqual(app.eval("googleSheetDayBatchSupportState"), "unsupported", "未対応APIの判定を保持していません");
           assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(fullRecord.recordUuid)), "confirmed", "互換送信した収穫が送信済みになりません");
           assertEqual(
@@ -14848,18 +15024,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "274c1b9c", elements: 2236, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "160e25b2", elements: 2306, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "6cec50bd", elements: 2306, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "f913acc3", elements: 2240, visible: 75, viewport: "390x844" },
-          mobileDashboard: { hash: "5655475c", elements: 2257, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f434e529", elements: 2340, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "987a6c82", elements: 2355, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "7756a547", elements: 2355, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "93b6ad78", elements: 2355, visible: 191, viewport: "390x844" },
-          mobileMonitor: { hash: "c2e4c88f", elements: 2399, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "3375aa3b", elements: 2399, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "ee142135", elements: 2399, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "7495dddc", elements: 2240, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "642c2bd6", elements: 2310, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "6e146351", elements: 2310, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "67b44ddc", elements: 2244, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "32302b3d", elements: 2261, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "ef2e4a93", elements: 2344, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "0b98c336", elements: 2359, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "f5999f43", elements: 2359, visible: 284, viewport: "390x844" },
+          mobileSettings: { hash: "0425c5d2", elements: 2359, visible: 191, viewport: "390x844" },
+          mobileMonitor: { hash: "28faeff9", elements: 2403, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "a6a8f9a5", elements: 2403, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "4050ae57", elements: 2403, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

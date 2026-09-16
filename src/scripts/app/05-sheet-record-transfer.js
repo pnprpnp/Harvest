@@ -782,6 +782,151 @@ function isGoogleSheetDayBatchUnsupportedMessage(message){
     || text.includes("対応していないリクエスト形式");
 }
 
+function applyGoogleSheetAcceptedInboxResult(entry, result, config){
+  const recordSnapshots = (entry?.recordSnapshots || []).map(cloneGoogleSheetRecordForSend);
+  const plantingSnapshots = (entry?.plantingEventSnapshots || []).map(cloneGoogleSheetPlantingEventForSend);
+  const recordResults = Array.isArray(result?.recordResults) ? result.recordResults : [];
+  const plantingResults = Array.isArray(result?.plantingResults) ? result.plantingResults : [];
+  const recordResultsByIndex = new Map();
+  const plantingResultsByIndex = new Map();
+  recordResults.forEach(item => {
+    const index = Number(item?.index);
+    if(Number.isSafeInteger(index) && index >= 0 && index < recordSnapshots.length
+      && !recordResultsByIndex.has(index)) recordResultsByIndex.set(index, item);
+  });
+  plantingResults.forEach(item => {
+    const index = Number(item?.index);
+    if(Number.isSafeInteger(index) && index >= 0 && index < plantingSnapshots.length
+      && !plantingResultsByIndex.has(index)) plantingResultsByIndex.set(index, item);
+  });
+  const recordIdMappings = [];
+  recordSnapshots.forEach((snapshot, index) => {
+    const item = recordResultsByIndex.get(index);
+    const canonicalId = getSafePositiveRecordId(item?.record?.id);
+    if(item?.ok === true && canonicalId !== null && Number(snapshot.id) !== canonicalId){
+      recordIdMappings.push({ oldId:snapshot.id, newId:canonicalId });
+    }
+  });
+  recordIdMappings.forEach(mapping => {
+    remapGoogleSheetDayBatchPlantingSnapshots(
+      plantingSnapshots,
+      mapping.oldId,
+      mapping.newId
+    );
+  });
+
+  let confirmedRecords = 0;
+  let confirmedPlantingEvents = 0;
+  recordSnapshots.forEach((snapshot, index) => {
+    const item = recordResultsByIndex.get(index);
+    if(item?.ok !== true || !item.record) return;
+    const signature = getGoogleSheetRecordSendSignature(snapshot, config);
+    if(setGoogleSheetSyncStatusAfterSend(snapshot, signature, config, "confirmed", item.record)){
+      confirmedRecords++;
+    }
+  });
+  plantingSnapshots.forEach((snapshot, index) => {
+    const item = plantingResultsByIndex.get(index);
+    if(item?.ok !== true || !item.event) return;
+    if(setPlantingEventSyncStatusAfterDayBatch(snapshot, "confirmed", item.event)){
+      confirmedPlantingEvents++;
+    }
+  });
+  updateGoogleSheetResendButtonState();
+  return { confirmedRecords, confirmedPlantingEvents };
+}
+
+async function enqueueGoogleSheetDayBatchChunk(
+  recordSnapshots,
+  plantingEventSnapshots,
+  sentRecordSignatures,
+  config,
+  batchId
+){
+  const requestedSyncRevision = getGoogleSheetMutationSyncRevision(config);
+  const payloadObject = buildGoogleSheetDayBatchInboxPayload(
+    recordSnapshots,
+    plantingEventSnapshots,
+    config,
+    { batchId }
+  );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_BATCH_TIMEOUT_MS);
+  try{
+    const response = await fetch(config.url, {
+      method:"POST",
+      mode:"cors",
+      headers:{ "Content-Type":"text/plain;charset=utf-8" },
+      body:buildValidatedGoogleSheetRequestBody(payloadObject),
+      signal:controller.signal
+    });
+    const text = await response.text();
+    if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("記録受信箱の応答が大きすぎます");
+    const result = text ? JSON.parse(text) : {};
+    if(result.ok !== true){
+      const message = result.message || "記録をGoogleの受信箱へ送信できませんでした";
+      const error = new Error(message);
+      if(isGoogleSheetDayBatchUnsupportedMessage(message)){
+        error.googleSheetInboxUnsupported = true;
+      }
+      throw error;
+    }
+    if(result.accepted !== true){
+      throw new Error(result.message || "Google側で記録の受信を確認できませんでした");
+    }
+    googleSheetInboxSupportState = "supported";
+    if(result.processed === true && result.queueStatus === "completed"){
+      const entry = normalizeGoogleSheetAcceptedBatchEntry({
+        batchId,
+        configUrl:config.url,
+        requestedSyncRevision,
+        recordSnapshots,
+        plantingEventSnapshots,
+        acceptedAt:result.acceptedAt || new Date().toISOString()
+      });
+      if(entry) applyGoogleSheetAcceptedInboxResult(entry, result, config);
+      acknowledgeGoogleSheetMutationRevision(config, requestedSyncRevision, result);
+    }else{
+      rememberGoogleSheetAcceptedDayBatch(
+        batchId,
+        recordSnapshots,
+        plantingEventSnapshots,
+        config,
+        {
+          requestedSyncRevision,
+          acceptedAt:result.acceptedAt
+        }
+      );
+      recordSnapshots.forEach((snapshot, index) => {
+        setGoogleSheetSyncStatusAfterSend(
+          snapshot,
+          sentRecordSignatures[index],
+          config,
+          "accepted"
+        );
+      });
+      plantingEventSnapshots.forEach(snapshot => {
+        setPlantingEventSyncStatusAfterDayBatch(snapshot, "accepted");
+      });
+    }
+    updateGoogleSheetResendButtonState();
+    return {
+      successCount:recordSnapshots.length,
+      updatedCount:0,
+      duplicateCount:0,
+      failCount:0,
+      plantingSuccessCount:plantingEventSnapshots.length,
+      plantingUpdatedCount:0,
+      plantingFailCount:0,
+      recordIdMappings:[],
+      errorMessage:"",
+      serverAccepted:true
+    };
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 function getGoogleSheetDayBatchConfirmationDelays(){
   return [1200, 2500];
 }
@@ -943,9 +1088,32 @@ async function confirmGoogleSheetDayBatchAfterTimeout(
 async function sendGoogleSheetDayBatchChunk(recordSnapshots, plantingEventSnapshots, config){
   const sentRecordSignatures = recordSnapshots.map(record => getGoogleSheetRecordSendSignature(record, config));
   markGoogleSheetDayBatchPending(recordSnapshots, plantingEventSnapshots);
+  const batchId = createGoogleSheetDayBatchId(recordSnapshots, plantingEventSnapshots, config);
+
+  if(googleSheetInboxSupportState !== "unsupported"){
+    try{
+      return await enqueueGoogleSheetDayBatchChunk(
+        recordSnapshots,
+        plantingEventSnapshots,
+        sentRecordSignatures,
+        config,
+        batchId
+      );
+    }catch(error){
+      if(error?.googleSheetInboxUnsupported){
+        googleSheetInboxSupportState = "unsupported";
+      }else{
+        recordSnapshots.forEach((record, index) => {
+          setGoogleSheetSyncStatusAfterSend(record, sentRecordSignatures[index], config, "failed");
+        });
+        plantingEventSnapshots.forEach(event => setPlantingEventSyncStatusAfterDayBatch(event, "failed"));
+        throw error;
+      }
+    }
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_BATCH_TIMEOUT_MS);
-  const batchId = createGoogleSheetDayBatchId();
 
   try{
     const payloadObject = buildGoogleSheetDayBatchPayload(
@@ -1250,7 +1418,7 @@ async function sendGoogleSheetDayBatchesToGoogleSheet(recordsToSend, plantingEve
     retryableFailure ||= legacyResult.retryableFailure === true;
   };
 
-  if(googleSheetDayBatchSupportState === "unsupported"){
+  if(googleSheetInboxSupportState === "unsupported" && googleSheetDayBatchSupportState === "unsupported"){
     await sendWithLegacyApi();
     if(firstError && showFailureDialog){
       showRecordImportError("記録の送信に失敗しました。\n\n詳細: " + firstError, "送信失敗");
