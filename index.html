@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260917-linked-delete-recovery">
+<meta name="harvestnavi-version" content="20260917-record-relay">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -14275,6 +14275,9 @@ requestAnimationFrame(function(){
             <input id="googleSheetUrlInput" type="url" placeholder="Apps ScriptのWebアプリURL" required autocomplete="url">
             <label>連携トークン（必須）</label>
             <input id="googleSheetTokenInput" type="password" placeholder="Apps Script側と同じ合言葉" required autocomplete="new-password" spellcheck="false">
+            <label>高速受付URL（任意）</label>
+            <input id="recordRelayUrlInput" type="url" placeholder="Cloudflare WorkerのURL" autocomplete="url">
+            <div class="clusterNote">設定すると記録を高速受付へ保存し、スプレッドシートへの反映をバックグラウンドで行います。</div>
             <button id="googleSheetConfigSaveBtn" class="actionBtn thirdBtn googleSheetSaveBtn" data-ui-click="saveGoogleSheetConfig">Google連携設定を保存</button>
           </section>
         </div>
@@ -15562,6 +15565,7 @@ const GOOGLE_SHEET_TIMEOUT_MS = 10000;
 const GOOGLE_SHEET_IMPORT_TIMEOUT_MS = 3 * 60 * 1000;
 const GOOGLE_SHEET_BATCH_TIMEOUT_MS = 30000;
 const GOOGLE_SHEET_SEND_CONFIRM_TIMEOUT_MS = 15000;
+const RECORD_RELAY_TIMEOUT_MS = 5000;
 const GOOGLE_SHEET_SEND_RETRY_DELAYS_MS = Object.freeze([3000, 10000, 30000]);
 const GOOGLE_SHEET_INBOX_STATUS_DELAYS_MS = Object.freeze([5000, 15000, 30000, 60000]);
 const RECORD_AVAILABILITY_CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -21990,20 +21994,22 @@ function isRecordTemporarilyDeleted(record){
 function loadGoogleSheetConfig(){
   try{
     const parsed = harvestnaviLocalStorage.readJson(GOOGLE_SHEET_CONFIG_KEY, null);
-    if(!parsed) return { url: "", token: "" };
+    if(!parsed) return { url: "", token: "", relayUrl: "" };
     return {
       url: String(parsed.url || "").trim(),
-      token: String(parsed.token || "").trim()
+      token: String(parsed.token || "").trim(),
+      relayUrl: String(parsed.relayUrl || "").trim()
     };
   }catch(e){
-    return { url: "", token: "" };
+    return { url: "", token: "", relayUrl: "" };
   }
 }
 
 function validateGoogleSheetConfig(config){
   const normalized = {
     url: String(config?.url || "").trim(),
-    token: String(config?.token || "").trim()
+    token: String(config?.token || "").trim(),
+    relayUrl: String(config?.relayUrl || "").trim().replace(/\/+$/, "")
   };
 
   if(!normalized.url && !normalized.token){
@@ -22024,6 +22030,9 @@ function validateGoogleSheetConfig(config){
   if(normalized.token.length > 512){
     return { ok: false, config: normalized, message: "Google連携トークンが長すぎます" };
   }
+  if(normalized.relayUrl.length > 2048){
+    return { ok: false, config: normalized, message: "高速受付URLが長すぎます" };
+  }
 
   try{
     const parsedUrl = new URL(normalized.url);
@@ -22040,6 +22049,22 @@ function validateGoogleSheetConfig(config){
     }
   }catch(e){
     return { ok: false, config: normalized, message: "Google連携URLの形式が正しくありません" };
+  }
+
+  if(normalized.relayUrl){
+    try{
+      const relayUrl = new URL(normalized.relayUrl);
+      if(relayUrl.protocol !== "https:"
+        || relayUrl.username
+        || relayUrl.password
+        || relayUrl.port
+        || relayUrl.search
+        || relayUrl.hash){
+        return { ok: false, config: normalized, message: "高速受付URLにはhttpsのWorker URLを設定してください" };
+      }
+    }catch(e){
+      return { ok: false, config: normalized, message: "高速受付URLの形式が正しくありません" };
+    }
   }
 
   return { ok: true, config: normalized, message: "" };
@@ -22195,18 +22220,21 @@ function saveGoogleSheetConfigToStorage(config){
   const previousConfig = loadGoogleSheetConfig();
   const previousUrl = String(previousConfig.url || "").trim();
   const previousToken = String(previousConfig.token || "").trim();
+  const previousRelayUrl = String(previousConfig.relayUrl || "").trim();
   const nextUrl = String(config?.url || "").trim();
   const nextToken = String(config?.token || "").trim();
+  const nextRelayUrl = String(config?.relayUrl || "").trim().replace(/\/+$/, "");
   if(previousUrl && previousUrl !== nextUrl){
     harvestnaviLocalStorage.removeItem(getActiveGoogleSheetSyncRevisionStorageKey());
   }
-  if(previousUrl !== nextUrl || previousToken !== nextToken){
+  if(previousUrl !== nextUrl || previousToken !== nextToken || previousRelayUrl !== nextRelayUrl){
     harvestnaviLocalStorage.removeItem(RECORD_AVAILABILITY_CHECK_AT_KEY);
     recordAvailabilityCheckLastStartedAt = 0;
   }
   harvestnaviLocalStorage.writeJson(GOOGLE_SHEET_CONFIG_KEY, {
     url: nextUrl,
-    token: nextToken
+    token: nextToken,
+    relayUrl: nextRelayUrl
   });
   googleSheetDayBatchSupportState = "unknown";
   googleSheetInboxSupportState = "unknown";
@@ -22286,8 +22314,10 @@ function populateGoogleSheetConfigForm(){
   const validation = validateGoogleSheetConfig(config);
   const urlInput = document.getElementById("googleSheetUrlInput");
   const tokenInput = document.getElementById("googleSheetTokenInput");
+  const relayUrlInput = document.getElementById("recordRelayUrlInput");
   if(urlInput) urlInput.value = config.url;
   if(tokenInput) tokenInput.value = config.token;
+  if(relayUrlInput) relayUrlInput.value = config.relayUrl;
   applyAppAccessRoleUi();
   syncAccessProtectionDetails();
 }
@@ -22295,8 +22325,36 @@ function populateGoogleSheetConfigForm(){
 function readGoogleSheetConfigForm(){
   return {
     url: String(document.getElementById("googleSheetUrlInput")?.value || "").trim(),
-    token: String(document.getElementById("googleSheetTokenInput")?.value || "").trim()
+    token: String(document.getElementById("googleSheetTokenInput")?.value || "").trim(),
+    relayUrl: String(document.getElementById("recordRelayUrlInput")?.value || "").trim()
   };
+}
+
+async function verifyRecordRelayConfig(config){
+  if(!config?.relayUrl) return true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
+  try{
+    const response = await fetch(config.relayUrl + "/health", {
+      method:"GET",
+      mode:"cors",
+      cache:"no-store",
+      signal:controller.signal
+    });
+    const text = await response.text();
+    if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("高速受付サーバーの応答が大きすぎます");
+    const result = text ? JSON.parse(text) : {};
+    if(result.ok !== true || result.ready !== true
+      || result.service !== "harvestnavi-record-relay"){
+      throw new Error(result.message || "高速受付サーバーの準備が完了していません");
+    }
+    return true;
+  }catch(error){
+    if(error?.name === "AbortError") throw new Error("高速受付サーバーの確認がタイムアウトしました");
+    throw new Error("高速受付サーバーを確認できません: " + String(error?.message || error));
+  }finally{
+    clearTimeout(timer);
+  }
 }
 
 function buildGoogleSheetAccessRolePayload(config){
@@ -22364,6 +22422,7 @@ async function saveGoogleSheetConfig(){
   }
   try{
     const accessRole = await fetchGoogleSheetAccessRole(validation.config);
+    await verifyRecordRelayConfig(validation.config);
     saveGoogleSheetConfigToStorage(validation.config);
     const accessRoleChanged = setAppAccessRole(accessRole);
     populateGoogleSheetConfigForm();
@@ -22688,6 +22747,7 @@ function normalizeGoogleSheetAcceptedBatchEntry(value){
   return {
     batchId,
     configUrl: String(value.configUrl || "").trim().slice(0, 2048),
+    receiptUrl: String(value.receiptUrl || value.configUrl || "").trim().slice(0, 2048),
     requestedSyncRevision: normalizeGoogleSheetSyncRevision(value.requestedSyncRevision),
     recordSnapshots: JSON.parse(JSON.stringify(recordSnapshots)),
     plantingEventSnapshots: JSON.parse(JSON.stringify(plantingEventSnapshots)),
@@ -22701,6 +22761,7 @@ function serializeGoogleSheetAcceptedBatchMetadata(entry){
   return {
     batchId:entry.batchId,
     configUrl:entry.configUrl,
+    receiptUrl:entry.receiptUrl,
     requestedSyncRevision:entry.requestedSyncRevision,
     acceptedAt:entry.acceptedAt,
     checkCount:entry.checkCount,
@@ -22812,6 +22873,7 @@ function rememberGoogleSheetAcceptedDayBatch(
   const entry = normalizeGoogleSheetAcceptedBatchEntry({
     batchId,
     configUrl:config?.url,
+    receiptUrl:options.receiptUrl || config?.url,
     requestedSyncRevision:options.requestedSyncRevision,
     recordSnapshots,
     plantingEventSnapshots,
@@ -22913,13 +22975,23 @@ async function checkGoogleSheetAcceptedBatches(){
     return;
   }
   const config = configValidation.config;
+  const receiptUrl = entry.receiptUrl === config.url
+    ? config.url
+    : (config.relayUrl && entry.receiptUrl === config.relayUrl ? config.relayUrl : "");
+  if(!receiptUrl){
+    entry.checkCount++;
+    entry.nextCheckAt = now + getGoogleSheetAcceptedBatchCheckDelay(entry.checkCount);
+    saveGoogleSheetAcceptedBatchQueue();
+    scheduleGoogleSheetAcceptedBatchCheck();
+    return;
+  }
   googleSheetAcceptedBatchCheckRunning = true;
   try{
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_SEND_CONFIRM_TIMEOUT_MS);
     let result;
     try{
-      const response = await fetch(config.url, {
+      const response = await fetch(receiptUrl, {
         method:"POST",
         mode:"cors",
         headers:{ "Content-Type":"text/plain;charset=utf-8" },
@@ -22973,6 +23045,7 @@ function getRecordSyncStatusSummary(){
   const attentionStates = new Set(["failed", "conflict", "remoteDeleted", "dependencyConflict"]);
   let hasAttention = false;
   let hasAccepted = false;
+  let hasRelayAccepted = false;
   let unsentRecordCount = 0;
   let unsentPlantingEventCount = 0;
 
@@ -23000,12 +23073,16 @@ function getRecordSyncStatusSummary(){
       unsentPlantingEventCount++;
     }
   });
+  googleSheetAcceptedBatchQueue.forEach(entry => {
+    if(entry.receiptUrl && entry.receiptUrl !== entry.configUrl) hasRelayAccepted = true;
+  });
   return {
     configValidation,
     recordStatus,
     plantingStatus,
     hasAttention,
     hasAccepted,
+    hasRelayAccepted,
     unsentRecordCount,
     unsentPlantingEventCount,
     unsentCount:unsentRecordCount + unsentPlantingEventCount
@@ -23028,7 +23105,9 @@ function getRecordSyncStatusPresentation(summary = null){
     return { state:"waiting", text:"送信待ち", label:"端末に保存済みで、Googleへの送信を待っています" };
   }
   if(googleSheetAcceptedBatchQueue.size || resolvedSummary.hasAccepted){
-    return { state:"accepted", text:"受信済み", label:"Google側で受信済みです。アプリを閉じても大丈夫です" };
+    return resolvedSummary.hasRelayAccepted
+      ? { state:"accepted", text:"受付済み", label:"中継サーバーへ保存済みです。アプリを閉じても大丈夫です" }
+      : { state:"accepted", text:"受信済み", label:"Google側で受信済みです。アプリを閉じても大丈夫です" };
   }
   if(records.length || plantingEvents.length){
     return { state:"confirmed", text:"反映済み", label:"記録はスプレッドシートへ反映済みです" };
@@ -26857,97 +26936,123 @@ async function enqueueGoogleSheetDayBatchChunk(
     config,
     { batchId }
   );
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_BATCH_TIMEOUT_MS);
-  try{
-    const response = await fetch(config.url, {
-      method:"POST",
-      mode:"cors",
-      headers:{ "Content-Type":"text/plain;charset=utf-8" },
-      body:buildValidatedGoogleSheetRequestBody(payloadObject),
-      signal:controller.signal
-    });
-    const text = await response.text();
-    if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("記録受信箱の応答が大きすぎます");
-    const result = text ? JSON.parse(text) : {};
-    if(result.ok !== true){
-      const message = result.message || "記録をGoogleの受信箱へ送信できませんでした";
-      const error = new Error(message);
-      if(isGoogleSheetDayBatchUnsupportedMessage(message)){
-        error.googleSheetInboxUnsupported = true;
-      }
-      throw error;
-    }
-    if(result.accepted !== true){
-      throw new Error(result.message || "Google側で記録の受信を確認できませんでした");
-    }
-    googleSheetInboxSupportState = "supported";
-    if(result.processed === true && result.queueStatus === "completed"){
-      const entry = normalizeGoogleSheetAcceptedBatchEntry({
-        batchId,
-        configUrl:config.url,
-        requestedSyncRevision,
-        recordSnapshots,
-        plantingEventSnapshots,
-        acceptedAt:result.acceptedAt || new Date().toISOString()
+  const postInboxPayload = async (url, options = {}) => {
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      options.relay === true ? RECORD_RELAY_TIMEOUT_MS : GOOGLE_SHEET_BATCH_TIMEOUT_MS
+    );
+    try{
+      const response = await fetch(url, {
+        method:"POST",
+        mode:"cors",
+        headers:{ "Content-Type":"text/plain;charset=utf-8" },
+        body:buildValidatedGoogleSheetRequestBody(payloadObject),
+        signal:controller.signal
       });
-      if(entry) applyGoogleSheetAcceptedInboxResult(entry, result, config);
-      acknowledgeGoogleSheetMutationRevision(config, requestedSyncRevision, result);
-    }else{
-      const rememberedAcceptedBatch = rememberGoogleSheetAcceptedDayBatch(
-        batchId,
-        recordSnapshots,
-        plantingEventSnapshots,
+      const text = await response.text();
+      if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("記録受信箱の応答が大きすぎます");
+      const result = text ? JSON.parse(text) : {};
+      if(result.ok !== true){
+        const message = result.message || "記録を受信箱へ送信できませんでした";
+        const error = new Error(message);
+        if(options.relay !== true && isGoogleSheetDayBatchUnsupportedMessage(message)){
+          error.googleSheetInboxUnsupported = true;
+        }
+        throw error;
+      }
+      if(result.accepted !== true){
+        throw new Error(result.message || "記録の受信を確認できませんでした");
+      }
+      return result;
+    }finally{
+      clearTimeout(timer);
+    }
+  };
+
+  let receiptUrl = config.url;
+  let result = null;
+  if(config.relayUrl){
+    try{
+      result = await postInboxPayload(config.relayUrl, { relay:true });
+      if(result.relayAccepted !== true){
+        throw new Error("高速受付サーバーの受付結果を確認できませんでした");
+      }
+      receiptUrl = config.relayUrl;
+    }catch(error){
+      console.warn("高速受付を利用できないためApps Scriptへ直接送信します", error);
+      result = null;
+    }
+  }
+  if(!result) result = await postInboxPayload(config.url);
+
+  googleSheetInboxSupportState = "supported";
+  if(result.processed === true && result.queueStatus === "completed"){
+    const entry = normalizeGoogleSheetAcceptedBatchEntry({
+      batchId,
+      configUrl:config.url,
+      receiptUrl,
+      requestedSyncRevision,
+      recordSnapshots,
+      plantingEventSnapshots,
+      acceptedAt:result.acceptedAt || new Date().toISOString()
+    });
+    if(entry) applyGoogleSheetAcceptedInboxResult(entry, result, config);
+    acknowledgeGoogleSheetMutationRevision(config, requestedSyncRevision, result);
+  }else{
+    const rememberedAcceptedBatch = rememberGoogleSheetAcceptedDayBatch(
+      batchId,
+      recordSnapshots,
+      plantingEventSnapshots,
+      config,
+      {
+        requestedSyncRevision,
+        acceptedAt:result.acceptedAt,
+        receiptUrl
+      }
+    );
+    if(!rememberedAcceptedBatch){
+      throw new Error("受信済み記録の確認情報を端末に保存できませんでした");
+    }
+    const acceptedBatchState = {};
+    const acceptedRecordStatus = loadGoogleSheetSyncStatus();
+    const acceptedPlantingStatus = loadPlantingEventSyncStatus();
+    recordSnapshots.forEach((snapshot, index) => {
+      setGoogleSheetSyncStatusAfterSend(
+        snapshot,
+        sentRecordSignatures[index],
         config,
+        "accepted",
+        null,
         {
-          requestedSyncRevision,
-          acceptedAt:result.acceptedAt
+          batchState:acceptedBatchState,
+          recordStatus:acceptedRecordStatus
         }
       );
-      if(!rememberedAcceptedBatch){
-        throw new Error("受信済み記録の確認情報を端末に保存できませんでした");
-      }
-      const acceptedBatchState = {};
-      const acceptedRecordStatus = loadGoogleSheetSyncStatus();
-      const acceptedPlantingStatus = loadPlantingEventSyncStatus();
-      recordSnapshots.forEach((snapshot, index) => {
-        setGoogleSheetSyncStatusAfterSend(
-          snapshot,
-          sentRecordSignatures[index],
-          config,
-          "accepted",
-          null,
-          {
-            batchState:acceptedBatchState,
-            recordStatus:acceptedRecordStatus
-          }
-        );
+    });
+    plantingEventSnapshots.forEach(snapshot => {
+      setPlantingEventSyncStatusAfterDayBatch(snapshot, "accepted", null, {
+        batchState:acceptedBatchState,
+        plantingStatus:acceptedPlantingStatus
       });
-      plantingEventSnapshots.forEach(snapshot => {
-        setPlantingEventSyncStatusAfterDayBatch(snapshot, "accepted", null, {
-          batchState:acceptedBatchState,
-          plantingStatus:acceptedPlantingStatus
-        });
-      });
-      saveGoogleSheetSyncStatus(acceptedRecordStatus);
-      savePlantingEventSyncStatus(acceptedPlantingStatus);
-    }
-    updateGoogleSheetResendButtonState();
-    return {
-      successCount:recordSnapshots.length,
-      updatedCount:0,
-      duplicateCount:0,
-      failCount:0,
-      plantingSuccessCount:plantingEventSnapshots.length,
-      plantingUpdatedCount:0,
-      plantingFailCount:0,
-      recordIdMappings:[],
-      errorMessage:"",
-      serverAccepted:true
-    };
-  }finally{
-    clearTimeout(timer);
+    });
+    saveGoogleSheetSyncStatus(acceptedRecordStatus);
+    savePlantingEventSyncStatus(acceptedPlantingStatus);
   }
+  updateGoogleSheetResendButtonState();
+  return {
+    successCount:recordSnapshots.length,
+    updatedCount:0,
+    duplicateCount:0,
+    failCount:0,
+    plantingSuccessCount:plantingEventSnapshots.length,
+    plantingUpdatedCount:0,
+    plantingFailCount:0,
+    recordIdMappings:[],
+    errorMessage:"",
+    serverAccepted:true,
+    relayAccepted:result.relayAccepted === true
+  };
 }
 
 function getGoogleSheetDayBatchConfirmationDelays(){

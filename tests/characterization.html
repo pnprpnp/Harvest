@@ -1573,6 +1573,100 @@
         });
       });
 
+      await runTest("高速受付へ保存した時点でアプリを閉じられる状態にする", async () => {
+        const record = createBackgroundPartialRecord(214, 8);
+        await withBackgroundSendTestState(app, [record], async () => {
+          const relayUrl = "https://harvestnavi-record-relay.example.workers.dev";
+          const config = app.loadGoogleSheetConfig();
+          app.saveGoogleSheetConfigToStorage({ ...config, relayUrl });
+          app.eval('googleSheetInboxSupportState = "unknown";');
+          const requestUrls = [];
+          app.fetch = async (url, options) => {
+            requestUrls.push(String(url));
+            const payload = JSON.parse(options.body);
+            return {
+              text:async () => JSON.stringify({
+                ok:true,
+                accepted:true,
+                processed:false,
+                queueStatus:"queued",
+                relayAccepted:true,
+                batchId:payload.batchId,
+                acceptedAt:"2026-09-17T00:00:00.000Z"
+              })
+            };
+          };
+
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(record.recordUuid)), "高速受付へ送る記録を追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+
+          const acceptedEntry = comparable(app.eval(`(() => {
+            const entry = [...googleSheetAcceptedBatchQueue.values()][0];
+            return entry ? { configUrl:entry.configUrl, receiptUrl:entry.receiptUrl } : null;
+          })()`));
+          assertDeepEqual(requestUrls, [relayUrl], "高速受付より先にApps Scriptへ直接送信しています");
+          assertEqual(acceptedEntry.configUrl, config.url, "Apps Scriptの接続先を受付情報から失いました");
+          assertEqual(acceptedEntry.receiptUrl, relayUrl, "高速受付の確認先を保存できません");
+          assertEqual(
+            app.document.getElementById("recordSyncStatusText").textContent,
+            "受付済み",
+            "高速受付への遠隔保存完了を表示できません"
+          );
+          assert(
+            app.document.getElementById("recordSyncStatusIndicator").title.includes("アプリを閉じても大丈夫"),
+            "高速受付後にアプリを閉じられることを案内していません"
+          );
+
+          app.eval(`(() => {
+            const entry = [...googleSheetAcceptedBatchQueue.values()][0];
+            entry.receiptUrl = "https://unexpected.example";
+            entry.nextCheckAt = 0;
+            googleSheetAcceptedBatchCheckRunning = false;
+          })()`);
+          requestUrls.length = 0;
+          await app.checkGoogleSheetAcceptedBatches();
+          assertDeepEqual(requestUrls, [], "保存済み設定と異なる受付先へ連携トークンを送信しています");
+        });
+      });
+
+      await runTest("高速受付を利用できない時はApps Script直接送信へ戻る", async () => {
+        const record = createBackgroundPartialRecord(215, 7);
+        await withBackgroundSendTestState(app, [record], async () => {
+          const relayUrl = "https://harvestnavi-record-relay.example.workers.dev";
+          const config = app.loadGoogleSheetConfig();
+          app.saveGoogleSheetConfigToStorage({ ...config, relayUrl });
+          app.eval('googleSheetInboxSupportState = "unknown";');
+          const requestUrls = [];
+          app.fetch = async (url, options) => {
+            requestUrls.push(String(url));
+            if(String(url) === relayUrl) throw new TypeError("relay unavailable");
+            const payload = JSON.parse(options.body);
+            return {
+              text:async () => JSON.stringify({
+                ok:true,
+                accepted:true,
+                processed:false,
+                queueStatus:"queued",
+                batchId:payload.batchId,
+                acceptedAt:"2026-09-17T00:00:00.000Z"
+              })
+            };
+          };
+
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(record.recordUuid)), "予備経路へ送る記録を追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+
+          const receiptUrl = app.eval(`[...googleSheetAcceptedBatchQueue.values()][0]?.receiptUrl || ""`);
+          assertDeepEqual(requestUrls, [relayUrl, config.url], "高速受付の失敗後にApps Scriptへ戻っていません");
+          assertEqual(receiptUrl, config.url, "Apps Script直接送信後の確認先が違います");
+          assertEqual(
+            app.document.getElementById("recordSyncStatusText").textContent,
+            "受信済み",
+            "Apps Script直接送信を高速受付済みとして表示しています"
+          );
+        });
+      });
+
       await runTest("受信箱の本体反映完了を確認して同期済みに切り替える", async () => {
         const record = createBackgroundPartialRecord(211, 11);
         await withBackgroundSendTestState(app, [record], async () => {
@@ -15409,18 +15503,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "7495dddc", elements: 2240, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "642c2bd6", elements: 2310, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "6e146351", elements: 2310, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "67b44ddc", elements: 2244, visible: 79, viewport: "390x844" },
-          mobileDashboard: { hash: "32302b3d", elements: 2261, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "ef2e4a93", elements: 2344, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "0b98c336", elements: 2359, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "f5999f43", elements: 2359, visible: 284, viewport: "390x844" },
-          mobileSettings: { hash: "0425c5d2", elements: 2359, visible: 191, viewport: "390x844" },
-          mobileMonitor: { hash: "28faeff9", elements: 2403, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "a6a8f9a5", elements: 2403, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "4050ae57", elements: 2403, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "3cca711e", elements: 2243, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "13bd72f2", elements: 2313, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "b3c6bc49", elements: 2313, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "edf9653c", elements: 2247, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "d8cd8e40", elements: 2264, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "8a0e930c", elements: 2347, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "78a94e95", elements: 2362, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "f12d4210", elements: 2362, visible: 287, viewport: "390x844" },
+          mobileSettings: { hash: "74ccf201", elements: 2362, visible: 191, viewport: "390x844" },
+          mobileMonitor: { hash: "f70cb442", elements: 2406, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "3296e1a4", elements: 2406, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "d7819f76", elements: 2406, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

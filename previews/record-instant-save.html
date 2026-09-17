@@ -115,7 +115,7 @@
     <section class="previewControls" aria-label="保存状態">
       <div class="previewState" aria-live="polite">
         <strong id="localState">下の「苗植え場所を記録する」を押してください</strong>
-        <span id="cloudState">Google受信まで約1秒、本体反映まで約8秒を再現します</span>
+        <span id="cloudState">高速受付まで約0.2秒、本体反映まで約8秒を再現します</span>
       </div>
       <button id="resetPreview" class="previewReset" type="button">もう一度</button>
     </section>
@@ -171,7 +171,7 @@
       receivedAt = "";
       reflectAt = 0;
       localState.textContent = "下の「苗植え場所を記録する」を押してください";
-      cloudState.textContent = "Google受信まで約1秒、本体反映まで約8秒を再現します";
+      cloudState.textContent = "高速受付まで約0.2秒、本体反映まで約8秒を再現します";
       previewLoading.hidden = false;
       setPreviewStorage();
       appFrame.src = `../index.html?record-instant-save-preview=${Date.now()}`;
@@ -251,7 +251,8 @@
         saveRecordsToStorage({ deferLifecycle:true });
         saveGoogleSheetConfigToStorage({
           url:"https://script.google.com/macros/s/PREVIEW_ONLY/exec",
-          token:"preview-only-token-0000000000000000"
+          token:"preview-only-token-0000000000000000",
+          relayUrl:"https://harvestnavi-record-relay.preview.workers.dev"
         });
         setMainTabSelection("record");
         activeAppTab = "record";
@@ -288,15 +289,18 @@
         }
       };
       app.confirmPlantingRecordBeforeSend = () => true;
-      app.fetch = async (_url, options) => {
+      app.fetch = async (url, options) => {
         const payload = JSON.parse(options.body);
         if(payload.type === "harvest-day-batch-inbox"){
-          cloudState.textContent = "Googleの受信箱へ送信中…";
-          await new Promise(resolve => setTimeout(resolve, 900));
+          cloudState.textContent = "高速受付へ送信中…";
+          await new Promise(resolve => setTimeout(resolve, 180));
           receivedPayload = payload;
           receivedAt = new Date().toISOString();
-          reflectAt = performance.now() + 6900;
-          return { text:async () => JSON.stringify(buildInboxResponse(payload)) };
+          reflectAt = performance.now() + 7820;
+          return { text:async () => JSON.stringify({
+            ...buildInboxResponse(payload),
+            relayAccepted:true
+          }) };
         }
         if(payload.type === "harvest-day-batch-inbox-status"){
           return { text:async () => JSON.stringify(buildInboxResponse(payload)) };
@@ -316,7 +320,9 @@
         if(!tappedAt) return;
         const syncText = app.document.getElementById("recordSyncStatusText")?.textContent || "";
         if(syncText === "送信中"){
-          cloudState.textContent = "Googleの受信箱へ送信中…";
+          cloudState.textContent = "高速受付へ送信中…";
+        }else if(syncText === "受付済み"){
+          cloudState.textContent = "中継サーバーへ保存済み。この時点でアプリを閉じて大丈夫です";
         }else if(syncText === "受信済み"){
           cloudState.textContent = "Google側で保管済み。この時点でアプリを閉じて大丈夫です";
         }else if(syncText === "反映済み"){
