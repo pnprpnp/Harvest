@@ -34,7 +34,9 @@ function scheduleRecordDataUiRefresh(options = {}){
 function scheduleRecordSaveUiTransition(callback){
   recordSaveUiTransitionPending = true;
   const saveCard = document.getElementById("recordSaveCard");
+  const primaryActionButton = document.getElementById("recordPrimaryActionBtn");
   saveCard?.setAttribute("aria-busy", "true");
+  if(primaryActionButton) primaryActionButton.disabled = true;
   runAfterUiSettles(() => {
     try{
       callback();
@@ -44,6 +46,7 @@ function scheduleRecordSaveUiTransition(callback){
     }finally{
       recordSaveUiTransitionPending = false;
       saveCard?.removeAttribute("aria-busy");
+      if(primaryActionButton) primaryActionButton.disabled = false;
     }
   });
 }

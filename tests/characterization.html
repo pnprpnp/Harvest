@@ -2906,6 +2906,37 @@
         }
       });
 
+      await runTest("収穫記録から苗植えへ移った後は保存ボタンを再度有効にする", () => {
+        const button = app.document.getElementById("recordPrimaryActionBtn");
+        const saveCard = app.document.getElementById("recordSaveCard");
+        const previousRunAfterUiSettles = app.runAfterUiSettles;
+        const previousDisabled = button.disabled;
+        const previousBusy = saveCard.getAttribute("aria-busy");
+        const previousPending = app.eval("recordSaveUiTransitionPending");
+        let disabledDuringTransition = false;
+        try{
+          app.runAfterUiSettles = callback => callback();
+          button.disabled = false;
+          app.scheduleRecordSaveUiTransition(() => {
+            disabledDuringTransition = button.disabled;
+          });
+          assertEqual(disabledDuringTransition, true, "保存画面の切替中に二重操作を防止できません");
+          assertEqual(button.disabled, false, "苗植え画面の準備後も保存ボタンが無効のままです");
+          assertEqual(
+            app.eval("recordSaveUiTransitionPending"),
+            false,
+            "保存画面の切替状態を終了できていません"
+          );
+          assertEqual(saveCard.hasAttribute("aria-busy"), false, "保存中表示が残っています");
+        }finally{
+          app.runAfterUiSettles = previousRunAfterUiSettles;
+          button.disabled = previousDisabled;
+          app.eval(`recordSaveUiTransitionPending = ${JSON.stringify(previousPending)};`);
+          if(previousBusy === null) saveCard.removeAttribute("aria-busy");
+          else saveCard.setAttribute("aria-busy", previousBusy);
+        }
+      });
+
       await runTest("植え数だけの過去編集は保存済みの収穫元を再利用する", () => {
         const oldHarvest = {
           palletNumberingVersion: 2,

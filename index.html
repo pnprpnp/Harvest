@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260916-safe-performance">
+<meta name="harvestnavi-version" content="20260917-planting-submit-enable">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -42971,7 +42971,9 @@ function scheduleRecordDataUiRefresh(options = {}){
 function scheduleRecordSaveUiTransition(callback){
   recordSaveUiTransitionPending = true;
   const saveCard = document.getElementById("recordSaveCard");
+  const primaryActionButton = document.getElementById("recordPrimaryActionBtn");
   saveCard?.setAttribute("aria-busy", "true");
+  if(primaryActionButton) primaryActionButton.disabled = true;
   runAfterUiSettles(() => {
     try{
       callback();
@@ -42981,6 +42983,7 @@ function scheduleRecordSaveUiTransition(callback){
     }finally{
       recordSaveUiTransitionPending = false;
       saveCard?.removeAttribute("aria-busy");
+      if(primaryActionButton) primaryActionButton.disabled = false;
     }
   });
 }
