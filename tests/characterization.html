@@ -15136,6 +15136,192 @@
         );
       });
 
+      await runTest("苗植え記録がスプレッドシートに存在し得る状態を安全側に判定する", () => {
+        const event = {
+          eventId:20000000001991,
+          createdAt:"",
+          updatedAt:""
+        };
+        assertDeepEqual({
+          accepted:app.mayPlantingEventExistInGoogleSheet(event, {
+            [event.eventId]:{ state:"accepted" }
+          }),
+          imported:app.mayPlantingEventExistInGoogleSheet({
+            ...event,
+            createdAt:"2026-09-16T00:00:00.000Z"
+          }, {
+            [event.eventId]:{ state:"edited" }
+          }),
+          localOnly:app.mayPlantingEventExistInGoogleSheet(event, {
+            [event.eventId]:{ state:"edited" }
+          })
+        }, {
+          accepted:true,
+          imported:true,
+          localOnly:false
+        }, "苗植え記録の送信可能性を正しく判定できません");
+      });
+
+      await runTest("アプリだけ削除した苗植え記録も収穫記録の削除前に日付付きで案内する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            deletedPlantingEvents,
+            dependencies:getRemotePlantingEventDependenciesForHarvest,
+            error:showRecordImportError
+          };
+          let shown = null;
+          try{
+            getRemotePlantingEventDependenciesForHarvest = () => [];
+            deletedPlantingEvents = [{
+              event:{
+                eventId:20000000001992,
+                plantingDate:"2026-09-17",
+                sourceAllocations:[{ harvestRecordId:20000000001990, palletKeys:["2-A-1"] }]
+              },
+              sheetDeleted:false,
+              wasSynced:false
+            }];
+            showRecordImportError = (message, title) => { shown = { message, title }; };
+            const blocked = showHarvestPlantingDependencyMessage(20000000001990);
+            return {
+              blocked,
+              title:shown?.title || "",
+              hasDate:shown?.message.includes("2026-09-17") || false,
+              hasTrashGuide:shown?.message.includes("スプレッドシートからも削除") || false
+            };
+          }finally{
+            deletedPlantingEvents = previous.deletedPlantingEvents;
+            getRemotePlantingEventDependenciesForHarvest = previous.dependencies;
+            showRecordImportError = previous.error;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          blocked:true,
+          title:"先に苗植え記録を削除してください",
+          hasDate:true,
+          hasTrashGuide:true
+        }, "アプリだけ削除した苗植え記録を案内できません");
+      });
+
+      await runTest("削除済み苗植え記録をスプレッドシートから直接削除できる", async () => {
+        const state = comparable(await app.eval(`(async () => {
+          const previous = {
+            deletedPlantingEvents,
+            access:ensureProtectedOperationAccess,
+            mutation:ensureGoogleSheetLocalMutationAllowed,
+            loadConfig:loadGoogleSheetConfig,
+            validateConfig:validateGoogleSheetConfig,
+            confirm:window.confirm,
+            begin:beginGoogleSheetOperation,
+            end:endGoogleSheetOperation,
+            post:postGoogleSheetPlantingEvent,
+            save:saveDeletedPlantingEventsToStorage,
+            render:renderDeletedRecordList,
+            update:updateGoogleSheetResendButtonState,
+            toast:showToast,
+            error:showRecordImportError
+          };
+          const event = {
+            eventId:20000000001993,
+            plantingDate:"2026-09-16",
+            sourceAllocations:[{ harvestRecordId:20000000001990, palletKeys:["2-A-1"] }],
+            plantingPalletKeys:["2-A-1"]
+          };
+          let postedOperation = "";
+          let saved = 0;
+          let rendered = 0;
+          let ended = 0;
+          const toasts = [];
+          try{
+            deletedPlantingEvents = [{ event, sheetDeleted:false, wasSynced:false }];
+            ensureProtectedOperationAccess = () => true;
+            ensureGoogleSheetLocalMutationAllowed = () => true;
+            loadGoogleSheetConfig = () => ({ url:"https://example.test", token:"test" });
+            validateGoogleSheetConfig = config => ({ ok:true, config });
+            window.confirm = () => true;
+            beginGoogleSheetOperation = () => "test-owner";
+            endGoogleSheetOperation = () => { ended++; };
+            postGoogleSheetPlantingEvent = async (_event, operation) => {
+              postedOperation = operation;
+              return { ok:true, deleted:false, alreadyDeleted:false, notFound:true };
+            };
+            saveDeletedPlantingEventsToStorage = () => { saved++; };
+            renderDeletedRecordList = () => { rendered++; };
+            updateGoogleSheetResendButtonState = () => {};
+            showToast = message => { toasts.push(message); };
+            showRecordImportError = () => {};
+            await deleteTrashedPlantingEventFromGoogleSheet(event.eventId);
+            return {
+              postedOperation,
+              sheetDeleted:deletedPlantingEvents[0].sheetDeleted,
+              saved,
+              rendered,
+              ended,
+              finalToast:toasts.at(-1)
+            };
+          }finally{
+            deletedPlantingEvents = previous.deletedPlantingEvents;
+            ensureProtectedOperationAccess = previous.access;
+            ensureGoogleSheetLocalMutationAllowed = previous.mutation;
+            loadGoogleSheetConfig = previous.loadConfig;
+            validateGoogleSheetConfig = previous.validateConfig;
+            window.confirm = previous.confirm;
+            beginGoogleSheetOperation = previous.begin;
+            endGoogleSheetOperation = previous.end;
+            postGoogleSheetPlantingEvent = previous.post;
+            saveDeletedPlantingEventsToStorage = previous.save;
+            renderDeletedRecordList = previous.render;
+            updateGoogleSheetResendButtonState = previous.update;
+            showToast = previous.toast;
+            showRecordImportError = previous.error;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          postedOperation:"delete",
+          sheetDeleted:true,
+          saved:1,
+          rendered:1,
+          ended:1,
+          finalToast:"スプレッドシート側に記録がないことを確認しました"
+        }, "削除済み苗植え記録のスプレッドシート削除が完了しません");
+      });
+
+      await runTest("削除済み苗植え記録にスプレッドシート削除ボタンを表示する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = deletedPlantingEvents;
+          const box = document.getElementById("recordTrashList");
+          try{
+            deletedPlantingEvents = [{
+              event:{
+                eventId:20000000001994,
+                plantingDate:"2026-09-16",
+                plantingPalletKeys:["2-A-1"],
+                sourceAllocations:[{ harvestRecordId:20000000001990, palletKeys:["2-A-1"] }]
+              },
+              deletedAt:new Date().toISOString(),
+              expiresAt:new Date(Date.now() + 86400000).toISOString(),
+              sheetDeleted:false,
+              wasSynced:false
+            }];
+            renderDeletedRecordList();
+            const button = box.querySelector('[data-ui-click="deleteTrashedPlantingEventFromGoogleSheet"]');
+            return {
+              exists:!!button,
+              label:button?.textContent.trim() || "",
+              eventId:button?.dataset.uiNumber || ""
+            };
+          }finally{
+            deletedPlantingEvents = previous;
+            renderDeletedRecordList();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          exists:true,
+          label:"スプレッドシートからも削除",
+          eventId:"20000000001994"
+        }, "削除済み苗植え記録からスプレッドシート側を削除できません");
+      });
+
       await runTest("記録変更後の派生キャッシュを一括で解除する", () => {
         app.eval(`
           window.__characterizationLookupSource = [];

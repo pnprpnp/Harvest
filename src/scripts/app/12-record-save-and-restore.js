@@ -762,7 +762,8 @@ async function confirmDeletePlantingEvent(eventId){
   }
   if(!window.confirm("この苗植え記録をアプリから削除しますか？\n\n削除後30日以内なら、削除済みの記録から復元できます。")) return;
 
-  const wasSynced = !isPlantingEventUnsent(event);
+  const plantingSyncStatus = loadPlantingEventSyncStatus();
+  const wasSynced = mayPlantingEventExistInGoogleSheet(event, plantingSyncStatus);
   const isOpeningCheckpoint = hasPlantingOpeningCarryover(event);
   const requiresSheetDelete = wasSynced || isOpeningCheckpoint;
   const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
@@ -827,6 +828,68 @@ async function confirmDeletePlantingEvent(eventId){
     updateGoogleSheetResendButtonState();
     refreshHarvestMapViews();
     showToast(sheetDeleted ? "苗植え記録をアプリとスプレッドシートから削除しました" : "苗植え記録をアプリから削除しました");
+  }finally{
+    endGoogleSheetOperation(operationOwner);
+  }
+}
+
+async function deleteTrashedPlantingEventFromGoogleSheet(eventId){
+  if(!ensureProtectedOperationAccess("削除済み苗植え記録のスプレッドシート削除")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("削除済み苗植え記録をスプレッドシートから削除")) return;
+  const entry = deletedPlantingEvents.find(item => (
+    Number(item.event?.eventId) === Number(eventId)
+  ));
+  if(!entry){
+    showToast("削除済みの苗植え記録が見つかりません");
+    renderDeletedRecordList();
+    return;
+  }
+  if(entry.sheetDeleted){
+    showToast("この苗植え記録はスプレッドシートからも削除済みです");
+    renderDeletedRecordList();
+    return;
+  }
+
+  const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
+  if(!configValidation.ok){
+    showRecordImportError(
+      configValidation.message + "。スプレッドシート側の苗植え記録を削除するには、連携設定が必要です。",
+      "削除前に設定してください"
+    );
+    return;
+  }
+  const plantingDate = String(entry.event?.plantingDate || "日付不明");
+  if(!window.confirm(
+    `${plantingDate}の苗植え記録をスプレッドシートからも削除しますか？\n\nアプリ側は削除済みのままです。`
+  )) return;
+
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("苗植え記録を削除"));
+    return;
+  }
+  try{
+    showToast("スプレッドシート側の苗植え記録を削除中です...");
+    const result = await postGoogleSheetPlantingEvent(entry.event, "delete", {
+      config:configValidation.config,
+      silent:true
+    });
+    if(!(result?.deleted || result?.alreadyDeleted || result?.notFound)){
+      throw new Error(result?.message || "スプレッドシート側の削除を確認できませんでした");
+    }
+    entry.sheetDeleted = true;
+    saveDeletedPlantingEventsToStorage();
+    renderDeletedRecordList();
+    updateGoogleSheetResendButtonState();
+    showToast(result.notFound
+      ? "スプレッドシート側に記録がないことを確認しました"
+      : "苗植え記録をスプレッドシートからも削除しました");
+  }catch(error){
+    showRecordImportError(
+      "スプレッドシート側の削除に失敗したため、削除状態は変更していません。\n\n詳細: "
+        + String(error?.message || error),
+      "苗植え記録の削除失敗"
+    );
   }finally{
     endGoogleSheetOperation(operationOwner);
   }

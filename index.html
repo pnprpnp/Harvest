@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260917-planting-submit-enable">
+<meta name="harvestnavi-version" content="20260917-linked-delete-recovery">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -21194,6 +21194,14 @@ function isPlantingEventUnsent(event, status = loadPlantingEventSyncStatus()){
   return state !== "confirmed" && state !== "unconfirmed";
 }
 
+function mayPlantingEventExistInGoogleSheet(event, status = loadPlantingEventSyncStatus()){
+  const eventId = getSafePositiveRecordId(event?.eventId);
+  if(eventId === null) return false;
+  const state = String(status[String(eventId)]?.state || "");
+  if(["confirmed", "unconfirmed", "accepted"].includes(state)) return true;
+  return !!String(event?.createdAt || event?.updatedAt || "").trim();
+}
+
 function getGoogleSheetUnsentPlantingEvents(){
   const config = getValidatedGoogleSheetConfig({ silent: true });
   if(!config) return [];
@@ -21466,6 +21474,25 @@ function getRemotePlantingEventDependenciesForHarvest(harvestRecordId){
     .map(entry => entry.event)
     .filter(event => event.sourceAllocations.some(allocation => Number(allocation.harvestRecordId) === targetId));
   return [...active, ...appOnlyDeleted];
+}
+
+function getPlantingEventDependenciesBlockingHarvestDelete(harvestRecordId){
+  const targetId = Number(harvestRecordId);
+  const dependencies = getRemotePlantingEventDependenciesForHarvest(targetId);
+  const seenEventIds = new Set(dependencies.map(event => Number(event?.eventId)));
+  deletedPlantingEvents.forEach(entry => {
+    if(entry.sheetDeleted) return;
+    const event = entry.event;
+    const eventId = Number(event?.eventId);
+    if(seenEventIds.has(eventId)) return;
+    const usesHarvestRecord = (event?.sourceAllocations || []).some(allocation => (
+      Number(allocation.harvestRecordId) === targetId
+    ));
+    if(!usesHarvestRecord) return;
+    dependencies.push(event);
+    seenEventIds.add(eventId);
+  });
+  return dependencies;
 }
 
 function getUnplantedPalletKeysForHarvest(harvestRecordId){
@@ -43699,7 +43726,8 @@ async function confirmDeletePlantingEvent(eventId){
   }
   if(!window.confirm("この苗植え記録をアプリから削除しますか？\n\n削除後30日以内なら、削除済みの記録から復元できます。")) return;
 
-  const wasSynced = !isPlantingEventUnsent(event);
+  const plantingSyncStatus = loadPlantingEventSyncStatus();
+  const wasSynced = mayPlantingEventExistInGoogleSheet(event, plantingSyncStatus);
   const isOpeningCheckpoint = hasPlantingOpeningCarryover(event);
   const requiresSheetDelete = wasSynced || isOpeningCheckpoint;
   const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
@@ -43764,6 +43792,68 @@ async function confirmDeletePlantingEvent(eventId){
     updateGoogleSheetResendButtonState();
     refreshHarvestMapViews();
     showToast(sheetDeleted ? "苗植え記録をアプリとスプレッドシートから削除しました" : "苗植え記録をアプリから削除しました");
+  }finally{
+    endGoogleSheetOperation(operationOwner);
+  }
+}
+
+async function deleteTrashedPlantingEventFromGoogleSheet(eventId){
+  if(!ensureProtectedOperationAccess("削除済み苗植え記録のスプレッドシート削除")) return;
+  if(!ensureGoogleSheetLocalMutationAllowed("削除済み苗植え記録をスプレッドシートから削除")) return;
+  const entry = deletedPlantingEvents.find(item => (
+    Number(item.event?.eventId) === Number(eventId)
+  ));
+  if(!entry){
+    showToast("削除済みの苗植え記録が見つかりません");
+    renderDeletedRecordList();
+    return;
+  }
+  if(entry.sheetDeleted){
+    showToast("この苗植え記録はスプレッドシートからも削除済みです");
+    renderDeletedRecordList();
+    return;
+  }
+
+  const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
+  if(!configValidation.ok){
+    showRecordImportError(
+      configValidation.message + "。スプレッドシート側の苗植え記録を削除するには、連携設定が必要です。",
+      "削除前に設定してください"
+    );
+    return;
+  }
+  const plantingDate = String(entry.event?.plantingDate || "日付不明");
+  if(!window.confirm(
+    `${plantingDate}の苗植え記録をスプレッドシートからも削除しますか？\n\nアプリ側は削除済みのままです。`
+  )) return;
+
+  const operationOwner = beginGoogleSheetOperation("sending");
+  if(!operationOwner){
+    showToast(getGoogleSheetOperationBusyMessage("苗植え記録を削除"));
+    return;
+  }
+  try{
+    showToast("スプレッドシート側の苗植え記録を削除中です...");
+    const result = await postGoogleSheetPlantingEvent(entry.event, "delete", {
+      config:configValidation.config,
+      silent:true
+    });
+    if(!(result?.deleted || result?.alreadyDeleted || result?.notFound)){
+      throw new Error(result?.message || "スプレッドシート側の削除を確認できませんでした");
+    }
+    entry.sheetDeleted = true;
+    saveDeletedPlantingEventsToStorage();
+    renderDeletedRecordList();
+    updateGoogleSheetResendButtonState();
+    showToast(result.notFound
+      ? "スプレッドシート側に記録がないことを確認しました"
+      : "苗植え記録をスプレッドシートからも削除しました");
+  }catch(error){
+    showRecordImportError(
+      "スプレッドシート側の削除に失敗したため、削除状態は変更していません。\n\n詳細: "
+        + String(error?.message || error),
+      "苗植え記録の削除失敗"
+    );
   }finally{
     endGoogleSheetOperation(operationOwner);
   }
@@ -44996,6 +45086,33 @@ let recordHistoryOpenMonthKey = null;
 let recordHistoryOpenDateKeys = new Set();
 let recordHistoryRenderedCache = null;
 
+function showHarvestPlantingDependencyMessage(harvestRecordId){
+  const dependencies = getPlantingEventDependenciesBlockingHarvestDelete(harvestRecordId);
+  if(!dependencies.length) return false;
+  const deletedEventIds = new Set(
+    deletedPlantingEvents.map(entry => Number(entry.event?.eventId))
+  );
+  const details = dependencies.slice(0, 8).map(event => {
+    const date = String(event?.plantingDate || "日付不明");
+    const suffix = deletedEventIds.has(Number(event?.eventId))
+      ? "（アプリの削除済みにあります）"
+      : "";
+    return `・${date}の苗植え記録${suffix}`;
+  });
+  if(dependencies.length > details.length){
+    details.push(`・他${dependencies.length - details.length}件`);
+  }
+  showRecordImportError([
+    "この収穫記録を使った苗植え記録が残っています。",
+    "",
+    ...details,
+    "",
+    "通常の苗植え記録は先に削除してください。",
+    "「アプリの削除済み」にある記録は、削除済み一覧の「スプレッドシートからも削除」を押してください。"
+  ].join("\n"), "先に苗植え記録を削除してください");
+  return true;
+}
+
 function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
@@ -45003,10 +45120,8 @@ function deleteRecord(id, options = {}){
     showToast("削除する記録が見つかりません");
     return;
   }
-  if(deletedRecord.type === "fullHarvest" && getRemotePlantingEventDependenciesForHarvest(deletedRecord.id).length){
-    showToast("この収穫記録を使った苗植え履歴があります。先に苗植え履歴を削除してください");
-    return;
-  }
+  if(deletedRecord.type === "fullHarvest"
+    && showHarvestPlantingDependencyMessage(deletedRecord.id)) return;
   const deletingActivePlantingRecord = Number(activePlantingRecordId) === Number(id);
   const deletingEditedRecord = Number(editingHarvestRecordId) === Number(id);
   const deletingEditedPartialRecord = Number(editingPartialHarvestRecordId) === Number(id);
@@ -45049,10 +45164,8 @@ async function confirmDeleteRecord(id){
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "記録を削除")) return;
-  if(record.type === "fullHarvest" && getRemotePlantingEventDependenciesForHarvest(record.id).length){
-    showToast("この収穫記録を使った苗植え履歴があります。先に苗植え履歴を削除してください");
-    return;
-  }
+  if(record.type === "fullHarvest"
+    && showHarvestPlantingDependencyMessage(record.id)) return;
   if(!window.confirm("この記録をアプリから削除しますか？\n\n削除後30日以内なら、削除済みの記録から復元できます。")) return;
 
   const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
@@ -45772,6 +45885,7 @@ function renderDeletedRecordList(){
         <div class="recordMeta">${escapeHtml(String(event.plantingPalletKeys.length))}パレット\n${sheetText}\n復元可能: あと${remainingDays}日</div>
         <div class="recordActions">
           <button class="thirdBtn" data-ui-click="restoreDeletedPlantingEvent" data-ui-number="${safeEventId}">復元する</button>
+          ${entry.sheetDeleted ? "" : `<button class="secondaryBtn" data-ui-click="deleteTrashedPlantingEventFromGoogleSheet" data-ui-number="${safeEventId}">スプレッドシートからも削除</button>`}
         </div>
       </div>
     `;

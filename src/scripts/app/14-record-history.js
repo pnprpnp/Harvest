@@ -4,6 +4,33 @@ let recordHistoryOpenMonthKey = null;
 let recordHistoryOpenDateKeys = new Set();
 let recordHistoryRenderedCache = null;
 
+function showHarvestPlantingDependencyMessage(harvestRecordId){
+  const dependencies = getPlantingEventDependenciesBlockingHarvestDelete(harvestRecordId);
+  if(!dependencies.length) return false;
+  const deletedEventIds = new Set(
+    deletedPlantingEvents.map(entry => Number(entry.event?.eventId))
+  );
+  const details = dependencies.slice(0, 8).map(event => {
+    const date = String(event?.plantingDate || "日付不明");
+    const suffix = deletedEventIds.has(Number(event?.eventId))
+      ? "（アプリの削除済みにあります）"
+      : "";
+    return `・${date}の苗植え記録${suffix}`;
+  });
+  if(dependencies.length > details.length){
+    details.push(`・他${dependencies.length - details.length}件`);
+  }
+  showRecordImportError([
+    "この収穫記録を使った苗植え記録が残っています。",
+    "",
+    ...details,
+    "",
+    "通常の苗植え記録は先に削除してください。",
+    "「アプリの削除済み」にある記録は、削除済み一覧の「スプレッドシートからも削除」を押してください。"
+  ].join("\n"), "先に苗植え記録を削除してください");
+  return true;
+}
+
 function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
@@ -11,10 +38,8 @@ function deleteRecord(id, options = {}){
     showToast("削除する記録が見つかりません");
     return;
   }
-  if(deletedRecord.type === "fullHarvest" && getRemotePlantingEventDependenciesForHarvest(deletedRecord.id).length){
-    showToast("この収穫記録を使った苗植え履歴があります。先に苗植え履歴を削除してください");
-    return;
-  }
+  if(deletedRecord.type === "fullHarvest"
+    && showHarvestPlantingDependencyMessage(deletedRecord.id)) return;
   const deletingActivePlantingRecord = Number(activePlantingRecordId) === Number(id);
   const deletingEditedRecord = Number(editingHarvestRecordId) === Number(id);
   const deletingEditedPartialRecord = Number(editingPartialHarvestRecordId) === Number(id);
@@ -57,10 +82,8 @@ async function confirmDeleteRecord(id){
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "記録を削除")) return;
-  if(record.type === "fullHarvest" && getRemotePlantingEventDependenciesForHarvest(record.id).length){
-    showToast("この収穫記録を使った苗植え履歴があります。先に苗植え履歴を削除してください");
-    return;
-  }
+  if(record.type === "fullHarvest"
+    && showHarvestPlantingDependencyMessage(record.id)) return;
   if(!window.confirm("この記録をアプリから削除しますか？\n\n削除後30日以内なら、削除済みの記録から復元できます。")) return;
 
   const configValidation = validateGoogleSheetConfig(loadGoogleSheetConfig());
@@ -780,6 +803,7 @@ function renderDeletedRecordList(){
         <div class="recordMeta">${escapeHtml(String(event.plantingPalletKeys.length))}パレット\n${sheetText}\n復元可能: あと${remainingDays}日</div>
         <div class="recordActions">
           <button class="thirdBtn" data-ui-click="restoreDeletedPlantingEvent" data-ui-number="${safeEventId}">復元する</button>
+          ${entry.sheetDeleted ? "" : `<button class="secondaryBtn" data-ui-click="deleteTrashedPlantingEventFromGoogleSheet" data-ui-number="${safeEventId}">スプレッドシートからも削除</button>`}
         </div>
       </div>
     `;

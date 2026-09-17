@@ -1072,6 +1072,14 @@ function isPlantingEventUnsent(event, status = loadPlantingEventSyncStatus()){
   return state !== "confirmed" && state !== "unconfirmed";
 }
 
+function mayPlantingEventExistInGoogleSheet(event, status = loadPlantingEventSyncStatus()){
+  const eventId = getSafePositiveRecordId(event?.eventId);
+  if(eventId === null) return false;
+  const state = String(status[String(eventId)]?.state || "");
+  if(["confirmed", "unconfirmed", "accepted"].includes(state)) return true;
+  return !!String(event?.createdAt || event?.updatedAt || "").trim();
+}
+
 function getGoogleSheetUnsentPlantingEvents(){
   const config = getValidatedGoogleSheetConfig({ silent: true });
   if(!config) return [];
@@ -1344,6 +1352,25 @@ function getRemotePlantingEventDependenciesForHarvest(harvestRecordId){
     .map(entry => entry.event)
     .filter(event => event.sourceAllocations.some(allocation => Number(allocation.harvestRecordId) === targetId));
   return [...active, ...appOnlyDeleted];
+}
+
+function getPlantingEventDependenciesBlockingHarvestDelete(harvestRecordId){
+  const targetId = Number(harvestRecordId);
+  const dependencies = getRemotePlantingEventDependenciesForHarvest(targetId);
+  const seenEventIds = new Set(dependencies.map(event => Number(event?.eventId)));
+  deletedPlantingEvents.forEach(entry => {
+    if(entry.sheetDeleted) return;
+    const event = entry.event;
+    const eventId = Number(event?.eventId);
+    if(seenEventIds.has(eventId)) return;
+    const usesHarvestRecord = (event?.sourceAllocations || []).some(allocation => (
+      Number(allocation.harvestRecordId) === targetId
+    ));
+    if(!usesHarvestRecord) return;
+    dependencies.push(event);
+    seenEventIds.add(eventId);
+  });
+  return dependencies;
 }
 
 function getUnplantedPalletKeysForHarvest(harvestRecordId){
