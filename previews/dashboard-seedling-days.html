@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>二次定植 日数順・管理者プレビュー</title>
+  <style>
+    :root{
+      color-scheme:light;
+      font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif;
+      background:#edf1ee;
+      color:#243029;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:#edf1ee;}
+    button{font:inherit;}
+    .previewPage{
+      min-height:100dvh;
+      display:grid;
+      justify-items:center;
+      align-content:start;
+      gap:10px;
+      padding:12px;
+    }
+    .previewControls{
+      width:min(100%,393px);
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      align-items:center;
+      gap:10px;
+      min-height:42px;
+      padding:6px 7px 6px 12px;
+      border:1px solid #d6dfd9;
+      border-radius:12px;
+      background:#fff;
+      box-shadow:0 4px 16px rgba(29,64,40,.08);
+    }
+    .previewLabel{font-size:12px;font-weight:750;line-height:1.35;}
+    .previewLabel small{display:block;color:#758179;font-size:9px;font-weight:650;}
+    .previewSwitch{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:2px;
+      padding:2px;
+      border-radius:9px;
+      background:#e8eeea;
+    }
+    .previewSwitch button{
+      min-height:30px;
+      padding:4px 9px;
+      border:0;
+      border-radius:7px;
+      background:transparent;
+      color:#68746c;
+      font-size:10px;
+      font-weight:750;
+      white-space:nowrap;
+    }
+    .previewSwitch button[aria-pressed="true"]{
+      background:#fff;
+      color:#137847;
+      box-shadow:0 1px 4px rgba(31,65,42,.12);
+    }
+    .appViewport{
+      position:relative;
+      width:min(var(--preview-width, 390px), calc(100vw - 24px));
+      height:852px;
+      overflow:hidden;
+      border:1px solid #d2dad5;
+      border-radius:24px;
+      background:#f7f7f9;
+      box-shadow:0 18px 48px rgba(25,53,35,.16);
+      transition:width .16s ease;
+    }
+    .appViewport iframe{
+      display:block;
+      width:100%;
+      height:852px;
+      border:0;
+      background:#f7f7f9;
+    }
+    .previewStatus{
+      position:absolute;
+      inset:0;
+      z-index:2;
+      display:grid;
+      place-items:center;
+      padding:24px;
+      background:#f7f7f9;
+      color:#66736b;
+      font-size:13px;
+      font-weight:700;
+      text-align:center;
+    }
+    .previewStatus[hidden]{display:none;}
+    @media(max-width:416px){
+      .previewPage{padding:8px 0 0;}
+      .previewControls{width:calc(100% - 16px);}
+      .appViewport{
+        max-width:100vw;
+        border-right:0;
+        border-bottom:0;
+        border-left:0;
+        border-radius:0;
+        box-shadow:none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="previewPage">
+    <section class="previewControls" aria-label="管理者プレビューの表示幅">
+      <div class="previewLabel">
+        管理者プレビュー
+        <small>記録・集計タブを操作できます</small>
+      </div>
+      <div class="previewSwitch" role="group" aria-label="画面幅">
+        <button type="button" data-preview-width="320" aria-pressed="false">320px</button>
+        <button type="button" data-preview-width="390" aria-pressed="true">390px</button>
+      </div>
+    </section>
+
+    <section id="appViewport" class="appViewport" aria-label="Harvestnaviの管理者向け実画面プレビュー">
+      <iframe id="appFrame" title="Harvestnavi 二次定植の日数順プレビュー"></iframe>
+      <div id="previewStatus" class="previewStatus" role="status">実際のアプリ画面を準備しています…</div>
+    </section>
+  </main>
+
+  <script>
+    const appFrame = document.getElementById("appFrame");
+    const appViewport = document.getElementById("appViewport");
+    const previewStatus = document.getElementById("previewStatus");
+    const widthButtons = [...document.querySelectorAll("[data-preview-width]")];
+    const originalLocalStorage = Object.fromEntries(
+      Array.from({ length:localStorage.length }, (_, index) => localStorage.key(index))
+        .filter(Boolean)
+        .map(key => [key, localStorage.getItem(key)])
+    );
+    const originalSessionStorage = Object.fromEntries(
+      Array.from({ length:sessionStorage.length }, (_, index) => sessionStorage.key(index))
+        .filter(Boolean)
+        .map(key => [key, sessionStorage.getItem(key)])
+    );
+
+    function restoreOriginalStorage(){
+      localStorage.clear();
+      Object.entries(originalLocalStorage).forEach(([key, value]) => localStorage.setItem(key, value));
+      sessionStorage.clear();
+      Object.entries(originalSessionStorage).forEach(([key, value]) => sessionStorage.setItem(key, value));
+    }
+
+    function setPreviewStorage(){
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("harvestnaviThemePreference_v1", "light");
+      localStorage.setItem("harvestnaviWorkflowTitleHintShown_v1", "1");
+      localStorage.setItem("harvestnaviAppAccessRole_v1", "admin");
+      localStorage.setItem("harvestForecastProtectedAccessAuth_v1", "1");
+    }
+
+    function seedAdminPreview(){
+      const app = appFrame.contentWindow;
+      return app.eval(`(() => {
+        appAccessRole = APP_ACCESS_ROLE_ADMIN;
+        protectedAccessUnlocked = true;
+        applyAppAccessRoleUi();
+
+        const previewDate = daysAgo => formatDateOnlyString(
+          addDays(startOfLocalDay(new Date()), -daysAgo)
+        );
+        const makeKeys = (building, bed, start, end) => Array.from(
+          { length:end - start + 1 },
+          (_, index) => getPalletKey(building, bed, start + index)
+        );
+        const makeEvent = (id, daysAgo, building, bed, start, end, plantingCount, quality) => {
+          const palletKeys = makeKeys(building, bed, start, end);
+          const qualityMemo = { tags:[quality], other:"" };
+          return normalizePlantingEvent({
+            palletNumberingVersion:CURRENT_PALLET_NUMBERING_VERSION,
+            eventId:id,
+            plantingDate:previewDate(daysAgo),
+            sourceAllocations:[{ harvestRecordId:id - 1000, palletKeys }],
+            plantingPalletKeys:palletKeys,
+            plantingCountsByPallet:Object.fromEntries(palletKeys.map(key => [key, plantingCount])),
+            actualSeedlingTrayCount:Math.ceil(palletKeys.length / 4),
+            actualTakenSeedlingCount:palletKeys.length * plantingCount,
+            actualPlantedSeedlingCount:palletKeys.length * plantingCount,
+            actualSeedlingCarryoverMode:"loss",
+            actualSeedlingLossRate:"0",
+            qualityMemo,
+            qualityMemoByPallet:Object.fromEntries(palletKeys.map(key => [key, qualityMemo])),
+            detailsUnknown:false
+          });
+        };
+
+        records = [];
+        plantingEvents = [
+          makeEvent(209900000010, 58, 2, "A", 1, 18, 12, "large"),
+          makeEvent(209900000011, 46, 2, "C", 20, 38, 16, "medium"),
+          makeEvent(209900000012, 31, 2, "B", 1, 22, 20, "small"),
+          makeEvent(209900000013, 18, 2, "A", 40, 55, 16, "medium"),
+          makeEvent(209900000014, 51, 3, "D", 8, 28, 12, "large"),
+          makeEvent(209900000015, 24, 3, "F", 44, 66, 20, "medium")
+        ].filter(Boolean);
+        deletedPlantingEvents = [];
+        deletedRecords = [];
+        invalidateRecordDerivedCaches({ harvestRecords:true, plantingEvents:true });
+        dashboardSeedlingStatusModelCache = null;
+        dashboardRenderedSubtabs.clear();
+        dashboardRenderedDayKey = "";
+        dashboardSeedlingStatusBuilding = 2;
+        dashboardFilter.dashboardSubtab = "seedlings";
+        dashboardFilter.seedlingStatusView = "ages";
+        saveDashboardFilter();
+
+        document.getElementById("welcomeScreen")?.remove();
+        switchTab("dashboard");
+        setDashboardSubtab("seedlings");
+        renderDashboardSubtab("seedlings", { force:true });
+        setDashboardSeedlingStatusView("ages");
+        document.getElementById("dashboardLoadingState").hidden = true;
+        window.scrollTo(0, 0);
+        return {
+          workerMode:isWorkerMode(),
+          unlocked:protectedAccessUnlocked,
+          recordVisible:!document.getElementById("recordTabBtn").hidden,
+          dashboardVisible:!document.getElementById("dashboardTabBtn").hidden,
+          itemCount:document.querySelectorAll(".dashboardSeedlingStatusAgeRow").length
+        };
+      })()`);
+    }
+
+    widthButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        const width = button.dataset.previewWidth === "320" ? "320px" : "390px";
+        appViewport.style.setProperty("--preview-width", width);
+        widthButtons.forEach(item => {
+          item.setAttribute("aria-pressed", String(item === button));
+        });
+      });
+    });
+
+    appFrame.addEventListener("load", () => {
+      try{
+        const state = seedAdminPreview();
+        if(state.workerMode || !state.unlocked || !state.recordVisible || !state.dashboardVisible || state.itemCount < 4){
+          throw new Error("管理者プレビューの初期状態を作成できませんでした");
+        }
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          previewStatus.hidden = true;
+        }));
+      }catch(error){
+        console.error(error);
+        previewStatus.textContent = "プレビューの準備に失敗しました。ページを再読み込みしてください。";
+      }
+    }, { once:true });
+
+    window.addEventListener("beforeunload", restoreOriginalStorage, { once:true });
+    setPreviewStorage();
+    appFrame.src = `../index.html?__hncheck=dashboard-seedling-days-${Date.now()}`;
+  </script>
+</body>
+</html>

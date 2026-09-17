@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260917-dashboard-loading-cover">
+<meta name="harvestnavi-version" content="20260917-seedling-days-info">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -5525,14 +5525,21 @@ button.monitorSaveBtn:active{
   white-space:nowrap;
 }
 .dashboardSeedlingStatusHead{
-  margin-bottom:12px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  margin-bottom:8px;
 }
-.dashboardSeedlingStatusNote{
-  color:#64748b;
-  font-size:12px;
-  line-height:1.55;
+.card.dashboardSeedlingStatusCard{
+  margin-top:-14px;
 }
-.dashboardSeedlingStatusSummary{
+.dashboardSeedlingStatusInfoBody{
+  display:grid;
+  gap:12px;
+  white-space:normal;
+}
+.dashboardSeedlingStatusInfoLead{
   margin:0;
 }
 .dashboardSeedlingStatusCaution{
@@ -5554,6 +5561,9 @@ button.monitorSaveBtn:active{
 }
 .dashboardSeedlingStatusCaution li + li{
   margin-top:3px;
+}
+.dashboardSeedlingStatusInfoCaution{
+  margin-top:0;
 }
 .dashboardSeedlingStatusMapGuide{
   display:flex;
@@ -5605,6 +5615,41 @@ button.monitorSaveBtn:active{
 }
 .dashboardSeedlingStatusBeds{
   align-items:start;
+}
+.dashboardSeedlingStatusAgeList{
+  min-width:0;
+  overflow:hidden;
+  background:#fff;
+}
+.dashboardSeedlingStatusAgeRow .dashboardForecastDayDelay{
+  font-variant-numeric:tabular-nums;
+}
+.dashboardSeedlingStatusAgePlantingCounts{
+  display:grid;
+  min-width:0;
+  gap:2px;
+  color:#475569;
+  font-size:9px;
+  font-weight:800;
+  line-height:1.25;
+}
+.dashboardSeedlingStatusAgePlantingCount{
+  display:inline-flex;
+  min-width:0;
+  align-items:center;
+  gap:3px;
+}
+.dashboardSeedlingStatusAgePlantingCount .dashboardSeedlingStatusPlantingCountSwatch{
+  width:8px;
+  height:8px;
+  flex:0 0 auto;
+}
+.dashboardSeedlingStatusAgeEmpty{
+  padding:24px 12px;
+  color:#64748b;
+  font-size:12px;
+  font-weight:750;
+  text-align:center;
 }
 .bed.bedCollapsed.dashboardSeedlingStatusBed{
   width:100%;
@@ -6710,6 +6755,12 @@ button.dashboardRecordCalendarDay.has-records:focus-visible{
     padding:5px 7px;
     font-size:10px;
   }
+  .dashboardSeedlingStatusHead{
+    margin-bottom:3px;
+  }
+  .dashboardSeedlingStatusViewSwitch .dashboardForecastViewBtn{
+    min-height:28px;
+  }
   .dashboardForecastControls{
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }
@@ -6730,6 +6781,12 @@ button.dashboardRecordCalendarDay.has-records:focus-visible{
     grid-template-columns:minmax(48px,.55fr) minmax(76px,.75fr) minmax(100px,1.65fr) minmax(64px,.65fr);
     gap:5px;
     padding:9px 7px;
+  }
+  .dashboardSeedlingStatusAgeHeader,
+  .dashboardSeedlingStatusAgeRow{
+    grid-template-columns:minmax(35px,.45fr) minmax(50px,.7fr) minmax(90px,1.55fr) minmax(62px,.8fr);
+    gap:3px;
+    padding:8px 5px;
   }
   .sectionTitleRow{
     align-items:flex-start;
@@ -12952,6 +13009,14 @@ html[data-theme="dark"] .dashboardSeedlingStatusAgeSummary,
 html[data-theme="dark"] .dashboardSeedlingStatusAge{
   color:var(--ui-text);
 }
+html[data-theme="dark"] .dashboardSeedlingStatusAgeList{
+  border-color:#6d5ca7;
+  background:var(--ui-surface-solid);
+}
+html[data-theme="dark"] .dashboardSeedlingStatusAgePlantingCounts,
+html[data-theme="dark"] .dashboardSeedlingStatusAgeEmpty{
+  color:var(--ui-text-secondary);
+}
 html[data-theme="dark"] .dashboardSeedlingStatusRecordLink{
   color:var(--ui-accent-dark);
 }
@@ -14793,13 +14858,16 @@ requestAnimationFrame(function(){
     <div id="dashboardSubtabSeedlings" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabSeedlingsBtn" data-dashboard-subtab-panel="seedlings" hidden>
       <div class="card dashboardSeedlingStatusCard">
         <div class="dashboardSeedlingStatusHead">
-          <div class="dashboardSeedlingStatusNote">
-            <p class="dashboardSeedlingStatusSummary">植え付け数、苗の品質、定植からの経過時間を表示します。<span>（※注）</span></p>
+          <button id="dashboardSeedlingStatusInfoBtn" type="button" class="dashboardForecastInfoBtn" data-ui-click="openDashboardSeedlingStatusInfoWindow" aria-label="二次定植の見方" aria-haspopup="dialog" aria-controls="dashboardSeedlingStatusInfoModal">i</button>
+          <div class="dashboardForecastViewSwitch dashboardSeedlingStatusViewSwitch" role="group" aria-label="二次定植の表示方法">
+            <button type="button" class="dashboardForecastViewBtn" data-dashboard-seedling-view="beds" data-ui-click="setDashboardSeedlingStatusView" data-ui-arg="beds" aria-pressed="true">配置図</button>
+            <button type="button" class="dashboardForecastViewBtn" data-dashboard-seedling-view="ages" data-ui-click="setDashboardSeedlingStatusView" data-ui-arg="ages" aria-pressed="false">日数順</button>
           </div>
         </div>
         <div id="dashboardSeedlingStatusBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="二次定植を表示する号棟"></div>
         <div id="dashboardSeedlingStatusBeds" class="dashboardForecastBeds dashboardSeedlingStatusBeds"></div>
-        <div class="dashboardSeedlingStatusMapGuide" aria-label="植え付け数による配置図の色分け">
+        <div id="dashboardSeedlingStatusAgeList" class="dashboardForecastDayListFrame dashboardSeedlingStatusAgeList" aria-live="polite" hidden></div>
+        <div id="dashboardSeedlingStatusMapGuide" class="dashboardSeedlingStatusMapGuide" aria-label="植え付け数による配置図の色分け">
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-planting-count-12"></span>12植え</span>
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-planting-count-16"></span>16植え</span>
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-planting-count-20"></span>20植え</span>
@@ -14809,14 +14877,6 @@ requestAnimationFrame(function(){
         <div id="dashboardSeedlingStatusDetail" class="dashboardSeedlingStatusDetail dashboardSeedlingStatusPopover"
           role="dialog" aria-modal="false" aria-labelledby="dashboardSeedlingStatusDetailTitle"
           aria-live="polite" hidden></div>
-        <div class="dashboardSeedlingStatusCaution">
-          <div class="dashboardSeedlingStatusCautionTitle">注意</div>
-          <ul>
-            <li>「大きい」「中」「小さい」は、記録時の見た目による評価です。時期に応じた適正な大きさとの差を示すものではありません。</li>
-            <li>同じ日に苗植えした場所の品質メモは、ベッドごとではなく一括で記録しています。そのため、実際の苗の状態と異なる場合があります。</li>
-            <li>経過日数は端末時刻の午前0時を基準に1日増え、集計の再読み込み時に表示へ反映されます。集計を開いたまま日付をまたいだ場合は、アプリを再読み込みするか、別のメインタブへ移動してから集計へ戻ってください。</li>
-          </ul>
-        </div>
       </div>
     </div>
 
@@ -14962,6 +15022,25 @@ requestAnimationFrame(function(){
     <div id="dashboardForecastInfoWindowBody" class="recordDetailWindowBody">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。
 
 収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
+  </div>
+</div>
+<div id="dashboardSeedlingStatusInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardSeedlingStatusInfoWindowTitle" aria-describedby="dashboardSeedlingStatusInfoWindowBody" data-ui-backdrop-click="closeDashboardSeedlingStatusInfoWindow">
+  <div class="recordDetailWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="dashboardSeedlingStatusInfoWindowTitle" class="recordDetailWindowTitle">二次定植の見方</div>
+      <button id="dashboardSeedlingStatusInfoWindowClose" type="button" class="recordDetailWindowClose" data-ui-click="closeDashboardSeedlingStatusInfoWindow">閉じる</button>
+    </div>
+    <div id="dashboardSeedlingStatusInfoWindowBody" class="recordDetailWindowBody dashboardSeedlingStatusInfoBody">
+      <p class="dashboardSeedlingStatusInfoLead">植え付け数、苗の品質、定植からの経過時間を表示します。</p>
+      <section class="dashboardSeedlingStatusCaution dashboardSeedlingStatusInfoCaution">
+        <div class="dashboardSeedlingStatusCautionTitle">注意</div>
+        <ul>
+          <li>「大きい」「中」「小さい」は、記録時の見た目による評価です。時期に応じた適正な大きさとの差を示すものではありません。</li>
+          <li>同じ日に苗植えした場所の品質メモは、ベッドごとではなく一括で記録しています。そのため、実際の苗の状態と異なる場合があります。</li>
+          <li>経過日数は端末時刻の午前0時を基準に1日増え、集計の再読み込み時に表示へ反映されます。集計を開いたまま日付をまたいだ場合は、アプリを再読み込みするか、別のメインタブへ移動してから集計へ戻ってください。</li>
+        </ul>
+      </section>
+    </div>
   </div>
 </div>
 <div id="dashboardCalendarInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardCalendarInfoWindowTitle" aria-describedby="dashboardCalendarInfoWindowBody" data-ui-backdrop-click="closeDashboardCalendarInfoWindow">
@@ -15786,6 +15865,7 @@ let partialHarvestEditReturnFocus = null;
 let harvestPartialSplitReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
 let dashboardForecastInfoReturnFocus = null;
+let dashboardSeedlingStatusInfoReturnFocus = null;
 let dashboardCalendarInfoReturnFocus = null;
 let dashboardForecastDaysAllReturnFocus = null;
 let dashboardRecordCalendarMonth = null;
@@ -16209,6 +16289,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "dashboardCasesAllModal",
   "dashboardCalendarInfoModal",
   "dashboardForecastInfoModal",
+  "dashboardSeedlingStatusInfoModal",
   "dashboardForecastDaysAllModal",
   "plantingAgeModal",
   "harvestProgressModal",
@@ -16288,6 +16369,23 @@ function closeDashboardForecastInfoWindow(){
   hidePageBlockingUi(modal);
   const returnFocus = dashboardForecastInfoReturnFocus;
   dashboardForecastInfoReturnFocus = null;
+  requestAnimationFrame(() => returnFocus?.focus?.());
+}
+
+function openDashboardSeedlingStatusInfoWindow(){
+  const modal = document.getElementById("dashboardSeedlingStatusInfoModal");
+  const closeButton = document.getElementById("dashboardSeedlingStatusInfoWindowClose");
+  if(!modal) return;
+  dashboardSeedlingStatusInfoReturnFocus = document.activeElement;
+  showPageBlockingUi(modal);
+  requestAnimationFrame(() => closeButton?.focus());
+}
+
+function closeDashboardSeedlingStatusInfoWindow(){
+  const modal = document.getElementById("dashboardSeedlingStatusInfoModal");
+  hidePageBlockingUi(modal);
+  const returnFocus = dashboardSeedlingStatusInfoReturnFocus;
+  dashboardSeedlingStatusInfoReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
 }
 
@@ -29683,6 +29781,7 @@ function loadDashboardFilter(){
       casesGranularity: "month",
       lossGranularity: "month",
       harvestForecastView: "beds",
+      seedlingStatusView: "beds",
       dashboardSubtab: "guide",
       resultsView: "calendar",
       recordType: "all",
@@ -29702,6 +29801,9 @@ function loadDashboardFilter(){
       harvestForecastView: ["beds", "days"].includes(parsed?.harvestForecastView)
         ? parsed.harvestForecastView
         : "beds",
+      seedlingStatusView: ["beds", "ages"].includes(parsed?.seedlingStatusView)
+        ? parsed.seedlingStatusView
+        : "beds",
       dashboardSubtab: normalizeDashboardSubtab(parsed?.dashboardSubtab),
       resultsView: normalizeDashboardResultsView(
         parsed?.dashboardSubtab === "calendar" ? "harvestStart" : parsed?.resultsView
@@ -29720,6 +29822,7 @@ function loadDashboardFilter(){
       casesGranularity: "month",
       lossGranularity: "month",
       harvestForecastView: "beds",
+      seedlingStatusView: "beds",
       dashboardSubtab: "guide",
       resultsView: "calendar",
       recordType: "all",
@@ -32499,6 +32602,132 @@ function renderDashboardSeedlingStatusBeds(model){
   renderDashboardSeedlingStatusDetail(model, building);
 }
 
+function getDashboardSeedlingStatusAgeItems(model){
+  const groupsByDate = new Map();
+  BUILDINGS.forEach(building => {
+    bedOrder.forEach(bed => {
+      const lots = model.bedLots.get(`${building}-${bed}`) || [];
+      getDashboardSeedlingStatusDateGroups(lots)
+        .filter(group => !group.isUnplanted)
+        .forEach(group => {
+          if(!groupsByDate.has(group.plantingDateText)){
+            groupsByDate.set(group.plantingDateText, {
+              plantingDateText: group.plantingDateText,
+              ageDays: group.ageDays,
+              palletKeys: [],
+              plantingCounts: new Map()
+            });
+          }
+          const item = groupsByDate.get(group.plantingDateText);
+          item.palletKeys.push(...group.palletNumbers.map(number => (
+            getPalletKey(building, bed, number)
+          )));
+          group.entries.forEach(entry => {
+            const lot = entry.lot;
+            const countKey = lot.plantingCount === null ? "unrecorded" : String(lot.plantingCount);
+            if(!item.plantingCounts.has(countKey)){
+              item.plantingCounts.set(countKey, {
+                plantingCount: lot.plantingCount,
+                plantingCountText: lot.plantingCountText,
+                plantingCountClass: lot.plantingCountClass,
+                palletCount: 0
+              });
+            }
+            item.plantingCounts.get(countKey).palletCount += lot.palletCount;
+          });
+        });
+    });
+  });
+  const plantingCountOrder = new Map([12, 16, 20].map((count, index) => [count, index]));
+  return [...groupsByDate.values()].map(item => ({
+    ...item,
+    palletKeys: [...new Set(item.palletKeys)].sort((left, right) => (
+      getOrderIndexFromKey(left) - getOrderIndexFromKey(right)
+    )),
+    locationText: formatDashboardForecastDailyLocations(item.palletKeys),
+    plantingCounts: [...item.plantingCounts.values()].sort((left, right) => (
+      (plantingCountOrder.get(left.plantingCount) ?? ALLOWED_YIELDS.length)
+      - (plantingCountOrder.get(right.plantingCount) ?? ALLOWED_YIELDS.length)
+    ))
+  })).sort((left, right) => (
+    right.ageDays - left.ageDays
+    || left.plantingDateText.localeCompare(right.plantingDateText)
+  ));
+}
+
+function getDashboardSeedlingStatusAgePlantingCountsHtml(item){
+  return item.plantingCounts.map(count => `
+    <span class="dashboardSeedlingStatusAgePlantingCount ${count.plantingCountClass}">
+      <span class="dashboardSeedlingStatusPlantingCountSwatch" aria-hidden="true"></span>
+      <span>${escapeHtml(count.plantingCountText)}×${count.palletCount}</span>
+    </span>
+  `).join("");
+}
+
+function renderDashboardSeedlingStatusAgeList(model){
+  const container = document.getElementById("dashboardSeedlingStatusAgeList");
+  if(!container) return;
+  const items = getDashboardSeedlingStatusAgeItems(model);
+  if(!items.length){
+    container.innerHTML = '<div class="dashboardSeedlingStatusAgeEmpty">二次定植の記録はありません。</div>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="dashboardForecastDayHeader dashboardSeedlingStatusAgeHeader" aria-hidden="true">
+      <span>日数</span><span>定植日</span><span>二次定植場所</span><span>植え付け数</span>
+    </div>
+    ${items.map(item => `
+      <div class="dashboardForecastDayRow dashboardSeedlingStatusAgeRow">
+        <span class="dashboardForecastDayDelay">${item.ageDays}日</span>
+        <span class="dashboardForecastDayDate">${escapeHtml(formatDashboardForecastDate(
+          parseDateOnlyString(item.plantingDateText)
+        ))}</span>
+        <span class="dashboardForecastDayLocation">${getDashboardForecastDailyLocationHtml(item.locationText)}</span>
+        <span class="dashboardSeedlingStatusAgePlantingCounts">${getDashboardSeedlingStatusAgePlantingCountsHtml(item)}</span>
+      </div>
+    `).join("")}
+  `;
+}
+
+function getDashboardSeedlingStatusView(){
+  return dashboardFilter.seedlingStatusView === "ages" ? "ages" : "beds";
+}
+
+function renderDashboardSeedlingStatusView(model){
+  const view = getDashboardSeedlingStatusView();
+  const showAges = view === "ages";
+  const tabs = document.getElementById("dashboardSeedlingStatusBuildingTabs");
+  const beds = document.getElementById("dashboardSeedlingStatusBeds");
+  const ageList = document.getElementById("dashboardSeedlingStatusAgeList");
+  const mapGuide = document.getElementById("dashboardSeedlingStatusMapGuide");
+  document.querySelectorAll("[data-dashboard-seedling-view]").forEach(button => {
+    const active = button.dataset.dashboardSeedlingView === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  if(tabs) tabs.hidden = showAges;
+  if(beds) beds.hidden = showAges;
+  if(ageList) ageList.hidden = !showAges;
+  if(mapGuide) mapGuide.hidden = showAges;
+  if(showAges){
+    renderDashboardSeedlingStatusAgeList(model);
+  }else{
+    renderDashboardSeedlingStatusBeds(model);
+    scheduleDashboardSelectedBuildingButtonReveal("seedlings");
+  }
+}
+
+function setDashboardSeedlingStatusView(view){
+  const normalized = view === "ages" ? "ages" : "beds";
+  if(normalized === "ages" && dashboardSeedlingStatusDetailOpen){
+    closeDashboardSeedlingStatusDetail({ restoreFocus: false });
+  }
+  dashboardFilter.seedlingStatusView = normalized;
+  saveDashboardFilter();
+  const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
+  renderDashboardSeedlingStatusView(model);
+}
+
 function setDashboardSeedlingStatusDate(index){
   const normalized = Number(index);
   if(!Number.isInteger(normalized)) return;
@@ -32575,7 +32804,7 @@ function setDashboardSeedlingStatusBuilding(building){
     button.classList.toggle("active", Number(button.dataset.dashboardSeedlingBuilding) === normalized);
   });
   const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
-  renderDashboardSeedlingStatusBeds(model);
+  renderDashboardSeedlingStatusView(model);
 }
 
 function renderDashboardSeedlingStatus(){
@@ -32595,7 +32824,7 @@ function renderDashboardSeedlingStatus(){
       </button>
     `;
   }).join("");
-  renderDashboardSeedlingStatusBeds(model);
+  renderDashboardSeedlingStatusView(model);
 }
 
 function renderDashboardGraphs(){
@@ -48941,6 +49170,11 @@ function handleStartupEscapeKey(event){
   }
   if(isMonitorPreviewOpen()){
     resolveMonitorPreview(false);
+    return;
+  }
+  const dashboardSeedlingStatusInfoModal = document.getElementById("dashboardSeedlingStatusInfoModal");
+  if(dashboardSeedlingStatusInfoModal?.classList.contains("show")){
+    closeDashboardSeedlingStatusInfoWindow();
     return;
   }
   const dashboardCalendarInfoModal = document.getElementById("dashboardCalendarInfoModal");

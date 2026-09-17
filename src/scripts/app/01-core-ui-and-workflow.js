@@ -275,6 +275,7 @@ let partialHarvestEditReturnFocus = null;
 let harvestPartialSplitReturnFocus = null;
 let dashboardCasesAllReturnFocus = null;
 let dashboardForecastInfoReturnFocus = null;
+let dashboardSeedlingStatusInfoReturnFocus = null;
 let dashboardCalendarInfoReturnFocus = null;
 let dashboardForecastDaysAllReturnFocus = null;
 let dashboardRecordCalendarMonth = null;
@@ -698,6 +699,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "dashboardCasesAllModal",
   "dashboardCalendarInfoModal",
   "dashboardForecastInfoModal",
+  "dashboardSeedlingStatusInfoModal",
   "dashboardForecastDaysAllModal",
   "plantingAgeModal",
   "harvestProgressModal",
@@ -777,6 +779,23 @@ function closeDashboardForecastInfoWindow(){
   hidePageBlockingUi(modal);
   const returnFocus = dashboardForecastInfoReturnFocus;
   dashboardForecastInfoReturnFocus = null;
+  requestAnimationFrame(() => returnFocus?.focus?.());
+}
+
+function openDashboardSeedlingStatusInfoWindow(){
+  const modal = document.getElementById("dashboardSeedlingStatusInfoModal");
+  const closeButton = document.getElementById("dashboardSeedlingStatusInfoWindowClose");
+  if(!modal) return;
+  dashboardSeedlingStatusInfoReturnFocus = document.activeElement;
+  showPageBlockingUi(modal);
+  requestAnimationFrame(() => closeButton?.focus());
+}
+
+function closeDashboardSeedlingStatusInfoWindow(){
+  const modal = document.getElementById("dashboardSeedlingStatusInfoModal");
+  hidePageBlockingUi(modal);
+  const returnFocus = dashboardSeedlingStatusInfoReturnFocus;
+  dashboardSeedlingStatusInfoReturnFocus = null;
   requestAnimationFrame(() => returnFocus?.focus?.());
 }
 

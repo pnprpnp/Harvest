@@ -333,6 +333,11 @@ function handleStartupEscapeKey(event){
     resolveMonitorPreview(false);
     return;
   }
+  const dashboardSeedlingStatusInfoModal = document.getElementById("dashboardSeedlingStatusInfoModal");
+  if(dashboardSeedlingStatusInfoModal?.classList.contains("show")){
+    closeDashboardSeedlingStatusInfoWindow();
+    return;
+  }
   const dashboardCalendarInfoModal = document.getElementById("dashboardCalendarInfoModal");
   if(dashboardCalendarInfoModal?.classList.contains("show")){
     closeDashboardCalendarInfoWindow();

@@ -540,6 +540,8 @@
         "initializeHarvestnaviApp",
         "openDashboardForecastInfoWindow",
         "closeDashboardForecastInfoWindow",
+        "openDashboardSeedlingStatusInfoWindow",
+        "closeDashboardSeedlingStatusInfoWindow",
         "openDashboardCalendarInfoWindow",
         "closeDashboardCalendarInfoWindow",
         "setDashboardResultsView",
@@ -3543,6 +3545,28 @@
         assertDeepEqual(juneServerEvent.plantingCountsByPallet, {}, "Apps Script側で6月以前が未記録になりません");
       });
 
+      await runTest("二次定植の説明と注意をトグル横の情報ボタンへまとめる", () => {
+        const panel = app.document.getElementById("dashboardSubtabSeedlings");
+        const button = app.document.getElementById("dashboardSeedlingStatusInfoBtn");
+        const switcher = panel?.querySelector(".dashboardSeedlingStatusViewSwitch");
+        const modal = app.document.getElementById("dashboardSeedlingStatusInfoModal");
+        const body = app.document.getElementById("dashboardSeedlingStatusInfoWindowBody");
+        assert(button && switcher && modal && body, "二次定植の情報表示に必要な要素がありません");
+        assert(button.parentElement === switcher.parentElement, "情報ボタンがトグルと同じ行にありません");
+        assert(!panel.querySelector(".dashboardSeedlingStatusNote"), "説明文が通常画面に残っています");
+        assert(!panel.querySelector(".dashboardSeedlingStatusCaution"), "注意書きが通常画面に残っています");
+        const infoText = body.textContent || "";
+        assert(infoText.includes("植え付け数、苗の品質、定植からの経過時間"), "説明文が情報ウィンドウにありません");
+        assert(infoText.includes("端末時刻の午前0時を基準に1日増え"), "注意書きが情報ウィンドウにありません");
+        try{
+          app.openDashboardSeedlingStatusInfoWindow();
+          assert(modal.classList.contains("show"), "二次定植の情報ウィンドウが開きません");
+        }finally{
+          app.closeDashboardSeedlingStatusInfoWindow();
+        }
+        assert(!modal.classList.contains("show"), "二次定植の情報ウィンドウが閉じません");
+      });
+
       await runTest("二次定植の詳細を植え付け数ごとに分けて表示する", () => {
         const previousRecords = comparable(app.eval("records"));
         const previousEvents = comparable(app.eval("plantingEvents"));
@@ -3824,6 +3848,115 @@
         }
       });
 
+      await runTest("二次定植を全棟まとめて定植日数の長い順に表示する", () => {
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        try{
+          const buildEvent = (eventId, plantingDate, building, bed, palletNumber, plantingCount) => {
+            const palletKey = `${building}-${bed}-${palletNumber}`;
+            return {
+              palletNumberingVersion: 2,
+              eventId,
+              plantingDate,
+              sourceAllocations: [{
+                harvestRecordId: eventId - 1000,
+                palletKeys: [palletKey]
+              }],
+              plantingPalletKeys: [palletKey],
+              plantingCountsByPallet: { [palletKey]: plantingCount },
+              actualSeedlingTrayCount: 1,
+              actualTakenSeedlingCount: plantingCount,
+              actualPlantedSeedlingCount: plantingCount,
+              actualSeedlingCarryoverMode: "loss",
+              actualSeedlingLossRate: "0",
+              qualityMemo: { tags: ["medium"], other: "" },
+              detailsUnknown: false
+            };
+          };
+          replaceAppHistory(app, [], [
+            buildEvent(20000000000021, "2026-08-01", 2, "A", 1, 12),
+            buildEvent(20000000000022, "2026-06-30", 3, "B", 2, 16),
+            buildEvent(20000000000023, "2026-07-15", 4, "C", 3, 20)
+          ]);
+          const viewState = comparable(app.eval(`(() => {
+            dashboardSeedlingStatusBuilding = 3;
+            dashboardSeedlingStatusSelectedBed = "F";
+            dashboardSeedlingStatusSelectedDateIndex = null;
+            dashboardSeedlingStatusDetailOpen = false;
+            dashboardFilter.seedlingStatusView = "ages";
+            dashboardSeedlingStatusModelCache = buildDashboardSeedlingStatusModel(
+              new Date(2026, 7, 10)
+            );
+            renderDashboardSeedlingStatusView(dashboardSeedlingStatusModelCache);
+            const ordered = getDashboardSeedlingStatusAgeItems(
+              dashboardSeedlingStatusModelCache
+            ).map(item => ({
+              plantingDate:item.plantingDateText,
+              ageDays:item.ageDays,
+              location:item.locationText,
+              plantingCounts:item.plantingCounts.map(count => count.plantingCountText)
+            }));
+            const ageList = document.getElementById("dashboardSeedlingStatusAgeList");
+            const beds = document.getElementById("dashboardSeedlingStatusBeds");
+            const tabs = document.getElementById("dashboardSeedlingStatusBuildingTabs");
+            const mapGuide = document.getElementById("dashboardSeedlingStatusMapGuide");
+            const before = {
+              ordered,
+              ageListHidden:ageList.hidden,
+              bedsHidden:beds.hidden,
+              tabsHidden:tabs.hidden,
+              mapGuideHidden:mapGuide.hidden,
+              headers:[...ageList.querySelectorAll(".dashboardSeedlingStatusAgeHeader span")]
+                .map(item => item.textContent.trim()),
+              rowLocations:[...ageList.querySelectorAll(".dashboardForecastDayLocation")]
+                .map(item => item.textContent.trim()),
+              activeView:document.querySelector("[data-dashboard-seedling-view].active")
+                ?.textContent.trim() || ""
+            };
+            setDashboardSeedlingStatusView("beds");
+            return {
+              before,
+              after:{
+                view:getDashboardSeedlingStatusView(),
+                ageListHidden:ageList.hidden,
+                bedsHidden:beds.hidden,
+                tabsHidden:tabs.hidden,
+                mapGuideHidden:mapGuide.hidden
+              }
+            };
+          })()`));
+          assertDeepEqual(viewState, {
+            before: {
+              ordered: [
+                { plantingDate: "2026-06-30", ageDays: 41, location: "3-B(1)", plantingCounts: ["16植え"] },
+                { plantingDate: "2026-07-15", ageDays: 26, location: "4-C(1)", plantingCounts: ["20植え"] },
+                { plantingDate: "2026-08-01", ageDays: 9, location: "2-A(1)", plantingCounts: ["12植え"] }
+              ],
+              ageListHidden: false,
+              bedsHidden: true,
+              tabsHidden: true,
+              mapGuideHidden: true,
+              headers: ["日数", "定植日", "二次定植場所", "植え付け数"],
+              rowLocations: ["3-B(1)", "4-C(1)", "2-A(1)"],
+              activeView: "日数順"
+            },
+            after: {
+              view: "beds",
+              ageListHidden: true,
+              bedsHidden: false,
+              tabsHidden: false,
+              mapGuideHidden: false
+            }
+          }, "二次定植を全棟まとめた日数順表示が正しくありません");
+        }finally{
+          app.eval(`dashboardFilter.seedlingStatusView = "beds";
+            dashboardSeedlingStatusModelCache = null;
+            dashboardSeedlingStatusSelectedDateIndex = null;
+            dashboardSeedlingStatusDetailOpen = false;`);
+          replaceAppHistory(app, previousRecords, previousEvents);
+        }
+      });
+
       await runTest("二次定植の日付から該当日の記録一覧へ移動する", () => {
         const routeState = comparable(app.eval(`(() => {
           const previousSwitchTab = window.switchTab;
@@ -4057,6 +4190,78 @@
               `${width}px幅の確認用に3日分の二次定植詳細が表示されていません`);
             assert(detail.scrollHeight <= detail.clientHeight + 1,
               `${width}px幅で3日分の二次定植詳細が縦スクロールになっています（内容${detail.scrollHeight}px／表示${detail.clientHeight}px）`);
+          }finally{
+            visualFrame.remove();
+          }
+        }
+      });
+
+      await runTest("二次定植の日数順を320px・390px幅で横にはみ出さず表示する", async () => {
+        for(const width of [320, 390]){
+          const visualFrame = await loadVisualAppFrame(width, 844);
+          const visualApp = visualFrame.contentWindow;
+          try{
+            visualApp.eval("protectedAccessUnlocked = true");
+            visualApp.document.getElementById("welcomeScreen")?.remove();
+            visualApp.switchTab("dashboard");
+            visualApp.setDashboardSubtab("seedlings");
+            await settleVisualApp(visualApp);
+            const building = visualApp.eval("dashboardSeedlingStatusBuilding");
+            const otherBuilding = building === 9 ? 2 : building + 1;
+            const makeEvent = (eventId, plantingDate, targetBuilding, bed, start, count) => {
+              const palletKeys = [0, 1, 2, 3].map(offset => `${targetBuilding}-${bed}-${start + offset}`);
+              return {
+                palletNumberingVersion: 2,
+                eventId,
+                plantingDate,
+                sourceAllocations: [{ harvestRecordId: eventId - 1000, palletKeys }],
+                plantingPalletKeys: palletKeys,
+                plantingCountsByPallet: Object.fromEntries(palletKeys.map(key => [key, count])),
+                actualSeedlingTrayCount: 1,
+                actualTakenSeedlingCount: count * palletKeys.length,
+                actualPlantedSeedlingCount: count * palletKeys.length,
+                actualSeedlingCarryoverMode: "loss",
+                actualSeedlingLossRate: "0",
+                qualityMemo: { tags: ["medium"], other: "" },
+                detailsUnknown: false
+              };
+            };
+            replaceAppHistory(visualApp, [], [
+              makeEvent(20000000000031, "2026-06-10", building, "A", 1, 12),
+              makeEvent(20000000000032, "2026-07-20", otherBuilding, "C", 20, 16),
+              makeEvent(20000000000033, "2026-08-25", building, "F", 40, 20)
+            ]);
+            visualApp.eval(`dashboardSeedlingStatusModelCache = null;
+              dashboardFilter.seedlingStatusView = "ages";
+              renderDashboardSeedlingStatus();`);
+            await settleVisualApp(visualApp);
+
+            const list = visualApp.document.getElementById("dashboardSeedlingStatusAgeList");
+            const rows = [...list.querySelectorAll(".dashboardSeedlingStatusAgeRow")];
+            const viewButton = visualApp.document.querySelector(
+              '.dashboardSeedlingStatusViewSwitch [data-dashboard-seedling-view="beds"]'
+            );
+            const guideButton = visualApp.document.querySelector(
+              '.dashboardForecastHeader [data-dashboard-forecast-view="days"]'
+            );
+            const viewButtonStyle = visualApp.getComputedStyle(viewButton);
+            const guideButtonStyle = visualApp.getComputedStyle(guideButton);
+            assert(!list.hidden, `${width}px幅で日数順一覧が表示されません`);
+            assertEqual(rows.length, 3, `${width}px幅で確認用の日数順一覧が3件になりません`);
+            assert(list.scrollWidth <= list.clientWidth + 1,
+              `${width}px幅で日数順一覧が横にはみ出しています`);
+            assert(visualApp.document.getElementById("dashboardSeedlingStatusBuildingTabs").hidden,
+              `${width}px幅の日数順で号棟選択が隠れていません`);
+            rows.forEach((row, index) => {
+              assert(row.scrollWidth <= row.clientWidth + 1,
+                `${width}px幅で日数順の${index + 1}件目が横にはみ出しています`);
+              assertEqual(row.children.length, 4,
+                `${width}px幅で日数順が目安の日別一覧と同じ4列になっていません`);
+            });
+            assertEqual(viewButtonStyle.borderRadius, guideButtonStyle.borderRadius,
+              `${width}px幅で日数順の切替が目安と同じ形ではありません`);
+            assertEqual(viewButtonStyle.backgroundColor, guideButtonStyle.backgroundColor,
+              `${width}px幅で日数順の切替が目安と同じ背景ではありません`);
           }finally{
             visualFrame.remove();
           }
@@ -5205,6 +5410,7 @@
           "dashboardCasesAllModal",
           "dashboardCalendarInfoModal",
           "dashboardForecastInfoModal",
+          "dashboardSeedlingStatusInfoModal",
           "dashboardForecastDaysAllModal",
           "plantingAgeModal",
           "harvestProgressModal",
@@ -15503,18 +15709,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "11b4cb06", elements: 2243, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "6dc5b87a", elements: 2313, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "db617b81", elements: 2313, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "f0b93a62", elements: 2247, visible: 79, viewport: "390x844" },
-          mobileDashboard: { hash: "c4e179ea", elements: 2264, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a457526e", elements: 2347, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "451dfdf3", elements: 2362, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "e10a4a38", elements: 2362, visible: 287, viewport: "390x844" },
-          mobileSettings: { hash: "d57d2d6d", elements: 2362, visible: 191, viewport: "390x844" },
-          mobileMonitor: { hash: "b0ff2444", elements: 2406, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "29e76a70", elements: 2406, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "0cc55ace", elements: 2406, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "60474f17", elements: 2252, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "0d93eaaf", elements: 2322, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "549ab240", elements: 2322, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "57ab342f", elements: 2256, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "9fa4b4d9", elements: 2273, visible: 104, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f59e80ce", elements: 2356, visible: 168, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "58619187", elements: 2371, visible: 89, viewport: "390x844" },
+          mobileMenu: { hash: "a671b8a8", elements: 2371, visible: 287, viewport: "390x844" },
+          mobileSettings: { hash: "faa30781", elements: 2371, visible: 191, viewport: "390x844" },
+          mobileMonitor: { hash: "731c4cc3", elements: 2415, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "3ba03d86", elements: 2415, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "a10e26b4", elements: 2415, visible: 104, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

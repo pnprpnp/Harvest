@@ -432,6 +432,7 @@ function loadDashboardFilter(){
       casesGranularity: "month",
       lossGranularity: "month",
       harvestForecastView: "beds",
+      seedlingStatusView: "beds",
       dashboardSubtab: "guide",
       resultsView: "calendar",
       recordType: "all",
@@ -451,6 +452,9 @@ function loadDashboardFilter(){
       harvestForecastView: ["beds", "days"].includes(parsed?.harvestForecastView)
         ? parsed.harvestForecastView
         : "beds",
+      seedlingStatusView: ["beds", "ages"].includes(parsed?.seedlingStatusView)
+        ? parsed.seedlingStatusView
+        : "beds",
       dashboardSubtab: normalizeDashboardSubtab(parsed?.dashboardSubtab),
       resultsView: normalizeDashboardResultsView(
         parsed?.dashboardSubtab === "calendar" ? "harvestStart" : parsed?.resultsView
@@ -469,6 +473,7 @@ function loadDashboardFilter(){
       casesGranularity: "month",
       lossGranularity: "month",
       harvestForecastView: "beds",
+      seedlingStatusView: "beds",
       dashboardSubtab: "guide",
       resultsView: "calendar",
       recordType: "all",
@@ -3248,6 +3253,132 @@ function renderDashboardSeedlingStatusBeds(model){
   renderDashboardSeedlingStatusDetail(model, building);
 }
 
+function getDashboardSeedlingStatusAgeItems(model){
+  const groupsByDate = new Map();
+  BUILDINGS.forEach(building => {
+    bedOrder.forEach(bed => {
+      const lots = model.bedLots.get(`${building}-${bed}`) || [];
+      getDashboardSeedlingStatusDateGroups(lots)
+        .filter(group => !group.isUnplanted)
+        .forEach(group => {
+          if(!groupsByDate.has(group.plantingDateText)){
+            groupsByDate.set(group.plantingDateText, {
+              plantingDateText: group.plantingDateText,
+              ageDays: group.ageDays,
+              palletKeys: [],
+              plantingCounts: new Map()
+            });
+          }
+          const item = groupsByDate.get(group.plantingDateText);
+          item.palletKeys.push(...group.palletNumbers.map(number => (
+            getPalletKey(building, bed, number)
+          )));
+          group.entries.forEach(entry => {
+            const lot = entry.lot;
+            const countKey = lot.plantingCount === null ? "unrecorded" : String(lot.plantingCount);
+            if(!item.plantingCounts.has(countKey)){
+              item.plantingCounts.set(countKey, {
+                plantingCount: lot.plantingCount,
+                plantingCountText: lot.plantingCountText,
+                plantingCountClass: lot.plantingCountClass,
+                palletCount: 0
+              });
+            }
+            item.plantingCounts.get(countKey).palletCount += lot.palletCount;
+          });
+        });
+    });
+  });
+  const plantingCountOrder = new Map([12, 16, 20].map((count, index) => [count, index]));
+  return [...groupsByDate.values()].map(item => ({
+    ...item,
+    palletKeys: [...new Set(item.palletKeys)].sort((left, right) => (
+      getOrderIndexFromKey(left) - getOrderIndexFromKey(right)
+    )),
+    locationText: formatDashboardForecastDailyLocations(item.palletKeys),
+    plantingCounts: [...item.plantingCounts.values()].sort((left, right) => (
+      (plantingCountOrder.get(left.plantingCount) ?? ALLOWED_YIELDS.length)
+      - (plantingCountOrder.get(right.plantingCount) ?? ALLOWED_YIELDS.length)
+    ))
+  })).sort((left, right) => (
+    right.ageDays - left.ageDays
+    || left.plantingDateText.localeCompare(right.plantingDateText)
+  ));
+}
+
+function getDashboardSeedlingStatusAgePlantingCountsHtml(item){
+  return item.plantingCounts.map(count => `
+    <span class="dashboardSeedlingStatusAgePlantingCount ${count.plantingCountClass}">
+      <span class="dashboardSeedlingStatusPlantingCountSwatch" aria-hidden="true"></span>
+      <span>${escapeHtml(count.plantingCountText)}×${count.palletCount}</span>
+    </span>
+  `).join("");
+}
+
+function renderDashboardSeedlingStatusAgeList(model){
+  const container = document.getElementById("dashboardSeedlingStatusAgeList");
+  if(!container) return;
+  const items = getDashboardSeedlingStatusAgeItems(model);
+  if(!items.length){
+    container.innerHTML = '<div class="dashboardSeedlingStatusAgeEmpty">二次定植の記録はありません。</div>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="dashboardForecastDayHeader dashboardSeedlingStatusAgeHeader" aria-hidden="true">
+      <span>日数</span><span>定植日</span><span>二次定植場所</span><span>植え付け数</span>
+    </div>
+    ${items.map(item => `
+      <div class="dashboardForecastDayRow dashboardSeedlingStatusAgeRow">
+        <span class="dashboardForecastDayDelay">${item.ageDays}日</span>
+        <span class="dashboardForecastDayDate">${escapeHtml(formatDashboardForecastDate(
+          parseDateOnlyString(item.plantingDateText)
+        ))}</span>
+        <span class="dashboardForecastDayLocation">${getDashboardForecastDailyLocationHtml(item.locationText)}</span>
+        <span class="dashboardSeedlingStatusAgePlantingCounts">${getDashboardSeedlingStatusAgePlantingCountsHtml(item)}</span>
+      </div>
+    `).join("")}
+  `;
+}
+
+function getDashboardSeedlingStatusView(){
+  return dashboardFilter.seedlingStatusView === "ages" ? "ages" : "beds";
+}
+
+function renderDashboardSeedlingStatusView(model){
+  const view = getDashboardSeedlingStatusView();
+  const showAges = view === "ages";
+  const tabs = document.getElementById("dashboardSeedlingStatusBuildingTabs");
+  const beds = document.getElementById("dashboardSeedlingStatusBeds");
+  const ageList = document.getElementById("dashboardSeedlingStatusAgeList");
+  const mapGuide = document.getElementById("dashboardSeedlingStatusMapGuide");
+  document.querySelectorAll("[data-dashboard-seedling-view]").forEach(button => {
+    const active = button.dataset.dashboardSeedlingView === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  if(tabs) tabs.hidden = showAges;
+  if(beds) beds.hidden = showAges;
+  if(ageList) ageList.hidden = !showAges;
+  if(mapGuide) mapGuide.hidden = showAges;
+  if(showAges){
+    renderDashboardSeedlingStatusAgeList(model);
+  }else{
+    renderDashboardSeedlingStatusBeds(model);
+    scheduleDashboardSelectedBuildingButtonReveal("seedlings");
+  }
+}
+
+function setDashboardSeedlingStatusView(view){
+  const normalized = view === "ages" ? "ages" : "beds";
+  if(normalized === "ages" && dashboardSeedlingStatusDetailOpen){
+    closeDashboardSeedlingStatusDetail({ restoreFocus: false });
+  }
+  dashboardFilter.seedlingStatusView = normalized;
+  saveDashboardFilter();
+  const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
+  renderDashboardSeedlingStatusView(model);
+}
+
 function setDashboardSeedlingStatusDate(index){
   const normalized = Number(index);
   if(!Number.isInteger(normalized)) return;
@@ -3324,7 +3455,7 @@ function setDashboardSeedlingStatusBuilding(building){
     button.classList.toggle("active", Number(button.dataset.dashboardSeedlingBuilding) === normalized);
   });
   const model = dashboardSeedlingStatusModelCache || buildDashboardSeedlingStatusModel();
-  renderDashboardSeedlingStatusBeds(model);
+  renderDashboardSeedlingStatusView(model);
 }
 
 function renderDashboardSeedlingStatus(){
@@ -3344,7 +3475,7 @@ function renderDashboardSeedlingStatus(){
       </button>
     `;
   }).join("");
-  renderDashboardSeedlingStatusBeds(model);
+  renderDashboardSeedlingStatusView(model);
 }
 
 function renderDashboardGraphs(){
