@@ -82,6 +82,7 @@ function applyAddedRecordColumnLayout(sheet, startColumn, keys) {
     "id",
     "recordUuid",
     "sizeRating",
+    "growthDetail",
     "palletKeys",
     "plantingPalletKeys",
     "targets",
@@ -134,6 +135,7 @@ function applyColumnVisibility(sheet, headers) {
     "id",
     "recordUuid",
     "sizeRating",
+    "growthDetail",
     "palletKeys",
     "plantingPalletKeys",
     "targets",
@@ -214,6 +216,12 @@ function rowToRecord(headers, row) {
   if (["loss", "carryover"].includes(String(item.actualSeedlingCarryoverMode || "").trim())) {
     syncProvidedFields.push("actualSeedlingCarryoverMode");
   }
+  if (String(item.sizeRating || "").trim()) {
+    syncProvidedFields.push("sizeRating");
+  }
+  if (String(item.growthDetail || "").trim()) {
+    syncProvidedFields.push("growthDetail");
+  }
 
   return {
     syncSchemaVersion: RECORD_SYNC_SCHEMA_VERSION,
@@ -236,6 +244,7 @@ function rowToRecord(headers, row) {
     actualLoss: item.actualLoss,
     qualityText: item.qualityText,
     sizeRating: item.sizeRating,
+    growthDetail: parseStoredJsonObject(item.growthDetail, "生育評価"),
     plantingAge: item.plantingAge,
     memo: item.memo,
     palletKeys: parseStoredJsonArray(item.palletKeys, "収穫パレット"),
@@ -299,7 +308,7 @@ function formatQualityTagLabel(value) {
   if (text === "large" || text === "大きい") return "大きい";
   if (text === "small" || text === "小さい") return "小さい";
   if (text === "elongated" || text === "徒長") return "徒長";
-  if (text === "chip" || text === "チップ") return "チップ";
+  if (text === "chip" || text === "チップ" || text === "チップバーン") return "チップバーン";
   return "";
 }
 

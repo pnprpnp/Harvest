@@ -96,6 +96,8 @@ function saveRecord(){
   const actualSeedlingTrayCount = getRecordActualSeedlingTrayCount();
   const actualSeedlingCarryoverMode = getRecordSeedlingCarryoverMode();
   const qualityMemo = getSelectedQualityMemo();
+  const sizeRating = getSelectedHarvestSizeRating();
+  const growthDetail = getSelectedHarvestGrowthDetail(harvestFillKeys);
   const plantingAge = getCurrentPlantingAgeSnapshot();
   const palletSummary = document.getElementById("recordPalletSummaryInput").value.trim();
   const memo = document.getElementById("recordMemoInput")?.value.trim() || "";
@@ -165,6 +167,10 @@ function saveRecord(){
     editingRecord.memo = memo;
     editingRecord.actualLoss = actualLoss;
     editingRecord.qualityMemo = qualityMemo;
+    editingRecord.sizeRating = sizeRating;
+    editingRecord.growthDetail = growthDetail;
+    editingRecord.syncSchemaVersion = RECORD_SYNC_SCHEMA_VERSION;
+    editingRecord.syncProvidedFields = [...RECORD_SYNC_FIELD_KEYS];
     editingRecord.plantingAge = plantingAge;
     editingRecord.palletKeys = [...harvestFillKeys];
     editingRecord.plantingCaseInstruction = getRemainingHarvestableCaseInstruction(editingRecord);
@@ -249,6 +255,8 @@ function saveRecord(){
         memo,
         actualLoss,
         qualityMemo,
+        sizeRating,
+        growthDetail,
         plantingAge,
         palletKeys: [...harvestFillKeys],
         plantingPalletKeys: []

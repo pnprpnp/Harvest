@@ -126,6 +126,10 @@ function installStartupRecordFormEvents(){
     input.addEventListener("change", () => {
       updateQualityMemoOtherVisibility();
       updateRecordInputGuides();
+      if(recordSelectionMode !== "planting"){
+        renderRecordHarvestGrowthBedEditor();
+        renderRecordHarvestConfirmSummary();
+      }
       saveHarvestStateToStorage();
     });
   });

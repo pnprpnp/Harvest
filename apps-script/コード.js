@@ -97,6 +97,7 @@ const RECORD_TARGET_LIMIT = 48;
 const RECORD_MEMO_LENGTH_LIMIT = 10000;
 const RECORD_SUMMARY_LENGTH_LIMIT = 20000;
 const RECORD_QUALITY_LENGTH_LIMIT = 2000;
+const RECORD_GROWTH_DETAIL_LENGTH_LIMIT = 20000;
 const RECORD_DUPLICATE_KEY_LENGTH_LIMIT = 128;
 const PLANTING_COUNT_BACKFILL_START_DATE = "2026-07-01";
 const PLANTING_COUNT_BACKFILL_END_DATE = "2026-07-31";
@@ -131,6 +132,7 @@ const RECORD_FORMULA_SAFE_TEXT_KEYS = new Set([
   "plantingCaseInstruction",
   "plantingSummary",
   "qualityText",
+  "growthDetail",
   "plantingAge",
   "memo"
 ]);
@@ -191,6 +193,7 @@ const FIELD_KEYS = [
   "actualLoss",
   "qualityText",
   "sizeRating",
+  "growthDetail",
   "plantingAge",
   "memo",
   "palletKeys",
@@ -220,6 +223,7 @@ const HEADER_LABELS = {
   actualLoss: "実ロス率",
   qualityText: "品質メモ",
   sizeRating: "大きさ",
+  growthDetail: "生育評価JSON",
   plantingAge: "定植日数",
   memo: "メモ",
   palletKeys: "パレット詳細",
@@ -236,7 +240,9 @@ const RECORD_TRASH_HEADERS = HEADERS.concat(["削除日時", "復元期限"]);
 const RECORD_TOMBSTONE_HEADERS = ["記録UUID", "記録ID", "削除日時"];
 const RECORD_SYNC_PRESERVED_FIELD_KEYS = [
   "plantingCaseInstruction",
-  "actualSeedlingCarryoverMode"
+  "actualSeedlingCarryoverMode",
+  "sizeRating",
+  "growthDetail"
 ];
 
 const PLANTING_EVENT_FIELD_KEYS = [
@@ -2032,6 +2038,7 @@ function normalizeHarvestRecord(record) {
       qualityMemo: null,
       qualityText: "",
       sizeRating: "unknown",
+      growthDetail: { uneven: false, bedOverrides: {} },
       plantingAge: null,
       memo,
       palletKeys: [],
@@ -2090,6 +2097,7 @@ function normalizeHarvestRecord(record) {
     false
   );
   const sizeRating = normalizeOptionalSizeRating(record.sizeRating);
+  const growthDetail = normalizeHarvestGrowthDetailInput(record.growthDetail, palletKeys);
   const plantingAge = normalizePlantingAgeInput(record.plantingAge);
   const plantingCaseInstruction = normalizeOptionalText(
     record.plantingCaseInstruction,
@@ -2119,6 +2127,7 @@ function normalizeHarvestRecord(record) {
     qualityMemo,
     qualityText,
     sizeRating,
+    growthDetail,
     plantingAge,
     memo,
     palletKeys,
@@ -2454,7 +2463,7 @@ function normalizeQualityMemoInput(value) {
 function normalizePlantingQualityMemoInput(value) {
   if (value === null || typeof value === "undefined" || String(value).trim() === "") return null;
   if (typeof value === "string") {
-    const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip" };
+    const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip", "チップバーン": "chip" };
     const tags = [];
     const otherParts = [];
     value.split(/[,、|\n]+/).map(item => item.trim()).filter(Boolean).forEach(item => {
@@ -2486,7 +2495,7 @@ function normalizePlantingQualityMemoByPalletInput(value, plantingKeySet) {
 
 function normalizeQualityTagInput(value) {
   if (typeof value !== "string") throw new Error("品質タグの形式が正しくありません");
-  const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip" };
+  const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip", "チップバーン": "chip" };
   const tag = aliases[value.trim()] || value.trim();
   if (!QUALITY_TAGS.includes(tag)) throw new Error("許可されていない品質タグです");
   return tag;
@@ -2522,11 +2531,74 @@ function normalizePlantingAgeInput(value) {
 
 function normalizeOptionalSizeRating(value) {
   if (value === null || typeof value === "undefined" || value === "") return "unknown";
-  return normalizeRequiredEnum(
+  const normalized = normalizeRequiredEnum(
     value,
     "大きさ",
-    ["unknown", "normal", "large", "small", "不明", "並", "大きい", "小さい"]
+    ["unknown", "normal", "large", "small", "不明", "並", "中", "ちょうど良い", "大きい", "大きめ", "小さい", "小さめ"]
   );
+  return {
+    "不明": "unknown",
+    "並": "normal",
+    "中": "normal",
+    "ちょうど良い": "normal",
+    "大きい": "large",
+    "大きめ": "large",
+    "小さい": "small",
+    "小さめ": "small"
+  }[normalized] || normalized;
+}
+
+function normalizeHarvestGrowthDetailInput(value, palletKeys) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return { uneven: false, bedOverrides: {} };
+  }
+  let source = value;
+  if (typeof source === "string") {
+    if (source.length > RECORD_GROWTH_DETAIL_LENGTH_LIMIT) {
+      throw new Error("生育評価が長すぎます");
+    }
+    try {
+      source = JSON.parse(source);
+    } catch (error) {
+      throw new Error("生育評価の形式が正しくありません");
+    }
+  }
+  if (!isPlainObject(source)) throw new Error("生育評価の形式が正しくありません");
+  const rawOverrides = typeof source.bedOverrides === "undefined" ? {} : source.bedOverrides;
+  if (!isPlainObject(rawOverrides)) throw new Error("ベッド別生育評価の形式が正しくありません");
+  const allowedBeds = new Set((Array.isArray(palletKeys) ? palletKeys : []).map(key => {
+    const match = String(key || "").match(/^(\d+)-([A-F])-\d+$/);
+    return match ? `${match[1]}-${match[2]}` : "";
+  }).filter(Boolean));
+  const entries = Object.entries(rawOverrides);
+  if (entries.length > HARVEST_BUILDINGS.length * HARVEST_BEDS.length) {
+    throw new Error("ベッド別生育評価の件数が多すぎます");
+  }
+  const bedOverrides = {};
+  entries.forEach(([bedKey, rawOverride]) => {
+    if (!allowedBeds.has(bedKey) || !isPlainObject(rawOverride)) {
+      throw new Error("収穫場所ではないベッドの生育評価があります");
+    }
+    ["uneven", "tipburn", "elongated"].forEach(field => {
+      if (typeof rawOverride[field] !== "boolean") {
+        throw new Error("ベッド別生育評価の形式が正しくありません");
+      }
+    });
+    bedOverrides[bedKey] = {
+      sizeRating: normalizeOptionalSizeRating(rawOverride.sizeRating),
+      uneven: rawOverride.uneven,
+      tipburn: rawOverride.tipburn,
+      elongated: rawOverride.elongated
+    };
+  });
+  const normalized = {
+    uneven: source.uneven === true,
+    bedOverrides
+  };
+  if (JSON.stringify(normalized).length > RECORD_GROWTH_DETAIL_LENGTH_LIMIT) {
+    throw new Error("生育評価が長すぎます");
+  }
+  return normalized;
 }
 
 function normalizeOptionalCarryoverMode(value) {
@@ -3394,6 +3466,7 @@ function getHarvestRecordContentSignature(record) {
     actualLoss: String(record && record.actualLoss == null ? "" : record.actualLoss),
     qualityText: String(formatQualityTextValue(record || {})),
     sizeRating: String(formatSizeRatingValue(record && record.sizeRating)),
+    growthDetail: JSON.stringify(record && record.growthDetail || { uneven: false, bedOverrides: {} }),
     plantingAge: String(formatPlantingAgeValue(record && record.plantingAge)),
     memo: String(record && record.memo || ""),
     palletKeys: parseKeys(record && record.palletKeys, "収穫パレット"),
@@ -3438,6 +3511,13 @@ function mergeOmittedSyncFieldsFromExistingRecord(record, suppliedSyncFields, ex
       mergedRecord[key] = existingRecord[key] === "carryover"
         ? "carryover"
         : (record[key] === "carryover" ? "carryover" : "loss");
+      return;
+    }
+    if (key === "growthDetail") {
+      const existingDetail = existingRecord && existingRecord.growthDetail;
+      if (existingDetail && typeof existingDetail === "object" && !Array.isArray(existingDetail)) {
+        mergedRecord[key] = existingDetail;
+      }
       return;
     }
     const existingText = String(existingRecord[key] == null ? "" : existingRecord[key]);
@@ -6152,6 +6232,7 @@ function buildRecordRow(headers, record, duplicateKey, receivedAt) {
     actualLoss: record.actualLoss ?? "",
     qualityText: escapeSpreadsheetFormulaText(formatQualityTextValue(record)),
     sizeRating: formatSizeRatingValue(record.sizeRating),
+    growthDetail: escapeSpreadsheetFormulaText(JSON.stringify(record.growthDetail || { uneven: false, bedOverrides: {} })),
     plantingAge: escapeSpreadsheetFormulaText(formatPlantingAgeValue(record.plantingAge)),
     memo: escapeSpreadsheetFormulaText(record.memo || ""),
     palletKeys: JSON.stringify(record.palletKeys || []),
@@ -9351,6 +9432,7 @@ function applyAddedRecordColumnLayout(sheet, startColumn, keys) {
     "id",
     "recordUuid",
     "sizeRating",
+    "growthDetail",
     "palletKeys",
     "plantingPalletKeys",
     "targets",
@@ -9403,6 +9485,7 @@ function applyColumnVisibility(sheet, headers) {
     "id",
     "recordUuid",
     "sizeRating",
+    "growthDetail",
     "palletKeys",
     "plantingPalletKeys",
     "targets",
@@ -9483,6 +9566,12 @@ function rowToRecord(headers, row) {
   if (["loss", "carryover"].includes(String(item.actualSeedlingCarryoverMode || "").trim())) {
     syncProvidedFields.push("actualSeedlingCarryoverMode");
   }
+  if (String(item.sizeRating || "").trim()) {
+    syncProvidedFields.push("sizeRating");
+  }
+  if (String(item.growthDetail || "").trim()) {
+    syncProvidedFields.push("growthDetail");
+  }
 
   return {
     syncSchemaVersion: RECORD_SYNC_SCHEMA_VERSION,
@@ -9505,6 +9594,7 @@ function rowToRecord(headers, row) {
     actualLoss: item.actualLoss,
     qualityText: item.qualityText,
     sizeRating: item.sizeRating,
+    growthDetail: parseStoredJsonObject(item.growthDetail, "生育評価"),
     plantingAge: item.plantingAge,
     memo: item.memo,
     palletKeys: parseStoredJsonArray(item.palletKeys, "収穫パレット"),
@@ -9568,7 +9658,7 @@ function formatQualityTagLabel(value) {
   if (text === "large" || text === "大きい") return "大きい";
   if (text === "small" || text === "小さい") return "小さい";
   if (text === "elongated" || text === "徒長") return "徒長";
-  if (text === "chip" || text === "チップ") return "チップ";
+  if (text === "chip" || text === "チップ" || text === "チップバーン") return "チップバーン";
   return "";
 }
 

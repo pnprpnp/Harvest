@@ -170,6 +170,7 @@ function getHarvestRecordContentSignature(record) {
     actualLoss: String(record && record.actualLoss == null ? "" : record.actualLoss),
     qualityText: String(formatQualityTextValue(record || {})),
     sizeRating: String(formatSizeRatingValue(record && record.sizeRating)),
+    growthDetail: JSON.stringify(record && record.growthDetail || { uneven: false, bedOverrides: {} }),
     plantingAge: String(formatPlantingAgeValue(record && record.plantingAge)),
     memo: String(record && record.memo || ""),
     palletKeys: parseKeys(record && record.palletKeys, "収穫パレット"),
@@ -214,6 +215,13 @@ function mergeOmittedSyncFieldsFromExistingRecord(record, suppliedSyncFields, ex
       mergedRecord[key] = existingRecord[key] === "carryover"
         ? "carryover"
         : (record[key] === "carryover" ? "carryover" : "loss");
+      return;
+    }
+    if (key === "growthDetail") {
+      const existingDetail = existingRecord && existingRecord.growthDetail;
+      if (existingDetail && typeof existingDetail === "object" && !Array.isArray(existingDetail)) {
+        mergedRecord[key] = existingDetail;
+      }
       return;
     }
     const existingText = String(existingRecord[key] == null ? "" : existingRecord[key]);

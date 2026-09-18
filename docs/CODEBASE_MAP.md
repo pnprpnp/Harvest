@@ -45,7 +45,7 @@
 | `04-monitor-sync.js` | モニター内容のApps Script送受信、Firebase更新通知、編集中内容と履歴。Firebaseには内容ではなく更新通知だけを置く。 |
 | `05-sheet-record-transfer.js` | 収穫・苗植え記録の検証、送信、ページ取得、起動時取込、通知ドット。同期応答の統合入口。 |
 | `06-settings.js` | 計算設定とケース配置設定。設定変更時の正規化・保存・関連再計算。 |
-| `07-dashboard.js` | 集計、履歴検索、グラフ、収穫予測一覧。`invalidateDashboardDerivedData()` で派生データを破棄する。 |
+| `07-dashboard.js` | 集計、履歴検索、グラフ、収穫予測一覧、生育予測β。生育予測の気象取得はタブ選択後だけ行い、`invalidateDashboardDerivedData()` で派生データを破棄する。 |
 | `08-harvest-calculation.js` | パレット状態、収穫可能判定、収穫量予測、ロス、部分収穫控除、選択順。`runHarvestPrediction()` が予測実行の中心。 |
 | `09-record-workflow.js` | 記録画面の段階操作、苗数・品質割当、苗ハウス、部分収穫下書き、記録一覧表示切替。 |
 | `10-monitor-view.js` | モニター表示用の配置図、指示、メモ、文字サイズ調整。 |
@@ -64,6 +64,7 @@
 - 端末内の収穫記録はメモリー上の `records`、苗植え記録は `plantingEvents` がセッション中の信頼できる元です。永続化は `saveRecordsToStorage()` と `savePlantingEventsToStorage()` から共通保存窓口へ通します。
 - 管理者用と作業者用の保存キーは `01-core-ui-and-workflow.js` の `getActive*StorageKey()` 群で切り替えます。役割をまたいで直接キーを指定しません。
 - 読み込み時は `normalizeStoredRecord()` と `normalizePlantingEvent()` が旧形式も正規化します。既存データ互換を変える場合はここ、Google受信正規化、特性テストを一緒に確認します。
+- 収穫時の育ち具合は収穫記録の `sizeRating` と `growthDetail` が元データです。生育予測βの気象キャッシュと判定モデルは派生状態で、記録変更または地点変更時に再計算します。
 - 削除済み記録は端末ごみ箱とリモートの削除情報（tombstone）で保護します。単純な配列削除だけで終わらせません。
 - パレット状態、履歴表示、集計、収穫検索索引、ロス推定などは派生状態です。元記録変更後は `completeRecordDataMutation()` → `invalidateRecordDerivedCaches()` を通し、必要に応じて `rebuildCurrentPalletLifecycleState()` で再構築します。
 - Googleスプレッドシートが共有データの最終保存先です。Cloudflare D1とApps Script受信箱は通信失敗に耐えるための受付・再送層であり、画面計算の元データにはしません。
@@ -128,6 +129,15 @@
 → `runHarvestPrediction()` が収穫量・ケース数・ロスを計算
 → 記録変更時だけ関連索引を無効化・再構築する。
 
+### 生育予測β
+
+集計の「生育予測」タブを利用者が選択
+→ `07-dashboard.js` がメニューで保存した気象庁の予報地域を読み、気象庁の週間予報を取得
+→ 「目安」のパレット別収穫予定日、定植記録、収穫時の `sizeRating` / `growthDetail` を比較
+→ 号棟別補正と気温・天気による日照条件の推定から、予定日時点の大きさ、チップバーン・徒長の注意を派生表示する。
+
+気象地点の検索はメニューで操作した時だけ、予報は生育予測タブを開いた時だけ取得します。結果は地点ごとに6時間再利用し、日別値を最大2年分だけ端末に蓄積します。予報期間外は気象庁の平年値を低信頼度の参考値として使います。
+
 ### 過去記録の編集・削除・復元
 
 `14-record-history.js` と `12-record-save-and-restore.js`
@@ -155,6 +165,7 @@
 | 高速受付・再送 | `relay/src/worker.mjs` | `relay/migrations/`、`apps-script/src/15-record-inbox.js`、ブラウザー側受信箱状態確認 |
 | モニター | `04-monitor-sync.js`、`10-monitor-view.js` | Apps Scriptの `08-monitor.js`、`13-monitor-sheet.js`、Firebase通知 |
 | 集計・ダッシュボード | `07-dashboard.js` | `02-local-data.js` のキャッシュ無効化、記録詳細表示 |
+| 生育予測・育ち具合評価 | `07-dashboard.js`、`02-local-data.js` | `09-record-workflow.js`、`12-record-save-and-restore.js`、Google同期・Apps Script収穫列、気象キャッシュ |
 | 起動・状態復元 | `17-startup-state.js`〜`19-bootstrap.js` | `01-core-ui-and-workflow.js` の途中状態保存 |
 | ブラウザー内保存形式 | `02-local-data.js` | `browser-storage.js`、旧バックアップ、取込、同期正規化 |
 | ビルド・バージョン | `tools/`、`src/index.template.html`、`version.json` | 生成後の `index.html` と `apps-script/コード.js` |

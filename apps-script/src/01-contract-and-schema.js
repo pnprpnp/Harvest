@@ -97,6 +97,7 @@ const RECORD_TARGET_LIMIT = 48;
 const RECORD_MEMO_LENGTH_LIMIT = 10000;
 const RECORD_SUMMARY_LENGTH_LIMIT = 20000;
 const RECORD_QUALITY_LENGTH_LIMIT = 2000;
+const RECORD_GROWTH_DETAIL_LENGTH_LIMIT = 20000;
 const RECORD_DUPLICATE_KEY_LENGTH_LIMIT = 128;
 const PLANTING_COUNT_BACKFILL_START_DATE = "2026-07-01";
 const PLANTING_COUNT_BACKFILL_END_DATE = "2026-07-31";
@@ -131,6 +132,7 @@ const RECORD_FORMULA_SAFE_TEXT_KEYS = new Set([
   "plantingCaseInstruction",
   "plantingSummary",
   "qualityText",
+  "growthDetail",
   "plantingAge",
   "memo"
 ]);
@@ -191,6 +193,7 @@ const FIELD_KEYS = [
   "actualLoss",
   "qualityText",
   "sizeRating",
+  "growthDetail",
   "plantingAge",
   "memo",
   "palletKeys",
@@ -220,6 +223,7 @@ const HEADER_LABELS = {
   actualLoss: "実ロス率",
   qualityText: "品質メモ",
   sizeRating: "大きさ",
+  growthDetail: "生育評価JSON",
   plantingAge: "定植日数",
   memo: "メモ",
   palletKeys: "パレット詳細",
@@ -236,7 +240,9 @@ const RECORD_TRASH_HEADERS = HEADERS.concat(["削除日時", "復元期限"]);
 const RECORD_TOMBSTONE_HEADERS = ["記録UUID", "記録ID", "削除日時"];
 const RECORD_SYNC_PRESERVED_FIELD_KEYS = [
   "plantingCaseInstruction",
-  "actualSeedlingCarryoverMode"
+  "actualSeedlingCarryoverMode",
+  "sizeRating",
+  "growthDetail"
 ];
 
 const PLANTING_EVENT_FIELD_KEYS = [

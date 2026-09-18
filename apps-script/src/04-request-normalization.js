@@ -121,6 +121,7 @@ function normalizeHarvestRecord(record) {
       qualityMemo: null,
       qualityText: "",
       sizeRating: "unknown",
+      growthDetail: { uneven: false, bedOverrides: {} },
       plantingAge: null,
       memo,
       palletKeys: [],
@@ -179,6 +180,7 @@ function normalizeHarvestRecord(record) {
     false
   );
   const sizeRating = normalizeOptionalSizeRating(record.sizeRating);
+  const growthDetail = normalizeHarvestGrowthDetailInput(record.growthDetail, palletKeys);
   const plantingAge = normalizePlantingAgeInput(record.plantingAge);
   const plantingCaseInstruction = normalizeOptionalText(
     record.plantingCaseInstruction,
@@ -208,6 +210,7 @@ function normalizeHarvestRecord(record) {
     qualityMemo,
     qualityText,
     sizeRating,
+    growthDetail,
     plantingAge,
     memo,
     palletKeys,
@@ -543,7 +546,7 @@ function normalizeQualityMemoInput(value) {
 function normalizePlantingQualityMemoInput(value) {
   if (value === null || typeof value === "undefined" || String(value).trim() === "") return null;
   if (typeof value === "string") {
-    const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip" };
+    const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip", "チップバーン": "chip" };
     const tags = [];
     const otherParts = [];
     value.split(/[,、|\n]+/).map(item => item.trim()).filter(Boolean).forEach(item => {
@@ -575,7 +578,7 @@ function normalizePlantingQualityMemoByPalletInput(value, plantingKeySet) {
 
 function normalizeQualityTagInput(value) {
   if (typeof value !== "string") throw new Error("品質タグの形式が正しくありません");
-  const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip" };
+  const aliases = { "大きい": "large", "小さい": "small", "徒長": "elongated", "チップ": "chip", "チップバーン": "chip" };
   const tag = aliases[value.trim()] || value.trim();
   if (!QUALITY_TAGS.includes(tag)) throw new Error("許可されていない品質タグです");
   return tag;
@@ -611,11 +614,74 @@ function normalizePlantingAgeInput(value) {
 
 function normalizeOptionalSizeRating(value) {
   if (value === null || typeof value === "undefined" || value === "") return "unknown";
-  return normalizeRequiredEnum(
+  const normalized = normalizeRequiredEnum(
     value,
     "大きさ",
-    ["unknown", "normal", "large", "small", "不明", "並", "大きい", "小さい"]
+    ["unknown", "normal", "large", "small", "不明", "並", "中", "ちょうど良い", "大きい", "大きめ", "小さい", "小さめ"]
   );
+  return {
+    "不明": "unknown",
+    "並": "normal",
+    "中": "normal",
+    "ちょうど良い": "normal",
+    "大きい": "large",
+    "大きめ": "large",
+    "小さい": "small",
+    "小さめ": "small"
+  }[normalized] || normalized;
+}
+
+function normalizeHarvestGrowthDetailInput(value, palletKeys) {
+  if (value === null || typeof value === "undefined" || value === "") {
+    return { uneven: false, bedOverrides: {} };
+  }
+  let source = value;
+  if (typeof source === "string") {
+    if (source.length > RECORD_GROWTH_DETAIL_LENGTH_LIMIT) {
+      throw new Error("生育評価が長すぎます");
+    }
+    try {
+      source = JSON.parse(source);
+    } catch (error) {
+      throw new Error("生育評価の形式が正しくありません");
+    }
+  }
+  if (!isPlainObject(source)) throw new Error("生育評価の形式が正しくありません");
+  const rawOverrides = typeof source.bedOverrides === "undefined" ? {} : source.bedOverrides;
+  if (!isPlainObject(rawOverrides)) throw new Error("ベッド別生育評価の形式が正しくありません");
+  const allowedBeds = new Set((Array.isArray(palletKeys) ? palletKeys : []).map(key => {
+    const match = String(key || "").match(/^(\d+)-([A-F])-\d+$/);
+    return match ? `${match[1]}-${match[2]}` : "";
+  }).filter(Boolean));
+  const entries = Object.entries(rawOverrides);
+  if (entries.length > HARVEST_BUILDINGS.length * HARVEST_BEDS.length) {
+    throw new Error("ベッド別生育評価の件数が多すぎます");
+  }
+  const bedOverrides = {};
+  entries.forEach(([bedKey, rawOverride]) => {
+    if (!allowedBeds.has(bedKey) || !isPlainObject(rawOverride)) {
+      throw new Error("収穫場所ではないベッドの生育評価があります");
+    }
+    ["uneven", "tipburn", "elongated"].forEach(field => {
+      if (typeof rawOverride[field] !== "boolean") {
+        throw new Error("ベッド別生育評価の形式が正しくありません");
+      }
+    });
+    bedOverrides[bedKey] = {
+      sizeRating: normalizeOptionalSizeRating(rawOverride.sizeRating),
+      uneven: rawOverride.uneven,
+      tipburn: rawOverride.tipburn,
+      elongated: rawOverride.elongated
+    };
+  });
+  const normalized = {
+    uneven: source.uneven === true,
+    bedOverrides
+  };
+  if (JSON.stringify(normalized).length > RECORD_GROWTH_DETAIL_LENGTH_LIMIT) {
+    throw new Error("生育評価が長すぎます");
+  }
+  return normalized;
 }
 
 function normalizeOptionalCarryoverMode(value) {

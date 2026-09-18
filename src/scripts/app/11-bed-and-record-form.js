@@ -2105,6 +2105,11 @@ function clearRecordForm(options = {}){
   }
   setRecordSeedlingCarryoverMode("loss", { silent: true });
   setSelectedQualityMemo(null);
+  setSelectedHarvestGrowthAssessment(null);
+  const growthEditor = document.getElementById("recordHarvestGrowthBedEditor");
+  const growthEditorButton = document.getElementById("recordHarvestGrowthBedToggle");
+  if(growthEditor) growthEditor.hidden = true;
+  if(growthEditorButton) growthEditorButton.setAttribute("aria-expanded", "false");
   if(options.render !== false){
     updateRecordActualLoss();
     updateRecordActualSeedlingDisplays();

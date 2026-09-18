@@ -71,6 +71,26 @@ function isValidTransferQualityMemo(value){
     && !other.includes("\u0000");
 }
 
+function isValidTransferGrowthDetail(value, palletKeys = []){
+  if(value === undefined || value === null || value === "") return true;
+  if(typeof value === "string"){
+    if(value.length > RECORD_MAX_QUALITY_LENGTH * 4) return false;
+    value = parseMaybeJson(value, null);
+  }
+  if(!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if(value.uneven !== undefined && typeof value.uneven !== "boolean") return false;
+  const overrides = value.bedOverrides === undefined ? {} : value.bedOverrides;
+  if(!overrides || typeof overrides !== "object" || Array.isArray(overrides)) return false;
+  const allowedBeds = new Set(getHarvestBedKeysFromPalletKeys(palletKeys));
+  const entries = Object.entries(overrides);
+  if(entries.length > BUILDINGS.length * bedOrder.length) return false;
+  return entries.every(([bedKey, override]) => {
+    if(!allowedBeds.has(bedKey) || !override || typeof override !== "object" || Array.isArray(override)) return false;
+    if(normalizeHarvestSizeRating(override.sizeRating) !== String(override.sizeRating || "unknown")) return false;
+    return ["uneven", "tipburn", "elongated"].every(field => typeof override[field] === "boolean");
+  });
+}
+
 function isValidTransferPlantingAge(value){
   if(value === undefined || value === null || value === "") return true;
   if(typeof value === "string") return value.length <= RECORD_MAX_PLANTING_AGE_DETAIL_LENGTH && !value.includes("\u0000");
@@ -176,6 +196,12 @@ function validateRecordForGoogleTransfer(record, options = {}){
   if(!isOptionalBoundedRecordString(record, "qualityText", RECORD_MAX_QUALITY_LENGTH)){
     return invalid("品質メモの形式が正しくありません");
   }
+  if(normalizeHarvestSizeRating(record.sizeRating) !== String(record.sizeRating || "unknown")){
+    return invalid("育ち具合の形式が正しくありません");
+  }
+  if(!isValidTransferGrowthDetail(record.growthDetail, palletKeys)){
+    return invalid("ベッド別の育ち具合が正しくありません");
+  }
 
   if(!isValidTransferPlantingAge(record.plantingAge)) return invalid("定植日数の詳細が正しくありません");
 
@@ -238,6 +264,8 @@ function normalizeGoogleSheetRowRecord(row){
       : record.actualSeedlingCarryoverMode,
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
     qualityMemo: parseMaybeJson(record.qualityMemo || record.qualityText || "", null),
+    sizeRating: normalizeHarvestSizeRating(record.sizeRating),
+    growthDetail: parseMaybeJson(record.growthDetail, record.growthDetail),
     plantingAge: parseMaybeJson(record.plantingAge, record.plantingAge),
     targets: parseMaybeJson(record.targets, record.targets)
   };

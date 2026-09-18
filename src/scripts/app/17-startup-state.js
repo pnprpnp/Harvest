@@ -157,6 +157,13 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   if(recordMemoInput) recordMemoInput.value = savedHarvestState.recordMemoInput || "";
 
   setSelectedQualityMemo(savedHarvestState.qualityMemo);
+  setSelectedHarvestGrowthAssessment({
+    type: "fullHarvest",
+    palletKeys: savedHarvestState.harvestFillKeys,
+    qualityMemo: savedHarvestState.qualityMemo,
+    sizeRating: savedHarvestState.recordHarvestSizeRating,
+    growthDetail: savedHarvestState.recordHarvestGrowthDetail
+  });
   if(harvestFillKeys.length) recalcHarvestSummary();
   else harvestSummary = null;
 }
@@ -194,6 +201,7 @@ function initializeStartupViews(savedHarvestState){
   if(dashboardRecordEndDateInput) dashboardRecordEndDateInput.value = dashboardFilter.recordEndDate || "";
   if(!savedHarvestState){
     setSelectedQualityMemo(null);
+    setSelectedHarvestGrowthAssessment(null);
     renderMonitorMemoInputs();
   }
 

@@ -49,6 +49,8 @@ const WORKER_RECORD_TRASH_KEY = "harvestnaviWorkerRecordTrash_v1";
 const WORKER_PALLET_LIFECYCLE_STATE_KEY = "harvestnaviWorkerPalletLifecycleState_v1";
 const RECORD_AVAILABILITY_CHECK_AT_KEY = "harvestnaviRecordAvailabilityCheckAt_v1";
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
+const DASHBOARD_GROWTH_LOCATION_KEY = "harvestnaviDashboardGrowthLocation_v2";
+const DASHBOARD_GROWTH_WEATHER_CACHE_KEY = "harvestnaviDashboardGrowthWeatherCache_v2";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
 const MONITOR_DESIGN_HEIGHT = 720;
@@ -75,10 +77,12 @@ const GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS = 1000;
 const GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES = 10000;
 const GOOGLE_SHEET_MAX_HISTORY_ITEMS = 1000;
 const GOOGLE_SHEET_MAX_RECENT_DAYS = 3650;
-const RECORD_SYNC_SCHEMA_VERSION = 3;
+const RECORD_SYNC_SCHEMA_VERSION = 4;
 const RECORD_SYNC_FIELD_KEYS = [
   "plantingCaseInstruction",
-  "actualSeedlingCarryoverMode"
+  "actualSeedlingCarryoverMode",
+  "sizeRating",
+  "growthDetail"
 ];
 const RECORD_MAX_ID = Number.MAX_SAFE_INTEGER;
 const RECORD_MAX_CASES = 999999;
@@ -323,6 +327,12 @@ let dashboardSeedlingStatusDetailOpen = false;
 let dashboardSeedlingStatusDetailPositionFrame = 0;
 let dashboardSeedlingStatusModelCache = null;
 let dashboardHarvestForecastModelCache = null;
+let dashboardGrowthPredictionModelCache = null;
+let dashboardGrowthPredictionBuilding = null;
+let dashboardGrowthWeatherLoading = null;
+let dashboardGrowthWeatherLocationResults = [];
+let dashboardGrowthAreaCatalogCache = null;
+let dashboardGrowthAreaCatalogLoading = null;
 let dashboardPastCalendarActive = false;
 let dashboardPastCalendarStartMonth = null;
 let dashboardPastCalendarItemsByDateCache = null;
@@ -343,6 +353,7 @@ const tabScrollPositions = {
 let recordBaseFillKeys = [];
 let recordAdditionalBuildings = [];
 let recordSelectionMode = "harvest";
+let recordHarvestGrowthBedOverrides = {};
 const RECORD_HARVEST_STAGES = Object.freeze(["location", "quality", "confirm"]);
 let recordHarvestStage = "location";
 let recordHarvestPrimaryInputsExpanded = false;
@@ -948,6 +959,7 @@ function openAppMenuWindow(){
   moveMenuSettingsToWindow();
   syncThemePreferenceControls();
   syncAccessProtectionDetails();
+  if(typeof syncDashboardGrowthLocationMenu === "function") syncDashboardGrowthLocationMenu();
   showPageBlockingUi(modal);
   refreshAppRollbackAvailability();
 }
@@ -1254,6 +1266,8 @@ function saveHarvestStateToStorage(options = {}){
     recordPlantingSummaryInput: document.getElementById("recordPlantingSummaryInput")?.value || "",
     recordMemoInput: document.getElementById("recordMemoInput")?.value || "",
     qualityMemo: getSelectedQualityMemo(),
+    recordHarvestSizeRating: getSelectedHarvestSizeRating(),
+    recordHarvestGrowthDetail: getSelectedHarvestGrowthDetail(harvestFillKeys),
     qualityMemoByPallet: recordSelectionMode === "planting"
       ? normalizeQualityMemoByPallet(plantingRecordDraft?.qualityMemoByPallet, harvestFillKeys)
       : {},
@@ -1408,6 +1422,11 @@ function loadHarvestStateFromStorage(){
       recordPlantingSummaryInput: parsed.recordPlantingSummaryInput ?? "",
       recordMemoInput: parsed.recordMemoInput ?? "",
       qualityMemo: normalizeQualityMemo(parsed.qualityMemo || null),
+      recordHarvestSizeRating: normalizeHarvestSizeRating(parsed.recordHarvestSizeRating),
+      recordHarvestGrowthDetail: normalizeHarvestGrowthDetail(
+        parsed.recordHarvestGrowthDetail,
+        getHarvestBedKeysFromPalletKeys(parsed.harvestFillKeys)
+      ),
       qualityMemoByPallet: normalizeQualityMemoByPallet(parsed.qualityMemoByPallet, parsed.harvestFillKeys),
       recordCasesEdited: !!parsed.recordCasesEdited,
       recordPlantingSummaryEdited: !!parsed.recordPlantingSummaryEdited,
@@ -1661,6 +1680,7 @@ function refreshAfterHarvestSelectionChanged(options = {}){
     updateRecordSeedlingDiffDisplay();
     updateRecordActualSeedlingDisplays();
     updateRecordPlantingCountPresetUi();
+    if(recordSelectionMode === "harvest") renderRecordHarvestGrowthBedEditor();
   }
   scheduleWorkflowGuideUpdate({ currentHarvestTotal });
   scheduleHarvestStateSave();

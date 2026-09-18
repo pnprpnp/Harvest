@@ -2433,6 +2433,13 @@ function renderRecordHarvestConfirmation(){
   const lossDisplay = document.getElementById("recordActualLossInput");
   const lossLabel = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
   const quality = formatQualityMemo(getSelectedQualityMemo()) || "選択なし";
+  const growth = formatHarvestGrowthAssessment({
+    type: "fullHarvest",
+    palletKeys: [...harvestFillKeys],
+    qualityMemo: getSelectedQualityMemo(),
+    sizeRating: getSelectedHarvestSizeRating(),
+    growthDetail: getSelectedHarvestGrowthDetail(harvestFillKeys)
+  });
   appendRecordHarvestConfirmItem(container, "日付", date || "未入力", "cases");
   appendRecordHarvestConfirmItem(container, "ケース数", cases > 0 ? `${cases}ケース` : "未入力", "cases");
   if(partialDraft.isValid){
@@ -2446,6 +2453,7 @@ function renderRecordHarvestConfirmation(){
   if(regularCases > 0){
     appendRecordHarvestConfirmItem(container, "通常収穫場所", location || "未選択", "location");
     appendRecordHarvestConfirmItem(container, lossLabel, lossDisplay?.textContent || "--", "location");
+    appendRecordHarvestConfirmItem(container, "育ち具合", growth, "quality");
     appendRecordHarvestConfirmItem(container, "品質", quality, "quality");
   }else{
     appendRecordHarvestConfirmItem(container, "通常収穫", "なし", "location");
@@ -2558,6 +2566,7 @@ function renderRecordHarvestWorkflowUi(){
   const casesInputSection = document.getElementById("recordHarvestCasesInputSection");
   const locationSection = document.getElementById("recordHarvestLocationSection");
   const actualLossField = document.querySelector(".recordActualLossField");
+  const growthSection = document.getElementById("recordHarvestGrowthSection");
   const qualitySection = document.getElementById("recordQualityMemoSection");
   const confirmSection = document.getElementById("recordHarvestConfirmSection");
   const plantingActionRow = document.getElementById("recordFormActionRow");
@@ -2583,6 +2592,7 @@ function renderRecordHarvestWorkflowUi(){
   if(casesInputSection) casesInputSection.hidden = !showHarvestPrimaryInputs;
   if(locationSection) locationSection.hidden = isHarvestMode && (stage !== "location" || showHarvestPrimaryInputs);
   if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location" || showHarvestPrimaryInputs;
+  if(growthSection) growthSection.hidden = isHarvestMode ? stage !== "quality" : growthSection.hidden;
   if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
@@ -2902,6 +2912,143 @@ function showRecordEntryView(){
   scheduleHarvestStateSave();
 }
 
+function getCurrentRecordHarvestGrowthOverallState(){
+  const qualityMemo = getSelectedQualityMemo();
+  return {
+    sizeRating: getSelectedHarvestSizeRating(),
+    uneven: !!document.getElementById("recordHarvestUnevenInput")?.checked,
+    tipburn: qualityMemo.tags.includes("chip"),
+    elongated: qualityMemo.tags.includes("elongated")
+  };
+}
+
+function compactRecordHarvestGrowthBedOverrides(){
+  const overall = getCurrentRecordHarvestGrowthOverallState();
+  const allowed = new Set(getHarvestBedKeysFromPalletKeys(harvestFillKeys));
+  const normalized = normalizeHarvestGrowthDetail({
+    bedOverrides: recordHarvestGrowthBedOverrides
+  }, [...allowed]).bedOverrides;
+  Object.keys(normalized).forEach(bedKey => {
+    const override = normalized[bedKey];
+    if(override.sizeRating === overall.sizeRating
+      && override.uneven === overall.uneven
+      && override.tipburn === overall.tipburn
+      && override.elongated === overall.elongated){
+      delete normalized[bedKey];
+    }
+  });
+  recordHarvestGrowthBedOverrides = normalized;
+}
+
+function getRecordHarvestGrowthBedDraft(bedKey){
+  const override = normalizeHarvestGrowthDetail({
+    bedOverrides: recordHarvestGrowthBedOverrides
+  }, [bedKey]).bedOverrides[bedKey];
+  return override || getCurrentRecordHarvestGrowthOverallState();
+}
+
+function renderRecordHarvestGrowthBedEditor(){
+  const container = document.getElementById("recordHarvestGrowthBedRows");
+  const clearButton = document.getElementById("recordHarvestGrowthClearBtn");
+  if(clearButton) clearButton.hidden = getSelectedHarvestSizeRating() === "unknown";
+  if(!container) return;
+  compactRecordHarvestGrowthBedOverrides();
+  const bedKeys = getHarvestBedKeysFromPalletKeys(harvestFillKeys);
+  if(!bedKeys.length){
+    container.innerHTML = '<div class="recordHarvestGrowthBedHelp">先に収穫場所を選択してください。</div>';
+    return;
+  }
+  container.innerHTML = bedKeys.map(bedKey => {
+    const [building, bed] = bedKey.split("-");
+    const state = getRecordHarvestGrowthBedDraft(bedKey);
+    const hasOverride = Object.prototype.hasOwnProperty.call(recordHarvestGrowthBedOverrides, bedKey);
+    return `
+      <section class="recordHarvestGrowthBedRow" aria-label="${escapeHtml(`${building}号棟 ${bed}ベッドの育ち具合`)}">
+        <div class="recordHarvestGrowthBedTitle">
+          <span>${escapeHtml(`${building}号棟 ${bed}ベッド`)}</span>
+          <button type="button" class="recordHarvestGrowthBedReset" data-ui-click="resetRecordHarvestGrowthBed" data-ui-arg="${escapeHtml(bedKey)}"${hasOverride ? "" : " hidden"}>全体と同じ</button>
+        </div>
+        <div class="recordHarvestGrowthBedSizes" role="group" aria-label="育ち具合">
+          ${[
+            ["small", "小さめ"],
+            ["normal", "ちょうど良い"],
+            ["large", "大きめ"]
+          ].map(([value, label]) => `
+            <button type="button" class="recordHarvestGrowthBedSizeBtn${state.sizeRating === value ? " is-active" : ""}"
+              data-ui-click="setRecordHarvestGrowthBedSize" data-ui-arg="${escapeHtml(bedKey)}" data-ui-arg2="${value}"
+              aria-pressed="${state.sizeRating === value ? "true" : "false"}">${label}</button>
+          `).join("")}
+        </div>
+        <div class="recordHarvestGrowthBedFlags" role="group" aria-label="品質上の注意">
+          ${[
+            ["uneven", "ばらつき"],
+            ["elongated", "徒長"],
+            ["tipburn", "チップバーン"]
+          ].map(([field, label]) => `
+            <button type="button" class="recordHarvestGrowthBedFlagBtn${state[field] ? " is-active" : ""}"
+              data-ui-click="toggleRecordHarvestGrowthBedFlag" data-ui-arg="${escapeHtml(bedKey)}" data-ui-arg2="${field}"
+              aria-pressed="${state[field] ? "true" : "false"}">${label}</button>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }).join("");
+}
+
+function handleRecordHarvestGrowthInput(){
+  renderRecordHarvestGrowthBedEditor();
+  renderRecordHarvestConfirmSummary();
+  scheduleHarvestStateSave();
+}
+
+function clearRecordHarvestGrowthSize(){
+  document.querySelectorAll('input[name="recordHarvestSizeRating"]').forEach(input => {
+    input.checked = false;
+  });
+  handleRecordHarvestGrowthInput();
+}
+
+function toggleRecordHarvestGrowthBedEditor(){
+  const editor = document.getElementById("recordHarvestGrowthBedEditor");
+  const button = document.getElementById("recordHarvestGrowthBedToggle");
+  if(!editor || !button) return;
+  const opening = editor.hidden;
+  editor.hidden = !opening;
+  button.setAttribute("aria-expanded", opening ? "true" : "false");
+  if(opening) renderRecordHarvestGrowthBedEditor();
+}
+
+function setRecordHarvestGrowthBedSize(bedKey, value){
+  if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
+  recordHarvestGrowthBedOverrides[bedKey] = {
+    ...getRecordHarvestGrowthBedDraft(bedKey),
+    sizeRating: normalizeHarvestSizeRating(value)
+  };
+  renderRecordHarvestGrowthBedEditor();
+  renderRecordHarvestConfirmSummary();
+  scheduleHarvestStateSave();
+}
+
+function toggleRecordHarvestGrowthBedFlag(bedKey, field){
+  if(!["uneven", "tipburn", "elongated"].includes(field)) return;
+  if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
+  const current = getRecordHarvestGrowthBedDraft(bedKey);
+  recordHarvestGrowthBedOverrides[bedKey] = {
+    ...current,
+    [field]: !current[field]
+  };
+  renderRecordHarvestGrowthBedEditor();
+  renderRecordHarvestConfirmSummary();
+  scheduleHarvestStateSave();
+}
+
+function resetRecordHarvestGrowthBed(bedKey){
+  delete recordHarvestGrowthBedOverrides[bedKey];
+  renderRecordHarvestGrowthBedEditor();
+  renderRecordHarvestConfirmSummary();
+  scheduleHarvestStateSave();
+}
+
 function refreshRecordModeUi(){
   const actionRow = document.getElementById("recordFormActionRow");
   const discardEditButton = document.getElementById("recordDiscardEditBtn");
@@ -2913,8 +3060,12 @@ function refreshRecordModeUi(){
   const plantingActionCard = document.querySelector("#recordPlantingStageSection .plantingActionCard");
   const harvestMemoSection = document.getElementById("recordHarvestMemoSection");
   const qualityMemoSection = document.getElementById("recordQualityMemoSection");
+  const qualityMemoChoiceRow = document.getElementById("recordQualityChoiceRow");
+  const harvestGrowthSection = document.getElementById("recordHarvestGrowthSection");
   const qualityMemoLabel = document.getElementById("recordQualityMemoLabel");
+  const qualityMemoLargeChoice = document.getElementById("qualityMemoLargeChoice");
   const qualityMemoMediumChoice = document.getElementById("qualityMemoMediumChoice");
+  const qualityMemoSmallChoice = document.getElementById("qualityMemoSmallChoice");
   const qualityMemoChipChoice = document.getElementById("qualityMemoChipChoice");
   const actualLossField = document.querySelector(".recordActualLossField");
   const harvestStep = document.getElementById("recordStepHarvest");
@@ -2928,6 +3079,7 @@ function refreshRecordModeUi(){
   const harvestModeStepText = document.getElementById("recordModeHarvestStepText");
   const plantingModeStepText = document.getElementById("recordModePlantingStepText");
   const isPlantingMode = recordSelectionMode === "planting";
+  qualityMemoChoiceRow?.classList.toggle("is-planting-mode", isPlantingMode);
   const isEditing = isRecordEditMode();
   const isRecordedToday = !!todayRecordedStatus && !todayRecordedStatus.hidden;
   const saveCard = document.getElementById("recordSaveCard");
@@ -2946,6 +3098,15 @@ function refreshRecordModeUi(){
       if(!isPlantingMode) input.checked = false;
     }
   }
+  [qualityMemoLargeChoice, qualityMemoSmallChoice].forEach(choice => {
+    if(!choice) return;
+    choice.hidden = !isPlantingMode;
+    const input = choice.querySelector("input");
+    if(input){
+      input.disabled = !isPlantingMode;
+      if(!isPlantingMode) input.checked = false;
+    }
+  });
   if(qualityMemoChipChoice){
     qualityMemoChipChoice.hidden = isPlantingMode;
     const input = qualityMemoChipChoice.querySelector("input");
@@ -3024,6 +3185,7 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = true;
     if(plantingStageSection) plantingStageSection.hidden = false;
     if(harvestMemoSection) harvestMemoSection.hidden = true;
+    if(harvestGrowthSection) harvestGrowthSection.hidden = true;
     if(qualityMemoSection) qualityMemoSection.hidden = isRecordPlantingFlowActive();
     if(qualityMemoLabel) qualityMemoLabel.textContent = "苗の品質メモ（任意）";
     if(actualLossField) actualLossField.hidden = true;
@@ -3034,13 +3196,15 @@ function refreshRecordModeUi(){
     if(harvestStageSection) harvestStageSection.hidden = false;
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
+    if(harvestGrowthSection) harvestGrowthSection.hidden = false;
     if(qualityMemoSection) qualityMemoSection.hidden = false;
-    if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ";
+    if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ（任意）";
     if(actualLossField) actualLossField.hidden = false;
   }
   if(saveCard) saveCard.hidden = recordViewMode === "history";
   if(historyCard) historyCard.hidden = recordViewMode !== "history";
   renderRecordHarvestWorkflowUi();
+  if(!isPlantingMode) renderRecordHarvestGrowthBedEditor();
   renderRecordPartialHarvestControl();
   updateRecordAutoValueNotes();
   scheduleWorkflowGuideUpdate();

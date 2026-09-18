@@ -312,7 +312,7 @@ function normalizeQualityTag(value){
   if(text === "中") return "medium";
   if(text === "小さい") return "small";
   if(text === "徒長") return "elongated";
-  if(text === "チップ") return "chip";
+  if(text === "チップ" || text === "チップバーン") return "chip";
   return ["large", "medium", "small", "elongated", "chip"].includes(text) ? text : "";
 }
 
@@ -448,7 +448,7 @@ function getQualityTagLabel(value){
     medium: "中",
     small: "小さい",
     elongated: "徒長",
-    chip: "チップ"
+    chip: "チップバーン"
   };
   return labels[normalizeQualityTag(value)] || "";
 }
@@ -459,6 +459,161 @@ function formatQualityMemo(value){
     ...qualityMemo.tags.map(getQualityTagLabel).filter(Boolean),
     qualityMemo.other
   ].filter(Boolean).join("、");
+}
+
+function normalizeHarvestSizeRating(value){
+  const text = String(value || "").trim();
+  const aliases = {
+    "小さい": "small",
+    "小さめ": "small",
+    "並": "normal",
+    "中": "normal",
+    "ちょうど良い": "normal",
+    "大きい": "large",
+    "大きめ": "large",
+    "不明": "unknown"
+  };
+  const normalized = aliases[text] || text;
+  return ["small", "normal", "large"].includes(normalized) ? normalized : "unknown";
+}
+
+function getHarvestSizeRatingLabel(value){
+  return {
+    small: "小さめ",
+    normal: "ちょうど良い",
+    large: "大きめ",
+    unknown: "不明"
+  }[normalizeHarvestSizeRating(value)] || "不明";
+}
+
+function getHarvestBedKeyFromPalletKey(value){
+  const pallet = parsePalletKey(String(value || ""));
+  if(!BUILDINGS.includes(pallet.building) || !bedOrder.includes(pallet.bed)) return "";
+  return `${pallet.building}-${pallet.bed}`;
+}
+
+function getHarvestBedKeysFromPalletKeys(value){
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map(getHarvestBedKeyFromPalletKey)
+    .filter(Boolean))]
+    .sort((left, right) => {
+      const [leftBuilding, leftBed] = left.split("-");
+      const [rightBuilding, rightBed] = right.split("-");
+      return Number(leftBuilding) - Number(rightBuilding)
+        || bedOrder.indexOf(leftBed) - bedOrder.indexOf(rightBed);
+    });
+}
+
+function normalizeHarvestGrowthDetail(value, allowedBedKeys = null){
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const allowed = Array.isArray(allowedBedKeys) ? new Set(allowedBedKeys) : null;
+  const rawOverrides = source.bedOverrides && typeof source.bedOverrides === "object"
+    && !Array.isArray(source.bedOverrides)
+    ? source.bedOverrides
+    : {};
+  const bedOverrides = {};
+  Object.entries(rawOverrides).slice(0, BUILDINGS.length * bedOrder.length).forEach(([bedKey, rawOverride]) => {
+    const match = String(bedKey || "").match(/^(\d+)-([A-F])$/);
+    if(!match || !BUILDINGS.includes(Number(match[1])) || !bedOrder.includes(match[2])) return;
+    if(allowed && !allowed.has(bedKey)) return;
+    const override = rawOverride && typeof rawOverride === "object" && !Array.isArray(rawOverride)
+      ? rawOverride
+      : {};
+    bedOverrides[bedKey] = {
+      sizeRating: normalizeHarvestSizeRating(override.sizeRating),
+      uneven: override.uneven === true,
+      tipburn: override.tipburn === true,
+      elongated: override.elongated === true
+    };
+  });
+  return {
+    uneven: source.uneven === true,
+    bedOverrides
+  };
+}
+
+function getHarvestGrowthOverallState(record = null){
+  const qualityMemo = normalizeQualityMemo(record ? record.qualityMemo : getSelectedQualityMemo());
+  let sizeRating = normalizeHarvestSizeRating(record?.sizeRating);
+  if(sizeRating === "unknown"){
+    const hasLarge = qualityMemo.tags.includes("large");
+    const hasSmall = qualityMemo.tags.includes("small");
+    if(hasLarge !== hasSmall) sizeRating = hasLarge ? "large" : "small";
+  }
+  const growthDetail = normalizeHarvestGrowthDetail(record?.growthDetail);
+  return {
+    sizeRating,
+    uneven: record ? growthDetail.uneven : !!document.getElementById("recordHarvestUnevenInput")?.checked,
+    tipburn: qualityMemo.tags.includes("chip"),
+    elongated: qualityMemo.tags.includes("elongated")
+  };
+}
+
+function getHarvestGrowthStateForBed(record, bedKey){
+  const overall = getHarvestGrowthOverallState(record);
+  const allowedBedKeys = getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(record));
+  const growthDetail = normalizeHarvestGrowthDetail(record?.growthDetail, allowedBedKeys);
+  const override = growthDetail.bedOverrides[bedKey];
+  return override ? { ...override } : { ...overall };
+}
+
+function getSelectedHarvestSizeRating(){
+  return normalizeHarvestSizeRating(
+    document.querySelector('input[name="recordHarvestSizeRating"]:checked')?.value
+  );
+}
+
+function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
+  const allowedBedKeys = getHarvestBedKeysFromPalletKeys(palletKeys);
+  const overall = getHarvestGrowthOverallState();
+  const normalized = normalizeHarvestGrowthDetail({
+    uneven: !!document.getElementById("recordHarvestUnevenInput")?.checked,
+    bedOverrides: recordHarvestGrowthBedOverrides
+  }, allowedBedKeys);
+  const bedOverrides = {};
+  Object.entries(normalized.bedOverrides).forEach(([bedKey, override]) => {
+    if(override.sizeRating === overall.sizeRating
+      && override.uneven === overall.uneven
+      && override.tipburn === overall.tipburn
+      && override.elongated === overall.elongated) return;
+    bedOverrides[bedKey] = override;
+  });
+  return {
+    uneven: normalized.uneven,
+    bedOverrides
+  };
+}
+
+function setSelectedHarvestGrowthAssessment(record = null){
+  const overall = getHarvestGrowthOverallState(record);
+  document.querySelectorAll('input[name="recordHarvestSizeRating"]').forEach(input => {
+    input.checked = normalizeHarvestSizeRating(input.value) === overall.sizeRating;
+  });
+  const unevenInput = document.getElementById("recordHarvestUnevenInput");
+  if(unevenInput) unevenInput.checked = overall.uneven;
+  const allowedBedKeys = getHarvestBedKeysFromPalletKeys(record?.palletKeys || harvestFillKeys);
+  recordHarvestGrowthBedOverrides = normalizeHarvestGrowthDetail(
+    record?.growthDetail,
+    allowedBedKeys
+  ).bedOverrides;
+  if(typeof renderRecordHarvestGrowthBedEditor === "function"){
+    renderRecordHarvestGrowthBedEditor();
+  }
+}
+
+function formatHarvestGrowthAssessment(record){
+  if(!record || record.type === "partialHarvest") return "-";
+  const overall = getHarvestGrowthOverallState(record);
+  const parts = [];
+  if(overall.sizeRating !== "unknown") parts.push(getHarvestSizeRatingLabel(overall.sizeRating));
+  if(overall.uneven) parts.push("ばらつきあり");
+  const detail = normalizeHarvestGrowthDetail(
+    record.growthDetail,
+    getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(record))
+  );
+  const overrideCount = Object.keys(detail.bedOverrides).length;
+  if(overrideCount) parts.push(`ベッド別 ${overrideCount}件`);
+  return parts.join("、") || "不明";
 }
 
 function getSelectedQualityMemo(){
@@ -538,7 +693,7 @@ function updateRecordInputGuides(){
     casesInput.classList.toggle("recordInputNeedsAttention", needsInput);
   }
 
-  const qualityRow = document.querySelector(".qualityChoiceRow");
+  const qualityRow = document.getElementById("recordQualityChoiceRow");
   if(qualityRow){
     const qualityMemo = getSelectedQualityMemo();
     const hasQualityMemo = qualityMemo.tags.length > 0 || !!qualityMemo.other;
@@ -592,6 +747,11 @@ function serializeRecordForStorage(record){
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
     actualLoss: record.actualLoss,
     qualityMemo: normalizeQualityMemo(record.qualityMemo),
+    sizeRating: normalizeHarvestSizeRating(record.sizeRating),
+    growthDetail: normalizeHarvestGrowthDetail(
+      record.growthDetail,
+      getHarvestBedKeysFromPalletKeys(record.palletKeys)
+    ),
     plantingAge: record.plantingAge || null,
     // 読み込み元の古い範囲ではなく、画面上の現在選択を保存する。
     palletRanges: compressPalletKeysToRanges(record.palletKeys),
@@ -635,6 +795,11 @@ function normalizeStoredRecord(record){
     plantingPending: !!record.plantingPending,
     plantingPalletKeys,
     qualityMemo: normalizeQualityMemo(record.qualityMemo),
+    sizeRating: normalizeHarvestSizeRating(record.sizeRating),
+    growthDetail: normalizeHarvestGrowthDetail(
+      record.growthDetail,
+      getHarvestBedKeysFromPalletKeys(palletKeys)
+    ),
     plantingAge: normalizePlantingAgeSnapshot(record.plantingAge),
     palletKeys
   };

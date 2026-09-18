@@ -340,6 +340,7 @@ function buildRecordRow(headers, record, duplicateKey, receivedAt) {
     actualLoss: record.actualLoss ?? "",
     qualityText: escapeSpreadsheetFormulaText(formatQualityTextValue(record)),
     sizeRating: formatSizeRatingValue(record.sizeRating),
+    growthDetail: escapeSpreadsheetFormulaText(JSON.stringify(record.growthDetail || { uneven: false, bedOverrides: {} })),
     plantingAge: escapeSpreadsheetFormulaText(formatPlantingAgeValue(record.plantingAge)),
     memo: escapeSpreadsheetFormulaText(record.memo || ""),
     palletKeys: JSON.stringify(record.palletKeys || []),

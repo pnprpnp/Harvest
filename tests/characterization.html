@@ -921,10 +921,10 @@
 
         assertEqual(result.flushCount, 1, "未完了マーカーの反映回数が違います");
         assertDeepEqual(result.writeRanges, [
-          { row: 2, column: 25, rowCount: 2, columnCount: 1 },
-          { row: 2, column: 1, rowCount: 2, columnCount: 24 },
           { row: 2, column: 26, rowCount: 2, columnCount: 1 },
-          { row: 2, column: 25, rowCount: 2, columnCount: 1 }
+          { row: 2, column: 1, rowCount: 2, columnCount: 25 },
+          { row: 2, column: 27, rowCount: 2, columnCount: 1 },
+          { row: 2, column: 26, rowCount: 2, columnCount: 1 }
         ], "標準列が最小限の連続範囲にまとまっていません");
         assertEqual(result.customColumnProtected, true, "独自列が書き込み範囲に含まれています");
       });
@@ -1058,7 +1058,7 @@
 
         assertDeepEqual(result, {
           states: [true, false, true],
-          rangeCalls: [{ row: 8, column: 25, rowCount: 3, columnCount: 1 }]
+          rangeCalls: [{ row: 8, column: 26, rowCount: 3, columnCount: 1 }]
         }, "完了状態が行ごとに読み込まれています");
       });
 
@@ -1182,8 +1182,8 @@
           palletNumberingVersion: 2,
           id: 20000000000001,
           recordUuid: "33333333-3333-4333-8333-333333333333",
-          syncSchemaVersion: 3,
-          syncProvidedFields: ["plantingCaseInstruction", "actualSeedlingCarryoverMode"],
+          syncSchemaVersion: 4,
+          syncProvidedFields: ["plantingCaseInstruction", "actualSeedlingCarryoverMode", "sizeRating", "growthDetail"],
           type: "fullHarvest",
           date: "2026-08-09",
           cases: 12,
@@ -2507,8 +2507,8 @@
           palletNumberingVersion: 2,
           id: 20000000000003,
           recordUuid: "44444444-4444-4444-8444-444444444444",
-          syncSchemaVersion: 3,
-          syncProvidedFields: ["plantingCaseInstruction", "actualSeedlingCarryoverMode"],
+          syncSchemaVersion: 4,
+          syncProvidedFields: ["plantingCaseInstruction", "actualSeedlingCarryoverMode", "sizeRating", "growthDetail"],
           type: "fullHarvest",
           date: "2026-08-09",
           cases: 16,
@@ -2522,6 +2522,13 @@
           actualSeedlingLossRate: "1.5",
           actualLoss: "3.25",
           qualityMemo: { tags: ["small"], other: "確認" },
+          sizeRating: "normal",
+          growthDetail: {
+            uneven: true,
+            bedOverrides: {
+              "3-B": { sizeRating: "large", uneven: false, tipburn: true, elongated: false }
+            }
+          },
           plantingPending: true,
           memo: "同期契約"
         });
@@ -2535,6 +2542,73 @@
         assertEqual(serverRecord.cases, 16, "ケース数が変わりました");
         assertEqual(serverRecord.actualLoss, 3.25, "実ロス率が変わりました");
         assertEqual(serverRecord.actualSeedlingCarryoverMode, "carryover", "余り苗区分が変わりました");
+        assertEqual(serverRecord.sizeRating, "normal", "全体の育ち具合が変わりました");
+        assertDeepEqual(serverRecord.growthDetail, {
+          uneven: true,
+          bedOverrides: {
+            "3-B": { sizeRating: "large", uneven: false, tipburn: true, elongated: false }
+          }
+        }, "ベッド別の育ち具合が変わりました");
+      });
+
+      await runTest("育ち具合を全体とベッド別で保存し旧品質メモも引き継ぐ", () => {
+        const current = app.normalizeRecordSnapshot({
+          palletNumberingVersion: 2,
+          id: 20000000000008,
+          recordUuid: "88888888-8888-4888-8888-888888888888",
+          type: "fullHarvest",
+          date: "2026-08-11",
+          cases: 12,
+          palletKeys: ["2-A-1", "2-B-1"],
+          qualityMemo: { tags: ["elongated"], other: "" },
+          sizeRating: "normal",
+          growthDetail: {
+            uneven: true,
+            bedOverrides: {
+              "2-B": { sizeRating: "large", uneven: false, tipburn: true, elongated: false },
+              "2-C": { sizeRating: "small", uneven: false, tipburn: false, elongated: false }
+            }
+          }
+        });
+        const legacy = app.normalizeRecordSnapshot({
+          palletNumberingVersion: 2,
+          id: 20000000000009,
+          recordUuid: "99999999-9999-4999-8999-999999999999",
+          type: "fullHarvest",
+          date: "2026-08-12",
+          cases: 10,
+          palletKeys: ["3-C-1"],
+          qualityMemo: { tags: ["small", "chip"], other: "" }
+        });
+        assertDeepEqual(comparable(app.getHarvestGrowthStateForBed(current, "2-A")), {
+          sizeRating: "normal",
+          uneven: true,
+          tipburn: false,
+          elongated: true
+        }, "全体の育ち具合をベッドへ反映できません");
+        assertDeepEqual(comparable(app.getHarvestGrowthStateForBed(current, "2-B")), {
+          sizeRating: "large",
+          uneven: false,
+          tipburn: true,
+          elongated: false
+        }, "ベッド別の育ち具合を反映できません");
+        assertDeepEqual(Object.keys(current.growthDetail.bedOverrides), ["2-B"], "収穫場所以外のベッド評価が残っています");
+        assertDeepEqual(comparable(app.getHarvestGrowthStateForBed(legacy, "3-C")), {
+          sizeRating: "small",
+          uneven: false,
+          tipburn: true,
+          elongated: false
+        }, "旧品質メモの大小・チップを引き継げません");
+        assertDeepEqual(comparable(app.getHarvestGrowthOverallState({
+          sizeRating:"",
+          qualityMemo:null,
+          growthDetail:null
+        })), {
+          sizeRating:"unknown",
+          uneven:false,
+          tipburn:false,
+          elongated:false
+        }, "空欄の旧記録を問題なしと決めつけています");
       });
 
       await runTest("ブラウザーが送る苗植え記録をApps Script側で正規化できる", () => {
@@ -9461,7 +9535,7 @@
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
       });
 
-      await runTest("集計の基準日をメニューのヘルプ直下で変更できる", () => {
+      await runTest("集計の基準日と気象地点をメニュー内で設定できる", () => {
         const previousFilter = comparable(app.eval("dashboardFilter"));
         try{
           app.openAppMenuWindow();
@@ -9471,6 +9545,8 @@
             const setting = document.getElementById("dashboardStartDayMenuSetting");
             const input = document.getElementById("dashboardStartDayInput");
             const label = setting?.querySelector("label");
+            const growthSetting = document.getElementById("dashboardGrowthLocationMenuSetting");
+            const growthInput = document.getElementById("dashboardGrowthLocationInput");
             const themeSetting = document.getElementById("themeMenuSetting");
             const combinedSettings = document.getElementById("accessProtectionDetails");
             const googleSettings = document.getElementById("googleSheetConfigDetails");
@@ -9478,7 +9554,9 @@
               menuOpen: document.getElementById("appMenuModal")?.classList.contains("show") || false,
               helpInMenu: help?.parentElement === body,
               settingImmediatelyAfterHelp: help?.nextElementSibling === setting,
-              themeImmediatelyAfterStartDay: setting?.nextElementSibling === themeSetting,
+              growthImmediatelyAfterStartDay: setting?.nextElementSibling === growthSetting,
+              themeImmediatelyAfterGrowth: growthSetting?.nextElementSibling === themeSetting,
+              growthInputInMenu: growthInput?.closest("#appMenuWindowBody") === body,
               themeChoiceCount: themeSetting?.querySelectorAll('input[name="themePreference"]').length || 0,
               inputInMenu: input?.closest("#appMenuWindowBody") === body,
               inputInDashboard: !!document.querySelector("#dashboardTab [data-dashboard-start-day-input]"),
@@ -9497,7 +9575,9 @@
             menuOpen: true,
             helpInMenu: true,
             settingImmediatelyAfterHelp: true,
-            themeImmediatelyAfterStartDay: true,
+            growthImmediatelyAfterStartDay: true,
+            themeImmediatelyAfterGrowth: true,
+            growthInputInMenu: true,
             themeChoiceCount: 3,
             inputInMenu: true,
             inputInDashboard: false,
@@ -9666,7 +9746,7 @@
             harvestStartButton?.textContent.trim(),
             subtabButton?.textContent.trim()
           ],
-          [3, null, "収穫開始", "実績"],
+          [4, null, "収穫開始", "実績"],
           "収穫開始が実績内の表示切り替えへ移動していません"
         );
         assert(panel?.firstElementChild === viewSwitch, "収穫開始・カレンダー・グラフの切り替えが実績タブの一番上にありません");
@@ -9771,6 +9851,120 @@
         app.setDashboardSubtab("graphs");
         assertEqual(app.eval("dashboardFilter.resultsView"), "graphs", "実績タブへ戻った時に最後の表示方法が維持されません");
         app.setDashboardResultsView("calendar");
+      });
+
+      await runTest("生育予測はタブを押した時だけ処理し号棟差をβ補正する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previousFilter = harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, null);
+          const previousGuideRenderer = renderDashboardHarvestForecast;
+          const previousGrowthRenderer = renderDashboardGrowthPrediction;
+          const previousRendered = new Set(dashboardRenderedSubtabs);
+          let guideCalls = 0;
+          let growthCalls = 0;
+          try{
+            harvestnaviLocalStorage.writeJson(DASHBOARD_FILTER_KEY, {
+              ...dashboardFilter,
+              dashboardSubtab:"growth"
+            });
+            const restoredSubtab = loadDashboardFilter().dashboardSubtab;
+            renderDashboardHarvestForecast = () => { guideCalls++; };
+            renderDashboardGrowthPrediction = () => { growthCalls++; };
+            dashboardRenderedSubtabs.clear();
+            renderDashboardSubtab("guide", { force:true });
+            const beforeGrowthTab = { guideCalls, growthCalls };
+            renderDashboardSubtab("growth", { force:true });
+            const baseWeather = {
+              date:"2026-09-18",
+              meanTemp:25,
+              maxTemp:28,
+              minTemp:18,
+              lightIndex:1
+            };
+            return {
+              restoredSubtab,
+              beforeGrowthTab,
+              afterGrowthTab:{ guideCalls, growthCalls },
+              building2:getDashboardGrowthAdjustedWeather(baseWeather, 2),
+              building9:getDashboardGrowthAdjustedWeather(baseWeather, 9),
+              normal:getDashboardGrowthAdjustedWeather(baseWeather, 3)
+            };
+          }finally{
+            renderDashboardHarvestForecast = previousGuideRenderer;
+            renderDashboardGrowthPrediction = previousGrowthRenderer;
+            dashboardRenderedSubtabs.clear();
+            previousRendered.forEach(value => dashboardRenderedSubtabs.add(value));
+            if(previousFilter) harvestnaviLocalStorage.writeJson(DASHBOARD_FILTER_KEY, previousFilter);
+            else harvestnaviLocalStorage.removeItem(DASHBOARD_FILTER_KEY);
+          }
+        })()`));
+        assertEqual(state.restoredSubtab, "guide", "再読み込みだけで生育予測を読み込む状態です");
+        assertDeepEqual(state.beforeGrowthTab, { guideCalls:1, growthCalls:0 }, "別タブで生育予測を先読みしています");
+        assertDeepEqual(state.afterGrowthTab, { guideCalls:1, growthCalls:1 }, "生育予測タブで処理を開始できません");
+        assertEqual(state.building2.meanTemp, state.normal.meanTemp + 1, "2号棟の高温補正がありません");
+        assertEqual(state.building9.lightIndex, state.normal.lightIndex * 0.88, "9号棟の遮光補正がありません");
+      });
+
+      await runTest("気象庁の地域検索と週間予報を生育予測用の日別値へ変換する", () => {
+        const state = comparable(app.eval(`(() => {
+          const locationResults = findDashboardGrowthLocations({
+            offices:{ "430000":{ name:"熊本県" } },
+            class10s:{ "430010":{ name:"熊本地方", parent:"430000" } },
+            class15s:{ "430015":{ name:"宇城八代", parent:"430010" } },
+            class20s:{
+              "4320211":{ name:"八代市西部", kana:"やつしろしせいぶ", parent:"430015" },
+              "4320212":{ name:"八代市東部", kana:"やつしろしとうぶ", parent:"430015" }
+            }
+          }, "八代市");
+          const weather = buildDashboardGrowthDailyWeather([
+            {
+              timeSeries:[
+                {
+                  timeDefines:["2026-09-18T00:00:00+09:00", "2026-09-19T00:00:00+09:00"],
+                  areas:[{ area:{ code:"430010" }, weatherCodes:["101", "203"] }]
+                },
+                {
+                  timeDefines:["2026-09-19T00:00:00+09:00", "2026-09-19T09:00:00+09:00"],
+                  areas:[{ area:{ code:"86141" }, temps:["20", "29"] }]
+                }
+              ]
+            },
+            {
+              timeSeries:[
+                {
+                  timeDefines:["2026-09-19T00:00:00+09:00", "2026-09-20T00:00:00+09:00"],
+                  areas:[{ area:{ code:"430000" }, weatherCodes:["200", "300"], reliabilities:["A", "B"] }]
+                },
+                {
+                  timeDefines:["2026-09-19T00:00:00+09:00", "2026-09-20T00:00:00+09:00"],
+                  areas:[{ area:{ code:"86141" }, tempsMin:["20", "19"], tempsMax:["29", "27"] }]
+                }
+              ],
+              tempAverage:{ areas:[{ min:"18", max:"28" }] }
+            }
+          ], locationResults[0]);
+          return {
+            locationCount:locationResults.length,
+            firstLocation:locationResults[0],
+            firstDay:weather.daily[0],
+            secondDay:weather.daily[1],
+            thirdDay:weather.daily[2],
+            normal:weather.normal
+          };
+        })()`));
+        assertEqual(state.locationCount, 2, "同じ市内の予報地域を選べません");
+        assertDeepEqual(state.firstLocation, {
+          officeCode:"430000",
+          forecastAreaCode:"430010",
+          class20Code:"4320211",
+          name:"八代市西部",
+          admin1:"熊本県",
+          forecastAreaName:"熊本地方"
+        }, "気象庁の地域階層を予報地点へ変換できません");
+        assertEqual(state.firstDay.weatherCode, 101, "短期予報の天気を優先できません");
+        assertEqual(state.secondDay.meanTemp, 24.5, "短期予報の最低・最高気温を日平均へ変換できません");
+        assertEqual(state.secondDay.lightIndex, app.getDashboardGrowthLightIndex(203), "天気コードを日照条件へ変換できません");
+        assertEqual(state.thirdDay.reliability, "B", "週間予報の信頼度を保持できません");
+        assertDeepEqual(state.normal, { minTemp:18, maxTemp:28, meanTemp:23, lightIndex:0.85 }, "予報期間外の平年値が違います");
       });
 
       await runTest("集計の選択中サブタブを紫色の文字と下線だけで示す", () => {
@@ -11983,7 +12177,7 @@
             nextDisabled:false
           },
           qualityState:{stage:"quality",qualityVisible:true,nextLabel:"次へ"},
-          confirmState:{stage:"confirm",summaryItems:5,finalLabel:"保存",memoCollapsed:true},
+          confirmState:{stage:"confirm",summaryItems:6,finalLabel:"保存",memoCollapsed:true},
           historyState:{saveHidden:true,historyVisible:true,navHidden:true,topRowVisible:true,toggleLabel:"入力へ戻る",duplicateBackButtonCount:0},
           entryState:{restoredMemo:"入力途中",toggleLabel:"記録一覧"}
         }, "収穫記録の工程表示・号棟確認・固定操作・確認画面が連動していません");
@@ -12994,7 +13188,7 @@
             targetBeds:["2-F", "3-C"],
             wholeBeds:true,
             harvestedHeads:36,
-            confirmLabels:["日付", "ケース数", "部分収穫", "通常収穫場所", "実際のロス率", "品質"]
+            confirmLabels:["日付", "ケース数", "部分収穫", "通常収穫場所", "実際のロス率", "育ち具合", "品質"]
           },
           partialOnly:{totalCases:"5",valid:true,nextStage:"confirm"}
         }, "部分収穫のベッド選択・ケース配分・通常収穫との差し引きが連動していません");
@@ -15639,6 +15833,7 @@
           currentPalletLifecycleState = {};
           dashboardHarvestForecastModelCache = {};
           dashboardSeedlingStatusModelCache = {};
+          dashboardGrowthPredictionModelCache = {};
           dashboardPastCalendarItemsByDateCache = {};
           workflowPendingRecordCache = {};
           workflowPendingRecordCacheReady = true;
@@ -15659,6 +15854,7 @@
           currentPalletLifecycle: currentPalletLifecycleState,
           forecast: dashboardHarvestForecastModelCache,
           seedlings: dashboardSeedlingStatusModelCache,
+          growth: dashboardGrowthPredictionModelCache,
           calendar: dashboardPastCalendarItemsByDateCache,
           workflow: workflowPendingRecordCache,
           workflowReady: workflowPendingRecordCacheReady
@@ -15678,6 +15874,7 @@
           currentPalletLifecycle: null,
           forecast: null,
           seedlings: null,
+          growth: null,
           calendar: null,
           workflow: null,
           workflowReady: false
@@ -15706,21 +15903,106 @@
         }
       });
 
+      await runTest("生育予測βと育ち具合入力を320px・390px幅に収める", async () => {
+        let previewFrame = null;
+        try{
+          previewFrame = await loadVisualAppFrame(
+            430,
+            980,
+            `../previews/growth-prediction-beta.html?__hncheck=growth-prediction-beta-${Date.now()}`
+          );
+          const preview = previewFrame.contentWindow;
+          const waitStartedAt = performance.now();
+          while(!preview.document.getElementById("previewStatus")?.hidden){
+            if(preview.previewError) throw new Error(`生育予測プレビュー: ${preview.previewError}`);
+            if(performance.now() - waitStartedAt > 10000){
+              throw new Error(`生育予測プレビューの準備が終わりません（URL:${preview.location.href}、題名:${preview.document.title}、本文:${preview.document.body?.textContent?.trim().slice(0, 60) || "なし"}、外側:${preview.document.readyState}、初期化:${typeof preview.showGrowthPreview}、内側:${preview.document.getElementById("appFrame")?.contentDocument?.readyState || "なし"}）`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+          const previewApp = preview.document.getElementById("appFrame")?.contentWindow;
+          assert(previewApp, "生育予測プレビューのアプリ画面がありません");
+          await settleVisualApp(previewApp);
+
+          const readState = () => comparable(previewApp.eval(`(() => ({
+            viewport:innerWidth,
+            scrollWidth:document.documentElement.scrollWidth,
+            subtabs:[...document.querySelectorAll("[data-dashboard-subtab]")].map(button => button.textContent.trim()),
+            growthVisible:!document.getElementById("dashboardSubtabGrowth")?.hidden,
+            growthCards:document.querySelectorAll(".dashboardGrowthBedCard").length,
+            growthRight:Math.max(0, ...[...document.querySelectorAll(".dashboardGrowthBedCard")].map(card => card.getBoundingClientRect().right)),
+            summaryAfterBuildingTabs:!!(document.getElementById("dashboardGrowthBuildingTabs")?.compareDocumentPosition(document.getElementById("dashboardGrowthSummary")) & Node.DOCUMENT_POSITION_FOLLOWING),
+            hasJmaAttribution:document.querySelector(".dashboardGrowthAttribution")?.textContent.includes("気象庁") || false,
+            recordGrowthVisible:!document.getElementById("recordHarvestGrowthSection")?.hidden,
+            recordRows:document.querySelectorAll(".recordHarvestGrowthBedRow").length,
+            sizeChoiceMinHeight:Math.min(...[...document.querySelectorAll(".recordHarvestSizeChoiceRow .qualityChoice")].map(choice => choice.getBoundingClientRect().height))
+          }))()`));
+
+          preview.document.querySelector('[data-preview-width="320"]').click();
+          await new Promise(resolve => setTimeout(resolve, 250));
+          await settleVisualApp(previewApp);
+          const growth320 = readState();
+          assertDeepEqual(growth320.subtabs, ["目安", "二次定植", "生育予測", "実績"], "生育予測タブの位置が違います");
+          assert(growth320.viewport >= 318 && growth320.viewport <= 320, "320px幅へ切り替わりません");
+          assertEqual(growth320.growthVisible, true, "生育予測が表示されません");
+          assertEqual(growth320.growthCards, 6, "2号棟のベッド予測が揃っていません");
+          assertEqual(growth320.summaryAfterBuildingTabs, true, "棟ごとの見込みが棟選択より上に表示されています");
+          assertEqual(growth320.hasJmaAttribution, true, "気象庁の出典表示がありません");
+          assert(growth320.scrollWidth <= growth320.viewport, "生育予測画面が320px幅から横にはみ出しています");
+          assert(growth320.growthRight <= growth320.viewport, "生育予測カードが320px幅から横にはみ出しています");
+
+          preview.setPreviewView("menu");
+          await settleVisualApp(previewApp);
+          const menuState = comparable(previewApp.eval(`(() => ({
+            open:document.getElementById("appMenuModal")?.classList.contains("show") || false,
+            inputInMenu:document.getElementById("dashboardGrowthLocationInput")?.closest("#appMenuWindowBody") === document.getElementById("appMenuWindowBody"),
+            inputValue:document.getElementById("dashboardGrowthLocationInput")?.value || "",
+            current:document.getElementById("dashboardGrowthMenuCurrent")?.textContent.trim() || "",
+            scrollWidth:document.documentElement.scrollWidth,
+            viewport:innerWidth
+          }))()`));
+          assertEqual(menuState.open, true, "メニューが開きません");
+          assertEqual(menuState.inputInMenu, true, "気象地点入力がメニュー内にありません");
+          assertEqual(menuState.inputValue, "八代市", "気象地点入力の表示が違います");
+          assert(menuState.current.includes("八代市西部"), "現在の気象地点がメニューに表示されません");
+          assert(menuState.scrollWidth <= menuState.viewport, "気象地点設定が320px幅から横にはみ出しています");
+
+          preview.setPreviewView("record");
+          await settleVisualApp(previewApp);
+          const record320 = readState();
+          assertEqual(record320.recordGrowthVisible, true, "収穫時の育ち具合入力が表示されません");
+          assertEqual(record320.recordRows, 2, "ベッドごとの入力欄が収穫場所と一致しません");
+          assert(record320.scrollWidth <= record320.viewport, "育ち具合入力が320px幅から横にはみ出しています");
+          assert(record320.sizeChoiceMinHeight >= 40, "育ち具合の一押しボタンが小さすぎます");
+
+          preview.document.querySelector('[data-preview-width="390"]').click();
+          preview.setPreviewView("growth");
+          await new Promise(resolve => setTimeout(resolve, 250));
+          await settleVisualApp(previewApp);
+          const growth390 = readState();
+          assert(growth390.viewport >= 388 && growth390.viewport <= 390, "390px幅へ切り替わりません");
+          assert(growth390.scrollWidth <= growth390.viewport, "生育予測画面が390px幅から横にはみ出しています");
+        }finally{
+          previewFrame?.contentWindow?.restoreOriginalStorage?.();
+          previewFrame?.remove();
+        }
+      });
+
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "60474f17", elements: 2252, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "0d93eaaf", elements: 2322, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "549ab240", elements: 2322, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "57ab342f", elements: 2256, visible: 79, viewport: "390x844" },
-          mobileDashboard: { hash: "9fa4b4d9", elements: 2273, visible: 104, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f59e80ce", elements: 2356, visible: 168, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "58619187", elements: 2371, visible: 89, viewport: "390x844" },
-          mobileMenu: { hash: "a671b8a8", elements: 2371, visible: 287, viewport: "390x844" },
-          mobileSettings: { hash: "faa30781", elements: 2371, visible: 191, viewport: "390x844" },
-          mobileMonitor: { hash: "731c4cc3", elements: 2415, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "3ba03d86", elements: 2415, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "a10e26b4", elements: 2415, visible: 104, viewport: "1024x900" }
+          mobileForecast: { hash: "0bc4c4b6", elements: 2313, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "f8e693f3", elements: 2383, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "8665676c", elements: 2383, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "1a23b8e4", elements: 2317, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "739685f8", elements: 2334, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "a6857ea8", elements: 2417, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "3b7c00a7", elements: 2432, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "484de445", elements: 2432, visible: 296, viewport: "390x844" },
+          mobileSettings: { hash: "a5e7d821", elements: 2432, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "827da63c", elements: 2476, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "7228cab8", elements: 2476, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "ed046d55", elements: 2476, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

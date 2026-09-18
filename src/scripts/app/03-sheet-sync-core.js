@@ -1890,7 +1890,7 @@ function formatSyncConflictQualityMemo(value){
     medium: "中",
     small: "小さい",
     elongated: "徒長",
-    chip: "チップ"
+    chip: "チップバーン"
   };
   const tags = Array.isArray(normalized?.tags)
     ? normalized.tags.map(tag => tagLabels[tag] || tag)
@@ -2519,6 +2519,13 @@ function buildGoogleSheetRecordPayload(record, config){
       actualLoss: isPartial ? "" : record.actualLoss,
       qualityMemo: isPartial ? null : normalizeQualityMemo(record.qualityMemo),
       qualityText: isPartial ? "" : formatQualityMemo(record.qualityMemo),
+      sizeRating: isPartial ? "unknown" : normalizeHarvestSizeRating(record.sizeRating),
+      growthDetail: isPartial
+        ? { uneven:false, bedOverrides:{} }
+        : normalizeHarvestGrowthDetail(
+            record.growthDetail,
+            getHarvestBedKeysFromPalletKeys(record.palletKeys)
+          ),
       plantingAge: isPartial ? null : normalizePlantingAgeSnapshot(record.plantingAge),
       palletKeys: isPartial ? [] : (Array.isArray(record.palletKeys) ? record.palletKeys : []),
       plantingPalletKeys: isPartial ? [] : (Array.isArray(record.plantingPalletKeys) ? record.plantingPalletKeys : []),
