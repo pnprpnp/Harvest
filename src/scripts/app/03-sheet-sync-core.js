@@ -1114,7 +1114,7 @@ function getRecordSyncStatusPresentation(summary = null){
   if(googleSheetAcceptedBatchQueue.size || resolvedSummary.hasAccepted){
     return resolvedSummary.hasRelayAccepted
       ? { state:"accepted", text:"受付済み", label:"中継サーバーへ保存済みです。アプリを閉じても大丈夫です" }
-      : { state:"accepted", text:"受信済み", label:"Google側で受信済みです。アプリを閉じても大丈夫です" };
+      : { state:"accepted", text:"送信完了", label:"送信が完了しました" };
   }
   if(records.length || plantingEvents.length){
     return { state:"confirmed", text:"反映済み", label:"記録はスプレッドシートへ反映済みです" };
