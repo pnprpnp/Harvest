@@ -14,6 +14,7 @@ Then open one of these previews:
 - <http://127.0.0.1:4173/previews/record-instant-save.html>（実際の記録画面で即時完了、Googleへの送信完了、本体反映済みへの変化を確認）
 - <http://127.0.0.1:4173/previews/dashboard-seedling-days.html?__hncheck=dashboard-seedling-days>（管理者状態の実画面で、記録・集計タブと二次定植の日数順を確認）
 - <http://127.0.0.1:4173/previews/growth-prediction-beta.html?__hncheck=growth-prediction-beta>（生育予測βと収穫時の育ち具合入力を320px・390px幅で確認）
+- <http://127.0.0.1:4173/previews/app-menu-hierarchy.html>（実際の `index.html` を使い、階層型メニューを320px・390px幅で操作して確認）
 
 If npm is available, `npm run preview` starts the same server.
 

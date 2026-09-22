@@ -2237,6 +2237,7 @@ async function syncRecordsFromHeader(){
 function setAppUpdateCheckLoading(isLoading, statusText = ""){
   const button = document.getElementById("appUpdateCheckBtn");
   const status = document.getElementById("appUpdateCheckStatus");
+  const menuSummary = document.getElementById("appMenuUpdateSummary");
   if(button){
     button.disabled = !!isLoading;
     button.classList.toggle("is-loading", !!isLoading);
@@ -2248,6 +2249,11 @@ function setAppUpdateCheckLoading(isLoading, statusText = ""){
         : "アプリの最新バージョンを確認する"));
   }
   if(statusText && status) status.textContent = statusText;
+  if(menuSummary){
+    menuSummary.textContent = isLoading
+      ? "確認中"
+      : (statusText ? "確認済み" : "確認する");
+  }
 }
 
 function askAppUpdateConfirm(){

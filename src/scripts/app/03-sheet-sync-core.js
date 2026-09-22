@@ -434,6 +434,7 @@ async function saveGoogleSheetConfig(){
     const accessRoleChanged = setAppAccessRole(accessRole);
     populateGoogleSheetConfigForm();
     updateGoogleSheetResendButtonState();
+    if(typeof syncAppMenuSummaries === "function") syncAppMenuSummaries();
     if(isMonitorModeOpen){
       startMonitorRemoteUpdates();
     }

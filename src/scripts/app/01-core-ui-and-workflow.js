@@ -877,17 +877,18 @@ function closeDashboardWindow(){
 }
 
 function moveMenuSettingsToWindow(){
-  const body = document.getElementById("appMenuWindowBody");
+  const accessTarget = document.getElementById("appMenuAccessContent");
+  const helpTarget = document.getElementById("appMenuHelpContent");
   const accessDetails = document.getElementById("accessProtectionDetails");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
-  const dashboardStartDayMenuSetting = document.getElementById("dashboardStartDayMenuSetting");
-  if(!body || !accessDetails) return;
-  if(recordHelpDetails && dashboardStartDayMenuSetting){
-    dashboardStartDayMenuSetting.before(recordHelpDetails);
-  }else if(recordHelpDetails){
-    body.appendChild(recordHelpDetails);
+  if(accessTarget && accessDetails){
+    accessTarget.appendChild(accessDetails);
+    accessDetails.open = true;
   }
-  body.appendChild(accessDetails);
+  if(helpTarget && recordHelpDetails){
+    helpTarget.appendChild(recordHelpDetails);
+    recordHelpDetails.open = true;
+  }
 }
 
 function restoreMenuSettingsToSettingsTab(){
@@ -895,11 +896,96 @@ function restoreMenuSettingsToSettingsTab(){
   const accessDetails = document.getElementById("accessProtectionDetails");
   const recordHelpRestorePoint = document.getElementById("recordHelpRestorePoint");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
-  if(!restorePoint || !accessDetails) return;
   if(recordHelpRestorePoint && recordHelpDetails){
     recordHelpRestorePoint.before(recordHelpDetails);
   }
-  restorePoint.before(accessDetails);
+  if(restorePoint && accessDetails){
+    restorePoint.before(accessDetails);
+  }
+}
+
+function syncAppMenuSummaries(){
+  const themeSummary = document.getElementById("appMenuThemeSummary");
+  const checkedTheme = document.querySelector('input[name="themePreference"]:checked')?.value || "system";
+  if(themeSummary){
+    themeSummary.textContent = checkedTheme === "dark"
+      ? "ダーク"
+      : (checkedTheme === "light" ? "ライト" : "端末に合わせる");
+  }
+
+  const startDaySummary = document.getElementById("appMenuStartDaySummary");
+  const startDay = document.getElementById("dashboardStartDayInput")?.value;
+  if(startDaySummary) startDaySummary.textContent = startDay ? `毎月${startDay}日` : "未設定";
+
+  const weatherSummary = document.getElementById("appMenuWeatherSummary");
+  if(weatherSummary && typeof getDashboardGrowthLocation === "function"){
+    const location = getDashboardGrowthLocation();
+    weatherSummary.textContent = location && typeof getDashboardGrowthLocationDisplayName === "function"
+      ? getDashboardGrowthLocationDisplayName(location)
+      : "未設定";
+  }
+
+  const googleSummary = document.getElementById("appMenuGoogleSummary");
+  if(googleSummary){
+    let configured = false;
+    if(typeof loadGoogleSheetConfig === "function" && typeof validateGoogleSheetConfig === "function"){
+      try{
+        configured = !!validateGoogleSheetConfig(loadGoogleSheetConfig()).ok;
+      }catch(e){}
+    }
+    googleSummary.textContent = configured ? "設定済み" : "未設定";
+    googleSummary.classList.toggle("is-attention", !configured);
+  }
+
+  const accessSummary = document.getElementById("appMenuAccessSummary");
+  if(accessSummary){
+    accessSummary.textContent = protectedAccessUnlocked ? "解除済み" : "ロック中";
+    accessSummary.classList.toggle("is-attention", !protectedAccessUnlocked);
+  }
+}
+
+function openAppMenuPage(pageName = "main", focusTargetId = ""){
+  const normalizedPage = ["main", "theme", "startDay", "weather", "access", "records", "help", "update"].includes(pageName)
+    ? pageName
+    : "main";
+  const titleLabels = {
+    main:"メニュー",
+    theme:"表示テーマ",
+    startDay:"集計の基準日",
+    weather:"生育予測の気象地点",
+    access:"連携・管理者設定",
+    records:"記録データ",
+    help:"ヘルプ",
+    update:"アプリの更新"
+  };
+  document.querySelectorAll("[data-app-menu-page]").forEach(page => {
+    page.hidden = page.dataset.appMenuPage !== normalizedPage;
+  });
+  const title = document.getElementById("appMenuWindowTitle");
+  const backButton = document.getElementById("appMenuBackBtn");
+  const body = document.getElementById("appMenuWindowBody");
+  if(title) title.textContent = titleLabels[normalizedPage];
+  if(backButton) backButton.hidden = normalizedPage === "main";
+  if(body) body.scrollTop = 0;
+  if(normalizedPage === "access"){
+    const details = document.getElementById("accessProtectionDetails");
+    if(details) details.open = true;
+  }
+  if(normalizedPage === "help"){
+    const details = document.getElementById("recordHelpDetails");
+    if(details) details.open = true;
+  }
+  if(focusTargetId){
+    requestAnimationFrame(() => document.getElementById(focusTargetId)?.scrollIntoView({ block:"start" }));
+  }
+}
+
+function saveAppMenuAccessSettings(){
+  if(!saveSettings()) return false;
+  const details = document.getElementById("accessProtectionDetails");
+  if(details) details.open = true;
+  syncAppMenuSummaries();
+  return true;
 }
 
 async function refreshAppRollbackAvailability(){
@@ -953,13 +1039,18 @@ async function confirmAppVersionRollback(){
   }
 }
 
-function openAppMenuWindow(){
+function openAppMenuWindow(options = {}){
   const modal = document.getElementById("appMenuModal");
   if(!modal) return;
+  const normalizedOptions = options && typeof options === "object" ? options : {};
   moveMenuSettingsToWindow();
   syncThemePreferenceControls();
   syncAccessProtectionDetails();
+  const accessDetails = document.getElementById("accessProtectionDetails");
+  if(accessDetails) accessDetails.open = true;
   if(typeof syncDashboardGrowthLocationMenu === "function") syncDashboardGrowthLocationMenu();
+  syncAppMenuSummaries();
+  openAppMenuPage(normalizedOptions.page || "main", normalizedOptions.focusTargetId || "");
   showPageBlockingUi(modal);
   refreshAppRollbackAvailability();
 }

@@ -4258,7 +4258,7 @@ function syncDashboardGrowthLocationMenu(){
 }
 
 function openDashboardGrowthLocationMenu(){
-  openAppMenuWindow();
+  openAppMenuWindow({ page:"weather", focusTargetId:"dashboardGrowthLocationInput" });
   requestAnimationFrame(() => document.getElementById("dashboardGrowthLocationInput")?.focus());
 }
 
@@ -4367,6 +4367,7 @@ function selectDashboardGrowthLocation(index){
   if(results) results.innerHTML = "";
   if(status) status.textContent = `${getDashboardGrowthLocationDisplayName(location)}を設定しました。`;
   syncDashboardGrowthLocationMenu();
+  if(typeof syncAppMenuSummaries === "function") syncAppMenuSummaries();
   if(status) status.textContent = `${getDashboardGrowthLocationDisplayName(location)}を設定しました。`;
   if(activeAppTab === "dashboard" && dashboardFilter.dashboardSubtab === "growth"){
     renderDashboardGrowthPrediction({ force:true });

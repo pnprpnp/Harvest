@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>階層型メニュー・実画面プレビュー</title>
+  <style>
+    :root{color-scheme:light;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Yu Gothic",sans-serif;background:#edf1ee;color:#243029;}
+    *{box-sizing:border-box;}
+    body{margin:0;background:#edf1ee;}
+    button{font:inherit;}
+    .previewPage{min-height:100dvh;display:grid;justify-items:center;align-content:start;gap:10px;padding:12px;}
+    .previewControls{width:min(100%,393px);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px 8px 8px 12px;border:1px solid #d6dfd9;border-radius:12px;background:#fff;box-shadow:0 4px 16px rgba(29,64,40,.08);}
+    .previewLabel{font-size:12px;font-weight:800;line-height:1.35;}
+    .previewLabel small{display:block;color:#758179;font-size:9px;font-weight:650;}
+    .previewSwitch{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;padding:2px;border-radius:9px;background:#e8eeea;}
+    .previewSwitch button{min-height:31px;padding:4px 9px;border:0;border-radius:7px;background:transparent;color:#68746c;font-size:10px;font-weight:800;white-space:nowrap;}
+    .previewSwitch button[aria-pressed="true"]{background:#fff;color:#137847;box-shadow:0 1px 4px rgba(31,65,42,.12);}
+    .appViewport{position:relative;width:min(var(--preview-width,390px),calc(100vw - 24px));height:852px;overflow:hidden;border:1px solid #d2dad5;border-radius:24px;background:#f7f7f9;box-shadow:0 18px 48px rgba(25,53,35,.16);transition:width .16s ease;}
+    .appViewport iframe{display:block;width:100%;height:852px;border:0;background:#f7f7f9;}
+    .previewStatus{position:absolute;inset:0;z-index:2;display:grid;place-items:center;padding:24px;background:#f7f7f9;color:#66736b;font-size:13px;font-weight:700;text-align:center;}
+    .previewStatus[hidden]{display:none;}
+    @media(max-width:416px){.previewPage{padding:8px 0 0;}.previewControls{width:calc(100% - 16px);}.appViewport{max-width:100vw;border-right:0;border-bottom:0;border-left:0;border-radius:0;box-shadow:none;}}
+  </style>
+</head>
+<body>
+  <main class="previewPage">
+    <section class="previewControls" aria-label="階層型メニューのプレビュー設定">
+      <div class="previewLabel">実際のアプリ画面<small>本体のHTML・CSS・JavaScriptを使用</small></div>
+      <div class="previewSwitch" role="group" aria-label="画面幅">
+        <button type="button" data-preview-width="320" aria-pressed="false">320px</button>
+        <button type="button" data-preview-width="390" aria-pressed="true">390px</button>
+      </div>
+    </section>
+    <section id="appViewport" class="appViewport" aria-label="Harvestnavi 階層型メニューの実画面プレビュー">
+      <iframe id="appFrame" title="Harvestnavi 階層型メニューの実画面"></iframe>
+      <div id="previewStatus" class="previewStatus" role="status">実際のアプリ画面を準備しています…</div>
+    </section>
+  </main>
+  <script>
+    const appFrame = document.getElementById("appFrame");
+    const appViewport = document.getElementById("appViewport");
+    const previewStatus = document.getElementById("previewStatus");
+    const widthButtons = [...document.querySelectorAll("[data-preview-width]")];
+    const originalLocalStorage = Object.fromEntries(Array.from({ length:localStorage.length }, (_, index) => localStorage.key(index)).filter(Boolean).map(key => [key, localStorage.getItem(key)]));
+    const originalSessionStorage = Object.fromEntries(Array.from({ length:sessionStorage.length }, (_, index) => sessionStorage.key(index)).filter(Boolean).map(key => [key, sessionStorage.getItem(key)]));
+
+    function restoreOriginalStorage(){
+      localStorage.clear();
+      Object.entries(originalLocalStorage).forEach(([key, value]) => localStorage.setItem(key, value));
+      sessionStorage.clear();
+      Object.entries(originalSessionStorage).forEach(([key, value]) => sessionStorage.setItem(key, value));
+    }
+
+    function setPreviewStorage(){
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("harvestnaviThemePreference_v1", "light");
+      localStorage.setItem("harvestnaviWorkflowTitleHintShown_v1", "1");
+      localStorage.setItem("harvestnaviAppAccessRole_v1", "admin");
+      localStorage.setItem("harvestForecastProtectedAccessAuth_v1", "1");
+    }
+
+    function showActualMenu(){
+      const app = appFrame.contentWindow;
+      return app.eval(`(() => {
+        document.getElementById("welcomeScreen")?.remove();
+        appAccessRole = APP_ACCESS_ROLE_ADMIN;
+        protectedAccessUnlocked = false;
+        applyAppAccessRoleUi();
+        saveDashboardGrowthLocation({ officeCode:"430000", forecastAreaCode:"430010", class20Code:"4320211", name:"八代市", admin1:"熊本県", forecastAreaName:"熊本地方" });
+        openAppMenuWindow();
+        return document.querySelectorAll(".appMenuNavRow").length;
+      })()`);
+    }
+
+    widthButtons.forEach(button => button.addEventListener("click", () => {
+      appViewport.style.setProperty("--preview-width", button.dataset.previewWidth === "320" ? "320px" : "390px");
+      widthButtons.forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+    }));
+
+    appFrame.addEventListener("load", () => {
+      try{
+        if(showActualMenu() !== 8) throw new Error("階層型メニューを開けませんでした");
+        requestAnimationFrame(() => requestAnimationFrame(() => { previewStatus.hidden = true; }));
+      }catch(error){
+        console.error(error);
+        window.previewError = error?.stack || error?.message || String(error);
+        previewStatus.textContent = "プレビューの準備に失敗しました。ページを再読み込みしてください。";
+      }
+    }, { once:true });
+
+    window.addEventListener("beforeunload", restoreOriginalStorage, { once:true });
+    setPreviewStorage();
+    appFrame.src = `../index.html?__hncheck=app-menu-hierarchy-${Date.now()}`;
+  </script>
+</body>
+</html>

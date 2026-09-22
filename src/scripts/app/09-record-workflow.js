@@ -2997,7 +2997,7 @@ function renderRecordHarvestGrowthBedEditor(){
 
 function handleRecordHarvestGrowthInput(){
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 
@@ -3025,7 +3025,7 @@ function setRecordHarvestGrowthBedSize(bedKey, value){
     sizeRating: normalizeHarvestSizeRating(value)
   };
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 
@@ -3038,14 +3038,14 @@ function toggleRecordHarvestGrowthBedFlag(bedKey, field){
     [field]: !current[field]
   };
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 
 function resetRecordHarvestGrowthBed(bedKey){
   delete recordHarvestGrowthBedOverrides[bedKey];
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 

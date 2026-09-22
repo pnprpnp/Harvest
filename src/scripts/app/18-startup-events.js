@@ -128,7 +128,7 @@ function installStartupRecordFormEvents(){
       updateRecordInputGuides();
       if(recordSelectionMode !== "planting"){
         renderRecordHarvestGrowthBedEditor();
-        renderRecordHarvestConfirmSummary();
+        renderRecordHarvestConfirmation();
       }
       saveHarvestStateToStorage();
     });
@@ -184,6 +184,7 @@ function installStartupDashboardEvents(){
       dashboardFilter.startDay = nextDay;
       syncDashboardStartDayInputs(nextDay);
       saveDashboardFilter();
+      if(typeof syncAppMenuSummaries === "function") syncAppMenuSummaries();
       renderDashboard();
     };
     startDayInput.addEventListener("input", handleDashboardInput);

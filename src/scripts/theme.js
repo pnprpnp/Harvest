@@ -61,7 +61,9 @@ function applyThemePreference(preference = themePreference, options = {}){
 }
 
 function setThemePreference(preference){
-  return applyThemePreference(preference, { persist: true });
+  const resolvedTheme = applyThemePreference(preference, { persist: true });
+  if(typeof window.syncAppMenuSummaries === "function") window.syncAppMenuSummaries();
+  return resolvedTheme;
 }
 
 function handleSystemThemeChange(){

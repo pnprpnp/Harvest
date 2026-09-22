@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260918-growth-prediction-beta">
+<meta name="harvestnavi-version" content="20260923-menu-harvest-rating">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -156,7 +156,9 @@ function applyThemePreference(preference = themePreference, options = {}){
 }
 
 function setThemePreference(preference){
-  return applyThemePreference(preference, { persist: true });
+  const resolvedTheme = applyThemePreference(preference, { persist: true });
+  if(typeof window.syncAppMenuSummaries === "function") window.syncAppMenuSummaries();
+  return resolvedTheme;
 }
 
 function handleSystemThemeChange(){
@@ -11918,9 +11920,18 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   background:rgba(255,255,255,.96);
   box-shadow:var(--ui-shadow-float);
 }
-.appMenuWindow{width:100%;max-width:620px;box-sizing:border-box;padding:18px;}
-.appMenuRecordImportChoice{margin:0 0 14px;}
-.appMenuRecordImportChoice > #recordImportChoiceBtn{margin-top:0;}
+.appMenuWindow{
+  width:100%;
+  max-width:620px;
+  max-height:calc(100dvh - 48px);
+  box-sizing:border-box;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+  padding:0;
+  overflow:hidden;
+}
+.appMenuRecordImportChoice{margin:12px 0 0;}
+.appMenuRecordImportChoice > #recordImportChoiceBtn{width:100%;margin-top:0;}
 .forecastSettingsWindowHeader,.appMenuWindowHeader,.bedDetailWindowHeader,.plantingAgeWindowHeader,.recordDetailWindowHeader,.monitorEditorWindowHeader{
   padding:14px 16px;
   border-color:var(--ui-line);
@@ -11931,6 +11942,75 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 }
 .appMenuWindowTitle,.forecastSettingsWindowTitle{color:var(--ui-text);font-weight:750;letter-spacing:-.025em;}
 .appMenuWindowTitle{font-size:20px;}
+.appMenuWindowHeader{
+  min-height:62px;
+  display:grid;
+  grid-template-columns:72px minmax(0,1fr) 72px;
+  align-items:center;
+  gap:0;
+}
+.appMenuWindowTitle{overflow:hidden;text-align:center;text-overflow:ellipsis;white-space:nowrap;}
+.appMenuWindowBack{
+  min-height:36px;
+  padding:7px 8px;
+  border:0;
+  border-radius:12px;
+  background:transparent;
+  color:var(--ui-accent-dark);
+  font-size:12px;
+  font-weight:800;
+  text-align:left;
+}
+.appMenuWindowBack::before{content:"‹";margin-right:3px;font-size:22px;line-height:0;vertical-align:-2px;}
+.appMenuWindowClose{justify-self:end;}
+.appMenuWindowBody{min-height:0;overflow:auto;padding:14px 14px 28px;background:var(--ui-bg);}
+.appMenuSection + .appMenuSection{margin-top:22px;}
+.appMenuSectionTitle{margin:0 10px 7px;color:var(--ui-text-tertiary);font-size:11px;font-weight:820;letter-spacing:.08em;}
+.appMenuNavGroup{overflow:hidden;border:1px solid var(--ui-line);border-radius:17px;background:var(--ui-surface-solid);box-shadow:0 4px 18px rgba(29,52,35,.035);}
+.appMenuNavRow{
+  width:100%;
+  min-height:64px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,118px) 14px;
+  align-items:center;
+  gap:8px;
+  padding:10px 13px;
+  border:0;
+  background:var(--ui-surface-solid);
+  color:var(--ui-text);
+  text-align:left;
+  box-shadow:none;
+}
+.appMenuNavRow + .appMenuNavRow{border-top:1px solid var(--ui-line);}
+.appMenuNavRow:active{background:var(--ui-surface-muted);transform:none;}
+.appMenuNavTitle{display:block;font-size:14px;font-weight:780;}
+.appMenuNavNote{display:block;margin-top:3px;color:var(--ui-text-tertiary);font-size:10px;font-weight:600;line-height:1.35;}
+.appMenuNavValue{overflow:hidden;color:var(--ui-text-secondary);font-size:11px;font-weight:730;text-align:right;text-overflow:ellipsis;white-space:nowrap;}
+.appMenuNavChevron{color:var(--ui-text-tertiary);font-size:20px;text-align:center;}
+.appMenuStatusBadge{justify-self:end;padding:4px 7px;border-radius:999px;background:var(--ui-accent-soft);color:var(--ui-accent-dark);font-size:10px;font-weight:820;}
+.appMenuStatusBadge.is-attention{background:#fff0df;color:#97601b;}
+.appMenuDetailIntro{margin:2px 2px 14px;color:var(--ui-text-secondary);font-size:12px;line-height:1.6;}
+.appMenuAutoSave{margin:14px 8px 0;color:var(--ui-text-tertiary);font-size:10px;font-weight:650;text-align:center;}
+.appMenuDetailCard{padding:14px;border:1px solid var(--ui-line);border-radius:17px;background:var(--ui-surface-solid);}
+.appMenuDetailCard + .appMenuDetailCard{margin-top:12px;}
+.appMenuDetailText{margin:5px 0 0;color:var(--ui-text-secondary);font-size:11px;line-height:1.6;}
+.appMenuDetailCard > .actionBtn{width:100%;margin-top:12px;}
+.appMenuAccessSaveBtn{width:100%;margin-top:12px;}
+#appMenuAccessContent > #accessProtectionDetails,
+#appMenuHelpContent > #recordHelpDetails{display:block;margin:0;border:0;background:transparent;box-shadow:none;}
+#appMenuAccessContent > #accessProtectionDetails > .settingClusterSummary,
+#appMenuHelpContent > #recordHelpDetails > .recordToggleSummary{display:none;}
+#appMenuAccessContent > #accessProtectionDetails > .settingClusterDetailsBody{padding:0;border:0;}
+#appMenuAccessContent .combinedSettingsSection{padding:14px;border:1px solid var(--ui-line);border-radius:17px;background:var(--ui-surface-solid);}
+#appMenuAccessContent .combinedSettingsSection + .combinedSettingsSection{margin-top:12px;}
+#appMenuHelpContent #recordHelpDetails > .recordToggleBody{padding:0;}
+.appMenuUpdateCard{text-align:center;}
+.appMenuAppMark{width:58px;height:58px;display:grid;place-items:center;margin:2px auto 9px;border-radius:16px;background:var(--ui-accent-soft);color:var(--ui-accent-dark);font-size:25px;font-weight:900;}
+.appMenuAppName{color:var(--ui-text);font-size:17px;font-weight:830;}
+.appMenuUpdateCard .appMenuLatestBtn{margin-bottom:0;}
+.appMenuRecoveryCard{border-color:#efd8bc;background:#fffbf4;}
+.appMenuRecoveryCard .clusterTitle{color:#875719;}
+.appMenuRecoveryCard .appRollbackStatus{margin-top:10px;}
 .forecastSettingsWindowClose,.appMenuWindowClose,.bedDetailWindowClose,.plantingAgeWindowClose,.recordDetailWindowClose,.monitorEditorCloseBtn{
   min-height:36px;
   padding:7px 12px;
@@ -11938,6 +12018,18 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   border-radius:12px;
   background:var(--ui-surface-muted);
   color:var(--ui-text-secondary);
+}
+@media(max-width:640px){
+  #appMenuModal.appMenuModal{padding:0;overflow:hidden;}
+  #appMenuModal .appMenuWindow{height:100%;max-height:none;margin:0;padding:0;border:0;border-radius:0;}
+  #appMenuModal .appMenuWindowHeader{padding-top:calc(6px + env(safe-area-inset-top));}
+  #appMenuModal .appMenuWindowBody{padding-bottom:calc(28px + env(safe-area-inset-bottom));}
+}
+@media(max-width:340px){
+  #appMenuModal .appMenuWindowBody{padding-right:10px;padding-left:10px;}
+  .appMenuNavRow{grid-template-columns:minmax(0,1fr) minmax(0,96px) 12px;padding-right:10px;padding-left:11px;}
+  .appMenuNavTitle{font-size:13px;}
+  .appMenuNavValue{font-size:10px;}
 }
 .monitorPreviewCancelBtn{border-radius:13px;background:var(--ui-surface-muted);color:var(--ui-text);}
 .monitorPreviewOkBtn{border-radius:13px;background:var(--ui-accent);color:#fff;}
@@ -12838,6 +12930,17 @@ html[data-theme="dark"] .themePreferenceChoice{
 html[data-theme="dark"] .themePreferenceChoice:has(input:checked){
   background:var(--ui-accent-soft);
   color:var(--ui-accent-dark);
+}
+html[data-theme="dark"] .appMenuStatusBadge.is-attention{
+  background:#4a3519;
+  color:#ffd089;
+}
+html[data-theme="dark"] .appMenuRecoveryCard{
+  border-color:#685238;
+  background:#2b251c;
+}
+html[data-theme="dark"] .appMenuRecoveryCard .clusterTitle{
+  color:#f0bd74;
 }
 
 html[data-theme="dark"] :is(input,select,textarea).emptyInputField,
@@ -14646,11 +14749,12 @@ requestAnimationFrame(function(){
           </div>
         </summary>
         <div class="settingClusterDetailsBody">
-          <section class="combinedSettingsSection" aria-labelledby="accessProtectionSectionTitle">
+          <section id="accessProtectionSection" class="combinedSettingsSection" aria-labelledby="accessProtectionSectionTitle">
             <div id="accessProtectionSectionTitle" class="combinedSettingsSectionTitle">簡易アクセス制限</div>
             <label>解除用パスワード</label>
             <input id="accessPasswordInput" type="password" placeholder="あらかじめ設定した固定パスワード">
             <div id="accessProtectionStatus" class="smallText" style="margin-top:6px;">ロック状態を確認中です。</div>
+            <button type="button" class="actionBtn secondaryBtn appMenuAccessSaveBtn" data-ui-click="saveAppMenuAccessSettings">ロック設定を保存</button>
           </section>
           <section id="googleSheetConfigDetails" class="combinedSettingsSection" aria-labelledby="googleSheetConfigSectionTitle">
             <div id="googleSheetConfigSectionTitle" class="combinedSettingsSectionTitle">Google連携設定</div>
@@ -15105,20 +15209,6 @@ requestAnimationFrame(function(){
                 <div class="calculationHelpNote">Σ（シグマ）は「すべて足す」という意味です。「切り捨て」「四捨五入」の記載がない途中計算は端数を保ち、各式に記した段階で丸めます。</div>
               </div>
             </details>
-            <details class="recordToggleWrap">
-              <summary class="recordToggleSummary">・記録を外部保存</summary>
-              <div class="recordToggleBody">
-                <div class="smallText" style="margin-bottom:12px;">端末内の記録をJSONファイルとして保存します。</div>
-                <button class="actionBtn secondaryBtn" data-ui-click="exportRecordsToFile">JSONファイルを保存する</button>
-              </div>
-            </details>
-            <details class="recordToggleWrap">
-              <summary class="recordToggleSummary">・前の安定版に戻す</summary>
-              <div class="recordToggleBody">
-                <div id="appRollbackStatus" class="appRollbackStatus" hidden></div>
-                <button id="appRollbackBtn" type="button" class="actionBtn secondaryBtn appRollbackBtn" data-ui-click="confirmAppVersionRollback" hidden>前の安定版に戻す</button>
-              </div>
-            </details>
           </div>
         </details>
         <div id="recordHelpRestorePoint"></div>
@@ -15518,70 +15608,145 @@ requestAnimationFrame(function(){
 <div id="appMenuModal" class="appMenuModal" role="dialog" aria-modal="true" aria-labelledby="appMenuWindowTitle" data-ui-backdrop-click="closeAppMenuWindow">
   <div class="appMenuWindow">
     <div class="appMenuWindowHeader">
+      <button id="appMenuBackBtn" type="button" class="appMenuWindowBack" data-ui-click="openAppMenuPage" data-ui-arg="main" hidden>戻る</button>
       <div id="appMenuWindowTitle" class="appMenuWindowTitle">メニュー</div>
       <button type="button" class="appMenuWindowClose" data-ui-click="closeAppMenuWindow">閉じる</button>
     </div>
     <div id="appMenuWindowBody" class="appMenuWindowBody">
-      <button id="appUpdateCheckBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn availabilityNoticeTarget" data-ui-click="checkLatestAppFromMenu" aria-label="アプリの最新バージョンを確認する">
-        <span class="headerLatestRefreshMain" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
-            <path d="M20 6v5h-5"></path>
-            <path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path>
-          </svg>
-        </span>
-        <span class="appMenuLatestCopy">
-          <span class="appMenuLatestTitle">最新バージョンを確認</span>
-          <span id="appUpdateCheckStatus" class="headerLatestRefreshSub"></span>
-        </span>
-      </button>
-      <div class="recordImportChoice appMenuRecordImportChoice">
-        <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" data-ui-click="toggleRecordImportMenu">記録を読み込む</button>
-        <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
-          <div id="recordImportTitle" class="recordImportTitle">記録を読み込む</div>
-          <button id="googleSheetImportBtn" class="actionBtn thirdBtn" data-ui-click="importRecordsFromGoogleSheet" data-ui-before="hideRecordImportMenu">スプレッドシートから読み込む</button>
-          <button class="actionBtn secondaryBtn" data-ui-click="triggerImportRecords" data-ui-before="hideRecordImportMenu">JSONファイルを読み込む</button>
-          <button class="actionBtn secondaryBtn" data-ui-click="hideRecordImportMenu">キャンセル</button>
-        </div>
+      <div class="appMenuPage" data-app-menu-page="main">
+        <section class="appMenuSection" aria-labelledby="appMenuDisplaySectionTitle">
+          <h2 id="appMenuDisplaySectionTitle" class="appMenuSectionTitle">表示・集計</h2>
+          <div class="appMenuNavGroup">
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="theme">
+              <span><span class="appMenuNavTitle">表示テーマ</span><span class="appMenuNavNote">画面の明るさを変更</span></span>
+              <span id="appMenuThemeSummary" class="appMenuNavValue">端末に合わせる</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="startDay">
+              <span><span class="appMenuNavTitle">集計の基準日</span><span class="appMenuNavNote">月別集計の開始日</span></span>
+              <span id="appMenuStartDaySummary" class="appMenuNavValue">毎月1日</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="weather">
+              <span><span class="appMenuNavTitle">生育予測の気象地点</span><span class="appMenuNavNote">気象庁の予報地域を使用</span></span>
+              <span id="appMenuWeatherSummary" class="appMenuNavValue">未設定</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="appMenuSection" aria-labelledby="appMenuDataSectionTitle">
+          <h2 id="appMenuDataSectionTitle" class="appMenuSectionTitle">データ・連携</h2>
+          <div class="appMenuNavGroup">
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="access" data-ui-arg2="googleSheetConfigDetails">
+              <span><span class="appMenuNavTitle">Google連携</span><span class="appMenuNavNote">スプレッドシートとの同期</span></span>
+              <span id="appMenuGoogleSummary" class="appMenuStatusBadge is-attention">未設定</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="records">
+              <span><span class="appMenuNavTitle">記録データ</span><span class="appMenuNavNote">読み込み・書き出し</span></span>
+              <span class="appMenuNavValue">3つの操作</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="access" data-ui-arg2="accessProtectionSectionTitle">
+              <span><span class="appMenuNavTitle">管理者設定</span><span class="appMenuNavNote">アクセス制限</span></span>
+              <span id="appMenuAccessSummary" class="appMenuStatusBadge is-attention">ロック中</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="appMenuSection" aria-labelledby="appMenuSupportSectionTitle">
+          <h2 id="appMenuSupportSectionTitle" class="appMenuSectionTitle">サポート</h2>
+          <div class="appMenuNavGroup">
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="help">
+              <span><span class="appMenuNavTitle">ヘルプ</span><span class="appMenuNavNote">使い方と計算式</span></span>
+              <span class="appMenuNavValue"></span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="update">
+              <span><span class="appMenuNavTitle">アプリの更新</span><span class="appMenuNavNote">バージョン確認と復旧</span></span>
+              <span id="appMenuUpdateSummary" class="appMenuNavValue">確認する</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
       </div>
-      <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
-      <div id="dashboardStartDayMenuSetting" class="settingCluster dashboardStartDayMenuSetting">
-        <div class="dashboardStartDayField">
-          <label for="dashboardStartDayInput">集計の基準日</label>
-          <select id="dashboardStartDayInput" class="dashboardStartDayInput" data-dashboard-start-day-input></select>
-        </div>
+
+      <div class="appMenuPage" data-app-menu-page="theme" hidden>
+        <p class="appMenuDetailIntro">選択すると、すぐに画面へ反映されます。</p>
+        <section id="themeMenuSetting" class="settingCluster themeMenuSetting" aria-labelledby="themeMenuSettingTitle">
+          <div id="themeMenuSettingTitle" class="clusterTitle">表示テーマ</div>
+          <div class="themePreferenceChoices" role="radiogroup" aria-label="表示テーマ">
+            <label class="themePreferenceChoice"><input type="radio" name="themePreference" value="system" data-ui-change="setThemePreference" data-ui-value-argument="true"><span>端末に合わせる</span></label>
+            <label class="themePreferenceChoice"><input type="radio" name="themePreference" value="light" data-ui-change="setThemePreference" data-ui-value-argument="true"><span>ライト</span></label>
+            <label class="themePreferenceChoice"><input type="radio" name="themePreference" value="dark" data-ui-change="setThemePreference" data-ui-value-argument="true"><span>ダーク</span></label>
+          </div>
+          <div id="themePreferenceHint" class="themePreferenceHint" aria-live="polite"></div>
+        </section>
+        <div class="appMenuAutoSave">変更は自動保存されます</div>
       </div>
-      <section id="dashboardGrowthLocationMenuSetting" class="settingCluster dashboardGrowthLocationMenuSetting" aria-labelledby="dashboardGrowthLocationMenuTitle">
-        <div id="dashboardGrowthLocationMenuTitle" class="clusterTitle">生育予測の気象地点</div>
-        <p class="dashboardGrowthMenuHelp">市区町村を入力し、気象庁の予報地域から使用する地点を選びます。</p>
-        <div id="dashboardGrowthMenuCurrent" class="dashboardGrowthMenuCurrent">未設定</div>
-        <div class="dashboardGrowthLocationSearch dashboardGrowthMenuSearch">
-          <input id="dashboardGrowthLocationInput" type="search" placeholder="例：八代市" autocomplete="address-level2" data-ui-keydown="handleDashboardGrowthLocationKeydown" data-ui-event-first="true">
-          <button type="button" class="dashboardGrowthPrimaryBtn" data-ui-click="searchDashboardGrowthLocation">地点を検索</button>
+
+      <div class="appMenuPage" data-app-menu-page="startDay" hidden>
+        <p class="appMenuDetailIntro">月別集計を区切る日を選びます。</p>
+        <div id="dashboardStartDayMenuSetting" class="settingCluster dashboardStartDayMenuSetting">
+          <div class="dashboardStartDayField"><label for="dashboardStartDayInput">毎月の開始日</label><select id="dashboardStartDayInput" class="dashboardStartDayInput" data-dashboard-start-day-input></select></div>
         </div>
-        <div id="dashboardGrowthLocationStatus" class="dashboardGrowthLocationStatus" role="status" aria-live="polite"></div>
-        <div id="dashboardGrowthLocationResults" class="dashboardGrowthLocationResults"></div>
-      </section>
-      <section id="themeMenuSetting" class="settingCluster themeMenuSetting" aria-labelledby="themeMenuSettingTitle">
-        <div id="themeMenuSettingTitle" class="clusterTitle">表示テーマ</div>
-        <div class="themePreferenceChoices" role="radiogroup" aria-label="表示テーマ">
-          <label class="themePreferenceChoice">
-            <input type="radio" name="themePreference" value="system" data-ui-change="setThemePreference" data-ui-value-argument="true">
-            <span>端末に合わせる</span>
-          </label>
-          <label class="themePreferenceChoice">
-            <input type="radio" name="themePreference" value="light" data-ui-change="setThemePreference" data-ui-value-argument="true">
-            <span>ライト</span>
-          </label>
-          <label class="themePreferenceChoice">
-            <input type="radio" name="themePreference" value="dark" data-ui-change="setThemePreference" data-ui-value-argument="true">
-            <span>ダーク</span>
-          </label>
-        </div>
-        <div id="themePreferenceHint" class="themePreferenceHint" aria-live="polite"></div>
-      </section>
-    </div>
-    <div class="appMenuWindowFooter">
-      <button type="button" class="actionBtn appMenuSaveBtn" data-ui-click="saveAppMenuSettingsAndClose">設定を保存</button>
+        <div class="appMenuAutoSave">変更は自動保存されます</div>
+      </div>
+
+      <div class="appMenuPage" data-app-menu-page="weather" hidden>
+        <p class="appMenuDetailIntro">市区町村を入力し、気象庁の予報地域から使用する地点を選びます。</p>
+        <section id="dashboardGrowthLocationMenuSetting" class="settingCluster dashboardGrowthLocationMenuSetting" aria-labelledby="dashboardGrowthLocationMenuTitle">
+          <div id="dashboardGrowthLocationMenuTitle" class="clusterTitle">生育予測の気象地点</div>
+          <div id="dashboardGrowthMenuCurrent" class="dashboardGrowthMenuCurrent">現在：未設定</div>
+          <div class="dashboardGrowthLocationSearch dashboardGrowthMenuSearch"><input id="dashboardGrowthLocationInput" type="search" placeholder="例：八代市" autocomplete="address-level2" data-ui-keydown="handleDashboardGrowthLocationKeydown" data-ui-event-first="true"><button type="button" class="dashboardGrowthPrimaryBtn" data-ui-click="searchDashboardGrowthLocation">地点を検索</button></div>
+          <div id="dashboardGrowthLocationStatus" class="dashboardGrowthLocationStatus" role="status" aria-live="polite"></div>
+          <div id="dashboardGrowthLocationResults" class="dashboardGrowthLocationResults"></div>
+        </section>
+        <div class="appMenuAutoSave">地点の選択時に自動保存されます</div>
+      </div>
+
+      <div class="appMenuPage" data-app-menu-page="access" hidden>
+        <div id="appMenuAccessContent"></div>
+      </div>
+
+      <div class="appMenuPage" data-app-menu-page="records" hidden>
+        <p class="appMenuDetailIntro">記録の読み込みとバックアップを一か所にまとめています。</p>
+        <section class="appMenuDetailCard">
+          <div class="clusterTitle">記録を読み込む</div>
+          <p class="appMenuDetailText">スプレッドシートまたはJSONファイルから記録を読み込みます。</p>
+          <div class="recordImportChoice appMenuRecordImportChoice">
+            <button id="recordImportChoiceBtn" class="actionBtn thirdBtn" data-ui-click="toggleRecordImportMenu">読み込み方法を選ぶ</button>
+            <div id="recordImportMenu" class="recordImportMenu" role="dialog" aria-modal="true" aria-labelledby="recordImportTitle">
+              <div id="recordImportTitle" class="recordImportTitle">記録を読み込む</div>
+              <button id="googleSheetImportBtn" class="actionBtn thirdBtn" data-ui-click="importRecordsFromGoogleSheet" data-ui-before="hideRecordImportMenu">スプレッドシートから読み込む</button>
+              <button class="actionBtn secondaryBtn" data-ui-click="triggerImportRecords" data-ui-before="hideRecordImportMenu">JSONファイルを読み込む</button>
+              <button class="actionBtn secondaryBtn" data-ui-click="hideRecordImportMenu">キャンセル</button>
+            </div>
+          </div>
+          <input id="recordImportInput" type="file" accept=".json,application/json" style="display:none;">
+        </section>
+        <section class="appMenuDetailCard">
+          <div class="clusterTitle">記録を書き出す</div>
+          <p class="appMenuDetailText">端末内の記録をバックアップ用のJSONファイルとして保存します。</p>
+          <button class="actionBtn secondaryBtn" data-ui-click="exportRecordsToFile">JSONファイルを保存する</button>
+        </section>
+      </div>
+
+      <div class="appMenuPage appMenuHelpPage" data-app-menu-page="help" hidden>
+        <p class="appMenuDetailIntro">確認したい項目を選んでください。</p>
+        <div id="appMenuHelpContent"></div>
+      </div>
+
+      <div class="appMenuPage" data-app-menu-page="update" hidden>
+        <section class="appMenuDetailCard appMenuUpdateCard">
+          <div class="appMenuAppMark" aria-hidden="true">H</div>
+          <div class="appMenuAppName">Harvestnavi</div>
+          <button id="appUpdateCheckBtn" type="button" class="headerActionBtn headerLatestRefreshBtn appMenuLatestBtn availabilityNoticeTarget" data-ui-click="checkLatestAppFromMenu" aria-label="アプリの最新バージョンを確認する">
+            <span class="headerLatestRefreshMain" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M20 6v5h-5"></path><path d="M18.2 15.5A7 7 0 1 1 19.5 9"></path></svg></span>
+            <span class="appMenuLatestCopy"><span class="appMenuLatestTitle">最新バージョンを確認</span><span id="appUpdateCheckStatus" class="headerLatestRefreshSub"></span></span>
+          </button>
+        </section>
+        <section class="appMenuDetailCard appMenuRecoveryCard">
+          <div class="clusterTitle">問題が起きた場合</div>
+          <p class="appMenuDetailText">現在版で問題が起きた場合だけ使用します。記録データは削除されません。</p>
+          <div id="appRollbackStatus" class="appRollbackStatus" hidden></div>
+          <button id="appRollbackBtn" type="button" class="actionBtn secondaryBtn appRollbackBtn" data-ui-click="confirmAppVersionRollback" hidden>前の安定版に戻す</button>
+        </section>
+      </div>
     </div>
   </div>
 </div>
@@ -16862,17 +17027,18 @@ function closeDashboardWindow(){
 }
 
 function moveMenuSettingsToWindow(){
-  const body = document.getElementById("appMenuWindowBody");
+  const accessTarget = document.getElementById("appMenuAccessContent");
+  const helpTarget = document.getElementById("appMenuHelpContent");
   const accessDetails = document.getElementById("accessProtectionDetails");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
-  const dashboardStartDayMenuSetting = document.getElementById("dashboardStartDayMenuSetting");
-  if(!body || !accessDetails) return;
-  if(recordHelpDetails && dashboardStartDayMenuSetting){
-    dashboardStartDayMenuSetting.before(recordHelpDetails);
-  }else if(recordHelpDetails){
-    body.appendChild(recordHelpDetails);
+  if(accessTarget && accessDetails){
+    accessTarget.appendChild(accessDetails);
+    accessDetails.open = true;
   }
-  body.appendChild(accessDetails);
+  if(helpTarget && recordHelpDetails){
+    helpTarget.appendChild(recordHelpDetails);
+    recordHelpDetails.open = true;
+  }
 }
 
 function restoreMenuSettingsToSettingsTab(){
@@ -16880,11 +17046,96 @@ function restoreMenuSettingsToSettingsTab(){
   const accessDetails = document.getElementById("accessProtectionDetails");
   const recordHelpRestorePoint = document.getElementById("recordHelpRestorePoint");
   const recordHelpDetails = document.getElementById("recordHelpDetails");
-  if(!restorePoint || !accessDetails) return;
   if(recordHelpRestorePoint && recordHelpDetails){
     recordHelpRestorePoint.before(recordHelpDetails);
   }
-  restorePoint.before(accessDetails);
+  if(restorePoint && accessDetails){
+    restorePoint.before(accessDetails);
+  }
+}
+
+function syncAppMenuSummaries(){
+  const themeSummary = document.getElementById("appMenuThemeSummary");
+  const checkedTheme = document.querySelector('input[name="themePreference"]:checked')?.value || "system";
+  if(themeSummary){
+    themeSummary.textContent = checkedTheme === "dark"
+      ? "ダーク"
+      : (checkedTheme === "light" ? "ライト" : "端末に合わせる");
+  }
+
+  const startDaySummary = document.getElementById("appMenuStartDaySummary");
+  const startDay = document.getElementById("dashboardStartDayInput")?.value;
+  if(startDaySummary) startDaySummary.textContent = startDay ? `毎月${startDay}日` : "未設定";
+
+  const weatherSummary = document.getElementById("appMenuWeatherSummary");
+  if(weatherSummary && typeof getDashboardGrowthLocation === "function"){
+    const location = getDashboardGrowthLocation();
+    weatherSummary.textContent = location && typeof getDashboardGrowthLocationDisplayName === "function"
+      ? getDashboardGrowthLocationDisplayName(location)
+      : "未設定";
+  }
+
+  const googleSummary = document.getElementById("appMenuGoogleSummary");
+  if(googleSummary){
+    let configured = false;
+    if(typeof loadGoogleSheetConfig === "function" && typeof validateGoogleSheetConfig === "function"){
+      try{
+        configured = !!validateGoogleSheetConfig(loadGoogleSheetConfig()).ok;
+      }catch(e){}
+    }
+    googleSummary.textContent = configured ? "設定済み" : "未設定";
+    googleSummary.classList.toggle("is-attention", !configured);
+  }
+
+  const accessSummary = document.getElementById("appMenuAccessSummary");
+  if(accessSummary){
+    accessSummary.textContent = protectedAccessUnlocked ? "解除済み" : "ロック中";
+    accessSummary.classList.toggle("is-attention", !protectedAccessUnlocked);
+  }
+}
+
+function openAppMenuPage(pageName = "main", focusTargetId = ""){
+  const normalizedPage = ["main", "theme", "startDay", "weather", "access", "records", "help", "update"].includes(pageName)
+    ? pageName
+    : "main";
+  const titleLabels = {
+    main:"メニュー",
+    theme:"表示テーマ",
+    startDay:"集計の基準日",
+    weather:"生育予測の気象地点",
+    access:"連携・管理者設定",
+    records:"記録データ",
+    help:"ヘルプ",
+    update:"アプリの更新"
+  };
+  document.querySelectorAll("[data-app-menu-page]").forEach(page => {
+    page.hidden = page.dataset.appMenuPage !== normalizedPage;
+  });
+  const title = document.getElementById("appMenuWindowTitle");
+  const backButton = document.getElementById("appMenuBackBtn");
+  const body = document.getElementById("appMenuWindowBody");
+  if(title) title.textContent = titleLabels[normalizedPage];
+  if(backButton) backButton.hidden = normalizedPage === "main";
+  if(body) body.scrollTop = 0;
+  if(normalizedPage === "access"){
+    const details = document.getElementById("accessProtectionDetails");
+    if(details) details.open = true;
+  }
+  if(normalizedPage === "help"){
+    const details = document.getElementById("recordHelpDetails");
+    if(details) details.open = true;
+  }
+  if(focusTargetId){
+    requestAnimationFrame(() => document.getElementById(focusTargetId)?.scrollIntoView({ block:"start" }));
+  }
+}
+
+function saveAppMenuAccessSettings(){
+  if(!saveSettings()) return false;
+  const details = document.getElementById("accessProtectionDetails");
+  if(details) details.open = true;
+  syncAppMenuSummaries();
+  return true;
 }
 
 async function refreshAppRollbackAvailability(){
@@ -16938,13 +17189,18 @@ async function confirmAppVersionRollback(){
   }
 }
 
-function openAppMenuWindow(){
+function openAppMenuWindow(options = {}){
   const modal = document.getElementById("appMenuModal");
   if(!modal) return;
+  const normalizedOptions = options && typeof options === "object" ? options : {};
   moveMenuSettingsToWindow();
   syncThemePreferenceControls();
   syncAccessProtectionDetails();
+  const accessDetails = document.getElementById("accessProtectionDetails");
+  if(accessDetails) accessDetails.open = true;
   if(typeof syncDashboardGrowthLocationMenu === "function") syncDashboardGrowthLocationMenu();
+  syncAppMenuSummaries();
+  openAppMenuPage(normalizedOptions.page || "main", normalizedOptions.focusTargetId || "");
   showPageBlockingUi(modal);
   refreshAppRollbackAvailability();
 }
@@ -23108,6 +23364,7 @@ async function saveGoogleSheetConfig(){
     const accessRoleChanged = setAppAccessRole(accessRole);
     populateGoogleSheetConfigForm();
     updateGoogleSheetResendButtonState();
+    if(typeof syncAppMenuSummaries === "function") syncAppMenuSummaries();
     if(isMonitorModeOpen){
       startMonitorRemoteUpdates();
     }
@@ -28932,6 +29189,7 @@ async function syncRecordsFromHeader(){
 function setAppUpdateCheckLoading(isLoading, statusText = ""){
   const button = document.getElementById("appUpdateCheckBtn");
   const status = document.getElementById("appUpdateCheckStatus");
+  const menuSummary = document.getElementById("appMenuUpdateSummary");
   if(button){
     button.disabled = !!isLoading;
     button.classList.toggle("is-loading", !!isLoading);
@@ -28943,6 +29201,11 @@ function setAppUpdateCheckLoading(isLoading, statusText = ""){
         : "アプリの最新バージョンを確認する"));
   }
   if(statusText && status) status.textContent = statusText;
+  if(menuSummary){
+    menuSummary.textContent = isLoading
+      ? "確認中"
+      : (statusText ? "確認済み" : "確認する");
+  }
 }
 
 function askAppUpdateConfirm(){
@@ -34222,7 +34485,7 @@ function syncDashboardGrowthLocationMenu(){
 }
 
 function openDashboardGrowthLocationMenu(){
-  openAppMenuWindow();
+  openAppMenuWindow({ page:"weather", focusTargetId:"dashboardGrowthLocationInput" });
   requestAnimationFrame(() => document.getElementById("dashboardGrowthLocationInput")?.focus());
 }
 
@@ -34331,6 +34594,7 @@ function selectDashboardGrowthLocation(index){
   if(results) results.innerHTML = "";
   if(status) status.textContent = `${getDashboardGrowthLocationDisplayName(location)}を設定しました。`;
   syncDashboardGrowthLocationMenu();
+  if(typeof syncAppMenuSummaries === "function") syncAppMenuSummaries();
   if(status) status.textContent = `${getDashboardGrowthLocationDisplayName(location)}を設定しました。`;
   if(activeAppTab === "dashboard" && dashboardFilter.dashboardSubtab === "growth"){
     renderDashboardGrowthPrediction({ force:true });
@@ -41056,7 +41320,7 @@ function renderRecordHarvestGrowthBedEditor(){
 
 function handleRecordHarvestGrowthInput(){
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 
@@ -41084,7 +41348,7 @@ function setRecordHarvestGrowthBedSize(bedKey, value){
     sizeRating: normalizeHarvestSizeRating(value)
   };
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 
@@ -41097,14 +41361,14 @@ function toggleRecordHarvestGrowthBedFlag(bedKey, field){
     [field]: !current[field]
   };
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 
 function resetRecordHarvestGrowthBed(bedKey){
   delete recordHarvestGrowthBedOverrides[bedKey];
   renderRecordHarvestGrowthBedEditor();
-  renderRecordHarvestConfirmSummary();
+  renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
 }
 
@@ -50670,7 +50934,7 @@ function installStartupRecordFormEvents(){
       updateRecordInputGuides();
       if(recordSelectionMode !== "planting"){
         renderRecordHarvestGrowthBedEditor();
-        renderRecordHarvestConfirmSummary();
+        renderRecordHarvestConfirmation();
       }
       saveHarvestStateToStorage();
     });
@@ -50726,6 +50990,7 @@ function installStartupDashboardEvents(){
       dashboardFilter.startDay = nextDay;
       syncDashboardStartDayInputs(nextDay);
       saveDashboardFilter();
+      if(typeof syncAppMenuSummaries === "function") syncAppMenuSummaries();
       renderDashboard();
     };
     startDayInput.addEventListener("input", handleDashboardInput);

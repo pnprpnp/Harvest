@@ -2611,6 +2611,74 @@
         }, "空欄の旧記録を問題なしと決めつけています");
       });
 
+      await runTest("収穫評価の全選択肢をエラーなく切り替える", () => {
+        const sizeInputs = [...app.document.querySelectorAll('input[name="recordHarvestSizeRating"]')];
+        const unevenInput = app.document.getElementById("recordHarvestUnevenInput");
+        const qualityInputs = [...app.document.querySelectorAll('input[name="qualityMemoTag"]')];
+        const previousSizeValues = sizeInputs.map(input => input.checked);
+        const previousUneven = unevenInput.checked;
+        const previousQualityValues = qualityInputs.map(input => input.checked);
+        const previousHarvestFillKeys = comparable(app.eval("harvestFillKeys"));
+        const previousBedOverrides = comparable(app.eval("recordHarvestGrowthBedOverrides"));
+        try{
+          app.eval('harvestFillKeys = ["2-A-1"]; recordHarvestGrowthBedOverrides = {};');
+
+          for(const value of ["small", "normal", "large"]){
+            const input = sizeInputs.find(candidate => candidate.value === value);
+            input.checked = true;
+            app.handleRecordHarvestGrowthInput();
+            assertEqual(app.getSelectedHarvestSizeRating(), value, `${value}の育ち具合が反映されません`);
+          }
+          app.clearRecordHarvestGrowthSize();
+          assertEqual(app.getSelectedHarvestSizeRating(), "unknown", "育ち具合の選択解除が反映されません");
+
+          unevenInput.checked = true;
+          app.handleRecordHarvestGrowthInput();
+          const detail = comparable(app.getSelectedHarvestGrowthDetail([]));
+          assertEqual(detail.uneven, true, "ばらつきありが収穫評価へ反映されません");
+
+          for(const input of qualityInputs){
+            input.checked = true;
+            input.dispatchEvent(new app.Event("change", { bubbles:true }));
+            assert(
+              app.getSelectedQualityMemo().tags.includes(input.value) || input.value === "other",
+              `${input.value}の品質評価が反映されません`
+            );
+            input.checked = false;
+            input.dispatchEvent(new app.Event("change", { bubbles:true }));
+          }
+
+          app.setRecordHarvestGrowthBedSize("2-A", "large");
+          for(const field of ["uneven", "elongated", "tipburn"]){
+            app.toggleRecordHarvestGrowthBedFlag("2-A", field);
+          }
+          const bedDetail = comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"]));
+          assertDeepEqual(bedDetail.bedOverrides["2-A"], {
+            sizeRating:"large",
+            uneven:false,
+            tipburn:true,
+            elongated:true
+          }, "ベッド別の収穫評価が反映されません");
+          app.resetRecordHarvestGrowthBed("2-A");
+          assertDeepEqual(
+            comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"]).bedOverrides),
+            {},
+            "ベッド別評価を全体と同じ状態へ戻せません"
+          );
+        }finally{
+          sizeInputs.forEach((input, index) => { input.checked = previousSizeValues[index]; });
+          unevenInput.checked = previousUneven;
+          qualityInputs.forEach((input, index) => { input.checked = previousQualityValues[index]; });
+          app.eval(`
+            harvestFillKeys = ${JSON.stringify(previousHarvestFillKeys)};
+            recordHarvestGrowthBedOverrides = ${JSON.stringify(previousBedOverrides)};
+          `);
+          app.updateQualityMemoOtherVisibility();
+          app.handleRecordHarvestGrowthInput();
+          app.cancelPendingHarvestStateSave();
+        }
+      });
+
       await runTest("ブラウザーが送る苗植え記録をApps Script側で正規化できる", () => {
         const event = app.normalizePlantingEvent({
           palletNumberingVersion: 2,
@@ -9552,10 +9620,11 @@
             const googleSettings = document.getElementById("googleSheetConfigDetails");
             return {
               menuOpen: document.getElementById("appMenuModal")?.classList.contains("show") || false,
-              helpInMenu: help?.parentElement === body,
-              settingImmediatelyAfterHelp: help?.nextElementSibling === setting,
-              growthImmediatelyAfterStartDay: setting?.nextElementSibling === growthSetting,
-              themeImmediatelyAfterGrowth: growthSetting?.nextElementSibling === themeSetting,
+              mainPageVisible: !document.querySelector('[data-app-menu-page="main"]')?.hidden,
+              sectionCount: document.querySelectorAll('[data-app-menu-page="main"] .appMenuSection').length,
+              navigationRowCount: document.querySelectorAll(".appMenuNavRow").length,
+              helpInMenu: help?.parentElement?.id === "appMenuHelpContent",
+              accessInMenu: combinedSettings?.parentElement?.id === "appMenuAccessContent",
               growthInputInMenu: growthInput?.closest("#appMenuWindowBody") === body,
               themeChoiceCount: themeSetting?.querySelectorAll('input[name="themePreference"]').length || 0,
               inputInMenu: input?.closest("#appMenuWindowBody") === body,
@@ -9565,41 +9634,40 @@
               titleFontSize: label ? getComputedStyle(label).fontSize : "",
               titleTextAlign: label ? getComputedStyle(label).textAlign : "",
               titleMarker: label ? getComputedStyle(label, "::before").content : "",
-              combinedSettingsInMenu: combinedSettings?.parentElement === body,
               combinedSettingsTitle: combinedSettings?.querySelector(":scope > summary .clusterTitle")?.textContent.trim() || "",
-              googleSettingsInsideCombined: googleSettings?.closest("#accessProtectionDetails") === combinedSettings,
-              topLevelSettingsPanelCount: body.querySelectorAll(":scope > #accessProtectionDetails, :scope > #googleSheetConfigDetails").length
+              googleSettingsInsideCombined: googleSettings?.closest("#accessProtectionDetails") === combinedSettings
             };
           })()`));
           assertDeepEqual(menuState, {
             menuOpen: true,
+            mainPageVisible: true,
+            sectionCount: 3,
+            navigationRowCount: 8,
             helpInMenu: true,
-            settingImmediatelyAfterHelp: true,
-            growthImmediatelyAfterStartDay: true,
-            themeImmediatelyAfterGrowth: true,
+            accessInMenu: true,
             growthInputInMenu: true,
             themeChoiceCount: 3,
             inputInMenu: true,
             inputInDashboard: false,
             optionCount: 31,
-            titleText: "集計の基準日",
+            titleText: "毎月の開始日",
             titleFontSize: "16px",
             titleTextAlign: "left",
             titleMarker: "none",
-            combinedSettingsInMenu: true,
             combinedSettingsTitle: "アクセス・Google連携設定",
-            googleSettingsInsideCombined: true,
-            topLevelSettingsPanelCount: 1
+            googleSettingsInsideCombined: true
           }, "集計の基準日の配置が一致しません");
 
+          app.openAppMenuPage("startDay");
           const input = app.document.getElementById("dashboardStartDayInput");
           input.value = "7";
           input.dispatchEvent(new app.Event("change", { bubbles: true }));
           const savedState = comparable(app.eval(`({
             current: dashboardFilter.startDay,
-            saved: harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, {}).startDay
+            saved: harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, {}).startDay,
+            summary: document.getElementById("appMenuStartDaySummary")?.textContent || ""
           })`));
-          assertDeepEqual(savedState, { current: 7, saved: 7 }, "メニューで変更した基準日が集計へ保存されません");
+          assertDeepEqual(savedState, { current: 7, saved: 7, summary:"毎月7日" }, "メニューで変更した基準日が集計へ保存されません");
         }finally{
           app.eval(`dashboardFilter = ${JSON.stringify(previousFilter)}; saveDashboardFilter(); syncDashboardStartDayInputs();`);
           app.closeAppMenuWindow();
@@ -9609,13 +9677,15 @@
       await runTest("記録の読み込みをアプリメニューから開ける", () => {
         try{
           app.openAppMenuWindow();
+          app.openAppMenuPage("records");
           const state = comparable(app.eval(`(() => {
             const menuBody = document.getElementById("appMenuWindowBody");
             const choice = document.querySelector(".recordImportChoice");
             const button = document.getElementById("recordImportChoiceBtn");
             button?.click();
             return {
-              choiceInMenu: choice?.parentElement === menuBody,
+              choiceInMenu: !!choice && menuBody.contains(choice),
+              recordsPageVisible: !document.querySelector('[data-app-menu-page="records"]')?.hidden,
               buttonInRecordTab: !!document.querySelector("#recordTab #recordImportChoiceBtn"),
               buttonText: button?.textContent.trim() || "",
               importMenuOpen: document.getElementById("recordImportMenu")?.classList.contains("show") || false,
@@ -9624,8 +9694,9 @@
           })()`));
           assertDeepEqual(state, {
             choiceInMenu: true,
+            recordsPageVisible: true,
             buttonInRecordTab: false,
-            buttonText: "記録を読み込む",
+            buttonText: "読み込み方法を選ぶ",
             importMenuOpen: true,
             importChoiceCount: 1
           }, "記録の読み込み操作がアプリメニューへ移動していません");
@@ -9637,6 +9708,49 @@
           );
         }finally{
           app.hideRecordImportMenu();
+          app.closeAppMenuWindow();
+        }
+      });
+
+      await runTest("階層型メニューを320px・390px幅で操作できる", async () => {
+        const previousFrameWidth = iframe.style.width;
+        try{
+          for(const width of [320, 390]){
+            iframe.style.width = `${width}px`;
+            app.openAppMenuWindow();
+            await new Promise(resolve => setTimeout(resolve, 80));
+            const mainState = comparable(app.eval(`(() => {
+              const header = document.querySelector("#appMenuModal .appMenuWindowHeader");
+              const rows = [...document.querySelectorAll(".appMenuNavRow")];
+              return {
+                viewport:innerWidth,
+                scrollWidth:document.documentElement.scrollWidth,
+                headerLeft:Math.round(header.getBoundingClientRect().left),
+                headerRight:Math.round(header.getBoundingClientRect().right),
+                rowMinHeight:Math.min(...rows.map(row => row.getBoundingClientRect().height)),
+                visibleRows:rows.filter(row => row.getClientRects().length > 0).length
+              };
+            })()`));
+            assert(mainState.viewport >= width - 2 && mainState.viewport <= width, `${width}px幅へ切り替わりません`);
+            assert(mainState.scrollWidth <= mainState.viewport, `${width}px幅でメニューが横にはみ出しています`);
+            assert(mainState.headerLeft >= 0 && mainState.headerRight <= mainState.viewport, `${width}px幅で見出しが画面外へ出ています`);
+            assert(mainState.rowMinHeight >= 44, `${width}px幅でメニュー行が押しにくい大きさです`);
+            assertEqual(mainState.visibleRows, 8, `${width}px幅でメニュー項目が欠けています`);
+
+            for(const page of ["theme", "startDay", "weather", "access", "records", "help", "update"]){
+              app.openAppMenuPage(page);
+              const pageState = comparable(app.eval(`(() => {
+                const body = document.getElementById("appMenuWindowBody");
+                const page = document.querySelector('[data-app-menu-page="${page}"]');
+                return { visible:!page.hidden, bodyScrollWidth:body.scrollWidth, bodyWidth:body.clientWidth };
+              })()`));
+              assertEqual(pageState.visible, true, `${page}の詳細画面が開きません`);
+              assert(pageState.bodyScrollWidth <= pageState.bodyWidth, `${width}px幅で${page}の詳細画面が横にはみ出しています`);
+            }
+            app.closeAppMenuWindow();
+          }
+        }finally{
+          iframe.style.width = previousFrameWidth;
           app.closeAppMenuWindow();
         }
       });
@@ -15991,18 +16105,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "0bc4c4b6", elements: 2313, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "f8e693f3", elements: 2383, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "8665676c", elements: 2383, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "1a23b8e4", elements: 2317, visible: 79, viewport: "390x844" },
-          mobileDashboard: { hash: "739685f8", elements: 2334, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a6857ea8", elements: 2417, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "3b7c00a7", elements: 2432, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "484de445", elements: 2432, visible: 296, viewport: "390x844" },
-          mobileSettings: { hash: "a5e7d821", elements: 2432, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "827da63c", elements: 2476, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "7228cab8", elements: 2476, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "ed046d55", elements: 2476, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "a7ceb407", elements: 2392, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "c99d80c3", elements: 2462, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "73292f58", elements: 2462, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "1af33793", elements: 2396, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "1afd5497", elements: 2413, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "1b9f5b40", elements: 2496, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "bc615e8f", elements: 2511, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "74018f65", elements: 2511, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "7a711a64", elements: 2511, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "c579e58d", elements: 2555, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "f61ffef9", elements: 2555, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "a058affc", elements: 2555, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
