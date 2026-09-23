@@ -4109,103 +4109,95 @@ function buildDashboardGrowthPredictionModel(weather, timing = {}){
   };
 }
 
-function getDashboardGrowthRiskHtml(label, risk){
+function getDashboardGrowthRiskHtml(label, risk, shortLabel = label){
   const level = risk?.level || "unknown";
+  if(!["watch", "alert"].includes(level)) return "";
   const className = level === "alert" ? " is-alert" : (level === "watch" ? " is-watch" : "");
-  return `<span class="dashboardGrowthRisk${className}">${escapeHtml(label)} ${escapeHtml(risk?.label || "判定待ち")}</span>`;
+  const riskLabel = risk?.label || "判定待ち";
+  return `<span class="dashboardGrowthRisk${className}" aria-label="${escapeHtml(`${label} ${riskLabel}`)}"><span>${escapeHtml(shortLabel)}</span><strong>${escapeHtml(riskLabel)}</strong></span>`;
+}
+
+function getDashboardGrowthStatusDisplayLabel(item){
+  if(item?.status === "normal") return "並";
+  if(item?.status === "small") return "小さめ";
+  if(item?.status === "large") return "大きめ";
+  return item?.statusLabel || "判定材料不足";
 }
 
 function getDashboardGrowthBuildingTrend(model, building){
-  const predictions = bedOrder.map(bed => model.predictions.get(`${building}-${bed}`));
-  const active = predictions.filter(item => item?.range);
-  const readyCount = active.filter(item => ["normal", "large"].includes(item.status)).length;
-  const warningCount = active.filter(item => (
-    ["watch", "alert"].includes(item.risk?.tipburn?.level)
-      || ["watch", "alert"].includes(item.risk?.elongated?.level)
-  )).length;
   return {
-    predictions,
-    activeCount:active.length,
-    readyCount,
-    warningCount,
-    ratedCount:(model.targets?.get(building) || getDashboardGrowthTarget(model.samples, building)).ratedCount
+    predictions:bedMap.map(bed => model.predictions.get(`${building}-${bed}`))
   };
 }
 
 function renderDashboardGrowthBuildingTraits(){
   const container = document.getElementById("dashboardGrowthBuildingTabs");
   if(!container) return;
+  const building = dashboardGrowthPredictionBuilding;
+  const adjustment = getDashboardGrowthBuildingAdjustment(building);
+  const warm = adjustment.temperatureOffsetC > 0;
+  const lowLight = adjustment.lightMultiplier < 1;
+  const lightReduction = Math.round((1 - adjustment.lightMultiplier) * 100);
   container.innerHTML = `
-    <div class="dashboardGrowthTraitsHead">
-      <strong id="dashboardGrowthTraitsTitle">棟別の環境傾向</strong>
-      <span>生育予測で使うβ補正</span>
-    </div>
-    <div class="dashboardGrowthTraitsGrid" role="group" aria-labelledby="dashboardGrowthTraitsTitle">
-      <div class="dashboardGrowthTraitsAxis" aria-hidden="true">
-        <span>号棟</span><span>温度</span><span>日光</span>
-      </div>
-      ${BUILDINGS.map(building => {
-        const adjustment = getDashboardGrowthBuildingAdjustment(building);
-        const selected = building === dashboardGrowthPredictionBuilding;
-        const warm = adjustment.temperatureOffsetC > 0;
-        const lowLight = adjustment.lightMultiplier < 1;
-        const temperatureText = warm ? `温度は高めとして${adjustment.temperatureOffsetC}℃加算` : "温度は基準";
-        const lightReduction = Math.round((1 - adjustment.lightMultiplier) * 100);
-        const lightText = lowLight ? `日光は弱めとして日照を${lightReduction}%減らす` : "日光は基準";
+    <div class="dashboardGrowthBuildingPager" role="group" aria-label="表示する号棟">
+      ${BUILDINGS.map(item => {
+        const selected = item === building;
         return `
-          <button type="button" class="dashboardGrowthTraitsBuilding${selected ? " active" : ""}"
-            data-dashboard-growth-building="${building}" data-ui-click="setDashboardGrowthPredictionBuilding" data-ui-number="${building}"
-            aria-pressed="${selected ? "true" : "false"}" aria-label="${escapeHtml(`${building}号棟。${temperatureText}。${lightText}。詳細を表示`)}">
-            <strong>${building}</strong>
-            <span class="dashboardGrowthTraitCell${warm ? " is-warm" : " is-base"}">${warm ? "高" : "基"}</span>
-            <span class="dashboardGrowthTraitCell${lowLight ? " is-low-light" : " is-base"}">${lowLight ? "弱" : "基"}</span>
-          </button>
+          <button type="button" class="dashboardGrowthBuildingBtn${selected ? " active" : ""}"
+            data-dashboard-growth-building="${item}" data-ui-click="setDashboardGrowthPredictionBuilding" data-ui-number="${item}"
+            aria-pressed="${selected ? "true" : "false"}" aria-label="${item}号棟を表示">${item}号棟</button>
         `;
       }).join("")}
     </div>
-    <div class="dashboardGrowthTraitsLegend" aria-label="棟別補正の説明">
-      <span><i class="is-warm" aria-hidden="true">高</i>気温 +1℃</span>
-      <span><i class="is-low-light" aria-hidden="true">弱</i>日照 12%減</span>
-      <span><i class="is-base" aria-hidden="true">基</i>個別補正なし</span>
+    <div class="dashboardGrowthActiveTraits" aria-label="${building}号棟の環境傾向">
+      <strong class="dashboardGrowthActiveTraitsTitle">${building}号棟の環境傾向</strong>
+      <div class="dashboardGrowthActiveTraitValues">
+        <span class="dashboardGrowthActiveTrait"><span>温度</span><strong class="${warm ? "is-warm" : "is-base"}">${warm ? `高め +${adjustment.temperatureOffsetC}℃` : "基準"}</strong></span>
+        <span class="dashboardGrowthActiveTrait"><span>日光</span><strong class="${lowLight ? "is-low-light" : "is-base"}">${lowLight ? `弱め ${lightReduction}%減` : "基準"}</strong></span>
+      </div>
     </div>
   `;
 }
 
 function renderDashboardGrowthPredictionBuilding(model, building){
   const container = document.getElementById("dashboardGrowthBeds");
-  const summary = document.getElementById("dashboardGrowthSummary");
-  if(!container || !summary) return;
+  if(!container) return;
   const trend = getDashboardGrowthBuildingTrend(model, building);
-  summary.innerHTML = `
-    <div class="dashboardGrowthSummaryItem"><span class="dashboardGrowthSummaryValue">${trend.readyCount}/${trend.activeCount || 0}</span><span class="dashboardGrowthSummaryLabel">予定日に育つ見込み</span></div>
-    <div class="dashboardGrowthSummaryItem"><span class="dashboardGrowthSummaryValue">${trend.warningCount}</span><span class="dashboardGrowthSummaryLabel">注意のあるベッド</span></div>
-    <div class="dashboardGrowthSummaryItem"><span class="dashboardGrowthSummaryValue">${trend.ratedCount}</span><span class="dashboardGrowthSummaryLabel">評価記録数</span></div>
-  `;
   container.innerHTML = trend.predictions.map(item => {
     if(!item?.range){
-      return `<article class="dashboardGrowthBedCard is-no-forecast"><div class="dashboardGrowthBedHead"><span class="dashboardGrowthBedName">${escapeHtml(item?.bed || "-")}ベッド</span><span class="dashboardGrowthBedDate">収穫予定なし</span></div></article>`;
+      return `<article class="dashboardGrowthBedCard is-no-forecast" aria-label="${escapeHtml(item?.bed || "-")}ベッド。収穫予定なし"><div class="dashboardGrowthBedHead"><span class="dashboardGrowthBedName">${escapeHtml(item?.bed || "-")}ベッド</span><span class="dashboardGrowthBedDate">収穫予定なし</span></div></article>`;
     }
     const dateText = formatDashboardForecastRange(item.range).dateText;
     const statusClass = ["small", "large", "unknown"].includes(item.status) ? ` is-${item.status}` : "";
+    const riskItems = [
+      getDashboardGrowthRiskHtml("チップバーン", item.risk?.tipburn, "チップ"),
+      getDashboardGrowthRiskHtml("徒長", item.risk?.elongated)
+    ].filter(Boolean);
     return `
-      <article class="dashboardGrowthBedCard">
-        <div class="dashboardGrowthBedHead">
-          <span class="dashboardGrowthBedName">${escapeHtml(item.bed)}ベッド</span>
-          <span class="dashboardGrowthBedDate">${escapeHtml(dateText)}</span>
+      <details class="dashboardGrowthBedCard">
+        <summary class="dashboardGrowthBedSummary">
+          <span class="dashboardGrowthBedHead">
+            <span class="dashboardGrowthBedName">${escapeHtml(item.bed)}ベッド</span>
+            <span class="dashboardGrowthBedDate">${escapeHtml(dateText)}</span>
+          </span>
+          <span class="dashboardGrowthStatus${statusClass}">
+            <span class="dashboardGrowthStatusLabel">予定日時点</span>
+            <strong class="dashboardGrowthStatusValue">${escapeHtml(getDashboardGrowthStatusDisplayLabel(item))}</strong>
+          </span>
+          ${riskItems.length ? `<span class="dashboardGrowthRiskRow${riskItems.length === 1 ? " has-one" : ""}">${riskItems.join("")}</span>` : ""}
+          <span class="dashboardGrowthBedMeta">
+            <span class="dashboardGrowthConfidence">信頼度：${escapeHtml(item.confidence)}</span>
+            <span class="dashboardGrowthBedMore">詳細</span>
+          </span>
+        </summary>
+        <div class="dashboardGrowthBedDetails">
+          <div class="dashboardGrowthReason">${escapeHtml(item.reason)}</div>
+          ${item.provisional ? '<div class="dashboardGrowthConfidenceHint">育ち具合の評価を記録すると信頼度が上がります</div>' : ""}
         </div>
-        <div class="dashboardGrowthStatus${statusClass}">
-          <span class="dashboardGrowthStatusLabel">予定日時点</span>
-          <strong class="dashboardGrowthStatusValue">${escapeHtml(item.statusLabel)}</strong>
-        </div>
-        <div class="dashboardGrowthRiskRow">
-          ${getDashboardGrowthRiskHtml("チップバーン", item.risk?.tipburn)}
-          ${getDashboardGrowthRiskHtml("徒長", item.risk?.elongated)}
-        </div>
-        <div class="dashboardGrowthReason">${escapeHtml(item.reason)}</div>
-        <div class="dashboardGrowthConfidence">信頼度：${escapeHtml(item.confidence)}${item.provisional ? "（育ち具合の評価を記録すると向上）" : ""}</div>
-      </article>
+      </details>
     `;
   }).join("");
+  container.setAttribute("aria-label", `${building}号棟のAからFベッドの生育予測`);
 }
 
 function renderDashboardGrowthPredictionModel(model, location){
@@ -4268,10 +4260,8 @@ async function renderDashboardGrowthPrediction(options = {}){
       if(missing) missing.hidden = true;
       if(content) content.hidden = false;
       const beds = document.getElementById("dashboardGrowthBeds");
-      const summary = document.getElementById("dashboardGrowthSummary");
       const tabs = document.getElementById("dashboardGrowthBuildingTabs");
       if(beds) beds.innerHTML = '<div class="dashboardEmpty" style="grid-column:1/-1;">気象データを取得できませんでした。通信状態を確認して「更新」を押してください。</div>';
-      if(summary) summary.innerHTML = "";
       if(tabs) tabs.innerHTML = "";
       if(refreshButton) refreshButton.hidden = false;
     })
@@ -4286,11 +4276,7 @@ function setDashboardGrowthPredictionBuilding(building){
   const normalized = Number(building);
   if(!BUILDINGS.includes(normalized) || !dashboardGrowthPredictionModelCache) return;
   dashboardGrowthPredictionBuilding = normalized;
-  document.querySelectorAll("[data-dashboard-growth-building]").forEach(button => {
-    const selected = Number(button.dataset.dashboardGrowthBuilding) === normalized;
-    button.classList.toggle("active", selected);
-    button.setAttribute("aria-pressed", selected ? "true" : "false");
-  });
+  renderDashboardGrowthBuildingTraits();
   renderDashboardGrowthPredictionBuilding(dashboardGrowthPredictionModelCache, normalized);
 }
 

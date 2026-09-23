@@ -338,6 +338,11 @@ function handleStartupEscapeKey(event){
     resolveMonitorPreview(false);
     return;
   }
+  const dashboardGrowthInfoModal = document.getElementById("dashboardGrowthInfoModal");
+  if(dashboardGrowthInfoModal?.classList.contains("show")){
+    closeDashboardGrowthInfoWindow();
+    return;
+  }
   const dashboardSeedlingStatusInfoModal = document.getElementById("dashboardSeedlingStatusInfoModal");
   if(dashboardSeedlingStatusInfoModal?.classList.contains("show")){
     closeDashboardSeedlingStatusInfoWindow();
