@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260923-preview-on-request">
+<meta name="harvestnavi-version" content="20260923-environment-trends">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -12228,7 +12228,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 }
 .dashboardGrowthAdjustmentChoices{
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:2px;
   min-width:0;
   padding:2px;
@@ -12347,7 +12347,9 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .dashboardGrowthActiveTrait strong{overflow:hidden;font-size:9px;font-weight:900;text-overflow:ellipsis;white-space:nowrap;}
 .dashboardGrowthActiveTrait strong.is-base{color:var(--ui-text-secondary);}
 .dashboardGrowthActiveTrait strong.is-warm{color:#c2410c;}
+.dashboardGrowthActiveTrait strong.is-cool{color:#0369a1;}
 .dashboardGrowthActiveTrait strong.is-low-light{color:#4338ca;}
+.dashboardGrowthActiveTrait strong.is-high-light{color:#a16207;}
 .dashboardGrowthBeds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:9px;margin-top:12px;}
 .dashboardGrowthBedCard{
   min-width:0;
@@ -13406,7 +13408,9 @@ html[data-theme="dark"] .dashboardGrowthRisk.is-alert{background:#3d1d24;color:#
 html[data-theme="dark"] .dashboardGrowthBuildingBtn{background:var(--ui-surface-muted);color:var(--ui-text);}
 html[data-theme="dark"] .dashboardGrowthBuildingBtn.active{border-color:#63cf8a;background:#153823;color:#8be7a6;}
 html[data-theme="dark"] .dashboardGrowthActiveTrait strong.is-warm{color:#ffc36c;}
+html[data-theme="dark"] .dashboardGrowthActiveTrait strong.is-cool{color:#7dd3fc;}
 html[data-theme="dark"] .dashboardGrowthActiveTrait strong.is-low-light{color:#b8c2ff;}
+html[data-theme="dark"] .dashboardGrowthActiveTrait strong.is-high-light{color:#fde68a;}
 html[data-theme="dark"] .dashboardResultsViewSwitch{
   border-color:#5b4b7f;
   background:var(--ui-surface-muted);
@@ -15801,7 +15805,7 @@ requestAnimationFrame(function(){
         <p class="appMenuDetailIntro">生育予測に使う棟ごとの環境傾向と、気象庁の予報地点を設定します。</p>
         <section id="dashboardGrowthBuildingAdjustmentSetting" class="settingCluster dashboardGrowthBuildingAdjustmentSetting" aria-labelledby="dashboardGrowthBuildingAdjustmentTitle">
           <div id="dashboardGrowthBuildingAdjustmentTitle" class="clusterTitle">棟別の環境傾向</div>
-          <p class="dashboardGrowthBuildingAdjustmentHelp">「高め」は基準より温度を1℃高く、「弱め」は日光を12%少なく見積もります。</p>
+          <p class="dashboardGrowthBuildingAdjustmentHelp">温度は基準から±1℃、日光は基準から±12%として「低め／基準／高め」を予測へ反映します。</p>
           <div id="dashboardGrowthBuildingAdjustmentRows" class="dashboardGrowthBuildingAdjustmentRows"></div>
         </section>
         <section id="dashboardGrowthLocationMenuSetting" class="settingCluster dashboardGrowthLocationMenuSetting" aria-labelledby="dashboardGrowthLocationMenuTitle">
@@ -34152,10 +34156,10 @@ function normalizeDashboardGrowthBuildingAdjustments(value){
     const item = source[String(building)];
     const normalizedItem = item && typeof item === "object" && !Array.isArray(item) ? item : {};
     return [String(building), {
-      temperature:["base", "high"].includes(normalizedItem.temperature)
+      temperature:["low", "base", "high"].includes(normalizedItem.temperature)
         ? normalizedItem.temperature
         : defaults.temperature,
-      light:["base", "low"].includes(normalizedItem.light)
+      light:["low", "base", "high"].includes(normalizedItem.light)
         ? normalizedItem.light
         : defaults.light
     }];
@@ -34183,8 +34187,8 @@ function getDashboardGrowthBuildingAdjustment(building){
   const saved = getDashboardGrowthBuildingAdjustments()[String(normalized)]
     || getDashboardGrowthDefaultBuildingAdjustment(normalized);
   return {
-    temperatureOffsetC:saved.temperature === "high" ? 1 : 0,
-    lightMultiplier:saved.light === "low" ? 0.88 : 1
+    temperatureOffsetC:saved.temperature === "high" ? 1 : (saved.temperature === "low" ? -1 : 0),
+    lightMultiplier:saved.light === "high" ? 1.12 : (saved.light === "low" ? 0.88 : 1)
   };
 }
 
@@ -34464,7 +34468,9 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
   if(status === "large") reasons.push("過去の収穫日数に対して生育条件が先行する見込み");
   if(hasPartial) reasons.push("この作で部分収穫の記録あり");
   if(adjustment.temperatureOffsetC > 0) reasons.push(`温度が高め（+${adjustment.temperatureOffsetC}℃）の環境傾向を反映`);
-  if(adjustment.lightMultiplier < 1) reasons.push(`日光が弱め（${Math.round((1 - adjustment.lightMultiplier) * 100)}%減）の環境傾向を反映`);
+  if(adjustment.temperatureOffsetC < 0) reasons.push(`温度が低め（${adjustment.temperatureOffsetC}℃）の環境傾向を反映`);
+  if(adjustment.lightMultiplier < 1) reasons.push(`日光が低め（${Math.round((1 - adjustment.lightMultiplier) * 100)}%減）の環境傾向を反映`);
+  if(adjustment.lightMultiplier > 1) reasons.push(`日光が高め（${Math.round((adjustment.lightMultiplier - 1) * 100)}%増）の環境傾向を反映`);
   if(normalizedTarget.unevenRate >= 0.3) reasons.push("ばらつきの記録が多いため予測幅あり");
   if(estimatedDays) reasons.push("気象庁の予報期間外は平年値を使用");
   return {
@@ -34565,8 +34571,16 @@ function renderDashboardGrowthBuildingTraits(){
   const building = dashboardGrowthPredictionBuilding;
   const adjustment = getDashboardGrowthBuildingAdjustment(building);
   const warm = adjustment.temperatureOffsetC > 0;
+  const cool = adjustment.temperatureOffsetC < 0;
   const lowLight = adjustment.lightMultiplier < 1;
-  const lightReduction = Math.round((1 - adjustment.lightMultiplier) * 100);
+  const highLight = adjustment.lightMultiplier > 1;
+  const temperatureLabel = warm
+    ? `高め +${adjustment.temperatureOffsetC}℃`
+    : (cool ? `低め ${adjustment.temperatureOffsetC}℃` : "基準");
+  const lightDifference = Math.round(Math.abs(1 - adjustment.lightMultiplier) * 100);
+  const lightLabel = lowLight
+    ? `低め ${lightDifference}%減`
+    : (highLight ? `高め ${lightDifference}%増` : "基準");
   container.innerHTML = `
     <div class="dashboardGrowthBuildingPager" role="group" aria-label="表示する号棟">
       ${BUILDINGS.map(item => {
@@ -34581,8 +34595,8 @@ function renderDashboardGrowthBuildingTraits(){
     <div class="dashboardGrowthActiveTraits" aria-label="${building}号棟の環境傾向">
       <strong class="dashboardGrowthActiveTraitsTitle">${building}号棟の環境傾向</strong>
       <div class="dashboardGrowthActiveTraitValues">
-        <span class="dashboardGrowthActiveTrait"><span>温度</span><strong class="${warm ? "is-warm" : "is-base"}">${warm ? `高め +${adjustment.temperatureOffsetC}℃` : "基準"}</strong></span>
-        <span class="dashboardGrowthActiveTrait"><span>日光</span><strong class="${lowLight ? "is-low-light" : "is-base"}">${lowLight ? `弱め ${lightReduction}%減` : "基準"}</strong></span>
+        <span class="dashboardGrowthActiveTrait"><span>温度</span><strong class="${warm ? "is-warm" : (cool ? "is-cool" : "is-base")}">${temperatureLabel}</strong></span>
+        <span class="dashboardGrowthActiveTrait"><span>日光</span><strong class="${lowLight ? "is-low-light" : (highLight ? "is-high-light" : "is-base")}">${lightLabel}</strong></span>
       </div>
     </div>
   `;
@@ -34734,6 +34748,7 @@ function renderDashboardGrowthBuildingAdjustmentMenu(){
         <div class="dashboardGrowthAdjustmentGroup" role="group" aria-label="${building}号棟の温度">
           <span class="dashboardGrowthAdjustmentLabel">温度</span>
           <div class="dashboardGrowthAdjustmentChoices">
+            ${choiceHtml(building, "temperature", "low", "低め", adjustment.temperature === "low")}
             ${choiceHtml(building, "temperature", "base", "基準", adjustment.temperature === "base")}
             ${choiceHtml(building, "temperature", "high", "高め", adjustment.temperature === "high")}
           </div>
@@ -34741,8 +34756,9 @@ function renderDashboardGrowthBuildingAdjustmentMenu(){
         <div class="dashboardGrowthAdjustmentGroup" role="group" aria-label="${building}号棟の日光">
           <span class="dashboardGrowthAdjustmentLabel">日光</span>
           <div class="dashboardGrowthAdjustmentChoices">
+            ${choiceHtml(building, "light", "low", "低め", adjustment.light === "low")}
             ${choiceHtml(building, "light", "base", "基準", adjustment.light === "base")}
-            ${choiceHtml(building, "light", "low", "弱め", adjustment.light === "low")}
+            ${choiceHtml(building, "light", "high", "高め", adjustment.light === "high")}
           </div>
         </div>
       </div>
@@ -34753,8 +34769,8 @@ function renderDashboardGrowthBuildingAdjustmentMenu(){
 function setDashboardGrowthBuildingAdjustment(building, dimension, value){
   const normalizedBuilding = Number(building);
   const allowedValues = dimension === "temperature"
-    ? ["base", "high"]
-    : (dimension === "light" ? ["base", "low"] : []);
+    ? ["low", "base", "high"]
+    : (dimension === "light" ? ["low", "base", "high"] : []);
   if(!BUILDINGS.includes(normalizedBuilding) || !allowedValues.includes(value)) return false;
   const current = getDashboardGrowthBuildingAdjustments();
   const buildingKey = String(normalizedBuilding);

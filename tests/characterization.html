@@ -10048,9 +10048,9 @@
             };
             renderDashboardGrowthBuildingTraits = () => { traitRenders++; };
             renderDashboardGrowthPredictionBuilding = () => { buildingRenders++; };
-            const changedTemperature = setDashboardGrowthBuildingAdjustment(4, "temperature", "high");
-            const changedLight = setDashboardGrowthBuildingAdjustment(4, "light", "low");
-            const unchanged = setDashboardGrowthBuildingAdjustment(4, "light", "low");
+            const changedTemperature = setDashboardGrowthBuildingAdjustment(4, "temperature", "low");
+            const changedLight = setDashboardGrowthBuildingAdjustment(4, "light", "high");
+            const unchanged = setDashboardGrowthBuildingAdjustment(4, "light", "high");
             const saved = harvestnaviLocalStorage.readJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, null);
             const baseWeather = { meanTemp:20, maxTemp:24, lightIndex:1 };
             return {
@@ -10085,9 +10085,9 @@
         assertEqual(state.changedTemperature, true, "温度傾向を変更できません");
         assertEqual(state.changedLight, true, "日光傾向を変更できません");
         assertEqual(state.unchanged, false, "同じ設定で不要な再計算が走っています");
-        assertDeepEqual(state.saved4, { temperature:"high", light:"low" }, "棟別の環境傾向が端末へ保存されません");
-        assertEqual(state.adjusted4.meanTemp, 21, "変更した温度傾向が予測へ反映されません");
-        assertEqual(state.adjusted4.lightIndex, 0.88, "変更した日光傾向が予測へ反映されません");
+        assertDeepEqual(state.saved4, { temperature:"low", light:"high" }, "棟別の環境傾向が端末へ保存されません");
+        assertEqual(state.adjusted4.meanTemp, 19, "低めへ変更した温度傾向が予測へ反映されません");
+        assertEqual(state.adjusted4.lightIndex, 1.12, "高めへ変更した日光傾向が予測へ反映されません");
         assertDeepEqual(state.rebuiltBuildings, [4, 4], "変更した棟以外まで再計算しています");
         assertEqual(state.traitRenders, 2, "表示中の棟の環境傾向がすぐ更新されません");
         assertEqual(state.buildingRenders, 2, "表示中の棟の生育予測がすぐ更新されません");
@@ -16229,7 +16229,7 @@
           assertEqual(growth9.traitSelected, "9", "棟のページ切り替えから9号棟へ切り替えられません");
           assertEqual(growth9.activeTraitBuilding, "9号棟の環境傾向", "9号棟だけの環境傾向へ切り替わりません");
           assertEqual(growth9.activeTemperature, "基準", "9号棟の温度傾向が表示されません");
-          assertEqual(growth9.activeLight, "弱め 12%減", "9号棟の日光傾向が表示されません");
+          assertEqual(growth9.activeLight, "低め 12%減", "9号棟の日光傾向が表示されません");
           assertEqual(growth9.growthCards, 6, "切り替えた号棟の詳細が揃いません");
 
           preview.setPreviewView("menu");
@@ -16253,23 +16253,27 @@
           assertEqual(menuState.inputValue, "八代市", "気象地点入力の表示が違います");
           assert(menuState.current.includes("八代市西部"), "現在の気象地点がメニューに表示されません");
           assertEqual(menuState.adjustmentRows, 8, "2〜9号棟の環境傾向設定が揃っていません");
-          assertEqual(menuState.adjustmentChoices, 32, "温度・日光の選択肢が揃っていません");
+          assertEqual(menuState.adjustmentChoices, 48, "温度・日光の選択肢が揃っていません");
           assertEqual(menuState.building2Temperature, "高め", "2号棟の現在の温度傾向が初期選択されません");
-          assertEqual(menuState.building9Light, "弱め", "9号棟の現在の日光傾向が初期選択されません");
+          assertEqual(menuState.building9Light, "低め", "9号棟の現在の日光傾向が初期選択されません");
           assert(menuState.scrollWidth <= menuState.viewport, "生育予測設定が320px幅から横にはみ出しています");
 
-          previewApp.document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="temperature"][data-dashboard-growth-adjustment-value="high"]')?.click();
+          previewApp.document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="temperature"][data-dashboard-growth-adjustment-value="low"]')?.click();
+          previewApp.document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="light"][data-dashboard-growth-adjustment-value="high"]')?.click();
           await settleVisualApp(previewApp);
           const changedAdjustment = comparable(previewApp.eval(`(() => ({
-            pressed:document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="temperature"][data-dashboard-growth-adjustment-value="high"]')?.getAttribute("aria-pressed") || "",
+            temperaturePressed:document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="temperature"][data-dashboard-growth-adjustment-value="low"]')?.getAttribute("aria-pressed") || "",
+            lightPressed:document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="light"][data-dashboard-growth-adjustment-value="high"]')?.getAttribute("aria-pressed") || "",
             saved:harvestnaviLocalStorage.readJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, null)?.["3"] || null
           }))()`));
-          assertEqual(changedAdjustment.pressed, "true", "メニューで変更した環境傾向が選択表示へ反映されません");
-          assertDeepEqual(changedAdjustment.saved, { temperature:"high", light:"base" }, "メニューで変更した環境傾向が端末へ保存されません");
+          assertEqual(changedAdjustment.temperaturePressed, "true", "メニューで変更した低めの温度傾向が選択表示へ反映されません");
+          assertEqual(changedAdjustment.lightPressed, "true", "メニューで変更した高めの日光傾向が選択表示へ反映されません");
+          assertDeepEqual(changedAdjustment.saved, { temperature:"low", light:"high" }, "メニューで変更した環境傾向が端末へ保存されません");
           previewApp.closeAppMenuWindow();
           previewApp.setDashboardGrowthPredictionBuilding(3);
           await settleVisualApp(previewApp);
-          assertEqual(readState().activeTemperature, "高め +1℃", "メニューで変更した環境傾向が生育予測へ反映されません");
+          assertEqual(readState().activeTemperature, "低め -1℃", "メニューで変更した温度傾向が生育予測へ反映されません");
+          assertEqual(readState().activeLight, "高め 12%増", "メニューで変更した日光傾向が生育予測へ反映されません");
 
           preview.setPreviewView("record");
           await settleVisualApp(previewApp);
@@ -16314,11 +16318,11 @@
           mobileDashboard: { hash: "bbba7a2f", elements: 2418, visible: 105, viewport: "390x844" },
           mobileDashboardRecord: { hash: "af19f309", elements: 2501, visible: 169, viewport: "390x844" },
           mobileDashboardResultsGraph: { hash: "15e83114", elements: 2516, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "5c2d3d1a", elements: 2612, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "b8ad2f0d", elements: 2612, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "6507c668", elements: 2656, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "e9c71b56", elements: 2656, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "20b67a01", elements: 2656, visible: 105, viewport: "1024x900" }
+          mobileMenu: { hash: "a1aa5860", elements: 2628, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "8c1a4d57", elements: 2628, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "649b25e6", elements: 2672, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "66de0a20", elements: 2672, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "0284cc9f", elements: 2672, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

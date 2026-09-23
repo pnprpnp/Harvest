@@ -3789,10 +3789,10 @@ function normalizeDashboardGrowthBuildingAdjustments(value){
     const item = source[String(building)];
     const normalizedItem = item && typeof item === "object" && !Array.isArray(item) ? item : {};
     return [String(building), {
-      temperature:["base", "high"].includes(normalizedItem.temperature)
+      temperature:["low", "base", "high"].includes(normalizedItem.temperature)
         ? normalizedItem.temperature
         : defaults.temperature,
-      light:["base", "low"].includes(normalizedItem.light)
+      light:["low", "base", "high"].includes(normalizedItem.light)
         ? normalizedItem.light
         : defaults.light
     }];
@@ -3820,8 +3820,8 @@ function getDashboardGrowthBuildingAdjustment(building){
   const saved = getDashboardGrowthBuildingAdjustments()[String(normalized)]
     || getDashboardGrowthDefaultBuildingAdjustment(normalized);
   return {
-    temperatureOffsetC:saved.temperature === "high" ? 1 : 0,
-    lightMultiplier:saved.light === "low" ? 0.88 : 1
+    temperatureOffsetC:saved.temperature === "high" ? 1 : (saved.temperature === "low" ? -1 : 0),
+    lightMultiplier:saved.light === "high" ? 1.12 : (saved.light === "low" ? 0.88 : 1)
   };
 }
 
@@ -4101,7 +4101,9 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
   if(status === "large") reasons.push("過去の収穫日数に対して生育条件が先行する見込み");
   if(hasPartial) reasons.push("この作で部分収穫の記録あり");
   if(adjustment.temperatureOffsetC > 0) reasons.push(`温度が高め（+${adjustment.temperatureOffsetC}℃）の環境傾向を反映`);
-  if(adjustment.lightMultiplier < 1) reasons.push(`日光が弱め（${Math.round((1 - adjustment.lightMultiplier) * 100)}%減）の環境傾向を反映`);
+  if(adjustment.temperatureOffsetC < 0) reasons.push(`温度が低め（${adjustment.temperatureOffsetC}℃）の環境傾向を反映`);
+  if(adjustment.lightMultiplier < 1) reasons.push(`日光が低め（${Math.round((1 - adjustment.lightMultiplier) * 100)}%減）の環境傾向を反映`);
+  if(adjustment.lightMultiplier > 1) reasons.push(`日光が高め（${Math.round((adjustment.lightMultiplier - 1) * 100)}%増）の環境傾向を反映`);
   if(normalizedTarget.unevenRate >= 0.3) reasons.push("ばらつきの記録が多いため予測幅あり");
   if(estimatedDays) reasons.push("気象庁の予報期間外は平年値を使用");
   return {
@@ -4202,8 +4204,16 @@ function renderDashboardGrowthBuildingTraits(){
   const building = dashboardGrowthPredictionBuilding;
   const adjustment = getDashboardGrowthBuildingAdjustment(building);
   const warm = adjustment.temperatureOffsetC > 0;
+  const cool = adjustment.temperatureOffsetC < 0;
   const lowLight = adjustment.lightMultiplier < 1;
-  const lightReduction = Math.round((1 - adjustment.lightMultiplier) * 100);
+  const highLight = adjustment.lightMultiplier > 1;
+  const temperatureLabel = warm
+    ? `高め +${adjustment.temperatureOffsetC}℃`
+    : (cool ? `低め ${adjustment.temperatureOffsetC}℃` : "基準");
+  const lightDifference = Math.round(Math.abs(1 - adjustment.lightMultiplier) * 100);
+  const lightLabel = lowLight
+    ? `低め ${lightDifference}%減`
+    : (highLight ? `高め ${lightDifference}%増` : "基準");
   container.innerHTML = `
     <div class="dashboardGrowthBuildingPager" role="group" aria-label="表示する号棟">
       ${BUILDINGS.map(item => {
@@ -4218,8 +4228,8 @@ function renderDashboardGrowthBuildingTraits(){
     <div class="dashboardGrowthActiveTraits" aria-label="${building}号棟の環境傾向">
       <strong class="dashboardGrowthActiveTraitsTitle">${building}号棟の環境傾向</strong>
       <div class="dashboardGrowthActiveTraitValues">
-        <span class="dashboardGrowthActiveTrait"><span>温度</span><strong class="${warm ? "is-warm" : "is-base"}">${warm ? `高め +${adjustment.temperatureOffsetC}℃` : "基準"}</strong></span>
-        <span class="dashboardGrowthActiveTrait"><span>日光</span><strong class="${lowLight ? "is-low-light" : "is-base"}">${lowLight ? `弱め ${lightReduction}%減` : "基準"}</strong></span>
+        <span class="dashboardGrowthActiveTrait"><span>温度</span><strong class="${warm ? "is-warm" : (cool ? "is-cool" : "is-base")}">${temperatureLabel}</strong></span>
+        <span class="dashboardGrowthActiveTrait"><span>日光</span><strong class="${lowLight ? "is-low-light" : (highLight ? "is-high-light" : "is-base")}">${lightLabel}</strong></span>
       </div>
     </div>
   `;
@@ -4371,6 +4381,7 @@ function renderDashboardGrowthBuildingAdjustmentMenu(){
         <div class="dashboardGrowthAdjustmentGroup" role="group" aria-label="${building}号棟の温度">
           <span class="dashboardGrowthAdjustmentLabel">温度</span>
           <div class="dashboardGrowthAdjustmentChoices">
+            ${choiceHtml(building, "temperature", "low", "低め", adjustment.temperature === "low")}
             ${choiceHtml(building, "temperature", "base", "基準", adjustment.temperature === "base")}
             ${choiceHtml(building, "temperature", "high", "高め", adjustment.temperature === "high")}
           </div>
@@ -4378,8 +4389,9 @@ function renderDashboardGrowthBuildingAdjustmentMenu(){
         <div class="dashboardGrowthAdjustmentGroup" role="group" aria-label="${building}号棟の日光">
           <span class="dashboardGrowthAdjustmentLabel">日光</span>
           <div class="dashboardGrowthAdjustmentChoices">
+            ${choiceHtml(building, "light", "low", "低め", adjustment.light === "low")}
             ${choiceHtml(building, "light", "base", "基準", adjustment.light === "base")}
-            ${choiceHtml(building, "light", "low", "弱め", adjustment.light === "low")}
+            ${choiceHtml(building, "light", "high", "高め", adjustment.light === "high")}
           </div>
         </div>
       </div>
@@ -4390,8 +4402,8 @@ function renderDashboardGrowthBuildingAdjustmentMenu(){
 function setDashboardGrowthBuildingAdjustment(building, dimension, value){
   const normalizedBuilding = Number(building);
   const allowedValues = dimension === "temperature"
-    ? ["base", "high"]
-    : (dimension === "light" ? ["base", "low"] : []);
+    ? ["low", "base", "high"]
+    : (dimension === "light" ? ["low", "base", "high"] : []);
   if(!BUILDINGS.includes(normalizedBuilding) || !allowedValues.includes(value)) return false;
   const current = getDashboardGrowthBuildingAdjustments();
   const buildingKey = String(normalizedBuilding);
