@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import functools
 import json
 import os
@@ -75,9 +76,15 @@ def check_generated_sources() -> bool:
         [sys.executable, str(REPOSITORY_ROOT / "tools" / "build_all.py"), "--check"],
         cwd=REPOSITORY_ROOT,
         check=False,
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0:
         return True
+    if result.stdout:
+        print(result.stdout.rstrip(), file=sys.stderr)
+    if result.stderr:
+        print(result.stderr.rstrip(), file=sys.stderr)
     print(
         "エラー: 分割ソースと生成ファイルが一致しないため、ブラウザテストを開始しません。",
         file=sys.stderr,
@@ -86,6 +93,15 @@ def check_generated_sources() -> bool:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="成功したテストを含む全結果を表示します。",
+    )
+    args = parser.parse_args()
+
     if not check_generated_sources():
         return 2
     try:
@@ -151,18 +167,27 @@ def main() -> int:
         return 2
 
     test_results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    passed_count = 0
+    failed_count = 0
     for result in test_results:
         if not isinstance(result, dict):
             continue
         status = str(result.get("status", ""))
         message = str(result.get("message", ""))
+        if status == "passed":
+            passed_count += 1
+        else:
+            failed_count += 1
+        if not args.verbose and status == "passed":
+            continue
         mark = "✓" if status == "passed" else "✗"
         print(f"{mark} {message}")
 
     if payload.get("status") != "passed":
+        print(f"\n特性テスト: {passed_count}件成功、{failed_count}件失敗。", file=sys.stderr)
         return 1
 
-    print(f"\n全{len(test_results)}件の特性テストに成功しました。")
+    print(f"全{passed_count}件の特性テストに成功しました。")
     return 0
 
 

@@ -10,6 +10,12 @@
 python3 tests/run_characterization.py
 ```
 
+成功時は合計件数だけを表示し、失敗時は失敗した項目の詳細も表示します。全項目を確認したい場合は詳細表示を指定します。
+
+```sh
+python3 tests/run_characterization.py --verbose
+```
+
 Node.js が使える環境では、次のコマンドでも同じテストを実行できます。
 
 ```sh
