@@ -3491,6 +3491,9 @@ function renderDashboardSeedlingStatus(){
 }
 
 // ===== 集計：生育予測β =====
+const DASHBOARD_GROWTH_NORMAL_RATIO_MIN = 0.88;
+const DASHBOARD_GROWTH_NORMAL_RATIO_MAX = 1.12;
+
 function normalizeDashboardGrowthLocation(value){
   if(!value || typeof value !== "object" || Array.isArray(value)) return null;
   const officeCode = String(value.officeCode || "").trim();
@@ -4050,8 +4053,11 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
   const normalizedTarget = target || getDashboardGrowthTarget(samples, building);
   const palletKeys = getDashboardGrowthForecastPalletKeys(baseModel, building, bed);
   const ratios = [];
+  const currentElapsedDaysValues = [];
+  const projectedGrowthDaysValues = [];
   let estimatedDays = 0;
   let earliestPlantingDate = null;
+  const today = startOfLocalDay(new Date());
   palletKeys.forEach(key => {
     const plantingDate = baseModel.plantingDateByPallet.get(key);
     const forecast = baseModel.palletForecasts.get(key);
@@ -4060,8 +4066,8 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
       earliestPlantingDate = plantingDate;
     }
     if(!Number.isFinite(normalizedTarget.ageDays) || normalizedTarget.ageDays <= 0) return;
-    const today = startOfLocalDay(new Date());
     const forecastDate = startOfLocalDay(forecast.date);
+    currentElapsedDaysValues.push(Math.max(0, getLocalDayDiff(plantingDate, today)));
     let equivalentAge = getLocalDayDiff(plantingDate, forecastDate);
     if(forecastDate.getTime() > today.getTime()){
       equivalentAge = Math.max(0, getLocalDayDiff(plantingDate, today));
@@ -4074,17 +4080,20 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
         equivalentAge += getLocalDayDiff(today, forecastDate);
       }
     }
+    projectedGrowthDaysValues.push(equivalentAge);
     ratios.push(equivalentAge / normalizedTarget.ageDays);
   });
   const ratio = getDashboardGrowthMedian(ratios);
+  const currentElapsedDays = getDashboardGrowthMedian(currentElapsedDaysValues);
+  const projectedGrowthDays = getDashboardGrowthMedian(projectedGrowthDaysValues);
   const hasPartial = hasDashboardGrowthCurrentPartialHarvest(building, bed, earliestPlantingDate);
   let status = "unknown";
   let statusLabel = "判定材料不足";
   if(Number.isFinite(ratio)){
-    if(ratio < 0.88){
+    if(ratio < DASHBOARD_GROWTH_NORMAL_RATIO_MIN){
       status = "small";
       statusLabel = hasPartial ? "一部は収穫可能" : "やや小さめの可能性";
-    }else if(ratio > 1.12){
+    }else if(ratio > DASHBOARD_GROWTH_NORMAL_RATIO_MAX){
       status = "large";
       statusLabel = "大きめの可能性";
     }else{
@@ -4113,6 +4122,13 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
     status,
     statusLabel,
     risk,
+    basis:{
+      currentElapsedDays,
+      projectedGrowthDays,
+      targetGrowthDays:Number.isFinite(normalizedTarget.ageDays) ? normalizedTarget.ageDays : null,
+      achievementRate:Number.isFinite(ratio) ? ratio * 100 : null,
+      palletCount:ratios.length
+    },
     reason:reasons.join("。") || "評価記録が増えると判定できます",
     confidence:normalizedTarget.confidence,
     provisional:normalizedTarget.provisional,
@@ -4192,6 +4208,51 @@ function getDashboardGrowthStatusDisplayLabel(item){
   return item?.statusLabel || "判定材料不足";
 }
 
+function getDashboardGrowthPredictionBasisHtml(item){
+  const basis = item?.basis || {};
+  const hasValues = [
+    basis.currentElapsedDays,
+    basis.projectedGrowthDays,
+    basis.targetGrowthDays,
+    basis.achievementRate
+  ].every(Number.isFinite);
+  if(!hasValues){
+    return `
+      <section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠">
+        <strong class="dashboardGrowthBasisTitle">判定の根拠</strong>
+        <p class="dashboardGrowthBasisUnavailable">苗植え日または過去の収穫記録が不足しているため、数値で比較できません。</p>
+      </section>
+    `;
+  }
+  const achievementRate = Math.round(Number(basis.achievementRate));
+  const minPercent = Math.round(DASHBOARD_GROWTH_NORMAL_RATIO_MIN * 100);
+  const maxPercent = Math.round(DASHBOARD_GROWTH_NORMAL_RATIO_MAX * 100);
+  const statusLabel = getDashboardGrowthStatusDisplayLabel(item);
+  let conclusion = `収穫目安の${achievementRate}%`;
+  if(item.status === "small"){
+    conclusion += `で、基準範囲の下限${minPercent}%未満のため「${statusLabel}」と判定しました。`;
+  }else if(item.status === "large"){
+    conclusion += `で、基準範囲の上限${maxPercent}%を超えるため「${statusLabel}」と判定しました。`;
+  }else{
+    conclusion += `で、基準範囲（${minPercent}〜${maxPercent}%）内のため「${statusLabel}」と判定しました。`;
+  }
+  const palletNote = Number(basis.palletCount) > 1
+    ? `対象${Number(basis.palletCount)}パレットの中央値です。`
+    : "";
+  return `
+    <section class="dashboardGrowthBasis" aria-label="判定の根拠">
+      <strong class="dashboardGrowthBasisTitle">判定の根拠</strong>
+      <div class="dashboardGrowthBasisValues">
+        <span class="dashboardGrowthBasisValue"><span>現在まで</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.currentElapsedDays, "日"))}</strong></span>
+        <span class="dashboardGrowthBasisValue"><span>予定日時点</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.projectedGrowthDays, "日相当"))}</strong></span>
+        <span class="dashboardGrowthBasisValue"><span>収穫目安</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.targetGrowthDays, "日"))}</strong></span>
+      </div>
+      <p class="dashboardGrowthBasisConclusion">${escapeHtml(conclusion)}</p>
+      <p class="dashboardGrowthBasisMethod">予定日時点は、現在までの経過日数に、予報気温と日光から換算した今後の生育分を加えた値です。${escapeHtml(palletNote)}</p>
+    </section>
+  `;
+}
+
 function getDashboardGrowthBuildingTrend(model, building){
   return {
     predictions:bedMap.map(bed => model.predictions.get(`${building}-${bed}`))
@@ -4267,6 +4328,7 @@ function renderDashboardGrowthPredictionBuilding(model, building){
           </span>
         </summary>
         <div class="dashboardGrowthBedDetails">
+          ${getDashboardGrowthPredictionBasisHtml(item)}
           <div class="dashboardGrowthReason">${escapeHtml(item.reason)}</div>
           ${item.provisional ? '<div class="dashboardGrowthConfidenceHint">育ち具合の評価を記録すると信頼度が上がります</div>' : ""}
         </div>

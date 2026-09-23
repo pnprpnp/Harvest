@@ -16131,6 +16131,8 @@
             growthUsesCurrentCalculator:dashboardGrowthPredictionModelCache?.baseModel === dashboardHarvestForecastModelCache
               && dashboardGrowthPredictionModelCache?.targets instanceof Map
               && dashboardGrowthPredictionModelCache?.samples?.every(sample => sample.bedKey && typeof sample.qualityObserved === "boolean"),
+            growthBasisCount:document.querySelectorAll("details.dashboardGrowthBedCard .dashboardGrowthBasis").length,
+            growthNumericBasisCount:document.querySelectorAll("details.dashboardGrowthBedCard .dashboardGrowthBasis:not(.is-unavailable)").length,
             growthReasonText:[...document.querySelectorAll(".dashboardGrowthReason")].map(item => item.textContent.trim()).join("。"),
             growthRiskLabels:[...document.querySelectorAll(".dashboardGrowthRisk")].map(item => item.textContent.replace(/\s+/g, "").trim()),
             growthSummaryConfidenceCount:document.querySelectorAll(".dashboardGrowthBedSummary .dashboardGrowthConfidence").length,
@@ -16175,6 +16177,8 @@
           assertDeepEqual(growth320.growthBedOrder, ["F", "D", "B", "E", "C", "A"], "ベッドが配置図と同じ位置に並んでいません");
           assertDeepEqual(growth320.growthStatusByBed, { F:"判定材料不足", D:"並", B:"小さめ", C:"大きめ", A:"並" }, "育ち具合の短い表示が違います");
           assertEqual(growth320.growthUsesCurrentCalculator, true, "プレビューが現在の生育予測計算を使用していません");
+          assertEqual(growth320.growthBasisCount, 5, "各ベッドの詳細に判定根拠がありません");
+          assertEqual(growth320.growthNumericBasisCount, 4, "計算可能なベッドに数値付きの判定根拠がありません");
           assert(growth320.growthReasonText.includes("環境傾向を反映"), "現在の環境傾向が予測理由へ反映されていません");
           assert(!growth320.growthReasonText.includes("β補正"), "以前の固定補正による説明がプレビューに残っています");
           assert(growth320.growthRiskLabels.length > 0, "注意のあるチップ・徒長が表示されません");
@@ -16210,17 +16214,31 @@
           previewApp.closeDashboardGrowthInfoWindow();
           await settleVisualApp(previewApp);
 
-          previewApp.document.querySelector("details.dashboardGrowthBedCard > summary")?.click();
+          const detailCard = [...previewApp.document.querySelectorAll("details.dashboardGrowthBedCard")]
+            .find(card => card.querySelector(".dashboardGrowthBedName")?.textContent.includes("Dベッド"));
+          detailCard?.querySelector("summary")?.click();
           await settleVisualApp(previewApp);
           const openedBed = comparable(previewApp.eval(`(() => ({
-            open:document.querySelector("details.dashboardGrowthBedCard")?.open || false,
-            reason:document.querySelector("details.dashboardGrowthBedCard .dashboardGrowthReason")?.textContent.trim() || "",
-            confidence:document.querySelector("details.dashboardGrowthBedCard .dashboardGrowthConfidence")?.textContent.trim() || ""
+            open:[...document.querySelectorAll("details.dashboardGrowthBedCard")].find(card => card.querySelector(".dashboardGrowthBedName")?.textContent.includes("Dベッド"))?.open || false,
+            labels:[...document.querySelectorAll("details.dashboardGrowthBedCard[open] .dashboardGrowthBasisValue > span")].map(item => item.textContent.trim()),
+            values:[...document.querySelectorAll("details.dashboardGrowthBedCard[open] .dashboardGrowthBasisValue > strong")].map(item => item.textContent.trim()),
+            conclusion:document.querySelector("details.dashboardGrowthBedCard[open] .dashboardGrowthBasisConclusion")?.textContent.trim() || "",
+            method:document.querySelector("details.dashboardGrowthBedCard[open] .dashboardGrowthBasisMethod")?.textContent.trim() || "",
+            reason:document.querySelector("details.dashboardGrowthBedCard[open] .dashboardGrowthReason")?.textContent.trim() || "",
+            confidence:document.querySelector("details.dashboardGrowthBedCard[open] .dashboardGrowthConfidence")?.textContent.trim() || "",
+            scrollWidth:document.documentElement.scrollWidth,
+            viewport:innerWidth,
+            basisRight:document.querySelector("details.dashboardGrowthBedCard[open] .dashboardGrowthBasis")?.getBoundingClientRect().right || 0
           }))()`));
           assertEqual(openedBed.open, true, "ベッドを押して詳細を開けません");
+          assertDeepEqual(openedBed.labels, ["現在まで", "予定日時点", "収穫目安"], "判定根拠の比較項目が揃っていません");
+          assertDeepEqual(openedBed.values, ["21.0日", "37.1日相当", "39.0日"], "判定に使用した数値が詳細へ正しく表示されません");
+          assert(openedBed.conclusion.includes("収穫目安の95%") && openedBed.conclusion.includes("88〜112%") && openedBed.conclusion.includes("「並」"), "達成率と判定境界から結果を説明できていません");
+          assert(openedBed.method.includes("予報気温と日光") && openedBed.method.includes("対象2パレットの中央値"), "生育換算値の算出方法が説明されていません");
           assert(openedBed.reason.length > 0, "ベッド詳細に予測理由がありません");
           assert(openedBed.confidence.startsWith("信頼度："), "詳細ボタンの左に信頼度がありません");
-          previewApp.document.querySelector("details.dashboardGrowthBedCard > summary")?.click();
+          assert(openedBed.scrollWidth <= openedBed.viewport && openedBed.basisRight <= openedBed.viewport, "数値付きの判定根拠が320px幅から横にはみ出しています");
+          detailCard?.querySelector("summary")?.click();
           await settleVisualApp(previewApp);
 
           previewApp.document.querySelector('[data-dashboard-growth-building="9"]').click();
