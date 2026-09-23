@@ -109,7 +109,7 @@
   <main class="previewPage">
     <section class="previewControls" aria-label="生育予測β版のプレビュー設定">
       <div class="previewControlRow">
-        <div class="previewLabel">表示内容<small>実際のアプリ画面を使用</small></div>
+        <div class="previewLabel">表示内容<small>現在のアプリ本体と計算処理を使用</small></div>
         <div class="previewSwitch" role="group" aria-label="表示内容">
           <button type="button" data-preview-view="growth" aria-pressed="true">生育予測</button>
           <button type="button" data-preview-view="menu" aria-pressed="false">メニュー</button>
@@ -137,6 +137,9 @@
     const previewStatus = document.getElementById("previewStatus");
     const viewButtons = [...document.querySelectorAll("[data-preview-view]")];
     const widthButtons = [...document.querySelectorAll("[data-preview-width]")];
+    const previewParams = new URLSearchParams(location.search);
+    const initialPreviewView = ["growth", "menu", "record"].includes(previewParams.get("view")) ? previewParams.get("view") : "growth";
+    const initialPreviewWidth = previewParams.get("width") === "320" ? "320" : "390";
     let previewReady = false;
     const originalLocalStorage = Object.fromEntries(
       Array.from({ length:localStorage.length }, (_, index) => localStorage.key(index))
@@ -179,50 +182,111 @@
         syncDashboardSubtabUi();
 
         const today = startOfLocalDay(new Date());
-        const makeRange = (startDays, endDays = startDays) => ({
-          start:{ date:addDays(today, startDays), daysAfter:startDays },
-          end:{ date:addDays(today, endDays), daysAfter:endDays }
-        });
-        const presets = {
-          A:{ range:makeRange(5), status:"normal", statusLabel:"ちょうど良い見込み", risk:{ tipburn:{level:"low",label:"低め"}, elongated:{level:"low",label:"低め"} }, reason:"過去の収穫時に近い生育条件", confidence:"中", provisional:false },
-          B:{ range:makeRange(6, 7), status:"small", statusLabel:"やや小さめの可能性", risk:{ tipburn:{level:"watch",label:"やや注意"}, elongated:{level:"low",label:"低め"} }, reason:"過去の収穫時より積算した気温・日射が少ない見込み", confidence:"低め", provisional:false },
-          C:{ range:makeRange(10), status:"large", statusLabel:"大きめの可能性", risk:{ tipburn:{level:"alert",label:"注意"}, elongated:{level:"low",label:"低め"} }, reason:"過去の収穫時より生育条件が先行する見込み。高温になりやすい号棟としてβ補正", confidence:"中", provisional:false },
-          D:{ range:makeRange(18, 20), status:"normal", statusLabel:"ちょうど良い見込み", risk:{ tipburn:{level:"low",label:"低め"}, elongated:{level:"alert",label:"注意"} }, reason:"長期部分は過去の同時期平均を使用", confidence:"低め", provisional:true },
-          E:{ range:null, status:"unknown", statusLabel:"予定なし", risk:{} },
-          F:{ range:makeRange(13), status:"unknown", statusLabel:"判定材料不足", risk:{ tipburn:{level:"unknown",label:"判定待ち"}, elongated:{level:"unknown",label:"判定待ち"} }, reason:"育ち具合の評価記録が増えると判定できます", confidence:"低め", provisional:true }
-        };
-        const predictions = new Map();
-        BUILDINGS.forEach(building => bedOrder.forEach(bed => {
-          const preset = building === 2 ? presets[bed] : { range:null, status:"unknown", statusLabel:"予定なし", risk:{} };
-          predictions.set(building + "-" + bed, { building, bed, ...preset });
-        }));
-        const samples = Array.from({ length:7 }, (_, index) => ({
-          building:2,
-          bed:bedOrder[index % bedOrder.length],
-          sizeRating:index === 1 ? "small" : (index === 5 ? "large" : "normal"),
-          units:30 + index,
-          ageDays:36 + index,
-          tipburn:index === 2,
-          elongated:false
-        }));
-        const model = {
-          predictions,
-          samples,
-          startBuilding:2,
-          weather:{ fetchedAt:Date.now(), stale:false, provider:"jma", forecastEndDate:formatDateOnlyString(addDays(today, 6)), normal:{ minTemp:18, maxTemp:28, meanTemp:23, lightIndex:.85 }, daily:[] },
-          performance:{ fetchMs:820, computeMs:4, weatherDays:816 }
-        };
-        dashboardGrowthPredictionBuilding = 2;
-        dashboardGrowthPredictionModelCache = model;
-        dashboardRenderedSubtabs.add("growth");
-        renderDashboardGrowthPredictionModel(model, {
+        const location = {
           officeCode:"430000",
           forecastAreaCode:"430010",
           class20Code:"4320211",
           name:"八代市西部",
           admin1:"熊本県",
           forecastAreaName:"熊本地方"
+        };
+        saveDashboardGrowthLocation(location);
+
+        records = [];
+        plantingEvents = [];
+        Array.from({ length:10 }, (_, index) => {
+          const building = index < 5 ? 2 : 9;
+          const bed = bedOrder[index % 5];
+          const palletKey = getPalletKey(building, bed, 60 + index);
+          const harvestDate = addDays(today, -70 - index * 7);
+          const plantingDate = addDays(harvestDate, -(37 + index % 5));
+          plantingEvents.push({
+            eventId:900000 + index,
+            plantingDate:formatDateOnlyString(plantingDate),
+            plantingPalletKeys:[palletKey]
+          });
+          records.push({
+            id:800000 + index,
+            type:"fullHarvest",
+            date:formatDateOnlyString(harvestDate),
+            cases:1,
+            palletKeys:[palletKey],
+            sizeRating:"normal",
+            qualityMemo:{ tags:index === 2 ? ["chip"] : (index === 8 ? ["elongated"] : []), other:"" },
+            growthDetail:{ uneven:index === 4, bedOverrides:{} }
+          });
         });
+        plantingEvents.sort(comparePlantingEventsAsc);
+        records.sort(compareRecordsByDateDesc);
+        invalidateDashboardDerivedData();
+
+        const baseModel = {
+          referenceDate:today,
+          startBuilding:2,
+          plantingDateByPallet:new Map(),
+          plantingDateRangeByPallet:new Map(),
+          estimatedPlantingPalletKeys:new Set(),
+          palletForecasts:new Map(),
+          bedRanges:new Map(),
+          buildingRanges:new Map()
+        };
+        const forecastDaysByBed = {
+          A:[5],
+          B:[6, 7],
+          C:[10],
+          D:[18, 20],
+          E:[],
+          F:[13]
+        };
+        const plantedDaysAgoByBed = { A:34, B:22, C:40, D:21 };
+        BUILDINGS.forEach(building => {
+          const buildingForecasts = [];
+          bedOrder.forEach(bed => {
+            const forecasts = forecastDaysByBed[bed].map((daysAfter, index) => {
+              const palletKey = getPalletKey(building, bed, index + 1);
+              const forecast = { date:addDays(today, daysAfter), daysAfter };
+              baseModel.palletForecasts.set(palletKey, forecast);
+              buildingForecasts.push(forecast);
+              if(Object.prototype.hasOwnProperty.call(plantedDaysAgoByBed, bed)){
+                baseModel.plantingDateByPallet.set(palletKey, addDays(today, -plantedDaysAgoByBed[bed]));
+              }
+              return forecast;
+            });
+            baseModel.bedRanges.set(building + "-" + bed, forecasts.length ? {
+              start:forecasts[0],
+              end:forecasts[forecasts.length - 1]
+            } : null);
+          });
+          baseModel.buildingRanges.set(building, {
+            start:buildingForecasts[0],
+            end:buildingForecasts[buildingForecasts.length - 1]
+          });
+        });
+        dashboardHarvestForecastModelCache = baseModel;
+
+        const daily = Array.from({ length:7 }, (_, index) => ({
+          date:formatDateOnlyString(addDays(today, index)),
+          meanTemp:23,
+          maxTemp:29,
+          minTemp:18,
+          lightIndex:.84,
+          weatherCode:200,
+          reliability:index < 3 ? "" : "A",
+          source:"forecast"
+        }));
+        const weather = {
+          fetchedAt:Date.now(),
+          stale:false,
+          provider:"jma",
+          forecastEndDate:daily[daily.length - 1].date,
+          normal:{ minTemp:18, maxTemp:28, meanTemp:23, lightIndex:.85 },
+          daily
+        };
+        const model = buildDashboardGrowthPredictionModel(weather, { fetchMs:0 });
+        dashboardGrowthPredictionBuilding = 2;
+        dashboardGrowthPredictionModelCache = model;
+        dashboardRenderedSubtabs.add("growth");
+        renderDashboardGrowthPredictionModel(model, location);
         document.getElementById("dashboardLoadingState").hidden = true;
         window.scrollTo(0, 0);
         return document.querySelectorAll(".dashboardGrowthBedCard").length;
@@ -279,7 +343,7 @@
           admin1:"熊本県",
           forecastAreaName:"熊本地方"
         });
-        openAppMenuWindow();
+        openAppMenuWindow({ page:"weather" });
         const input = document.getElementById("dashboardGrowthLocationInput");
         if(input) input.value = "八代市";
         return document.getElementById("appMenuModal")?.classList.contains("show");
@@ -307,6 +371,9 @@
       try{
         previewReady = true;
         if(showGrowthPreview() < 6) throw new Error("生育予測のカードを作成できませんでした");
+        appViewport.style.setProperty("--preview-width", `${initialPreviewWidth}px`);
+        widthButtons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.previewWidth === initialPreviewWidth)));
+        if(initialPreviewView !== "growth") setPreviewView(initialPreviewView);
         requestAnimationFrame(() => requestAnimationFrame(() => { previewStatus.hidden = true; }));
       }catch(error){
         console.error(error);

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260923-compact-growth-prediction">
+<meta name="harvestnavi-version" content="20260923-growth-environment-settings">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -12194,6 +12194,64 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 }
 .dashboardGrowthLocationResult small{display:block;margin-top:2px;color:var(--ui-text-secondary);font-weight:600;}
 .dashboardGrowthLocationMenuSetting{overflow:visible;}
+.dashboardGrowthBuildingAdjustmentSetting{margin-bottom:12px;}
+.dashboardGrowthBuildingAdjustmentHelp{
+  margin:7px 0 0;
+  color:var(--ui-text-secondary);
+  font-size:11px;
+  line-height:1.5;
+}
+.dashboardGrowthBuildingAdjustmentRows{display:grid;gap:7px;margin-top:11px;}
+.dashboardGrowthBuildingAdjustmentRow{
+  display:grid;
+  grid-template-columns:44px minmax(0,1fr) minmax(0,1fr);
+  align-items:end;
+  gap:7px;
+  padding:8px;
+  border:1px solid var(--ui-line);
+  border-radius:12px;
+  background:var(--ui-surface-muted);
+}
+.dashboardGrowthBuildingAdjustmentName{
+  align-self:center;
+  color:var(--ui-text);
+  font-size:12px;
+  font-weight:850;
+  white-space:nowrap;
+}
+.dashboardGrowthAdjustmentGroup{display:grid;gap:4px;min-width:0;}
+.dashboardGrowthAdjustmentLabel{
+  color:var(--ui-text-secondary);
+  font-size:10px;
+  font-weight:750;
+  line-height:1;
+}
+.dashboardGrowthAdjustmentChoices{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:2px;
+  min-width:0;
+  padding:2px;
+  border-radius:9px;
+  background:var(--ui-surface-solid);
+}
+.dashboardGrowthAdjustmentChoice{
+  min-width:0;
+  min-height:32px;
+  padding:4px 2px;
+  border:0;
+  border-radius:7px;
+  background:transparent;
+  color:var(--ui-text-secondary);
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.dashboardGrowthAdjustmentChoice.active{
+  background:var(--ui-accent);
+  color:#fff;
+  box-shadow:0 1px 4px rgba(22,101,52,.16);
+}
 .dashboardGrowthMenuHelp{
   margin:0;
   color:var(--ui-text-secondary);
@@ -15678,7 +15736,7 @@ requestAnimationFrame(function(){
               <span id="appMenuStartDaySummary" class="appMenuNavValue">毎月1日</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
             </button>
             <button type="button" class="appMenuNavRow" data-ui-click="openAppMenuPage" data-ui-arg="weather">
-              <span><span class="appMenuNavTitle">生育予測の気象地点</span><span class="appMenuNavNote">気象庁の予報地域を使用</span></span>
+              <span><span class="appMenuNavTitle">生育予測の設定</span><span class="appMenuNavNote">気象地点・棟別の環境傾向</span></span>
               <span id="appMenuWeatherSummary" class="appMenuNavValue">未設定</span><span class="appMenuNavChevron" aria-hidden="true">›</span>
             </button>
           </div>
@@ -15740,7 +15798,12 @@ requestAnimationFrame(function(){
       </div>
 
       <div class="appMenuPage" data-app-menu-page="weather" hidden>
-        <p class="appMenuDetailIntro">市区町村を入力し、気象庁の予報地域から使用する地点を選びます。</p>
+        <p class="appMenuDetailIntro">生育予測に使う棟ごとの環境傾向と、気象庁の予報地点を設定します。</p>
+        <section id="dashboardGrowthBuildingAdjustmentSetting" class="settingCluster dashboardGrowthBuildingAdjustmentSetting" aria-labelledby="dashboardGrowthBuildingAdjustmentTitle">
+          <div id="dashboardGrowthBuildingAdjustmentTitle" class="clusterTitle">棟別の環境傾向</div>
+          <p class="dashboardGrowthBuildingAdjustmentHelp">「高め」は基準より温度を1℃高く、「弱め」は日光を12%少なく見積もります。</p>
+          <div id="dashboardGrowthBuildingAdjustmentRows" class="dashboardGrowthBuildingAdjustmentRows"></div>
+        </section>
         <section id="dashboardGrowthLocationMenuSetting" class="settingCluster dashboardGrowthLocationMenuSetting" aria-labelledby="dashboardGrowthLocationMenuTitle">
           <div id="dashboardGrowthLocationMenuTitle" class="clusterTitle">生育予測の気象地点</div>
           <div id="dashboardGrowthMenuCurrent" class="dashboardGrowthMenuCurrent">現在：未設定</div>
@@ -15748,7 +15811,7 @@ requestAnimationFrame(function(){
           <div id="dashboardGrowthLocationStatus" class="dashboardGrowthLocationStatus" role="status" aria-live="polite"></div>
           <div id="dashboardGrowthLocationResults" class="dashboardGrowthLocationResults"></div>
         </section>
-        <div class="appMenuAutoSave">地点の選択時に自動保存されます</div>
+        <div class="appMenuAutoSave">変更は自動保存されます</div>
       </div>
 
       <div class="appMenuPage" data-app-menu-page="access" hidden>
@@ -16253,6 +16316,7 @@ const RECORD_AVAILABILITY_CHECK_AT_KEY = "harvestnaviRecordAvailabilityCheckAt_v
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const DASHBOARD_GROWTH_LOCATION_KEY = "harvestnaviDashboardGrowthLocation_v2";
 const DASHBOARD_GROWTH_WEATHER_CACHE_KEY = "harvestnaviDashboardGrowthWeatherCache_v2";
+const DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY = "harvestnaviDashboardGrowthBuildingAdjustments_v1";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
 const MONITOR_DESIGN_HEIGHT = 720;
@@ -16532,6 +16596,7 @@ let dashboardSeedlingStatusModelCache = null;
 let dashboardHarvestForecastModelCache = null;
 let dashboardGrowthPredictionModelCache = null;
 let dashboardGrowthPredictionBuilding = null;
+let dashboardGrowthBuildingAdjustmentsCache = null;
 let dashboardGrowthWeatherLoading = null;
 let dashboardGrowthWeatherLocationResults = [];
 let dashboardGrowthAreaCatalogCache = null;
@@ -17173,7 +17238,7 @@ function openAppMenuPage(pageName = "main", focusTargetId = ""){
     main:"メニュー",
     theme:"表示テーマ",
     startDay:"集計の基準日",
-    weather:"生育予測の気象地点",
+    weather:"生育予測の設定",
     access:"連携・管理者設定",
     records:"記録データ",
     help:"ヘルプ",
@@ -33828,9 +33893,12 @@ function getDashboardGrowthLocationDisplayName(location){
 function saveDashboardGrowthLocation(location){
   const normalized = normalizeDashboardGrowthLocation(location);
   if(!normalized) return false;
+  const previousKey = getDashboardGrowthLocationKey(getDashboardGrowthLocation());
   harvestnaviLocalStorage.writeJson(DASHBOARD_GROWTH_LOCATION_KEY, normalized);
-  dashboardGrowthPredictionModelCache = null;
-  dashboardRenderedSubtabs.delete("growth");
+  if(previousKey !== getDashboardGrowthLocationKey(normalized)){
+    dashboardGrowthPredictionModelCache = null;
+    dashboardRenderedSubtabs.delete("growth");
+  }
   return true;
 }
 
@@ -34069,11 +34137,54 @@ function getDashboardGrowthWeatherDay(weatherIndex, date, options = {}){
   return { ...(climate || weatherIndex.baseline), date:dateKey, estimated:true };
 }
 
-function getDashboardGrowthBuildingAdjustment(building){
+function getDashboardGrowthDefaultBuildingAdjustment(building){
   const normalized = Number(building);
   return {
-    temperatureOffsetC:normalized === 2 ? 1 : 0,
-    lightMultiplier:normalized === 9 ? 0.88 : 1
+    temperature:normalized === 2 ? "high" : "base",
+    light:normalized === 9 ? "low" : "base"
+  };
+}
+
+function normalizeDashboardGrowthBuildingAdjustments(value){
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return Object.fromEntries(BUILDINGS.map(building => {
+    const defaults = getDashboardGrowthDefaultBuildingAdjustment(building);
+    const item = source[String(building)];
+    const normalizedItem = item && typeof item === "object" && !Array.isArray(item) ? item : {};
+    return [String(building), {
+      temperature:["base", "high"].includes(normalizedItem.temperature)
+        ? normalizedItem.temperature
+        : defaults.temperature,
+      light:["base", "low"].includes(normalizedItem.light)
+        ? normalizedItem.light
+        : defaults.light
+    }];
+  }));
+}
+
+function getDashboardGrowthBuildingAdjustments(){
+  if(!dashboardGrowthBuildingAdjustmentsCache){
+    dashboardGrowthBuildingAdjustmentsCache = normalizeDashboardGrowthBuildingAdjustments(
+      harvestnaviLocalStorage.readJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, null)
+    );
+  }
+  return dashboardGrowthBuildingAdjustmentsCache;
+}
+
+function saveDashboardGrowthBuildingAdjustments(value){
+  const normalized = normalizeDashboardGrowthBuildingAdjustments(value);
+  dashboardGrowthBuildingAdjustmentsCache = normalized;
+  harvestnaviLocalStorage.writeJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, normalized);
+  return normalized;
+}
+
+function getDashboardGrowthBuildingAdjustment(building){
+  const normalized = Number(building);
+  const saved = getDashboardGrowthBuildingAdjustments()[String(normalized)]
+    || getDashboardGrowthDefaultBuildingAdjustment(normalized);
+  return {
+    temperatureOffsetC:saved.temperature === "high" ? 1 : 0,
+    lightMultiplier:saved.light === "low" ? 0.88 : 1
   };
 }
 
@@ -34253,6 +34364,7 @@ function hasDashboardGrowthCurrentPartialHarvest(building, bed, plantingDate){
 }
 
 function getDashboardGrowthRisk(weatherIndex, forecastDate, building, samples){
+  const adjustment = getDashboardGrowthBuildingAdjustment(building);
   const today = startOfLocalDay(new Date());
   const lastForecastDate = [...weatherIndex.dailyByDate.values()]
     .filter(day => day?.source === "forecast" && parseDateOnlyString(day.date))
@@ -34284,10 +34396,10 @@ function getDashboardGrowthRisk(weatherIndex, forecastDate, building, samples){
     ? observedSamples.filter(sample => sample.elongated).length / observedSamples.length
     : 0;
   let tipburnScore = Math.min(2, hotDays) + Math.min(1, warmBrightDays);
-  if(building === 2 && hotDays) tipburnScore++;
+  if(adjustment.temperatureOffsetC > 0 && hotDays) tipburnScore++;
   if(tipburnRate >= 0.15) tipburnScore++;
   let elongatedScore = Math.min(2, warmLowLightDays) + (hotDays >= 3 ? 1 : 0);
-  if(building === 9 && days.some(day => Number(day.lightIndex) < 0.9)) elongatedScore++;
+  if(adjustment.lightMultiplier < 1 && days.some(day => Number(day.lightIndex) < 0.9)) elongatedScore++;
   if(elongatedRate >= 0.15) elongatedScore++;
   const toRisk = score => score >= 4
     ? { level:"alert", label:"注意" }
@@ -34345,13 +34457,14 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
   }
   const forecastDate = range.end.date;
   const risk = getDashboardGrowthRisk(weatherIndex, forecastDate, building, samples);
+  const adjustment = getDashboardGrowthBuildingAdjustment(building);
   const reasons = [];
   if(status === "small") reasons.push("過去の収穫日数に対して気温・天気による生育が遅い見込み");
   if(status === "normal") reasons.push("過去の収穫時に近い生育条件");
   if(status === "large") reasons.push("過去の収穫日数に対して生育条件が先行する見込み");
   if(hasPartial) reasons.push("この作で部分収穫の記録あり");
-  if(building === 2) reasons.push("高温になりやすい号棟としてβ補正");
-  if(building === 9) reasons.push("遮光されやすい号棟としてβ補正");
+  if(adjustment.temperatureOffsetC > 0) reasons.push(`温度が高め（+${adjustment.temperatureOffsetC}℃）の環境傾向を反映`);
+  if(adjustment.lightMultiplier < 1) reasons.push(`日光が弱め（${Math.round((1 - adjustment.lightMultiplier) * 100)}%減）の環境傾向を反映`);
   if(normalizedTarget.unevenRate >= 0.3) reasons.push("ばらつきの記録が多いため予測幅あり");
   if(estimatedDays) reasons.push("気象庁の予報期間外は平年値を使用");
   return {
@@ -34405,6 +34518,24 @@ function buildDashboardGrowthPredictionModel(weather, timing = {}){
       weatherDays:weather.daily.length
     }
   };
+}
+
+function rebuildDashboardGrowthPredictionBuilding(model, building){
+  const normalized = Number(building);
+  if(!model || !BUILDINGS.includes(normalized)) return model;
+  const target = getDashboardGrowthTarget(model.samples, normalized);
+  model.targets.set(normalized, target);
+  bedOrder.forEach(bed => {
+    model.predictions.set(`${normalized}-${bed}`, getDashboardGrowthBedPrediction(
+      model.baseModel,
+      model.weatherIndex,
+      model.samples,
+      normalized,
+      bed,
+      target
+    ));
+  });
+  return model;
 }
 
 function getDashboardGrowthRiskHtml(label, risk, shortLabel = label){
@@ -34583,7 +34714,71 @@ function refreshDashboardGrowthPrediction(){
   renderDashboardGrowthPrediction({ force:true });
 }
 
+function renderDashboardGrowthBuildingAdjustmentMenu(){
+  const container = document.getElementById("dashboardGrowthBuildingAdjustmentRows");
+  if(!container) return;
+  const adjustments = getDashboardGrowthBuildingAdjustments();
+  const choiceHtml = (building, dimension, value, label, selected) => `
+    <button type="button" class="dashboardGrowthAdjustmentChoice${selected ? " active" : ""}"
+      data-dashboard-growth-adjustment-building="${building}"
+      data-dashboard-growth-adjustment-dimension="${dimension}"
+      data-dashboard-growth-adjustment-value="${value}"
+      data-ui-click="setDashboardGrowthBuildingAdjustment" data-ui-number="${building}" data-ui-number-first="true"
+      data-ui-arg="${dimension}" data-ui-arg2="${value}" aria-pressed="${selected ? "true" : "false"}">${label}</button>
+  `;
+  container.innerHTML = BUILDINGS.map(building => {
+    const adjustment = adjustments[String(building)];
+    return `
+      <div class="dashboardGrowthBuildingAdjustmentRow">
+        <strong class="dashboardGrowthBuildingAdjustmentName">${building}号棟</strong>
+        <div class="dashboardGrowthAdjustmentGroup" role="group" aria-label="${building}号棟の温度">
+          <span class="dashboardGrowthAdjustmentLabel">温度</span>
+          <div class="dashboardGrowthAdjustmentChoices">
+            ${choiceHtml(building, "temperature", "base", "基準", adjustment.temperature === "base")}
+            ${choiceHtml(building, "temperature", "high", "高め", adjustment.temperature === "high")}
+          </div>
+        </div>
+        <div class="dashboardGrowthAdjustmentGroup" role="group" aria-label="${building}号棟の日光">
+          <span class="dashboardGrowthAdjustmentLabel">日光</span>
+          <div class="dashboardGrowthAdjustmentChoices">
+            ${choiceHtml(building, "light", "base", "基準", adjustment.light === "base")}
+            ${choiceHtml(building, "light", "low", "弱め", adjustment.light === "low")}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function setDashboardGrowthBuildingAdjustment(building, dimension, value){
+  const normalizedBuilding = Number(building);
+  const allowedValues = dimension === "temperature"
+    ? ["base", "high"]
+    : (dimension === "light" ? ["base", "low"] : []);
+  if(!BUILDINGS.includes(normalizedBuilding) || !allowedValues.includes(value)) return false;
+  const current = getDashboardGrowthBuildingAdjustments();
+  const buildingKey = String(normalizedBuilding);
+  if(current[buildingKey]?.[dimension] === value) return false;
+  saveDashboardGrowthBuildingAdjustments({
+    ...current,
+    [buildingKey]:{
+      ...current[buildingKey],
+      [dimension]:value
+    }
+  });
+  renderDashboardGrowthBuildingAdjustmentMenu();
+  if(dashboardGrowthPredictionModelCache){
+    rebuildDashboardGrowthPredictionBuilding(dashboardGrowthPredictionModelCache, normalizedBuilding);
+    if(dashboardGrowthPredictionBuilding === normalizedBuilding){
+      renderDashboardGrowthBuildingTraits();
+      renderDashboardGrowthPredictionBuilding(dashboardGrowthPredictionModelCache, normalizedBuilding);
+    }
+  }
+  return true;
+}
+
 function syncDashboardGrowthLocationMenu(){
+  renderDashboardGrowthBuildingAdjustmentMenu();
   const location = getDashboardGrowthLocation();
   const current = document.getElementById("dashboardGrowthMenuCurrent");
   const status = document.getElementById("dashboardGrowthLocationStatus");

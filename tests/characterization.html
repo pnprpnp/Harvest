@@ -9606,7 +9606,7 @@
         }, "項目名が残っているか、必要な操作・状態表示まで削除されています");
       });
 
-      await runTest("集計の基準日と気象地点をメニュー内で設定できる", () => {
+      await runTest("集計の基準日と生育予測設定をメニュー内で変更できる", () => {
         const previousFilter = comparable(app.eval("dashboardFilter"));
         try{
           app.openAppMenuWindow();
@@ -9618,6 +9618,7 @@
             const label = setting?.querySelector("label");
             const growthSetting = document.getElementById("dashboardGrowthLocationMenuSetting");
             const growthInput = document.getElementById("dashboardGrowthLocationInput");
+            const growthAdjustmentSetting = document.getElementById("dashboardGrowthBuildingAdjustmentSetting");
             const themeSetting = document.getElementById("themeMenuSetting");
             const combinedSettings = document.getElementById("accessProtectionDetails");
             const googleSettings = document.getElementById("googleSheetConfigDetails");
@@ -9629,6 +9630,7 @@
               helpInMenu: help?.parentElement?.id === "appMenuHelpContent",
               accessInMenu: combinedSettings?.parentElement?.id === "appMenuAccessContent",
               growthInputInMenu: growthInput?.closest("#appMenuWindowBody") === body,
+              growthAdjustmentInMenu: growthAdjustmentSetting?.closest("#appMenuWindowBody") === body,
               themeChoiceCount: themeSetting?.querySelectorAll('input[name="themePreference"]').length || 0,
               inputInMenu: input?.closest("#appMenuWindowBody") === body,
               inputInDashboard: !!document.querySelector("#dashboardTab [data-dashboard-start-day-input]"),
@@ -9649,6 +9651,7 @@
             helpInMenu: true,
             accessInMenu: true,
             growthInputInMenu: true,
+            growthAdjustmentInMenu: true,
             themeChoiceCount: 3,
             inputInMenu: true,
             inputInDashboard: false,
@@ -9970,7 +9973,7 @@
         app.setDashboardResultsView("calendar");
       });
 
-      await runTest("生育予測はタブを押した時だけ処理し号棟差をβ補正する", () => {
+      await runTest("生育予測はタブを押した時だけ処理し棟別環境傾向の初期値を反映する", () => {
         const state = comparable(app.eval(`(() => {
           const previousFilter = harvestnaviLocalStorage.readJson(DASHBOARD_FILTER_KEY, null);
           const previousGuideRenderer = renderDashboardHarvestForecast;
@@ -10019,6 +10022,76 @@
         assertDeepEqual(state.afterGrowthTab, { guideCalls:1, growthCalls:1 }, "生育予測タブで処理を開始できません");
         assertEqual(state.building2.meanTemp, state.normal.meanTemp + 1, "2号棟の高温補正がありません");
         assertEqual(state.building9.lightIndex, state.normal.lightIndex * 0.88, "9号棟の遮光補正がありません");
+      });
+
+      await runTest("棟別の環境傾向を保存し変更した棟だけ生育予測を再計算する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previousSaved = harvestnaviLocalStorage.readJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, null);
+          const previousAdjustmentsCache = dashboardGrowthBuildingAdjustmentsCache;
+          const previousModel = dashboardGrowthPredictionModelCache;
+          const previousBuilding = dashboardGrowthPredictionBuilding;
+          const previousRebuilder = rebuildDashboardGrowthPredictionBuilding;
+          const previousTraitsRenderer = renderDashboardGrowthBuildingTraits;
+          const previousBuildingRenderer = renderDashboardGrowthPredictionBuilding;
+          const rebuiltBuildings = [];
+          let traitRenders = 0;
+          let buildingRenders = 0;
+          try{
+            harvestnaviLocalStorage.removeItem(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY);
+            dashboardGrowthBuildingAdjustmentsCache = null;
+            const defaults = getDashboardGrowthBuildingAdjustments();
+            dashboardGrowthPredictionModelCache = { marker:"same-model" };
+            dashboardGrowthPredictionBuilding = 4;
+            rebuildDashboardGrowthPredictionBuilding = (model, building) => {
+              rebuiltBuildings.push(building);
+              return model;
+            };
+            renderDashboardGrowthBuildingTraits = () => { traitRenders++; };
+            renderDashboardGrowthPredictionBuilding = () => { buildingRenders++; };
+            const changedTemperature = setDashboardGrowthBuildingAdjustment(4, "temperature", "high");
+            const changedLight = setDashboardGrowthBuildingAdjustment(4, "light", "low");
+            const unchanged = setDashboardGrowthBuildingAdjustment(4, "light", "low");
+            const saved = harvestnaviLocalStorage.readJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, null);
+            const baseWeather = { meanTemp:20, maxTemp:24, lightIndex:1 };
+            return {
+              default2:defaults["2"],
+              default9:defaults["9"],
+              default3:defaults["3"],
+              changedTemperature,
+              changedLight,
+              unchanged,
+              saved4:saved?.["4"],
+              adjusted4:getDashboardGrowthAdjustedWeather(baseWeather, 4),
+              rebuiltBuildings,
+              traitRenders,
+              buildingRenders,
+              modelPreserved:dashboardGrowthPredictionModelCache?.marker === "same-model"
+            };
+          }finally{
+            rebuildDashboardGrowthPredictionBuilding = previousRebuilder;
+            renderDashboardGrowthBuildingTraits = previousTraitsRenderer;
+            renderDashboardGrowthPredictionBuilding = previousBuildingRenderer;
+            dashboardGrowthPredictionModelCache = previousModel;
+            dashboardGrowthPredictionBuilding = previousBuilding;
+            if(previousSaved) harvestnaviLocalStorage.writeJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, previousSaved);
+            else harvestnaviLocalStorage.removeItem(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY);
+            dashboardGrowthBuildingAdjustmentsCache = previousAdjustmentsCache;
+            renderDashboardGrowthBuildingAdjustmentMenu();
+          }
+        })()`));
+        assertDeepEqual(state.default2, { temperature:"high", light:"base" }, "2号棟の現在値が初期設定になっていません");
+        assertDeepEqual(state.default9, { temperature:"base", light:"low" }, "9号棟の現在値が初期設定になっていません");
+        assertDeepEqual(state.default3, { temperature:"base", light:"base" }, "通常棟の初期設定が違います");
+        assertEqual(state.changedTemperature, true, "温度傾向を変更できません");
+        assertEqual(state.changedLight, true, "日光傾向を変更できません");
+        assertEqual(state.unchanged, false, "同じ設定で不要な再計算が走っています");
+        assertDeepEqual(state.saved4, { temperature:"high", light:"low" }, "棟別の環境傾向が端末へ保存されません");
+        assertEqual(state.adjusted4.meanTemp, 21, "変更した温度傾向が予測へ反映されません");
+        assertEqual(state.adjusted4.lightIndex, 0.88, "変更した日光傾向が予測へ反映されません");
+        assertDeepEqual(state.rebuiltBuildings, [4, 4], "変更した棟以外まで再計算しています");
+        assertEqual(state.traitRenders, 2, "表示中の棟の環境傾向がすぐ更新されません");
+        assertEqual(state.buildingRenders, 2, "表示中の棟の生育予測がすぐ更新されません");
+        assertEqual(state.modelPreserved, true, "環境傾向の変更で全棟の予測を破棄しています");
       });
 
       await runTest("気象庁の地域検索と週間予報を生育予測用の日別値へ変換する", () => {
@@ -16055,6 +16128,10 @@
               card.querySelector(".dashboardGrowthBedName")?.textContent.trim().replace("ベッド", "") || "",
               card.querySelector(".dashboardGrowthStatusValue")?.textContent.trim() || ""
             ])),
+            growthUsesCurrentCalculator:dashboardGrowthPredictionModelCache?.baseModel === dashboardHarvestForecastModelCache
+              && dashboardGrowthPredictionModelCache?.targets instanceof Map
+              && dashboardGrowthPredictionModelCache?.samples?.every(sample => sample.bedKey && typeof sample.qualityObserved === "boolean"),
+            growthReasonText:[...document.querySelectorAll(".dashboardGrowthReason")].map(item => item.textContent.trim()).join("。"),
             growthRiskLabels:[...document.querySelectorAll(".dashboardGrowthRisk")].map(item => item.textContent.replace(/\s+/g, "").trim()),
             growthSummaryConfidenceCount:document.querySelectorAll(".dashboardGrowthBedSummary .dashboardGrowthConfidence").length,
             growthDetailConfidenceCount:document.querySelectorAll(".dashboardGrowthBedDetails .dashboardGrowthConfidence").length,
@@ -16097,7 +16174,11 @@
           assertEqual(growth320.growthGridColumns, 3, "320px幅でベッドが3列の一覧になっていません");
           assertDeepEqual(growth320.growthBedOrder, ["F", "D", "B", "E", "C", "A"], "ベッドが配置図と同じ位置に並んでいません");
           assertDeepEqual(growth320.growthStatusByBed, { F:"判定材料不足", D:"並", B:"小さめ", C:"大きめ", A:"並" }, "育ち具合の短い表示が違います");
-          assertDeepEqual(growth320.growthRiskLabels, ["徒長注意", "チップやや注意", "チップ注意"], "注意のあるチップ・徒長だけを表示できていません");
+          assertEqual(growth320.growthUsesCurrentCalculator, true, "プレビューが現在の生育予測計算を使用していません");
+          assert(growth320.growthReasonText.includes("環境傾向を反映"), "現在の環境傾向が予測理由へ反映されていません");
+          assert(!growth320.growthReasonText.includes("β補正"), "以前の固定補正による説明がプレビューに残っています");
+          assert(growth320.growthRiskLabels.length > 0, "注意のあるチップ・徒長が表示されません");
+          assert(growth320.growthRiskLabels.every(label => label.includes("注意") && !label.includes("低め")), "低めのチップ・徒長まで表示されています");
           assertEqual(growth320.growthSummaryConfidenceCount, 5, "信頼度がベッドの一覧に表示されていません");
           assertEqual(growth320.growthDetailConfidenceCount, 0, "信頼度が詳細内に残っています");
           assertEqual(growth320.growthConfidenceBeforeDetails, true, "信頼度が詳細ボタンの左にありません");
@@ -16155,17 +16236,40 @@
           await settleVisualApp(previewApp);
           const menuState = comparable(previewApp.eval(`(() => ({
             open:document.getElementById("appMenuModal")?.classList.contains("show") || false,
+            pageTitle:document.getElementById("appMenuWindowTitle")?.textContent.trim() || "",
             inputInMenu:document.getElementById("dashboardGrowthLocationInput")?.closest("#appMenuWindowBody") === document.getElementById("appMenuWindowBody"),
             inputValue:document.getElementById("dashboardGrowthLocationInput")?.value || "",
             current:document.getElementById("dashboardGrowthMenuCurrent")?.textContent.trim() || "",
+            adjustmentRows:document.querySelectorAll(".dashboardGrowthBuildingAdjustmentRow").length,
+            adjustmentChoices:document.querySelectorAll(".dashboardGrowthAdjustmentChoice").length,
+            building2Temperature:document.querySelector('[data-dashboard-growth-adjustment-building="2"][data-dashboard-growth-adjustment-dimension="temperature"][aria-pressed="true"]')?.textContent.trim() || "",
+            building9Light:document.querySelector('[data-dashboard-growth-adjustment-building="9"][data-dashboard-growth-adjustment-dimension="light"][aria-pressed="true"]')?.textContent.trim() || "",
             scrollWidth:document.documentElement.scrollWidth,
             viewport:innerWidth
           }))()`));
           assertEqual(menuState.open, true, "メニューが開きません");
+          assertEqual(menuState.pageTitle, "生育予測の設定", "生育予測の設定画面が開きません");
           assertEqual(menuState.inputInMenu, true, "気象地点入力がメニュー内にありません");
           assertEqual(menuState.inputValue, "八代市", "気象地点入力の表示が違います");
           assert(menuState.current.includes("八代市西部"), "現在の気象地点がメニューに表示されません");
-          assert(menuState.scrollWidth <= menuState.viewport, "気象地点設定が320px幅から横にはみ出しています");
+          assertEqual(menuState.adjustmentRows, 8, "2〜9号棟の環境傾向設定が揃っていません");
+          assertEqual(menuState.adjustmentChoices, 32, "温度・日光の選択肢が揃っていません");
+          assertEqual(menuState.building2Temperature, "高め", "2号棟の現在の温度傾向が初期選択されません");
+          assertEqual(menuState.building9Light, "弱め", "9号棟の現在の日光傾向が初期選択されません");
+          assert(menuState.scrollWidth <= menuState.viewport, "生育予測設定が320px幅から横にはみ出しています");
+
+          previewApp.document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="temperature"][data-dashboard-growth-adjustment-value="high"]')?.click();
+          await settleVisualApp(previewApp);
+          const changedAdjustment = comparable(previewApp.eval(`(() => ({
+            pressed:document.querySelector('[data-dashboard-growth-adjustment-building="3"][data-dashboard-growth-adjustment-dimension="temperature"][data-dashboard-growth-adjustment-value="high"]')?.getAttribute("aria-pressed") || "",
+            saved:harvestnaviLocalStorage.readJson(DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY, null)?.["3"] || null
+          }))()`));
+          assertEqual(changedAdjustment.pressed, "true", "メニューで変更した環境傾向が選択表示へ反映されません");
+          assertDeepEqual(changedAdjustment.saved, { temperature:"high", light:"base" }, "メニューで変更した環境傾向が端末へ保存されません");
+          previewApp.closeAppMenuWindow();
+          previewApp.setDashboardGrowthPredictionBuilding(3);
+          await settleVisualApp(previewApp);
+          assertEqual(readState().activeTemperature, "高め +1℃", "メニューで変更した環境傾向が生育予測へ反映されません");
 
           preview.setPreviewView("record");
           await settleVisualApp(previewApp);
@@ -16185,6 +16289,15 @@
           assertEqual(growth390.growthGridColumns, 3, "390px幅でベッドが3列の一覧になっていません");
           assertDeepEqual(growth390.growthBedOrder, ["F", "D", "B", "E", "C", "A"], "390px幅でベッドが配置図と同じ位置に並んでいません");
           assert(growth390.scrollWidth <= growth390.viewport, "生育予測画面が390px幅から横にはみ出しています");
+          preview.setPreviewView("menu");
+          await settleVisualApp(previewApp);
+          const menu390 = comparable(previewApp.eval(`({
+            rows:document.querySelectorAll(".dashboardGrowthBuildingAdjustmentRow").length,
+            scrollWidth:document.documentElement.scrollWidth,
+            viewport:innerWidth
+          })`));
+          assertEqual(menu390.rows, 8, "390px幅で棟別の環境傾向設定が欠けています");
+          assert(menu390.scrollWidth <= menu390.viewport, "生育予測設定が390px幅から横にはみ出しています");
         }finally{
           previewFrame?.contentWindow?.restoreOriginalStorage?.();
           previewFrame?.remove();
@@ -16194,18 +16307,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "b4eaf183", elements: 2393, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "ededf8b1", elements: 2463, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "5f24ba9a", elements: 2463, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "7f0e547f", elements: 2397, visible: 79, viewport: "390x844" },
-          mobileDashboard: { hash: "4f799375", elements: 2414, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a4d2f273", elements: 2497, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "6de09f8a", elements: 2512, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "faa79456", elements: 2512, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "795a2bbd", elements: 2512, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "3cb1b066", elements: 2556, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "845448fe", elements: 2556, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "ae357cb1", elements: 2556, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "73086e19", elements: 2397, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "49daa4f9", elements: 2467, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "c0578abe", elements: 2467, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "89200805", elements: 2401, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "bbba7a2f", elements: 2418, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "af19f309", elements: 2501, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "15e83114", elements: 2516, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "5c2d3d1a", elements: 2612, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "b8ad2f0d", elements: 2612, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "6507c668", elements: 2656, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "e9c71b56", elements: 2656, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "20b67a01", elements: 2656, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

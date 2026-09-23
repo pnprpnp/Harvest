@@ -51,6 +51,7 @@ const RECORD_AVAILABILITY_CHECK_AT_KEY = "harvestnaviRecordAvailabilityCheckAt_v
 const APP_UPDATE_AUTO_CHECK_AT_KEY = "harvestnaviAppUpdateAutoCheckAt_v1";
 const DASHBOARD_GROWTH_LOCATION_KEY = "harvestnaviDashboardGrowthLocation_v2";
 const DASHBOARD_GROWTH_WEATHER_CACHE_KEY = "harvestnaviDashboardGrowthWeatherCache_v2";
+const DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY = "harvestnaviDashboardGrowthBuildingAdjustments_v1";
 const MONITOR_PREVIEW_LAYOUT_KEY = "harvestnaviMonitorPreviewLayout_v1";
 const MONITOR_DESIGN_WIDTH = 1280;
 const MONITOR_DESIGN_HEIGHT = 720;
@@ -330,6 +331,7 @@ let dashboardSeedlingStatusModelCache = null;
 let dashboardHarvestForecastModelCache = null;
 let dashboardGrowthPredictionModelCache = null;
 let dashboardGrowthPredictionBuilding = null;
+let dashboardGrowthBuildingAdjustmentsCache = null;
 let dashboardGrowthWeatherLoading = null;
 let dashboardGrowthWeatherLocationResults = [];
 let dashboardGrowthAreaCatalogCache = null;
@@ -971,7 +973,7 @@ function openAppMenuPage(pageName = "main", focusTargetId = ""){
     main:"メニュー",
     theme:"表示テーマ",
     startDay:"集計の基準日",
-    weather:"生育予測の気象地点",
+    weather:"生育予測の設定",
     access:"連携・管理者設定",
     records:"記録データ",
     help:"ヘルプ",
