@@ -132,6 +132,9 @@
   </main>
 
   <script>
+    const revisionLabel = document.createElement("p");
+    revisionLabel.style.cssText = "margin:8px 0 0;font-size:12px;overflow-wrap:anywhere";
+    document.querySelector(".previewControls").appendChild(revisionLabel);
     const appFrame = document.getElementById("appFrame");
     const appViewport = document.getElementById("appViewport");
     const previewStatus = document.getElementById("previewStatus");
@@ -378,6 +381,8 @@
     appFrame.addEventListener("load", () => {
       try{
         previewReady = true;
+        const loadedVersion = appFrame.contentDocument.querySelector('meta[name="harvestnavi-version"]')?.content || "不明";
+        revisionLabel.textContent = "表示中の版: " + loadedVersion + " ／ 読込: " + new Date().toLocaleString("ja-JP");
         if(showGrowthPreview() < 6) throw new Error("生育予測のカードを作成できませんでした");
         appViewport.style.setProperty("--preview-width", `${initialPreviewWidth}px`);
         widthButtons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.previewWidth === initialPreviewWidth)));

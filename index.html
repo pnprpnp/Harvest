@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260924-growth-prediction-guide">
+<meta name="harvestnavi-version" content="20260924-record-sheet-preview-refresh">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -10502,6 +10502,22 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 }
 
 /* Record workflow */
+.recordHarvestInputSheet{
+  position:fixed;inset:auto 0 0;margin:0 auto;width:min(100%,520px);
+  max-width:100%;max-height:85dvh;box-sizing:border-box;overflow:auto;
+  border:0;border-radius:22px 22px 0 0;padding:24px 20px calc(20px + env(safe-area-inset-bottom,0px));
+  background:var(--ui-surface-solid);color:var(--ui-text);
+  box-shadow:0 -8px 36px rgba(15,23,42,.2);
+}
+.recordHarvestInputSheet::backdrop{background:rgba(15,23,42,.4);}
+.recordHarvestInputSheetBody{display:grid;gap:12px;margin:0;}
+.recordHarvestInputSheetBody label{margin:0;font-size:14px;font-weight:800;}
+.recordHarvestInputSheetBody input{min-width:0;width:100%;height:48px;box-sizing:border-box;font-size:18px;margin:0;}
+.recordHarvestInputSheetBody p{margin:0;font-size:12px;line-height:1.6;color:var(--ui-text-secondary);}
+.recordHarvestInputSheetBody p[hidden]{display:none;}
+.recordHarvestSheetCasesRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;}
+.recordHarvestSheetActions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;}
+.recordHarvestSheetActions button{margin:0;min-height:48px;}
 #recordTab{margin-top:-24px;}
 #recordTab > #recordSaveCard{padding-top:0;}
 @media (min-width:760px){
@@ -14965,6 +14981,23 @@ requestAnimationFrame(function(){
     </div>
   </div>
 
+  <dialog id="recordHarvestInputSheet" class="recordHarvestInputSheet" aria-label="収穫実績の入力">
+    <form method="dialog" class="recordHarvestInputSheetBody">
+      <label for="recordHarvestSheetDate">収穫日</label>
+      <input id="recordHarvestSheetDate" type="date" required>
+      <label for="recordHarvestSheetCases">実際に収穫した合計ケース数</label>
+      <div class="recordHarvestSheetCasesRow">
+        <input id="recordHarvestSheetCases" type="number" min="1" max="999999" step="1" inputmode="numeric" required>
+        <span>ケース</span>
+      </div>
+      <p>部分収穫も含めた合計を入力してください。</p>
+      <p id="recordHarvestSheetEstimate" hidden>予測値から引き継いでいます。実際の数を確認してください。</p>
+      <div class="recordHarvestSheetActions">
+        <button type="button" class="actionBtn secondaryBtn" data-ui-click="cancelRecordHarvestInputSheet">キャンセル</button>
+        <button type="submit" class="actionBtn">反映</button>
+      </div>
+    </form>
+  </dialog>
   <div id="recordTab" style="display:none;">
     <div class="recordTopStatusRow">
       <div id="recordModeStatus" class="recordModeStatus is-harvest" role="status" aria-live="polite" aria-label="全2段階。現在は収穫記録中">
@@ -41616,25 +41649,36 @@ function openRecordHarvestStage(stage, options = {}){
 
 function openRecordHarvestPrimaryInputs(){
   if(recordSelectionMode !== "harvest") return;
-  const summaryButton = document.getElementById("recordHarvestSummaryBtn");
-  if(recordHarvestPrimaryInputsExpanded){
-    const returnStage = normalizeRecordHarvestStage(summaryButton?.dataset.returnStage || "location");
-    recordHarvestPrimaryInputsExpanded = false;
-    recordHarvestStage = returnStage;
-    summaryButton?.removeAttribute("data-return-stage");
-    if(returnStage === "location") applyRecordHarvestViewportLayout();
-    renderRecordHarvestWorkflowUi();
-    if(returnStage === "location") applyMainTabViewportScrollLock();
-    scheduleHarvestStateSave();
-    return;
-  }
-  if(summaryButton) summaryButton.dataset.returnStage = normalizeRecordHarvestStage(recordHarvestStage);
-  recordHarvestPrimaryInputsExpanded = true;
-  recordHarvestStage = "location";
-  renderRecordHarvestWorkflowUi();
+  const sheet = document.getElementById("recordHarvestInputSheet");
+  if(!sheet || sheet.open) return;
+  document.getElementById("recordHarvestSheetDate").value = document.getElementById("recordDateInput").value;
+  document.getElementById("recordHarvestSheetCases").value = document.getElementById("recordCasesInput").value;
+  document.getElementById("recordHarvestSheetEstimate").hidden = recordCasesEdited
+    || !document.getElementById("recordCasesInput").value;
+  sheet.showModal();
+}
+
+function cancelRecordHarvestInputSheet(){
+  document.getElementById("recordHarvestInputSheet")?.close();
+}
+
+function applyRecordHarvestInputSheet(event){
+  event.preventDefault();
+  const dateInput = document.getElementById("recordDateInput");
+  const casesInput = document.getElementById("recordCasesInput");
+  const date = document.getElementById("recordHarvestSheetDate").value;
+  const cases = document.getElementById("recordHarvestSheetCases").value;
+  const dateChanged = dateInput.value !== date;
+  dateInput.value = date;
+  casesInput.value = cases;
+  recordCasesEdited = true;
+  if(dateChanged) handleRecordDateUpdate(false);
+  else updateRecordActualLoss();
+  updateRecordInputGuides();
+  renderRecordHarvestFixedNavigation();
+  if(recordHarvestStage === "confirm") renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
-  document.getElementById("recordSaveCard")
-    ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+  cancelRecordHarvestInputSheet();
 }
 
 function validateRecordHarvestCasesStep(){
@@ -51573,6 +51617,7 @@ function installCasePlacementBuildingSwipe(){
 }
 
 function installStartupRecordFormEvents(){
+  document.querySelector("#recordHarvestInputSheet form")?.addEventListener("submit", applyRecordHarvestInputSheet);
   const recordDateInput = document.getElementById("recordDateInput");
   if(recordDateInput){
     recordDateInput.addEventListener("input", () => handleRecordDateUpdate(false));

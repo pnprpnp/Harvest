@@ -192,6 +192,11 @@ self.addEventListener("fetch", event => {
   if(request.method !== "GET") return;
   const url = new URL(request.url);
   if(url.origin !== self.location.origin) return;
+  const previewPath = new URL("previews/", self.registration.scope).pathname;
+  if(url.pathname.startsWith(previewPath)){
+    event.respondWith(fetch(request, { cache: "no-store" }));
+    return;
+  }
   if(url.searchParams.has("__hncheck") || url.searchParams.has("__hn_sw_network")) return;
 
   event.respondWith((async () => {

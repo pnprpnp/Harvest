@@ -96,6 +96,7 @@ function installCasePlacementBuildingSwipe(){
 }
 
 function installStartupRecordFormEvents(){
+  document.querySelector("#recordHarvestInputSheet form")?.addEventListener("submit", applyRecordHarvestInputSheet);
   const recordDateInput = document.getElementById("recordDateInput");
   if(recordDateInput){
     recordDateInput.addEventListener("input", () => handleRecordDateUpdate(false));

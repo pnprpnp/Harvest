@@ -8649,7 +8649,7 @@
             compactLayoutRemoved:!recordCard.classList.contains("recordHarvestViewportLayout"),
             locationHidden:visualApp.document.getElementById("recordHarvestLocationSection").hidden
           });
-          visualApp.document.getElementById("recordHarvestSummaryBtn").click();
+          visualApp.cancelRecordHarvestInputSheet();
           const bedRectImmediatelyAfterReturn = visualApp.document.querySelector("#recordBeds .recordBedOverview")
             .getBoundingClientRect();
           const immediateReturnState = comparable({
@@ -8667,7 +8667,7 @@
             bedPositionUnchanged:sameRect(bedRectAfterReturnSettled, bedRectImmediatelyAfterReturn)
           });
           assertDeepEqual({ inputOnlyState, immediateReturnState, settledReturnState }, {
-            inputOnlyState:{ compactLayoutRemoved:true, locationHidden:true },
+            inputOnlyState:{ compactLayoutRemoved:false, locationHidden:false },
             immediateReturnState:{
               compactLayoutRestored:true,
               locationVisible:true,
@@ -12293,7 +12293,17 @@
               summaryExpanded:document.getElementById("recordHarvestSummaryBtn").getAttribute("aria-pressed"),
               quickEditModalExists:!!document.getElementById("recordHarvestQuickEditModal")
             };
-            document.getElementById("recordHarvestSummaryBtn").click();
+            document.getElementById("recordHarvestSheetCases").value = "999";
+            cancelRecordHarvestInputSheet();
+            if(document.getElementById("recordCasesInput").value !== "1") throw new Error("キャンセルで入力値が変更されています");
+            openRecordHarvestPrimaryInputs();
+            if(!document.getElementById("recordHarvestInputSheet").open) throw new Error("入力パネルが開きません");
+            document.getElementById("recordHarvestSheetCases").value = "2";
+            document.querySelector("#recordHarvestInputSheet form").requestSubmit();
+            if(document.getElementById("recordCasesInput").value !== "2"
+              || document.getElementById("recordHarvestInputSheet").open) throw new Error("反映が完了しません");
+            document.getElementById("recordCasesInput").value = "1";
+            renderRecordHarvestFixedNavigation();
             const fixedSummaryRestored = {
               stage:recordHarvestStage,
               casesPanelHidden:document.getElementById("recordHarvestStageSection").hidden,
@@ -12404,7 +12414,7 @@
             nextLabel:"次へ"
           },
           fixedSummaryBefore:{stage:"quality",casesHidden:true,qualityVisible:true},
-          fixedSummaryAfter:{stage:"location",casesPanelVisible:true,dateInputVisible:true,casesInputVisible:true,locationHidden:true,qualityHidden:true,confirmHidden:true,summaryExpanded:"true",quickEditModalExists:false},
+          fixedSummaryAfter:{stage:"quality",casesPanelVisible:false,dateInputVisible:false,casesInputVisible:false,locationHidden:true,qualityHidden:false,confirmHidden:true,summaryExpanded:"false",quickEditModalExists:false},
           fixedSummaryRestored:{stage:"quality",casesPanelHidden:true,dateInputHidden:true,locationHidden:true,qualityVisible:true,summaryExpanded:"false"},
           pastDateNotice:{visible:true,text:"過去の日付を記録中"},
           locationBefore:{
@@ -16388,18 +16398,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "af97c596", elements: 2463, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "c4026e6a", elements: 2533, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "29034ef5", elements: 2533, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "14897ed8", elements: 2467, visible: 79, viewport: "390x844" },
-          mobileDashboard: { hash: "fafdc5c0", elements: 2484, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f98935dc", elements: 2567, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "572ea8f9", elements: 2582, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "603811f3", elements: 2694, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "f3b43a2a", elements: 2694, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "8145a553", elements: 2738, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "010730eb", elements: 2738, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "0131ca36", elements: 2738, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "796ed83b", elements: 2476, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "6fc65617", elements: 2546, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "974f9bfc", elements: 2546, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "b065ff11", elements: 2480, visible: 79, viewport: "390x844" },
+          mobileDashboard: { hash: "026e6163", elements: 2497, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "3bc420b6", elements: 2580, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "577d2255", elements: 2595, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "1b2e2e0c", elements: 2707, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "45c77835", elements: 2707, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "751760f5", elements: 2751, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "6cfc361c", elements: 2751, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "80519991", elements: 2751, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

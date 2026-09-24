@@ -2622,25 +2622,36 @@ function openRecordHarvestStage(stage, options = {}){
 
 function openRecordHarvestPrimaryInputs(){
   if(recordSelectionMode !== "harvest") return;
-  const summaryButton = document.getElementById("recordHarvestSummaryBtn");
-  if(recordHarvestPrimaryInputsExpanded){
-    const returnStage = normalizeRecordHarvestStage(summaryButton?.dataset.returnStage || "location");
-    recordHarvestPrimaryInputsExpanded = false;
-    recordHarvestStage = returnStage;
-    summaryButton?.removeAttribute("data-return-stage");
-    if(returnStage === "location") applyRecordHarvestViewportLayout();
-    renderRecordHarvestWorkflowUi();
-    if(returnStage === "location") applyMainTabViewportScrollLock();
-    scheduleHarvestStateSave();
-    return;
-  }
-  if(summaryButton) summaryButton.dataset.returnStage = normalizeRecordHarvestStage(recordHarvestStage);
-  recordHarvestPrimaryInputsExpanded = true;
-  recordHarvestStage = "location";
-  renderRecordHarvestWorkflowUi();
+  const sheet = document.getElementById("recordHarvestInputSheet");
+  if(!sheet || sheet.open) return;
+  document.getElementById("recordHarvestSheetDate").value = document.getElementById("recordDateInput").value;
+  document.getElementById("recordHarvestSheetCases").value = document.getElementById("recordCasesInput").value;
+  document.getElementById("recordHarvestSheetEstimate").hidden = recordCasesEdited
+    || !document.getElementById("recordCasesInput").value;
+  sheet.showModal();
+}
+
+function cancelRecordHarvestInputSheet(){
+  document.getElementById("recordHarvestInputSheet")?.close();
+}
+
+function applyRecordHarvestInputSheet(event){
+  event.preventDefault();
+  const dateInput = document.getElementById("recordDateInput");
+  const casesInput = document.getElementById("recordCasesInput");
+  const date = document.getElementById("recordHarvestSheetDate").value;
+  const cases = document.getElementById("recordHarvestSheetCases").value;
+  const dateChanged = dateInput.value !== date;
+  dateInput.value = date;
+  casesInput.value = cases;
+  recordCasesEdited = true;
+  if(dateChanged) handleRecordDateUpdate(false);
+  else updateRecordActualLoss();
+  updateRecordInputGuides();
+  renderRecordHarvestFixedNavigation();
+  if(recordHarvestStage === "confirm") renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
-  document.getElementById("recordSaveCard")
-    ?.scrollIntoView({ block:"start", behavior:getWorkflowScrollBehavior("smooth") });
+  cancelRecordHarvestInputSheet();
 }
 
 function validateRecordHarvestCasesStep(){
