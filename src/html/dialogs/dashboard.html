@@ -35,7 +35,100 @@
       <div id="dashboardGrowthInfoWindowTitle" class="recordDetailWindowTitle">生育予測(β)について</div>
       <button id="dashboardGrowthInfoWindowClose" type="button" class="recordDetailWindowClose" data-ui-click="closeDashboardGrowthInfoWindow">閉じる</button>
     </div>
-    <div id="dashboardGrowthInfoWindowBody" class="recordDetailWindowBody">目安の収穫予定日に、見た目の大きさが間に合いそうかを積算生育値で推定します。苗植えから収穫までの全期間について、気象庁の平均気温と日照条件を毎日の生育分へ換算し、過去の適期収穫時に達した値と比較します。1日分は気温による生育係数と日照係数を掛けて算出し、日照係数は8時間を基準に0.3〜1.2の範囲で扱います。</div>
+    <div id="dashboardGrowthInfoWindowBody" class="recordDetailWindowBody dashboardGrowthInfoBody">
+      <p class="dashboardGrowthInfoLead">目安の収穫予定日に、見た目の大きさが間に合いそうかを予測します。予定日そのものを決める機能ではありません。</p>
+
+      <section class="dashboardGrowthInfoSection">
+        <div class="dashboardGrowthInfoSectionTitle">全体の流れ</div>
+        <ol class="dashboardGrowthInfoList">
+          <li>過去の収穫ごとに、苗植え日から収穫日までの「積算生育値」を計算します。</li>
+          <li>収穫時に記録した「ちょうど良い・小さい・大きい」を使い、ちょうど良い大きさになる目標値を作ります。</li>
+          <li>現在作も苗植え日から予定日まで同じ方法で計算し、目標値に対する割合で大きさを判定します。</li>
+        </ol>
+      </section>
+
+      <section class="dashboardGrowthInfoSection">
+        <div class="dashboardGrowthInfoSectionTitle">積算生育値とは</div>
+        <p class="dashboardGrowthInfoText">気温だけを足す一般的な積算温度（℃・日）ではありません。毎日の平均気温と日照条件を0〜1.2の「その日の生育分」に換算し、苗植え日から対象日まで合計した、この予測専用の点数です。</p>
+        <div class="dashboardGrowthInfoFormula">
+          <strong>1日分の生育値</strong>
+          <span>気温係数 × 日照係数</span>
+        </div>
+        <div class="dashboardGrowthInfoFormula">
+          <strong>積算生育値</strong>
+          <span>苗植え日と対象日を含む、期間中の1日分の合計</span>
+        </div>
+      </section>
+
+      <section class="dashboardGrowthInfoSection">
+        <div class="dashboardGrowthInfoSectionTitle">1日分の気温係数</div>
+        <p class="dashboardGrowthInfoText">過去は気象庁が観測した日平均気温、今後は予想最低気温と予想最高気温の平均を使います。そこへ棟別の温度傾向（低め −1℃、基準 ±0℃、高め ＋1℃）を加え、次の係数に換算します。</p>
+        <ul class="dashboardGrowthInfoList">
+          <li>5℃以下、または32℃以上：0</li>
+          <li>5℃超〜18℃未満：（平均気温 − 5）÷ 13</li>
+          <li>18℃以上〜24℃以下：1</li>
+          <li>24℃超〜32℃未満：（32 − 平均気温）÷ 8</li>
+        </ul>
+        <p class="dashboardGrowthInfoText">18〜24℃を最も生育しやすい範囲とし、低すぎる日と高すぎる日は生育分を小さくします。</p>
+      </section>
+
+      <section class="dashboardGrowthInfoSection">
+        <div class="dashboardGrowthInfoSectionTitle">1日分の日照係数</div>
+        <ul class="dashboardGrowthInfoList">
+          <li>過去の観測値：日照時間 ÷ 8時間。計算結果は0.3〜1.2の範囲に収めます。</li>
+          <li>今後の予報：気象庁の天気を、晴れ1.12、くもり0.76、雨0.52、雪0.44へ換算します。天気を判別できない場合は0.8です。</li>
+          <li>棟別の日光傾向は、低めなら12%減、基準なら増減なし、高めなら12%増として反映し、最後に0.3〜1.2の範囲に収めます。</li>
+        </ul>
+      </section>
+
+      <section class="dashboardGrowthInfoSection">
+        <div class="dashboardGrowthInfoSectionTitle">過去記録から収穫目標を作る方法</div>
+        <ul class="dashboardGrowthInfoList">
+          <li>直近2年間の通常収穫を対象にします。部分収穫は目標作りから除きます。</li>
+          <li>苗植え日から収穫日まで、全日分の気象庁観測値がそろう記録だけを使います。</li>
+          <li>「ちょうど良い」は積算生育値をそのまま使います。</li>
+          <li>「小さい」は、もう少し生育が必要だったとみなし、積算生育値を10%増やします。</li>
+          <li>「大きい」は、少し早く収穫するのが適切だったとみなし、積算生育値を10%減らします。</li>
+          <li>補正後の値を小さい順に並べ、中央の値（中央値）を収穫目標にします。極端に早い・遅い記録の影響を受けにくくするためです。</li>
+          <li>同じ棟の評価済み記録が3件以上あれば、その棟だけで目標を作ります。3件未満なら全棟の評価済み記録を使います。</li>
+        </ul>
+        <p class="dashboardGrowthInfoText">育ち具合の評価が1件もない場合は、評価なしの通常収穫を含む積算生育値の中央値を暫定目標にするため、信頼度は低めになります。</p>
+      </section>
+
+      <section class="dashboardGrowthInfoSection">
+        <div class="dashboardGrowthInfoSectionTitle">現在作の大きさ判定</div>
+        <p class="dashboardGrowthInfoText">各パレットについて苗植え日から目安の収穫予定日までを積算し、同じベッド内の中央の値を使います。</p>
+        <div class="dashboardGrowthInfoFormula">
+          <strong>目標達成率</strong>
+          <span>予定日時点の積算生育値 ÷ 収穫目標 × 100</span>
+        </div>
+        <ul class="dashboardGrowthInfoList">
+          <li>88%未満：やや小さめの可能性</li>
+          <li>88%以上〜112%以下：ちょうど良い見込み</li>
+          <li>112%超：大きめの可能性</li>
+        </ul>
+        <p class="dashboardGrowthInfoText">今日までには観測値、今後には予報を使用します。予報期間より先は、保存済みの同じ気象地点・同じ月日の過去観測平均で補います。</p>
+      </section>
+
+      <section class="dashboardGrowthInfoSection">
+        <div class="dashboardGrowthInfoSectionTitle">チップバーン・徒長の注意判定</div>
+        <p class="dashboardGrowthInfoText">大きさとは別に、予定日までの気象条件と同じ棟の過去記録から注意点を計算します。</p>
+        <ul class="dashboardGrowthInfoList">
+          <li>チップバーン：最高気温28℃以上の日を1日1点（最大2点）、平均気温22℃以上かつ日照係数1以上の日があれば1点、高温傾向の棟で28℃以上の日があれば1点、同じ棟の過去発生率が15%以上なら1点を加えます。</li>
+          <li>徒長：平均気温21℃以上かつ日照係数0.8未満の日を1日1点（最大2点）、最高気温28℃以上が3日以上なら1点、日光が低めの棟で日照係数0.9未満の日があれば1点、同じ棟の過去発生率が15%以上なら1点を加えます。</li>
+          <li>合計0〜1点は「低め」、2〜3点は「やや注意」、4点以上は「注意」と表示します。</li>
+        </ul>
+      </section>
+
+      <section class="dashboardGrowthInfoSection dashboardGrowthInfoCaution">
+        <div class="dashboardGrowthInfoSectionTitle">予測を見るときの注意</div>
+        <ul class="dashboardGrowthInfoList">
+          <li>収穫時に入力した見た目の評価を正解として使います。重量や葉数を自動測定しているわけではありません。</li>
+          <li>外気の気象データを使うため、ハウス内の実温度、湿度、気流、養液、品種などの差は完全には反映できません。</li>
+          <li>「ばらつきあり」が評価済み記録の30%以上を占める場合は信頼度を下げます。予報が更新されると結果も変わります。</li>
+        </ul>
+      </section>
+    </div>
   </div>
 </div>
 <div id="dashboardCalendarInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardCalendarInfoWindowTitle" aria-describedby="dashboardCalendarInfoWindowBody" data-ui-backdrop-click="closeDashboardCalendarInfoWindow">
