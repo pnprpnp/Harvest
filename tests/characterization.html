@@ -10157,6 +10157,61 @@
         assertDeepEqual(state.normal, { minTemp:18, maxTemp:28, meanTemp:23, lightIndex:0.85 }, "予報期間外の平年値が違います");
       });
 
+      await runTest("苗植えから収穫までの全期間を積算生育値で過去実績と比較する", () => {
+        const state = comparable(app.eval(`(() => {
+          const weatherIndex = buildDashboardGrowthWeatherIndex({
+            normal:{ meanTemp:19, minTemp:14, maxTemp:24, lightIndex:.85 },
+            daily:[
+              { date:"2026-09-01", meanTemp:18, lightIndex:1, source:"observation" },
+              { date:"2026-09-02", meanTemp:18, lightIndex:1, source:"observation" },
+              { date:"2026-09-03", meanTemp:18, lightIndex:1, source:"observation" },
+              { date:"2026-09-04", meanTemp:18, lightIndex:1, source:"observation" }
+            ]
+          });
+          const sample = (start, end, sizeRating) => ({
+            building:3,
+            bed:"A",
+            bedKey:"3-A",
+            plantingDate:parseDateOnlyString(start),
+            date:parseDateOnlyString(end),
+            ageDays:getLocalDayDiff(parseDateOnlyString(start), parseDateOnlyString(end)),
+            sizeRating,
+            uneven:false,
+            tipburn:false,
+            elongated:false,
+            qualityObserved:true
+          });
+          const samples = [
+            sample("2026-09-01", "2026-09-03", "normal"),
+            sample("2026-09-01", "2026-09-02", "small"),
+            sample("2026-09-01", "2026-09-04", "large")
+          ];
+          const target = getDashboardGrowthTarget(
+            refreshDashboardGrowthSampleUnits(samples, weatherIndex),
+            3
+          );
+          const fullPeriod = getDashboardGrowthUnits(
+            weatherIndex,
+            parseDateOnlyString("2026-09-01"),
+            parseDateOnlyString("2026-09-04"),
+            3,
+            { allowClimate:false, observationsOnly:true }
+          );
+          const missingHistoryTarget = getDashboardGrowthTarget(
+            refreshDashboardGrowthSampleUnits([
+              sample("2026-08-31", "2026-09-03", "normal")
+            ], weatherIndex),
+            3
+          );
+          return { target, fullPeriod, missingHistoryTarget };
+        })()`));
+        assertEqual(state.fullPeriod.total, 4, "苗植え日から収穫日までの全日を積算していません");
+        assertEqual(state.fullPeriod.observationDays, 4, "過去期間に気象庁の観測値以外を混ぜています");
+        assertEqual(state.target.growthUnits, 3, "過去の大きさ評価から収穫目標の積算生育値を算出できません");
+        assertEqual(state.target.ratedCount, 3, "積算生育値の目標に使用した評価件数が違います");
+        assertEqual(state.missingHistoryTarget.growthUnits, null, "過去気象が欠けた収穫を目標値へ混ぜています");
+      });
+
       await runTest("集計の選択中サブタブを紫色の文字と下線だけで示す", () => {
         const previousSubtab = app.eval("dashboardFilter.dashboardSubtab");
         try{
@@ -16231,10 +16286,10 @@
             basisRight:document.querySelector("details.dashboardGrowthBedCard[open] .dashboardGrowthBasis")?.getBoundingClientRect().right || 0
           }))()`));
           assertEqual(openedBed.open, true, "ベッドを押して詳細を開けません");
-          assertDeepEqual(openedBed.labels, ["現在まで", "予定日時点", "収穫目安"], "判定根拠の比較項目が揃っていません");
-          assertDeepEqual(openedBed.values, ["21.0日", "37.1日相当", "39.0日"], "判定に使用した数値が詳細へ正しく表示されません");
-          assert(openedBed.conclusion.includes("収穫目安の95%") && openedBed.conclusion.includes("88〜112%") && openedBed.conclusion.includes("「並」"), "達成率と判定境界から結果を説明できていません");
-          assert(openedBed.method.includes("予報気温と日光") && openedBed.method.includes("対象2パレットの中央値"), "生育換算値の算出方法が説明されていません");
+          assertDeepEqual(openedBed.labels, ["現在まで", "予定日時点", "収穫目標"], "判定根拠の比較項目が揃っていません");
+          assertDeepEqual(openedBed.values, ["18.5点", "34.6点", "33.6点"], "判定に使用した積算生育値が詳細へ正しく表示されません");
+          assert(openedBed.conclusion.includes("積算生育値が目標") && openedBed.conclusion.includes("88〜112%") && openedBed.conclusion.includes("「並」"), "達成率と判定境界から結果を説明できていません");
+          assert(openedBed.method.includes("苗植え日から") && openedBed.method.includes("平均気温と日照条件") && openedBed.method.includes("対象2パレットの中央値"), "積算生育値の算出方法が説明されていません");
           assert(openedBed.reason.length > 0, "ベッド詳細に予測理由がありません");
           assert(openedBed.confidence.startsWith("信頼度："), "詳細ボタンの左に信頼度がありません");
           assert(openedBed.scrollWidth <= openedBed.viewport && openedBed.basisRight <= openedBed.viewport, "数値付きの判定根拠が320px幅から横にはみ出しています");

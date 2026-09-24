@@ -3,9 +3,17 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import worker, {
+  buildJmaForecastDaily,
+  canAttemptGrowthWeatherRefresh,
+  getGrowthWeatherRetryDelayMs,
+  getJmaLightIndexFromSunshineHours,
+  parseJmaPastDailyCsv,
+  parseJmaPrefectureOptions,
+  parseJmaStationOptions,
   relayTokenMatches,
   tokensMatch,
   validateBatchPayload,
+  validateGrowthWeatherPayload,
   validateStatusPayload
 } from "../src/worker.mjs";
 
@@ -276,4 +284,103 @@ test("invalid relay token is rejected", async () => {
   }), env, { waitUntil(){} });
   assert.equal(response.status, 403);
   assert.equal((await response.json()).ok, false);
+});
+
+test("JMA past daily CSV is converted to observation growth inputs", () => {
+  const daily = parseJmaPastDailyCsv([
+    "downloaded header",
+    ",,,header,header",
+    "2026,9,20,26.7,0.3",
+    "2026,9,21,25.7,6.2,0",
+    "2026,9,22,,2.5"
+  ].join("\r\n"));
+  assert.deepEqual(daily, [{
+    date:"2026-09-20",
+    meanTemp:26.7,
+    sunshineHours:0.3,
+    lightIndex:0.3,
+    source:"observation"
+  }, {
+    date:"2026-09-21",
+    meanTemp:25.7,
+    sunshineHours:6.2,
+    lightIndex:0.775,
+    source:"observation"
+  }]);
+  assert.equal(getJmaLightIndexFromSunshineHours(9.6), 1.2);
+});
+
+test("JMA station HTML and forecast area ordering resolve the representative station", () => {
+  assert.deepEqual(parseJmaPrefectureOptions(
+    '<div class="prefecture" id="pr86">熊本<input type="hidden" name="prid" value="86"></div>'
+  ), [{ name:"熊本", code:"86" }]);
+  assert.deepEqual(parseJmaStationOptions([
+    '<input type="hidden" name="stid" value="s47819"><input type="hidden" name="stname" value="熊本">',
+    '<input type="hidden" name="stid" value="a0846"><input type="hidden" name="stname" value="八代">'
+  ].join("")), [{ id:"s47819", name:"熊本" }, { id:"a0846", name:"八代" }]);
+
+  const location = {
+    officeCode:"430000",
+    forecastAreaCode:"430030",
+    class20Code:"4321200",
+    name:"上天草市",
+    admin1:"熊本県",
+    forecastAreaName:"天草・芦北地方"
+  };
+  const forecast = buildJmaForecastDaily([{
+    timeSeries:[{
+      timeDefines:["2026-09-24T00:00:00+09:00"],
+      areas:[
+        { area:{ code:"430010" }, weatherCodes:["100"] },
+        { area:{ code:"430030" }, weatherCodes:["300"] }
+      ]
+    }, {
+      timeDefines:["2026-09-24T00:00:00+09:00", "2026-09-24T09:00:00+09:00"],
+      areas:[
+        { area:{ code:"86141", name:"熊本" }, temps:["21", "30"] },
+        { area:{ code:"86491", name:"牛深" }, temps:["23", "31"] }
+      ]
+    }]
+  }, {
+    timeSeries:[],
+    tempAverage:{ areas:[{ min:"18", max:"28" }] }
+  }], location);
+  assert.deepEqual(forecast.station, { amedasCode:"86491", name:"牛深" });
+  assert.equal(forecast.daily[0].weatherCode, 300);
+  assert.equal(forecast.daily[0].meanTemp, 27);
+});
+
+test("growth weather requests validate location and clamp excessive history", () => {
+  const request = validateGrowthWeatherPayload({
+    app:"Harvestnavi",
+    type:"growth-weather",
+    action:"getGrowthWeather",
+    location:{
+      officeCode:"430000",
+      forecastAreaCode:"430010",
+      class20Code:"4320211",
+      name:"八代市西部",
+      admin1:"熊本県"
+    },
+    requestedStartDate:"2000-01-01"
+  }, new Date("2026-09-24T00:00:00Z"));
+  assert.equal(request.locationKey, "430000:430010");
+  assert.equal(request.requestedStartDate, "2021-09-25");
+});
+
+test("growth weather retries use staged backoff", () => {
+  assert.deepEqual(
+    [1, 2, 3, 4].map(getGrowthWeatherRetryDelayMs),
+    [5, 15, 60, 60].map(minutes => minutes * 60 * 1000)
+  );
+  const now = new Date("2026-09-24T06:00:00.000Z");
+  assert.equal(canAttemptGrowthWeatherRefresh({
+    status:"retry",
+    next_attempt_at:"2026-09-24T06:05:00.000Z"
+  }, now), false);
+  assert.equal(canAttemptGrowthWeatherRefresh({
+    status:"retry",
+    next_attempt_at:"2026-09-24T05:59:59.000Z"
+  }, now), true);
+  assert.equal(canAttemptGrowthWeatherRefresh({ status:"ready" }, now), true);
 });

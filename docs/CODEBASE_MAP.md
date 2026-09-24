@@ -30,7 +30,7 @@
 | `index.html` | 公開用の生成ファイル | 直接編集しない。`tools/build_index.py` で生成する |
 | `apps-script/src/` | Apps Scriptの機能別ソース | API、スプレッドシート、差分同期、受信箱の実装元 |
 | `apps-script/コード.js` | Apps Scriptの生成ファイル | 直接編集しない。`tools/build_apps_script.py` で生成する |
-| `relay/` | Cloudflare Worker + D1の耐久中継 | Apps Scriptが最終保存先。中継は受付・再送・状態確認を担当する |
+| `relay/` | Cloudflare Worker + D1の耐久中継 | 記録の受付・再送・状態確認と、気象庁データの定期取得・地点別キャッシュを担当する |
 | `tools/` | 連結ビルドとプレビュー | `build_all.py` が両方の生成・一致確認をまとめる |
 | `tests/` | ブラウザーとApps Scriptの特性テスト | 実データや実スプレッドシートは操作しない |
 | `previews/` | UI調整用の独立プレビュー | UI案の確認用。製品コードの信頼できる元ではない |
@@ -64,10 +64,10 @@
 - 端末内の収穫記録はメモリー上の `records`、苗植え記録は `plantingEvents` がセッション中の信頼できる元です。永続化は `saveRecordsToStorage()` と `savePlantingEventsToStorage()` から共通保存窓口へ通します。
 - 管理者用と作業者用の保存キーは `01-core-ui-and-workflow.js` の `getActive*StorageKey()` 群で切り替えます。役割をまたいで直接キーを指定しません。
 - 読み込み時は `normalizeStoredRecord()` と `normalizePlantingEvent()` が旧形式も正規化します。既存データ互換を変える場合はここ、Google受信正規化、特性テストを一緒に確認します。
-- 収穫時の育ち具合は収穫記録の `sizeRating` と `growthDetail` が元データです。生育予測βの気象キャッシュと判定モデルは派生状態で、記録変更または地点変更時に再計算します。
+- 収穫時の育ち具合は収穫記録の `sizeRating` と `growthDetail`、外気は気象庁の観測値・予報が元データです。生育予測βの積算生育値と判定モデルは派生状態で、記録、地点、棟別環境傾向または気象キャッシュ変更時に必要な範囲だけ再計算します。
 - 削除済み記録は端末ごみ箱とリモートの削除情報（tombstone）で保護します。単純な配列削除だけで終わらせません。
 - パレット状態、履歴表示、集計、収穫検索索引、ロス推定などは派生状態です。元記録変更後は `completeRecordDataMutation()` → `invalidateRecordDerivedCaches()` を通し、必要に応じて `rebuildCurrentPalletLifecycleState()` で再構築します。
-- Googleスプレッドシートが共有データの最終保存先です。Cloudflare D1とApps Script受信箱は通信失敗に耐えるための受付・再送層であり、画面計算の元データにはしません。
+- Googleスプレッドシートが営農記録の共有データの最終保存先です。記録用のCloudflare D1とApps Script受信箱は通信失敗に耐える受付・再送層です。気象用D1は気象庁への過度なアクセスを避ける共有キャッシュで、画面はその日別値から積算生育値を導出します。
 - 同期識別は収穫記録のUUID・ID・重複キー、苗植えイベントID、更新日時、同期番号を組み合わせます。片側の値だけで上書き判定を追加しません。
 
 ## 主要な処理経路
@@ -132,11 +132,12 @@
 ### 生育予測β
 
 集計の「生育予測」タブを利用者が選択
-→ `07-dashboard.js` がメニューで保存した気象庁の予報地域を読み、気象庁の週間予報を取得
-→ 「目安」のパレット別収穫予定日、定植記録、収穫時の `sizeRating` / `growthDetail` を比較
-→ 号棟別補正と気温・天気による日照条件の推定から、予定日時点の大きさ、チップバーン・徒長の注意を派生表示する。
+→ `07-dashboard.js` がメニューで保存した気象庁の予報地域と必要な過去期間をWorkerへ登録
+→ `relay/src/worker.mjs` が気象庁の日平均気温・日照時間と週間予報を取得しD1へ地点別保存
+→ 過去の各収穫と現在作について、苗植えから収穫日・予定日まで同じ式で積算生育値を計算
+→ 収穫時の `sizeRating` / `growthDetail` から求めた目標値と比較し、予定日時点の大きさ、チップバーン・徒長の注意を派生表示する。
 
-気象地点の検索はメニューで操作した時だけ、予報は生育予測タブを開いた時だけ取得します。結果は地点ごとに6時間再利用し、日別値を最大2年分だけ端末に蓄積します。予報期間外は気象庁の平年値を低信頼度の参考値として使います。
+気象地点の検索はメニューで操作した時だけです。初回は過去記録と現在作に必要な開始日まで遡り、以後はWorkerの定期処理が過去観測値を日ごと、予報を6時間ごとに差分更新します。取得失敗時は5分、15分、以後1時間の間隔で再試行します。アプリは地点ごとの端末キャッシュを6時間再利用します。予報期間外は、保存済みの同じ地点・同じ月日の観測平均を推定値として使います。
 
 ### 過去記録の編集・削除・復元
 
@@ -162,7 +163,7 @@
 | Apps Scriptの収穫保存 | `06-harvest-mutations.js`、`09-harvest-sheet-and-list.js` | `05-write-safety.js`、`11-record-trash-and-sheets.js` |
 | Apps Scriptの苗植え保存 | `07-planting-events.js`、`10-planting-sheet.js` | `05-write-safety.js`、収穫記録との割当制約 |
 | 差分同期番号 | `apps-script/src/02-sync-revision.js` | ブラウザー側カーソル・同期番号、変更履歴シート |
-| 高速受付・再送 | `relay/src/worker.mjs` | `relay/migrations/`、`apps-script/src/15-record-inbox.js`、ブラウザー側受信箱状態確認 |
+| 高速受付・再送・気象更新 | `relay/src/worker.mjs` | `relay/migrations/`、`apps-script/src/15-record-inbox.js`、ブラウザー側受信箱状態確認、`07-dashboard.js` の気象キャッシュ |
 | モニター | `04-monitor-sync.js`、`10-monitor-view.js` | Apps Scriptの `08-monitor.js`、`13-monitor-sheet.js`、Firebase通知 |
 | 集計・ダッシュボード | `07-dashboard.js` | `02-local-data.js` のキャッシュ無効化、記録詳細表示 |
 | 生育予測・育ち具合評価 | `07-dashboard.js`、`02-local-data.js` | `09-record-workflow.js`、`12-record-save-and-restore.js`、Google同期・Apps Script収穫列、気象キャッシュ |

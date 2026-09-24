@@ -3545,6 +3545,7 @@ function saveDashboardGrowthLocation(location){
 function getDashboardGrowthWeatherCache(location){
   const cache = harvestnaviLocalStorage.readJson(DASHBOARD_GROWTH_WEATHER_CACHE_KEY, null);
   if(!cache || typeof cache !== "object" || Array.isArray(cache)) return null;
+  if(Number(cache.schemaVersion || 0) !== 3) return null;
   if(cache.locationKey !== getDashboardGrowthLocationKey(location)) return null;
   if(!Array.isArray(cache.daily) || !cache.daily.length) return null;
   return cache;
@@ -3584,6 +3585,18 @@ function getDashboardGrowthLightIndex(weatherCode){
   return 0.8;
 }
 
+function getDashboardGrowthLightIndexFromSunshineHours(sunshineHours){
+  const hours = Number(sunshineHours);
+  if(!Number.isFinite(hours)) return null;
+  return Math.max(0.3, Math.min(1.2, hours / 8));
+}
+
+function getDashboardGrowthForecastNumber(value){
+  if(value === null || value === undefined || String(value).trim() === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function buildDashboardGrowthDailyWeather(forecastPayload, location){
   const reports = Array.isArray(forecastPayload) ? forecastPayload : [];
   const shortReport = reports[0] || {};
@@ -3616,6 +3629,9 @@ function buildDashboardGrowthDailyWeather(forecastPayload, location){
       area?.area?.code === location.forecastAreaCode && Array.isArray(area?.weatherCodes)
     ))
   ));
+  const shortWeatherAreaIndex = Math.max(0, (shortWeatherSeries?.areas || []).findIndex(area => (
+    area?.area?.code === location.forecastAreaCode
+  )));
   const shortWeatherArea = shortWeatherSeries?.areas?.find(area => area?.area?.code === location.forecastAreaCode);
   (shortWeatherSeries?.timeDefines || []).forEach((time, index) => {
     const day = ensureDay(String(time || "").slice(0, 10));
@@ -3634,30 +3650,30 @@ function buildDashboardGrowthDailyWeather(forecastPayload, location){
   (weeklyTempSeries?.timeDefines || []).forEach((time, index) => {
     const day = ensureDay(String(time || "").slice(0, 10));
     if(!day) return;
-    const minTemp = Number(weeklyTempArea?.tempsMin?.[index]);
-    const maxTemp = Number(weeklyTempArea?.tempsMax?.[index]);
-    if(Number.isFinite(minTemp)) day.minTemp = minTemp;
-    if(Number.isFinite(maxTemp)) day.maxTemp = maxTemp;
+    const minTemp = getDashboardGrowthForecastNumber(weeklyTempArea?.tempsMin?.[index]);
+    const maxTemp = getDashboardGrowthForecastNumber(weeklyTempArea?.tempsMax?.[index]);
+    if(minTemp !== null) day.minTemp = minTemp;
+    if(maxTemp !== null) day.maxTemp = maxTemp;
   });
 
   const shortTempSeries = (shortReport.timeSeries || []).find(series => (
     Array.isArray(series?.areas) && series.areas.some(area => Array.isArray(area?.temps))
   ));
-  const shortTempArea = shortTempSeries?.areas?.[0];
+  const shortTempArea = shortTempSeries?.areas?.[shortWeatherAreaIndex] || shortTempSeries?.areas?.[0];
   (shortTempSeries?.timeDefines || []).forEach((time, index) => {
     const day = ensureDay(String(time || "").slice(0, 10));
-    const temperature = Number(shortTempArea?.temps?.[index]);
-    if(!day || !Number.isFinite(temperature)) return;
+    const temperature = getDashboardGrowthForecastNumber(shortTempArea?.temps?.[index]);
+    if(!day || temperature === null) return;
     const hour = Number(String(time || "").slice(11, 13));
     if(Number.isFinite(hour) && hour <= 6) day.minTemp = temperature;
     else day.maxTemp = temperature;
   });
 
   const normalArea = weeklyReport?.tempAverage?.areas?.[0] || {};
-  const normalMin = Number(normalArea.min);
-  const normalMax = Number(normalArea.max);
-  const fallbackMin = Number.isFinite(normalMin) ? normalMin : 14;
-  const fallbackMax = Number.isFinite(normalMax) ? normalMax : 24;
+  const normalMin = getDashboardGrowthForecastNumber(normalArea.min);
+  const normalMax = getDashboardGrowthForecastNumber(normalArea.max);
+  const fallbackMin = normalMin === null ? 14 : normalMin;
+  const fallbackMax = normalMax === null ? 24 : normalMax;
   const daily = [...dailyByDate.values()].map(day => {
     const hasMin = Number.isFinite(Number(day.minTemp));
     const hasMax = Number.isFinite(Number(day.maxTemp));
@@ -3674,6 +3690,10 @@ function buildDashboardGrowthDailyWeather(forecastPayload, location){
   }).sort((left, right) => left.date.localeCompare(right.date));
   return {
     daily,
+    station:{
+      amedasCode:String(shortTempArea?.area?.code || weeklyTempArea?.area?.code || ""),
+      name:String(shortTempArea?.area?.name || weeklyTempArea?.area?.name || "")
+    },
     normal:{
       minTemp:fallbackMin,
       maxTemp:fallbackMax,
@@ -3683,38 +3703,98 @@ function buildDashboardGrowthDailyWeather(forecastPayload, location){
   };
 }
 
+function getDashboardGrowthRequiredHistoryStartDate(){
+  const cutoff = addDays(startOfLocalDay(new Date()), -730);
+  const plantingIndex = buildDashboardGrowthPlantingIndex();
+  let earliest = cutoff;
+  records.forEach(record => {
+    if(record?.type === "partialHarvest") return;
+    const harvestDate = parseDateOnlyString(String(record?.date || ""));
+    if(!harvestDate || harvestDate.getTime() < cutoff.getTime()) return;
+    getPalletKeysFromRecord(record).forEach(key => {
+      const plantingDate = getDashboardGrowthPriorPlantingDate(plantingIndex, key, harvestDate);
+      if(plantingDate && plantingDate.getTime() < earliest.getTime()) earliest = plantingDate;
+    });
+  });
+  const baseModel = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  dashboardHarvestForecastModelCache = baseModel;
+  baseModel?.plantingDateByPallet?.forEach(date => {
+    if(date instanceof Date && Number.isFinite(date.getTime()) && date.getTime() < earliest.getTime()){
+      earliest = startOfLocalDay(date);
+    }
+  });
+  return formatDateOnlyString(earliest);
+}
+
+async function fetchDashboardGrowthWeatherFromRelay(location){
+  const config = loadGoogleSheetConfig();
+  const relayUrl = String(config?.relayUrl || "").trim().replace(/\/+$/, "");
+  const token = String(config?.token || "");
+  if(!relayUrl || token.length < 32){
+    throw new Error("過去の気象データを自動取得するには高速受付サーバーの設定が必要です");
+  }
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutId = setTimeout(() => controller?.abort(), 45000);
+  try{
+    const response = await fetch(`${relayUrl}/weather`, {
+      method:"POST",
+      mode:"cors",
+      headers:{ "Content-Type":"text/plain;charset=utf-8" },
+      body:JSON.stringify({
+        app:"Harvestnavi",
+        type:"growth-weather",
+        action:"getGrowthWeather",
+        version:1,
+        token,
+        requestedStartDate:getDashboardGrowthRequiredHistoryStartDate(),
+        location
+      }),
+      signal:controller?.signal
+    });
+    const text = await response.text();
+    let result;
+    try{
+      result = text ? JSON.parse(text) : {};
+    }catch(error){
+      throw new Error("気象データの応答を読み込めません");
+    }
+    if(!response.ok || result.ok !== true){
+      throw new Error(result.message || `気象データを取得できません（HTTP ${response.status}）`);
+    }
+    if(!Array.isArray(result.daily) || !result.daily.length){
+      throw new Error("気象データが空です");
+    }
+    return result;
+  }finally{
+    clearTimeout(timeoutId);
+  }
+}
+
 async function loadDashboardGrowthWeather(location, options = {}){
   const cached = getDashboardGrowthWeatherCache(location);
   const cacheAge = cached ? Date.now() - Number(cached.fetchedAt || 0) : Infinity;
   if(!options.force && cached && cacheAge < 6 * 60 * 60 * 1000){
     return { ...cached, usedCache:true };
   }
-  const forecastUrl = `https://www.jma.go.jp/bosai/forecast/data/forecast/${encodeURIComponent(location.officeCode)}.json`;
-  let forecastPayload = null;
+  let relayWeather = null;
   try{
-    forecastPayload = await fetchDashboardGrowthJson(forecastUrl);
+    relayWeather = await fetchDashboardGrowthWeatherFromRelay(location);
   }catch(error){
     if(cached) return { ...cached, usedCache:true, stale:true };
     throw error;
   }
-  const built = buildDashboardGrowthDailyWeather(forecastPayload, location);
-  const todayKey = formatDateOnlyString(new Date());
-  const retentionStartKey = formatDateOnlyString(addDays(startOfLocalDay(new Date()), -730));
-  const dailyByDate = new Map((cached?.daily || [])
-    .filter(day => day?.date >= retentionStartKey && day.date < todayKey)
-    .map(day => [day.date, day]));
-  built.daily.forEach(day => dailyByDate.set(day.date, day));
-  const daily = [...dailyByDate.values()].sort((left, right) => left.date.localeCompare(right.date));
-  if(!daily.length) throw new Error("気象データが空です");
-  const forecastDates = built.daily.map(day => day.date);
   const cache = {
+    schemaVersion:3,
     locationKey:getDashboardGrowthLocationKey(location),
-    fetchedAt:Date.now(),
+    fetchedAt:Number(relayWeather.fetchedAt || Date.now()),
     provider:"jma",
     timezone:"Asia/Tokyo",
-    forecastEndDate:forecastDates[forecastDates.length - 1] || "",
-    normal:built.normal,
-    daily
+    forecastEndDate:String(relayWeather.forecastEndDate || ""),
+    historyStartDate:String(relayWeather.historyStartDate || ""),
+    historyThrough:String(relayWeather.historyThrough || ""),
+    station:relayWeather.station || null,
+    normal:relayWeather.normal || {},
+    daily:relayWeather.daily
   };
   harvestnaviLocalStorage.writeJson(DASHBOARD_GROWTH_WEATHER_CACHE_KEY, cache);
   return { ...cache, usedCache:false };
@@ -3860,22 +3940,36 @@ function getDashboardGrowthDailyUnit(day, building){
   return Math.max(0, temperatureFactor) * lightFactor;
 }
 
-function getDashboardGrowthUnits(weatherIndex, startDate, endDate, building){
+function getDashboardGrowthUnits(weatherIndex, startDate, endDate, building, options = {}){
   const start = startOfLocalDay(startDate);
   const end = startOfLocalDay(endDate);
   if(start.getTime() > end.getTime()) return null;
   let total = 0;
   let knownDays = 0;
   let estimatedDays = 0;
+  let observationDays = 0;
+  let totalDays = 0;
   for(let cursor = start; cursor.getTime() <= end.getTime(); cursor = addDays(cursor, 1)){
-    const day = getDashboardGrowthWeatherDay(weatherIndex, cursor);
+    totalDays++;
+    const day = getDashboardGrowthWeatherDay(weatherIndex, cursor, {
+      allowClimate:options.allowClimate !== false
+    });
+    if(options.observationsOnly && day?.source !== "observation") continue;
     const unit = getDashboardGrowthDailyUnit(day, building);
     if(unit === null) continue;
     total += unit;
     knownDays++;
     if(day.estimated) estimatedDays++;
+    if(day.source === "observation") observationDays++;
   }
-  return knownDays ? { total, knownDays, estimatedDays } : null;
+  return knownDays ? {
+    total,
+    knownDays,
+    totalDays,
+    missingDays:Math.max(0, totalDays - knownDays),
+    estimatedDays,
+    observationDays
+  } : null;
 }
 
 function buildDashboardGrowthPlantingIndex(){
@@ -3935,6 +4029,7 @@ function buildDashboardGrowthTrainingSamples(){
         building,
         bed,
         bedKey,
+        plantingDate,
         date:harvestDate,
         ageDays:getLocalDayDiff(plantingDate, harvestDate),
         sizeRating:state.sizeRating,
@@ -3948,32 +4043,55 @@ function buildDashboardGrowthTrainingSamples(){
   return samples;
 }
 
+function getDashboardGrowthSampleUnits(sample, weatherIndex){
+  if(!sample?.plantingDate || !sample?.date) return null;
+  const units = getDashboardGrowthUnits(
+    weatherIndex,
+    sample.plantingDate,
+    sample.date,
+    sample.building,
+    { allowClimate:false, observationsOnly:true }
+  );
+  if(!units || units.knownDays !== units.totalDays) return null;
+  return units.total;
+}
+
+function refreshDashboardGrowthSampleUnits(samples, weatherIndex, building = null){
+  return samples.map(sample => {
+    if(building !== null && Number(sample.building) !== Number(building)) return sample;
+    return { ...sample, growthUnits:getDashboardGrowthSampleUnits(sample, weatherIndex) };
+  });
+}
+
 function getDashboardGrowthTarget(samples, building){
-  const buildingSamples = samples.filter(sample => sample.building === building);
+  const usableSamples = samples.filter(sample => Number.isFinite(sample.growthUnits) && sample.growthUnits > 0);
+  const buildingSamples = usableSamples.filter(sample => sample.building === building);
   const labelledInBuilding = buildingSamples.filter(sample => sample.sizeRating !== "unknown");
-  const labelledAll = samples.filter(sample => sample.sizeRating !== "unknown");
+  const labelledAll = usableSamples.filter(sample => sample.sizeRating !== "unknown");
   const labelled = labelledInBuilding.length >= 3 ? labelledInBuilding : labelledAll;
   if(labelled.length){
     const unevenRate = labelled.filter(sample => sample.uneven).length / labelled.length;
-    const targetAgeDays = labelled.map(sample => {
-      if(sample.sizeRating === "small") return sample.ageDays * 1.1;
-      if(sample.sizeRating === "large") return sample.ageDays * 0.9;
-      return sample.ageDays;
+    const targetGrowthUnits = labelled.map(sample => {
+      if(sample.sizeRating === "small") return sample.growthUnits * 1.1;
+      if(sample.sizeRating === "large") return sample.growthUnits * 0.9;
+      return sample.growthUnits;
     });
     const sampleConfidence = labelled.length >= 12 ? "高め" : (labelled.length >= 5 ? "中" : "低め");
     const confidence = unevenRate >= 0.3
       ? (sampleConfidence === "高め" ? "中" : "低め")
       : sampleConfidence;
     return {
-      ageDays:getDashboardGrowthMedian(targetAgeDays),
+      growthUnits:getDashboardGrowthMedian(targetGrowthUnits),
+      ageDays:getDashboardGrowthMedian(labelled.map(sample => sample.ageDays)),
       ratedCount:labelled.length,
       provisional:false,
       confidence,
       unevenRate
     };
   }
-  const fallback = buildingSamples.length >= 3 ? buildingSamples : samples;
+  const fallback = buildingSamples.length >= 3 ? buildingSamples : usableSamples;
   return {
+    growthUnits:getDashboardGrowthMedian(fallback.map(sample => sample.growthUnits)),
     ageDays:getDashboardGrowthMedian(fallback.map(sample => sample.ageDays)),
     ratedCount:0,
     provisional:true,
@@ -4053,9 +4171,9 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
   const normalizedTarget = target || getDashboardGrowthTarget(samples, building);
   const palletKeys = getDashboardGrowthForecastPalletKeys(baseModel, building, bed);
   const ratios = [];
-  const currentElapsedDaysValues = [];
-  const projectedGrowthDaysValues = [];
-  let estimatedDays = 0;
+  const currentGrowthUnitValues = [];
+  const projectedGrowthUnitValues = [];
+  const estimatedDayValues = [];
   let earliestPlantingDate = null;
   const today = startOfLocalDay(new Date());
   palletKeys.forEach(key => {
@@ -4065,27 +4183,21 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
     if(!earliestPlantingDate || plantingDate.getTime() < earliestPlantingDate.getTime()){
       earliestPlantingDate = plantingDate;
     }
-    if(!Number.isFinite(normalizedTarget.ageDays) || normalizedTarget.ageDays <= 0) return;
+    if(!Number.isFinite(normalizedTarget.growthUnits) || normalizedTarget.growthUnits <= 0) return;
     const forecastDate = startOfLocalDay(forecast.date);
-    currentElapsedDaysValues.push(Math.max(0, getLocalDayDiff(plantingDate, today)));
-    let equivalentAge = getLocalDayDiff(plantingDate, forecastDate);
-    if(forecastDate.getTime() > today.getTime()){
-      equivalentAge = Math.max(0, getLocalDayDiff(plantingDate, today));
-      const futureStart = addDays(today, 1);
-      const units = getDashboardGrowthUnits(weatherIndex, futureStart, forecastDate, building);
-      if(units){
-        equivalentAge += units.total;
-        estimatedDays += units.estimatedDays;
-      }else{
-        equivalentAge += getLocalDayDiff(today, forecastDate);
-      }
-    }
-    projectedGrowthDaysValues.push(equivalentAge);
-    ratios.push(equivalentAge / normalizedTarget.ageDays);
+    const currentEndDate = forecastDate.getTime() < today.getTime() ? forecastDate : today;
+    const currentUnits = getDashboardGrowthUnits(weatherIndex, plantingDate, currentEndDate, building);
+    const projectedUnits = getDashboardGrowthUnits(weatherIndex, plantingDate, forecastDate, building);
+    if(!projectedUnits) return;
+    if(currentUnits) currentGrowthUnitValues.push(currentUnits.total);
+    projectedGrowthUnitValues.push(projectedUnits.total);
+    estimatedDayValues.push(projectedUnits.estimatedDays);
+    ratios.push(projectedUnits.total / normalizedTarget.growthUnits);
   });
   const ratio = getDashboardGrowthMedian(ratios);
-  const currentElapsedDays = getDashboardGrowthMedian(currentElapsedDaysValues);
-  const projectedGrowthDays = getDashboardGrowthMedian(projectedGrowthDaysValues);
+  const currentGrowthUnits = getDashboardGrowthMedian(currentGrowthUnitValues);
+  const projectedGrowthUnits = getDashboardGrowthMedian(projectedGrowthUnitValues);
+  const estimatedDays = Math.round(getDashboardGrowthMedian(estimatedDayValues) || 0);
   const hasPartial = hasDashboardGrowthCurrentPartialHarvest(building, bed, earliestPlantingDate);
   let status = "unknown";
   let statusLabel = "判定材料不足";
@@ -4105,9 +4217,9 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
   const risk = getDashboardGrowthRisk(weatherIndex, forecastDate, building, samples);
   const adjustment = getDashboardGrowthBuildingAdjustment(building);
   const reasons = [];
-  if(status === "small") reasons.push("過去の収穫日数に対して気温・天気による生育が遅い見込み");
-  if(status === "normal") reasons.push("過去の収穫時に近い生育条件");
-  if(status === "large") reasons.push("過去の収穫日数に対して生育条件が先行する見込み");
+  if(status === "small") reasons.push("過去の適期収穫時より積算生育値が低い見込み");
+  if(status === "normal") reasons.push("過去の適期収穫時に近い積算生育値");
+  if(status === "large") reasons.push("過去の適期収穫時より積算生育値が高い見込み");
   if(hasPartial) reasons.push("この作で部分収穫の記録あり");
   if(adjustment.temperatureOffsetC > 0) reasons.push(`温度が高め（+${adjustment.temperatureOffsetC}℃）の環境傾向を反映`);
   if(adjustment.temperatureOffsetC < 0) reasons.push(`温度が低め（${adjustment.temperatureOffsetC}℃）の環境傾向を反映`);
@@ -4123,9 +4235,9 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
     statusLabel,
     risk,
     basis:{
-      currentElapsedDays,
-      projectedGrowthDays,
-      targetGrowthDays:Number.isFinite(normalizedTarget.ageDays) ? normalizedTarget.ageDays : null,
+      currentGrowthUnits,
+      projectedGrowthUnits,
+      targetGrowthUnits:Number.isFinite(normalizedTarget.growthUnits) ? normalizedTarget.growthUnits : null,
       achievementRate:Number.isFinite(ratio) ? ratio * 100 : null,
       palletCount:ratios.length
     },
@@ -4141,7 +4253,7 @@ function buildDashboardGrowthPredictionModel(weather, timing = {}){
   const baseModel = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   dashboardHarvestForecastModelCache = baseModel;
   const weatherIndex = buildDashboardGrowthWeatherIndex(weather);
-  const samples = buildDashboardGrowthTrainingSamples();
+  const samples = refreshDashboardGrowthSampleUnits(buildDashboardGrowthTrainingSamples(), weatherIndex);
   const targets = new Map(BUILDINGS.map(building => [
     building,
     getDashboardGrowthTarget(samples, building)
@@ -4178,6 +4290,7 @@ function buildDashboardGrowthPredictionModel(weather, timing = {}){
 function rebuildDashboardGrowthPredictionBuilding(model, building){
   const normalized = Number(building);
   if(!model || !BUILDINGS.includes(normalized)) return model;
+  model.samples = refreshDashboardGrowthSampleUnits(model.samples, model.weatherIndex, normalized);
   const target = getDashboardGrowthTarget(model.samples, normalized);
   model.targets.set(normalized, target);
   bedOrder.forEach(bed => {
@@ -4211,16 +4324,16 @@ function getDashboardGrowthStatusDisplayLabel(item){
 function getDashboardGrowthPredictionBasisHtml(item){
   const basis = item?.basis || {};
   const hasValues = [
-    basis.currentElapsedDays,
-    basis.projectedGrowthDays,
-    basis.targetGrowthDays,
+    basis.currentGrowthUnits,
+    basis.projectedGrowthUnits,
+    basis.targetGrowthUnits,
     basis.achievementRate
   ].every(Number.isFinite);
   if(!hasValues){
     return `
       <section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠">
         <strong class="dashboardGrowthBasisTitle">判定の根拠</strong>
-        <p class="dashboardGrowthBasisUnavailable">苗植え日または過去の収穫記録が不足しているため、数値で比較できません。</p>
+        <p class="dashboardGrowthBasisUnavailable">苗植え日、過去の収穫評価、または対象期間の気象庁データが不足しているため、数値で比較できません。</p>
       </section>
     `;
   }
@@ -4228,7 +4341,9 @@ function getDashboardGrowthPredictionBasisHtml(item){
   const minPercent = Math.round(DASHBOARD_GROWTH_NORMAL_RATIO_MIN * 100);
   const maxPercent = Math.round(DASHBOARD_GROWTH_NORMAL_RATIO_MAX * 100);
   const statusLabel = getDashboardGrowthStatusDisplayLabel(item);
-  let conclusion = `収穫目安の${achievementRate}%`;
+  const projectedText = formatDashboardMetricNumber(basis.projectedGrowthUnits, "点");
+  const targetText = formatDashboardMetricNumber(basis.targetGrowthUnits, "点");
+  let conclusion = `積算生育値が目標${targetText}に対して${projectedText}（${achievementRate}%）`;
   if(item.status === "small"){
     conclusion += `で、基準範囲の下限${minPercent}%未満のため「${statusLabel}」と判定しました。`;
   }else if(item.status === "large"){
@@ -4243,12 +4358,12 @@ function getDashboardGrowthPredictionBasisHtml(item){
     <section class="dashboardGrowthBasis" aria-label="判定の根拠">
       <strong class="dashboardGrowthBasisTitle">判定の根拠</strong>
       <div class="dashboardGrowthBasisValues">
-        <span class="dashboardGrowthBasisValue"><span>現在まで</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.currentElapsedDays, "日"))}</strong></span>
-        <span class="dashboardGrowthBasisValue"><span>予定日時点</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.projectedGrowthDays, "日相当"))}</strong></span>
-        <span class="dashboardGrowthBasisValue"><span>収穫目安</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.targetGrowthDays, "日"))}</strong></span>
+        <span class="dashboardGrowthBasisValue"><span>現在まで</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.currentGrowthUnits, "点"))}</strong></span>
+        <span class="dashboardGrowthBasisValue"><span>予定日時点</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.projectedGrowthUnits, "点"))}</strong></span>
+        <span class="dashboardGrowthBasisValue"><span>収穫目標</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.targetGrowthUnits, "点"))}</strong></span>
       </div>
       <p class="dashboardGrowthBasisConclusion">${escapeHtml(conclusion)}</p>
-      <p class="dashboardGrowthBasisMethod">予定日時点は、現在までの経過日数に、予報気温と日光から換算した今後の生育分を加えた値です。${escapeHtml(palletNote)}</p>
+      <p class="dashboardGrowthBasisMethod">積算生育値は、苗植え日からの毎日の平均気温と日照条件を生育分へ換算して合計しています。過去期間は気象庁の観測値、今後は予報、予報期間外は同じ地点・同じ時期の平均を使用します。${escapeHtml(palletNote)}</p>
     </section>
   `;
 }
@@ -4399,7 +4514,7 @@ async function renderDashboardGrowthPrediction(options = {}){
       if(content) content.hidden = false;
       const beds = document.getElementById("dashboardGrowthBeds");
       const tabs = document.getElementById("dashboardGrowthBuildingTabs");
-      if(beds) beds.innerHTML = '<div class="dashboardEmpty" style="grid-column:1/-1;">気象データを取得できませんでした。通信状態を確認して「更新」を押してください。</div>';
+      if(beds) beds.innerHTML = `<div class="dashboardEmpty" style="grid-column:1/-1;">${escapeHtml(error?.message || "気象データを取得できませんでした。通信状態を確認して「更新」を押してください。")}</div>`;
       if(tabs) tabs.innerHTML = "";
       if(refreshButton) refreshButton.hidden = false;
     })
