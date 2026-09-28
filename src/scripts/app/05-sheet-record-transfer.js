@@ -73,11 +73,13 @@ function isValidTransferQualityMemo(value){
 
 function isValidTransferGrowthDetail(value, palletKeys = [], harvestDate = ""){
   const validObservations = item => {
-    if(item.schemaVersion !== undefined && item.schemaVersion !== 2) return false;
+    if(item.schemaVersion !== undefined && ![2,3].includes(item.schemaVersion)) return false;
     if(item.cultivar !== undefined && (typeof item.cultivar !== "string" || item.cultivar.length > 80 || item.cultivar.includes("\u0000"))) return false;
     if(item.readyDate !== undefined && item.readyDate !== ""
       && (!isStrictDateOnlyString(item.readyDate) || (harvestDate && item.readyDate > harvestDate))) return false;
-    return ["tipburnStatus", "elongatedStatus"].every(field => item[field] === undefined || ["unknown", "none", "present"].includes(item[field]));
+    if(item.readyDateMode !== undefined && !["auto","manual","none"].includes(item.readyDateMode)) return false;
+    return ["unevenStatus", "tipburnStatus", "elongatedStatus"].every(field => item[field] === undefined
+      || ["unknown", "none", "present", "slight", "many"].includes(item[field]));
   };
   if(value === undefined || value === null || value === "") return true;
   if(typeof value === "string"){

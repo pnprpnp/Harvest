@@ -2736,6 +2736,67 @@
         assertDeepEqual(comparable(legacy), { uneven:false, bedOverrides:{} }, "旧保存形式を読んだだけで変更しています");
       });
 
+      await runTest("現行の育ち具合とベッド別評価を送信前検証・受信・再送で保持する", () => {
+        const palletKeys=["8-A-1","8-B-1","8-C-22","8-E-45","9-A-73","9-B-30"];
+        const raw={palletNumberingVersion:2,id:20000000000024,recordUuid:"24242424-2424-4424-8424-242424242424",
+          type:"fullHarvest",date:"2026-09-24",cases:255,actualLoss:"10.8",sizeRating:"normal",palletKeys,
+          growthDetail:{schemaVersion:3,uneven:false,unevenStatus:"unknown",readyDateMode:"auto",readyDate:"",
+            tipburnStatus:"unknown",elongatedStatus:"unknown",cultivar:"",
+            bedOverrides:{"9-B":{sizeRating:"large",uneven:false,tipburn:false,elongated:true},
+              "9-A":{sizeRating:"large",uneven:false,tipburn:false,elongated:true}}}};
+        const record=app.normalizeRecordSnapshot(raw),before=JSON.stringify(record.growthDetail);
+        const snapshot=app.cloneGoogleSheetRecordForSend(record);
+        assertEqual(app.validateRecordForGoogleTransfer(snapshot,{enforceDuplicateKey:false}).ok,true,"現行版3を送信前に拒否しました");
+        const payload=comparable(app.buildGoogleSheetRecordPayload(snapshot,{token:"test"}).record);
+        const server=comparable(appsScript.normalizeHarvestRecord(payload));
+        const headers=comparable(appsScript.eval("HEADERS"));
+        const row=appsScript.buildRecordRow(headers,server,"growth-transfer","2026-09-28T01:00:00Z");
+        const restored=app.normalizeGoogleSheetRowRecord(comparable(appsScript.rowToRecord(headers,row)));
+        assert(restored,"受信した現行版3を拒否しました");
+        assertEqual(app.validateRecordForGoogleTransfer(restored,{enforceDuplicateKey:false}).ok,true,"再送時に現行版3を拒否しました");
+        assertDeepEqual(comparable(restored.growthDetail),comparable(record.growthDetail),"ベッド別の育ち具合が送受信で変わりました");
+        assertEqual(JSON.stringify(record.growthDetail),before,"送信元の評価を書き換えました");
+        assertEqual(server.actualLoss,10.8,"ロス率が送信内容で変わりました");
+        for(const schemaVersion of [2,3]){
+          for(const status of ["unknown","none","present","slight","many"]){
+            for(const mode of ["auto","manual","none"]){
+              const present=["present","slight","many"].includes(status);
+              const detail={schemaVersion,uneven:present,unevenStatus:status,tipburnStatus:status,elongatedStatus:status,
+                readyDate:"2026-09-23",readyDateMode:mode,cultivar:"確認品種",bedOverrides:{"9-B":{
+                  schemaVersion,sizeRating:"large",uneven:present,tipburn:present,elongated:present,
+                  unevenStatus:status,tipburnStatus:status,elongatedStatus:status,readyDate:"2026-09-22",readyDateMode:mode}}};
+              assertEqual(app.isValidTransferGrowthDetail(detail,palletKeys,raw.date),true,"正しい版・症状・適期引継ぎを拒否しました");
+              const normalized=comparable(app.normalizeHarvestGrowthDetail(detail));
+              assertDeepEqual(comparable(appsScript.normalizeHarvestGrowthDetailInput(detail,palletKeys,raw.date)),normalized,"送受信で評価の意味が変わりました");
+            }
+          }
+        }
+        const legacy={uneven:false,bedOverrides:{"9-B":{sizeRating:"large",uneven:false,tipburn:false,elongated:true}}};
+        assertEqual(app.isValidTransferGrowthDetail(legacy,palletKeys,raw.date),true,"旧形式を拒否しました");
+        assertDeepEqual(comparable(appsScript.normalizeHarvestGrowthDetailInput(legacy,palletKeys,raw.date)),legacy,"旧形式を変換しました");
+      });
+
+      await runTest("育ち具合の不正な版・症状・適期引継ぎ・ベッド・未来の日付は送信前に拒否する", () => {
+        const keys=["9-B-30"],date="2026-09-24";
+        const base={schemaVersion:3,uneven:false,unevenStatus:"unknown",readyDateMode:"auto",readyDate:"",
+          tipburnStatus:"unknown",elongatedStatus:"unknown",bedOverrides:{"9-B":{
+            sizeRating:"large",uneven:false,tipburn:false,elongated:true,elongatedStatus:"many",readyDateMode:"manual"}}};
+        const invalid=[
+          ...[1,4,"3"].map(schemaVersion=>({...base,schemaVersion})),
+          ...["unevenStatus","tipburnStatus","elongatedStatus"].map(field=>({...base,[field]:"invalid"})),
+          {...base,readyDateMode:"invalid"},{...base,readyDate:"2026-09-25"},{...base,readyDate:"2026-02-30"},
+          {...base,bedOverrides:{"8-A":base.bedOverrides["9-B"]}},
+          ...["schemaVersion","unevenStatus","tipburnStatus","elongatedStatus","readyDateMode","readyDate","uneven"].map(field=>({
+            ...base,bedOverrides:{"9-B":{...base.bedOverrides["9-B"],[field]:field==="schemaVersion"?4:field==="readyDate"?"2026-09-25":"invalid"}}}))
+        ];
+        invalid.forEach(detail=>{
+          assertEqual(app.isValidTransferGrowthDetail(detail,keys,date),false,"不正な育ち具合を送信チェックが通しました");
+          let rejected=false;
+          try{appsScript.normalizeHarvestGrowthDetailInput(detail,keys,date);}catch(_){rejected=true;}
+          assert(rejected,"不正な育ち具合を受信側が通しました");
+        });
+      });
+
       await runTest("適期日・症状の三状態・品種を入力途中から復元しベッドを全体へ戻せる", () => {
         const keys = comparable(app.eval("harvestFillKeys"));
         const saved = comparable(app.getSelectedHarvestGrowthDetail(keys));
