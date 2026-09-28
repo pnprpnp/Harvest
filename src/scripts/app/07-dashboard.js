@@ -5179,6 +5179,7 @@ async function exportDashboardGrowthHistory(){
   if(!ensureProtectedOperationAccess("予報・予測履歴の書き出し")) return;
   const model = dashboardGrowthPredictionModelCache;
   if(!model) return;
+  const safetyScope=getActiveRecordsStorageKey();
   try{
     const [weatherHistory, predictionHistory,historyBackup] = await Promise.all([
       HarvestGrowthHistory.list(model.scope, "weather"), HarvestGrowthHistory.list(model.scope, "prediction"),
@@ -5190,9 +5191,10 @@ async function exportDashboardGrowthHistory(){
       samples:model.engineSamples, weather:model.weather, weatherHistory, predictionHistory,
       restoration:{schemaVersion:1,history:historyBackup,observations:HarvestGrowthObservations.backup(),
         models:getDashboardGrowthLearningRegistry().exportBackup(),
-        safetySnapshot:HarvestGrowthSafety.readSnapshot(harvestnaviLocalStorage,getActiveRecordsStorageKey()),
+        safetySnapshot:await getDashboardGrowthSafetyArchive().readSnapshot(safetyScope),
         adjustments:getDashboardGrowthBuildingAdjustments(),location:getDashboardGrowthLocation()},
       backtest:model.validation, savedEvaluation:evaluateDashboardGrowthSavedPredictions(predictionHistory, model.samples, {asOf:model.asOf}) };
+    if(safetyScope!==getActiveRecordsStorageKey()) throw new Error("利用者が切り替わったため書き出しを中止しました");
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type:"application/json" }));
     const link = document.createElement("a");
     link.href = url; link.download = `Harvestnavi-growth-${formatDateOnlyString(new Date())}.json`;

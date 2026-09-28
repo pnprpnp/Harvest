@@ -34,6 +34,66 @@ function largeFixture(){
   f.data.set(keys.records,JSON.stringify(raw,null,2));
   return f;
 }
+function archived(f){
+  const data=new Map(),reads=[],writes=[];
+  const archive={async getItem(key){reads.push(key);return data.get(key) ?? null;},
+    async addItem(key,text){if(data.has(key))return false;writes.push(key);data.set(key,text);return true;},
+    async removeItemIfMatches(key,text){if(data.get(key)!==text)return false;data.delete(key);return true;}};
+  const controller=safety.createArchive({storage:f.storage,archive});
+  return {controller,archive,data,reads,writes,ensure:()=>controller.ensureSnapshot("owner",keys,f.getState)};
+}
+test("archive commits a complete baseline without writing to a full localStorage",async()=>{
+  const f=largeFixture(),a=archived(f),before=sources(f),memory=f.getState();
+  f.beforeWrite=()=>{throw new Error("quota");};
+  const result=await a.ensure(),saved=await a.controller.readSnapshot("owner");
+  assert.equal(result.created,true);assert.equal(result.storage,"indexedDB");
+  assert.deepEqual(saved.raw,before);assert.deepEqual(saved.memory,memory);assert.deepEqual(sources(f),before);
+  assert.equal(f.writes.length,0);assert.equal(a.writes.length,1);assert.equal(f.data.has(result.key),false);
+  // Normal later edits reuse the initial baseline without reading source history.
+  f.data.set(keys.records,"[]");f.state.records=[];f.reads.length=0;a.reads.length=0;
+  assert.equal((await a.ensure()).created,false);
+  assert.deepEqual(f.reads,[result.key]);assert.deepEqual(a.reads,[result.key]);assert.equal(a.writes.length,1);
+});
+test("archive retains legacy compressed and uncompressed baselines even when IndexedDB is unavailable",async()=>{
+  for(const f of [fixture(),largeFixture()]){
+    snapshot(f);const bytes=f.data.get(safety.storageKey("owner")),before=sources(f),a=archived(f);
+    a.archive.getItem=async()=>{throw new Error("unavailable");};
+    assert.equal((await a.ensure()).created,false);
+    assert.deepEqual((await a.controller.readSnapshot("owner")).raw,before);
+    assert.equal(f.data.get(safety.storageKey("owner")),bytes);assert.equal(a.writes.length,0);
+  }
+});
+test("archive failures and corrupt readback never authorize source changes or overwrite a baseline",async()=>{
+  for(const mode of ["write","readback","corrupt"]){
+    const f=fixture(),before=sources(f),a=archived(f);
+    if(mode==="write") a.archive.addItem=async()=>{throw new Error("denied");};
+    else if(mode==="readback") a.archive.addItem=async(key,text)=>{a.data.set(key,"corrupt");return true;};
+    else {await a.ensure();a.data.set(safety.storageKey("owner"),"corrupt");}
+    await assert.rejects(a.ensure());assert.deepEqual(sources(f),before);assert.equal(f.writes.length,0);
+    if(mode!=="write")assert.equal(a.data.get(safety.storageKey("owner")),"corrupt");
+  }
+});
+test("archive waits for commit and joins concurrent requests without repeated capture or writes",async()=>{
+  const f=fixture(),a=archived(f);let release,started;
+  const entered=new Promise(resolve=>{started=resolve;}),gate=new Promise(resolve=>{release=resolve;}),add=a.archive.addItem;
+  a.archive.addItem=async(key,text)=>{started();await gate;return add(key,text);};
+  let done=false;const first=a.ensure().then(result=>{done=true;return result;}),second=a.ensure();
+  await entered;assert.equal(done,false);assert.equal(a.data.size,0);release();
+  assert.deepEqual(await first,await second);assert.equal(a.writes.length,1);
+});
+test("archive detects concurrent source changes and removes only its own newly created baseline",async()=>{
+  const f=fixture(),a=archived(f),add=a.archive.addItem;let changed;
+  a.archive.addItem=async(key,text)=>{const result=await add(key,text);changed=f.data.get(keys.records)+" ";f.data.set(keys.records,changed);return result;};
+  await assert.rejects(a.ensure(),/安全保存中/);
+  assert.equal(f.data.get(keys.records),changed);assert.equal(a.data.size,0);
+});
+test("archive preserves another tab's existing baseline and rejects changed target keys",async()=>{
+  const f=fixture(),a=archived(f),other=archived(f);await other.ensure();
+  const original=other.data.get(safety.storageKey("owner"));
+  a.archive.addItem=async(key)=>{a.data.set(key,original);return false;};
+  assert.equal((await a.ensure()).created,false);assert.equal(a.data.get(safety.storageKey("owner")),original);
+  await assert.rejects(a.controller.ensureSnapshot("owner",{...keys,extra:[]},f.getState),/対象が変わ/);
+});
 
 test("large safety snapshots retain every original byte and memory field in a smaller UTF16 envelope",()=>{
   const f=largeFixture(),before=sources(f),memory=copy(f.state),result=snapshot(f);

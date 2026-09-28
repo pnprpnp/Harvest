@@ -2907,9 +2907,10 @@
         );
       });
 
-      await runTest("収穫記録は端末保存と送信待ち登録後すぐ完了を知らせる", () => {
-        const result = comparable(app.eval(`(() => {
+      await runTest("収穫記録は端末保存と送信待ち登録後すぐ完了を知らせる", async () => {
+        const result = comparable(await app.eval(`(async () => {
           const previous = {
+            safety:ensureDashboardGrowthSafetySnapshot,
             records,
             keys:[...harvestFillKeys],
             mode:recordSelectionMode,
@@ -2941,6 +2942,7 @@
           let storageOptions = null;
           let toastMessage = "";
           try{
+            ensureDashboardGrowthSafetySnapshot = async () => {};
             records = [];
             harvestFillKeys = [getPalletKey(2, "A", 1)];
             recordSelectionMode = "harvest";
@@ -2979,7 +2981,7 @@
               order.push("toast");
             };
 
-            saveRecord();
+            await saveRecord();
             const immediate = {
               order:[...order],
               recordCount:records.length,
@@ -2996,6 +2998,7 @@
               plantingCallsAfterTransition:plantingCalls
             };
           }finally{
+            ensureDashboardGrowthSafetySnapshot = previous.safety;
             records = previous.records;
             harvestFillKeys = previous.keys;
             recordSelectionMode = previous.mode;
@@ -12594,9 +12597,10 @@
         }
       });
 
-      await runTest("保存済み収穫記録の更新後は苗植えへ移らず元の日付の一覧へ戻る", () => {
-        const state = comparable(app.eval(`(() => {
+      await runTest("保存済み収穫記録の更新後は苗植えへ移らず元の日付の一覧へ戻る", async () => {
+        const state = comparable(await app.eval(`(async () => {
           const previous = {
+            safety:ensureDashboardGrowthSafetySnapshot,
             records,
             editingHarvestRecordId,
             harvestEditReturnPlantingRecordId,
@@ -12627,6 +12631,7 @@
           let clearCalls = 0;
           let historyDate = "";
           try{
+            ensureDashboardGrowthSafetySnapshot = async () => {};
             records = [{
               id:20000000000991,
               type:"fullHarvest",
@@ -12669,7 +12674,7 @@
             scheduleRecordSaveUiTransition = callback => callback();
             showToast = () => {};
             enterPlantingRecordMode = () => { plantingCalls++; };
-            saveRecord();
+            await saveRecord();
             return {
               plantingCalls,
               clearCalls,
@@ -12680,6 +12685,7 @@
               updatedDate:records[0].date
             };
           }finally{
+            ensureDashboardGrowthSafetySnapshot = previous.safety;
             records = previous.records;
             editingHarvestRecordId = previous.editingHarvestRecordId;
             harvestEditReturnPlantingRecordId = previous.harvestEditReturnPlantingRecordId;
@@ -12718,9 +12724,10 @@
         }, "収穫記録の更新後に苗植えへ移るか、元の日付の記録一覧へ戻れていません");
       });
 
-      await runTest("苗植えから戻った収穫記録は更新・破棄後に同じ苗植えへ戻る", () => {
-        const state = comparable(app.eval(`(() => {
+      await runTest("苗植えから戻った収穫記録は更新・破棄後に同じ苗植えへ戻る", async () => {
+        const state = comparable(await app.eval(`(async () => {
           const previous = {
+            safety:ensureDashboardGrowthSafetySnapshot,
             records,
             editingHarvestRecordId,
             harvestEditReturnPlantingRecordId,
@@ -12764,6 +12771,7 @@
           const toasts = [];
           let clearCalls = 0;
           try{
+            ensureDashboardGrowthSafetySnapshot = async () => {};
             records = [{
               id:recordId,
               type:"fullHarvest",
@@ -12834,7 +12842,7 @@
               returnPlantingId:harvestEditReturnPlantingRecordId,
               mode:recordSelectionMode
             };
-            saveRecord();
+            await saveRecord();
             const updatedState = {
               recordCount:records.length,
               recordId:records[0].id,
@@ -12868,6 +12876,7 @@
             };
             return { editState, updatedState, discardedState };
           }finally{
+            ensureDashboardGrowthSafetySnapshot = previous.safety;
             records = previous.records;
             editingHarvestRecordId = previous.editingHarvestRecordId;
             harvestEditReturnPlantingRecordId = previous.harvestEditReturnPlantingRecordId;
@@ -13694,9 +13703,10 @@
         }, "ベッド別入力と複数ベッド合計入力を同じ部分収穫操作で選び分けられません");
       });
 
-      await runTest("記録タブの保存1回でベッド別・複数ベッド合算の部分収穫をまとめて保存する", () => {
-        const state = comparable(app.eval(`(() => {
+      await runTest("記録タブの保存1回でベッド別・複数ベッド合算の部分収穫をまとめて保存する", async () => {
+        const state = comparable(await app.eval(`(async () => {
           const previous = {
+            safety:ensureDashboardGrowthSafetySnapshot,
             records,
             keys:[...harvestFillKeys],
             overageKeys:[...harvestOverageKeys],
@@ -13734,6 +13744,7 @@
           let clearCalls = 0;
           const queuedBatches = [];
           try{
+            ensureDashboardGrowthSafetySnapshot = async () => {};
             ensureProtectedOperationAccess = () => true;
             ensureGoogleSheetLocalMutationAllowed = () => true;
             confirmHarvestRecordWarnings = () => true;
@@ -13786,7 +13797,7 @@
             document.getElementById("recordDateInput").value = "2099-12-30";
             document.getElementById("recordCasesInput").value = "10";
             document.getElementById("recordPalletSummaryInput").value = formatPalletSummary(harvestFillKeys);
-            saveRecord();
+            await saveRecord();
             const combinedRecords = records.map(record => ({
               type:record.type,
               cases:record.cases,
@@ -13806,7 +13817,7 @@
             };
             document.getElementById("recordCasesInput").value = "7";
             document.getElementById("recordPalletSummaryInput").value = "";
-            saveRecord();
+            await saveRecord();
             const partialOnlyRecords = records.map(record => ({
               type:record.type,
               cases:record.cases,
@@ -13824,6 +13835,7 @@
               clearCalls
             };
           }finally{
+            ensureDashboardGrowthSafetySnapshot = previous.safety;
             records = previous.records;
             harvestFillKeys = previous.keys;
             harvestOverageKeys = previous.overageKeys;

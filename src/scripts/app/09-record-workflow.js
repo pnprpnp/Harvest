@@ -3322,7 +3322,7 @@ async function handleRecordPrimaryAction(){
       await savePlantingRecord();
       return;
     }
-    saveRecord();
+    await saveRecord();
   }catch(e){
     console.error("Record action failed", e);
     closeRecordFloatingUi();

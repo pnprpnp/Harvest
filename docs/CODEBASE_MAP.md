@@ -30,7 +30,7 @@
 | `src/scripts/growth-history.js` | IndexedDBへの予報・予測スナップショット保存 | 利用者区分と地点を分離し、当時の保存内容を上書きしない。外部へ自動送信しない |
 | `src/scripts/growth-learning.js` / `growth-generation-evaluation.js` / `growth-management.js` | 教師変更時の評価、凍結世代比較、shadow、明示採用・巻戻し | 気象更新で再学習しない。同方式の係数更新も両世代完成後だけ比較 |
 | `src/scripts/growth-observations.js` / `growth-readiness.js` / `growth-evidence.js` | 任意確認のCAS同期、適期引継ぎ、環境・除外の時点付き照合 | 正解値・途中評価・手動補正を混ぜない。未知位置を拡張しない |
-| `src/scripts/growth-safety.js` / `growth-backup.js` / `growth-analysis.js` | 移行安全、復元と競合、診断専用の失敗分析 | 元記録のraw値を保持。将来実測を置換するのは診断のみ |
+| `src/scripts/growth-safety.js` / `growth-safety-storage.js` / `growth-backup.js` / `growth-analysis.js` | 移行安全、IndexedDBへの安全保存、復元と競合、診断専用の失敗分析 | 元記録のraw値を保持。将来実測を置換するのは診断のみ |
 | `src/scripts/growth-planner.js` / `growth-yield.js` | 数量照合・凍結補助係数・新旧数量比較・優先分類・カレンダー | ケース合計を位置へ推測配分しない。数量は上位指標の悪化を覆せない |
 | `src/scripts/growth-calibration.js` / `growth-field-validation.js` / `growth-similarity.js` | 保存予測の校正検証、途中評価の経過照合、類似作の参考検索 | 元予測・教師を変更しない。世代/作/時点を分け、不足を精度で埋めない |
 | `src/scripts/growth-restore-settings.js` / `src/scripts/app/growth-restore-settings.js` | 地点・号棟補正の明示選択復元と安全保存 | 無選択は現状維持。履歴・モデルの元地点を維持し、現在地点へ混ぜない |
@@ -77,7 +77,7 @@
 - 収穫時の育ち具合は収穫記録の `sizeRating` と `growthDetail`、外気は気象庁の観測値・予報が元データです。schemaVersion 3で適期日モード・品質の程度を保持し、旧記録の未確認を症状なしへ変換しません。予測の表示キャッシュは元記録・地点・環境・気象・基準日で無効化しますが、採用係数は世代registryに固定し、気象更新では再学習しません。
 - 当時の予報・予測は `growth-history.js` のIndexedDBが保存元です。現在のモデルを学習し直した結果と区別して採点します。履歴の自動削除・外部送信はせず、保存失敗時に再保存し、必要に応じてJSONへ書き出します。
 - 削除済み記録は端末ごみ箱とリモートの削除情報（tombstone）で保護します。単純な配列削除だけで終わらせません。
-- `growth-safety.js` の変更前安全保存は、元の保存文字列と画面上の全項目を保持します。64Ki文字以上は同梱のMITライセンス `vendor/lz-string-1.5.0.min.js` で可逆圧縮し、保存前の完全復元確認と保存後の読戻しを行います。既存の非圧縮v1も読み込み、再利用時は圧縮・履歴検証を繰り返しません。
+- `growth-safety.js` の変更前安全保存は、元の保存文字列と画面上の全項目を保持します。新しい安全保存は `growth-safety-storage.js` のIndexedDB `harvestnaviGrowthSafety` / `snapshots` へ置き、トランザクション完了と読戻しを待ってから記録変更へ進みます。従来のlocalStorage内の圧縮・非圧縮v1を優先し、削除・置換しません。64Ki文字以上は同梱のMITライセンス `vendor/lz-string-1.5.0.min.js` で可逆圧縮し、保存前の完全復元確認と保存後の読戻しを行います。再利用時は保存値だけを読み、圧縮・履歴検証を繰り返しません。保存中の元記録・利用者・入力変更を検出した場合は更新を止めます。保存経路の変更時は `tests/run_growth_safety_storage.py` と `tests/record-safety-save.test.cjs` で満杯・中止・更新待ちを確認します。
 - パレット状態、履歴表示、集計、収穫検索索引、ロス推定などは派生状態です。元記録変更後は `completeRecordDataMutation()` → `invalidateRecordDerivedCaches()` を通し、必要に応じて `rebuildCurrentPalletLifecycleState()` で再構築します。
 - Googleスプレッドシートが営農記録の共有データの最終保存先です。記録用のCloudflare D1とApps Script受信箱は通信失敗に耐える受付・再送層です。気象用D1は気象庁への過度なアクセスを避ける共有キャッシュで、画面はその日別値から積算生育値を導出します。
 - 同期識別は収穫記録のUUID・ID・重複キー、苗植えイベントID、更新日時、同期番号を組み合わせます。片側の値だけで上書き判定を追加しません。

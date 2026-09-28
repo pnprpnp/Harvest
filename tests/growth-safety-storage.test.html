@@ -1,0 +1,81 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>安全保存の端末保存テスト</title>
+<script src="../src/scripts/browser-storage.js"></script>
+<script src="../src/scripts/vendor/lz-string-1.5.0.min.js"></script>
+<script src="../src/scripts/growth-safety.js"></script>
+<script src="../src/scripts/growth-safety-storage.js"></script>
+<script>
+(async()=>{
+  const results=[],databaseName="safety-test:"+crypto.randomUUID();
+  const archive=HarvestGrowthSafetyStorage.create({databaseName});
+  const assert=(ok,message)=>{if(!ok)throw new Error(message);};
+  async function run(message,work){try{await work();results.push({status:"passed",message});}catch(error){results.push({status:"failed",message:message+": "+error.message});}}
+  async function rejects(work){let rejected=false;try{await work();}catch(_){rejected=true;}assert(rejected,"失敗を検出できない");}
+  function fixture(scope,storage){
+    const records=Array.from({length:240},(_,i)=>({id:i+1,recordUuid:"uuid-"+i,type:"fullHarvest",date:"2026-09-24",cases:255,actualLoss:"-3.7",
+      memo:"変更前の収穫記録 🌱".repeat(8),palletRanges:["8-A-1-78"]}));
+    const keys={records:scope+":records",plantingEvents:scope+":planting",settings:scope+":settings"};
+    const data=new Map([[keys.records,JSON.stringify(records)]]);
+    storage=storage || {getItem:key=>data.get(key)??null,setItem:(key,text)=>data.set(key,text),removeItem:key=>data.delete(key)};
+    const state={records:records.map(row=>({...row,palletKeys:Array.from({length:78},(_,i)=>"8-A-"+(i+1))})),plantingEvents:[],settings:{}};
+    if(storage===harvestnaviLocalStorage)storage.setItem(keys.records,data.get(keys.records));
+    return {scope,keys,state,storage,raw:data.get(keys.records),controller:HarvestGrowthSafety.createArchive({storage,archive})};
+  }
+  await run("トランザクション完了後に安全保存を読み戻し、再起動後も全項目を復元する",async()=>{
+    const f=fixture("restart"),result=await f.controller.ensureSnapshot(f.scope,f.keys,f.state);
+    assert(result.created&&result.storage==="indexedDB","保存先が違う");
+    assert(f.storage.getItem(result.key)===null,"通常保存枠に安全保存を書込んだ");
+    const restarted=HarvestGrowthSafety.createArchive({storage:f.storage,archive:HarvestGrowthSafetyStorage.create({databaseName})});
+    const saved=await restarted.readSnapshot(f.scope);
+    assert(saved.raw[f.keys.records]===f.raw,"元文字列が変わった");
+    assert(JSON.stringify(saved.memory)===JSON.stringify(f.state),"画面上データが変わった");
+    assert(!(await restarted.ensureSnapshot(f.scope,f.keys,f.state)).created,"再保存で初回を置換した");
+  });
+  await run("並行する保存は最初の内容を保持し、別利用者の保存を混ぜない",async()=>{
+    const key="concurrent",outcomes=await Promise.all([archive.addItem(key,"first"),archive.addItem(key,"second")]);
+    assert(outcomes.filter(Boolean).length===1,"同じキーを二重保存した");
+    const value=await archive.getItem(key);assert(value==="first"||value==="second","保存内容が欠けた");
+    await archive.addItem("another-role","other");assert(await archive.getItem(key)===value,"別利用者で置換した");
+    assert(!await archive.removeItemIfMatches(key,"wrong"),"別の内容を削除した");
+    assert(await archive.getItem(key)===value,"条件不一致でも消えた");
+  });
+  await run("書込み要求の成功後でもトランザクションが中止されたら保存成功にしない",async()=>{
+    const db=await new Promise((resolve,reject)=>{const r=indexedDB.open(databaseName,1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+    const aborting={open(){const request={};queueMicrotask(()=>{request.result={
+      transaction(...args){const tx=db.transaction(...args),objectStore=tx.objectStore.bind(tx);
+        tx.objectStore=name=>{const store=objectStore(name),add=store.add.bind(store);store.add=(...values)=>{
+          const r=add(...values);r.onsuccess=()=>tx.abort();return r;};return store;};return tx;},close(){db.close();}};request.onsuccess();});return request;}};
+    await rejects(()=>HarvestGrowthSafetyStorage.create({indexedDB:aborting}).addItem("aborted","value"));
+    assert(await archive.getItem("aborted")===null,"中止した内容が残った");db.close();
+  });
+  await run("従来の安全保存はIndexedDBが使えなくても保持して読み込む",async()=>{
+    const f=fixture("legacy"),original=HarvestGrowthSafety.ensureSnapshot(f.storage,f.scope,f.keys,f.state),bytes=f.storage.getItem(original.key);
+    const controller=HarvestGrowthSafety.createArchive({storage:f.storage,archive:HarvestGrowthSafetyStorage.create({indexedDB:null})});
+    assert(!(await controller.ensureSnapshot(f.scope,f.keys,f.state)).created,"旧保存を置換した");
+    assert((await controller.readSnapshot(f.scope)).raw[f.keys.records]===f.raw,"旧保存を読めない");
+    assert(f.storage.getItem(original.key)===bytes,"旧保存の文字列が変わった");
+  });
+  await run("保存不可・破損した安全保存は元記録の更新を許可しない",async()=>{
+    const f=fixture("denied"),controller=HarvestGrowthSafety.createArchive({storage:f.storage,archive:HarvestGrowthSafetyStorage.create({indexedDB:null})});
+    await rejects(()=>controller.ensureSnapshot(f.scope,f.keys,f.state));assert(f.storage.getItem(f.keys.records)===f.raw,"失敗時に元記録を変更した");
+    await archive.addItem(HarvestGrowthSafety.storageKey(f.scope),"corrupt");
+    await rejects(()=>f.controller.ensureSnapshot(f.scope,f.keys,f.state));assert(f.storage.getItem(f.keys.records)===f.raw,"破損時に元記録を変更した");
+  });
+  await run("通常保存領域が満杯でも別領域へ安全保存し、9月24日のロス率を更新できる",async()=>{
+    const f=fixture("quota",harvestnaviLocalStorage),keys=[];
+    try{
+      let index=0;
+      try{for(;index<1000;index++){const key="filler:"+index;localStorage.setItem(key,"x".repeat(32768));keys.push(key);}}catch(error){assert(error.name==="QuotaExceededError","容量不足以外のエラー");}
+      const tail="filler:tail";keys.push(tail);let low=0,high=32768;
+      while(low+1<high){const mid=Math.floor((low+high)/2);try{localStorage.setItem(tail,"x".repeat(mid));low=mid;}catch(error){high=mid;}}
+      await rejects(()=>HarvestGrowthSafety.ensureSnapshot(f.storage,f.scope,f.keys,f.state));
+      const result=await f.controller.ensureSnapshot(f.scope,f.keys,f.state),saved=await f.controller.readSnapshot(f.scope);
+      assert(result.created&&saved.raw[f.keys.records]===f.raw,"満杯時に安全保存できない");
+      const rows=JSON.parse(f.raw);rows[0].actualLoss="10.8";f.storage.writeJson(f.keys.records,rows);
+      assert(f.storage.readJson(f.keys.records,[])[0].actualLoss==="10.8","ロス率を保存できない");
+      assert(f.storage.getItem(result.key)===null,"通常保存枠を消費した");
+      assert((await f.controller.readSnapshot(f.scope)).memory.records[0].actualLoss==="-3.7","変更前の記録を置換した");
+    }finally{keys.forEach(key=>localStorage.removeItem(key));localStorage.removeItem(f.keys.records);}
+  });
+  await fetch("/__harvestnavi_characterization_result__",{method:"POST",body:JSON.stringify({status:results.every(row=>row.status==="passed")?"passed":"failed",results})});
+})().catch(async error=>fetch("/__harvestnavi_characterization_result__",{method:"POST",body:JSON.stringify({status:"failed",results:[{status:"failed",message:error.stack}]})}));
+</script></html>

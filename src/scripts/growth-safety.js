@@ -180,6 +180,13 @@
     return {created,key:storageKey(snapshot.scope),schemaVersion:1,createdAt:snapshot.createdAt,
       rawInventory:copy(snapshot.rawInventory),memoryInventory:copy(snapshot.memoryInventory)};
   }
+  function prepareSnapshot(storage,scope,keys,data){
+    const raw = capture(storage,keys), memory = copy({records:data.records,plantingEvents:data.plantingEvents,settings:data.settings});
+    const rawEvidence = evidence(rawState(raw,keys)), memoryEvidence = evidence(memory);
+    assertSameHistory(rawEvidence,memoryEvidence);
+    return {schemaVersion:1,scope,createdAt:new Date(typeof data.now === "function" ? data.now() : data.now ?? Date.now()).toISOString(),keys,raw,memory,
+      rawInventory:inventoryFromEvidence(rawEvidence),memoryInventory:inventoryFromEvidence(memoryEvidence),rawFingerprint:fingerprint(raw)};
+  }
   function ensureSnapshot(storage,scope,inputKeys,data){
     const key = storageKey(scope), keys = normalizeKeys(scope,inputKeys), existing = storage.getItem(key);
     if(existing !== null){
@@ -193,11 +200,7 @@
       if(canonical(memo.snapshot.keys) !== canonical(keys)) throw new Error("安全保存の対象が変わっています。元の安全保存は保持しました");
       return summary(memo.snapshot,false);
     }
-    const raw = capture(storage,keys), memory = copy({records:data.records,plantingEvents:data.plantingEvents,settings:data.settings});
-    const rawEvidence = evidence(rawState(raw,keys)), memoryEvidence = evidence(memory);
-    assertSameHistory(rawEvidence,memoryEvidence);
-    const snapshot = {schemaVersion:1,scope,createdAt:new Date(typeof data.now === "function" ? data.now() : data.now ?? Date.now()).toISOString(),keys,raw,memory,
-      rawInventory:inventoryFromEvidence(rawEvidence),memoryInventory:inventoryFromEvidence(memoryEvidence),rawFingerprint:fingerprint(raw)};
+    const snapshot = prepareSnapshot(storage,scope,keys,data), raw = snapshot.raw;
     const text = encodeSnapshot(snapshot);
     storage.setItem(key,text);
     if(storage.getItem(key) !== text) throw new Error("変更前の安全保存を読み戻せません。元の記録は変更していません");
@@ -211,6 +214,58 @@
     if(!verified.has(storage)) verified.set(storage,new Map());
     verified.get(storage).set(scope,{text,snapshot});
     return summary(snapshot,true);
+  }
+  // New baselines use a separate durable archive. Legacy localStorage baselines
+  // retain precedence and are never deleted or rewritten during this transition.
+  function createArchive({storage,archive}){
+    const cache = new Map(), pending = new Map();
+    function checked(scope,text,keys){
+      let memo = cache.get(scope);
+      if(!memo || memo.text !== text){
+        memo = {text,snapshot:decodeSnapshot(text,scope)};
+        cache.set(scope,memo);
+      }
+      if(keys && canonical(memo.snapshot.keys) !== canonical(keys)) throw new Error("安全保存の対象が変わっています。元の安全保存は保持しました");
+      return memo.snapshot;
+    }
+    async function ensure(scope,inputKeys,getData){
+      const key = storageKey(scope), keys = normalizeKeys(scope,inputKeys);
+      if(storage.getItem(key) !== null) return ensureSnapshot(storage,scope,keys,{});
+      const existing = await archive.getItem(key);
+      if(existing !== null) return {...summary(checked(scope,existing,keys),false),storage:"indexedDB"};
+      const snapshot = prepareSnapshot(storage,scope,keys,typeof getData === "function" ? getData() : getData);
+      const text = encodeSnapshot(snapshot);
+      const created = await archive.addItem(key,text);
+      const saved = await archive.getItem(key);
+      if(created && saved !== text) throw new Error("変更前の安全保存を読み戻せません。元の記録は変更していません");
+      const baseline = checked(scope,saved,keys);
+      if(created && canonical(capture(storage,keys)) !== canonical(snapshot.raw)){
+        cache.delete(scope);
+        await archive.removeItemIfMatches(key,text);
+        throw new Error("安全保存中に元の記録が更新されました。もう一度操作してください");
+      }
+      return {...summary(baseline,created),storage:"indexedDB"};
+    }
+    function ensureArchivedSnapshot(scope,keys,data){
+      // Join concurrent bootstrap calls so a repeated click cannot rewrite the
+      // baseline or repeat compression and complete-history validation.
+      const targetKeys=normalizeKeys(scope,keys),current=pending.get(scope);
+      if(current){
+        if(canonical(current.keys)!==canonical(targetKeys)) return Promise.reject(new Error("安全保存の対象が変わっています。元の安全保存は保持しました"));
+        return current.work;
+      }
+      const work = ensure(scope,keys,data).finally(()=>pending.delete(scope));
+      pending.set(scope,{keys:targetKeys,work});
+      return work;
+    }
+    async function readArchivedSnapshot(scope){
+      const legacy = readSnapshot(storage,scope);
+      if(legacy !== null) return legacy;
+      const text = await archive.getItem(storageKey(scope));
+      return text === null ? null : copy(checked(scope,text));
+    }
+    return Object.freeze({ensureSnapshot:ensureArchivedSnapshot,readSnapshot:readArchivedSnapshot,
+      resetCache:scope=>scope === undefined ? cache.clear() : cache.delete(scope)});
   }
   function verifyPreserved(before,after,key,path,allowChange){
     if(canonical(before) === canonical(after)) return;
@@ -289,5 +344,5 @@
     if(storage && scope !== undefined) verified.get(storage)?.delete(scope);
     else if(storage) verified.delete(storage);
   }
-  return Object.freeze({schemaVersion:1,storageKey,rollbackKeys:scope=>[storageKey(scope)],inventory,ensureSnapshot,readSnapshot,runMigration,resetCache});
+  return Object.freeze({schemaVersion:1,storageKey,rollbackKeys:scope=>[storageKey(scope)],inventory,ensureSnapshot,readSnapshot,createArchive,runMigration,resetCache});
 });

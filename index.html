@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260928-safety-snapshot-compression">
+<meta name="harvestnavi-version" content="20260928-safety-indexeddb">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -3663,6 +3663,13 @@ var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZa
     return {created,key:storageKey(snapshot.scope),schemaVersion:1,createdAt:snapshot.createdAt,
       rawInventory:copy(snapshot.rawInventory),memoryInventory:copy(snapshot.memoryInventory)};
   }
+  function prepareSnapshot(storage,scope,keys,data){
+    const raw = capture(storage,keys), memory = copy({records:data.records,plantingEvents:data.plantingEvents,settings:data.settings});
+    const rawEvidence = evidence(rawState(raw,keys)), memoryEvidence = evidence(memory);
+    assertSameHistory(rawEvidence,memoryEvidence);
+    return {schemaVersion:1,scope,createdAt:new Date(typeof data.now === "function" ? data.now() : data.now ?? Date.now()).toISOString(),keys,raw,memory,
+      rawInventory:inventoryFromEvidence(rawEvidence),memoryInventory:inventoryFromEvidence(memoryEvidence),rawFingerprint:fingerprint(raw)};
+  }
   function ensureSnapshot(storage,scope,inputKeys,data){
     const key = storageKey(scope), keys = normalizeKeys(scope,inputKeys), existing = storage.getItem(key);
     if(existing !== null){
@@ -3676,11 +3683,7 @@ var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZa
       if(canonical(memo.snapshot.keys) !== canonical(keys)) throw new Error("安全保存の対象が変わっています。元の安全保存は保持しました");
       return summary(memo.snapshot,false);
     }
-    const raw = capture(storage,keys), memory = copy({records:data.records,plantingEvents:data.plantingEvents,settings:data.settings});
-    const rawEvidence = evidence(rawState(raw,keys)), memoryEvidence = evidence(memory);
-    assertSameHistory(rawEvidence,memoryEvidence);
-    const snapshot = {schemaVersion:1,scope,createdAt:new Date(typeof data.now === "function" ? data.now() : data.now ?? Date.now()).toISOString(),keys,raw,memory,
-      rawInventory:inventoryFromEvidence(rawEvidence),memoryInventory:inventoryFromEvidence(memoryEvidence),rawFingerprint:fingerprint(raw)};
+    const snapshot = prepareSnapshot(storage,scope,keys,data), raw = snapshot.raw;
     const text = encodeSnapshot(snapshot);
     storage.setItem(key,text);
     if(storage.getItem(key) !== text) throw new Error("変更前の安全保存を読み戻せません。元の記録は変更していません");
@@ -3694,6 +3697,58 @@ var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZa
     if(!verified.has(storage)) verified.set(storage,new Map());
     verified.get(storage).set(scope,{text,snapshot});
     return summary(snapshot,true);
+  }
+  // New baselines use a separate durable archive. Legacy localStorage baselines
+  // retain precedence and are never deleted or rewritten during this transition.
+  function createArchive({storage,archive}){
+    const cache = new Map(), pending = new Map();
+    function checked(scope,text,keys){
+      let memo = cache.get(scope);
+      if(!memo || memo.text !== text){
+        memo = {text,snapshot:decodeSnapshot(text,scope)};
+        cache.set(scope,memo);
+      }
+      if(keys && canonical(memo.snapshot.keys) !== canonical(keys)) throw new Error("安全保存の対象が変わっています。元の安全保存は保持しました");
+      return memo.snapshot;
+    }
+    async function ensure(scope,inputKeys,getData){
+      const key = storageKey(scope), keys = normalizeKeys(scope,inputKeys);
+      if(storage.getItem(key) !== null) return ensureSnapshot(storage,scope,keys,{});
+      const existing = await archive.getItem(key);
+      if(existing !== null) return {...summary(checked(scope,existing,keys),false),storage:"indexedDB"};
+      const snapshot = prepareSnapshot(storage,scope,keys,typeof getData === "function" ? getData() : getData);
+      const text = encodeSnapshot(snapshot);
+      const created = await archive.addItem(key,text);
+      const saved = await archive.getItem(key);
+      if(created && saved !== text) throw new Error("変更前の安全保存を読み戻せません。元の記録は変更していません");
+      const baseline = checked(scope,saved,keys);
+      if(created && canonical(capture(storage,keys)) !== canonical(snapshot.raw)){
+        cache.delete(scope);
+        await archive.removeItemIfMatches(key,text);
+        throw new Error("安全保存中に元の記録が更新されました。もう一度操作してください");
+      }
+      return {...summary(baseline,created),storage:"indexedDB"};
+    }
+    function ensureArchivedSnapshot(scope,keys,data){
+      // Join concurrent bootstrap calls so a repeated click cannot rewrite the
+      // baseline or repeat compression and complete-history validation.
+      const targetKeys=normalizeKeys(scope,keys),current=pending.get(scope);
+      if(current){
+        if(canonical(current.keys)!==canonical(targetKeys)) return Promise.reject(new Error("安全保存の対象が変わっています。元の安全保存は保持しました"));
+        return current.work;
+      }
+      const work = ensure(scope,keys,data).finally(()=>pending.delete(scope));
+      pending.set(scope,{keys:targetKeys,work});
+      return work;
+    }
+    async function readArchivedSnapshot(scope){
+      const legacy = readSnapshot(storage,scope);
+      if(legacy !== null) return legacy;
+      const text = await archive.getItem(storageKey(scope));
+      return text === null ? null : copy(checked(scope,text));
+    }
+    return Object.freeze({ensureSnapshot:ensureArchivedSnapshot,readSnapshot:readArchivedSnapshot,
+      resetCache:scope=>scope === undefined ? cache.clear() : cache.delete(scope)});
   }
   function verifyPreserved(before,after,key,path,allowChange){
     if(canonical(before) === canonical(after)) return;
@@ -3772,7 +3827,63 @@ var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZa
     if(storage && scope !== undefined) verified.get(storage)?.delete(scope);
     else if(storage) verified.delete(storage);
   }
-  return Object.freeze({schemaVersion:1,storageKey,rollbackKeys:scope=>[storageKey(scope)],inventory,ensureSnapshot,readSnapshot,runMigration,resetCache});
+  return Object.freeze({schemaVersion:1,storageKey,rollbackKeys:scope=>[storageKey(scope)],inventory,ensureSnapshot,readSnapshot,createArchive,runMigration,resetCache});
+});
+// Durable safety baselines have their own IndexedDB store, outside localStorage.
+(function(root,factory){
+  const api=factory(root);
+  if(typeof module === "object" && module.exports) module.exports=api;
+  else root.HarvestGrowthSafetyStorage=api;
+})(typeof globalThis !== "undefined" ? globalThis : this,function(root){
+  "use strict";
+  function create({indexedDB=root.indexedDB,databaseName="harvestnaviGrowthSafety"}={}){
+    let opening=null;
+    function open(){
+      if(opening) return opening;
+      opening=new Promise((resolve,reject)=>{
+        if(!indexedDB) return reject(new Error("この環境では変更前の記録を安全保存できません"));
+        const request=indexedDB.open(databaseName,1);
+        let failed=false;
+        request.onupgradeneeded=()=>request.result.createObjectStore("snapshots");
+        request.onsuccess=()=>{
+          const db=request.result;
+          if(failed){db.close();return;}
+          db.onversionchange=()=>{db.close();opening=null;};
+          resolve(db);
+        };
+        request.onerror=()=>{failed=true;reject(request.error);};
+        request.onblocked=()=>{failed=true;reject(new Error("別の画面が安全保存を使用しています。開き直して再保存してください"));};
+      }).catch(error=>{opening=null;throw error;});
+      return opening;
+    }
+    async function transaction(key,mode,action){
+      const db=await open();
+      return await new Promise((resolve,reject)=>{
+        const tx=db.transaction("snapshots",mode),store=tx.objectStore("snapshots");
+        const request=store.get(key);let result=null,failure=null;
+        request.onsuccess=()=>{
+          try{result=action(store,request.result ?? null);}
+          catch(error){failure=error;tx.abort();}
+        };
+        // Request success is insufficient: wait for the durable transaction commit.
+        tx.oncomplete=()=>resolve(result);
+        tx.onabort=()=>reject(failure || tx.error || new Error("変更前の記録の安全保存に失敗しました"));
+        tx.onerror=()=>{};
+      });
+    }
+    return Object.freeze({
+      getItem:key=>transaction(key,"readonly",(_store,text)=>text),
+      addItem:(key,text)=>transaction(key,"readwrite",(store,existing)=>{
+        if(existing !== null) return false;
+        store.add(text,key);return true;
+      }),
+      removeItemIfMatches:(key,text)=>transaction(key,"readwrite",(store,existing)=>{
+        if(existing !== text) return false;
+        store.delete(key);return true;
+      })
+    });
+  }
+  return Object.freeze({create});
 });
 /* Growth-only restore transaction. Farm records are never replaced here.
  * Immutable IDB archives commit first. A failed local commit restores the exact
@@ -40422,6 +40533,7 @@ async function exportDashboardGrowthHistory(){
   if(!ensureProtectedOperationAccess("予報・予測履歴の書き出し")) return;
   const model = dashboardGrowthPredictionModelCache;
   if(!model) return;
+  const safetyScope=getActiveRecordsStorageKey();
   try{
     const [weatherHistory, predictionHistory,historyBackup] = await Promise.all([
       HarvestGrowthHistory.list(model.scope, "weather"), HarvestGrowthHistory.list(model.scope, "prediction"),
@@ -40433,9 +40545,10 @@ async function exportDashboardGrowthHistory(){
       samples:model.engineSamples, weather:model.weather, weatherHistory, predictionHistory,
       restoration:{schemaVersion:1,history:historyBackup,observations:HarvestGrowthObservations.backup(),
         models:getDashboardGrowthLearningRegistry().exportBackup(),
-        safetySnapshot:HarvestGrowthSafety.readSnapshot(harvestnaviLocalStorage,getActiveRecordsStorageKey()),
+        safetySnapshot:await getDashboardGrowthSafetyArchive().readSnapshot(safetyScope),
         adjustments:getDashboardGrowthBuildingAdjustments(),location:getDashboardGrowthLocation()},
       backtest:model.validation, savedEvaluation:evaluateDashboardGrowthSavedPredictions(predictionHistory, model.samples, {asOf:model.asOf}) };
+    if(safetyScope!==getActiveRecordsStorageKey()) throw new Error("利用者が切り替わったため書き出しを中止しました");
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type:"application/json" }));
     const link = document.createElement("a");
     link.href = url; link.download = `Harvestnavi-growth-${formatDateOnlyString(new Date())}.json`;
@@ -47902,7 +48015,7 @@ async function handleRecordPrimaryAction(){
       await savePlantingRecord();
       return;
     }
-    saveRecord();
+    await saveRecord();
   }catch(e){
     console.error("Record action failed", e);
     closeRecordFloatingUi();
@@ -51653,7 +51766,16 @@ function confirmHarvestRecordWarnings(date, actualLoss, editingRecord = null){
   ].join("\n"));
 }
 
-function saveRecord(){
+function getRecordSafetyFormSignature(){
+  return JSON.stringify({editingHarvestRecordId,recordSelectionMode,harvestFillKeys,recordPartialHarvestDraft,
+    inputs:["recordDateInput","recordCasesInput","recordPalletSummaryInput","recordMemoInput"]
+      .map(id=>document.getElementById(id)?.value || ""),
+    quality:getSelectedQualityMemo(),size:getSelectedHarvestSizeRating(),growth:getSelectedHarvestGrowthDetail(harvestFillKeys),
+    trays:getRecordActualSeedlingTrayCount(),carryover:getRecordSeedlingCarryoverMode()});
+}
+
+async function saveRecord(){
+  if(recordSaveUiTransitionPending) return;
   if(!ensureProtectedOperationAccess("記録の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("記録を保存", { allowBackgroundSend: true })) return;
   const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
@@ -51722,8 +51844,25 @@ function saveRecord(){
     return;
   }
 
-  try{ ensureDashboardGrowthSafetySnapshot(); }
-  catch(error){ showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`); return; }
+  const safetyFormSignature=getRecordSafetyFormSignature();
+  const safetySaveCard=document.getElementById("recordSaveCard"),safetySaveButton=document.getElementById("recordPrimaryActionBtn");
+  recordSaveUiTransitionPending=true;
+  safetySaveCard?.setAttribute("aria-busy","true");
+  if(safetySaveButton) safetySaveButton.disabled=true;
+  try{
+    await ensureDashboardGrowthSafetySnapshot();
+    if(getRecordSafetyFormSignature()!==safetyFormSignature){
+      showToast("安全保存中に入力が変わりました。内容を確認してもう一度更新してください");
+      return;
+    }
+  }catch(error){
+    showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`);
+    return;
+  }finally{
+    recordSaveUiTransitionPending=false;
+    safetySaveCard?.removeAttribute("aria-busy");
+    if(safetySaveButton) safetySaveButton.disabled=false;
+  }
 
   if(editingRecord && editingRecord.type === "fullHarvest"){
     const editedRecordDate = date;
@@ -56889,6 +57028,7 @@ let recordGrowthReadyScope = "";
 let recordGrowthReadyHistoryLimit = 20;
 let recordGrowthReadySyncing = false;
 let recordGrowthUnratedMode = false;
+let recordGrowthSafetySavePending = false;
 
 function invalidateDashboardGrowthEvidence(){
   dashboardGrowthDataRevision++;
@@ -56980,17 +57120,23 @@ function renderRecordGrowthReadyForm(group, observation = null){
 }
 
 function saveRecordGrowthReadyToday(){
+  if(recordGrowthSafetySavePending) return;
   document.getElementById("recordGrowthReadyDate").value = formatDateOnlyString(new Date());
   saveRecordGrowthReady();
 }
 
-function saveRecordGrowthReady(){
+async function saveRecordGrowthReady(){
+  if(recordGrowthSafetySavePending) return;
   if(recordGrowthReadyScope !== getActiveRecordsStorageKey()){
     closeRecordGrowthReady(); showToast("利用者が切り替わりました。もう一度開いてください"); return;
   }
   if(!ensureGoogleSheetLocalMutationAllowed("適期確認を記録する操作を")) return;
+  const editingId=recordGrowthReadyEditingId;
+  recordGrowthSafetySavePending=true;
   try{
-    ensureDashboardGrowthSafetySnapshot();
+    await ensureDashboardGrowthSafetySnapshot();
+    if(recordGrowthReadyScope !== getActiveRecordsStorageKey()) throw new Error("利用者が切り替わりました。もう一度開いてください");
+    if(editingId!==recordGrowthReadyEditingId) throw new Error("入力対象が変わりました。内容を確認してもう一度保存してください");
     const existing = recordGrowthReadyEditingId
       ? HarvestGrowthObservations.list().find(row => row.observationId === recordGrowthReadyEditingId) : null;
     if(recordGrowthReadyEditingId && !existing) throw new Error("対象の確認記録が変更されました。開き直してください");
@@ -57009,6 +57155,7 @@ function saveRecordGrowthReady(){
     setRecordGrowthReadyNotice("適期確認を端末に保存しました。収穫時に同じ作へ引き継ぎます。");
     syncRecordGrowthReady(false);
   }catch(error){ setRecordGrowthReadyNotice(error.message || "端末に保存できませんでした"); }
+  finally{recordGrowthSafetySavePending=false;}
 }
 
 function editRecordGrowthReady(id){
@@ -57159,13 +57306,18 @@ function changeRecordGrowthObservationKind(){
   if(!environment.childElementCount) environment.innerHTML = [["temperature","温度"],["light","日光"],["humidity","湿度"]].map(([key,label])=>`<label>${label}<select id="recordGrowthEnvironment-${key}"><option value="base">基準と同じ</option><option value="high">高め・多め</option><option value="low">低め・少なめ</option></select></label>`).join("");
 }
 
-function saveRecordGrowthObservation(){
+async function saveRecordGrowthObservation(){
+  if(recordGrowthSafetySavePending) return;
   if(recordGrowthReadyScope !== getActiveRecordsStorageKey()){ closeRecordGrowthReady(); return; }
   if(!ensureGoogleSheetLocalMutationAllowed("生育記録を保存する操作を")) return;
+  if(document.getElementById("recordGrowthObservationKind").value === "ready") return await saveRecordGrowthReady();
+  const editingId=recordGrowthReadyEditingId;
+  recordGrowthSafetySavePending=true;
   try{
-    ensureDashboardGrowthSafetySnapshot();
+    await ensureDashboardGrowthSafetySnapshot();
+    if(recordGrowthReadyScope !== getActiveRecordsStorageKey()) throw new Error("利用者が切り替わりました。もう一度開いてください");
+    if(editingId!==recordGrowthReadyEditingId) throw new Error("入力対象が変わりました。内容を確認してもう一度保存してください");
     const kind = document.getElementById("recordGrowthObservationKind").value;
-    if(kind === "ready"){ saveRecordGrowthReady(); return; }
     const existing = recordGrowthReadyEditingId ? HarvestGrowthObservations.list().find(row=>row.observationId === recordGrowthReadyEditingId) : null;
     if(recordGrowthReadyEditingId && !existing) throw new Error("保存済みの記録を開き直してください");
     const crop = existing || getRecordGrowthReadyGroups().find(item=>item.id === document.getElementById("recordGrowthReadyCrop").value);
@@ -57203,6 +57355,7 @@ function saveRecordGrowthObservation(){
     setRecordGrowthReadyNotice("端末に保存しました。通信できるときに共有します。");
     syncRecordGrowthReady(false);
   }catch(error){ setRecordGrowthReadyNotice(error.message || "保存できませんでした"); }
+  finally{recordGrowthSafetySavePending=false;}
 }
 
 function resetRecordGrowthObservationDraft(){
@@ -57300,7 +57453,8 @@ function buildGrowthUnratedRecordUpdate(record,size,quality){
     syncProvidedFields:[...RECORD_SYNC_FIELD_KEYS]};
 }
 
-function saveGrowthUnratedRecords(){
+async function saveGrowthUnratedRecords(){
+  if(recordGrowthSafetySavePending) return;
   if(recordGrowthReadyScope !== getActiveRecordsStorageKey()){closeRecordGrowthReady();showToast("利用者が切り替わりました。もう一度開いてください");return;}
   if(!ensureProtectedOperationAccess("未評価の収穫をまとめて評価",{workerAllowed:true})) return;
   if(!ensureGoogleSheetLocalMutationAllowed("未評価の収穫をまとめて評価",{allowBackgroundSend:true})) return;
@@ -57313,10 +57467,12 @@ function saveGrowthUnratedRecords(){
   if(selected.length!==ids.size || selected.some(record=>!ensureSyncConflictResolvedBeforeChange("record",record,"未評価の収穫をまとめて評価"))) return;
   if(!window.confirm(`${selected.length}件の収穫記録へ同じ育ち具合・品質評価を保存しますか？`)) return;
   const originalRecords=records;
-  let committed=false;
+  let committed=false,mutationStarted=false;
+  recordGrowthSafetySavePending=true;
   try{
-    ensureDashboardGrowthSafetySnapshot();
+    await ensureDashboardGrowthSafetySnapshot();
     const selectedIds=new Set(selected.map(record=>Number(record.id))),updated=[];
+    mutationStarted=true;
     records=records.map(record=>{
       if(!selectedIds.has(Number(record.id))) return record;
       const next=buildGrowthUnratedRecordUpdate(record,size,quality);
@@ -57328,10 +57484,10 @@ function saveGrowthUnratedRecords(){
     invalidateDashboardGrowthEvidence();openRecordGrowthUnrated();
     setRecordGrowthReadyNotice(`${updated.length}件を端末に保存しました。${queued===updated.length ? "共有を予約しました。" : "未送信の記録は後で再送できます。"}`);
   }catch(error){
-    if(!committed){records=originalRecords;invalidateRecordDerivedCaches({harvestRecords:true});}
+    if(mutationStarted && !committed){records=originalRecords;invalidateRecordDerivedCaches({harvestRecords:true});}
     setRecordGrowthReadyNotice(committed ? "まとめ評価は端末内に保存済みです。画面更新または共有予約に失敗したため、後で再送してください。"
       : (error?.message || "まとめ評価を保存できませんでした。記録は変更していません。"));
-  }
+  }finally{recordGrowthSafetySavePending=false;}
 }
 
 // Production wiring for frozen models. UI controls can call these narrow actions.
@@ -57339,6 +57495,7 @@ let dashboardGrowthManagementRegistry = null;
 let dashboardGrowthRiskEvidenceCache = null;
 let dashboardGrowthBackupController = null;
 let dashboardGrowthYieldAnalysisCache = null;
+let dashboardGrowthSafetyArchive = null;
 const dashboardGrowthFrozenYieldCache = new Map();
 
 // Reconcile inputs once per record revision. Production quantity coefficients
@@ -57415,11 +57572,23 @@ function recoverDashboardGrowthBackup(){
   return getDashboardGrowthBackupController().recover();
 }
 
-function ensureDashboardGrowthSafetySnapshot(){
-  return HarvestGrowthSafety.ensureSnapshot(harvestnaviLocalStorage,getActiveRecordsStorageKey(),{
-    records:getActiveRecordsStorageKey(),plantingEvents:getActivePlantingEventsStorageKey(),settings:SETTINGS_KEY,
+function getDashboardGrowthSafetyArchive(){
+  if(!dashboardGrowthSafetyArchive) dashboardGrowthSafetyArchive=HarvestGrowthSafety.createArchive({
+    storage:harvestnaviLocalStorage,archive:HarvestGrowthSafetyStorage.create()
+  });
+  return dashboardGrowthSafetyArchive;
+}
+
+async function ensureDashboardGrowthSafetySnapshot(){
+  const scope=getActiveRecordsStorageKey(),revision=dashboardGrowthDataRevision;
+  const result=await getDashboardGrowthSafetyArchive().ensureSnapshot(scope,{
+    records:scope,plantingEvents:getActivePlantingEventsStorageKey(),settings:SETTINGS_KEY,
     extra:[DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY,DASHBOARD_GROWTH_LOCATION_KEY]
-  },{records,plantingEvents,settings});
+  },()=>({records,plantingEvents,settings}));
+  if(scope!==getActiveRecordsStorageKey() || revision!==dashboardGrowthDataRevision){
+    throw new Error("安全保存中に利用者または記録が更新されました。もう一度操作してください");
+  }
+  return result;
 }
 
 function getDashboardGrowthLearningRegistry(){

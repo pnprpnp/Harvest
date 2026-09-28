@@ -28,6 +28,13 @@ Google Chrome または Chromium が必要です。標準の場所にない場�
 
 Apps Script側では `PropertiesService` と `SpreadsheetApp` をテスト専用の代用品（mock）へ差し替えます。実際のスプレッドシートやスクリプト プロパティは読み書きしません。
 
+安全保存の保存先を変更した場合は、実際のIndexedDBと保存容量上限も確認します。一時ブラウザだけで通常保存枠を満杯にし、保存完了・中止・旧形式の保持・ロス率更新を検証します。
+
+```sh
+python3 tests/run_growth_safety_storage.py
+node --test tests/growth-safety.test.cjs tests/record-safety-save.test.cjs
+```
+
 ## 固定している動作
 
 - パレット番号と保存用範囲の相互変換

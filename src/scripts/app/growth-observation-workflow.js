@@ -4,6 +4,7 @@ let recordGrowthReadyScope = "";
 let recordGrowthReadyHistoryLimit = 20;
 let recordGrowthReadySyncing = false;
 let recordGrowthUnratedMode = false;
+let recordGrowthSafetySavePending = false;
 
 function invalidateDashboardGrowthEvidence(){
   dashboardGrowthDataRevision++;
@@ -95,17 +96,23 @@ function renderRecordGrowthReadyForm(group, observation = null){
 }
 
 function saveRecordGrowthReadyToday(){
+  if(recordGrowthSafetySavePending) return;
   document.getElementById("recordGrowthReadyDate").value = formatDateOnlyString(new Date());
   saveRecordGrowthReady();
 }
 
-function saveRecordGrowthReady(){
+async function saveRecordGrowthReady(){
+  if(recordGrowthSafetySavePending) return;
   if(recordGrowthReadyScope !== getActiveRecordsStorageKey()){
     closeRecordGrowthReady(); showToast("利用者が切り替わりました。もう一度開いてください"); return;
   }
   if(!ensureGoogleSheetLocalMutationAllowed("適期確認を記録する操作を")) return;
+  const editingId=recordGrowthReadyEditingId;
+  recordGrowthSafetySavePending=true;
   try{
-    ensureDashboardGrowthSafetySnapshot();
+    await ensureDashboardGrowthSafetySnapshot();
+    if(recordGrowthReadyScope !== getActiveRecordsStorageKey()) throw new Error("利用者が切り替わりました。もう一度開いてください");
+    if(editingId!==recordGrowthReadyEditingId) throw new Error("入力対象が変わりました。内容を確認してもう一度保存してください");
     const existing = recordGrowthReadyEditingId
       ? HarvestGrowthObservations.list().find(row => row.observationId === recordGrowthReadyEditingId) : null;
     if(recordGrowthReadyEditingId && !existing) throw new Error("対象の確認記録が変更されました。開き直してください");
@@ -124,6 +131,7 @@ function saveRecordGrowthReady(){
     setRecordGrowthReadyNotice("適期確認を端末に保存しました。収穫時に同じ作へ引き継ぎます。");
     syncRecordGrowthReady(false);
   }catch(error){ setRecordGrowthReadyNotice(error.message || "端末に保存できませんでした"); }
+  finally{recordGrowthSafetySavePending=false;}
 }
 
 function editRecordGrowthReady(id){
@@ -274,13 +282,18 @@ function changeRecordGrowthObservationKind(){
   if(!environment.childElementCount) environment.innerHTML = [["temperature","温度"],["light","日光"],["humidity","湿度"]].map(([key,label])=>`<label>${label}<select id="recordGrowthEnvironment-${key}"><option value="base">基準と同じ</option><option value="high">高め・多め</option><option value="low">低め・少なめ</option></select></label>`).join("");
 }
 
-function saveRecordGrowthObservation(){
+async function saveRecordGrowthObservation(){
+  if(recordGrowthSafetySavePending) return;
   if(recordGrowthReadyScope !== getActiveRecordsStorageKey()){ closeRecordGrowthReady(); return; }
   if(!ensureGoogleSheetLocalMutationAllowed("生育記録を保存する操作を")) return;
+  if(document.getElementById("recordGrowthObservationKind").value === "ready") return await saveRecordGrowthReady();
+  const editingId=recordGrowthReadyEditingId;
+  recordGrowthSafetySavePending=true;
   try{
-    ensureDashboardGrowthSafetySnapshot();
+    await ensureDashboardGrowthSafetySnapshot();
+    if(recordGrowthReadyScope !== getActiveRecordsStorageKey()) throw new Error("利用者が切り替わりました。もう一度開いてください");
+    if(editingId!==recordGrowthReadyEditingId) throw new Error("入力対象が変わりました。内容を確認してもう一度保存してください");
     const kind = document.getElementById("recordGrowthObservationKind").value;
-    if(kind === "ready"){ saveRecordGrowthReady(); return; }
     const existing = recordGrowthReadyEditingId ? HarvestGrowthObservations.list().find(row=>row.observationId === recordGrowthReadyEditingId) : null;
     if(recordGrowthReadyEditingId && !existing) throw new Error("保存済みの記録を開き直してください");
     const crop = existing || getRecordGrowthReadyGroups().find(item=>item.id === document.getElementById("recordGrowthReadyCrop").value);
@@ -318,6 +331,7 @@ function saveRecordGrowthObservation(){
     setRecordGrowthReadyNotice("端末に保存しました。通信できるときに共有します。");
     syncRecordGrowthReady(false);
   }catch(error){ setRecordGrowthReadyNotice(error.message || "保存できませんでした"); }
+  finally{recordGrowthSafetySavePending=false;}
 }
 
 function resetRecordGrowthObservationDraft(){
@@ -415,7 +429,8 @@ function buildGrowthUnratedRecordUpdate(record,size,quality){
     syncProvidedFields:[...RECORD_SYNC_FIELD_KEYS]};
 }
 
-function saveGrowthUnratedRecords(){
+async function saveGrowthUnratedRecords(){
+  if(recordGrowthSafetySavePending) return;
   if(recordGrowthReadyScope !== getActiveRecordsStorageKey()){closeRecordGrowthReady();showToast("利用者が切り替わりました。もう一度開いてください");return;}
   if(!ensureProtectedOperationAccess("未評価の収穫をまとめて評価",{workerAllowed:true})) return;
   if(!ensureGoogleSheetLocalMutationAllowed("未評価の収穫をまとめて評価",{allowBackgroundSend:true})) return;
@@ -428,10 +443,12 @@ function saveGrowthUnratedRecords(){
   if(selected.length!==ids.size || selected.some(record=>!ensureSyncConflictResolvedBeforeChange("record",record,"未評価の収穫をまとめて評価"))) return;
   if(!window.confirm(`${selected.length}件の収穫記録へ同じ育ち具合・品質評価を保存しますか？`)) return;
   const originalRecords=records;
-  let committed=false;
+  let committed=false,mutationStarted=false;
+  recordGrowthSafetySavePending=true;
   try{
-    ensureDashboardGrowthSafetySnapshot();
+    await ensureDashboardGrowthSafetySnapshot();
     const selectedIds=new Set(selected.map(record=>Number(record.id))),updated=[];
+    mutationStarted=true;
     records=records.map(record=>{
       if(!selectedIds.has(Number(record.id))) return record;
       const next=buildGrowthUnratedRecordUpdate(record,size,quality);
@@ -443,8 +460,8 @@ function saveGrowthUnratedRecords(){
     invalidateDashboardGrowthEvidence();openRecordGrowthUnrated();
     setRecordGrowthReadyNotice(`${updated.length}件を端末に保存しました。${queued===updated.length ? "共有を予約しました。" : "未送信の記録は後で再送できます。"}`);
   }catch(error){
-    if(!committed){records=originalRecords;invalidateRecordDerivedCaches({harvestRecords:true});}
+    if(mutationStarted && !committed){records=originalRecords;invalidateRecordDerivedCaches({harvestRecords:true});}
     setRecordGrowthReadyNotice(committed ? "まとめ評価は端末内に保存済みです。画面更新または共有予約に失敗したため、後で再送してください。"
       : (error?.message || "まとめ評価を保存できませんでした。記録は変更していません。"));
-  }
+  }finally{recordGrowthSafetySavePending=false;}
 }

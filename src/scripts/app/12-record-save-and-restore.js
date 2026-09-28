@@ -79,7 +79,16 @@ function confirmHarvestRecordWarnings(date, actualLoss, editingRecord = null){
   ].join("\n"));
 }
 
-function saveRecord(){
+function getRecordSafetyFormSignature(){
+  return JSON.stringify({editingHarvestRecordId,recordSelectionMode,harvestFillKeys,recordPartialHarvestDraft,
+    inputs:["recordDateInput","recordCasesInput","recordPalletSummaryInput","recordMemoInput"]
+      .map(id=>document.getElementById(id)?.value || ""),
+    quality:getSelectedQualityMemo(),size:getSelectedHarvestSizeRating(),growth:getSelectedHarvestGrowthDetail(harvestFillKeys),
+    trays:getRecordActualSeedlingTrayCount(),carryover:getRecordSeedlingCarryoverMode()});
+}
+
+async function saveRecord(){
+  if(recordSaveUiTransitionPending) return;
   if(!ensureProtectedOperationAccess("記録の保存", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("記録を保存", { allowBackgroundSend: true })) return;
   const editingRecord = editingHarvestRecordId ? getRecordById(editingHarvestRecordId) : null;
@@ -148,8 +157,25 @@ function saveRecord(){
     return;
   }
 
-  try{ ensureDashboardGrowthSafetySnapshot(); }
-  catch(error){ showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`); return; }
+  const safetyFormSignature=getRecordSafetyFormSignature();
+  const safetySaveCard=document.getElementById("recordSaveCard"),safetySaveButton=document.getElementById("recordPrimaryActionBtn");
+  recordSaveUiTransitionPending=true;
+  safetySaveCard?.setAttribute("aria-busy","true");
+  if(safetySaveButton) safetySaveButton.disabled=true;
+  try{
+    await ensureDashboardGrowthSafetySnapshot();
+    if(getRecordSafetyFormSignature()!==safetyFormSignature){
+      showToast("安全保存中に入力が変わりました。内容を確認してもう一度更新してください");
+      return;
+    }
+  }catch(error){
+    showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`);
+    return;
+  }finally{
+    recordSaveUiTransitionPending=false;
+    safetySaveCard?.removeAttribute("aria-busy");
+    if(safetySaveButton) safetySaveButton.disabled=false;
+  }
 
   if(editingRecord && editingRecord.type === "fullHarvest"){
     const editedRecordDate = date;

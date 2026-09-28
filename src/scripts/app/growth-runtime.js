@@ -3,6 +3,7 @@ let dashboardGrowthManagementRegistry = null;
 let dashboardGrowthRiskEvidenceCache = null;
 let dashboardGrowthBackupController = null;
 let dashboardGrowthYieldAnalysisCache = null;
+let dashboardGrowthSafetyArchive = null;
 const dashboardGrowthFrozenYieldCache = new Map();
 
 // Reconcile inputs once per record revision. Production quantity coefficients
@@ -79,11 +80,23 @@ function recoverDashboardGrowthBackup(){
   return getDashboardGrowthBackupController().recover();
 }
 
-function ensureDashboardGrowthSafetySnapshot(){
-  return HarvestGrowthSafety.ensureSnapshot(harvestnaviLocalStorage,getActiveRecordsStorageKey(),{
-    records:getActiveRecordsStorageKey(),plantingEvents:getActivePlantingEventsStorageKey(),settings:SETTINGS_KEY,
+function getDashboardGrowthSafetyArchive(){
+  if(!dashboardGrowthSafetyArchive) dashboardGrowthSafetyArchive=HarvestGrowthSafety.createArchive({
+    storage:harvestnaviLocalStorage,archive:HarvestGrowthSafetyStorage.create()
+  });
+  return dashboardGrowthSafetyArchive;
+}
+
+async function ensureDashboardGrowthSafetySnapshot(){
+  const scope=getActiveRecordsStorageKey(),revision=dashboardGrowthDataRevision;
+  const result=await getDashboardGrowthSafetyArchive().ensureSnapshot(scope,{
+    records:scope,plantingEvents:getActivePlantingEventsStorageKey(),settings:SETTINGS_KEY,
     extra:[DASHBOARD_GROWTH_BUILDING_ADJUSTMENTS_KEY,DASHBOARD_GROWTH_LOCATION_KEY]
-  },{records,plantingEvents,settings});
+  },()=>({records,plantingEvents,settings}));
+  if(scope!==getActiveRecordsStorageKey() || revision!==dashboardGrowthDataRevision){
+    throw new Error("安全保存中に利用者または記録が更新されました。もう一度操作してください");
+  }
+  return result;
 }
 
 function getDashboardGrowthLearningRegistry(){

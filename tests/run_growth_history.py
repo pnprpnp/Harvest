@@ -10,7 +10,7 @@ from run_characterization import (
 )
 
 
-def main():
+def main(page="growth-history.test.html"):
     handler = functools.partial(QuietRequestHandler, directory=str(REPOSITORY_ROOT))
     server = CharacterizationServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -21,7 +21,7 @@ def main():
                 find_chrome(), "--headless=new", "--no-first-run", "--no-default-browser-check",
                 "--disable-background-networking", "--disable-component-update", "--disable-extensions",
                 "--disable-gpu", f"--user-data-dir={profile}",
-                f"http://127.0.0.1:{server.server_port}/tests/growth-history.test.html",
+                f"http://127.0.0.1:{server.server_port}/tests/{page}",
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 server.test_event.wait(timeout=45)
