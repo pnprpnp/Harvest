@@ -827,11 +827,15 @@ function initializeCurrentPalletLifecycleState(){
 function getLatestPlantingStateFromCurrentPalletLifecycle(targetDay, options = {}){
   const lifecycleState = ensureCurrentPalletLifecycleState();
   const targetTime = targetDay.getTime();
+  const includeTargetDate = options.includeTargetDate === true;
+  // 現在状態表には最新の苗植えだけがある。同日を除外するときは、
+  // 収穫後の苗植えより前の履歴から株数と定植日を取得する。
   if(Number.isFinite(lifecycleState.latestPlantingTime)
-    && targetTime < lifecycleState.latestPlantingTime){
+    && (includeTargetDate
+      ? targetTime < lifecycleState.latestPlantingTime
+      : targetTime <= lifecycleState.latestPlantingTime)){
     return null;
   }
-  const includeTargetDate = options.includeTargetDate === true;
   const map = new Map();
   lifecycleState.latestPlantingByPallet.forEach((state, key) => {
     if(includeTargetDate ? state.plantingTime > targetTime : state.plantingTime >= targetTime) return;

@@ -15723,6 +15723,181 @@
         }, "保存済みの部分収穫が次のシミュ目標ケース数へ混ざっています");
       });
 
+      await runTest("同日の苗植え後も収穫前の株数・定植日を保持し、履歴の検索結果を再利用する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = { records, plantingEvents };
+          try{
+            records = [];
+            const date = parseDateOnlyString("2026-09-24");
+            const events = [
+              { eventId:9301, plantingDate:"2026-09-05", plantingPalletKeys:["8-A-1"], plantingCountsByPallet:{"8-A-1":16} },
+              { eventId:9302, plantingDate:"2026-09-06", plantingPalletKeys:["8-B-1"], plantingCountsByPallet:{"8-B-1":12} },
+              { eventId:9303, plantingDate:"2026-09-24", plantingPalletKeys:["8-A-1", "8-B-1", "8-C-1"], plantingCountsByPallet:{"8-A-1":20, "8-B-1":20, "8-C-1":20} }
+            ];
+            let historyScans = 0;
+            plantingEvents = new Proxy(events, {
+              get(target, property, receiver){
+                if(property === Symbol.iterator) historyScans++;
+                return Reflect.get(target, property, receiver);
+              }
+            });
+            invalidatePlantingEventStateCache();
+            const before = getLatestPlantingStateByPallet(date);
+            const scansAfterFirst = historyScans;
+            const repeated = getLatestPlantingStateByPallet(date);
+            const dates = getLatestPlantingDateByPallet(date);
+            const includingToday = getLatestPlantingStateByPallet(date, { includeTargetDate:true });
+            const tomorrow = getLatestPlantingStateByPallet(addDays(date, 1));
+            const scansAfterReuse = historyScans;
+            const beforeMutation = {
+              counts:[before.get("8-A-1")?.plantingCount, before.get("8-B-1")?.plantingCount],
+              dates:[dates.get("8-A-1"), dates.get("8-B-1")].map(formatDateOnlyString),
+              sameDayOnlyExcluded:!before.has("8-C-1"),
+              includingTodayCount:includingToday.get("8-A-1")?.plantingCount,
+              tomorrowCount:tomorrow.get("8-A-1")?.plantingCount,
+              sameMap:before === repeated,
+              scansAfterFirst,
+              scansAfterReuse
+            };
+            events[0] = { ...events[0], plantingCountsByPallet:{"8-A-1":12} };
+            invalidatePlantingEventStateCache();
+            const changed = getLatestPlantingStateByPallet(date);
+            return {
+              ...beforeMutation,
+              changedPriorCount:changed.get("8-A-1")?.plantingCount,
+              changedMap:changed !== before
+            };
+          }finally{
+            records = previous.records;
+            plantingEvents = previous.plantingEvents;
+            invalidatePlantingEventStateCache();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          counts:[16, 12],
+          dates:["2026-09-05", "2026-09-06"],
+          sameDayOnlyExcluded:true,
+          includingTodayCount:20,
+          tomorrowCount:20,
+          sameMap:true,
+          scansAfterFirst:1,
+          scansAfterReuse:1,
+          changedPriorCount:12,
+          changedMap:true
+        }, "同日の苗植えが収穫前の株数・定植日を隠すか、履歴の再走査・古いキャッシュの再利用が発生しています");
+      });
+
+      await runTest("9月24日の部分収穫への移行は同日の苗植え前後とも3432株からロス率10.8%を計算する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = { records, plantingEvents, settings, editingId:editingHarvestRecordId };
+          try{
+            settings = { ...deepClone(defaultSettings), defaultYieldPerPallet:12 };
+            invalidateNormalizedBedCalculationSettings();
+            editingHarvestRecordId = null;
+            const keys = (building, bed, start, end) => Array.from(
+              { length:end - start + 1 },
+              (_, index) => getPalletKey(building, bed, start + index)
+            );
+            const groups = [
+              { date:"2026-09-05", count:16, keys:["8-A-1", "8-A-3", ...keys(8, "A", 57, 62)] },
+              { date:"2026-09-06", count:16, keys:keys(8, "A", 63, 78) },
+              { date:"2026-09-05", count:12, keys:keys(8, "B", 1, 78) },
+              { date:"2026-09-06", count:16, keys:["8-C-22", ...keys(8, "C", 24, 78)] },
+              { date:"2026-09-06", count:16, keys:keys(8, "E", 45, 78) },
+              { date:"2026-09-09", count:16, keys:keys(9, "A", 73, 78) },
+              { date:"2026-09-06", count:12, keys:["9-B-30", ...keys(9, "B", 32, 78)] }
+            ];
+            const harvestKeys = groups.flatMap(group => group.keys);
+            const source = {
+              id:9350,
+              recordUuid:"93500000-0000-4000-8000-000000000050",
+              type:"fullHarvest",
+              date:"2026-09-24",
+              cases:265,
+              actualLoss:"7.3",
+              palletKeys:harvestKeys,
+              plantingPending:false
+            };
+            const partial = {
+              id:9399,
+              recordUuid:"93990000-0000-4000-8000-000000000099",
+              type:"partialHarvest",
+              date:source.date,
+              cases:10,
+              targets:buildPartialHarvestTargets(9, ["C"], 10),
+              palletKeys:[]
+            };
+            records = [source];
+            plantingEvents = groups.map((group, index) => ({
+              eventId:9301 + index,
+              plantingDate:group.date,
+              plantingPalletKeys:group.keys,
+              plantingCountsByPallet:Object.fromEntries(group.keys.map(key => [key, group.count])),
+              sourceAllocations:[]
+            }));
+            const date = parseDateOnlyString(source.date);
+            const capture = () => {
+              invalidateRecordDerivedCaches({ harvestRecords:true, plantingEvents:true });
+              const plan = buildHarvestPartialSplitPlan(source, partial);
+              if(!plan.ok) throw new Error(plan.message);
+              const details = getActualLossDetailsForPalletKeys(harvestKeys, plan.regularCases, date, plan.records);
+              const plantingDates = getLatestPlantingDateByPallet(date);
+              return {
+                plantedTotal:details.plantedTotal,
+                partialHarvestTotal:details.partialHarvestTotal,
+                palletCount:details.palletCount,
+                totalCases:plan.totalCases,
+                regularCases:plan.regularCases,
+                partialCases:plan.partialCases,
+                loss:plan.sourceRecord.actualLoss,
+                predictedHeads:getPredictedHarvestForPallet(8, "A", 1, date, plan.records),
+                plantingAgeDays:getLocalDayDiff(plantingDates.get("9-A-73"), date)
+              };
+            };
+            const beforeReplanting = capture();
+            plantingEvents.push({
+              eventId:9380,
+              plantingDate:source.date,
+              plantingPalletKeys:harvestKeys,
+              plantingCountsByPallet:Object.fromEntries(harvestKeys.map(key => [key, 16])),
+              sourceAllocations:[{ harvestRecordId:source.id, palletKeys:harvestKeys }]
+            });
+            const afterReplanting = capture();
+            plantingEvents.push({
+              eventId:9381,
+              plantingDate:"2026-09-26",
+              plantingPalletKeys:["2-A-1"],
+              plantingCountsByPallet:{"2-A-1":20},
+              sourceAllocations:[]
+            });
+            return { beforeReplanting, afterReplanting, afterLaterPlanting:capture() };
+          }finally{
+            records = previous.records;
+            plantingEvents = previous.plantingEvents;
+            settings = previous.settings;
+            editingHarvestRecordId = previous.editingId;
+            invalidateNormalizedBedCalculationSettings();
+            invalidateRecordDerivedCaches({ harvestRecords:true, plantingEvents:true });
+          }
+        })()`));
+        const expected = {
+          plantedTotal:3432,
+          partialHarvestTotal:0,
+          palletCount:246,
+          totalCases:265,
+          regularCases:255,
+          partialCases:10,
+          loss:"10.8",
+          predictedHeads:16,
+          plantingAgeDays:15
+        };
+        assertDeepEqual(state, {
+          beforeReplanting:expected,
+          afterReplanting:expected,
+          afterLaterPlanting:expected
+        }, "同日・後日の苗植えによって部分収穫への移行時のロス率・収穫量・定植日数が変わっています");
+      });
+
       await runTest("通常収穫の合計を保ったまま一部を部分収穫へ分け、影響するロス率を警告する", () => {
         replaceAppHistory(app, [
           {
