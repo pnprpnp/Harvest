@@ -23,6 +23,71 @@ function fixture(){
 function snapshot(f){return safety.ensureSnapshot(f.storage,"owner",keys,{...f.state,now:"2026-09-26T00:00:00Z"});}
 function run(f,apply,extra={}){return safety.runMigration(f.storage,"owner",keys,{getState:f.getState,restoreState:f.restoreState,apply,...extra});}
 function sources(f){return Object.fromEntries([keys.records,keys.plantingEvents,keys.settings,...keys.extra].map(key=>[key,f.data.get(key) ?? null]));}
+function largeFixture(){
+  const f=fixture(),raw=JSON.parse(f.data.get(keys.records));
+  const palletKeys=Array.from({length:78},(_,index)=>`8-A-${index+1}`);
+  for(let id=3;id<=242;id++){
+    const row={...copy(raw[0]),id,recordUuid:`uuid-${id}`,memo:"変更前の収穫記録・苗植え記録をそのまま保存 🌱\u0000".repeat(8),
+      palletRanges:["8-A-1-78"],plantingRanges:["8-A-1-78"]};
+    raw.push(row);f.state.records.push({...copy(row),palletKeys:[...palletKeys],plantingPalletKeys:[...palletKeys]});
+  }
+  f.data.set(keys.records,JSON.stringify(raw,null,2));
+  return f;
+}
+
+test("large safety snapshots retain every original byte and memory field in a smaller UTF16 envelope",()=>{
+  const f=largeFixture(),before=sources(f),memory=copy(f.state),result=snapshot(f);
+  const encoded=f.data.get(result.key),envelope=JSON.parse(encoded),saved=safety.readSnapshot(f.storage,"owner");
+  assert.equal(envelope.encoding,"lz-string-utf16-v1");
+  assert.equal(envelope.originalLength,JSON.stringify(saved).length);
+  assert.ok(encoded.length<envelope.originalLength/5);
+  assert.deepEqual(saved.raw,before);assert.deepEqual(saved.memory,memory);assert.deepEqual(sources(f),before);
+  assert.deepEqual(f.writes,[result.key]);
+});
+test("compressed snapshots fit limited storage that rejects the same uncompressed baseline",()=>{
+  const f=largeFixture(),before=sources(f),sourceLength=[...f.data.values()].reduce((n,value)=>n+value.length,0);
+  const budget=sourceLength+64*1024;
+  f.beforeWrite=(key,value,data)=>{
+    const total=[...data].reduce((n,[item,text])=>n+(item===key?0:text.length),0)+(value?.length||0);
+    if(total>budget)throw Object.assign(new Error("quota"),{name:"QuotaExceededError"});
+  };
+  const result=snapshot(f),saved=safety.readSnapshot(f.storage,"owner");
+  assert.ok(sourceLength+JSON.stringify(saved).length>budget);
+  assert.ok([...f.data.values()].reduce((n,value)=>n+value.length,0)<=budget);
+  assert.deepEqual(sources(f),before);
+});
+test("compressed bootstrap reuse avoids repeated decompression and still accepts an existing uncompressed baseline",()=>{
+  const f=largeFixture(),result=snapshot(f),encoded=f.data.get(result.key),saved=safety.readSnapshot(f.storage,"owner");
+  const compression=require("../src/scripts/vendor/lz-string-1.5.0.min.js"),decompress=compression.decompressFromUTF16;
+  let decompressCalls=0;
+  try{
+    compression.decompressFromUTF16=text=>{decompressCalls++;return decompress(text);};
+    safety.resetCache(f.storage,"owner");
+    assert.equal(snapshot(f).created,false);assert.equal(decompressCalls,1);
+    f.reads.length=0;const writes=f.writes.length;
+    assert.equal(snapshot(f).created,false);assert.equal(decompressCalls,1);
+    assert.deepEqual(f.reads,[result.key]);assert.equal(f.writes.length,writes);assert.equal(f.data.get(result.key),encoded);
+    const legacy=JSON.stringify(saved);f.data.set(result.key,legacy);safety.resetCache(f.storage,"owner");
+    assert.equal(snapshot(f).created,false);assert.equal(f.data.get(result.key),legacy);
+    assert.deepEqual(safety.readSnapshot(f.storage,"owner"),saved);
+  }finally{compression.decompressFromUTF16=decompress;}
+});
+test("damaged or unknown compressed envelopes cannot overwrite originals or the failed safety baseline",()=>{
+  for(const damage of [envelope=>{envelope.payload=envelope.payload.slice(0,Math.floor(envelope.payload.length/2));},
+    envelope=>{envelope.originalLength++;},envelope=>{envelope.encoding="unknown-compression";}]){
+    const f=largeFixture(),before=sources(f),result=snapshot(f),envelope=JSON.parse(f.data.get(result.key));
+    damage(envelope);const damaged=JSON.stringify(envelope);f.data.set(result.key,damaged);safety.resetCache(f.storage,"owner");
+    const writes=f.writes.length;
+    assert.throws(()=>safety.readSnapshot(f.storage,"owner"));assert.throws(()=>snapshot(f));
+    assert.deepEqual(sources(f),before);assert.equal(f.data.get(result.key),damaged);assert.equal(f.writes.length,writes);
+  }
+});
+test("failed migrations retain the compressed baseline and restore the exact preceding source bytes and memory",async()=>{
+  const f=largeFixture(),result=snapshot(f),encoded=f.data.get(result.key),before=sources(f),memory=copy(f.state);
+  await assert.rejects(run(f,()=>{f.storage.setItem(keys.records,"[]");f.state.records=[];throw new Error("cancel");}),error=>error.rollbackSucceeded===true);
+  assert.deepEqual(sources(f),before);assert.deepEqual(f.state,memory);assert.equal(f.data.get(result.key),encoded);
+  assert.equal(safety.readSnapshot(f.storage,"owner").memory.records.length,242);
+});
 
 test("bootstrap saves original bytes, real raw/memory inventory and reads back before declaring success",()=>{
   const f=fixture(),before=sources(f),result=snapshot(f),saved=safety.readSnapshot(f.storage,"owner");

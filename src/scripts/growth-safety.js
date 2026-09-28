@@ -1,10 +1,14 @@
 (function(root, factory){
-  const api = factory();
+  const compression = typeof module === "object" && module.exports
+    ? require("./vendor/lz-string-1.5.0.min.js")
+    : root?.LZString;
+  const api = factory(compression);
   if(typeof module === "object" && module.exports) module.exports = api;
   if(root) root.HarvestGrowthSafety = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function(){
+})(typeof globalThis !== "undefined" ? globalThis : this, function(compression){
   "use strict";
   const PREFIX = "harvestnaviGrowthSafety_v1:";
+  const COMPRESSED_ENCODING = "lz-string-utf16-v1", COMPRESSION_THRESHOLD = 64 * 1024;
   const verified = new WeakMap(), running = new WeakMap();
   const copy = value => JSON.parse(JSON.stringify(value));
   const own = (value,key) => Object.prototype.hasOwnProperty.call(value,key);
@@ -144,9 +148,33 @@
     if(canonical(inventoryFromEvidence(memoryEvidence)) !== canonical(value.memoryInventory)) throw new Error("安全保存の画面上データと確認値が一致しません");
     return value;
   }
+  function encodeSnapshot(snapshot){
+    const text = JSON.stringify(snapshot);
+    if(text.length < COMPRESSION_THRESHOLD) return text;
+    if(typeof compression?.compressToUTF16 !== "function" || typeof compression?.decompressFromUTF16 !== "function"){
+      throw new Error("安全保存の圧縮処理を読み込めませんでした");
+    }
+    const payload = compression.compressToUTF16(text);
+    // 元の保存文字列と画面上の全項目を、欠落なく復元できることを確認する。
+    if(compression.decompressFromUTF16(payload) !== text) throw new Error("安全保存の圧縮内容を確認できません");
+    const encoded = JSON.stringify({schemaVersion:1,encoding:COMPRESSED_ENCODING,originalLength:text.length,payload});
+    return encoded.length < text.length ? encoded : text;
+  }
+  function decodeSnapshot(text,scope){
+    const value = JSON.parse(text);
+    if(value?.encoding === undefined) return validateSnapshot(value,scope);
+    if(value.schemaVersion !== 1 || value.encoding !== COMPRESSED_ENCODING
+      || !Number.isSafeInteger(value.originalLength) || value.originalLength <= 0
+      || typeof value.payload !== "string" || typeof compression?.decompressFromUTF16 !== "function"){
+      throw new Error("安全保存の圧縮形式を検証できません");
+    }
+    const decoded = compression.decompressFromUTF16(value.payload);
+    if(typeof decoded !== "string" || decoded.length !== value.originalLength) throw new Error("安全保存の圧縮データを読み戻せません");
+    return validateSnapshot(JSON.parse(decoded),scope);
+  }
   function readSnapshot(storage,scope){
     const text = storage.getItem(storageKey(scope));
-    return text === null ? null : copy(validateSnapshot(JSON.parse(text),scope));
+    return text === null ? null : copy(decodeSnapshot(text,scope));
   }
   function summary(snapshot,created){
     return {created,key:storageKey(snapshot.scope),schemaVersion:1,createdAt:snapshot.createdAt,
@@ -157,7 +185,7 @@
     if(existing !== null){
       let memo = verified.get(storage)?.get(scope);
       if(!memo || memo.text !== existing){
-        const snapshot = validateSnapshot(JSON.parse(existing),scope);
+        const snapshot = decodeSnapshot(existing,scope);
         memo = {text:existing,snapshot};
         if(!verified.has(storage)) verified.set(storage,new Map());
         verified.get(storage).set(scope,memo);
@@ -170,10 +198,10 @@
     assertSameHistory(rawEvidence,memoryEvidence);
     const snapshot = {schemaVersion:1,scope,createdAt:new Date(typeof data.now === "function" ? data.now() : data.now ?? Date.now()).toISOString(),keys,raw,memory,
       rawInventory:inventoryFromEvidence(rawEvidence),memoryInventory:inventoryFromEvidence(memoryEvidence),rawFingerprint:fingerprint(raw)};
-    const text = JSON.stringify(snapshot);
+    const text = encodeSnapshot(snapshot);
     storage.setItem(key,text);
     if(storage.getItem(key) !== text) throw new Error("変更前の安全保存を読み戻せません。元の記録は変更していません");
-    validateSnapshot(JSON.parse(text),scope);
+    decodeSnapshot(text,scope);
     if(canonical(capture(storage,keys)) !== canonical(raw)){
       // Another writer changed source data while the snapshot was saved. Never
       // replace that writer's work or claim this snapshot is a current baseline.

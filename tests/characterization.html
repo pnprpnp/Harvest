@@ -15723,6 +15723,70 @@
         }, "保存済みの部分収穫が次のシミュ目標ケース数へ混ざっています");
       });
 
+      await runTest("大量記録の安全保存を圧縮し、容量が限られる端末でも元の保存内容を復元できる", () => {
+        const state = comparable(app.eval(`(() => {
+          const rawRecords = Array.from({ length:240 }, (_, index) => ({
+            id:9400 + index,
+            recordUuid:"safety-" + index,
+            type:"fullHarvest",
+            date:"2026-09-24",
+            cases:60,
+            actualLoss:"10.8",
+            memo:"収穫前の記録をそのまま安全保存 🌱".repeat(8),
+            palletRanges:["8-A-1-78"]
+          }));
+          const memoryRecords = rawRecords.map(row => ({
+            ...row,
+            palletKeys:Array.from({ length:78 }, (_, index) => getPalletKey(8, "A", index + 1))
+          }));
+          const data = new Map([["records", JSON.stringify(rawRecords)]]);
+          const budget = data.get("records").length + 32768;
+          let reads = 0, writes = 0;
+          const storage = {
+            getItem:key => { reads++; return data.get(key) ?? null; },
+            setItem(key, value){
+              const total = [...data].reduce((n, [item, text]) => n + (item === key ? 0 : text.length), 0) + value.length;
+              if(total > budget) throw new Error("quota");
+              writes++; data.set(key, value);
+            },
+            removeItem:key => data.delete(key)
+          };
+          const keys = { records:"records", plantingEvents:"planting", settings:"settings" };
+          const before = data.get("records");
+          const result = HarvestGrowthSafety.ensureSnapshot(storage, "characterization", keys, {
+            records:memoryRecords, plantingEvents:[], settings:{}
+          });
+          const envelope = JSON.parse(data.get(result.key));
+          const saved = HarvestGrowthSafety.readSnapshot(storage, "characterization");
+          reads = 0;
+          const repeated = HarvestGrowthSafety.ensureSnapshot(storage, "characterization", keys, {
+            records:memoryRecords, plantingEvents:[], settings:{}
+          });
+          return {
+            compressed:envelope.encoding === "lz-string-utf16-v1",
+            originalTooLarge:before.length + JSON.stringify(saved).length > budget,
+            fitsBudget:[...data.values()].reduce((n, text) => n + text.length, 0) <= budget,
+            originalUnchanged:data.get("records") === before,
+            originalRestored:saved.raw.records === before,
+            memoryRestored:JSON.stringify(saved.memory.records) === JSON.stringify(memoryRecords),
+            repeatCreated:repeated.created,
+            repeatReads:reads,
+            writes
+          };
+        })()`));
+        assertDeepEqual(state, {
+          compressed:true,
+          originalTooLarge:true,
+          fitsBudget:true,
+          originalUnchanged:true,
+          originalRestored:true,
+          memoryRestored:true,
+          repeatCreated:false,
+          repeatReads:1,
+          writes:1
+        }, "安全保存の圧縮・完全復元・再利用に失敗しています");
+      });
+
       await runTest("同日の苗植え後も収穫前の株数・定植日を保持し、履歴の検索結果を再利用する", () => {
         const state = comparable(app.eval(`(() => {
           const previous = { records, plantingEvents };
