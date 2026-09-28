@@ -43,6 +43,7 @@ npx wrangler secret put APPS_SCRIPT_TOKEN
 - 過去の日照時間は元の時間数を保存し、従来式との互換用に8時間を基準とする日照係数も保存します。予報の天気コードから作る係数は日射量の実測値ではありません。日照時間も地点・日付によって気象庁の推計値を含み得るため、`sunshineSource` は `jma-reported-duration` とします。現在の取得CSVには品質フラグがないため、`quality` には品質未確認または欠損を明記します。
 - 予報の日別値には使用した予報の発表時刻 `issuedAt` と実取得時刻 `retrievedAt`、気温・日照の推定方法と補完有無を保存します。過去観測値にも実取得時刻を付けます。以前のキャッシュで時刻が不明な値へ取得時刻を補いません。
 - `/weather` の応答は既存項目を維持し、`schemaVersion:4`、`forecastIssuedAt`、`retrievedAt`、`historyCoverage` を追加します。`historyThrough` は気温と日照が揃った最後の観測日で、途中の欠損は `historyCoverage` に残します。D1の表構造は変更しません。
+- 更新の診断用に `refreshStatus`、`lastError`、`lastAttemptAt`、`nextAttemptAt` も返します。欠けた日や不足項目はアプリが予測と同じ気象入力から導出し、取得失敗時も保存済みデータと失敗理由を併記します。
 - 過去予報の全発表版はこの中継キャッシュでは保存しません。アプリ側で取得時のスナップショットを蓄積し、検証基準日以後に発表・取得した情報を過去予測へ混ぜないようにします。
 
 ## ローカル確認

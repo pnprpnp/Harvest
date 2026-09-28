@@ -689,6 +689,10 @@ function buildGrowthWeatherResponse(row, options = {}){
     forecastEndDate:String(row?.forecast_end_date || ""),
     historyStartDate:String(row?.history_start_date || ""),
     historyThrough:String(row?.history_through || ""),
+    refreshStatus:String(row?.status || ""),
+    lastError:String(row?.last_error || ""),
+    nextAttemptAt:normalizeWeatherTimestamp(row?.next_attempt_at),
+    lastAttemptAt:normalizeWeatherTimestamp(row?.last_attempt_at),
     station:{
       id:String(row?.station_id || ""),
       amedasCode:String(row?.station_amedas_code || ""),

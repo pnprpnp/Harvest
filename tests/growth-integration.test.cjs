@@ -65,7 +65,7 @@ function context(records = [], plantingEvents = [], observations = []){
       "getDashboardGrowthMedian","buildDashboardGrowthPlantingIndex","getDashboardGrowthPriorPlanting",
       "getDashboardGrowthPriorPlantingDate","buildDashboardGrowthTrainingSamples","getDashboardGrowthSourceState",
       "invalidateDashboardDerivedData","getDashboardGrowthAsOf","getDashboardGrowthBedPrediction",
-      "buildDashboardGrowthPredictionModel"]
+      "buildDashboardGrowthWeatherDiagnostics","buildDashboardGrowthPredictionModel"]
   };
   for(const [file, names] of Object.entries(functions)){
     for(const name of names) vm.runInContext(extract(file, name), c, { filename:`${file}:${name}` });

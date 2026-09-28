@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260928-growth-transfer-validation">
+<meta name="harvestnavi-version" content="20260928-growth-weather-gaps">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -461,10 +461,12 @@ const HarvestGrowthHistory = (() => {
     const asOf = dateKey(options.asOf);
     if(!asOf) throw new Error("Growth model requires an explicit valid asOf date");
     const instant = cutoffInstant(options.asOf);
-    const observations = new Map(), forecasts = new Map();
+    const observations = new Map(), forecasts = new Map(), received = new Map();
     const ingest = (raw, inheritedIssue) => {
       const day = normalizeWeather(raw);
       if(!day) return;
+      received.set(day.date, inheritedIssue && day.source === "forecast"
+        ? { ...day, forecastIssuedAt:day.forecastIssuedAt || inheritedIssue } : day);
       if(day.source === "observation"){
         // Retrieval time is not the original publication time. Re-downloading a
         // historic observation must not erase it from every historical fold.
@@ -533,7 +535,41 @@ const HarvestGrowthHistory = (() => {
       return day;
     }
     const forecastEndDate = [...forecasts.keys()].sort().pop() || null;
-    return { asOf, asOfInstant:instant, forecastEndDate, observations, forecasts, climate, getDay, unitCache,
+    const gapCache = new Map(), gapRangeCache = new Map();
+    function getGap(date){
+      if(gapCache.has(date)) return gapCache.get(date);
+      const future = date >= asOf;
+      const direct = future ? forecasts.get(date) : observations.get(date);
+      const raw = direct || received.get(date);
+      let code = "", fields = [];
+      if(!direct){
+        if(raw?.source === (future ? "forecast" : "observation")){
+          const issuedAt = timestamp(raw.issuedAt || raw.forecastIssuedAt);
+          code = future && issuedAt === null ? "missingIssueTime" : "notAvailableAtCutoff";
+        }else code = future ? (!forecastEndDate || date > forecastEndDate ? "outsideForecast" : "noForecast") : "noObservation";
+      }else{
+        if(direct.meanTemp === null || direct.estimatedTemperature) fields.push("temperature");
+        if(direct.lightIndex === null || direct.estimatedLight) fields.push("light");
+        if(fields.length) code = "missingFields";
+      }
+      const gap = code ? { date, kind:future ? "forecast" : "observation", code, fields,
+        unavailable:future, estimated:!future, source:raw?.source || null } : null;
+      gapCache.set(date, gap);
+      return gap;
+    }
+    function getGaps(start, end){
+      if(!dateKey(start) || !dateKey(end) || start > end || daysBetween(start, end) > 730) return [];
+      const key = `${start}|${end}`;
+      if(gapRangeCache.has(key)) return gapRangeCache.get(key);
+      const gaps = [];
+      for(let date = start; date <= end; date = addDays(date, 1)){
+        const gap = getGap(date);
+        if(gap) gaps.push(gap);
+      }
+      gapRangeCache.set(key, gaps);
+      return gaps;
+    }
+    return { asOf, asOfInstant:instant, forecastEndDate, observations, forecasts, climate, getDay, getGap, getGaps, unitCache,
       provenance:{ historicalForecasts:forecasts.size, observationDays:observations.size } };
   }
   function dailyUnit(day, manual, parameter = PARAMETERS[0]){
@@ -1085,6 +1121,7 @@ const HarvestGrowthHistory = (() => {
     if(context.asOf < model.asOf) throw new Error("Refit the growth model before predicting an earlier asOf date");
     const rows = (model.validation.rows[model.selectedMethod] || []).filter(row => evaluationAvailableBefore(row, context.asOf, context.asOfInstant));
     const output = predictCandidate(model.candidate, context, input, rows);
+    const weatherGaps = context.getGaps(dateKey(input.plantingDate), dateKey(input.targetDate));
     const evidence = metrics(rows);
     const counts = output.dayCounts || { total:0, estimated:0, forecast:0 };
     // No 'high' before field calibration with independent date observations.
@@ -1100,7 +1137,7 @@ const HarvestGrowthHistory = (() => {
     if(output.positionFallback) reasons.push("この位置の実績が不足しているためベッド・号棟の目安を使用");
     if(model.stage === "collecting") reasons.push("追加の自動補正は精度改善を未確認のため未採用");
     if(model.selectionFallback) reasons.push("検証で選んだ方式を現在のデータでは計算できないため基本方式を使用");
-    return { ...output, schemaVersion:VERSION, method:model.selectedMethod, stage:model.stage,
+    return { ...output, weatherGaps, schemaVersion:VERSION, method:model.selectedMethod, stage:model.stage,
       confidence:confidenceFor(model.candidate, evidence, output),
       validation:evidence, reasons, mainReasons:reasons.slice(0, 3),
       readyDateKind:model.candidate.anchorCount ? "estimated-reference" : "initial-rule-reference" };
@@ -17175,6 +17212,12 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .dashboardGrowthValidation th,.dashboardGrowthValidation td{padding:5px 3px;border-bottom:1px solid var(--ui-border);text-align:left;}
 .dashboardGrowthHistoryActions{display:flex;flex-wrap:wrap;gap:8px;}
 .dashboardGrowthCohort{margin:8px 0 0;padding-top:8px;border-top:1px solid var(--ui-border);font-size:10px;line-height:1.5;}
+.dashboardGrowthWeatherDiagnostics{margin-bottom:12px;padding:10px;border:1px solid var(--ui-border);border-radius:11px;color:var(--ui-text-secondary);font-size:11px;line-height:1.6;overflow-wrap:anywhere;}
+.dashboardGrowthWeatherDiagnostics > summary{cursor:pointer;color:var(--ui-text);font-weight:750;}
+.dashboardGrowthWeatherDiagnostics p{margin:6px 0;}
+.dashboardGrowthWeatherShortage{min-width:0;font-size:10px;line-height:1.5;overflow-wrap:anywhere;}
+.dashboardGrowthWeatherGapList{display:grid;gap:8px;margin:8px 0;padding-left:18px;}
+.dashboardGrowthWeatherGapList li > strong,.dashboardGrowthWeatherGapList li > span{display:block;}
 .dashboardGrowthReadyDate{margin:8px 0;font-size:11px;font-weight:700;}
 .dashboardGrowthPlanning{display:grid;gap:8px;margin:0 0 12px;}
 .dashboardGrowthPlanning:empty{display:none;}
@@ -39151,7 +39194,8 @@ async function loadDashboardGrowthWeather(location, options = {}){
   try{
     relayWeather = await fetchDashboardGrowthWeatherFromRelay(location);
   }catch(error){
-    if(cached) return { ...cached, usedCache:true, stale:true };
+    if(cached) return { ...cached, usedCache:true, stale:true,
+      fetchError:error?.name === "AbortError" ? "気象データの取得が時間切れになりました" : String(error?.message || "気象データを取得できませんでした") };
     throw error;
   }
   const cache = {
@@ -39164,6 +39208,10 @@ async function loadDashboardGrowthWeather(location, options = {}){
     forecastEndDate:String(relayWeather.forecastEndDate || ""),
     historyStartDate:String(relayWeather.historyStartDate || ""),
     historyThrough:String(relayWeather.historyThrough || ""),
+    refreshStatus:String(relayWeather.refreshStatus || ""),
+    lastError:String(relayWeather.lastError || ""),
+    nextAttemptAt:String(relayWeather.nextAttemptAt || ""),
+    lastAttemptAt:String(relayWeather.lastAttemptAt || ""),
     forecastIssuedAt:String(relayWeather.forecastIssuedAt || ""),
     retrievedAt:String(relayWeather.retrievedAt || ""),
     historyCoverage:relayWeather.historyCoverage || null,
@@ -39849,6 +39897,7 @@ function buildDashboardGrowthPredictionModel(weather, timing = {}){
   baseModel.growthFit = timing.learning?.fit || (typeof getDashboardGrowthFrozenFit === "function"
     ? getDashboardGrowthFrozenFit({asOf,weatherDaily:weather.daily,forecastHistory})
     : HarvestGrowthModel.fit(engineSamples, { asOf, weatherDaily:weather.daily, forecastHistory, validation:timing.validation,selectedMethod:"legacy" }));
+  const weatherDiagnostics = buildDashboardGrowthWeatherDiagnostics(weather, baseModel.growthFit.weatherContext);
   baseModel.growthShadowFit = timing.learning?.shadowFit || null;
   weatherIndex.riskFit = timing.learning?.riskFit || (typeof getDashboardGrowthFrozenRiskFit === "function"
     ? getDashboardGrowthFrozenRiskFit({asOf,weatherDaily:weather.daily},baseModel.growthFit.modelVersion || "legacy-prior-fallback")
@@ -39861,7 +39910,7 @@ function buildDashboardGrowthPredictionModel(weather, timing = {}){
   BUILDINGS.forEach(building => bedOrder.forEach(bed => {
     predictions.set(`${building}-${bed}`, getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, building, bed));
   }));
-  return { baseModel, weather, weatherIndex, samples, engineSamples, predictions, targets:new Map(),
+  return { baseModel, weather, weatherDiagnostics, weatherIndex, samples, engineSamples, predictions, targets:new Map(),
     fit:baseModel.growthFit, validation:timing.learning?.validation || baseModel.growthFit.validation, diagnostics:source.diagnostics,
     learning:timing.learning || null, modelVersion:timing.learning?.modelVersion || baseModel.growthFit.modelVersion || "legacy-fallback",
     shadowModelVersion:timing.learning?.shadowModelVersion || null,
@@ -40069,10 +40118,98 @@ async function retryDashboardGrowthHistory(){
   if(model?.scope === getDashboardGrowthHistoryScope()) await saveDashboardGrowthHistory(model);
 }
 
+function buildDashboardGrowthWeatherDiagnostics(weather, context){
+  if(!context?.getGap) return null;
+  const gaps = [];
+  const start = weather.historyStartDate || weather.historyCoverage?.requestedStartDate;
+  const through = weather.normal?.historyCheckedThrough || weather.historyCoverage?.requestedThrough
+    || HarvestGrowthModel.addDays(context.asOf, -1);
+  // Scan only once per weather/model refresh, with the relay's five-year bound.
+  if(HarvestGrowthModel.dateKey(start) === start && HarvestGrowthModel.dateKey(through) === through && start <= through){
+    const boundedStart = [start, HarvestGrowthModel.addDays(context.asOf, -1825)].sort().pop();
+    const end = [through, HarvestGrowthModel.addDays(context.asOf, -1)].sort()[0];
+    for(let date = boundedStart; date <= end; date = HarvestGrowthModel.addDays(date, 1)){
+      const gap = context.getGap(date);
+      if(gap) gaps.push(gap);
+    }
+  }
+  const forecastEnd = context.forecastEndDate || context.asOf;
+  for(let date = context.asOf, i = 0; date <= forecastEnd && i < 14; date = HarvestGrowthModel.addDays(date, 1), i++){
+    const gap = context.getGap(date);
+    if(gap) gaps.push(gap);
+  }
+  return { gaps, observationDays:gaps.filter(gap => gap.kind === "observation").length,
+    forecastDays:gaps.filter(gap => gap.kind === "forecast").length };
+}
+
+function getDashboardGrowthWeatherGapReason(gap){
+  if(gap.code === "missingFields"){
+    const fields = gap.fields.map(field => field === "temperature" ? "気温" : (gap.kind === "observation" ? "日照時間" : "天気・日照の予報"));
+    return `${fields.join("・")}が欠けているか、代わりの値が入っています`;
+  }
+  return ({ noObservation:"保存データに観測値がありません。取得漏れ・未公開・観測地点の欠測のどれかは、保存データだけでは特定できません",
+    noForecast:"予報期間内ですが、この日の予報が保存されていません",
+    outsideForecast:"取得済みの予報期間の範囲外です",
+    missingIssueTime:"予報の発表日時がないため、計算に使えません",
+    notAvailableAtCutoff:"予測時点より後に発表・取得されたデータのため、計算に使えません" })[gap.code] || "計算に必要な気象データが不足しています";
+}
+
+function getDashboardGrowthWeatherGapsHtml(gaps){
+  if(!gaps?.length) return "";
+  const groups = [];
+  const unique = new Map(gaps.map(gap => [gap.date, gap]));
+  [...unique.values()].sort((a,b) => a.date.localeCompare(b.date)).forEach(gap => {
+    const key = `${gap.kind}:${gap.code}:${gap.fields.join(",")}`;
+    const previous = groups[groups.length - 1];
+    if(previous?.key === key && HarvestGrowthModel.addDays(previous.end, 1) === gap.date){
+      previous.end = gap.date; previous.count++;
+    }else groups.push({ key, start:gap.date, end:gap.date, count:1, gap });
+  });
+  const dateLabel = value => value.replace(/-(0?)(\d+)/g, "/$2");
+  return `<ul class="dashboardGrowthWeatherGapList">${groups.map(group => {
+    const range = group.start === group.end ? dateLabel(group.start) : `${dateLabel(group.start)}〜${dateLabel(group.end)}（${group.count}日）`;
+    const handling = group.gap.unavailable ? "この日を含む期間は未予測です。" : "過去の不足分は推定で補います。";
+    return `<li><strong>${escapeHtml(range)}</strong><span>${escapeHtml(getDashboardGrowthWeatherGapReason(group.gap))}。${handling}</span></li>`;
+  }).join("")}</ul>`;
+}
+
+function renderDashboardGrowthWeatherDiagnostics(model){
+  let container = document.getElementById("dashboardGrowthWeatherDiagnostics");
+  const diagnostics = model.weatherDiagnostics;
+  if(!diagnostics){ if(container) container.innerHTML = ""; return; }
+  if(!container){
+    const content = document.getElementById("dashboardGrowthContent");
+    if(!content) return;
+    container = document.createElement("div");
+    container.id = "dashboardGrowthWeatherDiagnostics";
+    container.setAttribute("aria-live", "polite");
+    content.prepend(container);
+  }
+  const weather = model.weather;
+  const status = [];
+  if(weather.fetchError) status.push(`今回の取得失敗：${weather.fetchError}`);
+  if(weather.lastError) status.push(`サーバーの取得失敗：${weather.lastError}`);
+  if(weather.refreshStatus === "refreshing") status.push("サーバーで気象データを更新中です");
+  if(weather.nextAttemptAt){
+    const retry = new Date(weather.nextAttemptAt);
+    if(Number.isFinite(retry.getTime())) status.push(`サーバーの次回取得予定：${retry.toLocaleString("ja-JP", {timeZone:"Asia/Tokyo"})}`);
+  }
+  if(weather.stale) status.push("更新が完了していないため、保存済みの気象データを使用しています。「更新」で再取得できます");
+  const summary = diagnostics.gaps.length
+    ? `気象データの不足：観測${diagnostics.observationDays}日・予報${diagnostics.forecastDays}日`
+    : "気象データ：確認した期間に欠けている日はありません";
+  container.innerHTML = `<details class="dashboardGrowthWeatherDiagnostics"><summary>${escapeHtml(summary)}</summary>
+    <p>取得済みの観測期間と予報期間を確認しています。予定日までの不足日は各ベッドの「詳細」に表示します。</p>
+    ${status.map(text => `<p>${escapeHtml(text)}</p>`).join("")}
+    ${getDashboardGrowthWeatherGapsHtml(diagnostics.gaps)}</details>`;
+}
+
 function getDashboardGrowthLearningBasisHtml(item){
   const basis = item.basis || {};
+  const gapsHtml = getDashboardGrowthWeatherGapsHtml((item.cohorts || []).flatMap(cohort => cohort.prediction.weatherGaps || []));
+  const weatherHtml = gapsHtml ? `<div class="dashboardGrowthWeatherShortage"><strong>対象期間の気象データ不足</strong>${gapsHtml}</div>` : "";
   if(!Number.isFinite(basis.currentGrowthUnits) || !Number.isFinite(basis.targetGrowthUnits)){
-    return '<section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠"><strong class="dashboardGrowthBasisTitle">判定の根拠</strong><p class="dashboardGrowthBasisUnavailable">苗植え日または比較に必要なデータが不足しています。</p></section>';
+    return `<section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠"><strong class="dashboardGrowthBasisTitle">判定の根拠</strong><p class="dashboardGrowthBasisUnavailable">苗植え日または比較に必要なデータが不足しています。</p>${weatherHtml}</section>`;
   }
   const percent = value => Number.isFinite(value) ? `${Math.round(value)}%` : "不明";
   const formatDate = value => parseDateOnlyString(value || "") ? formatDashboardForecastDate(parseDateOnlyString(value)) : "不明";
@@ -40109,6 +40246,7 @@ function getDashboardGrowthLearningBasisHtml(item){
     <p class="dashboardGrowthBasisConclusion">${item.range ? `予定日の目標比：${percent(basis.achievementRate)}。` : "収穫予定は未設定です。"}対象${basis.palletCount || 0}パレットの中央値。${basis.units === "days" ? "検証で選ばれた栽培日数モデルを使用しています。" : "重量の測定値ではなく、温度と日照からの生育目安です。"}</p>
     <p class="dashboardGrowthReadyDate">AIの適期期間：${escapeHtml(ready)}（参考）</p>
     <p class="dashboardGrowthBasisMethod">${escapeHtml(interval)} 当日はまだ確定していないため、現在の進捗にも取得済みの当日予報を含む場合があります。適期日は予定日を変更しません。</p>
+    ${weatherHtml}
     ${cohortHtml}
     ${getDashboardGrowthQualityDetailsHtml(item.risk)}
   </section>`;
@@ -40674,6 +40812,7 @@ function renderDashboardGrowthPredictionModel(model, location){
     dashboardGrowthPredictionBuilding = model.startBuilding;
   }
   renderDashboardGrowthBuildingTraits();
+  renderDashboardGrowthWeatherDiagnostics(model);
   renderDashboardGrowthPredictionBuilding(model, dashboardGrowthPredictionBuilding);
   renderDashboardGrowthValidation(model);
   renderDashboardGrowthModelManagement(model);
@@ -40736,6 +40875,8 @@ async function renderDashboardGrowthPrediction(options = {}){
       if(content) content.hidden = false;
       const beds = document.getElementById("dashboardGrowthBeds");
       const tabs = document.getElementById("dashboardGrowthBuildingTabs");
+      const weatherDetails = document.getElementById("dashboardGrowthWeatherDiagnostics");
+      if(weatherDetails) weatherDetails.innerHTML = "";
       if(beds) beds.innerHTML = `<div class="dashboardEmpty" style="grid-column:1/-1;">${escapeHtml(error?.message || "気象データを取得できませんでした。通信状態を確認して「更新」を押してください。")}</div>`;
       if(tabs) tabs.innerHTML = "";
       if(refreshButton) refreshButton.hidden = false;

@@ -176,10 +176,12 @@
     const asOf = dateKey(options.asOf);
     if(!asOf) throw new Error("Growth model requires an explicit valid asOf date");
     const instant = cutoffInstant(options.asOf);
-    const observations = new Map(), forecasts = new Map();
+    const observations = new Map(), forecasts = new Map(), received = new Map();
     const ingest = (raw, inheritedIssue) => {
       const day = normalizeWeather(raw);
       if(!day) return;
+      received.set(day.date, inheritedIssue && day.source === "forecast"
+        ? { ...day, forecastIssuedAt:day.forecastIssuedAt || inheritedIssue } : day);
       if(day.source === "observation"){
         // Retrieval time is not the original publication time. Re-downloading a
         // historic observation must not erase it from every historical fold.
@@ -248,7 +250,41 @@
       return day;
     }
     const forecastEndDate = [...forecasts.keys()].sort().pop() || null;
-    return { asOf, asOfInstant:instant, forecastEndDate, observations, forecasts, climate, getDay, unitCache,
+    const gapCache = new Map(), gapRangeCache = new Map();
+    function getGap(date){
+      if(gapCache.has(date)) return gapCache.get(date);
+      const future = date >= asOf;
+      const direct = future ? forecasts.get(date) : observations.get(date);
+      const raw = direct || received.get(date);
+      let code = "", fields = [];
+      if(!direct){
+        if(raw?.source === (future ? "forecast" : "observation")){
+          const issuedAt = timestamp(raw.issuedAt || raw.forecastIssuedAt);
+          code = future && issuedAt === null ? "missingIssueTime" : "notAvailableAtCutoff";
+        }else code = future ? (!forecastEndDate || date > forecastEndDate ? "outsideForecast" : "noForecast") : "noObservation";
+      }else{
+        if(direct.meanTemp === null || direct.estimatedTemperature) fields.push("temperature");
+        if(direct.lightIndex === null || direct.estimatedLight) fields.push("light");
+        if(fields.length) code = "missingFields";
+      }
+      const gap = code ? { date, kind:future ? "forecast" : "observation", code, fields,
+        unavailable:future, estimated:!future, source:raw?.source || null } : null;
+      gapCache.set(date, gap);
+      return gap;
+    }
+    function getGaps(start, end){
+      if(!dateKey(start) || !dateKey(end) || start > end || daysBetween(start, end) > 730) return [];
+      const key = `${start}|${end}`;
+      if(gapRangeCache.has(key)) return gapRangeCache.get(key);
+      const gaps = [];
+      for(let date = start; date <= end; date = addDays(date, 1)){
+        const gap = getGap(date);
+        if(gap) gaps.push(gap);
+      }
+      gapRangeCache.set(key, gaps);
+      return gaps;
+    }
+    return { asOf, asOfInstant:instant, forecastEndDate, observations, forecasts, climate, getDay, getGap, getGaps, unitCache,
       provenance:{ historicalForecasts:forecasts.size, observationDays:observations.size } };
   }
   function dailyUnit(day, manual, parameter = PARAMETERS[0]){
@@ -800,6 +836,7 @@
     if(context.asOf < model.asOf) throw new Error("Refit the growth model before predicting an earlier asOf date");
     const rows = (model.validation.rows[model.selectedMethod] || []).filter(row => evaluationAvailableBefore(row, context.asOf, context.asOfInstant));
     const output = predictCandidate(model.candidate, context, input, rows);
+    const weatherGaps = context.getGaps(dateKey(input.plantingDate), dateKey(input.targetDate));
     const evidence = metrics(rows);
     const counts = output.dayCounts || { total:0, estimated:0, forecast:0 };
     // No 'high' before field calibration with independent date observations.
@@ -815,7 +852,7 @@
     if(output.positionFallback) reasons.push("この位置の実績が不足しているためベッド・号棟の目安を使用");
     if(model.stage === "collecting") reasons.push("追加の自動補正は精度改善を未確認のため未採用");
     if(model.selectionFallback) reasons.push("検証で選んだ方式を現在のデータでは計算できないため基本方式を使用");
-    return { ...output, schemaVersion:VERSION, method:model.selectedMethod, stage:model.stage,
+    return { ...output, weatherGaps, schemaVersion:VERSION, method:model.selectedMethod, stage:model.stage,
       confidence:confidenceFor(model.candidate, evidence, output),
       validation:evidence, reasons, mainReasons:reasons.slice(0, 3),
       readyDateKind:model.candidate.anchorCount ? "estimated-reference" : "initial-rule-reference" };

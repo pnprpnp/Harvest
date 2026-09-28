@@ -7,7 +7,8 @@ function setup(initial){
   const daily=[{date:"2026-09-27",source:"forecast",meanTemp:20,lightIndex:1,issuedAt:"2026-09-27T05:00:00+09:00"}];
   const c=vm.createContext({Date:Clock,DASHBOARD_GROWTH_WEATHER_CACHE_KEY:"cache",getDashboardGrowthLocationKey:()=>"station",
     getDashboardGrowthWeatherCache:()=>cached,harvestnaviLocalStorage:{writeJson:(key,value)=>{cached=value;}},
-    fetchDashboardGrowthWeatherFromRelay:async()=>{calls++;if(fail) throw new Error("offline");return {daily,fetchedAt:clock,forecastEndDate:"2026-09-27",stale};}});
+    fetchDashboardGrowthWeatherFromRelay:async()=>{calls++;if(fail) throw new Error("offline");return {daily,fetchedAt:clock,forecastEndDate:"2026-09-27",stale,
+      refreshStatus:stale ? "retry" : "ready",lastError:stale ? "upstream error" : "",nextAttemptAt:stale ? "2026-09-27T04:00:00.000Z" : null};}});
   const start=source.indexOf("async function loadDashboardGrowthWeather("),end=source.indexOf("\nfunction getDashboardGrowthMedian",start);
   vm.runInContext(source.slice(start,end),c);
   return {load:options=>c.loadDashboardGrowthWeather({},options),get calls(){return calls;},get cached(){return cached;},
@@ -19,9 +20,12 @@ test("only successful weather is reused for 24 hours and manual refresh bypasses
 });
 test("stale relay replies never become a new 24-hour success window",async()=>{
   const f=setup(null);f.stale=true;await f.load();await f.load();assert.equal(f.calls,2);assert.equal(f.cached.stale,true);
+  assert.equal(f.cached.refreshStatus,"retry");assert.equal(f.cached.lastError,"upstream error");
+  assert.equal(f.cached.nextAttemptAt,"2026-09-27T04:00:00.000Z");
 });
 test("offline fallback preserves archived days and original forecast end",async()=>{
   const f=setup(null);const prior=await f.load();f.advance(24*3600000);f.fail=true;
   const result=await f.load();assert.equal(result.stale,true);assert.deepEqual(result.daily,prior.daily);
   assert.equal(result.forecastEndDate,prior.forecastEndDate);assert.equal(f.cached.successfulAt,prior.successfulAt);
+  assert.equal(result.fetchError,"offline");assert.equal(f.cached.fetchError,undefined);
 });

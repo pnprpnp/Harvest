@@ -524,6 +524,12 @@ test("weather snapshots expose actual coverage, forecast issue time and stale ca
   assert.equal(result.historyThrough, "2026-09-20");
   assert.equal(result.historyCoverage.missingDays, 3);
   assert.equal(buildGrowthWeatherResponse(row, { stale:true }).stale, true);
-  assert.equal(buildGrowthWeatherResponse({ ...row, status:"retry" }).stale, true);
+  const failed = buildGrowthWeatherResponse({ ...row, status:"retry", last_error:"upstream error",
+    next_attempt_at:"2026-09-28T12:00:00+09:00", last_attempt_at:"2026-09-28T11:00:00+09:00" });
+  assert.equal(failed.stale, true);
+  assert.equal(failed.refreshStatus,"retry");
+  assert.equal(failed.lastError,"upstream error");
+  assert.equal(failed.nextAttemptAt,"2026-09-28T03:00:00.000Z");
+  assert.equal(failed.lastAttemptAt,"2026-09-28T02:00:00.000Z");
   assert.equal(buildGrowthWeatherResponse({ ...row, refreshed_at:null }).fetchedAt, 0);
 });

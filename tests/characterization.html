@@ -16922,6 +16922,36 @@
           assertEqual(growth390.growthGridColumns, 3, "390px幅でベッドが3列の一覧になっていません");
           assertDeepEqual(growth390.growthBedOrder, ["F", "D", "B", "E", "C", "A"], "390px幅でベッドが配置図と同じ位置に並んでいません");
           assert(growth390.scrollWidth <= growth390.viewport, "生育予測画面が390px幅から横にはみ出しています");
+          for(const width of [320,390]){
+            preview.document.querySelector(`[data-preview-width="${width}"]`).click();
+            previewApp.eval(`(() => {
+              const weather={historyStartDate:"2026-05-29",normal:{historyCheckedThrough:"2026-06-02"},stale:true,
+                fetchError:"気象データの取得が時間切れになりました",lastError:"気象庁の過去データを取得できません（HTTP 503）",
+                nextAttemptAt:"2026-09-28T20:00:00+09:00",daily:[
+                  ...Array.from({length:5},(_,i)=>({date:HarvestGrowthModel.addDays("2026-05-29",i),source:"observation",meanTemp:20,lightIndex:null})),
+                  {date:"2026-09-28",source:"forecast",meanTemp:17.65,lightIndex:0.52,estimatedTemperature:true,issuedAt:"2026-09-28T17:00:00+09:00"},
+                  {date:"2026-09-29",source:"forecast",meanTemp:20,lightIndex:1,issuedAt:"2026-09-28T17:00:00+09:00"}
+                ]};
+              const context=HarvestGrowthModel.prepareWeather(weather.daily,{asOf:"2026-09-28T19:00:00+09:00"});
+              renderDashboardGrowthWeatherDiagnostics({weather,weatherDiagnostics:buildDashboardGrowthWeatherDiagnostics(weather,context)});
+              document.querySelector(".dashboardGrowthWeatherDiagnostics").open=true;
+              const card=document.querySelector("details.dashboardGrowthBedCard");card.open=true;
+              card.querySelector(".dashboardGrowthBasis").outerHTML=getDashboardGrowthLearningBasisHtml({basis:{},cohorts:[
+                {prediction:{weatherGaps:context.getGaps("2026-09-25","2026-10-05")}}]});
+            })()`);
+            await settleVisualApp(previewApp);
+            const gapState=comparable(previewApp.eval(`({
+              viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,
+              text:document.getElementById("dashboardGrowthWeatherDiagnostics").textContent,
+              bedText:document.querySelector(".dashboardGrowthWeatherShortage").textContent,
+              right:Math.max(...[...document.querySelectorAll(".dashboardGrowthWeatherDiagnostics,.dashboardGrowthWeatherGapList")]
+                .filter(element=>element.getBoundingClientRect().width>0).map(element=>element.getBoundingClientRect().right))
+            })`));
+            assert(gapState.text.includes("観測5日・予報1日") && gapState.text.includes("2026/5/29〜2026/6/2（5日）"),"不足日付・項目が表示されません");
+            assert(gapState.text.includes("HTTP 503") && gapState.text.includes("次回取得予定"),"取得失敗理由・再試行予定が表示されません");
+            assert(gapState.bedText.includes("2026/9/28") && gapState.bedText.includes("未予測"),"判定できないベッドの不足日が表示されません");
+            assert(gapState.scrollWidth<=gapState.viewport && gapState.right<=gapState.viewport,`${width}px幅で気象不足の詳細が横にはみ出しています`);
+          }
           preview.setPreviewView("menu");
           await settleVisualApp(previewApp);
           const menu390 = comparable(previewApp.eval(`({

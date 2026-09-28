@@ -150,6 +150,53 @@ test("same-day rewind cannot reuse a later forecast context", () => {
   }), /earlier asOf time/);
 });
 
+test("weather gaps identify partial observations, unusable daily forecasts and internal versus outside gaps", () => {
+  const asOf = "2026-09-28T19:00:00+09:00";
+  const issuedAt = "2026-09-28T17:00:00+09:00";
+  const daily = [
+    { date:"2026-09-25", source:"observation", meanTemp:20, lightIndex:null },
+    { date:"2026-09-27", source:"observation", meanTemp:20, sunshineHours:0 },
+    { date:"2026-09-28", source:"forecast", meanTemp:17.65, lightIndex:0.52, estimatedTemperature:true, issuedAt },
+    { date:"2026-09-30", source:"forecast", meanTemp:20, lightIndex:1, issuedAt }
+  ];
+  const fit = model.fit([], {asOf, weatherDaily:daily, validation:{methods:{}, rows:{}, selection:{}}});
+  const input = {plantingDate:"2026-09-25", targetDate:"2026-10-01", building:2, bed:"A"};
+  const result = model.predict(fit, input);
+  assert.deepEqual(result.weatherGaps.map(gap => [gap.date, gap.code, gap.fields, gap.unavailable]), [
+    ["2026-09-25", "missingFields", ["light"], false],
+    ["2026-09-26", "noObservation", [], false],
+    ["2026-09-28", "missingFields", ["temperature"], true],
+    ["2026-09-29", "noForecast", [], true],
+    ["2026-10-01", "outsideForecast", [], true]
+  ]);
+  assert.equal(result.status, "unknown");
+  assert.equal(result.dayCounts.unavailable, 3);
+  assert.equal(result.dayCounts.missing, result.weatherGaps.length);
+  assert.equal(fit.weatherContext.getGap("2026-09-27"), null, "zero sunshine remains a valid measurement");
+  assert.equal(model.predict(fit, {...input, building:3}).weatherGaps, result.weatherGaps, "gap ranges are reused across buildings");
+});
+
+test("weather gap diagnosis uses the same publication boundary and normalization as prediction", () => {
+  const context = model.prepareWeather([
+    {date:"2026-09-27", source:"observation", meanTemp:20, lightIndex:1, availableAt:"2026-09-29T10:00:00+09:00"},
+    {date:"2026-09-28", source:"forecast", meanTemp:20, lightIndex:1},
+    {date:"2026-09-29", source:"forecast", meanTemp:20, lightIndex:1, issuedAt:"2026-09-28T20:00:00+09:00"},
+    {date:"2026-09-30", source:"forecast", minTemp:18, maxTemp:22, sunshineHours:8, issuedAt:"2026-09-28T17:00:00+09:00"}
+  ], {asOf:"2026-09-28T19:00:00+09:00"});
+  assert.equal(context.getGap("2026-09-27").code, "notAvailableAtCutoff");
+  assert.equal(context.getGap("2026-09-28").code, "missingIssueTime");
+  assert.equal(context.getGap("2026-09-29").code, "notAvailableAtCutoff");
+  assert.equal(context.getDay("2026-09-29"), null);
+  assert.equal(context.getGap("2026-09-30"), null);
+  assert.equal(context.getDay("2026-09-30").meanTemp, 20);
+  assert.deepEqual(context.getGaps("2026-09-30", "2026-09-01"), []);
+  const archived = model.prepareWeather([], {asOf:"2026-09-28T19:00:00+09:00",forecastHistory:[{
+    issuedAt:"2026-09-28T17:00:00+09:00",capturedAt:"2026-09-28T20:00:00+09:00",
+    daily:[{date:"2026-09-29",meanTemp:20,lightIndex:1}]
+  }]});
+  assert.equal(archived.getGap("2026-09-29").code,"notAvailableAtCutoff","inherited issuance must not be reported missing");
+});
+
 test("forecast horizon and forecast age lower information weight and confidence", () => {
   const asOf = "2025-06-01T12:00:00+09:00";
   const daily = weather("2025-01-01", 151);
