@@ -106,6 +106,11 @@ function saveRecord(){
     showToast("日付を入力してください");
     return;
   }
+  const growthDates = [growthDetail.readyDate, ...Object.values(growthDetail.bedOverrides).map(value => value.readyDate)].filter(Boolean);
+  if(growthDates.some(readyDate => !isStrictDateOnlyString(readyDate) || readyDate > date)){
+    showToast("適期を確認した日は、収穫日以前の日付を入力してください");
+    return;
+  }
   if(totalCases <= 0){
     showToast("収穫ケース数を入力してください");
     return;
@@ -142,6 +147,9 @@ function saveRecord(){
     showToast("収穫記録の保存をキャンセルしました");
     return;
   }
+
+  try{ ensureDashboardGrowthSafetySnapshot(); }
+  catch(error){ showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`); return; }
 
   if(editingRecord && editingRecord.type === "fullHarvest"){
     const editedRecordDate = date;

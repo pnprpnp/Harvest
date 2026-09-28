@@ -405,6 +405,8 @@ function normalizeDashboardRecordTypeFilter(value){
 }
 
 function invalidateDashboardDerivedData(){
+  dashboardGrowthDataRevision++;
+  dashboardGrowthSourceCache = null;
   dashboardHarvestForecastModelCache = null;
   dashboardSeedlingStatusModelCache = null;
   dashboardGrowthPredictionModelCache = null;
@@ -571,6 +573,7 @@ function syncDashboardSubtabUi(){
     panel.hidden = panel.dataset.dashboardSubtabPanel !== activeSubtab;
   });
   syncDashboardResultsViewUi();
+  if(typeof renderDashboardGrowthChangeBadge === "function") renderDashboardGrowthChangeBadge();
   scheduleDashboardSelectedBuildingButtonReveal(activeSubtab);
 }
 
@@ -631,6 +634,7 @@ function setDashboardSubtab(value){
   }
   syncDashboardSubtabUi();
   renderDashboardSubtab(nextSubtab);
+  if(nextSubtab === "growth" && dashboardGrowthPredictionModelCache) markDashboardGrowthChangesRead();
   dashboardRenderedDayKey = formatDateOnlyString(new Date());
 }
 
@@ -3493,6 +3497,15 @@ function renderDashboardSeedlingStatus(){
 // ===== 集計：生育予測β =====
 const DASHBOARD_GROWTH_NORMAL_RATIO_MIN = 0.88;
 const DASHBOARD_GROWTH_NORMAL_RATIO_MAX = 1.12;
+let dashboardGrowthDataRevision = 0;
+let dashboardGrowthSourceCache = null;
+let dashboardGrowthArchiveStatus = "";
+let dashboardGrowthArchivePending = null;
+let dashboardGrowthForecastHistoryCache = null;
+let dashboardGrowthEvaluationWorker = null;
+let dashboardGrowthPlanningShowsQuantity = false;
+const DASHBOARD_GROWTH_CULTIVAR = "マルチリーフエアリ";
+const DASHBOARD_GROWTH_CHANGE_STATE_PREFIX = "harvestnaviGrowthChangeState_v1:";
 
 function normalizeDashboardGrowthLocation(value){
   if(!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -3536,7 +3549,9 @@ function saveDashboardGrowthLocation(location){
   const previousKey = getDashboardGrowthLocationKey(getDashboardGrowthLocation());
   harvestnaviLocalStorage.writeJson(DASHBOARD_GROWTH_LOCATION_KEY, normalized);
   if(previousKey !== getDashboardGrowthLocationKey(normalized)){
+    dashboardGrowthDataRevision++;
     dashboardGrowthPredictionModelCache = null;
+    dashboardGrowthForecastHistoryCache = null;
     dashboardRenderedSubtabs.delete("growth");
   }
   return true;
@@ -3586,13 +3601,13 @@ function getDashboardGrowthLightIndex(weatherCode){
 }
 
 function getDashboardGrowthLightIndexFromSunshineHours(sunshineHours){
-  const hours = Number(sunshineHours);
-  if(!Number.isFinite(hours)) return null;
+  const hours = getDashboardGrowthForecastNumber(sunshineHours);
+  if(hours === null || hours < 0 || hours > 24) return null;
   return Math.max(0.3, Math.min(1.2, hours / 8));
 }
 
 function getDashboardGrowthForecastNumber(value){
-  if(value === null || value === undefined || String(value).trim() === "") return null;
+  if((typeof value !== "number" && typeof value !== "string") || String(value).trim() === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -3672,18 +3687,18 @@ function buildDashboardGrowthDailyWeather(forecastPayload, location){
   const normalArea = weeklyReport?.tempAverage?.areas?.[0] || {};
   const normalMin = getDashboardGrowthForecastNumber(normalArea.min);
   const normalMax = getDashboardGrowthForecastNumber(normalArea.max);
-  const fallbackMin = normalMin === null ? 14 : normalMin;
-  const fallbackMax = normalMax === null ? 24 : normalMax;
+  const fallbackMin = normalMin;
+  const fallbackMax = normalMax;
   const daily = [...dailyByDate.values()].map(day => {
-    const hasMin = Number.isFinite(Number(day.minTemp));
-    const hasMax = Number.isFinite(Number(day.maxTemp));
-    const minTemp = hasMin ? Number(day.minTemp) : fallbackMin;
-    const maxTemp = hasMax ? Number(day.maxTemp) : fallbackMax;
+    const hasMin = getDashboardGrowthForecastNumber(day.minTemp) !== null;
+    const hasMax = getDashboardGrowthForecastNumber(day.maxTemp) !== null;
+    const minTemp = hasMin ? Number(day.minTemp) : null;
+    const maxTemp = hasMax ? Number(day.maxTemp) : null;
     return {
       ...day,
       minTemp,
       maxTemp,
-      meanTemp:(minTemp + maxTemp) / 2,
+      meanTemp:hasMin && hasMax ? (minTemp + maxTemp) / 2 : null,
       lightIndex:Number.isFinite(Number(day.lightIndex)) ? Number(day.lightIndex) : 0.8,
       estimatedTemperature:!hasMin || !hasMax
     };
@@ -3697,7 +3712,7 @@ function buildDashboardGrowthDailyWeather(forecastPayload, location){
     normal:{
       minTemp:fallbackMin,
       maxTemp:fallbackMax,
-      meanTemp:(fallbackMin + fallbackMax) / 2,
+      meanTemp:fallbackMin !== null && fallbackMax !== null ? (fallbackMin + fallbackMax) / 2 : null,
       lightIndex:0.85
     }
   };
@@ -3772,8 +3787,8 @@ async function fetchDashboardGrowthWeatherFromRelay(location){
 
 async function loadDashboardGrowthWeather(location, options = {}){
   const cached = getDashboardGrowthWeatherCache(location);
-  const cacheAge = cached ? Date.now() - Number(cached.fetchedAt || 0) : Infinity;
-  if(!options.force && cached && cacheAge < 6 * 60 * 60 * 1000){
+  const cacheAge = cached ? Date.now() - Number(cached.successfulAt || cached.fetchedAt || 0) : Infinity;
+  if(!options.force && cached && !cached.stale && cacheAge >= 0 && cacheAge < 24 * 60 * 60 * 1000){
     return { ...cached, usedCache:true };
   }
   let relayWeather = null;
@@ -3787,21 +3802,32 @@ async function loadDashboardGrowthWeather(location, options = {}){
     schemaVersion:3,
     locationKey:getDashboardGrowthLocationKey(location),
     fetchedAt:Number(relayWeather.fetchedAt || Date.now()),
+    successfulAt:relayWeather.stale === true ? Number(cached?.successfulAt || cached?.fetchedAt || 0) : Date.now(),
     provider:"jma",
     timezone:"Asia/Tokyo",
     forecastEndDate:String(relayWeather.forecastEndDate || ""),
     historyStartDate:String(relayWeather.historyStartDate || ""),
     historyThrough:String(relayWeather.historyThrough || ""),
+    forecastIssuedAt:String(relayWeather.forecastIssuedAt || ""),
+    retrievedAt:String(relayWeather.retrievedAt || ""),
+    historyCoverage:relayWeather.historyCoverage || null,
     station:relayWeather.station || null,
     normal:relayWeather.normal || {},
-    daily:relayWeather.daily
+    daily:relayWeather.daily,
+    stale:relayWeather.stale === true,
+    receivedAt:new Date().toISOString()
   };
-  harvestnaviLocalStorage.writeJson(DASHBOARD_GROWTH_WEATHER_CACHE_KEY, cache);
+  try{
+    harvestnaviLocalStorage.writeJson(DASHBOARD_GROWTH_WEATHER_CACHE_KEY, cache);
+  }catch(error){
+    cache.storageWarning = "気象キャッシュを端末に保存できませんでした";
+  }
   return { ...cache, usedCache:false };
 }
 
 function getDashboardGrowthMedian(values){
   const sorted = (Array.isArray(values) ? values : [])
+    .filter(value => value !== null && value !== undefined && String(value).trim() !== "")
     .map(Number)
     .filter(Number.isFinite)
     .sort((left, right) => left - right);
@@ -3810,51 +3836,50 @@ function getDashboardGrowthMedian(values){
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function buildDashboardGrowthWeatherIndex(weather){
+function buildDashboardGrowthWeatherIndex(weather, asOf = new Date()){
   const dailyByDate = new Map();
-  const climateParts = new Map();
-  const todayKey = formatDateOnlyString(new Date());
+  const observationDays = [];
+  const asOfKey = formatDateOnlyString(asOf);
   (weather?.daily || []).forEach(day => {
     if(!parseDateOnlyString(day?.date)) return;
-    dailyByDate.set(day.date, day);
-    if(day.date >= todayKey) return;
-    const monthDay = day.date.slice(5);
-    const current = climateParts.get(monthDay) || [];
-    current.push(day);
-    climateParts.set(monthDay, current);
+    if(day.source === "observation" && day.date < asOfKey){
+      dailyByDate.set(day.date, day);
+      if(getDashboardGrowthForecastNumber(day.meanTemp) !== null
+        && getDashboardGrowthForecastNumber(day.lightIndex) !== null) observationDays.push(day);
+    }else if(day.source === "forecast" && day.date >= asOfKey){
+      const issuedAt = new Date(day.issuedAt || weather.forecastIssuedAt || "").getTime();
+      if(Number.isFinite(issuedAt) && issuedAt <= new Date(asOf).getTime()
+        && (!weather.forecastEndDate || day.date <= weather.forecastEndDate)) dailyByDate.set(day.date, day);
+    }
   });
-  const climateByMonthDay = new Map();
-  climateParts.forEach((days, monthDay) => {
-    const average = key => {
-      const values = days.map(day => Number(day[key])).filter(Number.isFinite);
-      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-    };
-    climateByMonthDay.set(monthDay, {
-      meanTemp:average("meanTemp"),
-      maxTemp:average("maxTemp"),
-      minTemp:average("minTemp"),
-      lightIndex:average("lightIndex"),
-      source:"climate"
-    });
-  });
-  const normal = weather?.normal || {};
-  const baseline = {
-    meanTemp:Number.isFinite(Number(normal.meanTemp)) ? Number(normal.meanTemp) : 19,
-    maxTemp:Number.isFinite(Number(normal.maxTemp)) ? Number(normal.maxTemp) : 24,
-    minTemp:Number.isFinite(Number(normal.minTemp)) ? Number(normal.minTemp) : 14,
-    lightIndex:Number.isFinite(Number(normal.lightIndex)) ? Number(normal.lightIndex) : 0.85,
-    source:"normal"
-  };
-  return { dailyByDate, climateByMonthDay, baseline };
+  return { dailyByDate, observationDays, climateByMonthDay:new Map(), asOf:asOfKey,
+    baseline:{ meanTemp:null, maxTemp:null, minTemp:null, lightIndex:null, source:"missing" } };
 }
 
 function getDashboardGrowthWeatherDay(weatherIndex, date, options = {}){
   const dateKey = formatDateOnlyString(date);
   const direct = weatherIndex.dailyByDate.get(dateKey);
-  if(direct) return { ...direct, estimated:false };
+  if(direct) return { ...direct, estimated:direct.estimatedTemperature === true || direct.estimatedLight === true };
+  // Past gaps may use historical evidence. Future gaps must stay unpredicted,
+  // including the retained legacy path and offline operation.
+  if(dateKey >= (weatherIndex.asOf || formatDateOnlyString(new Date()))) return null;
   if(options.allowClimate === false) return null;
-  const climate = weatherIndex.climateByMonthDay.get(dateKey.slice(5));
-  return { ...(climate || weatherIndex.baseline), date:dateKey, estimated:true };
+  const monthDay = dateKey.slice(5);
+  if(!weatherIndex.climateByMonthDay.has(monthDay)){
+    const seasonDay = key => new Date(`2000-${key.slice(5)}T12:00:00Z`).getTime() / 86400000;
+    const target = seasonDay(dateKey);
+    const nearby = (weatherIndex.observationDays || []).filter(day => {
+      const distance = Math.abs(seasonDay(day.date) - target);
+      return Math.min(distance, 366 - distance) <= 21;
+    });
+    const median = key => getDashboardGrowthMedian(nearby.map(day => getDashboardGrowthForecastNumber(day[key])));
+    weatherIndex.climateByMonthDay.set(monthDay, nearby.length ? {
+      meanTemp:median("meanTemp"), maxTemp:median("maxTemp"), minTemp:median("minTemp"),
+      lightIndex:median("lightIndex"), source:"climate", climateSampleDays:nearby.length
+    } : null);
+  }
+  const climate = weatherIndex.climateByMonthDay.get(monthDay);
+  return climate ? { ...climate, date:dateKey, estimated:true } : null;
 }
 
 function getDashboardGrowthDefaultBuildingAdjustment(building){
@@ -3911,25 +3936,21 @@ function getDashboardGrowthBuildingAdjustment(building){
 function getDashboardGrowthAdjustedWeather(day, building){
   if(!day) return null;
   const adjustment = getDashboardGrowthBuildingAdjustment(building);
-  return {
-    ...day,
-    meanTemp:Number.isFinite(Number(day.meanTemp))
-      ? Number(day.meanTemp) + adjustment.temperatureOffsetC
-      : null,
-    maxTemp:Number.isFinite(Number(day.maxTemp))
-      ? Number(day.maxTemp) + adjustment.temperatureOffsetC
-      : null,
-    lightIndex:Number.isFinite(Number(day.lightIndex))
-      ? Number(day.lightIndex) * adjustment.lightMultiplier
-      : null
+  const meanTemp = getDashboardGrowthForecastNumber(day.meanTemp);
+  const maxTemp = getDashboardGrowthForecastNumber(day.maxTemp);
+  const light = getDashboardGrowthForecastNumber(day.lightIndex);
+  return { ...day,
+    meanTemp:meanTemp === null ? null : meanTemp + adjustment.temperatureOffsetC,
+    maxTemp:maxTemp === null ? null : maxTemp + adjustment.temperatureOffsetC,
+    lightIndex:light === null ? null : light * adjustment.lightMultiplier
   };
 }
 
 function getDashboardGrowthDailyUnit(day, building){
   const adjusted = getDashboardGrowthAdjustedWeather(day, building);
-  const temperature = Number(adjusted?.meanTemp);
-  const lightIndex = Number(adjusted?.lightIndex);
-  if(!Number.isFinite(temperature) || !Number.isFinite(lightIndex)) return null;
+  const temperature = getDashboardGrowthForecastNumber(adjusted?.meanTemp);
+  const lightIndex = getDashboardGrowthForecastNumber(adjusted?.lightIndex);
+  if(temperature === null || lightIndex === null || temperature < -60 || temperature > 60 || lightIndex < 0) return null;
   let temperatureFactor = 0;
   if(temperature > 5 && temperature < 32){
     if(temperature < 18) temperatureFactor = (temperature - 5) / 13;
@@ -3980,67 +4001,171 @@ function buildDashboardGrowthPlantingIndex(){
     (Array.isArray(event?.plantingPalletKeys) ? event.plantingPalletKeys : []).forEach(key => {
       if(!isValidPalletKeyString(key)) return;
       if(!index.has(key)) index.set(key, []);
-      index.get(key).push({ date, eventId:Number(event?.eventId || 0) });
+      index.get(key).push({ date, eventId:Number(event?.eventId || 0), event });
     });
   });
-  index.forEach(items => items.sort((left, right) => (
-    left.date.getTime() - right.date.getTime() || left.eventId - right.eventId
-  )));
+  index.forEach(items => items.sort((left, right) => left.date - right.date || left.eventId - right.eventId));
   return index;
 }
 
 function getDashboardGrowthPriorPlantingDate(plantingIndex, palletKey, targetDate){
-  const items = plantingIndex.get(palletKey) || [];
-  const targetTime = startOfLocalDay(targetDate).getTime();
-  let found = null;
-  for(const item of items){
-    if(item.date.getTime() >= targetTime) break;
-    found = item.date;
-  }
-  return found ? new Date(found) : null;
+  return getDashboardGrowthPriorPlanting(plantingIndex, palletKey, targetDate)?.date || null;
 }
 
-function buildDashboardGrowthTrainingSamples(){
+function getDashboardGrowthPriorPlanting(plantingIndex, palletKey, targetDate){
+  const items = plantingIndex.get(palletKey) || [];
+  const targetTime = startOfLocalDay(targetDate).getTime();
+  let low = 0, high = items.length;
+  while(low < high){
+    const middle = Math.floor((low + high) / 2);
+    if(items[middle].date.getTime() < targetTime) low = middle + 1;
+    else high = middle;
+  }
+  return low ? items[low - 1] : null;
+}
+
+function buildDashboardGrowthTrainingSamples(asOf = new Date()){
+  return getDashboardGrowthSourceState(asOf).samples;
+}
+
+function getDashboardGrowthSourceState(asOf = new Date()){
+  const asOfKey = formatDateOnlyString(asOf);
+  const observationRevision = typeof HarvestGrowthObservations !== "undefined" ? HarvestGrowthObservations.revision() : 0;
+  const role = typeof getActiveRecordsStorageKey === "function" ? getActiveRecordsStorageKey() : "";
+  if(dashboardGrowthSourceCache?.revision === dashboardGrowthDataRevision
+    && dashboardGrowthSourceCache.observationRevision === observationRevision && dashboardGrowthSourceCache.role === role
+    && dashboardGrowthSourceCache.asOf === asOfKey
+    && dashboardGrowthSourceCache.records === records
+    && dashboardGrowthSourceCache.plantingEvents === plantingEvents) return dashboardGrowthSourceCache;
   const plantingIndex = buildDashboardGrowthPlantingIndex();
-  const cutoff = addDays(startOfLocalDay(new Date()), -730);
+  const cutoff = formatDateOnlyString(addDays(startOfLocalDay(asOf), -730));
+  const lastHarvest = new Map();
+  const partialDates = new Map();
+  const partialAvailableAtByPallet = new Map();
   const samples = [];
-  records.forEach(record => {
-    if(record?.type === "partialHarvest") return;
-    const harvestDate = parseDateOnlyString(String(record?.date || ""));
-    if(!harvestDate || harvestDate.getTime() < cutoff.getTime()) return;
-    const keysByBed = new Map();
-    getPalletKeysFromRecord(record).forEach(key => {
+  const observations = typeof HarvestGrowthObservations !== "undefined" ? HarvestGrowthObservations.list() : [];
+  const observationsByCrop = new Map();
+  observations.forEach(row=>{
+    const id=`${row.plantingEventId}:${row.plantingDate}`;
+    if(!observationsByCrop.has(id)) observationsByCrop.set(id,[]);
+    observationsByCrop.get(id).push(row);
+  });
+  const diagnostics = { missingPlanting:0, invalidCycle:0, excludedAge:0, mixedDates:0 };
+  const ordered = records.filter(record => parseDateOnlyString(record?.date) && record.date <= asOfKey)
+    .slice().sort((a, b) => a.date.localeCompare(b.date)
+      // 日付単位の記録では、同日の先取りを収穫結果より先に反映する。
+      // 保存・同期時のIDの大小で、この作の部分収穫を見落とさない。
+      || Number(a.type !== "partialHarvest") - Number(b.type !== "partialHarvest")
+      || Number(a.id || 0) - Number(b.id || 0));
+  ordered.forEach(record => {
+    if(record.type === "partialHarvest"){
+      const timestamps = [record.createdAt, record.updatedAt]
+        .filter(value => value && Number.isFinite(new Date(value).getTime())).sort((a,b) => new Date(a) - new Date(b));
+      const availableAt = timestamps[timestamps.length - 1] || "";
+      normalizePartialHarvestTargets(record.targets).forEach(target => {
+        const partialGroups = new Map();
+        const positionKnown = target.start !== 1 || target.end !== PALLETS_PER_BED;
+        for(let number = target.start; number <= target.end; number++){
+          const key = getPalletKey(target.building, target.bed, number);
+          partialDates.set(key, record.date);
+          partialAvailableAtByPallet.set(key, availableAt);
+          const planting = getDashboardGrowthPriorPlanting(plantingIndex,key,parseDateOnlyString(record.date));
+          if(!planting || (lastHarvest.get(key) && formatDateOnlyString(planting.date) < lastHarvest.get(key))) continue;
+          const cropId = `${planting.eventId}:${target.building}-${target.bed}`;
+          if(!partialGroups.has(cropId)) partialGroups.set(cropId,{planting,keys:[]});
+          partialGroups.get(cropId).keys.push(key);
+        }
+        partialGroups.forEach(({planting,keys},cropId)=>{
+          const plantingDate = formatDateOnlyString(planting.date);
+          const age = getLocalDayDiff(planting.date,parseDateOnlyString(record.date));
+          if(record.date < cutoff || age < 1 || age > 180) return;
+          const timestamps = [availableAt,planting.event?.updatedAt,planting.event?.createdAt].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b));
+          samples.push({id:`partial:${record.recordUuid || record.id}:${cropId}`,groupId:String(record.recordUuid || record.id),cropId,
+            plantingEventId:planting.eventId,building:target.building,bed:target.bed,bedKey:`${target.building}-${target.bed}`,
+            plantingDate:new Date(planting.date),date:parseDateOnlyString(record.date),ageDays:age,
+            sizeRating:"large",signalKind:positionKnown ? "partial-position" : "partial-bed",
+            // A whole-bed old partial record says that some large plants existed;
+            // it does not identify which pallet held them.
+            palletKeys:positionKnown ? keys : [],palletCount:positionKnown ? keys.length : 0,
+            availableAt:timestamps[timestamps.length-1] || "",plantingAvailableAt:planting.event?.updatedAt || planting.event?.createdAt || "",
+            symptoms:{tipburn:"unknown",elongated:"unknown",uneven:"unknown"},qualityObserved:false,
+            qualityWeight:positionKnown ? 1 : .2,readyDate:"",cultivar:""});
+        });
+      });
+      return;
+    }
+    const keys = getPalletKeysFromRecord(record);
+    const groups = new Map();
+    keys.forEach(key => {
+      const planting = getDashboardGrowthPriorPlanting(plantingIndex, key, parseDateOnlyString(record.date));
+      const previousHarvest = lastHarvest.get(key);
+      lastHarvest.set(key, record.date);
+      if(record.date < cutoff) return;
+      if(!planting){ diagnostics.missingPlanting++; return; }
+      const plantingKey = formatDateOnlyString(planting.date);
+      if(previousHarvest && plantingKey < previousHarvest){ diagnostics.invalidCycle++; return; }
+      const age = getLocalDayDiff(planting.date, parseDateOnlyString(record.date));
+      if(age < 1 || age > 180){ diagnostics.excludedAge++; return; }
       const bedKey = getHarvestBedKeyFromPalletKey(key);
       if(!bedKey) return;
-      if(!keysByBed.has(bedKey)) keysByBed.set(bedKey, []);
-      keysByBed.get(bedKey).push(key);
+      const groupKey = `${bedKey}:${planting.eventId}:${plantingKey}`;
+      if(!groups.has(groupKey)) groups.set(groupKey, { planting, bedKey, keys:[], partial:false, partialAvailableAt:new Set() });
+      const group = groups.get(groupKey);
+      group.keys.push(key);
+      if(partialDates.get(key) >= plantingKey){
+        group.partial = true;
+        group.partialAvailableAt.add(partialAvailableAtByPallet.get(key));
+      }
     });
-    keysByBed.forEach((palletKeys, bedKey) => {
-      const plantingTimes = palletKeys
-        .map(key => getDashboardGrowthPriorPlantingDate(plantingIndex, key, harvestDate)?.getTime())
-        .filter(Number.isFinite);
-      const plantingTime = getDashboardGrowthMedian(plantingTimes);
-      if(!Number.isFinite(plantingTime)) return;
-      const [buildingText, bed] = bedKey.split("-");
-      const building = Number(buildingText);
-      const plantingDate = new Date(plantingTime);
+    groups.forEach(group => {
+      const { planting, bedKey } = group;
       const state = getHarvestGrowthStateForBed(record, bedKey);
-      samples.push({
-        building,
-        bed,
-        bedKey,
-        plantingDate,
-        date:harvestDate,
-        ageDays:getLocalDayDiff(plantingDate, harvestDate),
-        sizeRating:state.sizeRating,
-        uneven:state.uneven,
-        tipburn:state.tipburn,
-        elongated:state.elongated,
-        qualityObserved:state.sizeRating !== "unknown" || state.tipburn || state.elongated
-      });
+      const [buildingText, bed] = bedKey.split("-");
+      const id = String(record.recordUuid || record.id);
+      const readyDate = parseDateOnlyString(state.readyDate || "");
+      const validReady = readyDate && readyDate >= planting.date && state.readyDate <= record.date ? state.readyDate : "";
+      // 部分収穫を使って学習の重みを下げる場合、その記録が利用可能になった
+      // 時点より前の検証へ、後日登録・修正された情報を持ち込まない。
+      const timestamps = [record.updatedAt, record.createdAt, planting.event?.updatedAt, planting.event?.createdAt,
+        ...group.partialAvailableAt]
+        .filter(value => value && Number.isFinite(new Date(value).getTime())).sort((a,b) => new Date(a) - new Date(b));
+      const plantingTimestamps = [planting.event?.updatedAt, planting.event?.createdAt]
+        .filter(value => value && Number.isFinite(new Date(value).getTime())).sort((a,b) => new Date(a) - new Date(b));
+      const readiness = typeof HarvestGrowthReadiness !== "undefined" ? HarvestGrowthReadiness.resolve({
+        plantingEventId:planting.eventId,plantingDate:formatDateOnlyString(planting.date),palletKeys:group.keys,
+        harvestDate:record.date,manual:{mode:state.readyDateMode || (validReady ? "manual" : "auto"),
+          date:validReady,availableAt:record.updatedAt || record.createdAt || ""},
+        observations:observationsByCrop.get(`${planting.eventId}:${formatDateOnlyString(planting.date)}`) || [],asOf:asOf.toISOString()
+      }) : [{palletKeys:group.keys,readyDate:validReady,availableAt:"",observationIds:[]}];
+      readiness.forEach((ready,index)=>samples.push({
+        id:`${id}:${bedKey}:${planting.eventId}:${index}`, groupId:id, cropId:`${planting.eventId}:${bedKey}`,
+        plantingEventId:planting.eventId,
+        building:Number(buildingText), bed, bedKey, plantingDate:new Date(planting.date), date:parseDateOnlyString(record.date),
+        ageDays:getLocalDayDiff(planting.date, parseDateOnlyString(record.date)),
+        sizeRating:state.sizeRating, uneven:state.uneven, tipburn:state.tipburn, elongated:state.elongated,
+        cultivar:state.cultivar || "",
+        readyDate:ready.readyDate,readyObservationIds:ready.observationIds,
+        availableAt:[...timestamps,ready.availableAt].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b)).pop() || "",
+        plantingAvailableAt:plantingTimestamps[plantingTimestamps.length - 1] || "",
+        symptoms:{ tipburn:state.tipburnStatus || (state.tipburn ? "present" : "unknown"),
+          elongated:state.elongatedStatus || (state.elongated ? "present" : "unknown"),
+          uneven:state.unevenStatus || (state.uneven ? "present" : "unknown") },
+        qualityObserved:state.tipburnStatus === "none" || state.elongatedStatus === "none" || state.tipburn || state.elongated,
+        palletCount:ready.palletKeys.length, palletKeys:ready.palletKeys, partial:group.partial,
+        qualityWeight:(group.partial ? 0.5 : 1) * (state.uneven ? 0.6 : 1) * (planting.event?.detailsUnknown ? 0.7 : 1)
+      }));
     });
   });
-  return samples;
+  const currentPlanting = new Map();
+  plantingIndex.forEach((items, key) => {
+    const item = [...items].reverse().find(value => formatDateOnlyString(value.date) <= asOfKey);
+    if(item && (!lastHarvest.has(key) || formatDateOnlyString(item.date) >= lastHarvest.get(key))){
+      currentPlanting.set(key, item);
+    }
+  });
+  dashboardGrowthSourceCache = { revision:dashboardGrowthDataRevision, asOf:asOfKey,
+    observationRevision,role,records, plantingEvents, samples, currentPlanting, partialDates, diagnostics };
+  return dashboardGrowthSourceCache;
 }
 
 function getDashboardGrowthSampleUnits(sample, weatherIndex){
@@ -4111,61 +4236,155 @@ function getDashboardGrowthForecastPalletKeys(model, building, bed){
 
 function hasDashboardGrowthCurrentPartialHarvest(building, bed, plantingDate){
   if(!plantingDate) return false;
-  return records.some(record => {
-    if(record?.type !== "partialHarvest") return false;
-    const recordDate = parseDateOnlyString(String(record.date || ""));
-    if(!recordDate || recordDate.getTime() < startOfLocalDay(plantingDate).getTime()) return false;
-    return normalizePartialHarvestTargets(record.targets).some(target => (
-      Number(target.building) === Number(building) && target.bed === bed
-    ));
-  });
+  const state = getDashboardGrowthSourceState();
+  const start = formatDateOnlyString(plantingDate);
+  for(let number = 1; number <= PALLETS_PER_BED; number++){
+    if(state.partialDates.get(getPalletKey(building, bed, number)) >= start) return true;
+  }
+  return false;
 }
 
 function getDashboardGrowthRisk(weatherIndex, forecastDate, building, samples){
-  const adjustment = getDashboardGrowthBuildingAdjustment(building);
+  if(weatherIndex.riskFit){
+    return HarvestGrowthRisk.predict(weatherIndex.riskFit, {
+      building, forecastDate:formatDateOnlyString(forecastDate), asOf:weatherIndex.riskAsOf,
+      manualAdjustment:getDashboardGrowthBuildingAdjustment(building), weatherDaily:weatherIndex.riskWeather
+    });
+  }
   const today = startOfLocalDay(new Date());
-  const lastForecastDate = [...weatherIndex.dailyByDate.values()]
-    .filter(day => day?.source === "forecast" && parseDateOnlyString(day.date))
-    .map(day => parseDateOnlyString(day.date))
-    .sort((left, right) => right.getTime() - left.getTime())[0] || null;
-  const end = lastForecastDate && forecastDate.getTime() > lastForecastDate.getTime()
-    ? lastForecastDate
-    : forecastDate;
+  const end = new Date(Math.min(forecastDate.getTime(), addDays(today, 6).getTime()));
   const days = [];
-  for(let cursor = today; cursor.getTime() <= end.getTime(); cursor = addDays(cursor, 1)){
+  for(let cursor = today; cursor <= end; cursor = addDays(cursor, 1)){
     const day = getDashboardGrowthWeatherDay(weatherIndex, cursor, { allowClimate:false });
-    if(day) days.push(getDashboardGrowthAdjustedWeather(day, building));
+    if(day?.source === "forecast") days.push(getDashboardGrowthAdjustedWeather(day, building));
   }
-  if(!days.length){
-    return {
-      tipburn:{ level:"unknown", label:"判定待ち" },
-      elongated:{ level:"unknown", label:"判定待ち" }
+  const hotDays = days.filter(day => day.maxTemp !== null && day.maxTemp >= 28).length;
+  const lowLightDays = days.filter(day => day.meanTemp !== null && day.meanTemp >= 21
+    && day.lightIndex !== null && day.lightIndex < 0.8).length;
+  const result = {};
+  ["tipburn", "elongated"].forEach(symptom => {
+    const confirmed = new Map();
+    samples.filter(sample => sample.building === building).forEach(sample => {
+      const status = sample.symptoms?.[symptom];
+      if(!["present", "none"].includes(status)) return;
+      const key = sample.groupId || sample.id;
+      if(status === "present" || !confirmed.has(key)) confirmed.set(key, status);
+    });
+    const count = confirmed.size;
+    const present = [...confirmed.values()].filter(value => value === "present").length;
+    const weatherDays = symptom === "tipburn" ? hotDays : lowLightDays;
+    result[symptom] = {
+      level:weatherDays ? "watch" : "unknown", label:weatherDays ? "参考注意" : "判断材料不足",
+      reference:true, confirmedCount:count, presentCount:present, weatherDays,
+      reason:`${symptom === "tipburn" ? "最高気温28℃以上" : "平均気温21℃以上かつ日照係数0.8未満"}の予報が${weatherDays}日。` +
+        (count ? `同じ号棟の確認済み${count}件中、症状あり${present}件。` : "確認済みの症状記録がありません。") +
+        "症状の発生確率は未検証です。"
     };
-  }
-  const hotDays = days.filter(day => Number(day.maxTemp) >= 28).length;
-  const warmBrightDays = days.filter(day => Number(day.meanTemp) >= 22 && Number(day.lightIndex) >= 1).length;
-  const warmLowLightDays = days.filter(day => Number(day.meanTemp) >= 21 && Number(day.lightIndex) < 0.8).length;
-  const buildingSamples = samples.filter(sample => sample.building === building);
-  const observedSamples = buildingSamples.filter(sample => sample.qualityObserved);
-  const tipburnRate = observedSamples.length
-    ? observedSamples.filter(sample => sample.tipburn).length / observedSamples.length
-    : 0;
-  const elongatedRate = observedSamples.length
-    ? observedSamples.filter(sample => sample.elongated).length / observedSamples.length
-    : 0;
-  let tipburnScore = Math.min(2, hotDays) + Math.min(1, warmBrightDays);
-  if(adjustment.temperatureOffsetC > 0 && hotDays) tipburnScore++;
-  if(tipburnRate >= 0.15) tipburnScore++;
-  let elongatedScore = Math.min(2, warmLowLightDays) + (hotDays >= 3 ? 1 : 0);
-  if(adjustment.lightMultiplier < 1 && days.some(day => Number(day.lightIndex) < 0.9)) elongatedScore++;
-  if(elongatedRate >= 0.15) elongatedScore++;
-  const toRisk = score => score >= 4
-    ? { level:"alert", label:"注意" }
-    : (score >= 2 ? { level:"watch", label:"やや注意" } : { level:"low", label:"低め" });
-  return { tipburn:toRisk(tipburnScore), elongated:toRisk(elongatedScore) };
+  });
+  return result;
 }
 
 function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, building, bed, target = null){
+  // A model-less call is retained for legacy previews/tests; production supplies the fitted engine.
+  if(!baseModel.growthFit) return getDashboardGrowthLegacyBedPrediction(baseModel, weatherIndex, samples, building, bed, target);
+  const range = baseModel.bedRanges.get(`${building}-${bed}`) || null;
+  const cohorts = new Map();
+  const today = parseDateOnlyString(baseModel.growthAsOf.slice(0, 10));
+  for(let number = 1; number <= PALLETS_PER_BED; number++){
+    const key = getPalletKey(building, bed, number);
+    const plantingDate = baseModel.plantingDateByPallet.get(key);
+    if(!plantingDate || baseModel.estimatedPlantingPalletKeys.has(key)) continue;
+    const forecastDate = baseModel.palletForecasts.get(key)?.date || today;
+    const plantingEventId = baseModel.growthPlantingByPallet?.get(key)?.eventId || 0;
+    const positionKey = baseModel.growthFit.candidate?.byPosition?.get(key)?.learned
+      || baseModel.growthShadowFit?.candidate?.byPosition?.get(key)?.learned ? key : "";
+    const observationScope = baseModel.growthObservationScopeByPallet?.get(key) || "";
+    const cohortKey = `${plantingEventId}:${formatDateOnlyString(plantingDate)}:${formatDateOnlyString(forecastDate)}:${positionKey}:${observationScope}`;
+    if(!cohorts.has(cohortKey)) cohorts.set(cohortKey, { plantingEventId,plantingDate, forecastDate,positionKey,palletKeys:[] });
+    cohorts.get(cohortKey).palletKeys.push(key);
+  }
+  const items = [...cohorts.values()].map(cohort => {
+    let input = {
+      plantingEventId:cohort.plantingEventId,
+      plantingDate:formatDateOnlyString(cohort.plantingDate), targetDate:formatDateOnlyString(cohort.forecastDate),
+      building, bed,palletKeys:cohort.palletKeys,positionKey:cohort.positionKey,
+      asOf:baseModel.growthAsOf, manualAdjustment:getDashboardGrowthBuildingAdjustment(building)
+    };
+    if(typeof HarvestGrowthEvidence !== "undefined") input=HarvestGrowthEvidence.annotate([input],
+      baseModel.growthObservationsByBuilding?.get(building) || [],{asOf:baseModel.growthAsOf})[0];
+    const prediction=HarvestGrowthModel.predict(baseModel.growthFit,input);
+    const currentPrediction=HarvestGrowthModel.predict(baseModel.growthFit,{...input,targetDate:baseModel.growthAsOf.slice(0,10)});
+    if(input.growthEvidence?.reasons?.length) prediction.reasons=[...prediction.reasons,...input.growthEvidence.reasons.map(reason=>reason.text)];
+    if(input.growthEvidence?.confidenceReduced && prediction.confidence?.level !== "insufficient"){
+      prediction.confidence={level:"reference",label:"参考値",reason:input.growthEvidence.reasons.map(reason=>reason.text).join("。")};
+    }
+    const riskInput={asOf:baseModel.growthAsOf,building,forecastDate:input.targetDate,
+      manualAdjustment:input.manualAdjustment,environmentRegimes:input.environmentRegimes,weatherDaily:weatherIndex.riskWeather};
+    return {...cohort,input,prediction,currentPrediction,
+      risk:baseModel.growthRiskFit ? HarvestGrowthRisk.predict(baseModel.growthRiskFit,riskInput) : null,
+      shadowRisk:baseModel.growthShadowRiskFit ? HarvestGrowthRisk.predict(baseModel.growthShadowRiskFit,riskInput) : null,
+      shadowPrediction:baseModel.growthShadowFit ? HarvestGrowthModel.predict(baseModel.growthShadowFit,input) : null};
+  });
+  const weightedMedian = getter => {
+    const values = items.flatMap(item => {
+      const value = getter(item.prediction);
+      return Number.isFinite(value) ? Array(item.palletKeys.length).fill(value) : [];
+    });
+    return getDashboardGrowthMedian(values);
+  };
+  const ratio = weightedMedian(value => value.ratio);
+  const progress = weightedMedian(value => value.progress);
+  const valid = items.filter(item => item.prediction.status !== "unknown");
+  const representative = valid.slice().sort((a,b) => Math.abs(a.prediction.ratio - ratio) - Math.abs(b.prediction.ratio - ratio))[0] || items[0];
+  const prediction = representative?.prediction;
+  // Classification belongs to the engine's learned interval; do not reapply
+  // the old fixed 88/112% bounds after predicting.
+  const status = valid.length === items.length && items.length ? prediction.status : "unknown";
+  const currentStatuses=items.map(item=>item.currentPrediction?.status).filter(value=>["small","normal","large"].includes(value));
+  const currentStatus=currentStatuses.length===items.length && new Set(currentStatuses).size===1 ? currentStatuses[0] : "unknown";
+  const confidenceOrder = { insufficient:0, reference:1, moderate:2 };
+  const leastCertain = items.slice().sort((a,b) => (confidenceOrder[a.prediction.confidence?.level] || 0)
+    - (confidenceOrder[b.prediction.confidence?.level] || 0))[0]?.prediction.confidence;
+  const readyDates = items.map(item => item.prediction.readyDate).filter(Boolean).sort();
+  const reasons = [...new Set(items.flatMap(item => item.prediction.reasons || []))];
+  const manual = getDashboardGrowthBuildingAdjustment(building);
+  if(prediction?.basis?.units !== "days" && (manual.temperatureOffsetC || manual.lightMultiplier !== 1)){
+    reasons.push(`環境傾向を反映：気温${manual.temperatureOffsetC > 0 ? "+" : ""}${manual.temperatureOffsetC}℃、日光${Math.round(manual.lightMultiplier * 100)}%`);
+  }
+  if(prediction?.basis?.buildingFactor && prediction.basis.buildingFactor !== 1){
+    reasons.push(`実績から求めた号棟の目標補正${Math.round(prediction.basis.buildingFactor * 100)}%を反映`);
+  }
+  if(items.length > 1) reasons.push(`苗植え日・予定日・位置ごとの条件で分けた${items.length}組を個別に計算しています`);
+  const partial = items.some(item => item.palletKeys.some(key => (
+    getDashboardGrowthSourceState().partialDates.get(key) >= formatDateOnlyString(item.plantingDate)
+  )));
+  if(partial) reasons.push("一部収穫後の残り株の大きさには偏りがある可能性があります");
+  if(!range && items.length) reasons.push("収穫予定が未設定のため現在の進捗を表示しています");
+  return {
+    building, bed, range, hasCurrentCrop:items.length > 0, status,currentStatus,
+    statusLabel:!range && items.length ? "予定未設定" : (status === "unknown" ? (items.some(item=>item.prediction.outOfForecast) ? "気象予報範囲外のため未予測" : "判定材料不足") : (status === "small" ? "小さめ" : status === "large" ? "大きめ" : "並")),
+    confidence:leastCertain?.label || "データ不足",
+    confidenceReason:leastCertain?.reason || "",
+    provisional:leastCertain?.level !== "high", ratedCount:baseModel.growthFit.sampleCount || samples.length,
+    basis:{ ...(prediction?.basis || {}), achievementRate:Number.isFinite(ratio) ? ratio * 100 : null,
+      currentGrowthUnits:weightedMedian(value => value.basis?.currentGrowthUnits),
+      projectedGrowthUnits:weightedMedian(value => value.basis?.projectedGrowthUnits),
+      targetGrowthUnits:weightedMedian(value => value.basis?.targetGrowthUnits),
+      currentProgress:Number.isFinite(progress) ? progress * 100 : null,
+      palletCount:items.reduce((sum,item) => sum + item.palletKeys.length, 0) },
+    dayCounts:prediction?.dayCounts || {}, cohorts:items,
+    readyDate:readyDates.length ? readyDates[Math.floor(readyDates.length / 2)] : null,
+    readyStart:readyDates.length ? readyDates[0] : null,
+    readyEnd:items.length === 1 ? prediction?.readyEnd || null : null,
+    outOfForecast:items.some(item=>item.prediction.outOfForecast),
+    readyRange:readyDates.length ? { start:readyDates[0], end:readyDates[readyDates.length - 1] } : null,
+    interval:items.length === 1 ? (prediction?.interval || null) : null,
+    risk:representative?.risk || getDashboardGrowthRisk(weatherIndex, range?.end?.date || addDays(today, 6), building, samples),
+    reason:reasons.join("。") || "苗植え日と収穫評価が増えると比較できます"
+  };
+}
+
+function getDashboardGrowthLegacyBedPrediction(baseModel, weatherIndex, samples, building, bed, target = null){
   const range = baseModel.bedRanges.get(`${building}-${bed}`);
   if(!range) return { building, bed, range:null, status:"unknown", statusLabel:"予定なし" };
   const normalizedTarget = target || getDashboardGrowthTarget(samples, building);
@@ -4188,7 +4407,7 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
     const currentEndDate = forecastDate.getTime() < today.getTime() ? forecastDate : today;
     const currentUnits = getDashboardGrowthUnits(weatherIndex, plantingDate, currentEndDate, building);
     const projectedUnits = getDashboardGrowthUnits(weatherIndex, plantingDate, forecastDate, building);
-    if(!projectedUnits) return;
+    if(!projectedUnits || projectedUnits.missingDays > 0) return;
     if(currentUnits) currentGrowthUnitValues.push(currentUnits.total);
     projectedGrowthUnitValues.push(projectedUnits.total);
     estimatedDayValues.push(projectedUnits.estimatedDays);
@@ -4226,7 +4445,7 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
   if(adjustment.lightMultiplier < 1) reasons.push(`日光が低め（${Math.round((1 - adjustment.lightMultiplier) * 100)}%減）の環境傾向を反映`);
   if(adjustment.lightMultiplier > 1) reasons.push(`日光が高め（${Math.round((adjustment.lightMultiplier - 1) * 100)}%増）の環境傾向を反映`);
   if(normalizedTarget.unevenRate >= 0.3) reasons.push("ばらつきの記録が多いため予測幅あり");
-  if(estimatedDays) reasons.push("気象庁の予報期間外は平年値を使用");
+  if(estimatedDays) reasons.push("過去の気象欠測を過去の観測値で補完");
   return {
     building,
     bed,
@@ -4250,66 +4469,73 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
 
 function buildDashboardGrowthPredictionModel(weather, timing = {}){
   const computeStartedAt = performance.now();
-  const baseModel = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
-  dashboardHarvestForecastModelCache = baseModel;
+  const asOf = getDashboardGrowthAsOf();
+  const source = getDashboardGrowthSourceState();
+  const existingBase = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  dashboardHarvestForecastModelCache = existingBase;
+  const baseModel = { ...existingBase,
+    growthPlantingByPallet:source.currentPlanting,
+    growthObservationsByBuilding:typeof getDashboardGrowthObservationsByBuilding === "function" ? getDashboardGrowthObservationsByBuilding() : new Map(),
+    plantingDateByPallet:new Map([...source.currentPlanting].map(([key,value]) => [key, new Date(value.date)])),
+    estimatedPlantingPalletKeys:new Set([...existingBase.estimatedPlantingPalletKeys]
+      .filter(key => !source.currentPlanting.has(key))), growthAsOf:asOf };
   const weatherIndex = buildDashboardGrowthWeatherIndex(weather);
-  const samples = refreshDashboardGrowthSampleUnits(buildDashboardGrowthTrainingSamples(), weatherIndex);
-  const targets = new Map(BUILDINGS.map(building => [
-    building,
-    getDashboardGrowthTarget(samples, building)
-  ]));
+  baseModel.growthObservationScopeByPallet=typeof getDashboardGrowthObservationScopes === "function"
+    ? getDashboardGrowthObservationScopes(baseModel.growthObservationsByBuilding) : new Map();
+  const samples = source.samples;
+  const engineSamples = typeof getDashboardGrowthEngineSamples === "function" ? getDashboardGrowthEngineSamples(source,asOf) : samples.map(sample => ({ ...sample,
+    plantingDate:formatDateOnlyString(sample.plantingDate), date:formatDateOnlyString(sample.date),
+    manualAdjustment:getDashboardGrowthBuildingAdjustment(sample.building)
+  }));
+  const scope = getDashboardGrowthHistoryScope();
+  const forecastHistory = dashboardGrowthForecastHistoryCache?.scope === scope
+    ? dashboardGrowthForecastHistoryCache.days : [];
+  baseModel.growthFit = timing.learning?.fit || (typeof getDashboardGrowthFrozenFit === "function"
+    ? getDashboardGrowthFrozenFit({asOf,weatherDaily:weather.daily,forecastHistory})
+    : HarvestGrowthModel.fit(engineSamples, { asOf, weatherDaily:weather.daily, forecastHistory, validation:timing.validation,selectedMethod:"legacy" }));
+  baseModel.growthShadowFit = timing.learning?.shadowFit || null;
+  weatherIndex.riskFit = timing.learning?.riskFit || (typeof getDashboardGrowthFrozenRiskFit === "function"
+    ? getDashboardGrowthFrozenRiskFit({asOf,weatherDaily:weather.daily},baseModel.growthFit.modelVersion || "legacy-prior-fallback")
+    : HarvestGrowthRisk.fit(engineSamples, { asOf, weatherDaily:weather.daily }));
+  baseModel.growthRiskFit = weatherIndex.riskFit;
+  baseModel.growthShadowRiskFit = timing.learning?.shadowRiskFit || null;
+  weatherIndex.riskAsOf = asOf;
+  weatherIndex.riskWeather = weather.daily;
   const predictions = new Map();
-  BUILDINGS.forEach(building => {
-    bedOrder.forEach(bed => {
-      predictions.set(`${building}-${bed}`, getDashboardGrowthBedPrediction(
-        baseModel,
-        weatherIndex,
-        samples,
-        building,
-        bed,
-        targets.get(building)
-      ));
-    });
-  });
-  return {
-    baseModel,
-    weather,
-    weatherIndex,
-    samples,
-    targets,
-    predictions,
+  BUILDINGS.forEach(building => bedOrder.forEach(bed => {
+    predictions.set(`${building}-${bed}`, getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, building, bed));
+  }));
+  return { baseModel, weather, weatherIndex, samples, engineSamples, predictions, targets:new Map(),
+    fit:baseModel.growthFit, validation:timing.learning?.validation || baseModel.growthFit.validation, diagnostics:source.diagnostics,
+    learning:timing.learning || null, modelVersion:timing.learning?.modelVersion || baseModel.growthFit.modelVersion || "legacy-fallback",
+    shadowModelVersion:timing.learning?.shadowModelVersion || null,
+    asOf, scope, revision:dashboardGrowthDataRevision, createdAt:Date.now(),
     startBuilding:baseModel.startBuilding,
-    performance:{
-      fetchMs:Number(timing.fetchMs || 0),
-      computeMs:performance.now() - computeStartedAt,
-      weatherDays:weather.daily.length
-    }
+    performance:{ fetchMs:Number(timing.fetchMs || 0), computeMs:performance.now() - computeStartedAt, weatherDays:weather.daily.length }
   };
 }
 
 function rebuildDashboardGrowthPredictionBuilding(model, building){
-  const normalized = Number(building);
-  if(!model || !BUILDINGS.includes(normalized)) return model;
-  model.samples = refreshDashboardGrowthSampleUnits(model.samples, model.weatherIndex, normalized);
-  const target = getDashboardGrowthTarget(model.samples, normalized);
-  model.targets.set(normalized, target);
-  bedOrder.forEach(bed => {
-    model.predictions.set(`${normalized}-${bed}`, getDashboardGrowthBedPrediction(
-      model.baseModel,
-      model.weatherIndex,
-      model.samples,
-      normalized,
-      bed,
-      target
-    ));
-  });
+  if(!model || !BUILDINGS.includes(Number(building))) return model;
+  if(!model.fit){
+    model.samples = refreshDashboardGrowthSampleUnits(model.samples, model.weatherIndex, Number(building));
+    const target = getDashboardGrowthTarget(model.samples, Number(building));
+    model.targets.set(Number(building), target);
+    bedOrder.forEach(bed => model.predictions.set(`${building}-${bed}`, getDashboardGrowthLegacyBedPrediction(
+      model.baseModel, model.weatherIndex, model.samples, Number(building), bed, target
+    )));
+    return model;
+  }
+  // Manual environment changes only rerun inference on the frozen generation.
+  const rebuilt = buildDashboardGrowthPredictionModel(model.weather);
+  Object.assign(model, rebuilt);
   return model;
 }
 
 function getDashboardGrowthRiskHtml(label, risk, shortLabel = label){
   const level = risk?.level || "unknown";
-  if(!["watch", "alert"].includes(level)) return "";
-  const className = level === "alert" ? " is-alert" : (level === "watch" ? " is-watch" : "");
+  if(!["watch", "alert", "medium", "high"].includes(level)) return "";
+  const className = ["alert","high"].includes(level) ? " is-alert" : " is-watch";
   const riskLabel = risk?.label || "判定待ち";
   return `<span class="dashboardGrowthRisk${className}" aria-label="${escapeHtml(`${label} ${riskLabel}`)}"><span>${escapeHtml(shortLabel)}</span><strong>${escapeHtml(riskLabel)}</strong></span>`;
 }
@@ -4322,6 +4548,7 @@ function getDashboardGrowthStatusDisplayLabel(item){
 }
 
 function getDashboardGrowthPredictionBasisHtml(item){
+  if(item?.cohorts) return getDashboardGrowthLearningBasisHtml(item);
   const basis = item?.basis || {};
   const hasValues = [
     basis.currentGrowthUnits,
@@ -4363,9 +4590,616 @@ function getDashboardGrowthPredictionBasisHtml(item){
         <span class="dashboardGrowthBasisValue"><span>収穫目標</span><strong>${escapeHtml(formatDashboardMetricNumber(basis.targetGrowthUnits, "点"))}</strong></span>
       </div>
       <p class="dashboardGrowthBasisConclusion">${escapeHtml(conclusion)}</p>
-      <p class="dashboardGrowthBasisMethod">積算生育値は、苗植え日からの毎日の平均気温と日照条件を生育分へ換算して合計しています。過去期間は気象庁の観測値、今後は予報、予報期間外は同じ地点・同じ時期の平均を使用します。${escapeHtml(palletNote)}</p>
+      <p class="dashboardGrowthBasisMethod">積算生育値は、苗植え日からの毎日の平均気温と日照条件を生育分へ換算して合計しています。過去期間は気象庁の観測値、今後は実際に取得した予報だけを使い、予報範囲外は未予測です。${escapeHtml(palletNote)}</p>
     </section>
   `;
+}
+
+async function runDashboardGrowthEvaluation(samples, options){
+  if(typeof Worker === "undefined" || typeof HarvestGrowthModel.getBacktestWorkerSource !== "function"){
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return HarvestGrowthModel.backtest(samples, options);
+  }
+  const url = URL.createObjectURL(new Blob([HarvestGrowthModel.getBacktestWorkerSource()], { type:"text/javascript" }));
+  let worker;
+  try{ worker = new Worker(url); }
+  catch(error){
+    URL.revokeObjectURL(url);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return HarvestGrowthModel.backtest(samples, options);
+  }
+  dashboardGrowthEvaluationWorker = worker;
+  try{
+    return await new Promise((resolve, reject) => {
+      worker.onmessage = event => event.data.error ? reject(new Error(event.data.error)) : resolve(event.data.result);
+      worker.onerror = () => reject(new Error("精度比較を実行できませんでした。もう一度更新してください"));
+      worker.postMessage({ samples, options });
+    });
+  }finally{
+    worker.terminate(); URL.revokeObjectURL(url);
+    if(dashboardGrowthEvaluationWorker === worker) dashboardGrowthEvaluationWorker = null;
+  }
+}
+
+function getDashboardGrowthAsOf(){
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().replace("Z", "+09:00");
+}
+
+function getDashboardGrowthHistoryScope(location = getDashboardGrowthLocation()){
+  return `${getActiveRecordsStorageKey()}:${getDashboardGrowthLocationKey(location)}`;
+}
+
+async function loadDashboardGrowthForecastHistory(scope){
+  if(dashboardGrowthForecastHistoryCache?.scope === scope) return dashboardGrowthForecastHistoryCache.days;
+  const from = formatDateOnlyString(addDays(new Date(), -730));
+  const snapshots = await HarvestGrowthHistory.list(scope, "weather", from);
+  const days = snapshots.flatMap(entry => (entry.payload.daily || []).map(day => ({ ...day,
+    availableAt:entry.capturedAt, issuedAt:day.issuedAt || entry.payload.issuedAt || ""
+  })));
+  dashboardGrowthForecastHistoryCache = { scope, days };
+  return days;
+}
+
+function setDashboardGrowthArchiveStatus(message, pending = false){
+  dashboardGrowthArchiveStatus = message;
+  const status = document.getElementById("dashboardGrowthArchiveStatus");
+  if(status) status.textContent = message;
+  const retry = document.getElementById("dashboardGrowthArchiveRetry");
+  if(retry) retry.hidden = !pending;
+}
+
+async function saveDashboardGrowthHistory(model){
+  if(!model?.fit) return;
+  try{
+    const captured = new Date().toISOString();
+    const daily = model.weather.daily.filter(day => day.source === "forecast").map(day => ({ ...day,
+      issuedAt:day.issuedAt || model.weather.forecastIssuedAt || ""
+    }));
+    const weatherId = await HarvestGrowthHistory.save(model.scope, "weather", model.asOf.slice(0, 10), {
+      provider:"jma", station:model.weather.station, fetchedAt:model.weather.fetchedAt,
+      issuedAt:model.weather.forecastIssuedAt || "", stale:model.weather.stale === true, daily
+    });
+    // Archive the exact inputs separately from the compact forecast catalogue.
+    // Diagnoses load this object by ID; normal startup never scans its history.
+    const weatherInputId = await HarvestGrowthHistory.save(model.scope,"weather-input",model.asOf.slice(0,10),{
+      provider:"jma",fetchedAt:model.weather.fetchedAt,forecastEndDate:model.weather.forecastEndDate,
+      daily:model.weather.daily
+    });
+    const registry = getDashboardGrowthLearningRegistry();
+    const snapshot = registry.getGeneration(model.modelVersion)?.modelSnapshot
+      || HarvestGrowthModel.exportModel(model.fit,{modelVersion:model.modelVersion});
+    const modelId = await HarvestGrowthHistory.save(model.scope,"model",snapshot.createdAt.slice(0,10),snapshot);
+    const shadowSnapshot = model.shadowModelVersion ? registry.getGeneration(model.shadowModelVersion)?.modelSnapshot : null;
+    const shadowModelId = shadowSnapshot ? await HarvestGrowthHistory.save(model.scope,"model",shadowSnapshot.createdAt.slice(0,10),shadowSnapshot) : null;
+    const quantity=(cohort,version)=>{
+      if(!version) return null;
+      try{return getDashboardGrowthYieldPrediction(cohort.palletKeys,cohort.plantingEventId,version,model.asOf);}
+      catch(error){return {available:false,modelVersion:version,reason:"quantityUnavailable"};}
+    };
+    const predictions = [...model.predictions.values()].flatMap(item => (item.cohorts || []).map(cohort => ({
+      building:item.building, bed:item.bed, plantingDate:formatDateOnlyString(cohort.plantingDate),
+      plantingEventId:cohort.plantingEventId,
+      targetDate:formatDateOnlyString(cohort.forecastDate), palletKeys:cohort.palletKeys,
+      scheduled:item.range !== null, prediction:cohort.prediction,shadowPrediction:cohort.shadowPrediction,
+      quantity:quantity(cohort,model.modelVersion),shadowQuantity:quantity(cohort,model.shadowModelVersion),
+      risk:cohort.risk || item.risk,shadowRisk:cohort.shadowRisk,reason:item.reason,input:cohort.input
+    })));
+    model.predictionId = await HarvestGrowthHistory.save(model.scope, "prediction", model.asOf.slice(0, 10), {
+      asOf:model.asOf, weatherId,weatherInputId, cultivar:DASHBOARD_GROWTH_CULTIVAR,
+      modelId,modelVersion:model.modelVersion,modelTrainedAsOf:snapshot.trainedAsOf,
+      shadowModelId,shadowModelVersion:model.shadowModelVersion,shadowTrainedAsOf:shadowSnapshot?.trainedAsOf || null,
+      appVersion:document.querySelector('meta[name="harvestnavi-version"]')?.content || "",
+      model:typeof HarvestGrowthModel.summarize === "function" ? HarvestGrowthModel.summarize(model.fit)
+        : { schemaVersion:HarvestGrowthModel.schemaVersion, selectedMethod:model.fit.selectedMethod },
+      adjustments:getDashboardGrowthBuildingAdjustments(), predictions
+    });
+    if(dashboardGrowthArchivePending === model) dashboardGrowthArchivePending = null;
+    if(dashboardGrowthForecastHistoryCache?.scope === model.scope){
+      const known = new Set(dashboardGrowthForecastHistoryCache.days.map(day => `${day.date}:${day.issuedAt}`));
+      daily.forEach(day => {
+        if(!known.has(`${day.date}:${day.issuedAt}`)) dashboardGrowthForecastHistoryCache.days.push({ ...day, availableAt:captured });
+      });
+    }
+    if(model.scope === getDashboardGrowthHistoryScope()) setDashboardGrowthArchiveStatus("この表示時点の予報・予測を端末に保存しました。履歴は自動削除しません。" + (model.weather.storageWarning ? ` ${model.weather.storageWarning}` : ""));
+  }catch(error){
+    dashboardGrowthArchivePending = model;
+    if(model.scope === getDashboardGrowthHistoryScope()) setDashboardGrowthArchiveStatus("予測は表示できましたが、履歴を端末に保存できませんでした。空き容量などを確認し「履歴を再保存」を押してください。", true);
+    console.warn("生育予測履歴の保存失敗", error);
+  }
+}
+
+async function retryDashboardGrowthHistory(){
+  const model = dashboardGrowthArchivePending || dashboardGrowthPredictionModelCache;
+  if(model?.scope === getDashboardGrowthHistoryScope()) await saveDashboardGrowthHistory(model);
+}
+
+function getDashboardGrowthLearningBasisHtml(item){
+  const basis = item.basis || {};
+  if(!Number.isFinite(basis.currentGrowthUnits) || !Number.isFinite(basis.targetGrowthUnits)){
+    return '<section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠"><strong class="dashboardGrowthBasisTitle">判定の根拠</strong><p class="dashboardGrowthBasisUnavailable">苗植え日または比較に必要なデータが不足しています。</p></section>';
+  }
+  const percent = value => Number.isFinite(value) ? `${Math.round(value)}%` : "不明";
+  const formatDate = value => parseDateOnlyString(value || "") ? formatDashboardForecastDate(parseDateOnlyString(value)) : "不明";
+  const unit = basis.units === "days" ? "日相当" : "点";
+  const metric = value => Number.isFinite(value) ? formatDashboardMetricNumber(value, unit) : "不明";
+  const ready = item.readyStart && item.readyEnd
+    ? `${formatDate(item.readyStart)}〜${formatDate(item.readyEnd)}`
+    : item.readyStart ? `${formatDate(item.readyStart)}〜終了未算出` : "未算出";
+  const interval = item.interval ? `過去の適期日誤差による参考範囲：${formatDate(item.interval.start)}〜${formatDate(item.interval.end)}`
+    : (item.cohorts.length > 1 && item.cohorts.some(cohort => cohort.prediction.interval)
+      ? "適期日の予測幅は、苗植え日・予定日ごとの参考範囲を確認してください。"
+      : "適期日の予測幅は、任意入力された日付の検証結果が不足しているため未算出です。");
+  const countsText = counts => basis.units === "days" ? "栽培日数方式のため、生育計算に気象は使用していません"
+    : counts ? `観測${counts.observed || 0}日・予報${counts.forecast || 0}日・推定${counts.estimated || 0}日` : "気象日数不明";
+  const cohortHtml = (item.cohorts || []).map(cohort => {
+    const start=formatDate(cohort.prediction.readyStart || cohort.prediction.readyDate),end=cohort.prediction.readyEnd ? formatDate(cohort.prediction.readyEnd) : "終了未算出";
+    const manual=cohort.input?.growthEvidence?.manualOffset;
+    let manualText="";
+    if(manual){
+      const adjusted=HarvestGrowthPlanner.adjusted({readyStart:cohort.prediction.readyStart || cohort.prediction.readyDate,
+        readyEnd:cohort.prediction.readyEnd},manual.days,cohort.prediction.forecastEndDate);
+      const adjustedRange=adjusted.readyStart ? `${formatDate(adjusted.readyStart)}〜${adjusted.readyEnd ? formatDate(adjusted.readyEnd) : "終了未算出"}` : "気象予報範囲外のため未予測";
+      manualText=`<br>手動補正後：${escapeHtml(adjustedRange)}（${manual.days>0 ? "+" : ""}${manual.days}日）<br><small>AI予測と学習係数は変更していません</small>`;
+    }
+    return `<div class="dashboardGrowthCohort">${escapeHtml(formatDate(formatDateOnlyString(cohort.plantingDate)))}定植・${cohort.palletKeys.length}パレット<br>${escapeHtml(countsText(cohort.prediction.dayCounts))}${basis.units !== "days" && cohort.prediction.dayCounts?.default ? `<br>うち${cohort.prediction.dayCounts.default}日は過去気象も不足し、経験的な初期値を使用` : ""}<br>AI予測：${escapeHtml(start)}〜${escapeHtml(end)}${manualText}${cohort.prediction.interval ? `<br>日付誤差の参考範囲：${escapeHtml(formatDate(cohort.prediction.interval.start))}〜${escapeHtml(formatDate(cohort.prediction.interval.end))}` : ""}</div>`;
+  }).join("");
+  return `<section class="dashboardGrowthBasis" aria-label="判定の根拠">
+    <strong class="dashboardGrowthBasisTitle">判定の根拠</strong>
+    <div class="dashboardGrowthBasisValues">
+      <span class="dashboardGrowthBasisValue"><span>現在の進捗目安</span><strong>${percent(basis.currentProgress)}</strong></span>
+      <span class="dashboardGrowthBasisValue"><span>${item.range ? "予定日時点" : "現在まで"}</span><strong>${metric(basis.projectedGrowthUnits)}</strong></span>
+      <span class="dashboardGrowthBasisValue"><span>基準目標</span><strong>${metric(basis.targetGrowthUnits)}</strong></span>
+    </div>
+    <p class="dashboardGrowthBasisConclusion">${item.range ? `予定日の目標比：${percent(basis.achievementRate)}。` : "収穫予定は未設定です。"}対象${basis.palletCount || 0}パレットの中央値。${basis.units === "days" ? "検証で選ばれた栽培日数モデルを使用しています。" : "重量の測定値ではなく、温度と日照からの生育目安です。"}</p>
+    <p class="dashboardGrowthReadyDate">AIの適期期間：${escapeHtml(ready)}（参考）</p>
+    <p class="dashboardGrowthBasisMethod">${escapeHtml(interval)} 当日はまだ確定していないため、現在の進捗にも取得済みの当日予報を含む場合があります。適期日は予定日を変更しません。</p>
+    ${cohortHtml}
+    ${getDashboardGrowthQualityDetailsHtml(item.risk)}
+  </section>`;
+}
+
+function getDashboardGrowthQualityDetailsHtml(risk){
+  const labels={elongated:"徒長",uneven:"ばらつき",tipburn:"チップバーン"};
+  const rows=Object.entries(labels).map(([key,label])=>{
+    const value=risk?.[key],level=value?.level || "unknown";
+    const status=value?.outOfForecast ? "予報範囲外・未予測" : value?.label || ({low:"低",medium:"中",high:"高",unknown:"判断材料不足"})[level] || "判断材料不足";
+    return `<li class="dashboardGrowthQualityItem"><strong>${escapeHtml(label)}：${escapeHtml(status)}</strong><span>${escapeHtml(value?.reason || "確認済みの記録または気象が不足しています。")}</span></li>`;
+  }).join("");
+  return `<ul class="dashboardGrowthQualityList" aria-label="品質リスクの根拠">${rows}</ul>`;
+}
+
+function getDashboardGrowthPositionItems(item){
+  const reference=item?.readyDate;
+  const positions=(item?.cohorts || []).flatMap(cohort=>{
+    if(!cohort.positionKey || cohort.prediction?.positionFallback!==false) return [];
+    const pallet=parsePalletKey(cohort.positionKey);
+    if(!pallet || pallet.building!==item.building || pallet.bed!==item.bed) return [];
+    const ready=cohort.prediction.readyStart || cohort.prediction.readyDate;
+    let label="";
+    if(reference && ready){
+      const delta=HarvestGrowthModel.daysBetween(reference,ready);
+      if(delta<=-1) label="少し早い";
+      else if(delta>=1) label="少し遅い";
+    }
+    if(!label){
+      const status=cohort.currentPrediction?.status || cohort.prediction?.status;
+      if(status==="large") label="大きめ傾向";
+      else if(status==="small") label="小さめ傾向";
+      else if(status==="normal") label="基準に近い";
+    }
+    return label ? [{number:pallet.number,label,readyDate:ready || null}] : [];
+  }).sort((a,b)=>a.number-b.number);
+  const groups=[];
+  positions.forEach(position=>{
+    const previous=groups.at(-1);
+    if(previous && previous.label===position.label && previous.end+1===position.number){previous.end=position.number;return;}
+    groups.push({start:position.number,end:position.number,label:position.label});
+  });
+  return groups;
+}
+
+function getDashboardGrowthPositionHtml(item){
+  const groups=getDashboardGrowthPositionItems(item);
+  if(!groups.length) return "";
+  return `<section class="dashboardGrowthBasis" aria-label="学習済みの位置別傾向"><strong class="dashboardGrowthBasisTitle">位置別の傾向</strong><p class="dashboardGrowthBasisMethod">この位置で十分な過去実績がある場合だけ表示しています。</p><div class="dashboardGrowthPositionGrid">${groups.map(group=>`<span class="dashboardGrowthPositionItem"><strong>${group.start===group.end ? group.start : `${group.start}〜${group.end}`}番</strong><span>${escapeHtml(group.label)}</span></span>`).join("")}</div></section>`;
+}
+
+function getDashboardGrowthGateText(gate){
+  if(!gate) return "未評価";
+  if(gate.accepted) return "改善を確認";
+  const labels={insufficientReadinessValidation:"評価データ不足",reducedPredictionCoverage:"未予測が増えるため不採用",
+    readinessRegression:"適期が悪化",readyDateRegression:"適期日が悪化",qualityRegression:"品質予測が悪化",
+    subgroupRegression:"一部の季節・号棟で悪化",unstableImprovement:"改善が安定しない",noDemonstratedImprovement:"意味のある改善なし",
+    frozenGenerationEvaluationError:"世代比較を再現できない",missingFrozenEvaluation:"世代比較なし"};
+  return labels[gate.reason] || "採用条件未達";
+}
+
+function renderDashboardGrowthModelManagement(model){
+  const container=document.getElementById("dashboardGrowthModelManagement");
+  if(!container) return;
+  let registry,state;
+  try{registry=getDashboardGrowthLearningRegistry();state=registry.getState();}
+  catch(error){container.textContent="モデル世代の保存状態を読み込めません。";return;}
+  const names={legacy:"旧目標式",safe:"修正した基本方式",calendar:"栽培日数方式",adaptive:"農場の学習方式"};
+  const generation=id=>state.generations.find(item=>item.id===id),active=generation(state.activeId),candidate=generation(state.candidateId);
+  const summary=state.evaluation?.summary || {},methodGate=summary.validation?.selection?.gates?.[candidate?.modelSnapshot?.method];
+  const candidateHtml=candidate ? `<div class="dashboardGrowthModelRow"><div class="dashboardGrowthModelMeta"><strong>候補：${escapeHtml(names[candidate.modelSnapshot.method] || candidate.modelSnapshot.method)}</strong><br>${candidate.count || 0}件・${candidate.eligible ? "採用条件を確認済み" : "shadowで検証中"}</div>${candidate.eligible ? `<button type="button" class="dashboardInlineBtn" data-ui-click="confirmDashboardGrowthCandidate" data-ui-arg="${escapeHtml(candidate.id)}">この候補を採用</button>` : ""}</div>
+    <div class="dashboardGrowthModelGate"><span>方式比較：${escapeHtml(getDashboardGrowthGateText(methodGate))}</span><span>凍結した世代比較：${escapeHtml(getDashboardGrowthGateText(summary.generations?.gate))}</span><span>保存した新旧予測：${escapeHtml(getDashboardGrowthGateText(summary.prospective?.gate))}</span></div>` : '<div class="dashboardGrowthModelMeta">現在、検証中の候補はありません。</div>';
+  const rollback=state.generations.filter(item=>item.adoptedAt && item.id!==state.activeId).sort((a,b)=>String(b.adoptedAt).localeCompare(String(a.adoptedAt))).map(item=>`<button type="button" class="dashboardInlineBtn" data-ui-click="confirmDashboardGrowthRollback" data-ui-arg="${escapeHtml(item.id)}">${escapeHtml(names[item.modelSnapshot.method] || item.modelSnapshot.method)}へ戻す</button>`).join("");
+  const conflicts=(state.conflicts || []).map((item,index)=>({item,index})).filter(({item})=>item.type==="activeChoice" && !item.resolvedAt).map(({index})=>`<div class="dashboardGrowthModelConflict"><strong>復元元と使用モデルが異なります</strong><div class="dashboardGrowthHistoryActions"><button type="button" class="dashboardInlineBtn" data-ui-click="resolveDashboardGrowthActiveConflict" data-ui-number="${index}" data-ui-number-first="true" data-ui-arg="local">現在のモデルを維持</button><button type="button" class="dashboardInlineBtn" data-ui-click="resolveDashboardGrowthActiveConflict" data-ui-number="${index}" data-ui-number-first="true" data-ui-arg="incoming">復元元を選ぶ</button></div></div>`).join("");
+  container.innerHTML=`<div class="dashboardGrowthModelRow"><div class="dashboardGrowthModelMeta"><strong>使用中：${escapeHtml(names[active?.modelSnapshot?.method] || model.fit.selectedMethod)}</strong><br>版 ${escapeHtml(state.activeId || model.modelVersion || "基本方式")}</div></div>${candidateHtml}${rollback ? `<div class="dashboardGrowthHistoryActions">${rollback}</div>` : ""}${conflicts}`;
+}
+
+function getDashboardGrowthChangeStateKey(scope=getDashboardGrowthHistoryScope()){
+  return `${DASHBOARD_GROWTH_CHANGE_STATE_PREFIX}${scope}`;
+}
+
+function normalizeDashboardGrowthChangeState(value){
+  const source=value && typeof value==="object" && !Array.isArray(value) ? value : {};
+  const previous=Array.isArray(source.previous) ? source.previous.filter(item=>item && typeof item.id==="string").slice(0,BUILDINGS.length*bedOrder.length) : [];
+  const notifications=Array.isArray(source.notifications) ? source.notifications.filter(item=>item && typeof item.id==="string"
+    && ["ready","risk"].includes(item.type)).slice(0,12) : [];
+  return {schemaVersion:1,previous,notifications,updatedAt:String(source.updatedAt || "")};
+}
+
+function readDashboardGrowthChangeState(scope=getDashboardGrowthHistoryScope()){
+  try{return normalizeDashboardGrowthChangeState(harvestnaviLocalStorage.readJson(getDashboardGrowthChangeStateKey(scope),null));}
+  catch(error){return normalizeDashboardGrowthChangeState(null);}
+}
+
+function getDashboardGrowthChangeSnapshot(items){
+  return (items || []).map(item=>({id:String(item.id),building:Number(item.building),bed:String(item.bed || ""),
+    cropSignature:item.cropSignature || null,
+    aiReadyStart:item.aiReadyStart || item.readyStart || item.readyDate || null,
+    risk:Object.fromEntries(["elongated","uneven","tipburn"].map(key=>[key,{level:item.risk?.[key]?.level || "unknown"}]))}));
+}
+
+function updateDashboardGrowthChangeState(value,current,at=new Date().toISOString()){
+  const state=normalizeDashboardGrowthChangeState(value),snapshot=getDashboardGrowthChangeSnapshot(current);
+  const sameCrop=state.previous.filter(previous=>snapshot.some(item=>item.id===previous.id
+    && (item.cropSignature || null)===(previous.cropSignature || null)));
+  const changes=sameCrop.length ? HarvestGrowthPlanner.changes(sameCrop,snapshot) : [];
+  const notifications=changes.map((change,index)=>({...change,predictionKey:change.id,
+    id:`${at}:${index}:${change.id}:${change.type}:${change.kind || ""}`,createdAt:at,readAt:null}));
+  return {state:{schemaVersion:1,previous:snapshot,notifications:[...notifications,...state.notifications].slice(0,12),updatedAt:at},changes:notifications};
+}
+
+function formatDashboardGrowthChange(change){
+  const location=`${change.building}号棟${change.bed}ベッド`;
+  if(change.type==="ready"){
+    const short=value=>{const date=parseDateOnlyString(value);return date ? `${date.getMonth()+1}/${date.getDate()}` : value;};
+    return `${location}　${short(change.before)} → ${short(change.after)}（${change.days>0 ? "+" : ""}${change.days}日）`;
+  }
+  const labels={elongated:"徒長",uneven:"ばらつき",tipburn:"チップバーン"};
+  return `${location}　${labels[change.kind] || change.kind}：低 → 高`;
+}
+
+function processDashboardGrowthChanges(model){
+  if(!model || model.growthChangesProcessed) return [];
+  model.growthChangesProcessed=true;
+  const scope=model.scope,state=readDashboardGrowthChangeState(scope);
+  const updated=updateDashboardGrowthChangeState(state,getDashboardGrowthPlanningItems(model,{includeQuantity:false}));
+  try{harvestnaviLocalStorage.writeJson(getDashboardGrowthChangeStateKey(scope),updated.state);}
+  catch(error){return [];}
+  model.growthChanges=updated.changes;
+  renderDashboardGrowthChangeBadge();
+  if(updated.changes.length){
+    const first=formatDashboardGrowthChange(updated.changes[0]);
+    showToast(updated.changes.length===1 ? `生育予測が変わりました：${first}` : `生育予測が${updated.changes.length}件変わりました：${first}`);
+  }
+  return updated.changes;
+}
+
+function renderDashboardGrowthChangeBadge(){
+  const badge=document.getElementById("dashboardGrowthChangeBadge");
+  if(!badge) return;
+  const state=getDashboardGrowthLocation() ? readDashboardGrowthChangeState() : normalizeDashboardGrowthChangeState(null);
+  const unread=state.notifications.filter(item=>!item.readAt).length;
+  badge.hidden=unread===0;
+  badge.setAttribute("aria-label",`未確認の予測変化${unread}件`);
+}
+
+function markDashboardGrowthChangesRead(){
+  if(!getDashboardGrowthLocation()) return;
+  const scope=getDashboardGrowthHistoryScope(),state=readDashboardGrowthChangeState(scope),at=new Date().toISOString();
+  if(!state.notifications.some(item=>!item.readAt)){renderDashboardGrowthChangeBadge();return;}
+  state.notifications=state.notifications.map(item=>item.readAt ? item : {...item,readAt:at});state.updatedAt=at;
+  try{harvestnaviLocalStorage.writeJson(getDashboardGrowthChangeStateKey(scope),state);}catch(error){return;}
+  renderDashboardGrowthChangeBadge();
+  if(dashboardGrowthPredictionModelCache) renderDashboardGrowthPlanning(dashboardGrowthPredictionModelCache);
+}
+
+function getDashboardGrowthPlanningItems(model,options={}){
+  return [...model.predictions.values()].filter(item=>item?.hasCurrentCrop).map(item=>{
+    const adjustedCohorts=(item.cohorts || []).map(cohort=>{
+      const manual=cohort.input?.growthEvidence?.manualOffset;
+      return manual ? HarvestGrowthPlanner.adjusted({readyStart:cohort.prediction.readyStart || cohort.prediction.readyDate,
+        readyEnd:cohort.prediction.readyEnd},manual.days,model.weather.forecastEndDate)
+        : {readyStart:cohort.prediction.readyStart || cohort.prediction.readyDate,readyEnd:cohort.prediction.readyEnd,manualOffsetDays:0};
+    });
+    const starts=adjustedCohorts.map(cohort=>cohort.readyStart).filter(Boolean).sort();
+    const ends=adjustedCohorts.map(cohort=>cohort.readyEnd).filter(Boolean).sort();
+    let quantity=null;
+    if(options.includeQuantity!==false && dashboardGrowthPlanningShowsQuantity && item.cohorts?.length){
+      const values=item.cohorts.map(cohort=>{
+        try{return getDashboardGrowthYieldPrediction(cohort.palletKeys,cohort.plantingEventId,model.modelVersion,model.asOf);}
+        catch(error){return null;}
+      });
+      if(values.length && values.every(value=>value?.available && Number.isFinite(value.center))){
+        quantity={center:values.reduce((sum,value)=>sum+value.center,0),
+          low:values.reduce((sum,value)=>sum+value.low,0),high:values.reduce((sum,value)=>sum+value.high,0),
+          reference:values.some(value=>value.reference),sampleCount:Math.min(...values.map(value=>value.sampleCount || 0))};
+      }
+    }
+    return {id:`${item.building}-${item.bed}`,building:item.building,bed:item.bed,
+      cropSignature:(item.cohorts || []).flatMap(cohort=>cohort.palletKeys.map(key=>
+        `${key}:${cohort.plantingEventId}:${formatDateOnlyString(cohort.plantingDate)}`)).sort().join("|"),
+      aiReadyStart:item.readyStart || item.readyDate || null,aiReadyEnd:item.readyEnd || null,
+      readyStart:adjustedCohorts.length && starts.length===adjustedCohorts.length ? starts[0] : null,
+      readyEnd:adjustedCohorts.length && ends.length===adjustedCohorts.length ? ends[ends.length-1] : null,
+      readyDate:adjustedCohorts.length && starts.length===adjustedCohorts.length ? starts[0] : null,currentStatus:item.currentStatus,
+      manualAdjusted:adjustedCohorts.some(cohort=>cohort.manualOffsetDays),risk:item.risk,confidence:item.confidence,quantity};
+  });
+}
+
+function renderDashboardGrowthPlanning(model){
+  const container=document.getElementById("dashboardGrowthPlanning");
+  if(!container) return;
+  const items=getDashboardGrowthPlanningItems(model),today=model.asOf.slice(0,10);
+  const forecastDates=model.weather.daily.filter(day=>day.source==="forecast").map(day=>day.date);
+  const calendar=HarvestGrowthPlanner.calendar(items,{today,forecastEndDate:model.weather.forecastEndDate,forecastDates});
+  const warnings=HarvestGrowthPlanner.warnings(items,today),riskNames={elongated:"徒長",uneven:"ばらつき",tipburn:"チップバーン"};
+  const changeState=readDashboardGrowthChangeState(model.scope),recentChanges=changeState.notifications.slice(0,3);
+  const unreadChanges=changeState.notifications.filter(item=>!item.readAt).length;
+  const changesHtml=recentChanges.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">前回予測からの変化</h3><ul class="dashboardGrowthChangeList">${recentChanges.map(change=>`<li class="dashboardGrowthChangeItem">${escapeHtml(formatDashboardGrowthChange(change))}</li>`).join("")}</ul>${unreadChanges ? '<button type="button" class="dashboardInlineBtn" data-ui-click="markDashboardGrowthChangesRead">確認済みにする</button>' : ""}</section>` : "";
+  const priorityGroups={urgent:[],today:[],later:[]};
+  items.forEach(item=>priorityGroups[HarvestGrowthPlanner.priority(item,today)].push(item));
+  const priorityHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今日の確認順</h3><div class="dashboardGrowthModelGate"><span>今すぐ優先 ${priorityGroups.urgent.length}件：${escapeHtml(priorityGroups.urgent.map(item=>`${item.building}号棟${item.bed}`).join("、") || "なし")}</span><span>今日中が理想 ${priorityGroups.today.length}件：${escapeHtml(priorityGroups.today.map(item=>`${item.building}号棟${item.bed}`).join("、") || "なし")}</span><span>まだ余裕あり ${priorityGroups.later.length}件</span></div><p class="dashboardGrowthBasisMethod">現在の大きさが小さい・不明な作は、品質注意だけで収穫優先へ上げません。</p></section>`;
+  const warningHtml=warnings.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">品質の注意（最大3件）</h3><ul class="dashboardGrowthWarningList">${warnings.map(item=>`<li class="dashboardGrowthWarningItem"><strong>${escapeHtml(`${item.building}号棟 ${item.bed}ベッド`)}</strong><span>${escapeHtml(riskNames[item.kind] || item.kind)}：${escapeHtml(item.risk?.label || "注意")}。${escapeHtml(item.risk?.reason || "計算根拠が不足しています。")}</span></li>`).join("")}</ul></section>` : "";
+  const dateLabel=value=>{const date=parseDateOnlyString(value);return date ? `${date.getMonth()+1}/${date.getDate()}` : value;};
+  const caseNumber=value=>Number.isInteger(Math.round(value*10)/10) ? String(Math.round(value)) : String(Math.round(value*10)/10);
+  const calendarHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今後14日の適期</h3><ul class="dashboardGrowthCalendar">${calendar.map(day=>{
+    if(!day.predicted) return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>気象予報範囲外のため未予測</span></li>`;
+    const started=day.entries.map(item=>`${item.building}号棟${item.bed}${item.manualAdjusted ? "（手動補正）" : ""}`).join("、") || "なし";
+    const ongoing=day.ongoing.map(item=>`${item.building}号棟${item.bed}${item.manualAdjusted ? "（手動補正）" : ""}`).join("、") || "なし";
+    const affected=[...new Map([...day.entries,...day.ongoing].map(item=>[item.id,item])).values()];
+    const riskOrder={high:2,medium:1,unknown:0,low:0};
+    const mainRisk=affected.flatMap(item=>["elongated","uneven","tipburn"].map(kind=>({item,kind,level:HarvestGrowthPlanner.riskLevel(item.risk?.[kind])})))
+      .filter(value=>riskOrder[value.level]>0).sort((a,b)=>riskOrder[b.level]-riskOrder[a.level] || ["elongated","uneven","tipburn"].indexOf(a.kind)-["elongated","uneven","tipburn"].indexOf(b.kind))[0];
+    const confidence=[...new Set(affected.map(item=>item.confidence).filter(Boolean))].join("・");
+    let quantity="";
+    if(dashboardGrowthPlanningShowsQuantity && day.entries.length){
+      quantity=day.missingQuantities ? "残存ケース数：不明" : `残存ケース数：${caseNumber(day.cases)}ケース（${caseNumber(day.low)}〜${caseNumber(day.high)}）`;
+    }
+    const meta=[mainRisk ? `注意：${riskNames[mainRisk.kind]}（${mainRisk.item.building}号棟${mainRisk.item.bed}）` : "",confidence ? `信頼度：${confidence}` : "",quantity].filter(Boolean).join("・");
+    return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span class="dashboardGrowthCalendarCopy"><span>開始：${escapeHtml(started)}／期間中：${escapeHtml(ongoing)}</span>${meta ? `<small>${escapeHtml(meta)}</small>` : ""}</span></li>`;
+  }).join("")}</ul>${dashboardGrowthPlanningShowsQuantity ? '<p class="dashboardGrowthBasisMethod">ケース数は指定範囲に残る参考値です。適期日に収穫できる数量を保証する値ではありません。</p>' : '<button type="button" class="dashboardInlineBtn" data-ui-click="showDashboardGrowthPlanningQuantity">残存ケース数も確認</button>'}</section>`;
+  container.innerHTML=changesHtml+priorityHtml+warningHtml+calendarHtml;
+}
+
+function renderDashboardGrowthValidation(model){
+  const container = document.getElementById("dashboardGrowthValidationResult");
+  if(!container || !model?.validation) return;
+  const validation = model.validation;
+  const methodNames = { legacy:"旧目標式", safe:"修正した基本方式", calendar:"栽培日数方式", adaptive:"農場の学習方式" };
+  const selected = model.fit.selectedMethod;
+  const number = (value, suffix) => Number.isFinite(value) ? `${Math.round(value * 10) / 10}${suffix}` : "未評価";
+  const methods = validation.methods || {};
+  const rows = Object.entries(methodNames).map(([key, name]) => {
+    const data = methods[key] || {};
+    return `<tr><td>${name}${selected === key ? (key === "legacy" ? "（旧方式を継続）" : "（使用中）") : ""}</td><td>${number(data.accuracy === null || data.accuracy === undefined ? null : data.accuracy * 100, "%")}<br>${data.labelledCount || 0}件</td><td>${number(data.readyDateMAE, "日")}<br>${data.readyDateCount || 0}件</td></tr>`;
+  }).join("");
+  const independent = model.fit.candidate?.independentCrops || 0;
+  const excluded = Object.values(model.diagnostics || {}).reduce((a,b) => a + b, 0);
+  container.innerHTML = `<p>使用中：${escapeHtml(methodNames[selected] || selected)}。独立した評価${independent}組。${excluded ? `苗植えの紐付け・日数が不確かな${excluded}パレットを除外。` : ""}</p>
+    <table><thead><tr><th>比較方式</th><th>大きさ的中率</th><th>適期日の平均誤差</th></tr></thead><tbody>${rows}</tbody></table>
+    <p>過去の収穫日の${validation.leadDays || 3}日前から順に予測した結果です。実際の適期日は任意入力分だけで採点します。「並」の収穫日は適期期間内という条件として扱い、適期開始日の正解にはしません。実績が少ない間は精度未確認です。</p>
+    <p>当時の予報が保存されていない将来日は未予測・採点対象外です。平年値や後日の観測値から未来予報を補いません。観測値は現在保存している版を使うため、後日の気象訂正までは再現できません。記録の入力・更新時刻が不明な旧データには、当時の日付を再構成する限界があります。候補は時系列検証と保存した新旧予測の比較を経て、利用者が承認した場合だけ採用します。</p>`;
+  const status = document.getElementById("dashboardGrowthArchiveStatus");
+  if(status) status.textContent = dashboardGrowthArchiveStatus || "予報・予測はこの画面を表示した時に端末へ保存します。閉じている間の予報は記録しません。";
+}
+
+function evaluateDashboardGrowthSavedPredictions(entries, samples, options = {}){
+  const engine = HarvestGrowthModel, rows = [], seen = new Set();
+  const leadDays = options.leadDays === undefined ? 3 : options.leadDays;
+  if(!Number.isInteger(leadDays) || leadDays < 1 || leadDays > 180) throw new Error("保存予測の評価日数が正しくありません");
+  const instant = value => {
+    if(typeof value === "number") return Number.isFinite(value) ? value : null;
+    if(value instanceof Date) return Number.isFinite(value.getTime()) ? value.getTime() : null;
+    if(typeof value !== "string" || !value) return null;
+    if(/^\d{4}-\d{2}-\d{2}$/.test(value)) return engine.dateKey(value) ? Date.parse(value + "T00:00:00+09:00") : null;
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/);
+    const time = Date.parse(value);
+    return match && engine.dateKey(match[1]) && Number(match[2]) < 24 && Number(match[3]) < 60
+      && Number(match[4]) < 60 && Number.isFinite(time) ? time : null;
+  };
+  const asOf = options.asOf || new Date().toISOString(), cutoff = instant(asOf), asOfDay = engine.dateKey(asOf);
+  if(cutoff === null || !asOfDay) throw new Error("保存予測の評価時点が正しくありません");
+  const excluded = {invalidEntry:0,invalidSample:0,futureOutcome:0,unavailableOutcome:0,weakPosition:0,
+    unavailablePlanting:0,incompleteCoverage:0,noMatchingSnapshot:0};
+  const ordered = [];
+  (entries || []).forEach(entry => {
+    const origin = engine.dateKey(entry?.asOf), captured = instant(entry?.capturedAt), payload = entry?.payload;
+    if(!origin || captured === null || captured > cutoff || engine.dateKey(entry.capturedAt) !== origin
+      || entry.kind && entry.kind !== "prediction" || !payload || !Array.isArray(payload.predictions)){
+      excluded.invalidEntry++; return;
+    }
+    const declared = payload.asOf === undefined ? captured : instant(payload.asOf);
+    if(declared === null || declared > captured || payload.asOf !== undefined && engine.dateKey(payload.asOf) !== origin){
+      excluded.invalidEntry++; return;
+    }
+    const trained = [payload.modelTrainedAsOf,payload.modelTrainedAt,payload.trainedAt,payload.model?.trainedAsOf,payload.model?.trainedAt]
+      .filter(value => value !== undefined && value !== null && value !== "");
+    if(trained.some(value => instant(value) === null || instant(value) > declared)){
+      excluded.invalidEntry++; return;
+    }
+    ordered.push({entry,origin,captured,declared});
+  });
+  ordered.sort((a,b) => b.captured - a.captured || String(a.entry.id || "").localeCompare(String(b.entry.id || "")));
+  (samples || []).forEach(sample => {
+    const date = engine.dateKey(sample.date), plantingDate = engine.dateKey(sample.plantingDate);
+    if(!date || !plantingDate || plantingDate > date || !Array.isArray(sample.palletKeys) || !sample.palletKeys.length){ excluded.invalidSample++; return; }
+    if(seen.has(sample.id)) return;
+    seen.add(sample.id);
+    if(date >= asOfDay){ excluded.futureOutcome++; return; }
+    const available = sample.availableAt || sample.recordedAt;
+    if(available && (instant(available) === null || instant(available) >= cutoff)){ excluded.unavailableOutcome++; return; }
+    if(sample.signalKind === "partial-bed" || (sample.partialHarvest || sample.type === "partialHarvest")
+      && sample.signalKind !== "partial-position" && sample.positionKnown !== true){ excluded.weakPosition++; return; }
+    const origin = engine.addDays(date,-leadDays), group = sample.groupId || sample.id;
+    let selected = false;
+    for(const saved of ordered){
+      if(saved.origin !== origin) continue;
+      const forecasts = saved.entry.payload.predictions.filter(item => item.building === sample.building
+        && item.bed === sample.bed && engine.dateKey(item.plantingDate) === plantingDate
+        && (sample.plantingEventId === undefined || item.plantingEventId === undefined || item.plantingEventId === sample.plantingEventId)
+        && Array.isArray(item.palletKeys) && item.palletKeys.some(key => sample.palletKeys.includes(key)));
+      if(!forecasts.length) continue;
+      // Select the latest matching snapshot at exactly this lead, before looking
+      // at prediction values. Missing results never fall back to a luckier one.
+      selected = true;
+      if(sample.plantingAvailableAt && (instant(sample.plantingAvailableAt) === null || instant(sample.plantingAvailableAt) >= saved.declared)){
+        excluded.unavailablePlanting++; break;
+      }
+      const covered = new Set(forecasts.flatMap(item => item.palletKeys));
+      if(sample.palletKeys.some(key => !covered.has(key))){ excluded.incompleteCoverage++; break; }
+      const used = new Set(), labels = {small:0,normal:1,large:2};
+      forecasts.forEach(forecast => {
+        const keys = [...new Set(forecast.palletKeys.filter(key => sample.palletKeys.includes(key) && !used.has(key)))].sort();
+        if(!keys.length) return;
+        keys.forEach(key => used.add(key));
+        const prediction = forecast.prediction || {}, readyDate = engine.dateKey(sample.readyDate);
+        const predictedReady = engine.dateKey(prediction.readyDate || prediction.readyStart);
+        const canScoreSize = forecast.scheduled && engine.dateKey(forecast.targetDate) === date
+          && labels[sample.sizeRating] !== undefined && labels[prediction.status] !== undefined;
+        const canScoreDate = readyDate && predictedReady && readyDate <= date && origin < readyDate;
+        const grades={none:0,slight:1,many:2};
+        const qualityErrors=Object.fromEntries(["elongated","uneven","tipburn"].map(key=>{
+          const actual=sample.symptoms?.[key],risk=forecast.risk?.[key];
+          return [key,engine.dateKey(forecast.targetDate)===date && grades[actual]!==undefined
+            && grades[risk?.severity]!==undefined && !risk.outOfForecast ? Math.abs(grades[actual]-grades[risk.severity]) : null];
+        }));
+        if(!canScoreSize && !canScoreDate && !Object.values(qualityErrors).some(Number.isFinite)) return;
+        const interval = prediction.interval, start = engine.dateKey(interval?.start), end = engine.dateKey(interval?.end);
+        const trained=instant(saved.entry.payload.modelTrainedAsOf),plantingKnown=instant(sample.plantingAvailableAt);
+        rows.push({id:forecasts.length === 1 ? sample.id : `${sample.id}@${keys.join(",")}`,
+          groupId:group,cropId:sample.cropId,asOf:origin,outcomeDate:date,availableAt:sample.availableAt,
+          modelVersion:saved.entry.payload.modelVersion || "unknown",qualityErrors,
+          provenanceVerified:trained!==null && trained<=saved.declared && plantingKnown!==null && plantingKnown<saved.declared
+            && instant(sample.availableAt)!==null && !!saved.entry.payload.modelId,
+          plantingEventId:sample.plantingEventId,palletKeys:keys,building:sample.building,bed:sample.bed,
+          actual:sample.sizeRating,predicted:prediction.status || "unknown",
+          ordinalError:canScoreSize ? Math.abs(labels[sample.sizeRating]-labels[prediction.status]) : null,
+          readyError:canScoreDate ? engine.daysBetween(readyDate,predictedReady) : null,
+          normalHarvestProxyError:null,
+          intervalHit:canScoreDate && start && end && start <= end ? Number(readyDate >= start && readyDate <= end) : null,
+          confidence:prediction.confidence?.level || "reference",dayCounts:prediction.dayCounts,
+          predictionId:saved.entry.id || null,capturedAt:saved.entry.capturedAt});
+      });
+      break;
+    }
+    if(!selected) excluded.noMatchingSnapshot++;
+  });
+  return {schemaVersion:1,kind:"saved-predictions",asOf,leadDays,selection:"latest-on-exact-lead-day",
+    metrics:engine.metrics(rows),rows,excluded,
+    limitations:[`収穫の${leadDays}日前と同日に保存した最新の対象予測を使用。それ以前の日の予測は混在させません。`,
+      "保存日と元の予測日が一致し、対象パレットを全て含む履歴だけを評価。位置別予測は全て集計し、同じ収穫の評価を独立した作として水増ししません。",
+      "大きさは当時の予定日と実際の収穫日が一致するものだけ採点。未来の結果、位置不明の部分収穫、未入力の適期日は採点しません。",
+      "学習日時・記録の入力日時がない旧履歴は当時の入力・学習状態を完全には検証できません。"]};
+}
+
+async function inspectDashboardGrowthHistory(){
+  const model = dashboardGrowthPredictionModelCache;
+  if(!model) return;
+  const container = document.getElementById("dashboardGrowthSavedEvaluation");
+  if(container) container.textContent = "保存した予測を確認しています…";
+  try{
+    const entries = await HarvestGrowthHistory.list(model.scope, "prediction");
+    const result = evaluateDashboardGrowthSavedPredictions(entries, model.samples, {asOf:model.asOf});
+    model.savedEvaluation = result;
+    const m = result.metrics;
+    if(container) container.textContent = `保存履歴${entries.length}回。収穫${result.leadDays}日前の最新予測で、大きさの採点対象${m.labelledCount}件${m.accuracy === null ? "" : `・的中率${Math.round(m.accuracy * 100)}%`}、適期日の採点対象${m.readyDateCount}件${m.readyDateMAE === null ? "" : `・平均誤差${Math.round(m.readyDateMAE * 10) / 10}日`}。未入力や当時の予定日と収穫日が異なる大きさ評価は採点しません。`;
+  }catch(error){ if(container) container.textContent = "予測履歴を読み込めませんでした。もう一度お試しください。"; }
+}
+
+function findDashboardGrowthDiagnosticCase(entries,samples,analysisAsOf){
+  const day=HarvestGrowthModel.dateKey(analysisAsOf),instant=value=>{
+    const time=Date.parse(value || "");return Number.isFinite(time) ? time : null;
+  };
+  const ordered=(entries || []).slice().sort((a,b)=>String(b.capturedAt).localeCompare(String(a.capturedAt)));
+  for(const entry of ordered){
+    const origin=HarvestGrowthModel.dateKey(entry.payload?.asOf || entry.asOf);
+    if(!origin || !entry.payload?.modelId || !entry.payload?.weatherInputId) continue;
+    for(const forecast of entry.payload.predictions || []){
+      if(!forecast?.prediction?.readyDate && !forecast?.prediction?.readyStart) continue;
+      const sample=(samples || []).find(item=>{
+        const ready=HarvestGrowthModel.dateKey(item.readyDate),available=instant(item.availableAt || item.recordedAt);
+        return ready && ready<=day && origin<ready && (available===null || available<=instant(analysisAsOf))
+          && Number(item.building)===Number(forecast.building) && item.bed===forecast.bed
+          && HarvestGrowthModel.dateKey(item.plantingDate)===HarvestGrowthModel.dateKey(forecast.plantingDate)
+          && (item.plantingEventId===undefined || forecast.plantingEventId===undefined || String(item.plantingEventId)===String(forecast.plantingEventId))
+          && Array.isArray(item.palletKeys) && Array.isArray(forecast.palletKeys)
+          && item.palletKeys.some(key=>forecast.palletKeys.includes(key));
+      });
+      if(sample) return {entry,forecast,sample};
+    }
+  }
+  return null;
+}
+
+async function inspectDashboardGrowthLatestFailure(){
+  const model=dashboardGrowthPredictionModelCache,container=document.getElementById("dashboardGrowthSavedEvaluation");
+  if(!model || !container) return;
+  container.textContent="保存時のモデルと気象入力を確認しています…";
+  try{
+    const entries=await HarvestGrowthHistory.list(model.scope,"prediction"),found=findDashboardGrowthDiagnosticCase(entries,model.engineSamples,model.asOf);
+    if(!found){container.textContent="保存予測と、入力済みの実際の適期日を照合できる作がまだありません。";return;}
+    const [modelEntry,weatherEntry]=await Promise.all([
+      HarvestGrowthHistory.get(found.entry.payload.modelId),HarvestGrowthHistory.get(found.entry.payload.weatherInputId)
+    ]);
+    if(!modelEntry?.payload || !weatherEntry?.payload?.daily){container.textContent="保存時のモデルまたは気象入力がないため、原因分析できません。";return;}
+    const result=HarvestGrowthAnalysis.analyzeFailure({engine:HarvestGrowthModel,
+      modelSnapshot:modelEntry.payload,modelVersion:found.entry.payload.modelVersion,
+      savedPrediction:found.forecast.prediction,input:found.forecast.input,
+      asOf:found.entry.payload.asOf || found.entry.asOf,analysisAsOf:model.asOf,
+      weatherDaily:weatherEntry.payload.daily,observedDaily:model.weather.daily,
+      actual:{readyDate:found.sample.readyDate,availableAt:found.sample.availableAt || found.sample.recordedAt},
+      conditions:HarvestGrowthObservations.list().filter(row=>row.kind==="condition")});
+    const location=`${found.forecast.building}号棟 ${found.forecast.bed}ベッド`;
+    const parts=[`${location}の保存予測を、保存時のモデル版と気象入力で分析しました。`];
+    if(Number.isFinite(result.readyErrorDays)) parts.push(`適期開始日の誤差は${Math.abs(result.readyErrorDays)}日（${result.readyErrorDays>0 ? "予測が遅い" : result.readyErrorDays<0 ? "予測が早い" : "一致"}）です。`);
+    if(result.decomposition) parts.push(`同じモデル・栽培入力で予報だけを後日の実測へ差し替えた影響は${result.decomposition.weatherEffectDays}日、残る差は${result.decomposition.remainingErrorDays}日です。`);
+    parts.push(...result.reasons,...result.context.map(item=>item.reason));
+    parts.push("この結果は事後の参考診断で、当時の精度評価や学習データには加えません。");
+    container.textContent=parts.join(" ");
+  }catch(error){container.textContent="保存時の条件を固定した原因分析を実行できませんでした。履歴が欠けていないか確認してください。";}
+}
+
+async function exportDashboardGrowthHistory(){
+  if(!ensureProtectedOperationAccess("予報・予測履歴の書き出し")) return;
+  const model = dashboardGrowthPredictionModelCache;
+  if(!model) return;
+  try{
+    const [weatherHistory, predictionHistory,historyBackup] = await Promise.all([
+      HarvestGrowthHistory.list(model.scope, "weather"), HarvestGrowthHistory.list(model.scope, "prediction"),
+      HarvestGrowthHistory.backupScope(model.scope)
+    ]);
+    const payload = { app:"Harvestnavi", type:"growth-evaluation-backup", schemaVersion:1,
+      exportedAt:new Date().toISOString(), asOf:model.asOf, cultivar:DASHBOARD_GROWTH_CULTIVAR,
+      modelVersion:HarvestGrowthModel.schemaVersion, scope:model.scope,
+      samples:model.engineSamples, weather:model.weather, weatherHistory, predictionHistory,
+      restoration:{schemaVersion:1,history:historyBackup,observations:HarvestGrowthObservations.backup(),
+        models:getDashboardGrowthLearningRegistry().exportBackup(),
+        safetySnapshot:HarvestGrowthSafety.readSnapshot(harvestnaviLocalStorage,getActiveRecordsStorageKey()),
+        adjustments:getDashboardGrowthBuildingAdjustments(),location:getDashboardGrowthLocation()},
+      backtest:model.validation, savedEvaluation:evaluateDashboardGrowthSavedPredictions(predictionHistory, model.samples, {asOf:model.asOf}) };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type:"application/json" }));
+    const link = document.createElement("a");
+    link.href = url; link.download = `Harvestnavi-growth-${formatDateOnlyString(new Date())}.json`;
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast("予報・予測履歴と精度比較を書き出しました");
+  }catch(error){ showToast("履歴を書き出せませんでした。空き容量などを確認してください"); }
 }
 
 function getDashboardGrowthBuildingTrend(model, building){
@@ -4416,14 +5250,15 @@ function renderDashboardGrowthPredictionBuilding(model, building){
   if(!container) return;
   const trend = getDashboardGrowthBuildingTrend(model, building);
   container.innerHTML = trend.predictions.map(item => {
-    if(!item?.range){
+    if(!item?.range && !item?.hasCurrentCrop){
       return `<article class="dashboardGrowthBedCard is-no-forecast" aria-label="${escapeHtml(item?.bed || "-")}ベッド。収穫予定なし"><div class="dashboardGrowthBedHead"><span class="dashboardGrowthBedName">${escapeHtml(item?.bed || "-")}ベッド</span><span class="dashboardGrowthBedDate">収穫予定なし</span></div></article>`;
     }
-    const dateText = formatDashboardForecastRange(item.range).dateText;
+    const dateText = item.range ? formatDashboardForecastRange(item.range).dateText : "予定未設定";
     const statusClass = ["small", "large", "unknown"].includes(item.status) ? ` is-${item.status}` : "";
     const riskItems = [
-      getDashboardGrowthRiskHtml("チップバーン", item.risk?.tipburn, "チップ"),
-      getDashboardGrowthRiskHtml("徒長", item.risk?.elongated)
+      getDashboardGrowthRiskHtml("徒長", item.risk?.elongated),
+      getDashboardGrowthRiskHtml("ばらつき", item.risk?.uneven, "ばらつき"),
+      getDashboardGrowthRiskHtml("チップバーン", item.risk?.tipburn, "チップ")
     ].filter(Boolean);
     return `
       <details class="dashboardGrowthBedCard">
@@ -4433,7 +5268,7 @@ function renderDashboardGrowthPredictionBuilding(model, building){
             <span class="dashboardGrowthBedDate">${escapeHtml(dateText)}</span>
           </span>
           <span class="dashboardGrowthStatus${statusClass}">
-            <span class="dashboardGrowthStatusLabel">予定日時点</span>
+            <span class="dashboardGrowthStatusLabel">${item.range ? "予定日時点" : "現在の予測"}</span>
             <strong class="dashboardGrowthStatusValue">${escapeHtml(getDashboardGrowthStatusDisplayLabel(item))}</strong>
           </span>
           ${riskItems.length ? `<span class="dashboardGrowthRiskRow${riskItems.length === 1 ? " has-one" : ""}">${riskItems.join("")}</span>` : ""}
@@ -4444,8 +5279,11 @@ function renderDashboardGrowthPredictionBuilding(model, building){
         </summary>
         <div class="dashboardGrowthBedDetails">
           ${getDashboardGrowthPredictionBasisHtml(item)}
+          ${getDashboardGrowthPositionHtml(item)}
+          <button type="button" class="dashboardInlineBtn" data-ui-click="showDashboardGrowthSimilar" data-ui-number="${building}" data-ui-number-first="true" data-ui-arg="${escapeHtml(item.bed)}">類似した過去作を確認</button>
+          <div id="dashboardGrowthSimilar-${building}-${escapeHtml(item.bed)}"></div>
           <div class="dashboardGrowthReason">${escapeHtml(item.reason)}</div>
-          ${item.provisional ? '<div class="dashboardGrowthConfidenceHint">育ち具合の評価を記録すると信頼度が上がります</div>' : ""}
+          ${item.provisional ? '<div class="dashboardGrowthConfidenceHint">評価が増えても、検証で精度を確認できるまでは参考値です</div>' : ""}
         </div>
       </details>
     `;
@@ -4454,6 +5292,7 @@ function renderDashboardGrowthPredictionBuilding(model, building){
 }
 
 function renderDashboardGrowthPredictionModel(model, location){
+  processDashboardGrowthChanges(model);
   const content = document.getElementById("dashboardGrowthContent");
   const missing = document.getElementById("dashboardGrowthLocationMissing");
   const refreshButton = document.getElementById("dashboardGrowthRefreshBtn");
@@ -4471,12 +5310,17 @@ function renderDashboardGrowthPredictionModel(model, location){
     updatedAt.textContent = Number.isFinite(fetchedAt.getTime())
       ? `${fetchedAt.getMonth() + 1}/${fetchedAt.getDate()} ${String(fetchedAt.getHours()).padStart(2, "0")}:${String(fetchedAt.getMinutes()).padStart(2, "0")}更新${model.weather.stale ? "・保存済みデータ" : ""}`
       : "";
+    if(model.learning?.runtime?.fallback) updatedAt.textContent += `・${model.learning.runtime.label}`;
   }
   if(!BUILDINGS.includes(dashboardGrowthPredictionBuilding)){
     dashboardGrowthPredictionBuilding = model.startBuilding;
   }
   renderDashboardGrowthBuildingTraits();
   renderDashboardGrowthPredictionBuilding(model, dashboardGrowthPredictionBuilding);
+  renderDashboardGrowthValidation(model);
+  renderDashboardGrowthModelManagement(model);
+  renderDashboardGrowthPlanning(model);
+  if(typeof refreshDashboardGrowthReview==="function") refreshDashboardGrowthReview(model);
 }
 
 async function renderDashboardGrowthPrediction(options = {}){
@@ -4492,23 +5336,43 @@ async function renderDashboardGrowthPrediction(options = {}){
     return;
   }
   if(missing) missing.hidden = true;
-  if(!options.force && dashboardGrowthPredictionModelCache){
+  if(!options.force && dashboardGrowthPredictionModelCache
+    && !dashboardGrowthPredictionModelCache.weather?.stale
+    && dashboardGrowthPredictionModelCache.asOf?.slice(0, 10) === formatDateOnlyString(new Date())
+    && Date.now() - dashboardGrowthPredictionModelCache.createdAt < 24 * 60 * 60 * 1000){
     renderDashboardGrowthPredictionModel(dashboardGrowthPredictionModelCache, location);
     return;
   }
   if(dashboardGrowthWeatherLoading) return dashboardGrowthWeatherLoading;
   setDashboardGrowthLoading(true);
   const startedAt = performance.now();
+  const revision = dashboardGrowthDataRevision;
+  const scope = getDashboardGrowthHistoryScope(location);
   dashboardGrowthWeatherLoading = loadDashboardGrowthWeather(location, options)
-    .then(weather => {
+    .then(async weather => {
+      try{ await loadDashboardGrowthForecastHistory(scope); }
+      catch(error){ dashboardGrowthArchiveStatus = "保存済みの予報履歴を読み込めません。履歴なしで比較します"; }
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if(revision !== dashboardGrowthDataRevision || scope !== getDashboardGrowthHistoryScope()) return null;
+      const asOf = getDashboardGrowthAsOf();
+      const engineSamples = getDashboardGrowthEngineSamples(getDashboardGrowthSourceState(),asOf);
+      const dataSignature = await getDashboardGrowthEvidenceSignature(engineSamples,asOf);
+      const learning = await prepareDashboardGrowthLearning(engineSamples, {
+        asOf, weatherDaily:weather.daily,
+        forecastHistory:dashboardGrowthForecastHistoryCache?.scope === scope ? dashboardGrowthForecastHistoryCache.days : [],
+        dataSignature
+      },()=>revision === dashboardGrowthDataRevision && scope === getDashboardGrowthHistoryScope());
+      if(revision !== dashboardGrowthDataRevision || scope !== getDashboardGrowthHistoryScope()) return null;
       const model = buildDashboardGrowthPredictionModel(weather, {
-        fetchMs:performance.now() - startedAt
+        fetchMs:performance.now() - startedAt, learning,dataSignature
       });
       dashboardGrowthPredictionModelCache = model;
       renderDashboardGrowthPredictionModel(model, location);
+      await saveDashboardGrowthHistory(model);
       return model;
     })
     .catch(error => {
+      if(revision !== dashboardGrowthDataRevision || scope !== getDashboardGrowthHistoryScope()) return;
       console.error("生育予測を読み込めませんでした", error);
       if(missing) missing.hidden = true;
       if(content) content.hidden = false;
@@ -4521,6 +5385,9 @@ async function renderDashboardGrowthPrediction(options = {}){
     .finally(() => {
       dashboardGrowthWeatherLoading = null;
       setDashboardGrowthLoading(false);
+      if(revision !== dashboardGrowthDataRevision || scope !== getDashboardGrowthHistoryScope()){
+        if(normalizeDashboardSubtab(dashboardFilter.dashboardSubtab) === "growth") renderDashboardGrowthPrediction();
+      }
     });
   return dashboardGrowthWeatherLoading;
 }
@@ -4593,8 +5460,15 @@ function setDashboardGrowthBuildingAdjustment(building, dimension, value){
     }
   });
   renderDashboardGrowthBuildingAdjustmentMenu();
-  if(dashboardGrowthPredictionModelCache){
+  if(dashboardGrowthPredictionModelCache?.fit || dashboardGrowthWeatherLoading){
+    dashboardGrowthDataRevision++;
+    dashboardGrowthPredictionModelCache = null;
+    dashboardRenderedSubtabs.delete("growth");
+    renderDashboardGrowthPrediction();
+  }else if(dashboardGrowthPredictionModelCache){
     rebuildDashboardGrowthPredictionBuilding(dashboardGrowthPredictionModelCache, normalizedBuilding);
+    renderDashboardGrowthValidation(dashboardGrowthPredictionModelCache);
+    saveDashboardGrowthHistory(dashboardGrowthPredictionModelCache);
     if(dashboardGrowthPredictionBuilding === normalizedBuilding){
       renderDashboardGrowthBuildingTraits();
       renderDashboardGrowthPredictionBuilding(dashboardGrowthPredictionModelCache, normalizedBuilding);

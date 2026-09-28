@@ -71,7 +71,14 @@ function isValidTransferQualityMemo(value){
     && !other.includes("\u0000");
 }
 
-function isValidTransferGrowthDetail(value, palletKeys = []){
+function isValidTransferGrowthDetail(value, palletKeys = [], harvestDate = ""){
+  const validObservations = item => {
+    if(item.schemaVersion !== undefined && item.schemaVersion !== 2) return false;
+    if(item.cultivar !== undefined && (typeof item.cultivar !== "string" || item.cultivar.length > 80 || item.cultivar.includes("\u0000"))) return false;
+    if(item.readyDate !== undefined && item.readyDate !== ""
+      && (!isStrictDateOnlyString(item.readyDate) || (harvestDate && item.readyDate > harvestDate))) return false;
+    return ["tipburnStatus", "elongatedStatus"].every(field => item[field] === undefined || ["unknown", "none", "present"].includes(item[field]));
+  };
   if(value === undefined || value === null || value === "") return true;
   if(typeof value === "string"){
     if(value.length > RECORD_MAX_QUALITY_LENGTH * 4) return false;
@@ -79,6 +86,7 @@ function isValidTransferGrowthDetail(value, palletKeys = []){
   }
   if(!value || typeof value !== "object" || Array.isArray(value)) return false;
   if(value.uneven !== undefined && typeof value.uneven !== "boolean") return false;
+  if(!validObservations(value)) return false;
   const overrides = value.bedOverrides === undefined ? {} : value.bedOverrides;
   if(!overrides || typeof overrides !== "object" || Array.isArray(overrides)) return false;
   const allowedBeds = new Set(getHarvestBedKeysFromPalletKeys(palletKeys));
@@ -86,6 +94,7 @@ function isValidTransferGrowthDetail(value, palletKeys = []){
   if(entries.length > BUILDINGS.length * bedOrder.length) return false;
   return entries.every(([bedKey, override]) => {
     if(!allowedBeds.has(bedKey) || !override || typeof override !== "object" || Array.isArray(override)) return false;
+    if(!validObservations(override)) return false;
     if(normalizeHarvestSizeRating(override.sizeRating) !== String(override.sizeRating || "unknown")) return false;
     return ["uneven", "tipburn", "elongated"].every(field => typeof override[field] === "boolean");
   });
@@ -199,7 +208,7 @@ function validateRecordForGoogleTransfer(record, options = {}){
   if(normalizeHarvestSizeRating(record.sizeRating) !== String(record.sizeRating || "unknown")){
     return invalid("育ち具合の形式が正しくありません");
   }
-  if(!isValidTransferGrowthDetail(record.growthDetail, palletKeys)){
+  if(!isValidTransferGrowthDetail(record.growthDetail, palletKeys, record.date)){
     return invalid("ベッド別の育ち具合が正しくありません");
   }
 

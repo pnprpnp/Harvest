@@ -2586,20 +2586,23 @@
           sizeRating: "normal",
           uneven: true,
           tipburn: false,
-          elongated: true
+          elongated: true,
+          readyDate:"", readyDateMode:"auto", unevenStatus:"present", tipburnStatus:"unknown", elongatedStatus:"present", cultivar:""
         }, "全体の育ち具合をベッドへ反映できません");
         assertDeepEqual(comparable(app.getHarvestGrowthStateForBed(current, "2-B")), {
           sizeRating: "large",
           uneven: false,
           tipburn: true,
-          elongated: false
+          elongated: false,
+          readyDate:"", tipburnStatus:"present", elongatedStatus:"unknown", readyDateMode:"auto", unevenStatus:"unknown", cultivar:""
         }, "ベッド別の育ち具合を反映できません");
         assertDeepEqual(Object.keys(current.growthDetail.bedOverrides), ["2-B"], "収穫場所以外のベッド評価が残っています");
         assertDeepEqual(comparable(app.getHarvestGrowthStateForBed(legacy, "3-C")), {
           sizeRating: "small",
           uneven: false,
           tipburn: true,
-          elongated: false
+          elongated: false,
+          readyDate:"", readyDateMode:"auto", unevenStatus:"unknown", tipburnStatus:"present", elongatedStatus:"unknown", cultivar:""
         }, "旧品質メモの大小・チップを引き継げません");
         assertDeepEqual(comparable(app.getHarvestGrowthOverallState({
           sizeRating:"",
@@ -2609,7 +2612,8 @@
           sizeRating:"unknown",
           uneven:false,
           tipburn:false,
-          elongated:false
+          elongated:false,
+          readyDate:"", readyDateMode:"auto", unevenStatus:"unknown", tipburnStatus:"unknown", elongatedStatus:"unknown", cultivar:""
         }, "空欄の旧記録を問題なしと決めつけています");
       });
 
@@ -2622,6 +2626,8 @@
         const previousQualityValues = qualityInputs.map(input => input.checked);
         const previousHarvestFillKeys = comparable(app.eval("harvestFillKeys"));
         const previousBedOverrides = comparable(app.eval("recordHarvestGrowthBedOverrides"));
+        const observationInputs = ["recordGrowthReadyDateInput", "recordGrowthTipburnStatusInput", "recordGrowthElongatedStatusInput", "recordGrowthCultivarInput"].map(id => app.document.getElementById(id));
+        const previousObservationValues = observationInputs.map(input => input.value);
         try{
           app.eval('harvestFillKeys = ["2-A-1"]; recordHarvestGrowthBedOverrides = {};');
 
@@ -2659,7 +2665,8 @@
             sizeRating:"large",
             uneven:false,
             tipburn:true,
-            elongated:true
+            elongated:true,
+            readyDate:"", tipburnStatus:"present", elongatedStatus:"present", unevenStatus:"unknown", readyDateMode:"auto"
           }, "ベッド別の収穫評価が反映されません");
           app.resetRecordHarvestGrowthBed("2-A");
           assertDeepEqual(
@@ -2675,8 +2682,88 @@
             harvestFillKeys = ${JSON.stringify(previousHarvestFillKeys)};
             recordHarvestGrowthBedOverrides = ${JSON.stringify(previousBedOverrides)};
           `);
+          observationInputs.forEach((input, index) => { input.value = previousObservationValues[index]; });
           app.updateQualityMemoOtherVisibility();
           app.handleRecordHarvestGrowthInput();
+          app.cancelPendingHarvestStateSave();
+        }
+      });
+
+      await runTest("適期確認日と症状の三状態を保存・同期し旧サーバーでも端末の観測を保持する", () => {
+        const raw = {
+          palletNumberingVersion:2, id:20000000000018, recordUuid:"18181818-1818-4818-8818-181818181818",
+          type:"fullHarvest", date:"2026-09-12", cases:12, actualLoss:3,
+          palletKeys:["2-A-1", "2-B-1"], sizeRating:"normal", qualityMemo:{ tags:[], other:"" },
+          syncSchemaVersion:app.eval("RECORD_SYNC_SCHEMA_VERSION"), syncProvidedFields:comparable(app.eval("RECORD_SYNC_FIELD_KEYS")),
+          growthDetail:{ schemaVersion:2, uneven:false, readyDate:"2026-09-10", tipburnStatus:"none", elongatedStatus:"unknown", cultivar:"マルチリーフエアリ",
+            bedOverrides:{ "2-B":{ sizeRating:"large", uneven:false, tipburn:true, elongated:false, readyDate:"2026-09-08", tipburnStatus:"present", elongatedStatus:"none" } }
+          }
+        };
+        const record = app.normalizeRecordSnapshot(raw);
+        const payload = comparable(app.buildGoogleSheetRecordPayload(record, { token:"test" }).record);
+        const server = comparable(appsScript.normalizeHarvestRecord(payload));
+        const roundtrip = comparable(app.normalizeRecordSnapshot(server));
+        assertDeepEqual(roundtrip.growthDetail, comparable(record.growthDetail), "生育観測の往復で情報が失われました");
+        assertEqual(app.getHarvestGrowthStateForBed(roundtrip, "2-A").tipburnStatus, "none", "明示した症状なしを保持できません");
+        assertEqual(app.getHarvestGrowthStateForBed(roundtrip, "2-B").readyDate, "2026-09-08", "ベッド別適期日を保持できません");
+        const headers = comparable(appsScript.eval("HEADERS"));
+        const sheetRow = appsScript.buildRecordRow(headers, server, "growth-contract", "2026-09-12T01:00:00Z");
+        const sheetRecord = comparable(appsScript.rowToRecord(headers, sheetRow));
+        assertDeepEqual(sheetRecord.growthDetail, record.growthDetail, "シートのJSON列を往復すると観測情報が失われます");
+        const noReady = comparable(record.growthDetail);
+        noReady.readyDate = "";
+        assertEqual(appsScript.normalizeHarvestGrowthDetailInput(noReady, raw.palletKeys, raw.date).readyDate, "", "適期未確認を収穫日で補完しています");
+        assertEqual(app.isValidTransferGrowthDetail({ ...noReady, readyDate:"2026-09-13" }, raw.palletKeys, raw.date), false, "収穫日より後の適期確認日を受け入れています");
+        assertThrows(() => appsScript.normalizeHarvestGrowthDetailInput({ ...noReady, readyDate:"2026-09-13" }, raw.palletKeys, raw.date), "収穫日以前", "サーバーが未来の適期日を拒否しません");
+        assertThrows(() => appsScript.normalizeHarvestGrowthDetailInput({ ...noReady, tipburnStatus:"false" }, raw.palletKeys, raw.date), "症状の確認状態", "不正な症状状態を受け入れています");
+        const older = { ...raw, growthDetail:{ uneven:true, bedOverrides:{} } };
+        const preserved = app.preserveHarvestGrowthObservationsForLegacySync(record, older);
+        assertEqual(preserved.growthDetail.readyDate, "2026-09-10", "旧サーバー応答で全体の適期日が消えました");
+        assertEqual(preserved.growthDetail.bedOverrides["2-B"].tipburnStatus, "present", "旧サーバー応答で確認済み症状が消えました");
+        assertEqual(preserved.growthDetail.tipburnStatus, "none", "旧サーバー応答で確認済み陰性が消えました");
+        const incoming = app.normalizeRecordSnapshot(app.normalizeGoogleSheetRowRecord(sheetRecord));
+        assert(app.normalizeRecordSyncProvidedFields(incoming).includes("growthDetail"), "実際のシート応答に生育評価の同期メタデータがありません");
+        const merged = comparable(record);
+        merged.growthDetail = { uneven:false, bedOverrides:{} };
+        assertEqual(app.mergeGoogleSheetRecordSyncFields(merged, incoming), true, "同期補完が実行されていません");
+        assertDeepEqual(merged.growthDetail, record.growthDetail, "同期補完で生育評価が文字列に変わりました");
+        const cleared = { ...incoming, growthDetail:{ ...incoming.growthDetail, readyDate:"" } };
+        assertEqual(app.mergeGoogleSheetRecordSyncFields(merged, cleared), true, "適期日解除の同期補完が実行されていません");
+        assertEqual(merged.growthDetail.readyDate, "", "対応済みサーバーからの明示的な適期日解除を反映できません");
+        const changed = { ...record, growthDetail:{ ...record.growthDetail, readyDate:"2026-09-09" } };
+        assert(app.getHarvestRecordSyncContentSignature(record) !== app.getHarvestRecordSyncContentSignature(changed), "適期日だけの編集を同期の内容比較が見落とします");
+        const legacy = app.normalizeHarvestGrowthDetail({ uneven:false, bedOverrides:{} });
+        assertDeepEqual(comparable(legacy), { uneven:false, bedOverrides:{} }, "旧保存形式を読んだだけで変更しています");
+      });
+
+      await runTest("適期日・症状の三状態・品種を入力途中から復元しベッドを全体へ戻せる", () => {
+        const keys = comparable(app.eval("harvestFillKeys"));
+        const saved = comparable(app.getSelectedHarvestGrowthDetail(keys));
+        const quality = comparable(app.getSelectedQualityMemo());
+        const size = app.getSelectedHarvestSizeRating();
+        try{
+          app.eval('harvestFillKeys = ["2-A-1"]; recordHarvestGrowthBedOverrides = {};');
+          app.setSelectedQualityMemo(null);
+          app.setSelectedHarvestGrowthAssessment(null);
+          assertEqual(app.document.getElementById("recordGrowthCultivarInput").value, "マルチリーフエアリ", "新規入力の品種既定値が違います");
+          const tipburn = app.document.getElementById("recordGrowthTipburnStatusInput");
+          tipburn.value = "none";
+          tipburn.dispatchEvent(new app.Event("change", { bubbles:true }));
+          app.document.getElementById("recordGrowthReadyDateInput").value = "2026-09-10";
+          app.setRecordHarvestGrowthBedObservation("2-A", "readyDate", "2026-09-09");
+          app.setRecordHarvestGrowthBedObservation("2-A", "elongatedStatus", "none");
+          const draft = comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"]));
+          app.setSelectedHarvestGrowthAssessment(null);
+          app.setSelectedHarvestGrowthAssessment({ type:"fullHarvest", palletKeys:["2-A-1"], growthDetail:draft, qualityMemo:{ tags:[], other:"" } });
+          assertDeepEqual(comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"])), draft, "入力途中の観測を復元できません");
+          app.resetRecordHarvestGrowthBed("2-A");
+          assertDeepEqual(comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"]).bedOverrides), {}, "ベッド別観測を全体と同じに戻せません");
+          app.setSelectedHarvestGrowthAssessment({ type:"fullHarvest", palletKeys:["2-A-1"], growthDetail:null });
+          assertEqual(app.document.getElementById("recordGrowthCultivarInput").value, "", "旧記録の品種を確定扱いにしています");
+        }finally{
+          app.eval(`harvestFillKeys = ${JSON.stringify(keys)};`);
+          app.setSelectedQualityMemo(quality);
+          app.setSelectedHarvestGrowthAssessment({ type:"fullHarvest", palletKeys:keys, sizeRating:size, growthDetail:saved, qualityMemo:quality });
           app.cancelPendingHarvestStateSave();
         }
       });
@@ -16158,6 +16245,121 @@
         }
       });
 
+      await runTest("予報・予測履歴は端末へ不変保存し、地点と記録役割を混ぜない", async () => {
+        const state = comparable(await app.eval(`(async () => {
+          const scope = "test-journal:" + Date.now();
+          const firstId = await HarvestGrowthHistory.save(scope, "weather", "2026-09-10", { daily:[{ date:"2026-09-11", meanTemp:20 }] });
+          const original = (await HarvestGrowthHistory.list(scope, "weather"))[0];
+          const repeatedId = await HarvestGrowthHistory.save(scope, "weather", "2026-09-10", { daily:[{ date:"2026-09-11", meanTemp:20 }] });
+          const changedId = await HarvestGrowthHistory.save(scope, "weather", "2026-09-10", { daily:[{ date:"2026-09-11", meanTemp:24 }] });
+          await HarvestGrowthHistory.save(scope + ":other", "weather", "2026-09-10", { daily:[] });
+          await HarvestGrowthHistory.save(scope, "prediction", "2026-09-10", { status:"small" });
+          const entries = await HarvestGrowthHistory.list(scope, "weather");
+          return { repeated:firstId === repeatedId, changed:firstId !== changedId,
+            count:entries.length, original:entries.find(entry => entry.id === firstId),
+            capturedAt:original.capturedAt,
+            outside:(await HarvestGrowthHistory.list(scope, "weather", "2026-09-11")).length,
+            predictions:(await HarvestGrowthHistory.list(scope, "prediction")).length };
+        })()`));
+        assertEqual(state.repeated, true, "同じ予報を重複保存しました");
+        assertEqual(state.changed, true, "変更後の予報を別の履歴として保存しません");
+        assertEqual(state.count, 2, "地点・役割・履歴種類を混ぜました");
+        assertEqual(state.original.capturedAt, state.capturedAt, "最初の取得時刻を書き換えました");
+        assertEqual(state.original.payload.daily[0].meanTemp, 20, "保存済みの予報値を書き換えました");
+        assertEqual(state.outside, 0, "日付索引による絞り込みが違います");
+        assertEqual(state.predictions, 1, "予測履歴が保存されません");
+      });
+
+      await runTest("バックテストを専用処理で実行しても本体と同じ評価になる", async () => {
+        const state = comparable(await app.eval(`(async () => {
+          const samples = Array.from({ length:8 }, (_, index) => ({
+            id:"worker-" + index, groupId:"harvest-" + index, cropId:"crop-" + index,
+            plantingDate:HarvestGrowthModel.addDays("2025-01-01", index * 14),
+            date:HarvestGrowthModel.addDays("2025-01-01", index * 14 + 29),
+            building:2, bed:"A", sizeRating:index % 3 ? "normal" : "small"
+          }));
+          const options = { asOf:"2025-09-01", weatherDaily:[], maxFolds:4 };
+          const expected = HarvestGrowthModel.backtest(samples, options);
+          const actual = await runDashboardGrowthEvaluation(samples, options);
+          return { expected, actual, workerReleased:dashboardGrowthEvaluationWorker === null };
+        })()`));
+        assertDeepEqual(state.actual, state.expected, "専用処理と本体の評価が違います");
+        assertEqual(state.workerReleased, true, "評価後に専用処理を解放しません");
+      });
+
+      await runTest("未評価のまとめ入力は適期と既存品質を保ち、確認した症状だけ更新する", () => {
+        const source = {
+          type:"fullHarvest", id:7001, sizeRating:"unknown", palletKeys:["2-A-1"], qualityMemo:{tags:[],other:""},
+          growthDetail:{schemaVersion:3,readyDate:"2026-08-20",readyDateMode:"manual",cultivar:"マルチリーフエアリ",
+            unevenStatus:"unknown",elongatedStatus:"slight",tipburnStatus:"unknown",
+            bedOverrides:{"2-A":{sizeRating:"small",unevenStatus:"unknown",elongatedStatus:"none",tipburnStatus:"unknown"}}}
+        };
+        const updated = comparable(app.buildGrowthUnratedRecordUpdate(source,"normal",{uneven:"none",elongated:"keep",tipburn:"many"}));
+        assertEqual(updated.sizeRating,"normal","育ち具合を更新できません");
+        assertEqual(updated.growthDetail.readyDate,"2026-08-20","入力済みの適期日を変更しています");
+        assertEqual(updated.growthDetail.readyDateMode,"manual","適期日の入力方法を変更しています");
+        assertEqual(updated.growthDetail.unevenStatus,"none","確認済みの症状なしを保存できません");
+        assertEqual(updated.growthDetail.elongatedStatus,"slight","変更しない品質を上書きしています");
+        assertEqual(updated.growthDetail.tipburnStatus,"many","確認した症状程度を保存できません");
+        assert(updated.growthDetail.bedOverrides["2-A"],"ベッド別の既存評価を失っています");
+        assertEqual(source.sizeRating,"unknown","元の記録を直接変更しています");
+      });
+
+      await runTest("生育予測CSVは表計算の数式として解釈される値を無効化する", () => {
+        assertEqual(app.dashboardGrowthCsvCell("=1+1"),"\"'=1+1\"","=で始まる値を保護していません");
+        assertEqual(app.dashboardGrowthCsvCell("  @test"),"\"'  @test\"","空白後の@で始まる値を保護していません");
+        assertEqual(app.dashboardGrowthCsvCell('a"b'),"\"a\"\"b\"","CSVの引用符を二重化していません");
+      });
+
+      await runTest("生育予測の変化通知は2日以上とLowからHighだけを一度記録する", () => {
+        const firstItems=[{id:"3-B",building:3,bed:"B",aiReadyStart:"2026-10-08",risk:{
+          elongated:{level:"low"},uneven:{level:"medium"},tipburn:{level:"low"}}}];
+        const first=app.updateDashboardGrowthChangeState({},firstItems,"2026-10-01T00:00:00.000Z");
+        assertEqual(first.changes.length,0,"初回表示を変化通知にしています");
+        const secondItems=[{id:"3-B",building:3,bed:"B",aiReadyStart:"2026-10-10",risk:{
+          elongated:{level:"high"},uneven:{level:"high"},tipburn:{level:"medium"}}}];
+        const second=app.updateDashboardGrowthChangeState(first.state,secondItems,"2026-10-02T00:00:00.000Z");
+        assertDeepEqual(comparable(second.changes.map(change=>[change.type,change.kind || "",change.days || 0])),[
+          ["ready","",2],["risk","elongated",0]
+        ],"通知対象外の品質変化を含めています");
+        assert(app.formatDashboardGrowthChange(second.changes[0]).includes("10/8 → 10/10（+2日）"),"適期変化の表示が分かりにくいです");
+        const repeated=app.updateDashboardGrowthChangeState(second.state,secondItems,"2026-10-03T00:00:00.000Z");
+        assertEqual(repeated.changes.length,0,"同じ予測を繰り返し通知しています");
+        assertEqual(new Set(second.changes.map(item=>item.id)).size,2,"別の変化に同じ通知IDを付けています");
+        const oldCrop=app.updateDashboardGrowthChangeState({},firstItems.map(item=>({...item,cropSignature:"crop1"}))).state;
+        const newCrop=app.updateDashboardGrowthChangeState(oldCrop,secondItems.map(item=>({...item,cropSignature:"crop2"})));
+        assertEqual(newCrop.changes.length,0,"次作への植替えを同じ作の予測変化として通知しています");
+      });
+
+      await runTest("位置別表示は学習済み位置だけを早い・遅い傾向へ変換する", () => {
+        const groups=comparable(app.getDashboardGrowthPositionItems({building:3,bed:"B",readyDate:"2026-10-10",cohorts:[
+          {positionKey:"3-B-1",prediction:{positionFallback:false,readyDate:"2026-10-08"},currentPrediction:{status:"normal"}},
+          {positionKey:"3-B-2",prediction:{positionFallback:false,readyDate:"2026-10-12"},currentPrediction:{status:"normal"}},
+          {positionKey:"3-B-3",prediction:{positionFallback:true,readyDate:"2026-10-07"},currentPrediction:{status:"large"}}
+        ]}));
+        assertDeepEqual(groups,[{start:1,end:1,label:"少し早い"},{start:2,end:2,label:"少し遅い"}],"データ不足の位置を表示しています");
+      });
+
+      await runTest("校正とケース数検証を既存詳細へ統合し、データ不足を精度ゼロにしない", () => {
+        const container=app.document.getElementById("dashboardGrowthReview"),before=container.innerHTML;
+        const registry=app.getDashboardGrowthLearningRegistry,inspect=app.inspectDashboardGrowthYield;
+        let inspections=0;
+        try{
+          app.getDashboardGrowthLearningRegistry=()=>({getState:()=>({evaluation:{}})});
+          app.inspectDashboardGrowthYield=()=>{inspections++;return {metrics:{predictions:2,independentCrops:1,mae:1,bias:-1,intervalCoverage:0.5}};};
+          const calibration=app.HarvestGrowthCalibration.build({rows:[],asOf:"2026-09-28",modelVersion:"empty"});
+          const field=app.HarvestGrowthFieldValidation.evaluate({samples:[],observations:[],asOf:"2026-09-28"});
+          app.renderDashboardGrowthReview({calibration,field},{});
+          assert(container.textContent.includes("ケース数は評価データ不足"),"不足を明示していません");
+          assert(container.textContent.includes("未評価"),"欠損精度を数値にしています");
+          assert(!container.textContent.includes("NaN"),"欠損値がNaNになっています");
+          container.querySelector('[data-ui-click="showDashboardGrowthYieldValidation"]').click();
+          assertEqual(inspections,1,"既存詳細からケース数検証へ接続されていません");
+          assert(container.textContent.includes("独立1作"),"評価件数と独立作数を分離していません");
+          assert(container.textContent.includes("-1ケース"),"biasの符号を維持していません");
+        }finally{app.getDashboardGrowthLearningRegistry=registry;app.inspectDashboardGrowthYield=inspect;container.innerHTML=before;}
+      });
+
       await runTest("生育予測βと育ち具合入力を320px・390px幅に収める", async () => {
         let previewFrame = null;
         try{
@@ -16177,6 +16379,25 @@
           }
           const previewApp = preview.document.getElementById("appFrame")?.contentWindow;
           assert(previewApp, "生育予測プレビューのアプリ画面がありません");
+          // Production derives planting dates from actual events, never a display cache.
+          const prepareGrowthFixture = () => previewApp.eval(`(() => {
+            const base = dashboardHarvestForecastModelCache;
+            const weather = dashboardGrowthPredictionModelCache.weather;
+            let eventId = 990000;
+            base.plantingDateByPallet.forEach((date, key) => plantingEvents.push({
+              eventId:eventId++, plantingDate:formatDateOnlyString(date), plantingPalletKeys:[key]
+            }));
+            plantingEvents.sort(comparePlantingEventsAsc);
+            invalidateDashboardDerivedData();
+            dashboardHarvestForecastModelCache = base;
+            weather.daily = weather.daily.map(day => day.source === "forecast"
+              ? { ...day, issuedAt:getDashboardGrowthAsOf(), availableAt:getDashboardGrowthAsOf() } : day);
+            loadDashboardGrowthWeather = async () => weather;
+            const model = buildDashboardGrowthPredictionModel(weather);
+            dashboardGrowthPredictionModelCache = model;
+            renderDashboardGrowthPredictionModel(model, getDashboardGrowthLocation());
+          })()`);
+          prepareGrowthFixture();
           await settleVisualApp(previewApp);
 
           const readState = () => comparable(previewApp.eval(`(() => ({
@@ -16193,7 +16414,8 @@
               card.querySelector(".dashboardGrowthBedName")?.textContent.trim().replace("ベッド", "") || "",
               card.querySelector(".dashboardGrowthStatusValue")?.textContent.trim() || ""
             ])),
-            growthUsesCurrentCalculator:dashboardGrowthPredictionModelCache?.baseModel === dashboardHarvestForecastModelCache
+            growthUsesCurrentCalculator:dashboardGrowthPredictionModelCache?.baseModel !== dashboardHarvestForecastModelCache
+              && !!dashboardGrowthPredictionModelCache?.fit
               && dashboardGrowthPredictionModelCache?.targets instanceof Map
               && dashboardGrowthPredictionModelCache?.samples?.every(sample => sample.bedKey && typeof sample.qualityObserved === "boolean"),
             growthBasisCount:document.querySelectorAll("details.dashboardGrowthBedCard .dashboardGrowthBasis").length,
@@ -16240,14 +16462,14 @@
           assertEqual(growth320.growthOpenCards, 0, "ベッド詳細が最初から開いて一覧を縦に押し出しています");
           assertEqual(growth320.growthGridColumns, 3, "320px幅でベッドが3列の一覧になっていません");
           assertDeepEqual(growth320.growthBedOrder, ["F", "D", "B", "E", "C", "A"], "ベッドが配置図と同じ位置に並んでいません");
-          assertDeepEqual(growth320.growthStatusByBed, { F:"判定材料不足", D:"並", B:"小さめ", C:"大きめ", A:"並" }, "育ち具合の短い表示が違います");
+          assertDeepEqual(growth320.growthStatusByBed, { F:"判定材料不足", D:"気象予報範囲外のため未予測", B:"気象予報範囲外のため未予測", C:"気象予報範囲外のため未予測", A:"並" }, "育ち具合の短い表示が違います");
           assertEqual(growth320.growthUsesCurrentCalculator, true, "プレビューが現在の生育予測計算を使用していません");
           assertEqual(growth320.growthBasisCount, 5, "各ベッドの詳細に判定根拠がありません");
           assertEqual(growth320.growthNumericBasisCount, 4, "計算可能なベッドに数値付きの判定根拠がありません");
           assert(growth320.growthReasonText.includes("環境傾向を反映"), "現在の環境傾向が予測理由へ反映されていません");
           assert(!growth320.growthReasonText.includes("β補正"), "以前の固定補正による説明がプレビューに残っています");
-          assert(growth320.growthRiskLabels.length > 0, "注意のあるチップ・徒長が表示されません");
-          assert(growth320.growthRiskLabels.every(label => label.includes("注意") && !label.includes("低め")), "低めのチップ・徒長まで表示されています");
+          assert(growth320.growthRiskLabels.length <= 15, "品質注意が重複して表示されています");
+          assert(growth320.growthRiskLabels.every(label => !label.includes("高精度") && !label.includes("低め")), "低めのチップ・徒長まで表示されています");
           assertEqual(growth320.growthSummaryConfidenceCount, 5, "信頼度がベッドの一覧に表示されていません");
           assertEqual(growth320.growthDetailConfidenceCount, 0, "信頼度が詳細内に残っています");
           assertEqual(growth320.growthConfidenceBeforeDetails, true, "信頼度が詳細ボタンの左にありません");
@@ -16276,10 +16498,10 @@
           }))()`));
           assertEqual(growthInfo.open, true, "生育予測の情報ウィンドウが開きません");
           assert(growthInfo.text.includes("目安の収穫予定日"), "生育予測の説明文が情報ウィンドウにありません");
-          assert(growthInfo.text.includes("気温だけを足す一般的な積算温度") && growthInfo.text.includes("気温係数 × 日照係数"), "積算生育値の計算方法が説明されていません");
-          assert(growthInfo.text.includes("直近2年間") && growthInfo.text.includes("小さい") && growthInfo.text.includes("10%増やします") && growthInfo.text.includes("中央値"), "過去記録から収穫目標を作る方法が説明されていません");
+          assert(growthInfo.text.includes("一般的な積算温度") && growthInfo.text.includes("気温係数 × 日照係数"), "積算生育値の計算方法が説明されていません");
+          assert(growthInfo.text.includes("任意入力の適期日") && growthInfo.text.includes("検証で改善を確認できた場合だけ") && growthInfo.text.includes("予報範囲外を平年値や後日の観測値で補いません"), "任意入力・採用条件・時点制約が説明されていません");
           assert(growthInfo.text.includes("88%未満") && growthInfo.text.includes("112%超"), "大きさの判定境界が説明されていません");
-          assert(growthInfo.text.includes("チップバーン") && growthInfo.text.includes("徒長") && growthInfo.text.includes("4点以上"), "注意判定の計算方法が説明されていません");
+          assert(growthInfo.text.includes("チップバーン") && growthInfo.text.includes("徒長") && growthInfo.text.includes("未入力なら不明") && growthInfo.text.includes("発生確率ではありません"), "注意判定の計算方法が説明されていません");
           previewApp.closeDashboardGrowthInfoWindow();
           await settleVisualApp(previewApp);
 
@@ -16300,10 +16522,14 @@
             basisRight:document.querySelector("details.dashboardGrowthBedCard[open] .dashboardGrowthBasis")?.getBoundingClientRect().right || 0
           }))()`));
           assertEqual(openedBed.open, true, "ベッドを押して詳細を開けません");
-          assertDeepEqual(openedBed.labels, ["現在まで", "予定日時点", "収穫目標"], "判定根拠の比較項目が揃っていません");
-          assertDeepEqual(openedBed.values, ["18.5点", "34.6点", "33.6点"], "判定に使用した積算生育値が詳細へ正しく表示されません");
-          assert(openedBed.conclusion.includes("積算生育値が目標") && openedBed.conclusion.includes("88〜112%") && openedBed.conclusion.includes("「並」"), "達成率と判定境界から結果を説明できていません");
-          assert(openedBed.method.includes("苗植え日から") && openedBed.method.includes("平均気温と日照条件") && openedBed.method.includes("対象2パレットの中央値"), "積算生育値の算出方法が説明されていません");
+          assertDeepEqual(openedBed.labels, ["現在の進捗目安", "予定日時点", "基準目標"], "判定根拠の比較項目が揃っていません");
+          const calculatedBasis = comparable(previewApp.eval(`(() => {
+            const basis = dashboardGrowthPredictionModelCache.predictions.get("2-D").basis;
+            return [Math.round(basis.currentProgress) + "%", Number.isFinite(basis.projectedGrowthUnits) ? formatDashboardMetricNumber(basis.projectedGrowthUnits, "点") : "不明", formatDashboardMetricNumber(basis.targetGrowthUnits, "点")];
+          })()`));
+          assertDeepEqual(openedBed.values, calculatedBasis, "実際の計算値と詳細の表示が一致しません");
+          assert(openedBed.conclusion.includes("予定日の目標比") && openedBed.conclusion.includes("対象2パレットの中央値"), "達成率と集計対象が説明されていません");
+          assert(openedBed.method.includes("任意入力") && openedBed.method.includes("当日予報"), "予測幅と現在進捗の制約が説明されていません");
           assert(openedBed.reason.length > 0, "ベッド詳細に予測理由がありません");
           assert(openedBed.confidence.startsWith("信頼度："), "詳細ボタンの左に信頼度がありません");
           assert(openedBed.scrollWidth <= openedBed.viewport && openedBed.basisRight <= openedBed.viewport, "数値付きの判定根拠が320px幅から横にはみ出しています");
@@ -16356,6 +16582,9 @@
           assertEqual(changedAdjustment.temperaturePressed, "true", "メニューで変更した低めの温度傾向が選択表示へ反映されません");
           assertEqual(changedAdjustment.lightPressed, "true", "メニューで変更した高めの日光傾向が選択表示へ反映されません");
           assertDeepEqual(changedAdjustment.saved, { temperature:"low", light:"high" }, "メニューで変更した環境傾向が端末へ保存されません");
+          await previewApp.eval("dashboardGrowthWeatherLoading");
+          await new Promise(resolve => setTimeout(resolve, 50));
+          await previewApp.eval("dashboardGrowthWeatherLoading");
           previewApp.closeAppMenuWindow();
           previewApp.setDashboardGrowthPredictionBuilding(3);
           await settleVisualApp(previewApp);
@@ -16372,6 +16601,7 @@
 
           preview.document.querySelector('[data-preview-width="390"]').click();
           preview.setPreviewView("growth");
+          prepareGrowthFixture();
           await new Promise(resolve => setTimeout(resolve, 250));
           await settleVisualApp(previewApp);
           const growth390 = readState();
@@ -16398,18 +16628,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "796ed83b", elements: 2476, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "6fc65617", elements: 2546, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "974f9bfc", elements: 2546, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "b065ff11", elements: 2480, visible: 79, viewport: "390x844" },
-          mobileDashboard: { hash: "026e6163", elements: 2497, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "3bc420b6", elements: 2580, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "577d2255", elements: 2595, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "1b2e2e0c", elements: 2707, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "45c77835", elements: 2707, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "751760f5", elements: 2751, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "6cfc361c", elements: 2751, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "80519991", elements: 2751, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "5b314d82", elements: 2572, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "e559bc34", elements: 2642, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "d1eff663", elements: 2642, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "9784acba", elements: 2576, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "f62f78c3", elements: 2593, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "0d390963", elements: 2676, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "6efec225", elements: 2691, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "86ec6f38", elements: 2803, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "574e4c5f", elements: 2803, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "4378145c", elements: 2847, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "1939e9ba", elements: 2847, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "017e04ff", elements: 2847, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

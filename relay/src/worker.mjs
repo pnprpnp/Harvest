@@ -158,21 +158,39 @@ function getJmaLightIndex(weatherCode){
 }
 
 function getJmaLightIndexFromSunshineHours(sunshineHours){
-  const hours = Number(sunshineHours);
-  if(!Number.isFinite(hours)) return null;
+  const hours = getJmaForecastNumber(sunshineHours);
+  if(hours === null || hours < 0 || hours > 24) return null;
   return Math.max(0.3, Math.min(1.2, hours / 8));
 }
 
 function getJmaForecastNumber(value){
+  if(typeof value !== "number" && typeof value !== "string") return null;
   if(value === null || value === undefined || String(value).trim() === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function getJmaTemperature(value){
+  const number = getJmaForecastNumber(value);
+  return number !== null && number >= -60 && number <= 60 ? number : null;
+}
+
+function normalizeWeatherTimestamp(value){
+  if(typeof value !== "string" || !value.trim()) return null;
+  const timestamp = new Date(value);
+  return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null;
+}
+
+function getLatestWeatherTimestamp(values){
+  return values.map(normalizeWeatherTimestamp).filter(Boolean).sort().at(-1) || null;
 }
 
 function buildJmaForecastDaily(forecastPayload, location){
   const reports = Array.isArray(forecastPayload) ? forecastPayload : [];
   const shortReport = reports[0] || {};
   const weeklyReport = reports[1] || {};
+  const shortIssuedAt = normalizeWeatherTimestamp(shortReport.reportDatetime);
+  const weeklyIssuedAt = normalizeWeatherTimestamp(weeklyReport.reportDatetime);
   const dailyByDate = new Map();
   const ensureDay = dateKey => {
     if(!parseDateKey(dateKey)) return null;
@@ -183,15 +201,17 @@ function buildJmaForecastDaily(forecastPayload, location){
   const weeklyWeatherSeries = (weeklyReport.timeSeries || []).find(series => (
     Array.isArray(series?.areas) && series.areas.some(area => Array.isArray(area?.weatherCodes))
   ));
-  const weeklyWeatherArea = weeklyWeatherSeries?.areas?.find(area => area?.area?.code === location.officeCode)
+  const weeklyWeatherArea = weeklyWeatherSeries?.areas?.find(area => area?.area?.code === location.forecastAreaCode)
+    || weeklyWeatherSeries?.areas?.find(area => area?.area?.code === location.officeCode)
     || weeklyWeatherSeries?.areas?.[0];
   (weeklyWeatherSeries?.timeDefines || []).forEach((time, index) => {
     const day = ensureDay(String(time || "").slice(0, 10));
     if(!day) return;
-    const weatherCode = Number(weeklyWeatherArea?.weatherCodes?.[index]);
-    if(Number.isFinite(weatherCode)){
+    const weatherCode = getJmaForecastNumber(weeklyWeatherArea?.weatherCodes?.[index]);
+    if(weatherCode !== null && weatherCode >= 100 && weatherCode < 500){
       day.weatherCode = weatherCode;
       day.lightIndex = getJmaLightIndex(weatherCode);
+      day.lightIssuedAt = weeklyIssuedAt;
     }
     day.reliability = String(weeklyWeatherArea?.reliabilities?.[index] || "");
   });
@@ -208,60 +228,75 @@ function buildJmaForecastDaily(forecastPayload, location){
   (shortWeatherSeries?.timeDefines || []).forEach((time, index) => {
     const day = ensureDay(String(time || "").slice(0, 10));
     if(!day) return;
-    const weatherCode = Number(shortWeatherArea?.weatherCodes?.[index]);
-    if(Number.isFinite(weatherCode)){
+    const weatherCode = getJmaForecastNumber(shortWeatherArea?.weatherCodes?.[index]);
+    if(weatherCode !== null && weatherCode >= 100 && weatherCode < 500){
       day.weatherCode = weatherCode;
       day.lightIndex = getJmaLightIndex(weatherCode);
+      day.lightIssuedAt = shortIssuedAt;
     }
-  });
-
-  const weeklyTempSeries = (weeklyReport.timeSeries || []).find(series => (
-    Array.isArray(series?.areas) && series.areas.some(area => Array.isArray(area?.tempsMax))
-  ));
-  const weeklyTempArea = weeklyTempSeries?.areas?.[0];
-  (weeklyTempSeries?.timeDefines || []).forEach((time, index) => {
-    const day = ensureDay(String(time || "").slice(0, 10));
-    if(!day) return;
-    const minTemp = getJmaForecastNumber(weeklyTempArea?.tempsMin?.[index]);
-    const maxTemp = getJmaForecastNumber(weeklyTempArea?.tempsMax?.[index]);
-    if(minTemp !== null) day.minTemp = minTemp;
-    if(maxTemp !== null) day.maxTemp = maxTemp;
   });
 
   const shortTempSeries = (shortReport.timeSeries || []).find(series => (
     Array.isArray(series?.areas) && series.areas.some(area => Array.isArray(area?.temps))
   ));
   const shortTempArea = shortTempSeries?.areas?.[shortWeatherAreaIndex] || shortTempSeries?.areas?.[0];
-  (shortTempSeries?.timeDefines || []).forEach((time, index) => {
+  const weeklyTempSeries = (weeklyReport.timeSeries || []).find(series => (
+    Array.isArray(series?.areas) && series.areas.some(area => Array.isArray(area?.tempsMax))
+  ));
+  const weeklyTempArea = weeklyTempSeries?.areas?.find(area => (
+    area?.area?.code === shortTempArea?.area?.code
+  )) || weeklyTempSeries?.areas?.[0];
+  (weeklyTempSeries?.timeDefines || []).forEach((time, index) => {
     const day = ensureDay(String(time || "").slice(0, 10));
-    const temperature = getJmaForecastNumber(shortTempArea?.temps?.[index]);
-    if(!day || temperature === null) return;
-    const hour = Number(String(time || "").slice(11, 13));
-    if(Number.isFinite(hour) && hour <= 6) day.minTemp = temperature;
-    else day.maxTemp = temperature;
+    if(!day) return;
+    const minTemp = getJmaTemperature(weeklyTempArea?.tempsMin?.[index]);
+    const maxTemp = getJmaTemperature(weeklyTempArea?.tempsMax?.[index]);
+    if(minTemp !== null){ day.minTemp = minTemp; day.minTempIssuedAt = weeklyIssuedAt; }
+    if(maxTemp !== null){ day.maxTemp = maxTemp; day.maxTempIssuedAt = weeklyIssuedAt; }
+    day.temperatureStationCode = String(weeklyTempArea?.area?.code || "");
   });
 
-  const normalArea = weeklyReport?.tempAverage?.areas?.[0] || {};
-  const normalMin = getJmaForecastNumber(normalArea.min);
-  const normalMax = getJmaForecastNumber(normalArea.max);
+  (shortTempSeries?.timeDefines || []).forEach((time, index) => {
+    const day = ensureDay(String(time || "").slice(0, 10));
+    const temperature = getJmaTemperature(shortTempArea?.temps?.[index]);
+    if(!day || temperature === null) return;
+    const hour = Number(String(time || "").slice(11, 13));
+    if(Number.isFinite(hour) && hour <= 6){ day.minTemp = temperature; day.minTempIssuedAt = shortIssuedAt; }
+    else { day.maxTemp = temperature; day.maxTempIssuedAt = shortIssuedAt; }
+    day.temperatureStationCode = String(shortTempArea?.area?.code || "");
+  });
+
+  const normalArea = weeklyReport?.tempAverage?.areas?.find(area => (
+    area?.area?.code === weeklyTempArea?.area?.code
+  )) || weeklyReport?.tempAverage?.areas?.[0] || {};
+  const normalMin = getJmaTemperature(normalArea.min);
+  const normalMax = getJmaTemperature(normalArea.max);
   const fallbackMin = normalMin === null ? 14 : normalMin;
   const fallbackMax = normalMax === null ? 24 : normalMax;
   const daily = [...dailyByDate.values()].map(day => {
-    const hasMin = Number.isFinite(Number(day.minTemp));
-    const hasMax = Number.isFinite(Number(day.maxTemp));
+    const hasMin = getJmaTemperature(day.minTemp) !== null;
+    const hasMax = getJmaTemperature(day.maxTemp) !== null;
     const minTemp = hasMin ? Number(day.minTemp) : fallbackMin;
     const maxTemp = hasMax ? Number(day.maxTemp) : fallbackMax;
     return {
       ...day,
       minTemp,
       maxTemp,
-      meanTemp:(minTemp + maxTemp) / 2,
-      lightIndex:Number.isFinite(Number(day.lightIndex)) ? Number(day.lightIndex) : 0.8,
-      estimatedTemperature:!hasMin || !hasMax
+      meanTemp:minTemp <= maxTemp ? (minTemp + maxTemp) / 2 : null,
+      lightIndex:getJmaForecastNumber(day.lightIndex) ?? 0.8,
+      estimatedTemperature:!hasMin || !hasMax || minTemp > maxTemp,
+      estimatedLight:getJmaForecastNumber(day.lightIndex) === null,
+      temperatureSource:hasMin && hasMax && minTemp <= maxTemp ? "forecast-min-max-average" : "fallback",
+      lightSource:getJmaForecastNumber(day.lightIndex) !== null ? "weather-code" : "fallback",
+      issuedAt:getLatestWeatherTimestamp([
+        day.minTempIssuedAt, day.maxTempIssuedAt, day.lightIssuedAt,
+        ...(!hasMin || !hasMax ? [weeklyIssuedAt] : [])
+      ])
     };
   }).sort((left, right) => left.date.localeCompare(right.date));
   return {
     daily,
+    issuedAt:getLatestWeatherTimestamp([shortIssuedAt, weeklyIssuedAt]),
     station:{
       amedasCode:String(shortTempArea?.area?.code || weeklyTempArea?.area?.code || ""),
       name:String(shortTempArea?.area?.name || weeklyTempArea?.area?.name || "")
@@ -275,7 +310,7 @@ function buildJmaForecastDaily(forecastPayload, location){
   };
 }
 
-function parseJmaPastDailyCsv(text){
+function parseJmaPastDailyCsv(text, options = {}){
   return String(text || "").split(/\r?\n/).flatMap(line => {
     const columns = line.replace(/\r$/, "").split(",");
     if(columns.length < 5 || !/^\d{4}$/.test(columns[0])) return [];
@@ -285,14 +320,24 @@ function parseJmaPastDailyCsv(text){
     const date = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
     const meanTempText = String(columns[3] || "").trim();
     const sunshineHoursText = String(columns[4] || "").trim();
-    if(!meanTempText || !sunshineHoursText) return [];
-    const meanTemp = Number(meanTempText);
-    const sunshineHours = Number(sunshineHoursText);
-    const lightIndex = getJmaLightIndexFromSunshineHours(sunshineHours);
-    if(!parseDateKey(date) || !Number.isFinite(meanTemp) || !Number.isFinite(sunshineHours) || lightIndex === null){
-      return [];
-    }
-    return [{ date, meanTemp, sunshineHours, lightIndex, source:"observation" }];
+    const meanTemp = getJmaTemperature(meanTempText);
+    const rawSunshineHours = getJmaForecastNumber(sunshineHoursText);
+    const lightIndex = getJmaLightIndexFromSunshineHours(rawSunshineHours);
+    const sunshineHours = lightIndex === null ? null : rawSunshineHours;
+    if(!parseDateKey(date) || (meanTemp === null && sunshineHours === null)) return [];
+    return [{
+      date, meanTemp, sunshineHours, lightIndex, source:"observation",
+      temperatureSource:"jma-reported-daily-mean",
+      // JMA's reported duration can be observation or an estimate depending on station/date.
+      // The requested CSV omits quality flags; do not claim instrument-only measurement.
+      sunshineSource:"jma-reported-duration",
+      lightSource:sunshineHours === null ? "missing" : "sunshine-hours",
+      quality:{
+        temperature:meanTemp === null ? "missing-or-invalid" : "reported-quality-unavailable",
+        sunshine:sunshineHours === null ? "missing-or-invalid" : "reported-quality-unavailable"
+      },
+      retrievedAt:normalizeWeatherTimestamp(options.retrievedAt)
+    }];
   });
 }
 
@@ -434,7 +479,7 @@ async function resolveJmaObservationStation(location, forecastStation){
   return station;
 }
 
-async function fetchJmaObservationDaily(stationId, startDate, endDate){
+async function fetchJmaObservationDaily(stationId, startDate, endDate, options = {}){
   if(!parseDateKey(startDate) || !parseDateKey(endDate) || startDate > endDate) return [];
   const start = parseDateKey(startDate);
   const end = parseDateKey(endDate);
@@ -472,8 +517,10 @@ async function fetchJmaObservationDaily(stationId, startDate, endDate){
   if(!response.ok) throw new Error(`気象庁の過去データを取得できません（HTTP ${response.status}）`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   const text = new TextDecoder().decode(bytes);
-  const daily = parseJmaPastDailyCsv(text);
-  if(!daily.length) throw new Error("気象庁の過去データが空です");
+  const daily = parseJmaPastDailyCsv(text, { retrievedAt:new Date().toISOString() });
+  if(!daily.length && (!options.allowEmpty || !/^\d{4},\d{1,2},\d{1,2},/m.test(text))){
+    throw new Error("気象庁の過去データが空です");
+  }
   return daily;
 }
 
@@ -527,13 +574,99 @@ function getWeatherRowDaily(row){
   return Array.isArray(daily) ? daily : [];
 }
 
+function isCompleteGrowthObservation(day){
+  return day?.source === "observation"
+    && getJmaTemperature(day.meanTemp) !== null
+    && getJmaForecastNumber(day.lightIndex) !== null;
+}
+
+function getGrowthWeatherCoverage(daily, startDate, endDate){
+  const observations = new Map(daily.filter(day => (
+    day?.source === "observation" && parseDateKey(day.date)
+  )).map(day => [day.date, day]));
+  const dates = [...observations.keys()].sort();
+  const missingDates = [];
+  let temperatureMissingDays = 0;
+  let lightMissingDays = 0;
+  let completeDays = 0;
+  let lastCompleteDate = null;
+  if(parseDateKey(startDate) && parseDateKey(endDate)){
+    for(let date = startDate; date <= endDate; date = addDateKey(date, 1)){
+      const day = observations.get(date);
+      if(getJmaTemperature(day?.meanTemp) === null) temperatureMissingDays++;
+      if(getJmaForecastNumber(day?.lightIndex) === null) lightMissingDays++;
+      if(isCompleteGrowthObservation(day)){
+        completeDays++;
+        lastCompleteDate = date;
+      }else{
+        missingDates.push(date);
+      }
+    }
+  }
+  return {
+    requestedStartDate:startDate, requestedThrough:endDate,
+    firstObservationDate:dates[0] || null, lastObservationDate:dates.at(-1) || null,
+    lastCompleteDate, completeDays, missingDays:missingDates.length,
+    temperatureMissingDays, lightMissingDays, missingDates
+  };
+}
+
+function getGrowthWeatherHistoryPlan(row, startDate, endDate, now = new Date()){
+  const normal = parseJsonValue(row?.normal_json, {});
+  if(!row?.history_start_date || row.history_start_date > startDate){
+    return { ranges:[{ startDate, endDate }], repair:normal.historyRepair || null };
+  }
+  // Re-fetch the recent overlap even when yesterday was previously checked.
+  // Delayed reports and revisions must not become permanent gaps.
+  const recentStart = [startDate, addDateKey(endDate, -7)].sort().at(-1);
+  const ranges = [{ startDate:recentStart, endDate }];
+  const repair = normal.historyRepair || {};
+  const lastRepairTime = Date.parse(repair.checkedAt || "");
+  if(Number.isFinite(lastRepairTime) && now.getTime() - lastRepairTime < 24 * 60 * 60 * 1000){
+    return { ranges, repair };
+  }
+  const missing = getGrowthWeatherCoverage(getWeatherRowDaily(row), startDate, addDateKey(recentStart, -1)).missingDates;
+  const repairStart = missing.find(date => date > String(repair.endDate || "")) || missing[0];
+  if(!repairStart) return { ranges, repair:{ checkedAt:now.toISOString(), endDate:null } };
+  const repairEnd = [addDateKey(repairStart, 30), addDateKey(recentStart, -1)].sort()[0];
+  ranges.push({ startDate:repairStart, endDate:repairEnd });
+  return { ranges, repair:{ checkedAt:now.toISOString(), endDate:repairEnd } };
+}
+
+function mergeGrowthWeatherDaily(existing, observations, forecast, startDate){
+  const byDate = new Map(existing.filter(day => (
+    day?.source === "observation" && parseDateKey(day.date) && day.date >= startDate
+  )).map(day => [day.date, day]));
+  observations.forEach(day => {
+    const previous = byDate.get(day.date);
+    const merged = { ...day, quality:{ ...day.quality } };
+    // A partial or empty upstream response must not erase a previously valid field.
+    if(getJmaTemperature(day.meanTemp) === null && getJmaTemperature(previous?.meanTemp) !== null){
+      merged.meanTemp = previous.meanTemp;
+      merged.quality.temperature = previous.quality?.temperature || "reported-quality-unavailable";
+    }
+    if(getJmaForecastNumber(day.lightIndex) === null && getJmaForecastNumber(previous?.lightIndex) !== null){
+      merged.lightIndex = previous.lightIndex;
+      merged.sunshineHours = previous.sunshineHours ?? null;
+      merged.lightSource = previous.lightSource || "sunshine-hours";
+      merged.quality.sunshine = previous.quality?.sunshine || "reported-quality-unavailable";
+    }
+    byDate.set(day.date, merged);
+  });
+  forecast.forEach(day => {
+    if(!isCompleteGrowthObservation(byDate.get(day.date))) byDate.set(day.date, day);
+  });
+  return [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
 function isGrowthWeatherRowComplete(row, requestedStartDate, now = new Date()){
   const todayKey = getJapanTodayKey(now);
   const yesterdayKey = addDateKey(todayKey, -1);
   const refreshedAt = new Date(String(row?.refreshed_at || ""));
+  const normal = parseJsonValue(row?.normal_json, {});
   return getWeatherRowDaily(row).length > 0
     && String(row?.history_start_date || "") <= requestedStartDate
-    && String(row?.history_through || "") >= yesterdayKey
+    && String(normal.historyCheckedThrough || row?.history_through || "") >= yesterdayKey
     && String(row?.forecast_end_date || "") >= todayKey
     && Number.isFinite(refreshedAt.getTime())
     && now.getTime() - refreshedAt.getTime() < WEATHER_REFRESH_MS;
@@ -541,12 +674,18 @@ function isGrowthWeatherRowComplete(row, requestedStartDate, now = new Date()){
 
 function buildGrowthWeatherResponse(row, options = {}){
   const daily = getWeatherRowDaily(row);
+  const normal = parseJsonValue(row?.normal_json, {});
+  const retrievedAt = normalizeWeatherTimestamp(row?.refreshed_at);
   return {
     ok:true,
     provider:"jma",
     timezone:"Asia/Tokyo",
-    fetchedAt:new Date(String(row?.refreshed_at || "")).getTime() || Date.now(),
-    stale:options.stale === true,
+    schemaVersion:4,
+    fetchedAt:retrievedAt ? Date.parse(retrievedAt) : 0,
+    retrievedAt,
+    forecastIssuedAt:getLatestWeatherTimestamp(daily.filter(day => day.source === "forecast").map(day => day.issuedAt)),
+    stale:options.stale === true || row?.status !== "ready" || !retrievedAt
+      || Date.now() - Date.parse(retrievedAt) >= WEATHER_REFRESH_MS,
     forecastEndDate:String(row?.forecast_end_date || ""),
     historyStartDate:String(row?.history_start_date || ""),
     historyThrough:String(row?.history_through || ""),
@@ -555,7 +694,8 @@ function buildGrowthWeatherResponse(row, options = {}){
       amedasCode:String(row?.station_amedas_code || ""),
       name:String(row?.station_name || "")
     },
-    normal:parseJsonValue(row?.normal_json, {}),
+    normal,
+    historyCoverage:getGrowthWeatherCoverage(daily, String(row?.history_start_date || row?.requested_start_date || ""), normal.historyCheckedThrough || String(row?.history_through || "")),
     daily
   };
 }
@@ -563,20 +703,21 @@ function buildGrowthWeatherResponse(row, options = {}){
 function getObservationNormal(daily, fallback){
   const observations = daily.filter(day => day?.source === "observation");
   const average = key => {
-    const values = observations.map(day => Number(day?.[key])).filter(Number.isFinite);
+    const values = observations.map(day => getJmaForecastNumber(day?.[key])).filter(value => value !== null);
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   };
   const meanTemp = average("meanTemp");
   const lightIndex = average("lightIndex");
   return {
-    minTemp:Number.isFinite(Number(fallback?.minTemp)) ? Number(fallback.minTemp) : 14,
-    maxTemp:Number.isFinite(Number(fallback?.maxTemp)) ? Number(fallback.maxTemp) : 24,
+    minTemp:getJmaTemperature(fallback?.minTemp) ?? 14,
+    maxTemp:getJmaTemperature(fallback?.maxTemp) ?? 24,
     meanTemp:Number.isFinite(meanTemp)
       ? meanTemp
-      : (Number.isFinite(Number(fallback?.meanTemp)) ? Number(fallback.meanTemp) : 19),
+      : (getJmaTemperature(fallback?.meanTemp) ?? 19),
     lightIndex:Number.isFinite(lightIndex)
       ? lightIndex
-      : (Number.isFinite(Number(fallback?.lightIndex)) ? Number(fallback.lightIndex) : 0.85)
+      : (getJmaForecastNumber(fallback?.lightIndex) ?? 0.85),
+    source:observations.length ? "all-season-observation-average" : "forecast-normal-fallback"
   };
 }
 
@@ -623,6 +764,8 @@ async function refreshGrowthWeatherLocation(env, locationKey){
       throw new Error(`気象庁の予報を取得できません（HTTP ${forecastResponse.status}）`);
     }
     const forecast = buildJmaForecastDaily(await forecastResponse.json(), location);
+    const forecastRetrievedAt = new Date().toISOString();
+    forecast.daily = forecast.daily.map(day => ({ ...day, retrievedAt:forecastRetrievedAt }));
     if(!forecast.daily.length) throw new Error("気象庁の予報データが空です");
 
     let stationId = String(row?.station_id || "");
@@ -637,37 +780,18 @@ async function refreshGrowthWeatherLocation(env, locationKey){
     const yesterdayKey = addDateKey(todayKey, -1);
     const requestedStartDate = normalizeRequestedWeatherStartDate(row?.requested_start_date, now);
     const existingDaily = getWeatherRowDaily(row);
-    let historyStartDate = String(row?.history_start_date || "");
-    let historyThrough = String(row?.history_through || "");
-    let fetchStart = "";
-    if(!historyStartDate || historyStartDate > requestedStartDate){
-      fetchStart = requestedStartDate;
-    }else if(!historyThrough || historyThrough < yesterdayKey){
-      fetchStart = historyThrough ? addDateKey(historyThrough, -7) : requestedStartDate;
-      if(fetchStart < requestedStartDate) fetchStart = requestedStartDate;
+    const historyPlan = getGrowthWeatherHistoryPlan(row, requestedStartDate, yesterdayKey, now);
+    const observations = [];
+    for(const range of historyPlan.ranges){
+      observations.push(...await fetchJmaObservationDaily(stationId, range.startDate, range.endDate, { allowEmpty:true }));
     }
-
-    let observations = [];
-    if(fetchStart && fetchStart <= yesterdayKey){
-      observations = await fetchJmaObservationDaily(stationId, fetchStart, yesterdayKey);
-      historyStartDate = !historyStartDate || requestedStartDate < historyStartDate
-        ? requestedStartDate
-        : historyStartDate;
-      historyThrough = yesterdayKey;
-    }
-
-    const dailyByDate = new Map(existingDaily
-      .filter(day => day?.source === "observation" && parseDateKey(day.date) && day.date >= requestedStartDate)
-      .map(day => [day.date, day]));
-    if(fetchStart){
-      [...dailyByDate.keys()].forEach(date => {
-        if(date >= fetchStart && date <= yesterdayKey) dailyByDate.delete(date);
-      });
-    }
-    observations.forEach(day => dailyByDate.set(day.date, day));
-    forecast.daily.forEach(day => dailyByDate.set(day.date, day));
-    const daily = [...dailyByDate.values()].sort((left, right) => left.date.localeCompare(right.date));
-    const normal = getObservationNormal(daily, forecast.normal);
+    const daily = mergeGrowthWeatherDaily(existingDaily, observations, forecast.daily, requestedStartDate);
+    const coverage = getGrowthWeatherCoverage(daily, requestedStartDate, yesterdayKey);
+    const normal = {
+      ...getObservationNormal(daily, forecast.normal),
+      historyCheckedThrough:yesterdayKey,
+      historyRepair:historyPlan.repair
+    };
     const forecastEndDate = forecast.daily[forecast.daily.length - 1]?.date || "";
     await env.DB.prepare(`
       UPDATE growth_weather_cache
@@ -685,9 +809,9 @@ async function refreshGrowthWeatherLocation(env, locationKey){
       JSON.stringify(daily),
       JSON.stringify(normal),
       forecastEndDate,
-      historyStartDate || requestedStartDate,
-      historyThrough || yesterdayKey,
-      nowIso
+      requestedStartDate,
+      coverage.lastCompleteDate || "",
+      new Date().toISOString()
     ).run();
     return await getGrowthWeatherRow(env, locationKey);
   }catch(error){
@@ -1059,12 +1183,16 @@ export {
   enqueueBatch,
   forwardBatch,
   buildJmaForecastDaily,
+  buildGrowthWeatherResponse,
   canAttemptGrowthWeatherRefresh,
   getGrowthWeatherRetryDelayMs,
+  getGrowthWeatherCoverage,
+  getGrowthWeatherHistoryPlan,
   getJmaLightIndexFromSunshineHours,
   parseJmaPastDailyCsv,
   parseJmaPrefectureOptions,
   parseJmaStationOptions,
+  mergeGrowthWeatherDaily,
   processPendingBatches,
   processGrowthWeatherSubscriptions,
   relayTokenMatches,

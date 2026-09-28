@@ -26,6 +26,16 @@
 | `src/styles/legacy.css` | 従来の基本スタイル | 既存画面への広い影響に注意する |
 | `src/styles/unified/` | 画面・機能別の上書きスタイル | UI変更は320px・390pxを優先確認する |
 | `src/scripts/browser-storage.js` | `localStorage` / `sessionStorage` の共通窓口 | 他ファイルから保存領域を直接操作しない |
+| `src/scripts/growth-model.js` / `growth-risk.js` | 生育予測の学習・時系列評価と症状／気象の関係集計 | DOM・通信から独立した計算。未来の記録・予報の混入と同一作の重複に注意する |
+| `src/scripts/growth-history.js` | IndexedDBへの予報・予測スナップショット保存 | 利用者区分と地点を分離し、当時の保存内容を上書きしない。外部へ自動送信しない |
+| `src/scripts/growth-learning.js` / `growth-generation-evaluation.js` / `growth-management.js` | 教師変更時の評価、凍結世代比較、shadow、明示採用・巻戻し | 気象更新で再学習しない。同方式の係数更新も両世代完成後だけ比較 |
+| `src/scripts/growth-observations.js` / `growth-readiness.js` / `growth-evidence.js` | 任意確認のCAS同期、適期引継ぎ、環境・除外の時点付き照合 | 正解値・途中評価・手動補正を混ぜない。未知位置を拡張しない |
+| `src/scripts/growth-safety.js` / `growth-backup.js` / `growth-analysis.js` | 移行安全、復元と競合、診断専用の失敗分析 | 元記録のraw値を保持。将来実測を置換するのは診断のみ |
+| `src/scripts/growth-planner.js` / `growth-yield.js` | 数量照合・凍結補助係数・新旧数量比較・優先分類・カレンダー | ケース合計を位置へ推測配分しない。数量は上位指標の悪化を覆せない |
+| `src/scripts/growth-calibration.js` / `growth-field-validation.js` / `growth-similarity.js` | 保存予測の校正検証、途中評価の経過照合、類似作の参考検索 | 元予測・教師を変更しない。世代/作/時点を分け、不足を精度で埋めない |
+| `src/scripts/growth-restore-settings.js` / `src/scripts/app/growth-restore-settings.js` | 地点・号棟補正の明示選択復元と安全保存 | 無選択は現状維持。履歴・モデルの元地点を維持し、現在地点へ混ぜない |
+| `src/scripts/app/growth-review.js` | 既存精度詳細への校正・数量・途中評価と類似作の接続 | 記録revision/日付/地点/世代でキャッシュし、画面再表示ごとに履歴を走査しない |
+| `src/scripts/app/growth-runtime.js` / `growth-observation-workflow.js` | 上記APIの本番配線・記録タブでの任意入力 | 番号付きスクリプト内の既存フローを置き換えない |
 | `src/scripts/app/01-*.js`〜`19-*.js` | ブラウザー本体処理 | 番号が実行順。下記の担当表から必要なものだけ読む |
 | `index.html` | 公開用の生成ファイル | 直接編集しない。`tools/build_index.py` で生成する |
 | `apps-script/src/` | Apps Scriptの機能別ソース | API、スプレッドシート、差分同期、受信箱の実装元 |
@@ -64,7 +74,8 @@
 - 端末内の収穫記録はメモリー上の `records`、苗植え記録は `plantingEvents` がセッション中の信頼できる元です。永続化は `saveRecordsToStorage()` と `savePlantingEventsToStorage()` から共通保存窓口へ通します。
 - 管理者用と作業者用の保存キーは `01-core-ui-and-workflow.js` の `getActive*StorageKey()` 群で切り替えます。役割をまたいで直接キーを指定しません。
 - 読み込み時は `normalizeStoredRecord()` と `normalizePlantingEvent()` が旧形式も正規化します。既存データ互換を変える場合はここ、Google受信正規化、特性テストを一緒に確認します。
-- 収穫時の育ち具合は収穫記録の `sizeRating` と `growthDetail`、外気は気象庁の観測値・予報が元データです。生育予測βの積算生育値と判定モデルは派生状態で、記録、地点、棟別環境傾向または気象キャッシュ変更時に必要な範囲だけ再計算します。
+- 収穫時の育ち具合は収穫記録の `sizeRating` と `growthDetail`、外気は気象庁の観測値・予報が元データです。schemaVersion 3で適期日モード・品質の程度を保持し、旧記録の未確認を症状なしへ変換しません。予測の表示キャッシュは元記録・地点・環境・気象・基準日で無効化しますが、採用係数は世代registryに固定し、気象更新では再学習しません。
+- 当時の予報・予測は `growth-history.js` のIndexedDBが保存元です。現在のモデルを学習し直した結果と区別して採点します。履歴の自動削除・外部送信はせず、保存失敗時に再保存し、必要に応じてJSONへ書き出します。
 - 削除済み記録は端末ごみ箱とリモートの削除情報（tombstone）で保護します。単純な配列削除だけで終わらせません。
 - パレット状態、履歴表示、集計、収穫検索索引、ロス推定などは派生状態です。元記録変更後は `completeRecordDataMutation()` → `invalidateRecordDerivedCaches()` を通し、必要に応じて `rebuildCurrentPalletLifecycleState()` で再構築します。
 - Googleスプレッドシートが営農記録の共有データの最終保存先です。記録用のCloudflare D1とApps Script受信箱は通信失敗に耐える受付・再送層です。気象用D1は気象庁への過度なアクセスを避ける共有キャッシュで、画面はその日別値から積算生育値を導出します。
@@ -134,10 +145,17 @@
 集計の「生育予測」タブを利用者が選択
 → `07-dashboard.js` がメニューで保存した気象庁の予報地域と必要な過去期間をWorkerへ登録
 → `relay/src/worker.mjs` が気象庁の日平均気温・日照時間と週間予報を取得しD1へ地点別保存
-→ 過去の各収穫と現在作について、苗植えから収穫日・予定日まで同じ式で積算生育値を計算
-→ 収穫時の `sizeRating` / `growthDetail` から求めた目標値と比較し、予定日時点の大きさ、チップバーン・徒長の注意を派生表示する。
+→ `getDashboardGrowthSourceState()` がパレット・苗植えイベント・収穫評価を作ごとに対応付ける
+→ `growth-evidence.js` が任意確認の対象範囲・期間・利用可能日時を付与する
+→ `growth-learning.js` が教師変更時だけ候補を評価し、`growth-generation-evaluation.js` と保存した新旧予測で比較する
+→ `growth-management.js` の採用済み係数を復元し、明示承認まで候補をshadowに保持する
+→ 既存の収穫予定日を変更せず、現在の進捗、予定日時点の大きさ、適期の目安、実測／予報／推定日数を派生表示する
+→ `growth-risk.js` が確認済みの症状と収穫直前の気象条件を集計し、症状の注意を参考値として表示する
+→ `growth-history.js` が表示時点の予報・予測を端末へ保存し、当時の予測の採点と書き出しに使う。
 
-気象地点の検索はメニューで操作した時だけです。初回は過去記録と現在作に必要な開始日まで遡り、以後はWorkerの定期処理が過去観測値を日ごと、予報を6時間ごとに差分更新します。取得失敗時は5分、15分、以後1時間の間隔で再試行します。アプリは地点ごとの端末キャッシュを6時間再利用します。予報期間外は、保存済みの同じ地点・同じ月日の観測平均を推定値として使います。
+気象地点の検索はメニューで操作した時だけです。リレーは予報と直近8日間の観測を更新し、古い欠損も再試行します。アプリは正常取得した端末キャッシュを24時間再利用し、手動更新では取得を試みます。気象庁の実予報範囲外や予報が欠けた未来日は未予測です。過去の欠測補完と未来予測を混同しません。発表日時のない予報に取得日時を代入しません。
+
+アルゴリズム、候補採用条件、データ不足時の扱い、気象の改訂履歴を完全再現できない制約、未デプロイのサーバー変更は `docs/GROWTH_PREDICTION.md` を参照してください。実農場データによる精度改善は、アプリ上の評価または書き出しJSONを `tools/evaluate_growth.cjs` で確認して判断します。
 
 ### 過去記録の編集・削除・復元
 
@@ -166,7 +184,7 @@
 | 高速受付・再送・気象更新 | `relay/src/worker.mjs` | `relay/migrations/`、`apps-script/src/15-record-inbox.js`、ブラウザー側受信箱状態確認、`07-dashboard.js` の気象キャッシュ |
 | モニター | `04-monitor-sync.js`、`10-monitor-view.js` | Apps Scriptの `08-monitor.js`、`13-monitor-sheet.js`、Firebase通知 |
 | 集計・ダッシュボード | `07-dashboard.js` | `02-local-data.js` のキャッシュ無効化、記録詳細表示 |
-| 生育予測・育ち具合評価 | `07-dashboard.js`、`02-local-data.js` | `09-record-workflow.js`、`12-record-save-and-restore.js`、Google同期・Apps Script収穫列、気象キャッシュ |
+| 生育予測・育ち具合評価 | `07-dashboard.js`、`growth-model.js`、`growth-risk.js`、`02-local-data.js` | `growth-history.js`、`09-record-workflow.js`、`12-record-save-and-restore.js`、Google同期・Apps ScriptのgrowthDetail、気象キャッシュ、`docs/GROWTH_PREDICTION.md` |
 | 起動・状態復元 | `17-startup-state.js`〜`19-bootstrap.js` | `01-core-ui-and-workflow.js` の途中状態保存 |
 | ブラウザー内保存形式 | `02-local-data.js` | `browser-storage.js`、旧バックアップ、取込、同期正規化 |
 | ビルド・バージョン | `tools/`、`src/index.template.html`、`version.json` | 生成後の `index.html` と `apps-script/コード.js` |
@@ -194,6 +212,15 @@ python3 tests/run_characterization.py
 
 # Cloudflare中継だけを変更した場合
 npm --prefix relay test
+
+# 生育予測・症状分析の計算を変更した場合
+node --test tests/growth-*.test.cjs
+
+# IndexedDBの不変保存・参照移設・原子的マージ
+python3 tests/run_growth_history.py
+
+# アプリから書き出した実績・気象・予測履歴の再評価（通信不要）
+node tools/evaluate_growth.cjs 履歴.json --as-of 2026-09-25 > 結果.json
 ```
 
-UI変更では上記に加え、プレビューで320px・390pxを優先して確認します。Apps Scriptの `clasp push` とデプロイ、Cloudflare Workerのデプロイは明示依頼がある場合だけ行います。
+UI変更は特性テストで320px・390pxの収まりを確認します。利用者向けの操作プレビューは「見せて」と依頼された場合だけ用意します。Apps Scriptの `clasp push` とデプロイ、Cloudflare Workerのデプロイは明示依頼がある場合だけ行います。

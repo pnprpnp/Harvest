@@ -20,6 +20,11 @@ function doPost(e) {
       });
     }
 
+    if (operation === "syncGrowthObservations") {
+      apiStage = "適期確認の同期中";
+      return jsonResponse({ ok: true, ...syncGrowthObservations(body) });
+    }
+
     if (operation === "checkUpdates") {
       apiStage = "同期番号の高速確認中";
       const revisionCheck = getRevisionUpdateCheckResponse(body, fastCheckPropertyValues);
@@ -468,6 +473,7 @@ function resolveApiOperation(body) {
     checkUpdates: "checkUpdates",
     workerSnapshot: "workerSnapshot",
     syncAll: "syncAll",
+    syncGrowthObservations: "syncGrowthObservations",
     listRecords: "listRecords",
     deleteRecord: "deleteRecord",
     restoreRecord: "restoreRecord",
@@ -488,6 +494,7 @@ function resolveApiOperation(body) {
     "harvest-update-check": "checkUpdates",
     "harvest-worker-snapshot": "workerSnapshot",
     "harvest-sync-all": "syncAll",
+    "growth-observation-sync": "syncGrowthObservations",
     "harvest-record": "saveRecord",
     "harvest-record-batch": "saveRecordBatch",
     "harvest-day-batch": "saveDayBatch",
@@ -649,6 +656,7 @@ function assertApiOperationAllowedForRole(operation, accessRole) {
   const workerOperations = [
     "identifyAccessRole",
     "workerSnapshot",
+    "syncGrowthObservations",
     "saveRecord",
     "saveRecordBatch",
     "saveDayBatch",

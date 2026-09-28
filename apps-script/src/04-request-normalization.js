@@ -180,7 +180,7 @@ function normalizeHarvestRecord(record) {
     false
   );
   const sizeRating = normalizeOptionalSizeRating(record.sizeRating);
-  const growthDetail = normalizeHarvestGrowthDetailInput(record.growthDetail, palletKeys);
+  const growthDetail = normalizeHarvestGrowthDetailInput(record.growthDetail, palletKeys, date);
   const plantingAge = normalizePlantingAgeInput(record.plantingAge);
   const plantingCaseInstruction = normalizeOptionalText(
     record.plantingCaseInstruction,
@@ -631,7 +631,7 @@ function normalizeOptionalSizeRating(value) {
   }[normalized] || normalized;
 }
 
-function normalizeHarvestGrowthDetailInput(value, palletKeys) {
+function normalizeHarvestGrowthDetailInput(value, palletKeys, harvestDate = "") {
   if (value === null || typeof value === "undefined" || value === "") {
     return { uneven: false, bedOverrides: {} };
   }
@@ -647,6 +647,30 @@ function normalizeHarvestGrowthDetailInput(value, palletKeys) {
     }
   }
   if (!isPlainObject(source)) throw new Error("生育評価の形式が正しくありません");
+  const hasObservations = item => !!item && (Number(item.schemaVersion) >= 2
+    || ["readyDate", "readyDateMode", "unevenStatus", "tipburnStatus", "elongatedStatus", "cultivar"].some(key => Object.prototype.hasOwnProperty.call(item, key)));
+  const normalizeObservations = item => {
+    if (typeof item.schemaVersion !== "undefined" && ![2,3].includes(item.schemaVersion)) {
+      throw new Error("生育評価の版が正しくありません");
+    }
+    const readyDate = normalizeOptionalDate(item.readyDate, "適期を確認した日");
+    if (harvestDate && readyDate && readyDate > harvestDate) {
+      throw new Error("適期を確認した日は収穫日以前を指定してください");
+    }
+    const symptomStatus = field => {
+      const status = item[field + "Status"];
+      if (typeof status === "undefined") return item[field] === true ? "present" : "unknown";
+      const normalized = normalizeRequiredEnum(status, "症状の確認状態", ["unknown", "none", "present", "slight", "many"]);
+      return normalized === "unknown" && item[field] === true ? "present" : normalized;
+    };
+    const normalized = { readyDate, tipburnStatus:symptomStatus("tipburn"), elongatedStatus:symptomStatus("elongated") };
+    if(Number(item.schemaVersion) >= 3 || "unevenStatus" in item || "readyDateMode" in item){
+      normalized.unevenStatus = symptomStatus("uneven");
+      normalized.readyDateMode = typeof item.readyDateMode === "undefined" ? (readyDate ? "manual" : "auto")
+        : normalizeRequiredEnum(item.readyDateMode, "適期確認の引継ぎ", ["auto","manual","none"]);
+    }
+    return normalized;
+  };
   const rawOverrides = typeof source.bedOverrides === "undefined" ? {} : source.bedOverrides;
   if (!isPlainObject(rawOverrides)) throw new Error("ベッド別生育評価の形式が正しくありません");
   const allowedBeds = new Set((Array.isArray(palletKeys) ? palletKeys : []).map(key => {
@@ -673,11 +697,24 @@ function normalizeHarvestGrowthDetailInput(value, palletKeys) {
       tipburn: rawOverride.tipburn,
       elongated: rawOverride.elongated
     };
+    if (hasObservations(source) || hasObservations(rawOverride)) {
+      Object.assign(bedOverrides[bedKey], normalizeObservations(rawOverride));
+      bedOverrides[bedKey].tipburn = ["present","slight","many"].includes(bedOverrides[bedKey].tipburnStatus);
+      bedOverrides[bedKey].elongated = ["present","slight","many"].includes(bedOverrides[bedKey].elongatedStatus);
+      if("unevenStatus" in bedOverrides[bedKey]) bedOverrides[bedKey].uneven = ["present","slight","many"].includes(bedOverrides[bedKey].unevenStatus);
+    }
   });
   const normalized = {
     uneven: source.uneven === true,
     bedOverrides
   };
+  if (hasObservations(source) || entries.some(entry => hasObservations(entry[1]))) {
+    const schemaVersion = Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
+      || entries.some(entry => "unevenStatus" in entry[1] || "readyDateMode" in entry[1]) ? 3 : 2;
+    Object.assign(normalized, { schemaVersion, ...normalizeObservations(source),
+      cultivar:normalizeOptionalText(source.cultivar, "品種", 80, false) });
+    if("unevenStatus" in normalized) normalized.uneven = ["present","slight","many"].includes(normalized.unevenStatus);
+  }
   if (JSON.stringify(normalized).length > RECORD_GROWTH_DETAIL_LENGTH_LIMIT) {
     throw new Error("生育評価が長すぎます");
   }

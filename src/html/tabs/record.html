@@ -15,6 +15,40 @@
       </div>
     </form>
   </dialog>
+  <dialog id="recordGrowthReadyDialog" class="recordGrowthReadyDialog" aria-labelledby="recordGrowthReadyTitle">
+    <div class="recordGrowthReadyHead"><strong id="recordGrowthReadyTitle">適期確認</strong><button type="button" class="dashboardInlineBtn" data-ui-click="closeRecordGrowthReady">閉じる</button></div>
+    <p>確認したときだけ任意で記録できます。未入力は不明のまま保持します。</p>
+    <label>記録する内容<select id="recordGrowthObservationKind" data-ui-change="changeRecordGrowthObservationKind"><option value="ready">適期を初めて確認</option><option value="fieldAssessment">生育途中の大きさ・品質</option><option value="ec">EC測定</option><option value="condition">特殊条件</option><option value="environment">環境特性・変更</option><option value="manualOffset">予測日の手動補正</option></select></label>
+    <div class="recordGrowthReadyFilters">
+      <label>号棟<select id="recordGrowthReadyBuilding" data-ui-change="changeRecordGrowthReadyPlace"></select></label>
+      <label>ベッド<select id="recordGrowthReadyBed" data-ui-change="changeRecordGrowthReadyPlace"></select></label>
+    </div>
+    <label class="recordGrowthReadyCropLabel">苗植えした作<select id="recordGrowthReadyCrop" data-ui-change="selectRecordGrowthReadyCrop"></select></label>
+    <div id="recordGrowthReadyForm" hidden>
+      <p id="recordGrowthReadyTarget"></p>
+      <label id="recordGrowthAllHouseLabel" hidden><input id="recordGrowthAllHouse" type="checkbox">号棟全体を対象にする</label>
+      <details><summary>対象範囲を図で選ぶ</summary><p>左右の配置は既存のベッド図と同じです。指でなぞると範囲を選択・解除できます。</p><div id="recordGrowthReadyPallets" class="recordGrowthReadyPallets"></div></details>
+      <label class="recordGrowthReadyDateLabel">適期を初めて確認した日<input id="recordGrowthReadyDate" type="date"></label>
+      <div id="recordGrowthReadyActions" class="recordGrowthReadyActions"><button type="button" class="actionBtn" data-ui-click="saveRecordGrowthReadyToday">今日、適期を確認</button><button type="button" class="actionBtn secondaryBtn" data-ui-click="saveRecordGrowthReady">指定した日付で保存</button></div>
+      <div id="recordGrowthObservationFields" hidden>
+        <div data-growth-kind="fieldAssessment"><label>大きさ<select id="recordGrowthFieldSize"><option value="unknown">不明</option><option value="small">小さめ</option><option value="normal">ちょうど良い</option><option value="large">大きめ</option></select></label><div id="recordGrowthFieldQuality"></div><p>途中評価は収穫結果との整合を検証するため保存します。直ちに学習の正解にはしません。</p></div>
+        <div data-growth-kind="ec"><label>EC（mS/cm）<input id="recordGrowthEcValue" type="number" min="0" max="50" step="0.01" inputmode="decimal"></label><label><input id="recordGrowthEcAbnormal" type="checkbox">異常値として記録する</label></div>
+        <div data-growth-kind="condition"><label>特殊条件<select id="recordGrowthConditionType"><option value="shadeChange">遮光変更</option><option value="equipmentFailure">設備故障</option><option value="abnormalSeedlings">異常苗</option><option value="hydroponicTrouble">水耕設備トラブル</option><option value="abnormalEc">極端なEC異常</option><option value="other">その他環境変化</option></select></label><label>メモ（任意）<input id="recordGrowthConditionNote" type="text" maxlength="300"></label><p>対象期間の作は通常の学習から分離します。</p></div>
+        <div data-growth-kind="environment"><div id="recordGrowthEnvironmentFields"></div><label>過去条件の扱い<select id="recordGrowthEnvironmentPolicy"><option value="normal">通常利用</option><option value="downweight">重みを下げる</option><option value="exclude">通常学習から分離</option></select></label><p>2号棟の高温、5号棟の遮光・低湿度、9号棟A中央〜右の日陰も、適用期間と実際の範囲を指定して保存できます。補正の採用は検証結果を確認して行います。</p></div>
+        <div data-growth-kind="condition environment"><label>終了日（継続中は空欄）<input id="recordGrowthObservationEndDate" type="date"></label></div>
+        <div data-growth-kind="manualOffset"><label>元予測からの補正日数<input id="recordGrowthManualDays" type="number" min="-30" max="30" step="1" value="0" inputmode="numeric"></label><p>早い場合はマイナス、遅い場合はプラス。元予測は保持します。補正を取り消すと元へ戻ります。</p></div>
+        <button type="button" class="actionBtn" data-ui-click="saveRecordGrowthObservation">端末に保存</button>
+      </div>
+      <button id="recordGrowthReadyCancelEdit" type="button" class="dashboardInlineBtn" data-ui-click="cancelRecordGrowthReadyEdit" hidden>修正をキャンセル</button>
+    </div>
+    <p id="recordGrowthReadyNotice" role="status" aria-live="polite"></p>
+    <div class="recordGrowthReadyHead"><strong>保存した生育記録</strong><button type="button" class="dashboardInlineBtn" data-ui-click="syncRecordGrowthReady" data-ui-boolean="true">共有・再送</button></div>
+    <p id="recordGrowthReadySyncStatus" role="status"></p>
+    <div id="recordGrowthReadyConflicts"></div>
+    <div id="recordGrowthReadyHistory"></div>
+    <button id="recordGrowthReadyMore" type="button" class="dashboardInlineBtn" data-ui-click="showMoreRecordGrowthReady" hidden>さらに表示</button>
+    <button type="button" class="dashboardInlineBtn" data-ui-click="openRecordGrowthUnrated">未評価の収穫を見る</button>
+  </dialog>
   <div id="recordTab" style="display:none;">
     <div class="recordTopStatusRow">
       <div id="recordModeStatus" class="recordModeStatus is-harvest" role="status" aria-live="polite" aria-label="全2段階。現在は収穫記録中">
@@ -29,6 +63,7 @@
         </div>
         <span id="recordTodayRecordedStatus" class="recordTodayRecordedStatus" role="status" hidden>本日は記録済みです</span>
       </div>
+      <button type="button" class="dashboardInlineBtn recordGrowthEntryBtn" data-ui-click="openRecordGrowthReady" aria-label="生育・適期を記録">生育<br>記録</button>
       <button id="recordHistoryOpenBtn" class="recordHistoryToggleBtn" type="button" data-ui-click="toggleRecordHistoryView" aria-label="記録一覧を開く" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path>
@@ -205,9 +240,19 @@
           <label class="qualityChoice qualityLarge"><input type="radio" name="recordHarvestSizeRating" value="large" data-ui-change="handleRecordHarvestGrowthInput">大きめ</label>
         </div>
         <div class="recordHarvestGrowthOptions">
-          <label class="qualityChoice recordHarvestUnevenChoice"><input id="recordHarvestUnevenInput" type="checkbox" data-ui-change="handleRecordHarvestGrowthInput">ばらつきあり</label>
+          <input id="recordHarvestUnevenInput" type="checkbox" hidden>
           <button id="recordHarvestGrowthBedToggle" type="button" class="dashboardInlineBtn recordHarvestGrowthBedToggle" data-ui-click="toggleRecordHarvestGrowthBedEditor" aria-expanded="false" aria-controls="recordHarvestGrowthBedEditor">ベッドごとに入力</button>
         </div>
+        <div class="recordGrowthObservationFields">
+          <label>チップバーン<select id="recordGrowthTipburnStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="tipburn" data-ui-value-argument="true"><option value="unknown">未確認</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select></label>
+          <label>徒長<select id="recordGrowthElongatedStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="elongated" data-ui-value-argument="true"><option value="unknown">未確認</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select></label>
+          <label>ばらつき<select id="recordGrowthUnevenStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="uneven" data-ui-value-argument="true"><option value="unknown">不明</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select></label>
+          <label>適期確認<select id="recordGrowthReadyModeInput" data-ui-change="handleRecordHarvestGrowthInput"><option value="auto">保存した確認を引き継ぐ</option><option value="manual">日付を指定</option><option value="none">不明（引き継がない）</option></select></label>
+          <label class="recordGrowthReadyField">適期を初めて確認した日（任意）<input id="recordGrowthReadyDateInput" type="date" data-ui-change="setRecordHarvestReadyDateMode"></label>
+          <p id="recordGrowthReadyCarrySummary" class="recordHarvestGrowthBedHelp"></p>
+          <label class="recordGrowthReadyField">品種<select id="recordGrowthCultivarInput" data-ui-change="handleRecordHarvestGrowthInput"><option value="マルチリーフエアリ">マルチリーフエアリ</option><option value="">未記録・不明</option></select></label>
+        </div>
+        <p class="recordHarvestGrowthBedHelp">確認していない症状は「未確認」のままにしてください。適期の日付は分かる場合だけ入力できます。</p>
         <div id="recordHarvestGrowthBedEditor" class="recordHarvestGrowthBedEditor" hidden>
           <div class="recordHarvestGrowthBedHelp">全体と異なるベッドだけ変更できます。</div>
           <div id="recordHarvestGrowthBedRows" class="recordHarvestGrowthBedRows"></div>
@@ -220,8 +265,8 @@
           <label id="qualityMemoLargeChoice" class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
           <label id="qualityMemoMediumChoice" class="qualityChoice" hidden><input type="checkbox" name="qualityMemoTag" value="medium">中</label>
           <label id="qualityMemoSmallChoice" class="qualityChoice qualitySmall"><input type="checkbox" name="qualityMemoTag" value="small">小さい</label>
-          <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="elongated">徒長</label>
-          <label id="qualityMemoChipChoice" class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip">チップバーン</label>
+          <label class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="elongated" data-ui-change="syncRecordHarvestGrowthQualityStatus" data-ui-element-first="true">徒長</label>
+          <label id="qualityMemoChipChoice" class="qualityChoice qualityProblem"><input type="checkbox" name="qualityMemoTag" value="chip" data-ui-change="syncRecordHarvestGrowthQualityStatus" data-ui-element-first="true">チップバーン</label>
           <label class="qualityChoice qualityOther"><input type="checkbox" id="qualityMemoOtherToggle" name="qualityMemoTag" value="other">その他</label>
         </div>
         <input id="qualityMemoOtherInput" class="qualityOtherInput" type="text" placeholder="その他" hidden>

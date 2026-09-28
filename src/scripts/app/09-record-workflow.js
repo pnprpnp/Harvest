@@ -2925,12 +2925,35 @@ function showRecordEntryView(){
 
 function getCurrentRecordHarvestGrowthOverallState(){
   const qualityMemo = getSelectedQualityMemo();
+  const tipburnStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthTipburnStatusInput")?.value,qualityMemo.tags.includes("chip"));
+  const elongatedStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthElongatedStatusInput")?.value,qualityMemo.tags.includes("elongated"));
+  const unevenStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthUnevenStatusInput")?.value,document.getElementById("recordHarvestUnevenInput")?.checked);
   return {
     sizeRating: getSelectedHarvestSizeRating(),
-    uneven: !!document.getElementById("recordHarvestUnevenInput")?.checked,
-    tipburn: qualityMemo.tags.includes("chip"),
-    elongated: qualityMemo.tags.includes("elongated")
+    uneven: isHarvestSymptomPresent(unevenStatus), unevenStatus,
+    tipburn:isHarvestSymptomPresent(tipburnStatus),
+    elongated:isHarvestSymptomPresent(elongatedStatus),
+    readyDate:document.getElementById("recordGrowthReadyDateInput")?.value || "",
+    readyDateMode:document.getElementById("recordGrowthReadyModeInput")?.value || "auto",
+    tipburnStatus,
+    elongatedStatus,
+    cultivar:document.getElementById("recordGrowthCultivarInput")?.value || ""
   };
+}
+
+function setRecordHarvestGrowthStatus(field, value){
+  if(!["tipburn", "elongated", "uneven"].includes(field)) return;
+  const status = normalizeHarvestSymptomStatus(value);
+  const tag = field === "tipburn" ? "chip" : "elongated";
+  const checkbox = field === "uneven" ? document.getElementById("recordHarvestUnevenInput") : document.querySelector(`input[name="qualityMemoTag"][value="${tag}"]`);
+  if(checkbox) checkbox.checked = isHarvestSymptomPresent(status);
+  handleRecordHarvestGrowthInput();
+}
+
+function syncRecordHarvestGrowthQualityStatus(input){
+  const id = input?.value === "chip" ? "recordGrowthTipburnStatusInput" : "recordGrowthElongatedStatusInput";
+  const select = document.getElementById(id);
+  if(select) select.value = input?.checked ? "present" : "unknown";
 }
 
 function compactRecordHarvestGrowthBedOverrides(){
@@ -2944,7 +2967,12 @@ function compactRecordHarvestGrowthBedOverrides(){
     if(override.sizeRating === overall.sizeRating
       && override.uneven === overall.uneven
       && override.tipburn === overall.tipburn
-      && override.elongated === overall.elongated){
+      && override.elongated === overall.elongated
+      && (override.readyDate || "") === overall.readyDate
+      && (override.readyDateMode || (override.readyDate ? "manual" : "auto")) === overall.readyDateMode
+      && normalizeHarvestSymptomStatus(override.unevenStatus,override.uneven) === overall.unevenStatus
+      && normalizeHarvestSymptomStatus(override.tipburnStatus, override.tipburn) === overall.tipburnStatus
+      && normalizeHarvestSymptomStatus(override.elongatedStatus, override.elongated) === overall.elongatedStatus){
       delete normalized[bedKey];
     }
   });
@@ -2955,14 +2983,17 @@ function getRecordHarvestGrowthBedDraft(bedKey){
   const override = normalizeHarvestGrowthDetail({
     bedOverrides: recordHarvestGrowthBedOverrides
   }, [bedKey]).bedOverrides[bedKey];
-  return override || getCurrentRecordHarvestGrowthOverallState();
+  return override ? { ...override, ...normalizeHarvestGrowthObservations(override) } : getCurrentRecordHarvestGrowthOverallState();
 }
 
 function renderRecordHarvestGrowthBedEditor(){
+  if(typeof renderRecordHarvestReadyCarrySummary === "function") renderRecordHarvestReadyCarrySummary();
   const container = document.getElementById("recordHarvestGrowthBedRows");
   const clearButton = document.getElementById("recordHarvestGrowthClearBtn");
   if(clearButton) clearButton.hidden = getSelectedHarvestSizeRating() === "unknown";
   if(!container) return;
+  const readyInput = document.getElementById("recordGrowthReadyDateInput");
+  if(readyInput) readyInput.max = document.getElementById("recordDateInput")?.value || "";
   compactRecordHarvestGrowthBedOverrides();
   const bedKeys = getHarvestBedKeysFromPalletKeys(harvestFillKeys);
   if(!bedKeys.length){
@@ -2992,24 +3023,52 @@ function renderRecordHarvestGrowthBedEditor(){
         </div>
         <div class="recordHarvestGrowthBedFlags" role="group" aria-label="品質上の注意">
           ${[
-            ["uneven", "ばらつき"],
-            ["elongated", "徒長"],
-            ["tipburn", "チップバーン"]
+            ["uneven", "ばらつき"]
           ].map(([field, label]) => `
             <button type="button" class="recordHarvestGrowthBedFlagBtn${state[field] ? " is-active" : ""}"
               data-ui-click="toggleRecordHarvestGrowthBedFlag" data-ui-arg="${escapeHtml(bedKey)}" data-ui-arg2="${field}"
               aria-pressed="${state[field] ? "true" : "false"}">${label}</button>
           `).join("")}
         </div>
+        <div class="recordGrowthObservationFields">
+          ${[["elongated", "徒長"], ["uneven", "ばらつき"], ["tipburn", "チップバーン"]].map(([field, label]) => `
+            <label>${label}<select data-growth-bed="${escapeHtml(bedKey)}" data-growth-field="${field}Status" aria-label="${escapeHtml(`${building}号棟 ${bed}ベッド ${label}`)}">
+              ${["unknown","none","slight","many","present"].map(value => `<option value="${value}"${normalizeHarvestSymptomStatus(state[`${field}Status`],state[field]) === value ? " selected" : ""}>${getHarvestSymptomStatusLabel(value)}</option>`).join("")}
+            </select></label>
+          `).join("")}
+          <label>適期確認の引継ぎ<select data-growth-bed="${escapeHtml(bedKey)}" data-growth-field="readyDateMode">${[["auto","保存した確認を引き継ぐ"],["manual","日付を指定"],["none","不明（引き継がない）"]].map(([value,label])=>`<option value="${value}"${(state.readyDateMode || (state.readyDate ? "manual" : "auto")) === value ? " selected" : ""}>${label}</option>`).join("")}</select></label>
+          <label class="recordGrowthReadyField">適期を初めて確認した日（任意）<input type="date" data-growth-bed="${escapeHtml(bedKey)}" data-growth-field="readyDate" value="${escapeHtml(state.readyDate || "")}" max="${escapeHtml(document.getElementById("recordDateInput")?.value || "")}"></label>
+        </div>
       </section>
     `;
   }).join("");
+  container.querySelectorAll("[data-growth-field]").forEach(input => {
+    input.addEventListener("change", () => setRecordHarvestGrowthBedObservation(input.dataset.growthBed, input.dataset.growthField, input.value));
+  });
+}
+
+function setRecordHarvestGrowthBedObservation(bedKey, field, value){
+  if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
+  if(!["readyDate", "readyDateMode", "unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)) return;
+  const current = getRecordHarvestGrowthBedDraft(bedKey);
+  const next = { ...current, [field]:["readyDate","readyDateMode"].includes(field) ? value : normalizeHarvestSymptomStatus(value) };
+  if(field === "readyDate") next.readyDateMode = value ? "manual" : "none";
+  ["tipburn","elongated","uneven"].forEach(key=>{ if(field === `${key}Status`) next[key] = isHarvestSymptomPresent(next[field]); });
+  recordHarvestGrowthBedOverrides[bedKey] = next;
+  handleRecordHarvestGrowthInput();
 }
 
 function handleRecordHarvestGrowthInput(){
   renderRecordHarvestGrowthBedEditor();
   renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
+}
+
+function setRecordHarvestReadyDateMode(){
+  const input = document.getElementById("recordGrowthReadyDateInput");
+  const mode = document.getElementById("recordGrowthReadyModeInput");
+  if(mode) mode.value = input?.value ? "manual" : "none";
+  handleRecordHarvestGrowthInput();
 }
 
 function clearRecordHarvestGrowthSize(){
@@ -3046,7 +3105,8 @@ function toggleRecordHarvestGrowthBedFlag(bedKey, field){
   const current = getRecordHarvestGrowthBedDraft(bedKey);
   recordHarvestGrowthBedOverrides[bedKey] = {
     ...current,
-    [field]: !current[field]
+    [field]: !current[field],
+    [`${field}Status`]:current[field] ? "unknown" : "present"
   };
   renderRecordHarvestGrowthBedEditor();
   renderRecordHarvestConfirmation();

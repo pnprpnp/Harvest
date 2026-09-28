@@ -27,3 +27,5 @@
 <!-- build:include apps-script/src/14-record-sheet-format.js -->
 
 <!-- build:include apps-script/src/15-record-inbox.js -->
+
+<!-- build:include apps-script/src/16-growth-observations.js -->

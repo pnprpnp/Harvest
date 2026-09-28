@@ -1,0 +1,128 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><title>生育予測履歴の保存・復元テスト</title>
+<script src="../src/scripts/growth-history.js"></script>
+<script>
+(async () => {
+  const results = [], base = `growth-history-test:${crypto.randomUUID()}`;
+  const assert = (value,message) => { if(!value) throw new Error(message); };
+  const copy = value => JSON.parse(JSON.stringify(value));
+  const reject = async (work,message) => { let failed=false;try{await work();}catch(_){failed=true;}assert(failed,message); };
+  async function run(message,work){try{await work();results.push({status:"passed",message});}catch(error){results.push({status:"failed",message:`${message}: ${error.message}`});}}
+  async function row(scope,kind,asOf,payload){
+    const content={schemaVersion:1,scope,kind,asOf,payload};
+    const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(content)));
+    const id=Array.from(new Uint8Array(bytes),v=>v.toString(16).padStart(2,"0")).join("");
+    return {id,...content,capturedAt:"2026-09-20T01:00:00.000Z"};
+  }
+  await run("同じ予測の再保存で元の保存日時を変更しない",async()=>{
+    const scope=base+":same", payload={daily:[{date:"2026-09-20",meanTemp:20}]};
+    const first=await HarvestGrowthHistory.save(scope,"weather","2026-09-20",payload);
+    const original=(await HarvestGrowthHistory.backupScope(scope)).rows[0];
+    const second=await HarvestGrowthHistory.save(scope,"weather","2026-09-20",payload);
+    const saved=await HarvestGrowthHistory.backupScope(scope);
+    assert(first===second&&saved.rows.length===1,"再保存で重複した");
+    assert(original.capturedAt===saved.rows[0].capturedAt,"初回保存時刻が変わった");
+  });
+  await run("履歴IDによる読込みは保存内容を変更せず、不在ならnullを返す",async()=>{
+    const scope=base+":get",id=await HarvestGrowthHistory.save(scope,"weather","2026-09-20",{daily:[]});
+    const first=await HarvestGrowthHistory.get(id);assert(first.scope===scope&&first.id===id,"ID読込みが一致しない");
+    first.payload.daily.push({date:"2026-09-21"});
+    const second=await HarvestGrowthHistory.get(id);assert(second.payload.daily.length===0,"返却値の編集が保存履歴へ反映された");
+    assert(await HarvestGrowthHistory.get("0".repeat(64))===null,"不在IDがnullにならない");
+    await reject(()=>HarvestGrowthHistory.get("invalid-id"),"不正IDを受理した");
+    assert((await HarvestGrowthHistory.backupScope(scope)).rows.length===1,"読込みで履歴件数が変わった");
+  });
+  await run("バックアップは指定した保存先だけを読込み、旧IDを保持して復元する",async()=>{
+    const scope=base+":merge", weather=await row(scope,"weather","2026-09-20",{daily:[]});
+    const prediction=await row(scope,"prediction","2026-09-20",{weatherId:weather.id,predictions:[]});
+    await HarvestGrowthHistory.save(scope+":other","weather","2026-09-20",{daily:[]});
+    const restored=await HarvestGrowthHistory.mergeBackup([weather,prediction]);
+    assert(restored.added===2,"2件を復元できない");
+    const backup=await HarvestGrowthHistory.backupScope(scope);
+    assert(backup.rows.length===2&&backup.rows.every(v=>v.scope===scope),"別保存先が混ざった");
+    assert(backup.rows.every(v=>v.capturedAt===weather.capturedAt),"過去の保存時刻が更新された");
+    const repeated=await HarvestGrowthHistory.mergeBackup(backup);
+    assert(repeated.added===0&&repeated.existing===2,"再復元で重複した");
+  });
+  await run("内容改変・NaN・不正な日付・未来情報を隠す不正日時は書込み前に拒否する",async()=>{
+    const scope=base+":invalid", valid=await row(scope,"weather","2026-09-20",{daily:[]});
+    const tampered=copy(valid);tampered.payload.daily=[{date:"2026-09-21",meanTemp:30}];
+    await reject(()=>HarvestGrowthHistory.mergeBackup([valid,tampered]),"SHA256不一致を受理した");
+    for(const capturedAt of ["2026-02-30T00:00:00Z","2026-09-20T24:00:00Z","2026-09-20"]){
+      await reject(()=>HarvestGrowthHistory.mergeBackup([{...valid,capturedAt}]),"不正日時を受理した");
+    }
+    await reject(()=>HarvestGrowthHistory.save(scope,"weather","2026-02-30",{daily:[]}),"不正日付を受理した");
+    await reject(()=>HarvestGrowthHistory.save(scope,"weather","2026-09-20",{value:NaN}),"NaNを受理した");
+    assert((await HarvestGrowthHistory.backupScope(scope)).rows.length===0,"検証失敗時に書込んだ");
+  });
+  await run("既存IDの保存日時競合は一括トランザクションを取り消す",async()=>{
+    const scope=base+":atomic", original=await row(scope,"weather","2026-09-20",{daily:[]});
+    await HarvestGrowthHistory.mergeBackup([original]);
+    const added=await row(scope,"weather","2026-09-21",{daily:[{date:"2026-09-21"}]});
+    await reject(()=>HarvestGrowthHistory.mergeBackup([added,{...original,capturedAt:"2026-09-19T01:00:00.000Z"}]),"競合を受理した");
+    const backup=await HarvestGrowthHistory.backupScope(scope);
+    assert(backup.rows.length===1&&backup.rows[0].id===original.id,"途中までの追加が残った");
+    assert(backup.rows[0].capturedAt===original.capturedAt,"保存日時を上書きした");
+  });
+  await run("明示した保存先への移設で気象・入力気象・本番と検証モデルの参照を再計算する",async()=>{
+    const source=base+":source",target=base+":target";
+    const weather=await row(source,"weather","2026-09-20",{daily:[]});
+    const weatherInput=await row(source,"weather-input","2026-09-20",{daily:[{date:"2026-09-19",source:"observation",meanTemp:20}]});
+    const model=await row(source,"model","2026-09-19",{modelVersion:"production-1",coefficients:{farmTarget:30}});
+    const shadow=await row(source,"model","2026-09-19",{modelVersion:"candidate-2",coefficients:{farmTarget:31}});
+    const prediction=await row(source,"prediction","2026-09-20",{weatherId:weather.id,weatherInputId:weatherInput.id,modelId:model.id,shadowModelId:shadow.id,predictions:[]});
+    const rows=[prediction,shadow,weather,model,weatherInput],original=JSON.stringify(rows);
+    const result=await HarvestGrowthHistory.mergeBackup(rows,{sourceScope:source,targetScope:target});
+    assert(result.remapped===true&&result.idMap[weather.id]!==weather.id,"IDを再計算していない");
+    const backup=await HarvestGrowthHistory.backupScope(target);
+    assert(backup.rows.length===5&&backup.rows.every(v=>v.scope===target&&v.capturedAt===weather.capturedAt),"移設内容が違う");
+    const savedWeather=backup.rows.find(v=>v.kind==="weather"),savedPrediction=backup.rows.find(v=>v.kind==="prediction");
+    assert(savedPrediction.payload.weatherId===savedWeather.id,"気象参照が切れた");
+    for(const [key,reference] of [["weatherInputId",weatherInput],["modelId",model],["shadowModelId",shadow]]){
+      const id=savedPrediction.payload[key],saved=await HarvestGrowthHistory.get(id);
+      assert(id===result.idMap[reference.id]&&id!==reference.id&&saved.kind===reference.kind,"追加参照が再対応付けされていない: "+key);
+      assert(JSON.stringify(saved.payload)===JSON.stringify(reference.payload),"参照先の内容が変わった: "+key);
+    }
+    assert(JSON.stringify(rows)===original,"移設元の履歴を書き換えた");
+    assert((await HarvestGrowthHistory.backupScope(source)).rows.length===0,"元保存先へ暗黙に書込んだ");
+    const repeated=await HarvestGrowthHistory.mergeBackup(rows,{targetScope:target});
+    assert(repeated.existing===5,"再移設で重複した");
+  });
+  await run("保存先の混在、対応する気象履歴なしの移設、重複IDの競合を拒否する",async()=>{
+    const source=base+":reject-source",target=base+":reject-target";
+    const a=await row(source,"weather","2026-09-20",{daily:[]});
+    const b=await row(source+":other","weather","2026-09-20",{daily:[]});
+    await reject(()=>HarvestGrowthHistory.mergeBackup([a,b],{targetScope:target}),"複数保存先をまとめた");
+    await reject(()=>HarvestGrowthHistory.mergeBackup([a],{sourceScope:"wrong",targetScope:target}),"指定元が違うのに移設した");
+    const prediction=await row(source,"prediction","2026-09-20",{weatherId:a.id,predictions:[]});
+    await reject(()=>HarvestGrowthHistory.mergeBackup([prediction],{targetScope:target}),"気象参照なしで移設した");
+    for(const key of ["weatherInputId","modelId","shadowModelId"]){
+      const missing=await row(source,"prediction","2026-09-20",{weatherId:a.id,[key]:"0".repeat(64),predictions:[]});
+      await reject(()=>HarvestGrowthHistory.mergeBackup([a,missing],{targetScope:target}),"参照先がないのに移設した: "+key);
+      const wrongKind=await row(source,"prediction","2026-09-20",{weatherId:a.id,[key]:a.id,predictions:[]});
+      await reject(()=>HarvestGrowthHistory.mergeBackup([a,wrongKind],{targetScope:target}),"種類の違う参照先を受理した: "+key);
+      const malformed=await row(source,"prediction","2026-09-20",{[key]:"not-a-hash",predictions:[]});
+      await reject(()=>HarvestGrowthHistory.mergeBackup([malformed]),"不正な参照IDを受理した: "+key);
+    }
+    await reject(()=>HarvestGrowthHistory.mergeBackup([a,{...a,capturedAt:"2026-09-19T00:00:00Z"}]),"重複競合を受理した");
+    assert((await HarvestGrowthHistory.backupScope(target)).rows.length===0,"拒否した移設が残った");
+  });
+  await run("新しい参照先を追加する途中の競合でも全体を取り消し、null検証モデルを保つ",async()=>{
+    const scope=base+":references-atomic";
+    const original=await row(scope,"prediction","2026-09-20",{shadowModelId:null,predictions:[]});
+    await HarvestGrowthHistory.mergeBackup([original]);
+    const model=await row(scope,"model","2026-09-19",{modelVersion:"unused"});
+    const weatherInput=await row(scope,"weather-input","2026-09-20",{daily:[]});
+    await reject(()=>HarvestGrowthHistory.mergeBackup([model,weatherInput,{...original,capturedAt:"2026-09-19T01:00:00.000Z"}]),"保存日時競合を受理した");
+    assert(await HarvestGrowthHistory.get(model.id)===null&&await HarvestGrowthHistory.get(weatherInput.id)===null,"参照オブジェクトの部分追加が残った");
+    const restored=await HarvestGrowthHistory.get(original.id);
+    assert(restored.payload.shadowModelId===null&&restored.capturedAt===original.capturedAt,"元予測のnull参照・時刻を変更した");
+  });
+  await run("並行する同一復元はIndexedDBが直列化し重複しない",async()=>{
+    const scope=base+":concurrent", value=await row(scope,"weather","2026-09-20",{daily:[]});
+    const results=await Promise.all([HarvestGrowthHistory.mergeBackup([value]),HarvestGrowthHistory.mergeBackup([value])]);
+    assert(results.reduce((sum,v)=>sum+v.added,0)===1,"並行復元で重複した");
+    assert((await HarvestGrowthHistory.backupScope(scope)).rows.length===1,"保存件数が不正");
+  });
+  await fetch("/__harvestnavi_characterization_result__",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:results.every(v=>v.status==="passed")?"passed":"failed",results})});
+})().catch(async error=>fetch("/__harvestnavi_characterization_result__",{method:"POST",body:JSON.stringify({status:"failed",results:[{status:"failed",message:error.stack}]})}));
+</script></html>

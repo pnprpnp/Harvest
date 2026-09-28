@@ -1,18 +1,75 @@
+let growthObservationLegacyServerWarningShown = false;
+
+function preserveHarvestGrowthObservationsForLegacySync(localRecord, incomingRecord){
+  const local = localRecord?.growthDetail;
+  const localVersion = Number(local?.schemaVersion) || 1;
+  const incomingVersion = Number(incomingRecord?.growthDetail?.schemaVersion) || 1;
+  if(localVersion < 2 || incomingVersion >= localVersion
+    || localRecord?.type !== "fullHarvest" || incomingRecord?.type !== "fullHarvest") return incomingRecord;
+  const allowedBeds = new Set(getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(incomingRecord)));
+  const incoming = normalizeHarvestGrowthDetail(incomingRecord.growthDetail, [...allowedBeds]);
+  const detail = { ...incoming, bedOverrides:{...incoming.bedOverrides}, schemaVersion:localVersion };
+  const preserveStatus = (old, next, positive) => {
+    const previous = normalizeHarvestSymptomStatus(old);
+    // Servers before v3 can reduce a known severity to "present" or "unknown".
+    if(localVersion >= 3 && ["slight", "many"].includes(previous)) return previous;
+    if(incomingVersion >= 2) return normalizeHarvestSymptomStatus(next, positive);
+    return positive ? (isHarvestSymptomPresent(previous) ? previous : "present") : previous;
+  };
+  const preserveFields = (old, next) => {
+    const value = {
+      readyDate:old.readyDate || "",
+      tipburnStatus:preserveStatus(old.tipburnStatus, next.tipburnStatus, next.tipburn),
+      elongatedStatus:preserveStatus(old.elongatedStatus, next.elongatedStatus, next.elongated)
+    };
+    if(localVersion >= 3){
+      // The date and its auto/manual/none setting are one decision. An older
+      // server cannot express the latter, so preserve that decision together.
+      value.readyDateMode = old.readyDateMode || (value.readyDate ? "manual" : "auto");
+      value.unevenStatus = normalizeHarvestSymptomStatus(old.unevenStatus, old.uneven);
+      value.uneven = isHarvestSymptomPresent(value.unevenStatus);
+    }
+    return value;
+  };
+  Object.assign(detail, preserveFields(getHarvestGrowthOverallState(localRecord), getHarvestGrowthOverallState(incomingRecord)));
+  detail.cultivar = incomingVersion >= 2 ? incoming.cultivar : (local.cultivar || "");
+  const bedKeys = new Set([...Object.keys(incoming.bedOverrides), ...Object.keys(local.bedOverrides || {})]);
+  bedKeys.forEach(bedKey => {
+    if(!allowedBeds.has(bedKey) || !local.bedOverrides?.[bedKey]) return;
+    const old = getHarvestGrowthStateForBed(localRecord, bedKey);
+    const next = incoming.bedOverrides[bedKey] || getHarvestGrowthOverallState(incomingRecord);
+    const observations = preserveFields(old, next);
+    detail.bedOverrides[bedKey] = {
+      sizeRating:next.sizeRating, uneven:next.uneven, ...observations,
+      tipburn:isHarvestSymptomPresent(observations.tipburnStatus),
+      elongated:isHarvestSymptomPresent(observations.elongatedStatus)
+    };
+  });
+  if(!growthObservationLegacyServerWarningShown){
+    growthObservationLegacyServerWarningShown = true;
+    if(typeof showToast === "function") showToast("適期日・症状の確認状態は端末に保持しました。共有するには連携先の更新が必要です");
+  }
+  return { ...incomingRecord, growthDetail:detail };
+}
+
 function mergeGoogleSheetRecordSyncFields(existingRecord, incomingRecord){
   if(!existingRecord || !incomingRecord
     || existingRecord.type !== "fullHarvest" || incomingRecord.type !== "fullHarvest"){
     return false;
   }
 
+  incomingRecord = preserveHarvestGrowthObservationsForLegacySync(existingRecord, incomingRecord);
   const incomingFields = normalizeRecordSyncProvidedFields(incomingRecord);
   if(!incomingFields.length) return false;
 
   let changed = false;
   incomingFields.forEach(key => {
-    const nextValue = key === "actualSeedlingCarryoverMode"
-      ? normalizeSeedlingCarryoverMode(incomingRecord[key])
-      : String(incomingRecord[key] || "").trim();
-    if(existingRecord[key] === nextValue) return;
+    const nextValue = key === "growthDetail"
+      ? normalizeHarvestGrowthDetail(incomingRecord[key], getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(incomingRecord)))
+      : (key === "actualSeedlingCarryoverMode"
+          ? normalizeSeedlingCarryoverMode(incomingRecord[key])
+          : String(incomingRecord[key] || "").trim());
+    if(key === "growthDetail" ? JSON.stringify(existingRecord[key]) === JSON.stringify(nextValue) : existingRecord[key] === nextValue) return;
     existingRecord[key] = nextValue;
     changed = true;
   });
@@ -57,6 +114,8 @@ function getHarvestRecordSyncContent(record){
     actualSeedlingLossRate: normalizeHarvestRecordSyncDecimal(record?.actualSeedlingLossRate),
     actualLoss: normalizeHarvestRecordSyncDecimal(record?.actualLoss),
     qualityMemo: normalizeQualityMemo(record?.qualityMemo),
+    sizeRating: normalizeHarvestSizeRating(record?.sizeRating),
+    growthDetail: normalizeHarvestGrowthDetail(record?.growthDetail, getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(record))),
     // Apps Scriptでは定植日数を表示用文字列で保存するため、
     // アプリ内の構造化データも同じ文字列にして送信結果を照合する。
     plantingAge: formatPlantingAgeForRecord(record),
@@ -385,7 +444,7 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
     const oldId = Number(local.id);
     const newId = Number(incoming.id);
     const canonicalIncoming = {
-      ...incoming,
+      ...preserveHarvestGrowthObservationsForLegacySync(local, incoming),
       recordUuid: incomingUuid || normalizeRecordUuid(local.recordUuid),
       createdAt: incoming.createdAt || local.createdAt || ""
     };

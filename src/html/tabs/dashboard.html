@@ -12,7 +12,7 @@
       <div class="dashboardSubtabBar" role="tablist" aria-label="集計の表示内容" data-ui-keydown="handleDashboardSubtabKeydown" data-ui-event-first="true">
         <button id="dashboardSubtabGuideBtn" type="button" class="dashboardSubtabBtn active" role="tab" aria-selected="true" aria-controls="dashboardSubtabGuide" data-dashboard-subtab="guide" data-ui-click="setDashboardSubtab" data-ui-arg="guide">目安</button>
         <button id="dashboardSubtabSeedlingsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabSeedlings" data-dashboard-subtab="seedlings" data-ui-click="setDashboardSubtab" data-ui-arg="seedlings">二次定植</button>
-        <button id="dashboardSubtabGrowthBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGrowth" data-dashboard-subtab="growth" data-ui-click="setDashboardSubtab" data-ui-arg="growth">生育予測(β)</button>
+        <button id="dashboardSubtabGrowthBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGrowth" data-dashboard-subtab="growth" data-ui-click="setDashboardSubtab" data-ui-arg="growth">生育予測(β)<span id="dashboardGrowthChangeBadge" class="dashboardGrowthChangeBadge" aria-label="未確認の予測変化" hidden></span></button>
         <button id="dashboardSubtabGraphsBtn" type="button" class="dashboardSubtabBtn" role="tab" aria-selected="false" aria-controls="dashboardSubtabGraphs" data-dashboard-subtab="graphs" data-ui-click="setDashboardSubtab" data-ui-arg="graphs">実績</button>
       </div>
     </div>
@@ -108,9 +108,28 @@
         </div>
 
         <div id="dashboardGrowthContent" hidden>
+          <section id="dashboardGrowthPlanning" class="dashboardGrowthPlanning" aria-label="収穫の見通し"></section>
           <div id="dashboardGrowthBuildingTabs" class="dashboardGrowthBuildingTraits" aria-label="生育予測を表示する号棟"></div>
           <div id="dashboardGrowthBeds" class="dashboardGrowthBeds" aria-live="polite"></div>
-          <p class="dashboardGrowthDisclaimer">β版の参考値です。過去は気象庁の観測値、今後は予報、予報期間外は同じ地点・同じ時期の平均を使います。外気とハウス内の温度・湿度・気流・養液状態の差により、実際の生育や症状と異なる場合があります。</p>
+          <details class="dashboardGrowthValidation">
+            <summary>学習状況・精度と保存履歴</summary>
+            <div id="dashboardGrowthValidationResult"></div>
+            <div id="dashboardGrowthModelManagement" class="dashboardGrowthModelManagement"></div>
+            <div id="dashboardGrowthReview" aria-live="polite"></div>
+            <p id="dashboardGrowthArchiveStatus" role="status" aria-live="polite"></p>
+            <div class="dashboardGrowthHistoryActions">
+              <button type="button" class="dashboardInlineBtn" data-ui-click="inspectDashboardGrowthHistory">保存した予測を実績と比較</button>
+              <button type="button" class="dashboardInlineBtn" data-ui-click="inspectDashboardGrowthLatestFailure">最新の予測誤差を分析</button>
+              <button type="button" class="dashboardInlineBtn" data-ui-click="exportDashboardGrowthHistory">予報・予測履歴を書き出す</button>
+              <button type="button" class="dashboardInlineBtn" data-ui-click="exportDashboardGrowthCsv">予測履歴をCSVで書き出す</button>
+              <button type="button" class="dashboardInlineBtn" data-ui-click="openDashboardGrowthBackupRestorePicker">バックアップを復元</button>
+              <button id="dashboardGrowthArchiveRetry" type="button" class="dashboardInlineBtn" data-ui-click="retryDashboardGrowthHistory" hidden>履歴を再保存</button>
+            </div>
+            <input id="dashboardGrowthBackupRestoreFile" type="file" accept="application/json,.json" data-ui-change="importDashboardGrowthBackupFile" data-ui-element-first="true" hidden>
+            <p id="dashboardGrowthRestoreStatus" role="status" aria-live="polite"></p>
+            <div id="dashboardGrowthSavedEvaluation"></div>
+          </details>
+          <p class="dashboardGrowthDisclaimer">対象品種：マルチリーフエアリ。実績が少ない間は参考値です。外気から推定するため、ハウス内の湿度・気流・養液などの影響は完全には分かりません。症状の注意表示は発生確率ではありません。</p>
           <p class="dashboardGrowthAttribution">出典：<a href="https://www.jma.go.jp/" target="_blank" rel="noopener noreferrer">気象庁ホームページ</a>をもとにHarvestnaviが加工</p>
           <div id="dashboardGrowthLocationBar" class="dashboardGrowthLocationBar">
             <div>

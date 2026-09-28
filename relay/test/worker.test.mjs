@@ -4,12 +4,16 @@ import test from "node:test";
 
 import worker, {
   buildJmaForecastDaily,
+  buildGrowthWeatherResponse,
   canAttemptGrowthWeatherRefresh,
   getGrowthWeatherRetryDelayMs,
+  getGrowthWeatherCoverage,
+  getGrowthWeatherHistoryPlan,
   getJmaLightIndexFromSunshineHours,
   parseJmaPastDailyCsv,
   parseJmaPrefectureOptions,
   parseJmaStationOptions,
+  mergeGrowthWeatherDaily,
   relayTokenMatches,
   tokensMatch,
   validateBatchPayload,
@@ -294,7 +298,9 @@ test("JMA past daily CSV is converted to observation growth inputs", () => {
     "2026,9,21,25.7,6.2,0",
     "2026,9,22,,2.5"
   ].join("\r\n"));
-  assert.deepEqual(daily, [{
+  assert.deepEqual(daily.map(({ date, meanTemp, sunshineHours, lightIndex, source }) => (
+    { date, meanTemp, sunshineHours, lightIndex, source }
+  )), [{
     date:"2026-09-20",
     meanTemp:26.7,
     sunshineHours:0.3,
@@ -306,7 +312,11 @@ test("JMA past daily CSV is converted to observation growth inputs", () => {
     sunshineHours:6.2,
     lightIndex:0.775,
     source:"observation"
+  }, {
+    date:"2026-09-22", meanTemp:null, sunshineHours:2.5, lightIndex:0.3125, source:"observation"
   }]);
+  assert.equal(daily[2].quality.temperature, "missing-or-invalid");
+  assert.equal(daily[0].sunshineSource, "jma-reported-duration");
   assert.equal(getJmaLightIndexFromSunshineHours(9.6), 1.2);
 });
 
@@ -383,4 +393,137 @@ test("growth weather retries use staged backoff", () => {
     next_attempt_at:"2026-09-24T05:59:59.000Z"
   }, now), true);
   assert.equal(canAttemptGrowthWeatherRefresh({ status:"ready" }, now), true);
+});
+
+test("observation parsing preserves zero and missing fields without inventing quality or timestamps", () => {
+  const retrievedAt = "2026-09-24T06:00:00.000Z";
+  const daily = parseJmaPastDailyCsv([
+    "2026,9,20,0,0",
+    "2026,9,21,200,8",
+    "2026,9,22,20,-1",
+    "2026,9,23,-61,25",
+    "2026,2,30,20,8"
+  ].join("\n"), { retrievedAt });
+  assert.equal(daily.length, 3);
+  assert.equal(daily[0].meanTemp, 0);
+  assert.equal(daily[0].sunshineHours, 0);
+  assert.equal(daily[0].quality.sunshine, "reported-quality-unavailable");
+  assert.equal(daily[1].meanTemp, null);
+  assert.equal(daily[2].sunshineHours, null);
+  assert.equal(daily[2].lightIndex, null);
+  assert.equal(daily[2].lightSource, "missing");
+  assert.equal(daily[0].retrievedAt, retrievedAt);
+  assert.equal(parseJmaPastDailyCsv("2026,9,20,20,8")[0].retrievedAt, null);
+  for(const value of [null, undefined, "", " ", true, -1, 25]){
+    assert.equal(getJmaLightIndexFromSunshineHours(value), null);
+  }
+});
+
+test("forecast provenance records issue times and matches weekly temperatures to the selected station", () => {
+  const forecast = buildJmaForecastDaily([{
+    reportDatetime:"2026-09-24T11:00:00+09:00",
+    timeSeries:[{
+      timeDefines:["2026-09-24T00:00:00+09:00"],
+      areas:[
+        { area:{ code:"430010" }, weatherCodes:["100"] },
+        { area:{ code:"430030" }, weatherCodes:["300"] }
+      ]
+    }, {
+      timeDefines:["2026-09-24T00:00:00+09:00", "2026-09-24T09:00:00+09:00"],
+      areas:[
+        { area:{ code:"86141", name:"熊本" }, temps:["21", "30"] },
+        { area:{ code:"86491", name:"牛深" }, temps:["23", "31"] }
+      ]
+    }]
+  }, {
+    reportDatetime:"2026-09-24T05:00:00+09:00",
+    timeSeries:[{
+      timeDefines:["2026-09-24T00:00:00+09:00", "2026-09-25T00:00:00+09:00"],
+      areas:[{ area:{ code:"430000" }, weatherCodes:["100", ""], reliabilities:["A", "C"] }]
+    }, {
+      timeDefines:["2026-09-24T00:00:00+09:00", "2026-09-25T00:00:00+09:00"],
+      areas:[
+        { area:{ code:"86141" }, tempsMin:["10", "10"], tempsMax:["20", "20"] },
+        { area:{ code:"86491" }, tempsMin:["23", null], tempsMax:["31", "32"] }
+      ]
+    }],
+    tempAverage:{ areas:[{ area:{ code:"86491" }, min:"18", max:"28" }] }
+  }], { officeCode:"430000", forecastAreaCode:"430030" });
+  const [first, second] = forecast.daily;
+  assert.equal(first.meanTemp, 27);
+  assert.equal(first.temperatureStationCode, "86491");
+  assert.equal(first.issuedAt, "2026-09-24T02:00:00.000Z");
+  assert.equal(first.lightIssuedAt, first.issuedAt);
+  assert.equal(first.lightSource, "weather-code");
+  assert.equal(first.estimatedTemperature, false);
+  assert.equal(second.meanTemp, 25);
+  assert.equal(second.minTemp, 18);
+  assert.equal(second.estimatedTemperature, true);
+  assert.equal(second.estimatedLight, true);
+  assert.equal(second.lightSource, "fallback");
+  assert.equal(second.reliability, "C");
+  assert.equal(second.issuedAt, "2026-09-23T20:00:00.000Z");
+  assert.equal(forecast.issuedAt, first.issuedAt);
+});
+
+test("coverage reports missing days and fields and revisions cannot erase valid observations", () => {
+  const existing = parseJmaPastDailyCsv("2026,9,20,20,8\n2026,9,21,21,7");
+  const partial = parseJmaPastDailyCsv("2026,9,20,,6\n2026,9,23,22,");
+  const daily = mergeGrowthWeatherDaily(existing, partial, [{
+    date:"2026-09-20", meanTemp:30, lightIndex:1, source:"forecast"
+  }], "2026-09-20");
+  assert.equal(daily[0].meanTemp, 20);
+  assert.equal(daily[0].sunshineHours, 6);
+  assert.equal(daily[0].source, "observation");
+  assert.equal(daily[1].date, "2026-09-21");
+  const coverage = getGrowthWeatherCoverage(daily, "2026-09-20", "2026-09-23");
+  assert.equal(coverage.completeDays, 2);
+  assert.equal(coverage.lastCompleteDate, "2026-09-21");
+  assert.equal(coverage.lastObservationDate, "2026-09-23");
+  assert.equal(coverage.temperatureMissingDays, 1);
+  assert.equal(coverage.lightMissingDays, 2);
+  assert.deepEqual(coverage.missingDates, ["2026-09-22", "2026-09-23"]);
+});
+
+test("weather history refresh retries recent gaps and rotates bounded older repairs once daily", () => {
+  const row = {
+    history_start_date:"2026-01-01",
+    history_through:"2026-09-23",
+    daily_json:"[]",
+    normal_json:"{}"
+  };
+  const now = new Date("2026-09-24T06:00:00.000Z");
+  const initial = getGrowthWeatherHistoryPlan({}, "2026-01-01", "2026-09-23", now);
+  assert.deepEqual(initial.ranges, [{ startDate:"2026-01-01", endDate:"2026-09-23" }]);
+  const plan = getGrowthWeatherHistoryPlan(row, "2026-01-01", "2026-09-23", now);
+  assert.deepEqual(plan.ranges, [
+    { startDate:"2026-09-16", endDate:"2026-09-23" },
+    { startDate:"2026-01-01", endDate:"2026-01-31" }
+  ]);
+  row.normal_json = JSON.stringify({ historyRepair:plan.repair });
+  const sameDay = getGrowthWeatherHistoryPlan(row, "2026-01-01", "2026-09-23", now);
+  assert.equal(sameDay.ranges.length, 1);
+  const nextDay = getGrowthWeatherHistoryPlan(row, "2026-01-01", "2026-09-24", new Date("2026-09-25T06:00:00.000Z"));
+  assert.equal(nextDay.ranges[1].startDate, "2026-02-01");
+});
+
+test("weather snapshots expose actual coverage, forecast issue time and stale cache status", () => {
+  const row = {
+    status:"ready", refreshed_at:new Date().toISOString(), requested_start_date:"2026-09-20",
+    history_start_date:"2026-09-20", history_through:"2026-09-20",
+    normal_json:JSON.stringify({ historyCheckedThrough:"2026-09-23" }),
+    daily_json:JSON.stringify([
+      ...parseJmaPastDailyCsv("2026,9,20,20,8"),
+      { date:"2026-09-24", source:"forecast", issuedAt:"2026-09-24T02:00:00.000Z" }
+    ])
+  };
+  const result = buildGrowthWeatherResponse(row);
+  assert.equal(result.schemaVersion, 4);
+  assert.equal(result.stale, false);
+  assert.equal(result.forecastIssuedAt, "2026-09-24T02:00:00.000Z");
+  assert.equal(result.historyThrough, "2026-09-20");
+  assert.equal(result.historyCoverage.missingDays, 3);
+  assert.equal(buildGrowthWeatherResponse(row, { stale:true }).stale, true);
+  assert.equal(buildGrowthWeatherResponse({ ...row, status:"retry" }).stale, true);
+  assert.equal(buildGrowthWeatherResponse({ ...row, refreshed_at:null }).fetchedAt, 0);
 });
