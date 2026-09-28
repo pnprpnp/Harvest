@@ -3,10 +3,10 @@
  * All predictions remain reference-only until prospective validation exists.
  */
 (function(root, factory){
-  const api = factory();
+  const api = factory(typeof module === "object" && module.exports ? require("./growth-model.js") : root?.HarvestGrowthModel);
   if(typeof module === "object" && module.exports) module.exports = api;
   if(root) root.HarvestGrowthRisk = api;
-})(typeof globalThis === "object" ? globalThis : this, function(){
+})(typeof globalThis === "object" ? globalThis : this, function(weatherEngine){
   "use strict";
   const DAY = 86400000;
   const SYMPTOMS = ["elongated", "uneven", "tipburn"];
@@ -60,7 +60,8 @@
         || (timestamp(a.availableAt) || 0) - (timestamp(b.availableAt) || 0));
     return adjustment(applicable.reduce((result, regime) => ({ ...result, ...regime }), value || {}));
   }
-  function normalizeWeather(raw){
+  function normalizeWeather(raw, instant){
+    if(raw?.weatherPolicy === "provider-fallback-v1" && weatherEngine?.normalizeWeatherAt) return weatherEngine.normalizeWeatherAt(raw, instant);
     const date = dateKey(raw?.date);
     if(!date) return null;
     const temperature = numeric(raw.meanTemp);
@@ -77,7 +78,7 @@
   function prepareWeather(weatherDaily, boundary){
     const observations = new Map(), forecasts = new Map();
     (Array.isArray(weatherDaily) ? weatherDaily : []).forEach(raw => {
-      const day = normalizeWeather(raw);
+      const day = normalizeWeather(raw, boundary.instant);
       if(!day) return;
       // Download time does not change when an old observation was measured.
       const availableAt = timestamp(day.source === "observation" ? (day.availableAt || day.observedAt)

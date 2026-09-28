@@ -456,8 +456,8 @@ test("forecast provenance records issue times and matches weekly temperatures to
   assert.equal(first.lightIssuedAt, first.issuedAt);
   assert.equal(first.lightSource, "weather-code");
   assert.equal(first.estimatedTemperature, false);
-  assert.equal(second.meanTemp, 25);
-  assert.equal(second.minTemp, 18);
+  assert.equal(second.meanTemp, null);
+  assert.equal(second.minTemp, null);
   assert.equal(second.estimatedTemperature, true);
   assert.equal(second.estimatedLight, true);
   assert.equal(second.lightSource, "fallback");
@@ -518,7 +518,7 @@ test("weather snapshots expose actual coverage, forecast issue time and stale ca
     ])
   };
   const result = buildGrowthWeatherResponse(row);
-  assert.equal(result.schemaVersion, 4);
+  assert.equal(result.schemaVersion, 5);
   assert.equal(result.stale, false);
   assert.equal(result.forecastIssuedAt, "2026-09-24T02:00:00.000Z");
   assert.equal(result.historyThrough, "2026-09-20");

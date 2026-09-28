@@ -31,6 +31,27 @@
     await reject(()=>HarvestGrowthHistory.get("invalid-id"),"不正IDを受理した");
     assert((await HarvestGrowthHistory.backupScope(scope)).rows.length===1,"読込みで履歴件数が変わった");
   });
+  await run("代替気象の出所・式・取得時刻はバックアップで維持し、補完前の予測履歴を変更しない",async()=>{
+    const scope=base+":fallback";
+    const oldWeather=await HarvestGrowthHistory.save(scope,"weather-input","2026-09-28",{daily:[{date:"2026-09-27",source:"observation",meanTemp:20,lightIndex:null}]});
+    const oldPrediction=await HarvestGrowthHistory.save(scope,"prediction","2026-09-28",{weatherInputId:oldWeather,predictions:[{status:"unknown"}]});
+    const original=JSON.stringify(await HarvestGrowthHistory.get(oldPrediction));
+    const daily=[{date:"2026-09-27",source:"observation",provider:"jma",meanTemp:20,minTemp:15,maxTemp:25,lightIndex:0.56,
+      weatherPolicy:"provider-fallback-v1",estimatedTemperature:false,estimatedLight:true,fallbackUsed:true,fallbackProvider:"nasa-power",
+      fallbackFields:["lightIndex"],jmaValues:{meanTemp:20,minTemp:15,maxTemp:25,lightIndex:null},
+      fieldSources:{lightIndex:{provider:"nasa-power",parameter:"ALLSKY_SFC_SW_DWN,CLRSKY_SFC_SW_DWN",unit:"MJ/hr",
+        formula:"clamp(1.12 * solar / clear, 0.3, 1.2)",estimated:true,retrievedAt:"2026-09-28T12:00:00Z",availableAt:"2026-09-28T12:00:00Z"}}}];
+    const newWeather=await HarvestGrowthHistory.save(scope,"weather-input","2026-09-28",{daily});
+    const newPrediction=await HarvestGrowthHistory.save(scope,"prediction","2026-09-28",{weatherInputId:newWeather,predictions:[{status:"normal",weatherFallbacks:daily}]});
+    assert(oldWeather!==newWeather&&oldPrediction!==newPrediction,"補完前後の入力・予測を上書きした");
+    assert(JSON.stringify(await HarvestGrowthHistory.get(oldPrediction))===original,"保存済み予測を変更した");
+    const target=scope+":restore",backup=await HarvestGrowthHistory.backupScope(scope);
+    const restored=await HarvestGrowthHistory.mergeBackup(backup,{sourceScope:scope,targetScope:target});
+    const saved=await HarvestGrowthHistory.get(restored.idMap[newWeather]);
+    assert(JSON.stringify(saved.payload.daily)===JSON.stringify(daily),"復元で出所・単位・式・取得時刻を失った");
+    const linked=await HarvestGrowthHistory.get(restored.idMap[newPrediction]);
+    assert(linked.payload.weatherInputId===saved.id,"復元後の気象入力参照が切れた");
+  });
   await run("バックアップは指定した保存先だけを読込み、旧IDを保持して復元する",async()=>{
     const scope=base+":merge", weather=await row(scope,"weather","2026-09-20",{daily:[]});
     const prediction=await row(scope,"prediction","2026-09-20",{weatherId:weather.id,predictions:[]});

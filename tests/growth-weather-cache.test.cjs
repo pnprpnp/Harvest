@@ -7,7 +7,7 @@ function setup(initial){
   const daily=[{date:"2026-09-27",source:"forecast",meanTemp:20,lightIndex:1,issuedAt:"2026-09-27T05:00:00+09:00"}];
   const c=vm.createContext({Date:Clock,DASHBOARD_GROWTH_WEATHER_CACHE_KEY:"cache",getDashboardGrowthLocationKey:()=>"station",
     getDashboardGrowthWeatherCache:()=>cached,harvestnaviLocalStorage:{writeJson:(key,value)=>{cached=value;}},
-    fetchDashboardGrowthWeatherFromRelay:async()=>{calls++;if(fail) throw new Error("offline");return {daily,fetchedAt:clock,forecastEndDate:"2026-09-27",stale,
+    fetchDashboardGrowthWeatherFromRelay:async()=>{calls++;if(fail) throw new Error("offline");return {daily,fetchedAt:clock,forecastEndDate:"2026-09-27",stale,weatherPolicy:"provider-fallback-v1",
       refreshStatus:stale ? "retry" : "ready",lastError:stale ? "upstream error" : "",nextAttemptAt:stale ? "2026-09-27T04:00:00.000Z" : null};}});
   const start=source.indexOf("async function loadDashboardGrowthWeather("),end=source.indexOf("\nfunction getDashboardGrowthMedian",start);
   vm.runInContext(source.slice(start,end),c);
@@ -28,4 +28,11 @@ test("offline fallback preserves archived days and original forecast end",async(
   const result=await f.load();assert.equal(result.stale,true);assert.deepEqual(result.daily,prior.daily);
   assert.equal(result.forecastEndDate,prior.forecastEndDate);assert.equal(f.cached.successfulAt,prior.successfulAt);
   assert.equal(result.fetchError,"offline");assert.equal(f.cached.fetchError,undefined);
+});
+test("legacy cache is refreshed once for the new weather policy but remains available offline",async()=>{
+  const old={daily:[{date:"2026-09-27",source:"forecast",meanTemp:20,lightIndex:1}],successfulAt:Date.parse("2026-09-27T11:00:00+09:00"),stale:false};
+  const online=setup(old);assert.equal((await online.load()).usedCache,false);assert.equal(online.calls,1);
+  assert.equal(online.cached.weatherPolicy,"provider-fallback-v1");assert.equal((await online.load()).usedCache,true);
+  const offline=setup(old);offline.fail=true;const result=await offline.load();assert.equal(result.usedCache,true);
+  assert.equal(offline.cached,old);assert.deepEqual(result.daily,old.daily);
 });

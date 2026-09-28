@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260928-growth-weather-gaps">
+<meta name="harvestnavi-version" content="20260928-weather-provider-fallback">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -457,13 +457,47 @@ const HarvestGrowthHistory = (() => {
     return { ...day, date, meanTemp, minTemp, maxTemp, lightIndex, sunshineHours,
       lightSource:sunshineHours !== null ? "sunshine" : "weather-code" };
   }
+  function normalizeWeatherAt(raw, instant){
+    if(raw?.weatherPolicy !== "provider-fallback-v1") return normalizeWeather(raw);
+    const day = {...raw, fieldSources:{...raw.fieldSources}};
+    const accepted = [];
+    const fallbackFields = ["meanTemp","minTemp","maxTemp","lightIndex"].filter(field =>
+      raw.fallbackFields?.includes(field) || raw.fieldSources?.[field]?.provider && raw.fieldSources[field].provider !== "jma");
+    for(const field of fallbackFields){
+      const evidence = raw.fieldSources?.[field];
+      const availableAt = timestamp(evidence?.availableAt || evidence?.retrievedAt);
+      const issuedAt = timestamp(evidence?.issuedAt);
+      const allowed = evidence?.provider === (raw.source === "observation" ? "nasa-power" : "met-no")
+        && availableAt !== null && availableAt <= instant
+        && (raw.source === "observation" || issuedAt !== null && issuedAt <= instant
+          && evidence.completeDailyCoverage === true && Math.abs(evidence.coverageHours - 24) < 1e-6);
+      if(allowed) accepted.push(field);
+      else {day[field] = raw.jmaValues?.[field] ?? null;day.fieldSources[field] = raw.jmaFieldSources?.[field];}
+    }
+    day.fallbackFields = accepted; day.fallbackUsed = accepted.length > 0;
+    day.fallbackProvider = day.fallbackUsed ? day.fieldSources[accepted[0]].provider : null;
+    day.estimatedTemperature = day.meanTemp === null || accepted.some(field => ["meanTemp","minTemp","maxTemp"].includes(field));
+    day.estimatedLight = day.lightIndex === null || accepted.includes("lightIndex");
+    const normalized = normalizeWeather(day);
+    if(normalized){
+      // New provider inputs must not turn a missing historical mean into an
+      // unrecorded extrema average. Derived JMA forecasts are explicit upstream.
+      if(day.meanTemp === null) normalized.meanTemp = null;
+      if(accepted.includes("lightIndex")) normalized.lightSource = day.fieldSources.lightIndex.provider === "nasa-power" ? "relative-solar-radiation" : "cloud-cover-reference";
+      normalized.estimated = day.fallbackUsed;
+    }
+    return normalized;
+  }
   function prepareWeather(weatherDaily, options = {}){
     const asOf = dateKey(options.asOf);
     if(!asOf) throw new Error("Growth model requires an explicit valid asOf date");
     const instant = cutoffInstant(options.asOf);
+    // Old saved inputs retain their exact historical interpolation semantics.
+    const strictWeather = options.weatherPolicy === "provider-fallback-v1"
+      || (weatherDaily || []).some(day => day?.weatherPolicy === "provider-fallback-v1");
     const observations = new Map(), forecasts = new Map(), received = new Map();
     const ingest = (raw, inheritedIssue) => {
-      const day = normalizeWeather(raw);
+      const day = normalizeWeatherAt(raw, instant);
       if(!day) return;
       received.set(day.date, inheritedIssue && day.source === "forecast"
         ? { ...day, forecastIssuedAt:day.forecastIssuedAt || inheritedIssue } : day);
@@ -475,7 +509,7 @@ const HarvestGrowthHistory = (() => {
         if(day.date < asOf && (availableAt === null || availableAt <= instant)) observations.set(day.date, day);
         return;
       }
-      if(day.source !== "forecast" || day.date < asOf) return;
+      if(day.source !== "forecast" || day.date < asOf || day.jmaForecastEndDate && day.date > day.jmaForecastEndDate) return;
       const availableAt = timestamp(day.availableAt || day.capturedAt || day.retrievedAt);
       const issuedAt = timestamp(day.issuedAt || day.forecastIssuedAt || inheritedIssue);
       if(issuedAt === null || issuedAt > instant || availableAt !== null && availableAt > instant) return;
@@ -520,10 +554,18 @@ const HarvestGrowthHistory = (() => {
       // A future day is usable only when that day's issued JMA forecast supplies
       // the inputs. Never extend the forecast with climate or generic normals.
       if(date >= asOf){
+        const verified = direct?.weatherPolicy === "provider-fallback-v1";
         const future = direct?.source === "forecast" && direct.meanTemp !== null && direct.lightIndex !== null
-          && !direct.estimatedTemperature && !direct.estimatedLight ? { ...direct, estimated:false } : null;
+          && (!direct.estimatedTemperature || verified && usableField(direct, "meanTemp"))
+          && (!direct.estimatedLight || verified && usableField(direct, "lightIndex"))
+          ? { ...direct, estimated:!!direct.fallbackUsed } : null;
         dayCache.set(date, future);
         return future;
+      }
+      if(strictWeather){
+        const day = direct && direct.meanTemp !== null && direct.lightIndex !== null ? {...direct, estimated:!!direct.fallbackUsed} : null;
+        dayCache.set(date, day);
+        return day;
       }
       const fallback = climate(date);
       const validDirect = direct && direct.meanTemp !== null && direct.lightIndex !== null;
@@ -536,6 +578,11 @@ const HarvestGrowthHistory = (() => {
     }
     const forecastEndDate = [...forecasts.keys()].sort().pop() || null;
     const gapCache = new Map(), gapRangeCache = new Map();
+    function usableField(day, field){
+      const evidence = day.fieldSources?.[field];
+      return evidence?.provider === "jma" && numeric(day[field]) !== null
+        || day.fallbackFields?.includes(field) && ["nasa-power","met-no"].includes(evidence?.provider) && numeric(day[field]) !== null;
+    }
     function getGap(date){
       if(gapCache.has(date)) return gapCache.get(date);
       const future = date >= asOf;
@@ -548,12 +595,16 @@ const HarvestGrowthHistory = (() => {
           code = future && issuedAt === null ? "missingIssueTime" : "notAvailableAtCutoff";
         }else code = future ? (!forecastEndDate || date > forecastEndDate ? "outsideForecast" : "noForecast") : "noObservation";
       }else{
-        if(direct.meanTemp === null || direct.estimatedTemperature) fields.push("temperature");
-        if(direct.lightIndex === null || direct.estimatedLight) fields.push("light");
+        if(direct.meanTemp === null || direct.estimatedTemperature && !(strictWeather && usableField(direct,"meanTemp"))) fields.push(strictWeather ? "meanTemp" : "temperature");
+        if(direct.lightIndex === null || direct.estimatedLight && !(strictWeather && usableField(direct,"lightIndex"))) fields.push("light");
+        if(strictWeather){
+          if(direct.minTemp === null) fields.push("minTemp");
+          if(direct.maxTemp === null) fields.push("maxTemp");
+        }
         if(fields.length) code = "missingFields";
       }
       const gap = code ? { date, kind:future ? "forecast" : "observation", code, fields,
-        unavailable:future, estimated:!future, source:raw?.source || null } : null;
+        unavailable:strictWeather ? !getDay(date) : future, estimated:!strictWeather && !future, source:raw?.source || null } : null;
       gapCache.set(date, gap);
       return gap;
     }
@@ -569,7 +620,20 @@ const HarvestGrowthHistory = (() => {
       gapRangeCache.set(key, gaps);
       return gaps;
     }
-    return { asOf, asOfInstant:instant, forecastEndDate, observations, forecasts, climate, getDay, getGap, getGaps, unitCache,
+    const fallbackRangeCache = new Map();
+    function getFallbacks(start, end){
+      if(!dateKey(start) || !dateKey(end) || start > end || daysBetween(start, end) > 730) return [];
+      const key = `${start}|${end}`;
+      if(fallbackRangeCache.has(key)) return fallbackRangeCache.get(key);
+      const rows = [];
+      for(let date = start; date <= end; date = addDays(date, 1)){
+        const day = observations.get(date) || forecasts.get(date);
+        if(day?.fallbackUsed) rows.push({date, provider:day.fallbackProvider, fields:day.fallbackFields,
+          fieldSources:day.fieldSources, retrievedAt:day.retrievedAt});
+      }
+      fallbackRangeCache.set(key, rows);return rows;
+    }
+    return { asOf, asOfInstant:instant, forecastEndDate, observations, forecasts, climate, getDay, getGap, getGaps, getFallbacks, unitCache,
       provenance:{ historicalForecasts:forecasts.size, observationDays:observations.size } };
   }
   function dailyUnit(day, manual, parameter = PARAMETERS[0]){
@@ -588,7 +652,7 @@ const HarvestGrowthHistory = (() => {
     const manual = adjustment(manualValue);
     const cacheKey = `${start}|${end}|${manual.temperatureOffsetC}|${manual.lightMultiplier}|${parameter.id}|${regimes.length ? JSON.stringify(regimes) : ""}`;
     if(context.unitCache.has(cacheKey)) return context.unitCache.get(cacheKey);
-    const counts = { observed:0, forecast:0, estimated:0, missing:0, total:0, default:0, unavailable:0 };
+    const counts = { observed:0, forecast:0, estimated:0, missing:0, total:0, default:0, unavailable:0, fallback:0 };
     let total = 0, informationWeight = 0, forecastWeight = 0, maxForecastAgeDays = null;
     for(let date = start; date <= end; date = addDays(date, 1)){
       const day = context.getDay(date);
@@ -601,9 +665,10 @@ const HarvestGrowthHistory = (() => {
       if(forecastAge !== null) maxForecastAgeDays = Math.max(maxForecastAgeDays || 0, forecastAge);
       if(day.estimated || !["forecast", "observation"].includes(day.source)){
         counts.estimated++;
+        if(day.fallbackUsed) counts.fallback++;
         informationWeight += day.source === "default" ? 0.1 : 0.3;
         if(day.source === "default") counts.default++;
-        if(day.source === "observation" || date < context.asOf) counts.missing++;
+        if(!day.fallbackUsed && (day.source === "observation" || date < context.asOf)) counts.missing++;
       }else if(day.source === "observation"){
         counts.observed++; informationWeight++;
       }else{
@@ -894,10 +959,11 @@ const HarvestGrowthHistory = (() => {
       && output.weatherReliability >= 0.8 && (output.forecastAgeDays === null || output.forecastAgeDays <= 2)){
       level = "moderate"; label = "中";
     }
-    if(output.positionFallback && level === "moderate"){ level = "reference"; label = "参考値"; }
+    if((output.positionFallback || counts.fallback > 0) && level === "moderate"){ level = "reference"; label = "参考値"; }
     return { level, label, grade:level === "moderate" ? "medium" : "low", gradeLabel:level === "moderate" ? "中" : "低",
       validationCount:evidence.labelledCount, historicalAccuracy:evidence.accuracy,
-      weatherReliability:output.weatherReliability ?? null, forecastAgeDays:output.forecastAgeDays ?? null };
+      weatherReliability:output.weatherReliability ?? null, forecastAgeDays:output.forecastAgeDays ?? null,
+      ...(counts.fallback ? {reason:`代替気象を${counts.fallback}日使用。気象庁だけの予測より低い情報重みで参考値として表示`, fallbackDays:counts.fallback} : {}) };
   }
   function breakdownMetrics(rows){
     const latest = rows.map(row => row.outcomeDate).filter(Boolean).sort().pop();
@@ -1122,6 +1188,7 @@ const HarvestGrowthHistory = (() => {
     const rows = (model.validation.rows[model.selectedMethod] || []).filter(row => evaluationAvailableBefore(row, context.asOf, context.asOfInstant));
     const output = predictCandidate(model.candidate, context, input, rows);
     const weatherGaps = context.getGaps(dateKey(input.plantingDate), dateKey(input.targetDate));
+    const weatherFallbacks = context.getFallbacks(dateKey(input.plantingDate), dateKey(input.targetDate));
     const evidence = metrics(rows);
     const counts = output.dayCounts || { total:0, estimated:0, forecast:0 };
     // No 'high' before field calibration with independent date observations.
@@ -1131,13 +1198,13 @@ const HarvestGrowthHistory = (() => {
     if(output.ratio !== null) reasons.push(`予定日の生育指数は目標の${Math.round(output.ratio * 100)}%`);
     reasons.push(`独立した過去${model.candidate.independentCrops}作を使用`);
     if(model.selectedMethod === "calendar") reasons.push("栽培日数による比較。気象係数は未使用");
-    else if(counts.total) reasons.push(`実測${counts.observed}日・予報${counts.forecast}日・推定${counts.estimated}日`);
+    else if(counts.total) reasons.push(`実測${counts.observed}日・予報${counts.forecast}日・代替${counts.fallback || 0}日・推定${counts.estimated - (counts.fallback || 0)}日`);
     if(output.forecastAgeDays > 2) reasons.push(`予報の発表から最大${Math.round(output.forecastAgeDays * 10) / 10}日経過。参考値として表示`);
     if(!model.candidate.anchorCount) reasons.push("実測の適期開始日が不足。サイズの区間制約と初期目安による参考値");
     if(output.positionFallback) reasons.push("この位置の実績が不足しているためベッド・号棟の目安を使用");
     if(model.stage === "collecting") reasons.push("追加の自動補正は精度改善を未確認のため未採用");
     if(model.selectionFallback) reasons.push("検証で選んだ方式を現在のデータでは計算できないため基本方式を使用");
-    return { ...output, weatherGaps, schemaVersion:VERSION, method:model.selectedMethod, stage:model.stage,
+    return { ...output, weatherGaps, weatherFallbacks, schemaVersion:VERSION, method:model.selectedMethod, stage:model.stage,
       confidence:confidenceFor(model.candidate, evidence, output),
       validation:evidence, reasons, mainReasons:reasons.slice(0, 3),
       readyDateKind:model.candidate.anchorCount ? "estimated-reference" : "initial-rule-reference" };
@@ -1244,7 +1311,7 @@ const HarvestGrowthHistory = (() => {
       stage:candidate.independentCrops < 8 ? "initial" : "approved", selectionFallback:null, restored:true };
   }
   return Object.freeze({ schemaVersion:VERSION, fit, predict, backtest, prepareWeather,
-    summarize, exportModel, hydrateModel, comparePredictions, diagnoseWeather, normalizeSamples, metrics, dateKey, addDays, daysBetween,
+    summarize, exportModel, hydrateModel, comparePredictions, diagnoseWeather, normalizeWeatherAt, normalizeSamples, metrics, dateKey, addDays, daysBetween,
     _test:{ dailyUnit, accumulate, buildCandidate, predictCandidate, compareGate, targetFor, PARAMETERS,
       evaluationAvailableBefore, pickParameter, selectValidatedMethod } });
 });
@@ -2027,10 +2094,10 @@ const HarvestGrowthHistory = (() => {
  * All predictions remain reference-only until prospective validation exists.
  */
 (function(root, factory){
-  const api = factory();
+  const api = factory(typeof module === "object" && module.exports ? require("./growth-model.js") : root?.HarvestGrowthModel);
   if(typeof module === "object" && module.exports) module.exports = api;
   if(root) root.HarvestGrowthRisk = api;
-})(typeof globalThis === "object" ? globalThis : this, function(){
+})(typeof globalThis === "object" ? globalThis : this, function(weatherEngine){
   "use strict";
   const DAY = 86400000;
   const SYMPTOMS = ["elongated", "uneven", "tipburn"];
@@ -2084,7 +2151,8 @@ const HarvestGrowthHistory = (() => {
         || (timestamp(a.availableAt) || 0) - (timestamp(b.availableAt) || 0));
     return adjustment(applicable.reduce((result, regime) => ({ ...result, ...regime }), value || {}));
   }
-  function normalizeWeather(raw){
+  function normalizeWeather(raw, instant){
+    if(raw?.weatherPolicy === "provider-fallback-v1" && weatherEngine?.normalizeWeatherAt) return weatherEngine.normalizeWeatherAt(raw, instant);
     const date = dateKey(raw?.date);
     if(!date) return null;
     const temperature = numeric(raw.meanTemp);
@@ -2101,7 +2169,7 @@ const HarvestGrowthHistory = (() => {
   function prepareWeather(weatherDaily, boundary){
     const observations = new Map(), forecasts = new Map();
     (Array.isArray(weatherDaily) ? weatherDaily : []).forEach(raw => {
-      const day = normalizeWeather(raw);
+      const day = normalizeWeather(raw, boundary.instant);
       if(!day) return;
       // Download time does not change when an old observation was measured.
       const availableAt = timestamp(day.source === "observation" ? (day.availableAt || day.observedAt)
@@ -17218,6 +17286,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .dashboardGrowthWeatherShortage{min-width:0;font-size:10px;line-height:1.5;overflow-wrap:anywhere;}
 .dashboardGrowthWeatherGapList{display:grid;gap:8px;margin:8px 0;padding-left:18px;}
 .dashboardGrowthWeatherGapList li > strong,.dashboardGrowthWeatherGapList li > span{display:block;}
+.dashboardGrowthWeatherGapList small{display:block;color:var(--ui-text-secondary);font-size:9px;overflow-wrap:anywhere;}
 .dashboardGrowthReadyDate{margin:8px 0;font-size:11px;font-weight:700;}
 .dashboardGrowthPlanning{display:grid;gap:8px;margin:0 0 12px;}
 .dashboardGrowthPlanning:empty{display:none;}
@@ -39187,7 +39256,7 @@ async function fetchDashboardGrowthWeatherFromRelay(location){
 async function loadDashboardGrowthWeather(location, options = {}){
   const cached = getDashboardGrowthWeatherCache(location);
   const cacheAge = cached ? Date.now() - Number(cached.successfulAt || cached.fetchedAt || 0) : Infinity;
-  if(!options.force && cached && !cached.stale && cacheAge >= 0 && cacheAge < 24 * 60 * 60 * 1000){
+  if(!options.force && cached && cached.weatherPolicy === "provider-fallback-v1" && !cached.stale && cacheAge >= 0 && cacheAge < 24 * 60 * 60 * 1000){
     return { ...cached, usedCache:true };
   }
   let relayWeather = null;
@@ -39215,6 +39284,8 @@ async function loadDashboardGrowthWeather(location, options = {}){
     forecastIssuedAt:String(relayWeather.forecastIssuedAt || ""),
     retrievedAt:String(relayWeather.retrievedAt || ""),
     historyCoverage:relayWeather.historyCoverage || null,
+    weatherPolicy:relayWeather.weatherPolicy || null,
+    fallbackErrors:relayWeather.fallbackErrors || [],
     station:relayWeather.station || null,
     normal:relayWeather.normal || {},
     daily:relayWeather.daily,
@@ -40120,7 +40191,7 @@ async function retryDashboardGrowthHistory(){
 
 function buildDashboardGrowthWeatherDiagnostics(weather, context){
   if(!context?.getGap) return null;
-  const gaps = [];
+  const gaps = [], fallbacks = [];
   const start = weather.historyStartDate || weather.historyCoverage?.requestedStartDate;
   const through = weather.normal?.historyCheckedThrough || weather.historyCoverage?.requestedThrough
     || HarvestGrowthModel.addDays(context.asOf, -1);
@@ -40131,20 +40202,25 @@ function buildDashboardGrowthWeatherDiagnostics(weather, context){
     for(let date = boundedStart; date <= end; date = HarvestGrowthModel.addDays(date, 1)){
       const gap = context.getGap(date);
       if(gap) gaps.push(gap);
+      const day = context.observations.get(date);
+      if(day?.fallbackUsed) fallbacks.push({date,provider:day.fallbackProvider,fields:day.fallbackFields,fieldSources:day.fieldSources});
     }
   }
   const forecastEnd = context.forecastEndDate || context.asOf;
   for(let date = context.asOf, i = 0; date <= forecastEnd && i < 14; date = HarvestGrowthModel.addDays(date, 1), i++){
     const gap = context.getGap(date);
     if(gap) gaps.push(gap);
+    const day = context.forecasts.get(date);
+    if(day?.fallbackUsed) fallbacks.push({date,provider:day.fallbackProvider,fields:day.fallbackFields,fieldSources:day.fieldSources});
   }
-  return { gaps, observationDays:gaps.filter(gap => gap.kind === "observation").length,
+  return { gaps, fallbacks, observationDays:gaps.filter(gap => gap.kind === "observation").length,
     forecastDays:gaps.filter(gap => gap.kind === "forecast").length };
 }
 
 function getDashboardGrowthWeatherGapReason(gap){
   if(gap.code === "missingFields"){
-    const fields = gap.fields.map(field => field === "temperature" ? "気温" : (gap.kind === "observation" ? "日照時間" : "天気・日照の予報"));
+    const fields = gap.fields.map(field => ({temperature:"気温",meanTemp:"平均気温",minTemp:"最低気温",maxTemp:"最高気温"})[field]
+      || (gap.kind === "observation" ? "光・日照時間のデータ" : "天気・日照の予報"));
     return `${fields.join("・")}が欠けているか、代わりの値が入っています`;
   }
   return ({ noObservation:"保存データに観測値がありません。取得漏れ・未公開・観測地点の欠測のどれかは、保存データだけでは特定できません",
@@ -40168,9 +40244,29 @@ function getDashboardGrowthWeatherGapsHtml(gaps){
   const dateLabel = value => value.replace(/-(0?)(\d+)/g, "/$2");
   return `<ul class="dashboardGrowthWeatherGapList">${groups.map(group => {
     const range = group.start === group.end ? dateLabel(group.start) : `${dateLabel(group.start)}〜${dateLabel(group.end)}（${group.count}日）`;
-    const handling = group.gap.unavailable ? "この日を含む期間は未予測です。" : "過去の不足分は推定で補います。";
+    const handling = group.gap.unavailable ? "この日を含む期間は未予測です。" : group.gap.estimated
+      ? "過去の不足分は推定で補います。" : "補助項目のみの不足のため、生育計算は継続します。";
     return `<li><strong>${escapeHtml(range)}</strong><span>${escapeHtml(getDashboardGrowthWeatherGapReason(group.gap))}。${handling}</span></li>`;
   }).join("")}</ul>`;
+}
+
+function getDashboardGrowthWeatherFallbacksHtml(fallbacks){
+  if(!fallbacks?.length) return "";
+  const unique = [...new Map(fallbacks.map(day => [day.date,day])).values()].sort((a,b) => a.date.localeCompare(b.date));
+  const fieldName = field => ({meanTemp:"平均気温", minTemp:"最低気温", maxTemp:"最高気温", lightIndex:"光の参考指標"})[field] || field;
+  const providers = new Set(unique.map(day => day.provider));
+  const attribution = providers.has("nasa-power") ? '<a href="https://power.larc.nasa.gov/" target="_blank" rel="noopener noreferrer">NASA POWER</a>（格子データを加工）' : "";
+  const metAttribution = providers.has("met-no") ? '<a href="https://www.met.no/" target="_blank" rel="noopener noreferrer">MET Norway</a>（予報を加工、<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>）' : "";
+  return `<div class="dashboardGrowthWeatherShortage"><strong>代替による補完</strong><ul class="dashboardGrowthWeatherGapList">${unique.map(day => {
+    const provider = day.provider === "nasa-power" ? "NASA POWER" : "MET Norway（予報による補完）";
+    const details = day.fields.map(field => {
+      const evidence = day.fieldSources?.[field] || {};
+      const joined = evidence.jmaObservationHours > 0 ? `。気象庁の当日観測${Math.round(evidence.jmaObservationHours * 10) / 10}時間と予報を接続` : "";
+      return `<span>${escapeHtml(fieldName(field))} → ${escapeHtml(provider + joined)}<small>${escapeHtml([evidence.parameter, evidence.unit,
+        evidence.formula, evidence.retrievedAt ? `取得：${new Date(evidence.retrievedAt).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})}` : ""].filter(Boolean).join(" / "))}</small></span>`;
+    }).join("");
+    return `<li><strong>${escapeHtml(day.date.replace(/-(0?)(\d+)/g,"/$2"))}</strong>${details}</li>`;
+  }).join("")}</ul><p class="dashboardGrowthBasisMethod">${[attribution,metAttribution].filter(Boolean).join("・")}。実測と区別し、信頼度を下げて表示します。日射量・雲量からの指標は日照時間ではありません。</p></div>`;
 }
 
 function renderDashboardGrowthWeatherDiagnostics(model){
@@ -40189,6 +40285,7 @@ function renderDashboardGrowthWeatherDiagnostics(model){
   const status = [];
   if(weather.fetchError) status.push(`今回の取得失敗：${weather.fetchError}`);
   if(weather.lastError) status.push(`サーバーの取得失敗：${weather.lastError}`);
+  (weather.fallbackErrors || []).forEach(error => status.push(`代替データの取得：${error}`));
   if(weather.refreshStatus === "refreshing") status.push("サーバーで気象データを更新中です");
   if(weather.nextAttemptAt){
     const retry = new Date(weather.nextAttemptAt);
@@ -40197,17 +40294,20 @@ function renderDashboardGrowthWeatherDiagnostics(model){
   if(weather.stale) status.push("更新が完了していないため、保存済みの気象データを使用しています。「更新」で再取得できます");
   const summary = diagnostics.gaps.length
     ? `気象データの不足：観測${diagnostics.observationDays}日・予報${diagnostics.forecastDays}日`
-    : "気象データ：確認した期間に欠けている日はありません";
+    : `気象データ：不足なし${diagnostics.fallbacks?.length ? `・代替${diagnostics.fallbacks.length}日` : ""}`;
   container.innerHTML = `<details class="dashboardGrowthWeatherDiagnostics"><summary>${escapeHtml(summary)}</summary>
     <p>取得済みの観測期間と予報期間を確認しています。予定日までの不足日は各ベッドの「詳細」に表示します。</p>
     ${status.map(text => `<p>${escapeHtml(text)}</p>`).join("")}
-    ${getDashboardGrowthWeatherGapsHtml(diagnostics.gaps)}</details>`;
+    ${getDashboardGrowthWeatherGapsHtml(diagnostics.gaps)}
+    ${getDashboardGrowthWeatherFallbacksHtml(diagnostics.fallbacks)}</details>`;
 }
 
 function getDashboardGrowthLearningBasisHtml(item){
   const basis = item.basis || {};
   const gapsHtml = getDashboardGrowthWeatherGapsHtml((item.cohorts || []).flatMap(cohort => cohort.prediction.weatherGaps || []));
-  const weatherHtml = gapsHtml ? `<div class="dashboardGrowthWeatherShortage"><strong>対象期間の気象データ不足</strong>${gapsHtml}</div>` : "";
+  const fallbackHtml = getDashboardGrowthWeatherFallbacksHtml((item.cohorts || []).flatMap(cohort => cohort.prediction.weatherFallbacks || []));
+  const checked = (item.cohorts || []).some(cohort => cohort.prediction.dayCounts);
+  const weatherHtml = gapsHtml || fallbackHtml || checked ? `<div class="dashboardGrowthWeatherShortage"><strong>対象期間の気象データ${gapsHtml ? "不足" : "：不足なし"}</strong>${gapsHtml}</div>${fallbackHtml}` : "";
   if(!Number.isFinite(basis.currentGrowthUnits) || !Number.isFinite(basis.targetGrowthUnits)){
     return `<section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠"><strong class="dashboardGrowthBasisTitle">判定の根拠</strong><p class="dashboardGrowthBasisUnavailable">苗植え日または比較に必要なデータが不足しています。</p>${weatherHtml}</section>`;
   }
@@ -40223,7 +40323,7 @@ function getDashboardGrowthLearningBasisHtml(item){
       ? "適期日の予測幅は、苗植え日・予定日ごとの参考範囲を確認してください。"
       : "適期日の予測幅は、任意入力された日付の検証結果が不足しているため未算出です。");
   const countsText = counts => basis.units === "days" ? "栽培日数方式のため、生育計算に気象は使用していません"
-    : counts ? `観測${counts.observed || 0}日・予報${counts.forecast || 0}日・推定${counts.estimated || 0}日` : "気象日数不明";
+    : counts ? `実測${counts.observed || 0}日・予報${counts.forecast || 0}日・代替${counts.fallback || 0}日・推定${Math.max(0,(counts.estimated || 0)-(counts.fallback || 0))}日` : "気象日数不明";
   const cohortHtml = (item.cohorts || []).map(cohort => {
     const start=formatDate(cohort.prediction.readyStart || cohort.prediction.readyDate),end=cohort.prediction.readyEnd ? formatDate(cohort.prediction.readyEnd) : "終了未算出";
     const manual=cohort.input?.growthEvidence?.manualOffset;

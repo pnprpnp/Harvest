@@ -1,3 +1,5 @@
+import { WEATHER_POLICY, prepareJmaDay, reuseJmaForecast, fetchWeatherFallbacks } from "./weather-fallback.mjs";
+
 const MAX_REQUEST_BYTES = 1_000_000;
 const MAX_BATCH_ITEMS = 100;
 const FORWARD_TIMEOUT_MS = 30_000;
@@ -276,14 +278,14 @@ function buildJmaForecastDaily(forecastPayload, location){
   const daily = [...dailyByDate.values()].map(day => {
     const hasMin = getJmaTemperature(day.minTemp) !== null;
     const hasMax = getJmaTemperature(day.maxTemp) !== null;
-    const minTemp = hasMin ? Number(day.minTemp) : fallbackMin;
-    const maxTemp = hasMax ? Number(day.maxTemp) : fallbackMax;
+    const minTemp = hasMin ? Number(day.minTemp) : null;
+    const maxTemp = hasMax ? Number(day.maxTemp) : null;
     return {
       ...day,
       minTemp,
       maxTemp,
-      meanTemp:minTemp <= maxTemp ? (minTemp + maxTemp) / 2 : null,
-      lightIndex:getJmaForecastNumber(day.lightIndex) ?? 0.8,
+      meanTemp:hasMin && hasMax && minTemp <= maxTemp ? (minTemp + maxTemp) / 2 : null,
+      lightIndex:getJmaForecastNumber(day.lightIndex),
       estimatedTemperature:!hasMin || !hasMax || minTemp > maxTemp,
       estimatedLight:getJmaForecastNumber(day.lightIndex) === null,
       temperatureSource:hasMin && hasMax && minTemp <= maxTemp ? "forecast-min-max-average" : "fallback",
@@ -319,14 +321,16 @@ function parseJmaPastDailyCsv(text, options = {}){
     const dayOfMonth = Number(columns[2]);
     const date = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
     const meanTempText = String(columns[3] || "").trim();
-    const sunshineHoursText = String(columns[4] || "").trim();
+    const sunshineHoursText = String(columns[options.extrema ? 6 : 4] || "").trim();
+    const maxTemp = options.extrema ? getJmaTemperature(columns[4]) : null;
+    const minTemp = options.extrema ? getJmaTemperature(columns[5]) : null;
     const meanTemp = getJmaTemperature(meanTempText);
     const rawSunshineHours = getJmaForecastNumber(sunshineHoursText);
     const lightIndex = getJmaLightIndexFromSunshineHours(rawSunshineHours);
     const sunshineHours = lightIndex === null ? null : rawSunshineHours;
-    if(!parseDateKey(date) || (meanTemp === null && sunshineHours === null)) return [];
+    if(!parseDateKey(date) || (!options.extrema && meanTemp === null && sunshineHours === null)) return [];
     return [{
-      date, meanTemp, sunshineHours, lightIndex, source:"observation",
+      date, meanTemp, ...(options.extrema ? {minTemp,maxTemp} : {}), sunshineHours, lightIndex, source:"observation",
       temperatureSource:"jma-reported-daily-mean",
       // JMA's reported duration can be observation or an estimate depending on station/date.
       // The requested CSV omits quality flags; do not claim instrument-only measurement.
@@ -489,7 +493,7 @@ async function fetchJmaObservationDaily(stationId, startDate, endDate, options =
     body:new URLSearchParams({
       stationNumList:JSON.stringify([stationId]),
       aggrgPeriod:"1",
-      elementNumList:JSON.stringify([["201", ""], ["401", ""]]),
+      elementNumList:JSON.stringify([["201", ""], ["202", ""], ["203", ""], ["401", ""]]),
       interAnnualFlag:"1",
       interAnnualType:"1",
       ymdList:JSON.stringify([
@@ -517,7 +521,7 @@ async function fetchJmaObservationDaily(stationId, startDate, endDate, options =
   if(!response.ok) throw new Error(`気象庁の過去データを取得できません（HTTP ${response.status}）`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   const text = new TextDecoder().decode(bytes);
-  const daily = parseJmaPastDailyCsv(text, { retrievedAt:new Date().toISOString() });
+  const daily = parseJmaPastDailyCsv(text, { retrievedAt:new Date().toISOString(), extrema:true });
   if(!daily.length && (!options.allowEmpty || !/^\d{4},\d{1,2},\d{1,2},/m.test(text))){
     throw new Error("気象庁の過去データが空です");
   }
@@ -583,7 +587,7 @@ function isCompleteGrowthObservation(day){
 function getGrowthWeatherCoverage(daily, startDate, endDate){
   const observations = new Map(daily.filter(day => (
     day?.source === "observation" && parseDateKey(day.date)
-  )).map(day => [day.date, day]));
+  )).map(day => [day.date, day.jmaValues ? {...day, ...day.jmaValues} : day]));
   const dates = [...observations.keys()].sort();
   const missingDates = [];
   let temperatureMissingDays = 0;
@@ -611,9 +615,9 @@ function getGrowthWeatherCoverage(daily, startDate, endDate){
   };
 }
 
-function getGrowthWeatherHistoryPlan(row, startDate, endDate, now = new Date()){
+function getGrowthWeatherHistoryPlan(row, startDate, endDate, now = new Date(), options = {}){
   const normal = parseJsonValue(row?.normal_json, {});
-  if(!row?.history_start_date || row.history_start_date > startDate){
+  if(!row?.history_start_date || row.history_start_date > startDate || options.upgrade && normal.weatherPolicy !== WEATHER_POLICY){
     return { ranges:[{ startDate, endDate }], repair:normal.historyRepair || null };
   }
   // Re-fetch the recent overlap even when yesterday was previously checked.
@@ -625,7 +629,10 @@ function getGrowthWeatherHistoryPlan(row, startDate, endDate, now = new Date()){
   if(Number.isFinite(lastRepairTime) && now.getTime() - lastRepairTime < 24 * 60 * 60 * 1000){
     return { ranges, repair };
   }
-  const missing = getGrowthWeatherCoverage(getWeatherRowDaily(row), startDate, addDateKey(recentStart, -1)).missingDates;
+  const daily = getWeatherRowDaily(row), repairThrough = addDateKey(recentStart, -1);
+  const missing = [...new Set([...getGrowthWeatherCoverage(daily, startDate, repairThrough).missingDates,
+    ...daily.filter(day => day.source === "observation" && day.weatherPolicy === WEATHER_POLICY && day.date >= startDate && day.date <= repairThrough
+      && ["minTemp","maxTemp"].some(field => getJmaTemperature(day.jmaValues ? day.jmaValues[field] : day[field]) === null)).map(day => day.date)])].sort();
   const repairStart = missing.find(date => date > String(repair.endDate || "")) || missing[0];
   if(!repairStart) return { ranges, repair:{ checkedAt:now.toISOString(), endDate:null } };
   const repairEnd = [addDateKey(repairStart, 30), addDateKey(recentStart, -1)].sort()[0];
@@ -640,13 +647,19 @@ function mergeGrowthWeatherDaily(existing, observations, forecast, startDate){
   observations.forEach(day => {
     const previous = byDate.get(day.date);
     const merged = { ...day, quality:{ ...day.quality } };
+    for(const field of ["minTemp", "maxTemp"]){
+      const oldValue = previous?.jmaValues ? previous.jmaValues[field] : previous?.[field];
+      if(getJmaTemperature(day[field]) === null && getJmaTemperature(oldValue) !== null) merged[field] = oldValue;
+    }
     // A partial or empty upstream response must not erase a previously valid field.
-    if(getJmaTemperature(day.meanTemp) === null && getJmaTemperature(previous?.meanTemp) !== null){
-      merged.meanTemp = previous.meanTemp;
+    const oldMean = previous?.jmaValues ? previous.jmaValues.meanTemp : previous?.meanTemp;
+    if(getJmaTemperature(day.meanTemp) === null && getJmaTemperature(oldMean) !== null){
+      merged.meanTemp = oldMean;
       merged.quality.temperature = previous.quality?.temperature || "reported-quality-unavailable";
     }
-    if(getJmaForecastNumber(day.lightIndex) === null && getJmaForecastNumber(previous?.lightIndex) !== null){
-      merged.lightIndex = previous.lightIndex;
+    const oldLight = previous?.jmaValues ? previous.jmaValues.lightIndex : previous?.lightIndex;
+    if(getJmaForecastNumber(day.lightIndex) === null && getJmaForecastNumber(oldLight) !== null){
+      merged.lightIndex = oldLight;
       merged.sunshineHours = previous.sunshineHours ?? null;
       merged.lightSource = previous.lightSource || "sunshine-hours";
       merged.quality.sunshine = previous.quality?.sunshine || "reported-quality-unavailable";
@@ -665,6 +678,7 @@ function isGrowthWeatherRowComplete(row, requestedStartDate, now = new Date()){
   const refreshedAt = new Date(String(row?.refreshed_at || ""));
   const normal = parseJsonValue(row?.normal_json, {});
   return getWeatherRowDaily(row).length > 0
+    && normal.weatherPolicy === WEATHER_POLICY
     && String(row?.history_start_date || "") <= requestedStartDate
     && String(normal.historyCheckedThrough || row?.history_through || "") >= yesterdayKey
     && String(row?.forecast_end_date || "") >= todayKey
@@ -674,13 +688,15 @@ function isGrowthWeatherRowComplete(row, requestedStartDate, now = new Date()){
 
 function buildGrowthWeatherResponse(row, options = {}){
   const daily = getWeatherRowDaily(row);
-  const normal = parseJsonValue(row?.normal_json, {});
+  const {fallbackCache, ...normal} = parseJsonValue(row?.normal_json, {});
   const retrievedAt = normalizeWeatherTimestamp(row?.refreshed_at);
   return {
     ok:true,
     provider:"jma",
     timezone:"Asia/Tokyo",
-    schemaVersion:4,
+    schemaVersion:5,
+    weatherPolicy:normal.weatherPolicy || null,
+    fallbackErrors:normal.fallbackErrors || [],
     fetchedAt:retrievedAt ? Date.parse(retrievedAt) : 0,
     retrievedAt,
     forecastIssuedAt:getLatestWeatherTimestamp(daily.filter(day => day.source === "forecast").map(day => day.issuedAt)),
@@ -784,19 +800,51 @@ async function refreshGrowthWeatherLocation(env, locationKey){
     const yesterdayKey = addDateKey(todayKey, -1);
     const requestedStartDate = normalizeRequestedWeatherStartDate(row?.requested_start_date, now);
     const existingDaily = getWeatherRowDaily(row);
-    const historyPlan = getGrowthWeatherHistoryPlan(row, requestedStartDate, yesterdayKey, now);
+    const historyPlan = getGrowthWeatherHistoryPlan(row, requestedStartDate, yesterdayKey, now, {upgrade:true});
     const observations = [];
     for(const range of historyPlan.ranges){
       observations.push(...await fetchJmaObservationDaily(stationId, range.startDate, range.endDate, { allowEmpty:true }));
     }
-    const daily = mergeGrowthWeatherDaily(existingDaily, observations, forecast.daily, requestedStartDate);
+    const previousByDate = new Map(existingDaily.map(day => [day.date, day]));
+    const mergedDaily = mergeGrowthWeatherDaily(existingDaily, observations, forecast.daily, requestedStartDate).map(raw => {
+      const day = raw.weatherPolicy ? raw : prepareJmaDay(raw);
+      return day.source === "forecast" ? reuseJmaForecast(day, previousByDate.get(day.date)) : day;
+    });
+    const previousNormal = parseJsonValue(row?.normal_json, {});
+    let coordinates = previousNormal.fallbackCache?.coordinates || null;
+    const forecastEndDate = forecast.daily[forecast.daily.length - 1]?.date || "";
+    const mergedDates = new Set(mergedDaily.map(day => day.date));
+    let missingForecastDate = false;
+    for(let date = todayKey; date <= forecastEndDate; date = addDateKey(date, 1)) if(!mergedDates.has(date)) missingForecastDate = true;
+    const needsSupplement = missingForecastDate || getGrowthWeatherCoverage(mergedDaily,requestedStartDate,yesterdayKey).missingDays > 0
+      || mergedDaily.some(day => ["meanTemp", "minTemp", "maxTemp", "lightIndex"].some(field =>
+        getJmaForecastNumber(day[field]) === null) || day.estimatedTemperature || day.estimatedLight || day.fallbackUsed);
+    const fallbackErrors = [];
+    if(needsSupplement && !coordinates){
+      try{
+        const response = await fetchWithTimeout("https://www.jma.go.jp/bosai/amedas/const/amedastable.json", {}, 15000);
+        if(!response.ok) throw new Error(`観測地点の座標 HTTP ${response.status}`);
+        const station = (await response.json())[forecast.station.amedasCode || row?.station_amedas_code];
+        if(station?.lat?.length === 2 && station?.lon?.length === 2) coordinates = {
+          latitude:Number(station.lat[0]) + Number(station.lat[1]) / 60,
+          longitude:Number(station.lon[0]) + Number(station.lon[1]) / 60,
+          stationCode:forecast.station.amedasCode || row?.station_amedas_code};
+      }catch(error){ fallbackErrors.push(String(error?.message || error)); }
+    }
+    const supplemented = needsSupplement ? await fetchWeatherFallbacks({daily:mergedDaily.map(day => day.weatherPolicy ? day : prepareJmaDay(day)),
+      existingDaily, forecastEndDate, today:todayKey, startDate:requestedStartDate, coordinates,
+      cache:previousNormal.fallbackCache || {}, request:fetchWithTimeout, now:new Date(), clock:() => new Date()})
+      : {daily:mergedDaily.map(prepareJmaDay), cache:previousNormal.fallbackCache || {}, errors:[]};
+    const daily = supplemented.daily.map(day => ({...day, weatherPolicy:WEATHER_POLICY, jmaForecastEndDate:forecastEndDate}));
     const coverage = getGrowthWeatherCoverage(daily, requestedStartDate, yesterdayKey);
     const normal = {
       ...getObservationNormal(daily, forecast.normal),
       historyCheckedThrough:yesterdayKey,
-      historyRepair:historyPlan.repair
+      historyRepair:historyPlan.repair,
+      weatherPolicy:WEATHER_POLICY,
+      fallbackCache:{...supplemented.cache, coordinates},
+      fallbackErrors:[...fallbackErrors, ...supplemented.errors]
     };
-    const forecastEndDate = forecast.daily[forecast.daily.length - 1]?.date || "";
     await env.DB.prepare(`
       UPDATE growth_weather_cache
       SET station_id = ?2, station_name = ?3, station_amedas_code = ?4,
@@ -1115,10 +1163,11 @@ async function processGrowthWeatherSubscriptions(env){
     WHERE status = 'queued'
       OR (status = 'retry' AND (next_attempt_at IS NULL OR next_attempt_at <= ?3))
       OR (status = 'refreshing' AND last_attempt_at < ?1)
-      OR (status = 'ready' AND (refreshed_at IS NULL OR refreshed_at < ?2))
+      OR (status = 'ready' AND (refreshed_at IS NULL OR refreshed_at < ?2
+        OR COALESCE(json_extract(normal_json, '$.weatherPolicy'), '') != ?4))
     ORDER BY updated_at ASC
     LIMIT 2
-  `).bind(staleLease, refreshBefore, nowIso).all();
+  `).bind(staleLease, refreshBefore, nowIso, WEATHER_POLICY).all();
   await Promise.allSettled(
     (rows?.results || []).map(row => refreshGrowthWeatherLocation(env, row.location_key))
   );
@@ -1199,6 +1248,7 @@ export {
   mergeGrowthWeatherDaily,
   processPendingBatches,
   processGrowthWeatherSubscriptions,
+  refreshGrowthWeatherLocation,
   relayTokenMatches,
   tokensMatch,
   validateBatchPayload,

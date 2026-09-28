@@ -16951,6 +16951,25 @@
             assert(gapState.text.includes("HTTP 503") && gapState.text.includes("次回取得予定"),"取得失敗理由・再試行予定が表示されません");
             assert(gapState.bedText.includes("2026/9/28") && gapState.bedText.includes("未予測"),"判定できないベッドの不足日が表示されません");
             assert(gapState.scrollWidth<=gapState.viewport && gapState.right<=gapState.viewport,`${width}px幅で気象不足の詳細が横にはみ出しています`);
+            previewApp.eval(`(() => {
+              const fallbacks=[{date:"2026-09-27",provider:"nasa-power",fields:["lightIndex"],fieldSources:{lightIndex:{
+                parameter:"ALLSKY_SFC_SW_DWN,CLRSKY_SFC_SW_DWN",unit:"MJ/hr",formula:"clamp(1.12 * sum(ALLSKY_SFC_SW_DWN) / sum(CLRSKY_SFC_SW_DWN), 0.3, 1.2)",retrievedAt:"2026-09-28T12:00:00Z"}}},
+                {date:"2026-09-28",provider:"met-no",fields:["meanTemp","minTemp"],fieldSources:{meanTemp:{
+                  parameter:"air_temperature",unit:"celsius",coverageHours:24,jmaObservationHours:21,completeDailyCoverage:true,retrievedAt:"2026-09-28T12:00:00Z"}}}];
+              renderDashboardGrowthWeatherDiagnostics({weather:{},weatherDiagnostics:{gaps:[],fallbacks,observationDays:0,forecastDays:0}});
+              document.querySelector(".dashboardGrowthWeatherDiagnostics").open=true;
+              document.querySelector("details.dashboardGrowthBedCard .dashboardGrowthBasis").outerHTML=getDashboardGrowthLearningBasisHtml({basis:{},cohorts:[
+                {prediction:{weatherGaps:[],weatherFallbacks:fallbacks,dayCounts:{observed:16,forecast:5,fallback:2}}}]});
+            })()`);
+            await settleVisualApp(previewApp);
+            const supplementState=comparable(previewApp.eval(`({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,
+              text:document.getElementById("dashboardGrowthWeatherDiagnostics").textContent,
+              bedText:document.querySelector("details.dashboardGrowthBedCard .dashboardGrowthBasis").textContent,
+              right:Math.max(...[...document.querySelectorAll(".dashboardGrowthWeatherDiagnostics,.dashboardGrowthWeatherGapList")]
+                .filter(element=>element.getBoundingClientRect().width>0).map(element=>element.getBoundingClientRect().right))})`));
+            assert(supplementState.text.includes("不足なし・代替2日")&&supplementState.text.includes("NASA POWER")&&supplementState.text.includes("MET Norway"),"代替利用日と出典が表示されません");
+            assert(supplementState.bedText.includes("2026/9/27")&&supplementState.bedText.includes("当日観測21時間")&&supplementState.bedText.includes("CC BY 4.0"),"各ベッドの補完期間・出典が表示されません");
+            assert(supplementState.scrollWidth<=supplementState.viewport&&supplementState.right<=supplementState.viewport,`${width}px幅で補完元・変換式が横にはみ出しています`);
           }
           preview.setPreviewView("menu");
           await settleVisualApp(previewApp);

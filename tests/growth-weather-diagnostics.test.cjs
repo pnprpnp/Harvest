@@ -9,7 +9,7 @@ function setup(){
     document:{getElementById:()=>container},
     escapeHtml:value=>String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c])});
   for(const name of ["parseDateOnlyString","buildDashboardGrowthWeatherDiagnostics","getDashboardGrowthWeatherGapReason",
-    "getDashboardGrowthWeatherGapsHtml","renderDashboardGrowthWeatherDiagnostics","getDashboardGrowthLearningBasisHtml"]){
+    "getDashboardGrowthWeatherGapsHtml","getDashboardGrowthWeatherFallbacksHtml","renderDashboardGrowthWeatherDiagnostics","getDashboardGrowthLearningBasisHtml"]){
     const start=source.indexOf(`function ${name}(`),end=source.indexOf("\n}",start);
     vm.runInContext(source.slice(start,end+2),context);
   }
@@ -44,4 +44,20 @@ test("communication failures remain visible and error text cannot become HTML",(
   assert.match(container.innerHTML,/今回の取得失敗/);assert.match(container.innerHTML,/&lt;img/);
   assert.doesNotMatch(container.innerHTML,/<img/);assert.match(container.innerHTML,/HTTP 503/);
   assert.match(container.innerHTML,/次回取得予定/);assert.match(container.innerHTML,/保存済み/);
+});
+test("supplement details display dates, fields, provider attribution and joined observation coverage while true gaps remain visible",()=>{
+  const {context:c,container}=setup();
+  const fallbacks=[{date:"2026-09-27",provider:"nasa-power",fields:["lightIndex"],fieldSources:{lightIndex:{parameter:"ALLSKY_SFC_SW_DWN,CLRSKY_SFC_SW_DWN",
+    unit:"MJ/hr",formula:"clamp(1.12 * solar / clear, 0.3, 1.2)",retrievedAt:"2026-09-28T12:00:00Z"}}},
+    {date:"2026-09-28",provider:"met-no",fields:["minTemp"],fieldSources:{minTemp:{coverageHours:24,completeDailyCoverage:true,jmaObservationHours:21,
+      parameter:"air_temperature",unit:"celsius",retrievedAt:"2026-09-28T12:00:00Z"}}}];
+  c.renderDashboardGrowthWeatherDiagnostics({weather:{},weatherDiagnostics:{gaps:[],fallbacks,observationDays:0,forecastDays:0}});
+  assert.match(container.innerHTML,/不足なし・代替2日/);assert.match(container.innerHTML,/2026\/9\/27/);assert.match(container.innerHTML,/NASA POWER/);
+  assert.match(container.innerHTML,/光の参考指標/);assert.match(container.innerHTML,/MJ\/hr/);assert.match(container.innerHTML,/clamp/);
+  assert.match(container.innerHTML,/最低気温/);assert.match(container.innerHTML,/予報による補完/);assert.match(container.innerHTML,/当日観測21時間/);
+  assert.match(container.innerHTML,/CC BY 4.0/);assert.match(container.innerHTML,/creativecommons.org/);
+  const gap={date:"2026-09-29",kind:"forecast",code:"missingFields",fields:["minTemp"],unavailable:false};
+  const html=c.getDashboardGrowthLearningBasisHtml({basis:{},cohorts:[{prediction:{weatherFallbacks:fallbacks,weatherGaps:[gap]}}]});
+  assert.match(html,/2026\/9\/29/);assert.match(html,/最低気温/);assert.match(html,/NASA POWER/);
+  assert.match(html,/生育計算は継続/);
 });

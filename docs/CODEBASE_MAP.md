@@ -145,7 +145,8 @@
 
 集計の「生育予測」タブを利用者が選択
 → `07-dashboard.js` がメニューで保存した気象庁の予報地域と必要な過去期間をWorkerへ登録
-→ `relay/src/worker.mjs` が気象庁の日平均気温・日照時間と週間予報を取得しD1へ地点別保存
+→ `relay/src/worker.mjs` が気象庁の平均・最高・最低気温・日照時間と週間予報を取得しD1へ地点別保存
+→ `relay/src/weather-fallback.mjs` が不足項目だけ過去はNASA POWER、今日・未来のJMA予報期間内はMET Norwayで補完し、出所・式・利用可能日時を保持（仕様は `docs/WEATHER_FALLBACK.md`）
 → `getDashboardGrowthSourceState()` がパレット・苗植えイベント・収穫評価を作ごとに対応付ける
 → `growth-evidence.js` が任意確認の対象範囲・期間・利用可能日時を付与する
 → `growth-learning.js` が教師変更時だけ候補を評価し、`growth-generation-evaluation.js` と保存した新旧予測で比較する
