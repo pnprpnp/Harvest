@@ -659,13 +659,6 @@ function setSelectedHarvestGrowthAssessment(record = null){
   ].forEach(([id, value]) => {
     const input = document.getElementById(id);
     if(input){
-      if(id === "recordGrowthCultivarInput" && value
-        && ![...input.options].some(option => option.value === value)){
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = value;
-        input.appendChild(option);
-      }
       input.value = value || "";
     }
   });
