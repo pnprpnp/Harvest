@@ -2617,6 +2617,73 @@
         }, "空欄の旧記録を問題なしと決めつけています");
       });
 
+      await runTest("旧収穫下書きの品質メモを失わず統合し、再読込みでも重複させない", () => {
+        const state = comparable(app.eval(`(() => {
+          saveHarvestStateToStorage();
+          const previous = loadHarvestStateFromStorage();
+          const previousMemoOpen = document.getElementById("recordHarvestMemoDetails").open;
+          const legacyQuality = { tags:["small", "chip"], other:"葉の色が薄い" };
+          const originalQuality = JSON.stringify(legacyQuality);
+          try{
+            restoreHarvestStateAtStartup({
+              ...previous,
+              recordSelectionMode:"harvest", recordHarvestStage:"quality", recordViewMode:"entry",
+              harvestFillKeys:["2-A-1"], harvestOverageKeys:[],
+              qualityMemo:legacyQuality, recordMemoInput:"担当者へ共有",
+              recordHarvestSizeRating:"unknown", recordHarvestGrowthDetail:null,
+              activePlantingRecordId:null, editingPlantingEventId:null, plantingRecordDraft:null
+            });
+            refreshRecordModeUi();
+            const restored = {
+              memo:document.getElementById("recordMemoInput").value,
+              memoOpen:document.getElementById("recordHarvestMemoDetails").open,
+              growthVisible:!document.getElementById("recordHarvestGrowthSection").hidden,
+              legacyInputHidden:document.getElementById("recordQualityMemoSection").hidden,
+              size:getSelectedHarvestSizeRating(),
+              tipburn:getSelectedHarvestGrowthDetail().tipburnStatus,
+              other:getSelectedQualityMemo().other,
+              originalUnchanged:JSON.stringify(legacyQuality) === originalQuality
+            };
+            const tipburn = document.getElementById("recordGrowthTipburnStatusInput");
+            tipburn.value = "none";
+            tipburn.dispatchEvent(new Event("change", { bubbles:true }));
+            const cleared = { status:getSelectedHarvestGrowthDetail().tipburnStatus,
+              legacyPositive:getSelectedQualityMemo().tags.includes("chip") };
+            tipburn.value = "unknown";
+            tipburn.dispatchEvent(new Event("change", { bubbles:true }));
+            saveHarvestStateToStorage();
+            const saved = loadHarvestStateFromStorage();
+            restoreHarvestStateAtStartup(saved);
+            const roundtrip = {
+              memo:document.getElementById("recordMemoInput").value,
+              tipburn:getSelectedHarvestGrowthDetail().tipburnStatus,
+              other:getSelectedQualityMemo().other
+            };
+            recordSelectionMode = "planting";
+            setSelectedQualityMemo(legacyQuality);
+            const planting = {
+              tags:getSelectedQualityMemo().tags,
+              other:getSelectedQualityMemo().other,
+              otherVisible:!document.getElementById("qualityMemoOtherInput").hidden
+            };
+            return { restored, cleared, roundtrip, planting };
+          }finally{
+            restoreHarvestStateAtStartup(previous);
+            document.getElementById("recordHarvestMemoDetails").open = previousMemoOpen;
+            refreshRecordModeUi();
+            saveHarvestStateToStorage();
+            cancelPendingHarvestStateSave();
+          }
+        })()`));
+        assertDeepEqual(state, {
+          restored:{memo:"担当者へ共有\n葉の色が薄い",memoOpen:true,growthVisible:true,legacyInputHidden:true,
+            size:"small",tipburn:"present",other:"",originalUnchanged:true},
+          cleared:{status:"none",legacyPositive:false},
+          roundtrip:{memo:"担当者へ共有\n葉の色が薄い",tipburn:"unknown",other:""},
+          planting:{tags:["small", "chip"],other:"葉の色が薄い",otherVisible:true}
+        }, "収穫の品質統合で旧下書き・症状の解除・苗の品質メモが変わっています");
+      });
+
       await runTest("収穫評価の全選択肢をエラーなく切り替える", () => {
         const sizeInputs = [...app.document.querySelectorAll('input[name="recordHarvestSizeRating"]')];
         const unevenInput = app.document.getElementById("recordHarvestUnevenInput");
@@ -12564,9 +12631,9 @@
             navTouchesTabBar:true,
             nextLabel:"次へ"
           },
-          fixedSummaryBefore:{stage:"quality",casesHidden:true,qualityVisible:true},
-          fixedSummaryAfter:{stage:"quality",casesPanelVisible:false,dateInputVisible:false,casesInputVisible:false,locationHidden:true,qualityHidden:false,confirmHidden:true,summaryExpanded:"false",quickEditModalExists:false},
-          fixedSummaryRestored:{stage:"quality",casesPanelHidden:true,dateInputHidden:true,locationHidden:true,qualityVisible:true,summaryExpanded:"false"},
+          fixedSummaryBefore:{stage:"quality",casesHidden:true,qualityVisible:false},
+          fixedSummaryAfter:{stage:"quality",casesPanelVisible:false,dateInputVisible:false,casesInputVisible:false,locationHidden:true,qualityHidden:true,confirmHidden:true,summaryExpanded:"false",quickEditModalExists:false},
+          fixedSummaryRestored:{stage:"quality",casesPanelHidden:true,dateInputHidden:true,locationHidden:true,qualityVisible:false,summaryExpanded:"false"},
           pastDateNotice:{visible:true,text:"過去の日付を記録中"},
           locationBefore:{
             headings:[],
@@ -12582,8 +12649,8 @@
             noticeDots:0,
             nextDisabled:false
           },
-          qualityState:{stage:"quality",qualityVisible:true,nextLabel:"次へ"},
-          confirmState:{stage:"confirm",summaryItems:6,finalLabel:"保存",memoCollapsed:true},
+          qualityState:{stage:"quality",qualityVisible:false,nextLabel:"次へ"},
+          confirmState:{stage:"confirm",summaryItems:5,finalLabel:"保存",memoCollapsed:true},
           historyState:{saveHidden:true,historyVisible:true,navHidden:true,topRowVisible:true,toggleLabel:"入力へ戻る",duplicateBackButtonCount:0},
           entryState:{restoredMemo:"入力途中",toggleLabel:"記録一覧"}
         }, "収穫記録の工程表示・号棟確認・固定操作・確認画面が連動していません");
@@ -13600,7 +13667,7 @@
             targetBeds:["2-F", "3-C"],
             wholeBeds:true,
             harvestedHeads:36,
-            confirmLabels:["日付", "ケース数", "部分収穫", "通常収穫場所", "実際のロス率", "育ち具合", "品質"]
+            confirmLabels:["日付", "ケース数", "部分収穫", "通常収穫場所", "実際のロス率", "育ち具合・品質"]
           },
           partialOnly:{totalCases:"5",valid:true,nextStage:"confirm"}
         }, "部分収穫のベッド選択・ケース配分・通常収穫との差し引きが連動していません");

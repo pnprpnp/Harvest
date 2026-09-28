@@ -75,6 +75,7 @@
 - 管理者用と作業者用の保存キーは `01-core-ui-and-workflow.js` の `getActive*StorageKey()` 群で切り替えます。役割をまたいで直接キーを指定しません。
 - 読み込み時は `normalizeStoredRecord()` と `normalizePlantingEvent()` が旧形式も正規化します。既存データ互換を変える場合はここ、Google受信正規化、特性テストを一緒に確認します。
 - 収穫時の育ち具合は収穫記録の `sizeRating` と `growthDetail`、外気は気象庁の観測値・予報が元データです。schemaVersion 3で適期日モード・品質の程度を保持し、旧記録の未確認を症状なしへ変換しません。予測の表示キャッシュは元記録・地点・環境・気象・基準日で無効化しますが、採用係数は世代registryに固定し、気象更新では再学習しません。
+- 収穫の品質入力は「育ち具合・品質」に集約し、症状は `growthDetail` の程度から旧同期用の `qualityMemo` タグへ反映します。旧品質メモの自由記述は収穫編集・下書き復元時だけメモ欄へ引き継ぎ、保存するまでは元記録を変更しません。過去の品質メモの詳細表示と、苗植えの品質入力は維持します。
 - 当時の予報・予測は `growth-history.js` のIndexedDBが保存元です。現在のモデルを学習し直した結果と区別して採点します。履歴の自動削除・外部送信はせず、保存失敗時に再保存し、必要に応じてJSONへ書き出します。
 - 削除済み記録は端末ごみ箱とリモートの削除情報（tombstone）で保護します。単純な配列削除だけで終わらせません。
 - `growth-safety.js` の変更前安全保存は、元の保存文字列と画面上の全項目を保持します。新しい安全保存は `growth-safety-storage.js` のIndexedDB `harvestnaviGrowthSafety` / `snapshots` へ置き、トランザクション完了と読戻しを待ってから記録変更へ進みます。従来のlocalStorage内の圧縮・非圧縮v1を優先し、削除・置換しません。64Ki文字以上は同梱のMITライセンス `vendor/lz-string-1.5.0.min.js` で可逆圧縮し、保存前の完全復元確認と保存後の読戻しを行います。再利用時は保存値だけを読み、圧縮・履歴検証を繰り返しません。保存中の元記録・利用者・入力変更を検出した場合は更新を止めます。保存経路の変更時は `tests/run_growth_safety_storage.py` と `tests/record-safety-save.test.cjs` で満杯・中止・更新待ちを確認します。

@@ -188,9 +188,6 @@ function editHarvestRecord(id, options = {}){
     palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
   }
 
-  const memoInput = document.getElementById("recordMemoInput");
-  if(memoInput) memoInput.value = record.memo || "";
-
   const seedlingInput = document.getElementById("recordActualSeedlingTrayCountInput");
   if(seedlingInput){
     seedlingInput.value = clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0) || "";
@@ -198,7 +195,7 @@ function editHarvestRecord(id, options = {}){
   }
   setRecordSeedlingCarryoverMode(record.actualSeedlingCarryoverMode || "loss", { silent: true });
 
-  setSelectedQualityMemo(record.qualityMemo);
+  setSelectedHarvestMemo(record.memo, record.qualityMemo);
   setSelectedHarvestGrowthAssessment(record);
   refreshRecordModeUi();
   refreshHarvestMapViews();
@@ -1498,7 +1495,7 @@ function getDashboardDayRecordDetailInfoRows(context){
     { label: "収穫ケース数", value: `${totalCases}ケース` },
     { label: hasEstimatedHarvestLoss ? "推定収穫ロス率" : "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
     { label: "収穫内訳", value: harvestBreakdown },
-    { label: "収穫時の育ち具合", value: harvestGrowthText },
+    { label: "収穫時の育ち具合・品質", value: harvestGrowthText },
     { label: "収穫品質メモ", value: harvestQualityText },
     { label: "定植日数の詳細", value: plantingAgeText },
     ...(plantingEventsForDay.length ? [
@@ -1635,7 +1632,7 @@ function openRecordDetailWindow(kind, id){
       { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
       { label: isHarvestLossEstimatedForRecord(record) ? "推定ロス率" : "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
       { label: "収穫場所", value: harvestLocationText },
-      { label: "収穫時の育ち具合", value: formatHarvestGrowthAssessment(record) },
+      { label: "収穫時の育ち具合・品質", value: formatHarvestGrowthAssessment(record) },
       { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
       { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
       ...(attention.hasAttention ? [{ label: attention.label, value: attention.reasons.join("\n") || "内容を確認してください" }] : []),

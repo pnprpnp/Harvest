@@ -747,6 +747,23 @@ function setSelectedQualityMemo(value){
   updateRecordInputGuides();
 }
 
+function setSelectedHarvestMemo(memo, qualityMemo){
+  const quality = normalizeQualityMemo(qualityMemo);
+  const text = String(memo || "");
+  // 旧記録・旧下書きの自由記述は、編集できるメモ欄へ引き継ぐ。
+  // 保存済みの元記録は編集を保存するまで変更しない。
+  const combined = quality.other && !text.includes(quality.other)
+    ? [text, quality.other].filter(Boolean).join("\n")
+    : text;
+  const input = document.getElementById("recordMemoInput");
+  if(input) input.value = combined;
+  setSelectedQualityMemo({ ...quality, other:"" });
+  if(quality.other){
+    const details = document.getElementById("recordHarvestMemoDetails");
+    if(details) details.open = true;
+  }
+}
+
 function updateRecordAutoValueNotes(){
   const casesInput = document.getElementById("recordCasesInput");
   const casesNote = document.getElementById("recordCasesAutoValueNote");

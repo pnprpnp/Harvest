@@ -156,7 +156,11 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   const recordMemoInput = document.getElementById("recordMemoInput");
   if(recordMemoInput) recordMemoInput.value = savedHarvestState.recordMemoInput || "";
 
-  setSelectedQualityMemo(savedHarvestState.qualityMemo);
+  if(recordSelectionMode === "planting"){
+    setSelectedQualityMemo(savedHarvestState.qualityMemo);
+  }else{
+    setSelectedHarvestMemo(savedHarvestState.recordMemoInput, savedHarvestState.qualityMemo);
+  }
   setSelectedHarvestGrowthAssessment({
     type: "fullHarvest",
     palletKeys: savedHarvestState.harvestFillKeys,

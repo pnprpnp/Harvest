@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260928-weather-provider-fallback">
+<meta name="harvestnavi-version" content="20260929-harvest-quality-input">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -20017,7 +20017,7 @@ requestAnimationFrame(function(){
 
       <div id="recordHarvestGrowthSection" class="recordHarvestMemoSection recordHarvestGrowthSection">
         <div class="recordHarvestGrowthHeading">
-          <label class="fieldAccentLabel">収穫時の育ち具合（任意）</label>
+          <label class="fieldAccentLabel">収穫時の育ち具合・品質（任意）</label>
           <button id="recordHarvestGrowthClearBtn" type="button" class="recordHarvestGrowthClearBtn" data-ui-click="clearRecordHarvestGrowthSize" hidden>選択を解除</button>
         </div>
         <div class="qualityChoiceRow recordHarvestSizeChoiceRow" role="radiogroup" aria-label="収穫時の育ち具合">
@@ -20045,8 +20045,8 @@ requestAnimationFrame(function(){
         </div>
       </div>
 
-      <div id="recordQualityMemoSection" class="recordHarvestMemoSection">
-        <label id="recordQualityMemoLabel" class="fieldAccentLabel">品質メモ</label>
+      <div id="recordQualityMemoSection" class="recordHarvestMemoSection" hidden>
+        <label id="recordQualityMemoLabel" class="fieldAccentLabel">苗の品質メモ（任意）</label>
         <div id="recordQualityChoiceRow" class="qualityChoiceRow recordQualityChoiceRow">
           <label id="qualityMemoLargeChoice" class="qualityChoice qualityLarge"><input type="checkbox" name="qualityMemoTag" value="large">大きい</label>
           <label id="qualityMemoMediumChoice" class="qualityChoice" hidden><input type="checkbox" name="qualityMemoTag" value="medium">中</label>
@@ -20064,7 +20064,7 @@ requestAnimationFrame(function(){
           <summary>メモを追加</summary>
           <div id="recordHarvestMemoSection" class="recordHarvestMemoSection">
             <label class="fieldAccentLabel">メモ</label>
-            <textarea id="recordMemoInput" placeholder="気づいたことや引き継ぎを入力"></textarea>
+            <textarea id="recordMemoInput" placeholder="品質についての補足や、気づいたこと・引き継ぎを入力"></textarea>
           </div>
         </details>
       </div>
@@ -26786,6 +26786,23 @@ function setSelectedQualityMemo(value){
   if(otherInput) otherInput.value = qualityMemo.other;
   updateQualityMemoOtherVisibility();
   updateRecordInputGuides();
+}
+
+function setSelectedHarvestMemo(memo, qualityMemo){
+  const quality = normalizeQualityMemo(qualityMemo);
+  const text = String(memo || "");
+  // 旧記録・旧下書きの自由記述は、編集できるメモ欄へ引き継ぐ。
+  // 保存済みの元記録は編集を保存するまで変更しない。
+  const combined = quality.other && !text.includes(quality.other)
+    ? [text, quality.other].filter(Boolean).join("\n")
+    : text;
+  const input = document.getElementById("recordMemoInput");
+  if(input) input.value = combined;
+  setSelectedQualityMemo({ ...quality, other:"" });
+  if(quality.other){
+    const details = document.getElementById("recordHarvestMemoDetails");
+    if(details) details.open = true;
+  }
 }
 
 function updateRecordAutoValueNotes(){
@@ -47368,7 +47385,6 @@ function renderRecordHarvestConfirmation(){
   const location = document.getElementById("recordPalletSummaryInput")?.value.trim() || "";
   const lossDisplay = document.getElementById("recordActualLossInput");
   const lossLabel = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
-  const quality = formatQualityMemo(getSelectedQualityMemo()) || "選択なし";
   const growth = formatHarvestGrowthAssessment({
     type: "fullHarvest",
     palletKeys: [...harvestFillKeys],
@@ -47389,8 +47405,7 @@ function renderRecordHarvestConfirmation(){
   if(regularCases > 0){
     appendRecordHarvestConfirmItem(container, "通常収穫場所", location || "未選択", "location");
     appendRecordHarvestConfirmItem(container, lossLabel, lossDisplay?.textContent || "--", "location");
-    appendRecordHarvestConfirmItem(container, "育ち具合", growth, "quality");
-    appendRecordHarvestConfirmItem(container, "品質", quality, "quality");
+    appendRecordHarvestConfirmItem(container, "育ち具合・品質", growth, "quality");
   }else{
     appendRecordHarvestConfirmItem(container, "通常収穫", "なし", "location");
   }
@@ -47529,7 +47544,7 @@ function renderRecordHarvestWorkflowUi(){
   if(locationSection) locationSection.hidden = isHarvestMode && (stage !== "location" || showHarvestPrimaryInputs);
   if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location" || showHarvestPrimaryInputs;
   if(growthSection) growthSection.hidden = isHarvestMode ? stage !== "quality" : growthSection.hidden;
-  if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
+  if(qualitySection && isHarvestMode) qualitySection.hidden = true;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
   if(stage === "confirm") renderRecordHarvestConfirmation();
@@ -47860,9 +47875,8 @@ function showRecordEntryView(){
 }
 
 function getCurrentRecordHarvestGrowthOverallState(){
-  const qualityMemo = getSelectedQualityMemo();
-  const tipburnStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthTipburnStatusInput")?.value,qualityMemo.tags.includes("chip"));
-  const elongatedStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthElongatedStatusInput")?.value,qualityMemo.tags.includes("elongated"));
+  const tipburnStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthTipburnStatusInput")?.value);
+  const elongatedStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthElongatedStatusInput")?.value);
   const unevenStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthUnevenStatusInput")?.value,document.getElementById("recordHarvestUnevenInput")?.checked);
   return {
     sizeRating: getSelectedHarvestSizeRating(),
@@ -48204,8 +48218,7 @@ function refreshRecordModeUi(){
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
     if(harvestGrowthSection) harvestGrowthSection.hidden = false;
-    if(qualityMemoSection) qualityMemoSection.hidden = false;
-    if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ（任意）";
+    if(qualityMemoSection) qualityMemoSection.hidden = true;
     if(actualLossField) actualLossField.hidden = false;
   }
   if(saveCard) saveCard.hidden = recordViewMode === "history";
@@ -54278,9 +54291,6 @@ function editHarvestRecord(id, options = {}){
     palletSummaryInput.value = formatPalletSummary(harvestFillKeys);
   }
 
-  const memoInput = document.getElementById("recordMemoInput");
-  if(memoInput) memoInput.value = record.memo || "";
-
   const seedlingInput = document.getElementById("recordActualSeedlingTrayCountInput");
   if(seedlingInput){
     seedlingInput.value = clampNumber(record.actualSeedlingTrayCount, 0, 999999, 0) || "";
@@ -54288,7 +54298,7 @@ function editHarvestRecord(id, options = {}){
   }
   setRecordSeedlingCarryoverMode(record.actualSeedlingCarryoverMode || "loss", { silent: true });
 
-  setSelectedQualityMemo(record.qualityMemo);
+  setSelectedHarvestMemo(record.memo, record.qualityMemo);
   setSelectedHarvestGrowthAssessment(record);
   refreshRecordModeUi();
   refreshHarvestMapViews();
@@ -55588,7 +55598,7 @@ function getDashboardDayRecordDetailInfoRows(context){
     { label: "収穫ケース数", value: `${totalCases}ケース` },
     { label: hasEstimatedHarvestLoss ? "推定収穫ロス率" : "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
     { label: "収穫内訳", value: harvestBreakdown },
-    { label: "収穫時の育ち具合", value: harvestGrowthText },
+    { label: "収穫時の育ち具合・品質", value: harvestGrowthText },
     { label: "収穫品質メモ", value: harvestQualityText },
     { label: "定植日数の詳細", value: plantingAgeText },
     ...(plantingEventsForDay.length ? [
@@ -55725,7 +55735,7 @@ function openRecordDetailWindow(kind, id){
       { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
       { label: isHarvestLossEstimatedForRecord(record) ? "推定ロス率" : "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
       { label: "収穫場所", value: harvestLocationText },
-      { label: "収穫時の育ち具合", value: formatHarvestGrowthAssessment(record) },
+      { label: "収穫時の育ち具合・品質", value: formatHarvestGrowthAssessment(record) },
       { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
       { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
       ...(attention.hasAttention ? [{ label: attention.label, value: attention.reasons.join("\n") || "内容を確認してください" }] : []),
@@ -58592,7 +58602,11 @@ function restoreHarvestStateAtStartup(savedHarvestState){
   const recordMemoInput = document.getElementById("recordMemoInput");
   if(recordMemoInput) recordMemoInput.value = savedHarvestState.recordMemoInput || "";
 
-  setSelectedQualityMemo(savedHarvestState.qualityMemo);
+  if(recordSelectionMode === "planting"){
+    setSelectedQualityMemo(savedHarvestState.qualityMemo);
+  }else{
+    setSelectedHarvestMemo(savedHarvestState.recordMemoInput, savedHarvestState.qualityMemo);
+  }
   setSelectedHarvestGrowthAssessment({
     type: "fullHarvest",
     palletKeys: savedHarvestState.harvestFillKeys,

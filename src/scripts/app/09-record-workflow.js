@@ -2432,7 +2432,6 @@ function renderRecordHarvestConfirmation(){
   const location = document.getElementById("recordPalletSummaryInput")?.value.trim() || "";
   const lossDisplay = document.getElementById("recordActualLossInput");
   const lossLabel = lossDisplay?.classList.contains("estimated") ? "推定ロス率" : "実際のロス率";
-  const quality = formatQualityMemo(getSelectedQualityMemo()) || "選択なし";
   const growth = formatHarvestGrowthAssessment({
     type: "fullHarvest",
     palletKeys: [...harvestFillKeys],
@@ -2453,8 +2452,7 @@ function renderRecordHarvestConfirmation(){
   if(regularCases > 0){
     appendRecordHarvestConfirmItem(container, "通常収穫場所", location || "未選択", "location");
     appendRecordHarvestConfirmItem(container, lossLabel, lossDisplay?.textContent || "--", "location");
-    appendRecordHarvestConfirmItem(container, "育ち具合", growth, "quality");
-    appendRecordHarvestConfirmItem(container, "品質", quality, "quality");
+    appendRecordHarvestConfirmItem(container, "育ち具合・品質", growth, "quality");
   }else{
     appendRecordHarvestConfirmItem(container, "通常収穫", "なし", "location");
   }
@@ -2593,7 +2591,7 @@ function renderRecordHarvestWorkflowUi(){
   if(locationSection) locationSection.hidden = isHarvestMode && (stage !== "location" || showHarvestPrimaryInputs);
   if(actualLossField) actualLossField.hidden = !isHarvestMode || stage !== "location" || showHarvestPrimaryInputs;
   if(growthSection) growthSection.hidden = isHarvestMode ? stage !== "quality" : growthSection.hidden;
-  if(qualitySection) qualitySection.hidden = isHarvestMode ? stage !== "quality" : qualitySection.hidden;
+  if(qualitySection && isHarvestMode) qualitySection.hidden = true;
   if(confirmSection) confirmSection.hidden = !isHarvestMode || stage !== "confirm";
   if(plantingActionRow) plantingActionRow.hidden = isHarvestMode;
   if(stage === "confirm") renderRecordHarvestConfirmation();
@@ -2924,9 +2922,8 @@ function showRecordEntryView(){
 }
 
 function getCurrentRecordHarvestGrowthOverallState(){
-  const qualityMemo = getSelectedQualityMemo();
-  const tipburnStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthTipburnStatusInput")?.value,qualityMemo.tags.includes("chip"));
-  const elongatedStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthElongatedStatusInput")?.value,qualityMemo.tags.includes("elongated"));
+  const tipburnStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthTipburnStatusInput")?.value);
+  const elongatedStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthElongatedStatusInput")?.value);
   const unevenStatus = normalizeHarvestSymptomStatus(document.getElementById("recordGrowthUnevenStatusInput")?.value,document.getElementById("recordHarvestUnevenInput")?.checked);
   return {
     sizeRating: getSelectedHarvestSizeRating(),
@@ -3268,8 +3265,7 @@ function refreshRecordModeUi(){
     if(plantingStageSection) plantingStageSection.hidden = true;
     if(harvestMemoSection) harvestMemoSection.hidden = false;
     if(harvestGrowthSection) harvestGrowthSection.hidden = false;
-    if(qualityMemoSection) qualityMemoSection.hidden = false;
-    if(qualityMemoLabel) qualityMemoLabel.textContent = "品質メモ（任意）";
+    if(qualityMemoSection) qualityMemoSection.hidden = true;
     if(actualLossField) actualLossField.hidden = false;
   }
   if(saveCard) saveCard.hidden = recordViewMode === "history";
