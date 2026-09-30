@@ -3634,12 +3634,18 @@ function updateHarvestProgressUi(options = {}){
       ? `${partialDraft.entryCount}件・${partialDraft.casesValue}ケース`
       : "追加";
   }
-  const windowTitle = document.getElementById("harvestProgressWindowTitle");
-  if(windowTitle){
-    windowTitle.textContent = isEntryEditMode
-      ? `${entryEdit.type === "partial" ? "部分収穫" : "通常収穫"}を修正`
-      : (isPartialMode ? "部分収穫を入力" : "途中経過を入力");
-  }
+  const completedCases = getHarvestProgressActualCases();
+  const targetCases = getHarvestCasePlan().regularCases;
+  const progressValues = [
+    ["harvestProgressCompletedValue", completedCases],
+    ["harvestProgressTargetValue", targetCases],
+    ["harvestProgressRemainingValue", Math.max(0, targetCases - completedCases)]
+  ];
+  progressValues.forEach(([id, cases]) => {
+    const element = document.getElementById(id);
+    const value = formatHarvestProgressCases(cases);
+    if(element && element.textContent !== value) element.textContent = value;
+  });
   if(!harvestProgressEntryDetailGroupKey){
     const details = document.getElementById("harvestProgressEntryDetails");
     if(details) details.hidden = true;

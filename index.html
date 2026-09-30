@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260930-preview-commit-rule">
+<meta name="harvestnavi-version" content="20260930-progress-header">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -13281,6 +13281,29 @@ button.forecastClearBtn{border-radius:10px;}
 }
 .harvestProgressPanel[hidden]{display:none;}
 .harvestProgressWindow{width:min(520px,100%);}
+.harvestProgressModal .recordDetailWindowHeader{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  row-gap:5px;
+}
+.harvestProgressWindowTitle{
+  grid-column:1 / -1;
+  grid-row:2;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  font-size:13px;
+  font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.harvestProgressWindowMetric{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap;}
+.harvestProgressWindowMetric strong{font-size:16px;font-weight:900;}
+.harvestProgressModal .recordDetailWindowClose{grid-column:2;grid-row:1;}
+@media(max-width:360px){
+  .harvestProgressWindowTitle{font-size:12px;gap:4px;}
+  .harvestProgressWindowMetric strong{font-size:14px;}
+}
 .harvestProgressModal .harvestProgressPanel{
   position:relative;
   width:auto;
@@ -21202,10 +21225,14 @@ requestAnimationFrame(function(){
     <div id="plantingAgeDetail" class="plantingAgeDetail plantingAgeWindowBody">収穫場所を選択してください</div>
   </div>
 </div>
-<div id="harvestProgressModal" class="recordDetailModal harvestProgressModal" role="dialog" aria-modal="true" aria-labelledby="harvestProgressWindowTitle" data-ui-backdrop-click="closeHarvestProgressWindow">
+<div id="harvestProgressModal" class="recordDetailModal harvestProgressModal" role="dialog" aria-modal="true" aria-label="途中経過" data-ui-backdrop-click="closeHarvestProgressWindow">
   <div class="recordDetailWindow harvestProgressWindow">
     <div class="recordDetailWindowHeader">
-      <div id="harvestProgressWindowTitle" class="recordDetailWindowTitle">途中経過を入力</div>
+      <div id="harvestProgressWindowTitle" class="recordDetailWindowTitle harvestProgressWindowTitle" role="group" aria-label="通常収穫の進捗">
+        <span class="harvestProgressWindowMetric">完了 <strong id="harvestProgressCompletedValue">0</strong></span>
+        <span class="harvestProgressWindowMetric">目標 <strong id="harvestProgressTargetValue">0</strong></span>
+        <span class="harvestProgressWindowMetric">残り <strong id="harvestProgressRemainingValue">0</strong></span>
+      </div>
       <button id="harvestProgressWindowClose" type="button" class="recordDetailWindowClose" data-ui-click="closeHarvestProgressWindow">閉じる</button>
     </div>
     <div id="harvestProgressPanel" class="recordDetailWindowBody harvestProgressPanel" hidden>
@@ -25220,12 +25247,18 @@ function updateHarvestProgressUi(options = {}){
       ? `${partialDraft.entryCount}件・${partialDraft.casesValue}ケース`
       : "追加";
   }
-  const windowTitle = document.getElementById("harvestProgressWindowTitle");
-  if(windowTitle){
-    windowTitle.textContent = isEntryEditMode
-      ? `${entryEdit.type === "partial" ? "部分収穫" : "通常収穫"}を修正`
-      : (isPartialMode ? "部分収穫を入力" : "途中経過を入力");
-  }
+  const completedCases = getHarvestProgressActualCases();
+  const targetCases = getHarvestCasePlan().regularCases;
+  const progressValues = [
+    ["harvestProgressCompletedValue", completedCases],
+    ["harvestProgressTargetValue", targetCases],
+    ["harvestProgressRemainingValue", Math.max(0, targetCases - completedCases)]
+  ];
+  progressValues.forEach(([id, cases]) => {
+    const element = document.getElementById(id);
+    const value = formatHarvestProgressCases(cases);
+    if(element && element.textContent !== value) element.textContent = value;
+  });
   if(!harvestProgressEntryDetailGroupKey){
     const details = document.getElementById("harvestProgressEntryDetails");
     if(details) details.hidden = true;
