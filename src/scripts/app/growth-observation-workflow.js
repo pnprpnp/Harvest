@@ -374,25 +374,6 @@ function bindRecordGrowthRangeSelection(){
   container.addEventListener("change",refresh); refresh();
 }
 
-function renderRecordHarvestReadyCarrySummary(){
-  const element = document.getElementById("recordGrowthReadyCarrySummary");
-  if(!element || typeof HarvestGrowthReadiness === "undefined") return;
-  const recordDate = document.getElementById("recordDateInput")?.value;
-  if(!isStrictDateOnlyString(recordDate)){ element.textContent=""; return; }
-  const index = buildDashboardGrowthPlantingIndex(), groups = new Map();
-  harvestFillKeys.forEach(key=>{
-    const planting=getDashboardGrowthPriorPlanting(index,key,parseDateOnlyString(recordDate));
-    if(!planting) return;
-    const id=`${planting.eventId}:${formatDateOnlyString(planting.date)}`;
-    if(!groups.has(id)) groups.set(id,{planting,keys:[]}); groups.get(id).keys.push(key);
-  });
-  const observations=HarvestGrowthObservations.list({kind:"ready"}), dates=new Map();
-  groups.forEach(({planting,keys})=>HarvestGrowthReadiness.resolve({plantingEventId:planting.eventId,
-    plantingDate:formatDateOnlyString(planting.date),palletKeys:keys,harvestDate:recordDate,manual:{mode:"auto"},observations})
-    .forEach(group=>{if(group.readyDate) dates.set(group.readyDate,(dates.get(group.readyDate)||0)+group.palletKeys.length);}));
-  element.textContent=dates.size ? `保存済みの適期確認：${[...dates].map(([date,count])=>`${date}・${count}パレット`).join("、")}。引継ぎを選んだ作だけに反映します。` : "対応する適期確認は未入力です。空欄を収穫日や正常扱いで補いません。";
-}
-
 function openRecordGrowthUnrated(){
   openRecordGrowthReady();
   recordGrowthUnratedMode=true;

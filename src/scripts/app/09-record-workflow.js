@@ -2984,13 +2984,10 @@ function getRecordHarvestGrowthBedDraft(bedKey){
 }
 
 function renderRecordHarvestGrowthBedEditor(){
-  if(typeof renderRecordHarvestReadyCarrySummary === "function") renderRecordHarvestReadyCarrySummary();
   const container = document.getElementById("recordHarvestGrowthBedRows");
   const clearButton = document.getElementById("recordHarvestGrowthClearBtn");
   if(clearButton) clearButton.hidden = getSelectedHarvestSizeRating() === "unknown";
   if(!container) return;
-  const readyInput = document.getElementById("recordGrowthReadyDateInput");
-  if(readyInput) readyInput.max = document.getElementById("recordDateInput")?.value || "";
   compactRecordHarvestGrowthBedOverrides();
   const bedKeys = getHarvestBedKeysFromPalletKeys(harvestFillKeys);
   if(!bedKeys.length){
@@ -3033,8 +3030,6 @@ function renderRecordHarvestGrowthBedEditor(){
               ${["unknown","none","slight","many","present"].map(value => `<option value="${value}"${normalizeHarvestSymptomStatus(state[`${field}Status`],state[field]) === value ? " selected" : ""}>${getHarvestSymptomStatusLabel(value)}</option>`).join("")}
             </select></label>
           `).join("")}
-          <label>適期確認の引継ぎ<select data-growth-bed="${escapeHtml(bedKey)}" data-growth-field="readyDateMode">${[["auto","保存した確認を引き継ぐ"],["manual","日付を指定"],["none","不明（引き継がない）"]].map(([value,label])=>`<option value="${value}"${(state.readyDateMode || (state.readyDate ? "manual" : "auto")) === value ? " selected" : ""}>${label}</option>`).join("")}</select></label>
-          <label class="recordGrowthReadyField">適期を初めて確認した日（任意）<input type="date" data-growth-bed="${escapeHtml(bedKey)}" data-growth-field="readyDate" value="${escapeHtml(state.readyDate || "")}" max="${escapeHtml(document.getElementById("recordDateInput")?.value || "")}"></label>
         </div>
       </section>
     `;
@@ -3046,10 +3041,9 @@ function renderRecordHarvestGrowthBedEditor(){
 
 function setRecordHarvestGrowthBedObservation(bedKey, field, value){
   if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
-  if(!["readyDate", "readyDateMode", "unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)) return;
+  if(!["unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)) return;
   const current = getRecordHarvestGrowthBedDraft(bedKey);
-  const next = { ...current, [field]:["readyDate","readyDateMode"].includes(field) ? value : normalizeHarvestSymptomStatus(value) };
-  if(field === "readyDate") next.readyDateMode = value ? "manual" : "none";
+  const next = { ...current, [field]:normalizeHarvestSymptomStatus(value) };
   ["tipburn","elongated","uneven"].forEach(key=>{ if(field === `${key}Status`) next[key] = isHarvestSymptomPresent(next[field]); });
   recordHarvestGrowthBedOverrides[bedKey] = next;
   handleRecordHarvestGrowthInput();
@@ -3059,13 +3053,6 @@ function handleRecordHarvestGrowthInput(){
   renderRecordHarvestGrowthBedEditor();
   renderRecordHarvestConfirmation();
   scheduleHarvestStateSave();
-}
-
-function setRecordHarvestReadyDateMode(){
-  const input = document.getElementById("recordGrowthReadyDateInput");
-  const mode = document.getElementById("recordGrowthReadyModeInput");
-  if(mode) mode.value = input?.value ? "manual" : "none";
-  handleRecordHarvestGrowthInput();
 }
 
 function clearRecordHarvestGrowthSize(){

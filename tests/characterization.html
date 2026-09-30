@@ -2864,7 +2864,7 @@
         });
       });
 
-      await runTest("適期日・症状の三状態・品種を入力途中から復元しベッドを全体へ戻せる", () => {
+      await runTest("収穫画面から適期日入力を外しても旧記録の適期日を保持する", () => {
         const keys = comparable(app.eval("harvestFillKeys"));
         const saved = comparable(app.getSelectedHarvestGrowthDetail(keys));
         const quality = comparable(app.getSelectedQualityMemo());
@@ -2874,13 +2874,24 @@
           app.setSelectedQualityMemo(null);
           app.setSelectedHarvestGrowthAssessment(null);
           assertEqual(app.document.getElementById("recordGrowthCultivarInput").value, "マルチリーフエアリ", "新規入力の品種既定値が違います");
+          assertEqual(app.document.getElementById("recordGrowthReadyDateInput").type, "hidden", "収穫時の適期日入力が残っています");
+          assertEqual(app.document.getElementById("recordGrowthReadyModeInput").type, "hidden", "収穫時の適期確認設定が残っています");
+          assertEqual(app.document.getElementById("recordGrowthReadyDate").type, "date", "生育記録の適期日入力が消えています");
+          app.setSelectedHarvestGrowthAssessment({type:"fullHarvest",palletKeys:["2-A-1"],
+            growthDetail:{schemaVersion:3,readyDate:"2026-09-10",readyDateMode:"manual",unevenStatus:"unknown",
+              tipburnStatus:"unknown",elongatedStatus:"unknown",cultivar:"マルチリーフエアリ",bedOverrides:{"2-A":{
+                sizeRating:"unknown",uneven:false,tipburn:false,elongated:false,readyDate:"2026-09-09",
+                readyDateMode:"manual",unevenStatus:"unknown",tipburnStatus:"unknown",elongatedStatus:"unknown"}}},
+            qualityMemo:{tags:[],other:""}});
+          assertEqual(app.document.querySelector('[data-growth-field="readyDate"]'),null,"ベッド別の適期日入力が残っています");
+          assertEqual(app.document.querySelector('[data-growth-field="readyDateMode"]'),null,"ベッド別の適期確認設定が残っています");
           const tipburn = app.document.getElementById("recordGrowthTipburnStatusInput");
           tipburn.value = "none";
           tipburn.dispatchEvent(new app.Event("change", { bubbles:true }));
-          app.document.getElementById("recordGrowthReadyDateInput").value = "2026-09-10";
-          app.setRecordHarvestGrowthBedObservation("2-A", "readyDate", "2026-09-09");
           app.setRecordHarvestGrowthBedObservation("2-A", "elongatedStatus", "none");
           const draft = comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"]));
+          assertEqual(draft.readyDate,"2026-09-10","旧記録の適期日が消えています");
+          assertEqual(draft.bedOverrides["2-A"].readyDate,"2026-09-09","ベッド別の旧適期日が消えています");
           app.setSelectedHarvestGrowthAssessment(null);
           app.setSelectedHarvestGrowthAssessment({ type:"fullHarvest", palletKeys:["2-A-1"], growthDetail:draft, qualityMemo:{ tags:[], other:"" } });
           assertDeepEqual(comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"])), draft, "入力途中の観測を復元できません");
@@ -17074,14 +17085,13 @@
             const dateRow = doc.querySelector(".recordDateInputRow").getBoundingClientRect();
             const date = doc.getElementById("recordDateInput").getBoundingClientRect();
             const weekday = doc.getElementById("recordWeekdayDisplay").getBoundingClientRect();
-            const ready = doc.getElementById("recordGrowthReadyDateInput").getBoundingClientRect();
             assert(dateRow.width > 168, `${width}px幅で収穫日が固定幅のままです（欄${dateRow.width}px、記録カード${card.width}px、実画面${visualApp.innerWidth}px）`);
-            for(const id of ["recordDateInput", "recordGrowthReadyDateInput", "recordHarvestSheetDate", "recordGrowthReadyDate", "recordGrowthObservationEndDate"]){
+            for(const id of ["recordDateInput", "recordHarvestSheetDate", "recordGrowthReadyDate", "recordGrowthObservationEndDate"]){
               const style = visualApp.getComputedStyle(doc.getElementById(id));
               assert(style.paddingLeft === "0px" && style.paddingRight === "0px",
                 `${width}px幅の${id}にiPhoneで幅を広げる余白が残っています`);
             }
-            for(const [name, rect] of [["収穫日", date], ["曜日", weekday], ["適期確認日", ready]]){
+            for(const [name, rect] of [["収穫日", date], ["曜日", weekday]]){
               assert(rect.width > 0 && rect.left >= card.left - 1 && rect.right <= card.right + 1
                 && rect.right <= visualApp.innerWidth + 1,
                 `${width}px幅で${name}が記録欄または画面からはみ出しています`);
@@ -17095,18 +17105,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "4435dc87", elements: 2569, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "ce131177", elements: 2639, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "2a51fcd8", elements: 2639, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "7e3a2bbc", elements: 2573, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "96d57780", elements: 2590, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f16e2b26", elements: 2673, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "11388f9f", elements: 2688, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "c48fe8c7", elements: 2800, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "c271fa44", elements: 2800, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "534b29c1", elements: 2844, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "6cf4524f", elements: 2844, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "1eee4206", elements: 2844, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "eeca34bd", elements: 2563, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "83968a8b", elements: 2633, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "eee998f8", elements: 2633, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "50fdc677", elements: 2567, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "3131c46c", elements: 2584, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "16ee87ed", elements: 2667, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "4f046e7f", elements: 2682, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "8aa32a21", elements: 2794, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "d360da1e", elements: 2794, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "bf01bb4d", elements: 2838, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "a85a9a0f", elements: 2838, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "2781427c", elements: 2838, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
