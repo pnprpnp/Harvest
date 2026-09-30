@@ -6974,15 +6974,19 @@
           assert(progressHeaderFits(), "390px幅で進捗と閉じるが同じ行に収まっていません");
           const progressWindow = progressModal.querySelector(".harvestProgressWindow");
           const progressBody = progressPanel.querySelector(".harvestProgressBody");
+          const progressPartialButton = app.document.getElementById("harvestProgressPartialHarvestBtn");
           const fixedRect = progressWindow.getBoundingClientRect();
           const fixedHeaderTop = progressHeader.getBoundingClientRect().top;
+          const partialRect = progressPartialButton.getBoundingClientRect();
+          const panelRect = progressPanel.getBoundingClientRect();
+          assert(partialRect.bottom <= panelRect.bottom - 12 && app.innerHeight - fixedRect.bottom >= 100,
+            "390px幅で部分収穫ボタンを表示したまま下の余白を確保できていません");
           const extraContent = app.document.createElement("div");
           extraContent.style.height = "1200px";
           progressBody.appendChild(extraContent);
           const expandedRect = progressWindow.getBoundingClientRect();
           progressPanel.scrollTop = progressPanel.scrollHeight;
           assert(Math.abs(fixedRect.top - 18) <= 1
-            && Math.abs(app.innerHeight - fixedRect.bottom - 18) <= 1
             && Math.abs(expandedRect.top - fixedRect.top) <= 1
             && Math.abs(expandedRect.height - fixedRect.height) <= 1
             && progressPanel.scrollHeight > progressPanel.clientHeight
@@ -7021,8 +7025,18 @@
           assert(progressHeader.textContent.trim().replace(/\s+/g, " ") === "完了 0 目標 200 残り 200"
             && progressHeaderFits()
             && Math.abs(narrowProgressRect.top - 18) <= 1
-            && Math.abs(app.innerHeight - narrowProgressRect.bottom - 18) <= 1,
-            "320px幅で途中経過の枠または上部表示が正しく配置されていません");
+            && app.innerHeight - narrowProgressRect.bottom >= 100
+            && progressPartialButton.getBoundingClientRect().bottom
+              <= progressPanel.getBoundingClientRect().bottom - 12,
+            "320px幅で部分収穫ボタンを表示したまま下の余白を確保できていません");
+          const previousFrameHeight = iframe.style.height;
+          iframe.style.height = "724px";
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
+          assert(progressPartialButton.getBoundingClientRect().bottom
+            <= progressPanel.getBoundingClientRect().bottom - 8,
+            "画面が低いときにベッド未選択の部分収穫ボタンが隠れています");
+          iframe.style.height = previousFrameHeight;
+          await new Promise(resolve => app.requestAnimationFrame(resolve));
           app.toggleHarvestProgressInput();
           app.document.getElementById("casesInput").value = "1";
           const narrowSettingsRect = settingsButton.getBoundingClientRect();
@@ -17288,18 +17302,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "f3a68c55", elements: 2576, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "701d7755", elements: 2646, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "1b29d98e", elements: 2646, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "8e823c5b", elements: 2580, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "1e52d2c8", elements: 2597, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "33416c90", elements: 2680, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "a91f0c8c", elements: 2695, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "88be4589", elements: 2807, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "85e3e7ca", elements: 2807, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "8b95ed7a", elements: 2851, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "651c0122", elements: 2851, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "8c4528f1", elements: 2851, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "c57bc73e", elements: 2576, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "2d4eae16", elements: 2646, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "579f6a91", elements: 2646, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "b7216768", elements: 2580, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "252f360f", elements: 2597, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "f042024b", elements: 2680, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "c47772a3", elements: 2695, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "e120205a", elements: 2807, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "dd978d09", elements: 2807, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "450e4531", elements: 2851, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "423bc9cd", elements: 2851, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "875734e2", elements: 2851, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
