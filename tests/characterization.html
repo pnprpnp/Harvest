@@ -2699,13 +2699,20 @@
           app.eval('harvestFillKeys = ["2-A-1"]; recordHarvestGrowthBedOverrides = {};');
 
           for(const value of ["small", "normal", "large"]){
+            sizeInputs.forEach(candidate => { candidate.checked = false; });
             const input = sizeInputs.find(candidate => candidate.value === value);
             input.checked = true;
             app.handleRecordHarvestGrowthInput();
             assertEqual(app.getSelectedHarvestSizeRating(), value, `${value}の育ち具合が反映されません`);
           }
+          sizeInputs.find(candidate => candidate.value === "small").checked = true;
+          app.handleRecordHarvestGrowthInput();
+          assertDeepEqual(comparable(app.getSelectedHarvestSizeRatings()), ["small", "large"], "複数の育ち具合が反映されません");
+          assertEqual(app.getSelectedHarvestSizeRating(), "unknown", "複数選択を単一の大きさとして扱っています");
+          assertDeepEqual(comparable(app.getSelectedHarvestGrowthDetail().sizeRatings), ["small", "large"], "複数選択を保存できません");
           app.clearRecordHarvestGrowthSize();
           assertEqual(app.getSelectedHarvestSizeRating(), "unknown", "育ち具合の選択解除が反映されません");
+          assertDeepEqual(comparable(app.getSelectedHarvestSizeRatings()), [], "複数選択を解除できません");
 
           unevenInput.checked = true;
           app.handleRecordHarvestGrowthInput();
@@ -2824,6 +2831,15 @@
         assertDeepEqual(comparable(restored.growthDetail),comparable(record.growthDetail),"ベッド別の育ち具合が送受信で変わりました");
         assertEqual(JSON.stringify(record.growthDetail),before,"送信元の評価を書き換えました");
         assertEqual(server.actualLoss,10.8,"ロス率が送信内容で変わりました");
+        const mixed=app.normalizeRecordSnapshot({...raw,sizeRating:"unknown",
+          growthDetail:{...raw.growthDetail,sizeRatings:["small","large"]}});
+        const mixedPayload=comparable(app.buildGoogleSheetRecordPayload(app.cloneGoogleSheetRecordForSend(mixed),{token:"test"}).record);
+        assertEqual(app.validateRecordForGoogleTransfer(mixed,{enforceDuplicateKey:false}).ok,true,"大きさの複数選択を送信前に拒否しました");
+        const mixedServer=comparable(appsScript.normalizeHarvestRecord(mixedPayload));
+        const mixedRow=appsScript.buildRecordRow(headers,mixedServer,"mixed-growth-transfer","2026-09-28T01:00:00Z");
+        const mixedRestored=app.normalizeGoogleSheetRowRecord(comparable(appsScript.rowToRecord(headers,mixedRow)));
+        assertDeepEqual(comparable(mixedRestored.growthDetail.sizeRatings),["small","large"],"大きさの複数選択が送受信で変わりました");
+        assertEqual(mixedRestored.sizeRating,"unknown","複数選択を単一の大きさとして学習しています");
         for(const schemaVersion of [2,3]){
           for(const status of ["unknown","none","present","slight","many"]){
             for(const mode of ["auto","manual","none"]){
@@ -2852,6 +2868,7 @@
           ...[1,4,"3"].map(schemaVersion=>({...base,schemaVersion})),
           ...["unevenStatus","tipburnStatus","elongatedStatus"].map(field=>({...base,[field]:"invalid"})),
           {...base,readyDateMode:"invalid"},{...base,readyDate:"2026-09-25"},{...base,readyDate:"2026-02-30"},
+          {...base,sizeRatings:["small","small"]},{...base,sizeRatings:["small","huge"]},
           {...base,bedOverrides:{"8-A":base.bedOverrides["9-B"]}},
           ...["schemaVersion","unevenStatus","tipburnStatus","elongatedStatus","readyDateMode","readyDate","uneven"].map(field=>({
             ...base,bedOverrides:{"9-B":{...base.bedOverrides["9-B"],[field]:field==="schemaVersion"?4:field==="readyDate"?"2026-09-25":"invalid"}}}))
@@ -17095,18 +17112,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "4435dc87", elements: 2569, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "ce131177", elements: 2639, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "2a51fcd8", elements: 2639, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "7e3a2bbc", elements: 2573, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "96d57780", elements: 2590, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f16e2b26", elements: 2673, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "11388f9f", elements: 2688, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "c48fe8c7", elements: 2800, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "c271fa44", elements: 2800, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "534b29c1", elements: 2844, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "6cf4524f", elements: 2844, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "1eee4206", elements: 2844, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "2929a26e", elements: 2570, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "7ba821a6", elements: 2640, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "239a5c0d", elements: 2640, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "ecea680a", elements: 2574, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "ffd16191", elements: 2591, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "19c1e1b7", elements: 2674, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "a843a5e4", elements: 2689, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "76c1e1da", elements: 2801, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "c79e33ed", elements: 2801, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "4e42650e", elements: 2845, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "8f93b1b4", elements: 2845, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "f6879445", elements: 2845, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -2987,7 +2987,7 @@ function renderRecordHarvestGrowthBedEditor(){
   if(typeof renderRecordHarvestReadyCarrySummary === "function") renderRecordHarvestReadyCarrySummary();
   const container = document.getElementById("recordHarvestGrowthBedRows");
   const clearButton = document.getElementById("recordHarvestGrowthClearBtn");
-  if(clearButton) clearButton.hidden = getSelectedHarvestSizeRating() === "unknown";
+  if(clearButton) clearButton.hidden = getSelectedHarvestSizeRatings().length === 0;
   if(!container) return;
   const readyInput = document.getElementById("recordGrowthReadyDateInput");
   if(readyInput) readyInput.max = document.getElementById("recordDateInput")?.value || "";
