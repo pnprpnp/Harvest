@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260930-move-bed-entry-button">
+<meta name="harvestnavi-version" content="20260930-record-quality-fields">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -16137,8 +16137,9 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   margin:0;
   font-weight:800;
 }
-.recordGrowthObservationFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0;}
-.recordGrowthObservationFields label{display:grid;gap:5px;min-width:0;color:var(--ui-text-secondary);font-size:12px;}
+.recordGrowthObservationFields{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:10px 0;}
+.recordGrowthObservationField{display:grid;gap:5px;min-width:0;}
+.recordGrowthObservationField > label.fieldAccentLabel{margin:0;color:var(--ui-text);font-size:16px;font-weight:700;}
 .recordGrowthObservationFields select,.recordGrowthObservationFields input{width:100%;min-width:0;min-height:40px;box-sizing:border-box;padding:7px;border:1px solid var(--ui-line);border-radius:9px;background:var(--ui-surface-solid);color:var(--ui-text);font:inherit;}
 .recordHarvestGrowthBedEditor{
   margin-top:10px;
@@ -20075,7 +20076,7 @@ requestAnimationFrame(function(){
 
       <div id="recordHarvestGrowthSection" class="recordHarvestMemoSection recordHarvestGrowthSection">
         <div class="recordHarvestGrowthHeading">
-          <label class="fieldAccentLabel">収穫時の育ち具合・品質（任意）</label>
+          <label class="fieldAccentLabel">全体の品質（任意）</label>
           <button id="recordHarvestGrowthClearBtn" type="button" class="recordHarvestGrowthClearBtn" data-ui-click="clearRecordHarvestGrowthSize" hidden>選択を解除</button>
         </div>
         <div class="qualityChoiceRow recordHarvestSizeChoiceRow" role="radiogroup" aria-label="収穫時の育ち具合">
@@ -20084,9 +20085,18 @@ requestAnimationFrame(function(){
           <label class="qualityChoice qualityLarge"><input type="radio" name="recordHarvestSizeRating" value="large" data-ui-change="handleRecordHarvestGrowthInput">大きめ</label>
         </div>
         <div class="recordGrowthObservationFields">
-          <label>チップバーン<select id="recordGrowthTipburnStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="tipburn" data-ui-value-argument="true"><option value="unknown">未確認</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select></label>
-          <label>徒長<select id="recordGrowthElongatedStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="elongated" data-ui-value-argument="true"><option value="unknown">未確認</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select></label>
-          <label>ばらつき<select id="recordGrowthUnevenStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="uneven" data-ui-value-argument="true"><option value="unknown">不明</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select></label>
+          <div class="recordGrowthObservationField">
+            <label class="fieldAccentLabel" for="recordGrowthTipburnStatusInput">チップバーン</label>
+            <select id="recordGrowthTipburnStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="tipburn" data-ui-value-argument="true"><option value="unknown">未確認</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select>
+          </div>
+          <div class="recordGrowthObservationField">
+            <label class="fieldAccentLabel" for="recordGrowthElongatedStatusInput">徒長</label>
+            <select id="recordGrowthElongatedStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="elongated" data-ui-value-argument="true"><option value="unknown">未確認</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select>
+          </div>
+          <div class="recordGrowthObservationField">
+            <label class="fieldAccentLabel" for="recordGrowthUnevenStatusInput">ばらつき</label>
+            <select id="recordGrowthUnevenStatusInput" data-ui-change="setRecordHarvestGrowthStatus" data-ui-arg="uneven" data-ui-value-argument="true"><option value="unknown">不明</option><option value="none">なし</option><option value="slight">少し</option><option value="many">多い</option><option value="present">あり（程度不明）</option></select>
+          </div>
           <input id="recordGrowthCultivarInput" type="hidden" value="マルチリーフエアリ">
         </div>
         <div class="recordHarvestGrowthOptions">
@@ -55664,7 +55674,7 @@ function getDashboardDayRecordDetailInfoRows(context){
     { label: "収穫ケース数", value: `${totalCases}ケース` },
     { label: hasEstimatedHarvestLoss ? "推定収穫ロス率" : "収穫ロス率", value: getDashboardDayHarvestLossText(harvestRecords) },
     { label: "収穫内訳", value: harvestBreakdown },
-    { label: "収穫時の育ち具合・品質", value: harvestGrowthText },
+    { label: "全体の品質", value: harvestGrowthText },
     { label: "収穫品質メモ", value: harvestQualityText },
     { label: "定植日数の詳細", value: plantingAgeText },
     ...(plantingEventsForDay.length ? [
@@ -55801,7 +55811,7 @@ function openRecordDetailWindow(kind, id){
       { label: "収穫ケース数", value: `${getHarvestRecordCaseDisplayText(record)}ケース` },
       { label: isHarvestLossEstimatedForRecord(record) ? "推定ロス率" : "収穫ロス率", value: String(record.actualLoss ?? "").trim() === "" ? "-" : record.actualLoss + "%" },
       { label: "収穫場所", value: harvestLocationText },
-      { label: "収穫時の育ち具合・品質", value: formatHarvestGrowthAssessment(record) },
+      { label: "全体の品質", value: formatHarvestGrowthAssessment(record) },
       { label: "品質メモ", value: formatQualityMemo(record.qualityMemo) || "-" },
       { label: "定植日数の詳細", value: formatPlantingAgeForRecordDetailDisplay(record) || "-" },
       ...(attention.hasAttention ? [{ label: attention.label, value: attention.reasons.join("\n") || "内容を確認してください" }] : []),
