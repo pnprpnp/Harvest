@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20260930-ready-date-growth-mode-only">
+<meta name="harvestnavi-version" content="20260930-harvest-bed-evidence">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -427,8 +427,10 @@ const HarvestGrowthHistory = (() => {
       let readyDate = dateKey(sample.readyDate);
       if(readyDate && (readyDate < plantingDate || readyDate > date)) readyDate = null;
       const sizeRating = partial ? "large" : Object.prototype.hasOwnProperty.call(SIZE, sample.sizeRating) ? sample.sizeRating : "unknown";
+      const possibleSizeRating = !partial && Object.prototype.hasOwnProperty.call(SIZE, sample.possibleSizeRating)
+        ? sample.possibleSizeRating : "unknown";
       rows.push({
-        ...sample, id, date, plantingDate, readyDate, sizeRating, signalKind, positionKnown, palletKeys,
+        ...sample, id, date, plantingDate, readyDate, sizeRating, possibleSizeRating, signalKind, positionKnown, palletKeys,
         building:Number(sample.building), bed:String(sample.bed || ""),
         bedKey:`${sample.building}-${sample.bed || ""}`,
         groupId:String(sample.groupId || sample.cropId || `${plantingDate}:${date}`),
@@ -688,24 +690,40 @@ const HarvestGrowthHistory = (() => {
   function ordinalLoss(row, target){
     const ratio = Math.log(Math.max(0.001, row.units) / target);
     let loss = row.readyUnits > 0 ? Math.abs(Math.log(row.readyUnits / (target * 0.88))) : 0;
-    if(row.sizeRating === "normal") loss += Math.max(0, Math.log(0.88) - ratio, ratio - Math.log(1.12));
-    if(row.sizeRating === "small") loss += Math.max(0, ratio - Math.log(0.88) + 0.005);
-    if(row.sizeRating === "large") loss += Math.max(0, Math.log(1.12) - ratio + 0.005);
+    loss += sizeConstraintLoss(row.units, row.sizeRating, target);
     return loss;
   }
-  function robustTarget(rows, prior, priorWeight){
-    if(!rows.length) return prior;
+  function sizeConstraintLoss(units, label, target){
+    const ratio = Math.log(Math.max(0.001, units) / target);
+    if(label === "normal") return Math.max(0, Math.log(0.88) - ratio, ratio - Math.log(1.12));
+    if(label === "small") return Math.max(0, ratio - Math.log(0.88) + 0.005);
+    if(label === "large") return Math.max(0, Math.log(1.12) - ratio + 0.005);
+    return 0;
+  }
+  function robustTarget(rows, prior, priorWeight, possibleRows = []){
+    if(!rows.length && !possibleRows.length) return prior;
     const candidates = [prior];
-    rows.forEach(row => {
+    [...rows, ...possibleRows].forEach(row => {
       if(row.units <= 0) return;
       if(row.readyUnits > 0) candidates.push(row.readyUnits / 0.88);
-      if(row.sizeRating === "normal") candidates.push(row.units / 0.88, row.units / 1.12);
+      if(row.sizeRating === "normal" || row.possibleSizeRating === "normal") candidates.push(row.units / 0.88, row.units / 1.12);
       candidates.push(row.units / (0.88 * Math.exp(-0.006)), row.units / (1.12 * Math.exp(0.006)));
+    });
+    const possibleGroups = new Map();
+    possibleRows.forEach(row => {
+      const group = possibleGroups.get(row.groupId) || [];
+      group.push(row);
+      possibleGroups.set(row.groupId, group);
     });
     let best = prior, bestLoss = Infinity;
     candidates.forEach(target => {
       if(target <= 0 || !Number.isFinite(target)) return;
       const loss = rows.reduce((sum, row) => sum + row.weight * ordinalLoss(row, target), 0)
+        // "Included somewhere" is one weak constraint per harvest. Its best
+        // matching bed is used without assigning the label to every bed.
+        + [...possibleGroups.values()].reduce((sum, group) => sum + 0.15
+          * Math.min(1, group.reduce((weight, row) => weight + row.weight, 0)) * Math.min(...group.map(row =>
+          sizeConstraintLoss(row.units, row.possibleSizeRating, target))), 0)
         + priorWeight * Math.abs(Math.log(target / prior));
       if(loss < bestLoss - 1e-12){ bestLoss = loss; best = target; }
     });
@@ -756,7 +774,7 @@ const HarvestGrowthHistory = (() => {
       const values = accumulate(context, sample.plantingDate, end, sample.manualAdjustment, parameter, sample.environmentRegimes);
       if(!values || !values.total) return;
       if(method === "legacy" && values.coverage < 1 || method !== "legacy" && parameter.id !== "calendar" && values.coverage < 0.8) return;
-      const hasLabel = sample.readyDate || sample.sizeRating !== "unknown";
+      const hasLabel = sample.readyDate || sample.sizeRating !== "unknown" || sample.possibleSizeRating !== "unknown";
       if(method !== "legacy" && !hasLabel) return;
       const readyValues = sample.readyDate ? accumulate(context, sample.plantingDate, sample.readyDate, sample.manualAdjustment, parameter, sample.environmentRegimes) : null;
       rows.push({ ...sample, units:values.total, readyUnits:readyValues?.complete ? readyValues.total : null,
@@ -765,9 +783,11 @@ const HarvestGrowthHistory = (() => {
     });
     const prior = parameter.id === "calendar" ? 36 : 36 * 0.85;
     const labelled = rows.filter(row => row.sizeRating !== "unknown" || row.readyDate);
+    const possible = rows.filter(row => row.possibleSizeRating !== "unknown");
     const normal = labelled.filter(row => row.readyUnits > 0);
     const anchor = weightedQuantile(normal, row => row.readyUnits / 0.88) ?? prior;
-    const farmTarget = robustTarget(labelled, anchor, 3);
+    const hardFarmTarget = method === "legacy" ? robustTarget(labelled, anchor, 3) : null;
+    const farmTarget = robustTarget(labelled, anchor, 3, possible);
     const byBuilding = new Map(), byBed = new Map();
     const buildings = [...new Set(rows.map(row => row.building))];
     buildings.forEach(building => {
@@ -814,20 +834,22 @@ const HarvestGrowthHistory = (() => {
           target:count >= 8 ? base * Math.exp(clamp(Math.log(raw / base), -0.25, 0.25) * count / (count + 16)) : base });
       });
     }
-    return { method, parameter, rows, farmTarget, byBuilding, byBed, bySeason, byPosition, weakEvidence, prior,
+    return { method, parameter, rows, farmTarget, hardFarmTarget, byBuilding, byBed, bySeason, byPosition, weakEvidence, prior,
       window:learnWindow(labelled, farmTarget, method === "adaptive"),
       independentCrops:uniqueCount(labelled), anchorCount:uniqueCount(normal), labelledCount:labelled.length };
   }
   function targetFor(candidate, building, bed, date, positionKey = null){
     if(candidate.method === "legacy"){
       if(candidate.legacyTargets) return candidate.legacyTargets[String(building)] ?? candidate.legacyGlobalTarget;
-      const usable = candidate.rows.filter(row => row.units > 0);
+      const usable = candidate.rows.filter(row => row.units > 0
+        && (row.possibleSizeRating === "unknown" || row.readyDate || row.sizeRating !== "unknown"));
       const local = usable.filter(row => row.building === Number(building));
       const localLabels = local.filter(row => row.sizeRating !== "unknown");
       const allLabels = usable.filter(row => row.sizeRating !== "unknown");
       const labels = localLabels.length >= 3 ? localLabels : allLabels;
       const subset = labels.length ? labels : local.length >= 3 ? local : usable;
-      return legacyMedian(subset.map(row => row.units * (row.sizeRating === "small" ? 1.1 : row.sizeRating === "large" ? 0.9 : 1))) ?? candidate.prior;
+      const base = legacyMedian(subset.map(row => row.units * (row.sizeRating === "small" ? 1.1 : row.sizeRating === "large" ? 0.9 : 1))) ?? candidate.prior;
+      return base * clamp(candidate.farmTarget / (candidate.hardFarmTarget || candidate.farmTarget), 0.9, 1.1);
     }
     const localTarget = candidate.byPosition?.get(positionKey)?.target || candidate.byBed.get(`${building}-${bed}`)?.target
       || candidate.byBuilding.get(Number(building))?.target || candidate.farmTarget;
@@ -2234,13 +2256,14 @@ const HarvestGrowthHistory = (() => {
       seen.add(id);
       const row = { id, building:String(sample.building ?? ""), date, weight,
         groupId:String(sample.groupId || sample.id || `${sample.building}:${date}`),
-        cropId:sample.cropId ? String(sample.cropId) : null, outcomes:{}, exposures:{} };
+        cropId:sample.cropId ? String(sample.cropId) : null, outcomes:{}, possibilities:{}, exposures:{} };
       let start = addDays(date, -(WINDOW_DAYS - 1));
       if(plantingDate && plantingDate > start) start = plantingDate;
       SYMPTOMS.forEach(symptom => {
         // Legacy booleans do not establish that absence was actually checked.
         const status = sample.symptoms?.[symptom];
         row.outcomes[symptom] = normalizeSeverity(status);
+        row.possibilities[symptom] = normalizeSeverity(sample.possibleSymptoms?.[symptom]);
         row.exposures[symptom] = summarizeWindow(observations, start, date, symptom,
           adjustment(sample.manualAdjustment), true, sample.environmentRegimes, boundary.instant);
       });
@@ -2271,12 +2294,30 @@ const HarvestGrowthHistory = (() => {
     return [...groups.values()];
   }
   function summarizeGroups(groups, symptom){
-    let confirmedCount = 0, presentCount = 0;
+    let confirmedCount = 0, presentCount = 0, possibleCount = 0, possiblePresentCount = 0;
     const excluded = { unknown:0, conflictingOutcome:0, insufficientWeather:0, mixedExposure:0 };
     const bucket = () => ({ count:0, presentCount:0, effectiveCount:0, effectivePresentCount:0,
       severityCounts:{ none:0, slight:0, many:0, "legacy-present":0 }, effectiveSeverityCounts:{ none:0, slight:0, many:0, "legacy-present":0 } });
     const exposed = bucket(), unexposed = bucket();
+    const weakByExposure = { exposed:{count:0,presentCount:0,effectiveCount:0,effectivePresentCount:0},
+      unexposed:{count:0,presentCount:0,effectiveCount:0,effectivePresentCount:0} };
     groups.forEach(group => {
+      const possible = group.filter(row => row.possibilities[symptom] !== "unknown"
+        && !group.some(other => present(row.possibilities[symptom])
+          ? present(other.outcomes[symptom]) : other.outcomes[symptom] === "none"));
+      if(possible.length && new Set(possible.map(row => present(row.possibilities[symptom]))).size === 1){
+        possibleCount++;
+        const possiblePresent = possible.some(row => present(row.possibilities[symptom]));
+        if(possiblePresent) possiblePresentCount++;
+        const eligible = possible.filter(row => row.exposures[symptom].eligible);
+        if(eligible.length && new Set(eligible.map(row => row.exposures[symptom].exposed)).size === 1){
+          const bucket = weakByExposure[eligible[0].exposures[symptom].exposed ? "exposed" : "unexposed"];
+          const weight = Math.min(...eligible.map(row => row.weight));
+          bucket.count++;
+          bucket.effectiveCount += weight;
+          if(possiblePresent){ bucket.presentCount++; bucket.effectivePresentCount += weight; }
+        }
+      }
       const confirmed = group.filter(row => row.outcomes[symptom] !== "unknown");
       if(!confirmed.length){ excluded.unknown++; return; }
       confirmedCount++;
@@ -2298,12 +2339,18 @@ const HarvestGrowthHistory = (() => {
     const effectiveCount = exposed.effectiveCount + unexposed.effectiveCount;
     const positiveCount = exposed.effectivePresentCount + unexposed.effectivePresentCount;
     const pooledRate = effectiveCount ? positiveCount / effectiveCount : null;
-    [exposed, unexposed].forEach(bucket => {
+    [exposed, unexposed].forEach((bucket, index) => {
+      const weak = weakByExposure[index === 0 ? "exposed" : "unexposed"];
+      bucket.possibleCount = weak.count;
+      bucket.possiblePresentCount = weak.presentCount;
+      bucket.effectivePossibleCount = weak.effectiveCount;
+      bucket.effectivePossiblePresentCount = weak.effectivePresentCount;
       bucket.rawRate = bucket.count ? bucket.presentCount / bucket.count : null;
       bucket.shrunkRate = bucket.effectiveCount && pooledRate !== null
-        ? (bucket.effectivePresentCount + PRIOR_STRENGTH * pooledRate) / (bucket.effectiveCount + PRIOR_STRENGTH) : null;
+        ? (bucket.effectivePresentCount + PRIOR_STRENGTH * pooledRate + 0.15 * bucket.effectivePossiblePresentCount)
+          / (bucket.effectiveCount + PRIOR_STRENGTH + 0.15 * bucket.effectivePossibleCount) : null;
     });
-    return { confirmedCount, presentCount,
+    return { confirmedCount, presentCount, possibleCount, possiblePresentCount,
       association:{
         kind:"historical-conditional-frequency", status:effectiveCount >= 12 && exposed.effectiveCount >= 5 && unexposed.effectiveCount >= 5
           ? "descriptive" : "insufficient-data",
@@ -2361,6 +2408,7 @@ const HarvestGrowthHistory = (() => {
       }else{
         parts.push("同じ号棟の確認済み症状記録がありません。");
       }
+      if(historic.possibleCount) parts.push(`全体入力から状態が当てはまる可能性のある${historic.possibleCount}作を弱い参考材料に使用。`);
       if(association.eligibleCount){
         parts.push(`収穫直前の最大${WINDOW_DAYS}日間の気象と比較できた過去${association.eligibleCount}作では、` +
           `条件あり${association.exposed.count}作中${association.exposed.presentCount}作、` +
@@ -20047,9 +20095,9 @@ requestAnimationFrame(function(){
         </div>
         <input id="recordGrowthReadyModeInput" type="hidden" value="auto">
         <input id="recordGrowthReadyDateInput" type="hidden">
-        <p class="recordHarvestGrowthBedHelp">確認していない症状は「未確認」のままにしてください。</p>
+        <p class="recordHarvestGrowthBedHelp">全体入力は、収穫した物の中に含まれた状態です。選ばなかった状態は「ない」とは判断しません。</p>
         <div id="recordHarvestGrowthBedEditor" class="recordHarvestGrowthBedEditor" hidden>
-          <div class="recordHarvestGrowthBedHelp">全体と異なるベッドだけ変更できます。</div>
+          <div class="recordHarvestGrowthBedHelp">場所を確認できたベッドだけ選んで入力してください。選ばないベッドには全体入力を可能性として使います。</div>
           <div id="recordHarvestGrowthBedRows" class="recordHarvestGrowthBedRows"></div>
         </div>
       </div>
@@ -26606,6 +26654,10 @@ function normalizeHarvestGrowthDetail(value, allowedBedKeys = null){
       tipburn: override.tipburn === true,
       elongated: override.elongated === true
     };
+    if(Array.isArray(override.confirmedFields)){
+      bedOverrides[bedKey].confirmedFields = [...new Set(override.confirmedFields.filter(field =>
+        ["sizeRating", "unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)))];
+    }
     if(hasHarvestGrowthObservationFields(source) || hasHarvestGrowthObservationFields(override)){
       Object.assign(bedOverrides[bedKey], normalizeHarvestGrowthObservations(override));
       bedOverrides[bedKey].tipburn = isHarvestSymptomPresent(bedOverrides[bedKey].tipburnStatus);
@@ -26616,7 +26668,7 @@ function normalizeHarvestGrowthDetail(value, allowedBedKeys = null){
   const normalized = { uneven:source.uneven === true, bedOverrides };
   if(hasHarvestGrowthObservationFields(source)
     || Object.values(rawOverrides).some(hasHarvestGrowthObservationFields)){
-    const schemaVersion = Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
+    const schemaVersion = Number(source.schemaVersion) >= 4 ? 4 : Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
       || Object.values(rawOverrides).some(item => item && ("unevenStatus" in item || "readyDateMode" in item)) ? 3 : 2;
     Object.assign(normalized, { schemaVersion, ...normalizeHarvestGrowthObservations(source),
       cultivar:String(source.cultivar || "").trim().slice(0, 80) });
@@ -26662,6 +26714,27 @@ function getHarvestGrowthStateForBed(record, bedKey){
   } : { ...overall };
 }
 
+function getHarvestGrowthEvidenceForBed(record, bedKey){
+  const overall = getHarvestGrowthOverallState(record);
+  const detail = normalizeHarvestGrowthDetail(record?.growthDetail,
+    getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(record)));
+  const override = detail.bedOverrides[bedKey];
+  const fields = ["sizeRating", "unevenStatus", "tipburnStatus", "elongatedStatus"];
+  const confirmed = {};
+  const possible = {};
+  fields.forEach(field => {
+    const local = override ? (field === "sizeRating" ? override.sizeRating
+      : normalizeHarvestSymptomStatus(override[field], override[field.replace("Status", "")])) : "unknown";
+    // v3 copied the overall values into overrides. Only a difference proves that
+    // an old bed-specific field was deliberately changed.
+    const isConfirmed = !!override && local !== "unknown" && (Array.isArray(override.confirmedFields)
+      ? override.confirmedFields.includes(field) : local !== overall[field]);
+    confirmed[field] = isConfirmed ? local : "unknown";
+    possible[field] = isConfirmed ? "unknown" : overall[field] || "unknown";
+  });
+  return { confirmed, possible, selected:!!override };
+}
+
 function getSelectedHarvestSizeRating(){
   return normalizeHarvestSizeRating(
     document.querySelector('input[name="recordHarvestSizeRating"]:checked')?.value
@@ -26672,24 +26745,11 @@ function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
   const allowedBedKeys = getHarvestBedKeysFromPalletKeys(palletKeys);
   const overall = getCurrentRecordHarvestGrowthOverallState();
   const normalized = normalizeHarvestGrowthDetail({
-    schemaVersion:3,
+    schemaVersion:4,
     ...overall,
     bedOverrides: recordHarvestGrowthBedOverrides
   }, allowedBedKeys);
-  const bedOverrides = {};
-  Object.entries(normalized.bedOverrides).forEach(([bedKey, override]) => {
-    if(override.sizeRating === overall.sizeRating
-      && override.uneven === overall.uneven
-      && override.tipburn === overall.tipburn
-      && override.elongated === overall.elongated
-      && override.readyDate === overall.readyDate
-      && override.readyDateMode === overall.readyDateMode
-      && override.unevenStatus === overall.unevenStatus
-      && override.tipburnStatus === overall.tipburnStatus
-      && override.elongatedStatus === overall.elongatedStatus) return;
-    bedOverrides[bedKey] = override;
-  });
-  return { ...normalized, bedOverrides };
+  return normalized;
 }
 
 function setSelectedHarvestGrowthAssessment(record = null){
@@ -32274,7 +32334,10 @@ function isValidTransferQualityMemo(value){
 
 function isValidTransferGrowthDetail(value, palletKeys = [], harvestDate = ""){
   const validObservations = item => {
-    if(item.schemaVersion !== undefined && ![2,3].includes(item.schemaVersion)) return false;
+    if(item.schemaVersion !== undefined && ![2,3,4].includes(item.schemaVersion)) return false;
+    if(item.confirmedFields !== undefined && (!Array.isArray(item.confirmedFields)
+      || item.confirmedFields.length > 4 || new Set(item.confirmedFields).size !== item.confirmedFields.length
+      || !item.confirmedFields.every(field => ["sizeRating","unevenStatus","tipburnStatus","elongatedStatus"].includes(field)))) return false;
     if(item.cultivar !== undefined && (typeof item.cultivar !== "string" || item.cultivar.length > 80 || item.cultivar.includes("\u0000"))) return false;
     if(item.readyDate !== undefined && item.readyDate !== ""
       && (!isStrictDateOnlyString(item.readyDate) || (harvestDate && item.readyDate > harvestDate))) return false;
@@ -39614,6 +39677,7 @@ function getDashboardGrowthSourceState(asOf = new Date()){
     groups.forEach(group => {
       const { planting, bedKey } = group;
       const state = getHarvestGrowthStateForBed(record, bedKey);
+      const evidence = getHarvestGrowthEvidenceForBed(record, bedKey);
       const [buildingText, bed] = bedKey.split("-");
       const id = String(record.recordUuid || record.id);
       const readyDate = parseDateOnlyString(state.readyDate || "");
@@ -39636,17 +39700,24 @@ function getDashboardGrowthSourceState(asOf = new Date()){
         plantingEventId:planting.eventId,
         building:Number(buildingText), bed, bedKey, plantingDate:new Date(planting.date), date:parseDateOnlyString(record.date),
         ageDays:getLocalDayDiff(planting.date, parseDateOnlyString(record.date)),
-        sizeRating:state.sizeRating, uneven:state.uneven, tipburn:state.tipburn, elongated:state.elongated,
+        sizeRating:evidence.confirmed.sizeRating,
+        possibleSizeRating:evidence.possible.sizeRating,
+        uneven:isHarvestSymptomPresent(evidence.confirmed.unevenStatus),
+        tipburn:isHarvestSymptomPresent(evidence.confirmed.tipburnStatus),
+        elongated:isHarvestSymptomPresent(evidence.confirmed.elongatedStatus),
         cultivar:state.cultivar || "",
         readyDate:ready.readyDate,readyObservationIds:ready.observationIds,
         availableAt:[...timestamps,ready.availableAt].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b)).pop() || "",
         plantingAvailableAt:plantingTimestamps[plantingTimestamps.length - 1] || "",
-        symptoms:{ tipburn:state.tipburnStatus || (state.tipburn ? "present" : "unknown"),
-          elongated:state.elongatedStatus || (state.elongated ? "present" : "unknown"),
-          uneven:state.unevenStatus || (state.uneven ? "present" : "unknown") },
-        qualityObserved:state.tipburnStatus === "none" || state.elongatedStatus === "none" || state.tipburn || state.elongated,
+        symptoms:{ tipburn:evidence.confirmed.tipburnStatus,
+          elongated:evidence.confirmed.elongatedStatus,
+          uneven:evidence.confirmed.unevenStatus },
+        possibleSymptoms:{ tipburn:evidence.possible.tipburnStatus,
+          elongated:evidence.possible.elongatedStatus,
+          uneven:evidence.possible.unevenStatus },
+        qualityObserved:["tipburnStatus","elongatedStatus","unevenStatus"].some(field => evidence.confirmed[field] !== "unknown"),
         palletCount:ready.palletKeys.length, palletKeys:ready.palletKeys, partial:group.partial,
-        qualityWeight:(group.partial ? 0.5 : 1) * (state.uneven ? 0.6 : 1) * (planting.event?.detailsUnknown ? 0.7 : 1)
+        qualityWeight:(group.partial ? 0.5 : 1) * (isHarvestSymptomPresent(evidence.confirmed.unevenStatus) ? 0.6 : 1) * (planting.event?.detailsUnknown ? 0.7 : 1)
       }));
     });
   });
@@ -47909,33 +47980,33 @@ function syncRecordHarvestGrowthQualityStatus(input){
 }
 
 function compactRecordHarvestGrowthBedOverrides(){
-  const overall = getCurrentRecordHarvestGrowthOverallState();
   const allowed = new Set(getHarvestBedKeysFromPalletKeys(harvestFillKeys));
-  const normalized = normalizeHarvestGrowthDetail({
+  recordHarvestGrowthBedOverrides = normalizeHarvestGrowthDetail({
     bedOverrides: recordHarvestGrowthBedOverrides
   }, [...allowed]).bedOverrides;
-  Object.keys(normalized).forEach(bedKey => {
-    const override = normalized[bedKey];
-    if(override.sizeRating === overall.sizeRating
-      && override.uneven === overall.uneven
-      && override.tipburn === overall.tipburn
-      && override.elongated === overall.elongated
-      && (override.readyDate || "") === overall.readyDate
-      && (override.readyDateMode || (override.readyDate ? "manual" : "auto")) === overall.readyDateMode
-      && normalizeHarvestSymptomStatus(override.unevenStatus,override.uneven) === overall.unevenStatus
-      && normalizeHarvestSymptomStatus(override.tipburnStatus, override.tipburn) === overall.tipburnStatus
-      && normalizeHarvestSymptomStatus(override.elongatedStatus, override.elongated) === overall.elongatedStatus){
-      delete normalized[bedKey];
-    }
-  });
-  recordHarvestGrowthBedOverrides = normalized;
 }
 
 function getRecordHarvestGrowthBedDraft(bedKey){
   const override = normalizeHarvestGrowthDetail({
     bedOverrides: recordHarvestGrowthBedOverrides
   }, [bedKey]).bedOverrides[bedKey];
-  return override ? { ...override, ...normalizeHarvestGrowthObservations(override) } : getCurrentRecordHarvestGrowthOverallState();
+  if(override){
+    const overall = getCurrentRecordHarvestGrowthOverallState();
+    const confirmedFields = Array.isArray(override.confirmedFields) ? override.confirmedFields
+      : ["sizeRating", "unevenStatus", "tipburnStatus", "elongatedStatus"].filter(field =>
+        override[field] !== "unknown" && override[field] !== overall[field]);
+    return { ...override, ...normalizeHarvestGrowthObservations(override), confirmedFields };
+  }
+  const overall = getCurrentRecordHarvestGrowthOverallState();
+  return { sizeRating:"unknown", uneven:false, tipburn:false, elongated:false,
+    unevenStatus:"unknown", tipburnStatus:"unknown", elongatedStatus:"unknown",
+    readyDate:overall.readyDate, readyDateMode:overall.readyDateMode, confirmedFields:[] };
+}
+
+function selectRecordHarvestGrowthBed(bedKey){
+  if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
+  if(!recordHarvestGrowthBedOverrides[bedKey]) recordHarvestGrowthBedOverrides[bedKey] = getRecordHarvestGrowthBedDraft(bedKey);
+  handleRecordHarvestGrowthInput();
 }
 
 function renderRecordHarvestGrowthBedEditor(){
@@ -47957,8 +48028,9 @@ function renderRecordHarvestGrowthBedEditor(){
       <section class="recordHarvestGrowthBedRow" aria-label="${escapeHtml(`${building}号棟 ${bed}ベッドの育ち具合`)}">
         <div class="recordHarvestGrowthBedTitle">
           <span>${escapeHtml(`${building}号棟 ${bed}ベッド`)}</span>
-          <button type="button" class="recordHarvestGrowthBedReset" data-ui-click="resetRecordHarvestGrowthBed" data-ui-arg="${escapeHtml(bedKey)}"${hasOverride ? "" : " hidden"}>全体と同じ</button>
+          <button type="button" class="recordHarvestGrowthBedReset" data-ui-click="${hasOverride ? "resetRecordHarvestGrowthBed" : "selectRecordHarvestGrowthBed"}" data-ui-arg="${escapeHtml(bedKey)}">${hasOverride ? "個別評価を解除" : "このベッドを確認"}</button>
         </div>
+        ${hasOverride ? `
         <div class="recordHarvestGrowthBedSizes" role="group" aria-label="育ち具合">
           ${[
             ["small", "小さめ"],
@@ -47986,6 +48058,7 @@ function renderRecordHarvestGrowthBedEditor(){
             </select></label>
           `).join("")}
         </div>
+        ` : '<div class="recordHarvestGrowthBedHelp">全体の入力を可能性として使用</div>'}
       </section>
     `;
   }).join("");
@@ -47998,7 +48071,8 @@ function setRecordHarvestGrowthBedObservation(bedKey, field, value){
   if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
   if(!["unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)) return;
   const current = getRecordHarvestGrowthBedDraft(bedKey);
-  const next = { ...current, [field]:normalizeHarvestSymptomStatus(value) };
+  const next = { ...current, [field]:normalizeHarvestSymptomStatus(value),
+    confirmedFields:[...new Set([...current.confirmedFields, field])] };
   ["tipburn","elongated","uneven"].forEach(key=>{ if(field === `${key}Status`) next[key] = isHarvestSymptomPresent(next[field]); });
   recordHarvestGrowthBedOverrides[bedKey] = next;
   handleRecordHarvestGrowthInput();
@@ -48029,9 +48103,11 @@ function toggleRecordHarvestGrowthBedEditor(){
 
 function setRecordHarvestGrowthBedSize(bedKey, value){
   if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
+  const current = getRecordHarvestGrowthBedDraft(bedKey);
   recordHarvestGrowthBedOverrides[bedKey] = {
-    ...getRecordHarvestGrowthBedDraft(bedKey),
-    sizeRating: normalizeHarvestSizeRating(value)
+    ...current,
+    sizeRating: normalizeHarvestSizeRating(value),
+    confirmedFields:[...new Set([...current.confirmedFields, "sizeRating"])]
   };
   renderRecordHarvestGrowthBedEditor();
   renderRecordHarvestConfirmation();
@@ -48045,7 +48121,8 @@ function toggleRecordHarvestGrowthBedFlag(bedKey, field){
   recordHarvestGrowthBedOverrides[bedKey] = {
     ...current,
     [field]: !current[field],
-    [`${field}Status`]:current[field] ? "unknown" : "present"
+    [`${field}Status`]:current[field] ? "unknown" : "present",
+    confirmedFields:[...new Set([...current.confirmedFields, `${field}Status`])]
   };
   renderRecordHarvestGrowthBedEditor();
   renderRecordHarvestConfirmation();
@@ -56348,6 +56425,13 @@ function preserveHarvestGrowthObservationsForLegacySync(localRecord, incomingRec
   if(localVersion < 2 || incomingVersion >= localVersion
     || localRecord?.type !== "fullHarvest" || incomingRecord?.type !== "fullHarvest") return incomingRecord;
   const allowedBeds = new Set(getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(incomingRecord)));
+  if(localVersion >= 4 && incomingVersion < 4){
+    if(!growthObservationLegacyServerWarningShown){
+      growthObservationLegacyServerWarningShown = true;
+      if(typeof showToast === "function") showToast("ベッド別の確認情報は端末に保持しました。共有するには連携先の更新が必要です");
+    }
+    return { ...incomingRecord, growthDetail:normalizeHarvestGrowthDetail(local, [...allowedBeds]) };
+  }
   const incoming = normalizeHarvestGrowthDetail(incomingRecord.growthDetail, [...allowedBeds]);
   const detail = { ...incoming, bedOverrides:{...incoming.bedOverrides}, schemaVersion:localVersion };
   const preserveStatus = (old, next, positive) => {
@@ -56383,7 +56467,9 @@ function preserveHarvestGrowthObservationsForLegacySync(localRecord, incomingRec
     detail.bedOverrides[bedKey] = {
       sizeRating:next.sizeRating, uneven:next.uneven, ...observations,
       tipburn:isHarvestSymptomPresent(observations.tipburnStatus),
-      elongated:isHarvestSymptomPresent(observations.elongatedStatus)
+      elongated:isHarvestSymptomPresent(observations.elongatedStatus),
+      ...(Array.isArray(local.bedOverrides[bedKey].confirmedFields)
+        ? {confirmedFields:[...local.bedOverrides[bedKey].confirmedFields]} : {})
     };
   });
   if(!growthObservationLegacyServerWarningShown){
@@ -57664,7 +57750,7 @@ function buildGrowthUnratedRecordUpdate(record,size,quality){
   if(record?.type!=="fullHarvest" || !["small","normal","large"].includes(size)) throw new Error("まとめ評価の対象または育ち具合が正しくありません");
   const overall=getHarvestGrowthOverallState(record),detail=normalizeHarvestGrowthDetail(record.growthDetail,getHarvestBedKeysFromPalletKeys(record.palletKeys));
   const chosen=quality && typeof quality==="object" ? quality : {};
-  const nextDetail={...detail,schemaVersion:3,readyDate:overall.readyDate,
+  const nextDetail={...detail,schemaVersion:Math.max(3,Number(detail.schemaVersion) || 1),readyDate:overall.readyDate,
     readyDateMode:overall.readyDateMode,cultivar:overall.cultivar || DASHBOARD_GROWTH_CULTIVAR,
     unevenStatus:chosen.uneven==="keep" || !chosen.uneven ? overall.unevenStatus : normalizeHarvestSymptomStatus(chosen.uneven),
     elongatedStatus:chosen.elongated==="keep" || !chosen.elongated ? overall.elongatedStatus : normalizeHarvestSymptomStatus(chosen.elongated),

@@ -142,8 +142,10 @@
       let readyDate = dateKey(sample.readyDate);
       if(readyDate && (readyDate < plantingDate || readyDate > date)) readyDate = null;
       const sizeRating = partial ? "large" : Object.prototype.hasOwnProperty.call(SIZE, sample.sizeRating) ? sample.sizeRating : "unknown";
+      const possibleSizeRating = !partial && Object.prototype.hasOwnProperty.call(SIZE, sample.possibleSizeRating)
+        ? sample.possibleSizeRating : "unknown";
       rows.push({
-        ...sample, id, date, plantingDate, readyDate, sizeRating, signalKind, positionKnown, palletKeys,
+        ...sample, id, date, plantingDate, readyDate, sizeRating, possibleSizeRating, signalKind, positionKnown, palletKeys,
         building:Number(sample.building), bed:String(sample.bed || ""),
         bedKey:`${sample.building}-${sample.bed || ""}`,
         groupId:String(sample.groupId || sample.cropId || `${plantingDate}:${date}`),
@@ -403,24 +405,40 @@
   function ordinalLoss(row, target){
     const ratio = Math.log(Math.max(0.001, row.units) / target);
     let loss = row.readyUnits > 0 ? Math.abs(Math.log(row.readyUnits / (target * 0.88))) : 0;
-    if(row.sizeRating === "normal") loss += Math.max(0, Math.log(0.88) - ratio, ratio - Math.log(1.12));
-    if(row.sizeRating === "small") loss += Math.max(0, ratio - Math.log(0.88) + 0.005);
-    if(row.sizeRating === "large") loss += Math.max(0, Math.log(1.12) - ratio + 0.005);
+    loss += sizeConstraintLoss(row.units, row.sizeRating, target);
     return loss;
   }
-  function robustTarget(rows, prior, priorWeight){
-    if(!rows.length) return prior;
+  function sizeConstraintLoss(units, label, target){
+    const ratio = Math.log(Math.max(0.001, units) / target);
+    if(label === "normal") return Math.max(0, Math.log(0.88) - ratio, ratio - Math.log(1.12));
+    if(label === "small") return Math.max(0, ratio - Math.log(0.88) + 0.005);
+    if(label === "large") return Math.max(0, Math.log(1.12) - ratio + 0.005);
+    return 0;
+  }
+  function robustTarget(rows, prior, priorWeight, possibleRows = []){
+    if(!rows.length && !possibleRows.length) return prior;
     const candidates = [prior];
-    rows.forEach(row => {
+    [...rows, ...possibleRows].forEach(row => {
       if(row.units <= 0) return;
       if(row.readyUnits > 0) candidates.push(row.readyUnits / 0.88);
-      if(row.sizeRating === "normal") candidates.push(row.units / 0.88, row.units / 1.12);
+      if(row.sizeRating === "normal" || row.possibleSizeRating === "normal") candidates.push(row.units / 0.88, row.units / 1.12);
       candidates.push(row.units / (0.88 * Math.exp(-0.006)), row.units / (1.12 * Math.exp(0.006)));
+    });
+    const possibleGroups = new Map();
+    possibleRows.forEach(row => {
+      const group = possibleGroups.get(row.groupId) || [];
+      group.push(row);
+      possibleGroups.set(row.groupId, group);
     });
     let best = prior, bestLoss = Infinity;
     candidates.forEach(target => {
       if(target <= 0 || !Number.isFinite(target)) return;
       const loss = rows.reduce((sum, row) => sum + row.weight * ordinalLoss(row, target), 0)
+        // "Included somewhere" is one weak constraint per harvest. Its best
+        // matching bed is used without assigning the label to every bed.
+        + [...possibleGroups.values()].reduce((sum, group) => sum + 0.15
+          * Math.min(1, group.reduce((weight, row) => weight + row.weight, 0)) * Math.min(...group.map(row =>
+          sizeConstraintLoss(row.units, row.possibleSizeRating, target))), 0)
         + priorWeight * Math.abs(Math.log(target / prior));
       if(loss < bestLoss - 1e-12){ bestLoss = loss; best = target; }
     });
@@ -471,7 +489,7 @@
       const values = accumulate(context, sample.plantingDate, end, sample.manualAdjustment, parameter, sample.environmentRegimes);
       if(!values || !values.total) return;
       if(method === "legacy" && values.coverage < 1 || method !== "legacy" && parameter.id !== "calendar" && values.coverage < 0.8) return;
-      const hasLabel = sample.readyDate || sample.sizeRating !== "unknown";
+      const hasLabel = sample.readyDate || sample.sizeRating !== "unknown" || sample.possibleSizeRating !== "unknown";
       if(method !== "legacy" && !hasLabel) return;
       const readyValues = sample.readyDate ? accumulate(context, sample.plantingDate, sample.readyDate, sample.manualAdjustment, parameter, sample.environmentRegimes) : null;
       rows.push({ ...sample, units:values.total, readyUnits:readyValues?.complete ? readyValues.total : null,
@@ -480,9 +498,11 @@
     });
     const prior = parameter.id === "calendar" ? 36 : 36 * 0.85;
     const labelled = rows.filter(row => row.sizeRating !== "unknown" || row.readyDate);
+    const possible = rows.filter(row => row.possibleSizeRating !== "unknown");
     const normal = labelled.filter(row => row.readyUnits > 0);
     const anchor = weightedQuantile(normal, row => row.readyUnits / 0.88) ?? prior;
-    const farmTarget = robustTarget(labelled, anchor, 3);
+    const hardFarmTarget = method === "legacy" ? robustTarget(labelled, anchor, 3) : null;
+    const farmTarget = robustTarget(labelled, anchor, 3, possible);
     const byBuilding = new Map(), byBed = new Map();
     const buildings = [...new Set(rows.map(row => row.building))];
     buildings.forEach(building => {
@@ -529,20 +549,22 @@
           target:count >= 8 ? base * Math.exp(clamp(Math.log(raw / base), -0.25, 0.25) * count / (count + 16)) : base });
       });
     }
-    return { method, parameter, rows, farmTarget, byBuilding, byBed, bySeason, byPosition, weakEvidence, prior,
+    return { method, parameter, rows, farmTarget, hardFarmTarget, byBuilding, byBed, bySeason, byPosition, weakEvidence, prior,
       window:learnWindow(labelled, farmTarget, method === "adaptive"),
       independentCrops:uniqueCount(labelled), anchorCount:uniqueCount(normal), labelledCount:labelled.length };
   }
   function targetFor(candidate, building, bed, date, positionKey = null){
     if(candidate.method === "legacy"){
       if(candidate.legacyTargets) return candidate.legacyTargets[String(building)] ?? candidate.legacyGlobalTarget;
-      const usable = candidate.rows.filter(row => row.units > 0);
+      const usable = candidate.rows.filter(row => row.units > 0
+        && (row.possibleSizeRating === "unknown" || row.readyDate || row.sizeRating !== "unknown"));
       const local = usable.filter(row => row.building === Number(building));
       const localLabels = local.filter(row => row.sizeRating !== "unknown");
       const allLabels = usable.filter(row => row.sizeRating !== "unknown");
       const labels = localLabels.length >= 3 ? localLabels : allLabels;
       const subset = labels.length ? labels : local.length >= 3 ? local : usable;
-      return legacyMedian(subset.map(row => row.units * (row.sizeRating === "small" ? 1.1 : row.sizeRating === "large" ? 0.9 : 1))) ?? candidate.prior;
+      const base = legacyMedian(subset.map(row => row.units * (row.sizeRating === "small" ? 1.1 : row.sizeRating === "large" ? 0.9 : 1))) ?? candidate.prior;
+      return base * clamp(candidate.farmTarget / (candidate.hardFarmTarget || candidate.farmTarget), 0.9, 1.1);
     }
     const localTarget = candidate.byPosition?.get(positionKey)?.target || candidate.byBed.get(`${building}-${bed}`)?.target
       || candidate.byBuilding.get(Number(building))?.target || candidate.farmTarget;

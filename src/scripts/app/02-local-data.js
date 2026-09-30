@@ -556,6 +556,10 @@ function normalizeHarvestGrowthDetail(value, allowedBedKeys = null){
       tipburn: override.tipburn === true,
       elongated: override.elongated === true
     };
+    if(Array.isArray(override.confirmedFields)){
+      bedOverrides[bedKey].confirmedFields = [...new Set(override.confirmedFields.filter(field =>
+        ["sizeRating", "unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)))];
+    }
     if(hasHarvestGrowthObservationFields(source) || hasHarvestGrowthObservationFields(override)){
       Object.assign(bedOverrides[bedKey], normalizeHarvestGrowthObservations(override));
       bedOverrides[bedKey].tipburn = isHarvestSymptomPresent(bedOverrides[bedKey].tipburnStatus);
@@ -566,7 +570,7 @@ function normalizeHarvestGrowthDetail(value, allowedBedKeys = null){
   const normalized = { uneven:source.uneven === true, bedOverrides };
   if(hasHarvestGrowthObservationFields(source)
     || Object.values(rawOverrides).some(hasHarvestGrowthObservationFields)){
-    const schemaVersion = Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
+    const schemaVersion = Number(source.schemaVersion) >= 4 ? 4 : Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
       || Object.values(rawOverrides).some(item => item && ("unevenStatus" in item || "readyDateMode" in item)) ? 3 : 2;
     Object.assign(normalized, { schemaVersion, ...normalizeHarvestGrowthObservations(source),
       cultivar:String(source.cultivar || "").trim().slice(0, 80) });
@@ -612,6 +616,27 @@ function getHarvestGrowthStateForBed(record, bedKey){
   } : { ...overall };
 }
 
+function getHarvestGrowthEvidenceForBed(record, bedKey){
+  const overall = getHarvestGrowthOverallState(record);
+  const detail = normalizeHarvestGrowthDetail(record?.growthDetail,
+    getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(record)));
+  const override = detail.bedOverrides[bedKey];
+  const fields = ["sizeRating", "unevenStatus", "tipburnStatus", "elongatedStatus"];
+  const confirmed = {};
+  const possible = {};
+  fields.forEach(field => {
+    const local = override ? (field === "sizeRating" ? override.sizeRating
+      : normalizeHarvestSymptomStatus(override[field], override[field.replace("Status", "")])) : "unknown";
+    // v3 copied the overall values into overrides. Only a difference proves that
+    // an old bed-specific field was deliberately changed.
+    const isConfirmed = !!override && local !== "unknown" && (Array.isArray(override.confirmedFields)
+      ? override.confirmedFields.includes(field) : local !== overall[field]);
+    confirmed[field] = isConfirmed ? local : "unknown";
+    possible[field] = isConfirmed ? "unknown" : overall[field] || "unknown";
+  });
+  return { confirmed, possible, selected:!!override };
+}
+
 function getSelectedHarvestSizeRating(){
   return normalizeHarvestSizeRating(
     document.querySelector('input[name="recordHarvestSizeRating"]:checked')?.value
@@ -622,24 +647,11 @@ function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
   const allowedBedKeys = getHarvestBedKeysFromPalletKeys(palletKeys);
   const overall = getCurrentRecordHarvestGrowthOverallState();
   const normalized = normalizeHarvestGrowthDetail({
-    schemaVersion:3,
+    schemaVersion:4,
     ...overall,
     bedOverrides: recordHarvestGrowthBedOverrides
   }, allowedBedKeys);
-  const bedOverrides = {};
-  Object.entries(normalized.bedOverrides).forEach(([bedKey, override]) => {
-    if(override.sizeRating === overall.sizeRating
-      && override.uneven === overall.uneven
-      && override.tipburn === overall.tipburn
-      && override.elongated === overall.elongated
-      && override.readyDate === overall.readyDate
-      && override.readyDateMode === overall.readyDateMode
-      && override.unevenStatus === overall.unevenStatus
-      && override.tipburnStatus === overall.tipburnStatus
-      && override.elongatedStatus === overall.elongatedStatus) return;
-    bedOverrides[bedKey] = override;
-  });
-  return { ...normalized, bedOverrides };
+  return normalized;
 }
 
 function setSelectedHarvestGrowthAssessment(record = null){

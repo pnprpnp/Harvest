@@ -2954,33 +2954,33 @@ function syncRecordHarvestGrowthQualityStatus(input){
 }
 
 function compactRecordHarvestGrowthBedOverrides(){
-  const overall = getCurrentRecordHarvestGrowthOverallState();
   const allowed = new Set(getHarvestBedKeysFromPalletKeys(harvestFillKeys));
-  const normalized = normalizeHarvestGrowthDetail({
+  recordHarvestGrowthBedOverrides = normalizeHarvestGrowthDetail({
     bedOverrides: recordHarvestGrowthBedOverrides
   }, [...allowed]).bedOverrides;
-  Object.keys(normalized).forEach(bedKey => {
-    const override = normalized[bedKey];
-    if(override.sizeRating === overall.sizeRating
-      && override.uneven === overall.uneven
-      && override.tipburn === overall.tipburn
-      && override.elongated === overall.elongated
-      && (override.readyDate || "") === overall.readyDate
-      && (override.readyDateMode || (override.readyDate ? "manual" : "auto")) === overall.readyDateMode
-      && normalizeHarvestSymptomStatus(override.unevenStatus,override.uneven) === overall.unevenStatus
-      && normalizeHarvestSymptomStatus(override.tipburnStatus, override.tipburn) === overall.tipburnStatus
-      && normalizeHarvestSymptomStatus(override.elongatedStatus, override.elongated) === overall.elongatedStatus){
-      delete normalized[bedKey];
-    }
-  });
-  recordHarvestGrowthBedOverrides = normalized;
 }
 
 function getRecordHarvestGrowthBedDraft(bedKey){
   const override = normalizeHarvestGrowthDetail({
     bedOverrides: recordHarvestGrowthBedOverrides
   }, [bedKey]).bedOverrides[bedKey];
-  return override ? { ...override, ...normalizeHarvestGrowthObservations(override) } : getCurrentRecordHarvestGrowthOverallState();
+  if(override){
+    const overall = getCurrentRecordHarvestGrowthOverallState();
+    const confirmedFields = Array.isArray(override.confirmedFields) ? override.confirmedFields
+      : ["sizeRating", "unevenStatus", "tipburnStatus", "elongatedStatus"].filter(field =>
+        override[field] !== "unknown" && override[field] !== overall[field]);
+    return { ...override, ...normalizeHarvestGrowthObservations(override), confirmedFields };
+  }
+  const overall = getCurrentRecordHarvestGrowthOverallState();
+  return { sizeRating:"unknown", uneven:false, tipburn:false, elongated:false,
+    unevenStatus:"unknown", tipburnStatus:"unknown", elongatedStatus:"unknown",
+    readyDate:overall.readyDate, readyDateMode:overall.readyDateMode, confirmedFields:[] };
+}
+
+function selectRecordHarvestGrowthBed(bedKey){
+  if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
+  if(!recordHarvestGrowthBedOverrides[bedKey]) recordHarvestGrowthBedOverrides[bedKey] = getRecordHarvestGrowthBedDraft(bedKey);
+  handleRecordHarvestGrowthInput();
 }
 
 function renderRecordHarvestGrowthBedEditor(){
@@ -3002,8 +3002,9 @@ function renderRecordHarvestGrowthBedEditor(){
       <section class="recordHarvestGrowthBedRow" aria-label="${escapeHtml(`${building}号棟 ${bed}ベッドの育ち具合`)}">
         <div class="recordHarvestGrowthBedTitle">
           <span>${escapeHtml(`${building}号棟 ${bed}ベッド`)}</span>
-          <button type="button" class="recordHarvestGrowthBedReset" data-ui-click="resetRecordHarvestGrowthBed" data-ui-arg="${escapeHtml(bedKey)}"${hasOverride ? "" : " hidden"}>全体と同じ</button>
+          <button type="button" class="recordHarvestGrowthBedReset" data-ui-click="${hasOverride ? "resetRecordHarvestGrowthBed" : "selectRecordHarvestGrowthBed"}" data-ui-arg="${escapeHtml(bedKey)}">${hasOverride ? "個別評価を解除" : "このベッドを確認"}</button>
         </div>
+        ${hasOverride ? `
         <div class="recordHarvestGrowthBedSizes" role="group" aria-label="育ち具合">
           ${[
             ["small", "小さめ"],
@@ -3031,6 +3032,7 @@ function renderRecordHarvestGrowthBedEditor(){
             </select></label>
           `).join("")}
         </div>
+        ` : '<div class="recordHarvestGrowthBedHelp">全体の入力を可能性として使用</div>'}
       </section>
     `;
   }).join("");
@@ -3043,7 +3045,8 @@ function setRecordHarvestGrowthBedObservation(bedKey, field, value){
   if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
   if(!["unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)) return;
   const current = getRecordHarvestGrowthBedDraft(bedKey);
-  const next = { ...current, [field]:normalizeHarvestSymptomStatus(value) };
+  const next = { ...current, [field]:normalizeHarvestSymptomStatus(value),
+    confirmedFields:[...new Set([...current.confirmedFields, field])] };
   ["tipburn","elongated","uneven"].forEach(key=>{ if(field === `${key}Status`) next[key] = isHarvestSymptomPresent(next[field]); });
   recordHarvestGrowthBedOverrides[bedKey] = next;
   handleRecordHarvestGrowthInput();
@@ -3074,9 +3077,11 @@ function toggleRecordHarvestGrowthBedEditor(){
 
 function setRecordHarvestGrowthBedSize(bedKey, value){
   if(!getHarvestBedKeysFromPalletKeys(harvestFillKeys).includes(bedKey)) return;
+  const current = getRecordHarvestGrowthBedDraft(bedKey);
   recordHarvestGrowthBedOverrides[bedKey] = {
-    ...getRecordHarvestGrowthBedDraft(bedKey),
-    sizeRating: normalizeHarvestSizeRating(value)
+    ...current,
+    sizeRating: normalizeHarvestSizeRating(value),
+    confirmedFields:[...new Set([...current.confirmedFields, "sizeRating"])]
   };
   renderRecordHarvestGrowthBedEditor();
   renderRecordHarvestConfirmation();
@@ -3090,7 +3095,8 @@ function toggleRecordHarvestGrowthBedFlag(bedKey, field){
   recordHarvestGrowthBedOverrides[bedKey] = {
     ...current,
     [field]: !current[field],
-    [`${field}Status`]:current[field] ? "unknown" : "present"
+    [`${field}Status`]:current[field] ? "unknown" : "present",
+    confirmedFields:[...new Set([...current.confirmedFields, `${field}Status`])]
   };
   renderRecordHarvestGrowthBedEditor();
   renderRecordHarvestConfirmation();

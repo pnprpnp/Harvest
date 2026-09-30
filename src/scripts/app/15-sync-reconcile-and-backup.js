@@ -7,6 +7,13 @@ function preserveHarvestGrowthObservationsForLegacySync(localRecord, incomingRec
   if(localVersion < 2 || incomingVersion >= localVersion
     || localRecord?.type !== "fullHarvest" || incomingRecord?.type !== "fullHarvest") return incomingRecord;
   const allowedBeds = new Set(getHarvestBedKeysFromPalletKeys(getPalletKeysFromRecord(incomingRecord)));
+  if(localVersion >= 4 && incomingVersion < 4){
+    if(!growthObservationLegacyServerWarningShown){
+      growthObservationLegacyServerWarningShown = true;
+      if(typeof showToast === "function") showToast("ベッド別の確認情報は端末に保持しました。共有するには連携先の更新が必要です");
+    }
+    return { ...incomingRecord, growthDetail:normalizeHarvestGrowthDetail(local, [...allowedBeds]) };
+  }
   const incoming = normalizeHarvestGrowthDetail(incomingRecord.growthDetail, [...allowedBeds]);
   const detail = { ...incoming, bedOverrides:{...incoming.bedOverrides}, schemaVersion:localVersion };
   const preserveStatus = (old, next, positive) => {
@@ -42,7 +49,9 @@ function preserveHarvestGrowthObservationsForLegacySync(localRecord, incomingRec
     detail.bedOverrides[bedKey] = {
       sizeRating:next.sizeRating, uneven:next.uneven, ...observations,
       tipburn:isHarvestSymptomPresent(observations.tipburnStatus),
-      elongated:isHarvestSymptomPresent(observations.elongatedStatus)
+      elongated:isHarvestSymptomPresent(observations.elongatedStatus),
+      ...(Array.isArray(local.bedOverrides[bedKey].confirmedFields)
+        ? {confirmedFields:[...local.bedOverrides[bedKey].confirmedFields]} : {})
     };
   });
   if(!growthObservationLegacyServerWarningShown){

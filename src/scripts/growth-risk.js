@@ -143,13 +143,14 @@
       seen.add(id);
       const row = { id, building:String(sample.building ?? ""), date, weight,
         groupId:String(sample.groupId || sample.id || `${sample.building}:${date}`),
-        cropId:sample.cropId ? String(sample.cropId) : null, outcomes:{}, exposures:{} };
+        cropId:sample.cropId ? String(sample.cropId) : null, outcomes:{}, possibilities:{}, exposures:{} };
       let start = addDays(date, -(WINDOW_DAYS - 1));
       if(plantingDate && plantingDate > start) start = plantingDate;
       SYMPTOMS.forEach(symptom => {
         // Legacy booleans do not establish that absence was actually checked.
         const status = sample.symptoms?.[symptom];
         row.outcomes[symptom] = normalizeSeverity(status);
+        row.possibilities[symptom] = normalizeSeverity(sample.possibleSymptoms?.[symptom]);
         row.exposures[symptom] = summarizeWindow(observations, start, date, symptom,
           adjustment(sample.manualAdjustment), true, sample.environmentRegimes, boundary.instant);
       });
@@ -180,12 +181,30 @@
     return [...groups.values()];
   }
   function summarizeGroups(groups, symptom){
-    let confirmedCount = 0, presentCount = 0;
+    let confirmedCount = 0, presentCount = 0, possibleCount = 0, possiblePresentCount = 0;
     const excluded = { unknown:0, conflictingOutcome:0, insufficientWeather:0, mixedExposure:0 };
     const bucket = () => ({ count:0, presentCount:0, effectiveCount:0, effectivePresentCount:0,
       severityCounts:{ none:0, slight:0, many:0, "legacy-present":0 }, effectiveSeverityCounts:{ none:0, slight:0, many:0, "legacy-present":0 } });
     const exposed = bucket(), unexposed = bucket();
+    const weakByExposure = { exposed:{count:0,presentCount:0,effectiveCount:0,effectivePresentCount:0},
+      unexposed:{count:0,presentCount:0,effectiveCount:0,effectivePresentCount:0} };
     groups.forEach(group => {
+      const possible = group.filter(row => row.possibilities[symptom] !== "unknown"
+        && !group.some(other => present(row.possibilities[symptom])
+          ? present(other.outcomes[symptom]) : other.outcomes[symptom] === "none"));
+      if(possible.length && new Set(possible.map(row => present(row.possibilities[symptom]))).size === 1){
+        possibleCount++;
+        const possiblePresent = possible.some(row => present(row.possibilities[symptom]));
+        if(possiblePresent) possiblePresentCount++;
+        const eligible = possible.filter(row => row.exposures[symptom].eligible);
+        if(eligible.length && new Set(eligible.map(row => row.exposures[symptom].exposed)).size === 1){
+          const bucket = weakByExposure[eligible[0].exposures[symptom].exposed ? "exposed" : "unexposed"];
+          const weight = Math.min(...eligible.map(row => row.weight));
+          bucket.count++;
+          bucket.effectiveCount += weight;
+          if(possiblePresent){ bucket.presentCount++; bucket.effectivePresentCount += weight; }
+        }
+      }
       const confirmed = group.filter(row => row.outcomes[symptom] !== "unknown");
       if(!confirmed.length){ excluded.unknown++; return; }
       confirmedCount++;
@@ -207,12 +226,18 @@
     const effectiveCount = exposed.effectiveCount + unexposed.effectiveCount;
     const positiveCount = exposed.effectivePresentCount + unexposed.effectivePresentCount;
     const pooledRate = effectiveCount ? positiveCount / effectiveCount : null;
-    [exposed, unexposed].forEach(bucket => {
+    [exposed, unexposed].forEach((bucket, index) => {
+      const weak = weakByExposure[index === 0 ? "exposed" : "unexposed"];
+      bucket.possibleCount = weak.count;
+      bucket.possiblePresentCount = weak.presentCount;
+      bucket.effectivePossibleCount = weak.effectiveCount;
+      bucket.effectivePossiblePresentCount = weak.effectivePresentCount;
       bucket.rawRate = bucket.count ? bucket.presentCount / bucket.count : null;
       bucket.shrunkRate = bucket.effectiveCount && pooledRate !== null
-        ? (bucket.effectivePresentCount + PRIOR_STRENGTH * pooledRate) / (bucket.effectiveCount + PRIOR_STRENGTH) : null;
+        ? (bucket.effectivePresentCount + PRIOR_STRENGTH * pooledRate + 0.15 * bucket.effectivePossiblePresentCount)
+          / (bucket.effectiveCount + PRIOR_STRENGTH + 0.15 * bucket.effectivePossibleCount) : null;
     });
-    return { confirmedCount, presentCount,
+    return { confirmedCount, presentCount, possibleCount, possiblePresentCount,
       association:{
         kind:"historical-conditional-frequency", status:effectiveCount >= 12 && exposed.effectiveCount >= 5 && unexposed.effectiveCount >= 5
           ? "descriptive" : "insufficient-data",
@@ -270,6 +295,7 @@
       }else{
         parts.push("同じ号棟の確認済み症状記録がありません。");
       }
+      if(historic.possibleCount) parts.push(`全体入力から状態が当てはまる可能性のある${historic.possibleCount}作を弱い参考材料に使用。`);
       if(association.eligibleCount){
         parts.push(`収穫直前の最大${WINDOW_DAYS}日間の気象と比較できた過去${association.eligibleCount}作では、` +
           `条件あり${association.exposed.count}作中${association.exposed.presentCount}作、` +

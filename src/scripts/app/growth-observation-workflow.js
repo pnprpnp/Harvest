@@ -398,7 +398,7 @@ function buildGrowthUnratedRecordUpdate(record,size,quality){
   if(record?.type!=="fullHarvest" || !["small","normal","large"].includes(size)) throw new Error("まとめ評価の対象または育ち具合が正しくありません");
   const overall=getHarvestGrowthOverallState(record),detail=normalizeHarvestGrowthDetail(record.growthDetail,getHarvestBedKeysFromPalletKeys(record.palletKeys));
   const chosen=quality && typeof quality==="object" ? quality : {};
-  const nextDetail={...detail,schemaVersion:3,readyDate:overall.readyDate,
+  const nextDetail={...detail,schemaVersion:Math.max(3,Number(detail.schemaVersion) || 1),readyDate:overall.readyDate,
     readyDateMode:overall.readyDateMode,cultivar:overall.cultivar || DASHBOARD_GROWTH_CULTIVAR,
     unevenStatus:chosen.uneven==="keep" || !chosen.uneven ? overall.unevenStatus : normalizeHarvestSymptomStatus(chosen.uneven),
     elongatedStatus:chosen.elongated==="keep" || !chosen.elongated ? overall.elongatedStatus : normalizeHarvestSymptomStatus(chosen.elongated),

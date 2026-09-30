@@ -59,7 +59,7 @@ function context(records = [], plantingEvents = [], observations = []){
       "normalizeQualityTag","normalizeQualityMemo","normalizeHarvestSizeRating",
       "getHarvestBedKeyFromPalletKey","getHarvestBedKeysFromPalletKeys","normalizeHarvestSymptomStatus","isHarvestSymptomPresent",
       "hasHarvestGrowthObservationFields","normalizeHarvestGrowthObservations","normalizeHarvestGrowthDetail",
-      "getHarvestGrowthOverallState","getHarvestGrowthStateForBed"],
+      "getHarvestGrowthOverallState","getHarvestGrowthStateForBed","getHarvestGrowthEvidenceForBed"],
     "growth-runtime.js":["getDashboardGrowthObservationsByBuilding","getDashboardGrowthObservationScopes"],
     "07-dashboard.js":["parseDateOnlyString","startOfLocalDay","formatDateOnlyString","addDays",
       "getDashboardGrowthMedian","buildDashboardGrowthPlantingIndex","getDashboardGrowthPriorPlanting",
@@ -102,9 +102,33 @@ test("one harvest is split by real planting event while retaining a shared outco
   assert.equal(new Set(rows.map(row => row.groupId)).size,1,"bed rows must not become independent harvest outcomes");
   assert.equal(new Set(rows.map(row => row.cropId)).size,2);
   assert.equal(rows[0].readyDate,"2026-09-18");
-  assert.equal(rows[0].symptoms.tipburn,"none");
+  assert.equal(rows[0].symptoms.tipburn,"unknown");
+  assert.equal(rows[0].possibleSymptoms.tipburn,"none");
+  assert.equal(rows[0].sizeRating,"unknown");
+  assert.equal(rows[0].possibleSizeRating,"normal");
   assert.equal(rows[0].symptoms.elongated,"unknown");
   assert.equal(Date.parse(rows[0].availableAt),Date.parse("2026-09-21T09:00:00+09:00"));
+});
+
+test("only selected bed fields become confirmed labels; other beds retain overall possibilities", () => {
+  const record=harvest(12,"2026-09-20",["2-A-1","2-B-1"],{
+    growthDetail:{schemaVersion:4,uneven:false,unevenStatus:"unknown",readyDate:"",readyDateMode:"auto",
+      tipburnStatus:"unknown",elongatedStatus:"many",cultivar:"",
+      bedOverrides:{"2-A":{sizeRating:"normal",uneven:false,tipburn:false,elongated:false,
+        unevenStatus:"unknown",tipburnStatus:"unknown",elongatedStatus:"none",readyDate:"",readyDateMode:"auto",
+        confirmedFields:["sizeRating","elongatedStatus"]}}}
+  });
+  const c=context([record],[planting(1,"2026-08-20",["2-A-1","2-B-1"])]);
+  const rows=c.buildDashboardGrowthTrainingSamples(date(c,"2026-09-25"));
+  const selected=rows.find(row=>row.bed==="A"), other=rows.find(row=>row.bed==="B");
+  assert.equal(selected.sizeRating,"normal");
+  assert.equal(selected.symptoms.elongated,"none");
+  assert.equal(selected.symptoms.tipburn,"unknown");
+  assert.equal(other.sizeRating,"unknown");
+  assert.equal(other.possibleSizeRating,"normal");
+  assert.equal(other.symptoms.elongated,"unknown");
+  assert.equal(other.possibleSymptoms.elongated,"many");
+  assert.equal(other.possibleSymptoms.tipburn,"unknown");
 });
 
 
@@ -307,7 +331,8 @@ test("unchanged source calls reuse the same samples and avoid rebuilding the pla
   c.invalidateDashboardDerivedData();
   const edited = c.getDashboardGrowthSourceState();
   assert.notEqual(edited,first);
-  assert.equal(edited.samples[0].sizeRating,"large");
+  assert.equal(edited.samples[0].possibleSizeRating,"large");
+  assert.equal(edited.samples[0].sizeRating,"unknown");
   assert.equal(indexBuilds,2);
   c.records = c.records.slice();
   assert.notEqual(c.getDashboardGrowthSourceState(),edited,"record array replacement must invalidate the cached source");
@@ -357,7 +382,8 @@ test("explicit none stops ready-date inheritance but keeps the measured harvest 
   const c=context([harvest(1,"2026-09-20",["2-A-1"],{growthDetail:{schemaVersion:3,readyDateMode:"none",readyDate:"",unevenStatus:"unknown",bedOverrides:{}}})],
     [planting(1,"2026-08-20",["2-A-1"])],observations);
   const rows=c.buildDashboardGrowthTrainingSamples(); assert.equal(rows.length,1); assert.equal(rows[0].readyDate,"");
-  assert.equal(rows[0].sizeRating,"normal"); assert.deepEqual(plain(rows[0].readyObservationIds),[]);
+  assert.equal(rows[0].sizeRating,"unknown"); assert.equal(rows[0].possibleSizeRating,"normal");
+  assert.deepEqual(plain(rows[0].readyObservationIds),[]);
 });
 
 test("a whole-bed partial is only a weak large signal and invents no pallet location",()=>{

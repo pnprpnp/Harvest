@@ -650,7 +650,7 @@ function normalizeHarvestGrowthDetailInput(value, palletKeys, harvestDate = "") 
   const hasObservations = item => !!item && (Number(item.schemaVersion) >= 2
     || ["readyDate", "readyDateMode", "unevenStatus", "tipburnStatus", "elongatedStatus", "cultivar"].some(key => Object.prototype.hasOwnProperty.call(item, key)));
   const normalizeObservations = item => {
-    if (typeof item.schemaVersion !== "undefined" && ![2,3].includes(item.schemaVersion)) {
+    if (typeof item.schemaVersion !== "undefined" && ![2,3,4].includes(item.schemaVersion)) {
       throw new Error("生育評価の版が正しくありません");
     }
     const readyDate = normalizeOptionalDate(item.readyDate, "適期を確認した日");
@@ -697,6 +697,14 @@ function normalizeHarvestGrowthDetailInput(value, palletKeys, harvestDate = "") 
       tipburn: rawOverride.tipburn,
       elongated: rawOverride.elongated
     };
+    if(typeof rawOverride.confirmedFields !== "undefined"){
+      if(!Array.isArray(rawOverride.confirmedFields) || rawOverride.confirmedFields.length > 4
+        || new Set(rawOverride.confirmedFields).size !== rawOverride.confirmedFields.length
+        || !rawOverride.confirmedFields.every(field => ["sizeRating","unevenStatus","tipburnStatus","elongatedStatus"].includes(field))){
+        throw new Error("ベッド別の確認項目が正しくありません");
+      }
+      bedOverrides[bedKey].confirmedFields = rawOverride.confirmedFields;
+    }
     if (hasObservations(source) || hasObservations(rawOverride)) {
       Object.assign(bedOverrides[bedKey], normalizeObservations(rawOverride));
       bedOverrides[bedKey].tipburn = ["present","slight","many"].includes(bedOverrides[bedKey].tipburnStatus);
@@ -709,7 +717,7 @@ function normalizeHarvestGrowthDetailInput(value, palletKeys, harvestDate = "") 
     bedOverrides
   };
   if (hasObservations(source) || entries.some(entry => hasObservations(entry[1]))) {
-    const schemaVersion = Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
+    const schemaVersion = Number(source.schemaVersion) >= 4 ? 4 : Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
       || entries.some(entry => "unevenStatus" in entry[1] || "readyDateMode" in entry[1]) ? 3 : 2;
     Object.assign(normalized, { schemaVersion, ...normalizeObservations(source),
       cultivar:normalizeOptionalText(source.cultivar, "品種", 80, false) });

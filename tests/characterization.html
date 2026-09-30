@@ -2617,6 +2617,72 @@
         }, "空欄の旧記録を問題なしと決めつけています");
       });
 
+      await runTest("全体入力は可能性、選んだベッドの入力だけが確認済みになる", () => {
+        const record = app.normalizeRecordSnapshot({
+          palletNumberingVersion:2, id:20000000000018, recordUuid:"18888888-8888-4888-8888-888888888888",
+          type:"fullHarvest", date:"2026-09-20", cases:8,
+          palletKeys:["2-A-1","2-B-1"], sizeRating:"normal", qualityMemo:{tags:[],other:""},
+          growthDetail:{schemaVersion:4,uneven:false,readyDate:"",readyDateMode:"auto",
+            unevenStatus:"unknown",tipburnStatus:"unknown",elongatedStatus:"many",cultivar:"",
+            bedOverrides:{"2-A":{sizeRating:"normal",uneven:false,tipburn:false,elongated:false,
+              readyDate:"",readyDateMode:"auto",unevenStatus:"unknown",tipburnStatus:"unknown",
+              elongatedStatus:"none",confirmedFields:["sizeRating","elongatedStatus"]}}}
+        });
+        const a = comparable(app.getHarvestGrowthEvidenceForBed(record,"2-A"));
+        const b = comparable(app.getHarvestGrowthEvidenceForBed(record,"2-B"));
+        assertEqual(a.confirmed.sizeRating,"normal","全体と同じ育ち具合でもベッド別確認が消えています");
+        assertEqual(a.confirmed.elongatedStatus,"none","確認した症状なしが消えています");
+        assertEqual(a.confirmed.tipburnStatus,"unknown","未入力を症状なしにしています");
+        assertEqual(b.confirmed.sizeRating,"unknown","全体評価をベッドの確定評価にしています");
+        assertEqual(b.confirmed.elongatedStatus,"unknown","全体の徒長をベッド確定にしています");
+        assertEqual(b.possible.elongatedStatus,"many","全体の徒長の可能性が消えています");
+        assertEqual(b.possible.tipburnStatus,"unknown","選ばなかった症状を不在と推定しています");
+        const normalized = comparable(appsScript.normalizeHarvestGrowthDetailInput(record.growthDetail,record.palletKeys,record.date));
+        assertDeepEqual(normalized,comparable(record.growthDetail),"ベッド別の確認項目が同期で消えています");
+        const older={...record,growthDetail:{...record.growthDetail,schemaVersion:3,bedOverrides:{}}};
+        const preserved=comparable(app.preserveHarvestGrowthObservationsForLegacySync(record,older));
+        assertDeepEqual(preserved.growthDetail,comparable(record.growthDetail),"旧連携先の応答で確認済みベッドが消えています");
+      });
+
+      await runTest("可能性の評価は予測に弱く使い、確認済み件数を増やさない", () => {
+        const engine = app.HarvestGrowthModel;
+        const weather = Array.from({length:90},(_,index)=>({
+          date:engine.addDays("2026-07-01",index),source:"observation",meanTemp:20,lightIndex:1
+        }));
+        const possible = Array.from({length:30},(_,index)=>({
+          id:`possible-${index}`,groupId:`record-${index}`,cropId:`crop-${index}`,
+          building:2,bed:"A",plantingDate:"2026-08-01",date:"2026-08-20",
+          sizeRating:"unknown",possibleSizeRating:"large",qualityWeight:1
+        }));
+        const context=engine.prepareWeather(weather,{asOf:"2026-09-25"});
+        const parameter={id:"calendar"};
+        const weak=engine._test.buildCandidate(engine.normalizeSamples(possible,"2026-09-25").samples,context,"safe",parameter);
+        const empty=engine._test.buildCandidate([],context,"safe",parameter);
+        const legacyWeak=engine._test.buildCandidate(engine.normalizeSamples(possible,"2026-09-25").samples,context,"legacy",parameter);
+        const legacyEmpty=engine._test.buildCandidate([],context,"legacy",parameter);
+        assertEqual(weak.independentCrops,0,"全体入力を確認済みの作に数えています");
+        assert(weak.farmTarget < empty.farmTarget,"弱い育ち具合が農場全体の参考値に反映されていません");
+        assert(engine._test.targetFor(legacyWeak,2,"A","2026-09-25") < engine._test.targetFor(legacyEmpty,2,"A","2026-09-25"),
+          "基本方式の予測に弱い材料が反映されていません");
+        assert(!weak.byBed.has("2-A"),"全体入力でベッド別補正を学習しています");
+        const riskWeather=Array.from({length:7},(_,index)=>({
+          date:engine.addDays("2026-09-14",index),source:"observation",meanTemp:24,lightIndex:0.6
+        }));
+        const risk=app.HarvestGrowthRisk.fit([
+          {id:"confirmed",groupId:"confirmed",cropId:"confirmed",building:2,
+            plantingDate:"2026-08-20",date:"2026-09-20",symptoms:{elongated:"none"}},
+          {id:"possible",groupId:"possible",cropId:"possible",building:2,
+            plantingDate:"2026-08-20",date:"2026-09-20",symptoms:{elongated:"unknown"},
+            possibleSymptoms:{elongated:"many"}},
+          {id:"possible-none",groupId:"possible-none",cropId:"possible-none",building:2,
+            plantingDate:"2026-08-20",date:"2026-09-20",symptoms:{elongated:"unknown"},
+            possibleSymptoms:{elongated:"none"}}
+        ],{asOf:"2026-09-25",weatherDaily:riskWeather});
+        assertEqual(risk.buildings[2].elongated.confirmedCount,1,"可能性を確認済み症状に数えています");
+        assertEqual(risk.buildings[2].elongated.possibleCount,2,"全体の症状が弱い材料として残っていません");
+        assertEqual(risk.buildings[2].elongated.possiblePresentCount,1,"未選択を症状なしにしています");
+      });
+
       await runTest("旧収穫下書きの品質メモを失わず統合し、再読込みでも重複させない", () => {
         const state = comparable(app.eval(`(() => {
           saveHarvestStateToStorage();
@@ -2730,10 +2796,11 @@
           const bedDetail = comparable(app.getSelectedHarvestGrowthDetail(["2-A-1"]));
           assertDeepEqual(bedDetail.bedOverrides["2-A"], {
             sizeRating:"large",
-            uneven:false,
+            uneven:true,
             tipburn:true,
             elongated:true,
-            readyDate:"", tipburnStatus:"present", elongatedStatus:"present", unevenStatus:"unknown", readyDateMode:"auto"
+            confirmedFields:["sizeRating","unevenStatus","elongatedStatus","tipburnStatus"],
+            readyDate:"", tipburnStatus:"present", elongatedStatus:"present", unevenStatus:"present", readyDateMode:"auto"
           }, "ベッド別の収穫評価が反映されません");
           app.resetRecordHarvestGrowthBed("2-A");
           assertDeepEqual(
@@ -2849,12 +2916,12 @@
           tipburnStatus:"unknown",elongatedStatus:"unknown",bedOverrides:{"9-B":{
             sizeRating:"large",uneven:false,tipburn:false,elongated:true,elongatedStatus:"many",readyDateMode:"manual"}}};
         const invalid=[
-          ...[1,4,"3"].map(schemaVersion=>({...base,schemaVersion})),
+          ...[1,5,"3"].map(schemaVersion=>({...base,schemaVersion})),
           ...["unevenStatus","tipburnStatus","elongatedStatus"].map(field=>({...base,[field]:"invalid"})),
           {...base,readyDateMode:"invalid"},{...base,readyDate:"2026-09-25"},{...base,readyDate:"2026-02-30"},
           {...base,bedOverrides:{"8-A":base.bedOverrides["9-B"]}},
           ...["schemaVersion","unevenStatus","tipburnStatus","elongatedStatus","readyDateMode","readyDate","uneven"].map(field=>({
-            ...base,bedOverrides:{"9-B":{...base.bedOverrides["9-B"],[field]:field==="schemaVersion"?4:field==="readyDate"?"2026-09-25":"invalid"}}}))
+            ...base,bedOverrides:{"9-B":{...base.bedOverrides["9-B"],[field]:field==="schemaVersion"?5:field==="readyDate"?"2026-09-25":"invalid"}}}))
         ];
         invalid.forEach(detail=>{
           assertEqual(app.isValidTransferGrowthDetail(detail,keys,date),false,"不正な育ち具合を送信チェックが通しました");

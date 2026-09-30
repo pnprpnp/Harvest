@@ -4127,6 +4127,7 @@ function getDashboardGrowthSourceState(asOf = new Date()){
     groups.forEach(group => {
       const { planting, bedKey } = group;
       const state = getHarvestGrowthStateForBed(record, bedKey);
+      const evidence = getHarvestGrowthEvidenceForBed(record, bedKey);
       const [buildingText, bed] = bedKey.split("-");
       const id = String(record.recordUuid || record.id);
       const readyDate = parseDateOnlyString(state.readyDate || "");
@@ -4149,17 +4150,24 @@ function getDashboardGrowthSourceState(asOf = new Date()){
         plantingEventId:planting.eventId,
         building:Number(buildingText), bed, bedKey, plantingDate:new Date(planting.date), date:parseDateOnlyString(record.date),
         ageDays:getLocalDayDiff(planting.date, parseDateOnlyString(record.date)),
-        sizeRating:state.sizeRating, uneven:state.uneven, tipburn:state.tipburn, elongated:state.elongated,
+        sizeRating:evidence.confirmed.sizeRating,
+        possibleSizeRating:evidence.possible.sizeRating,
+        uneven:isHarvestSymptomPresent(evidence.confirmed.unevenStatus),
+        tipburn:isHarvestSymptomPresent(evidence.confirmed.tipburnStatus),
+        elongated:isHarvestSymptomPresent(evidence.confirmed.elongatedStatus),
         cultivar:state.cultivar || "",
         readyDate:ready.readyDate,readyObservationIds:ready.observationIds,
         availableAt:[...timestamps,ready.availableAt].filter(Boolean).sort((a,b)=>new Date(a)-new Date(b)).pop() || "",
         plantingAvailableAt:plantingTimestamps[plantingTimestamps.length - 1] || "",
-        symptoms:{ tipburn:state.tipburnStatus || (state.tipburn ? "present" : "unknown"),
-          elongated:state.elongatedStatus || (state.elongated ? "present" : "unknown"),
-          uneven:state.unevenStatus || (state.uneven ? "present" : "unknown") },
-        qualityObserved:state.tipburnStatus === "none" || state.elongatedStatus === "none" || state.tipburn || state.elongated,
+        symptoms:{ tipburn:evidence.confirmed.tipburnStatus,
+          elongated:evidence.confirmed.elongatedStatus,
+          uneven:evidence.confirmed.unevenStatus },
+        possibleSymptoms:{ tipburn:evidence.possible.tipburnStatus,
+          elongated:evidence.possible.elongatedStatus,
+          uneven:evidence.possible.unevenStatus },
+        qualityObserved:["tipburnStatus","elongatedStatus","unevenStatus"].some(field => evidence.confirmed[field] !== "unknown"),
         palletCount:ready.palletKeys.length, palletKeys:ready.palletKeys, partial:group.partial,
-        qualityWeight:(group.partial ? 0.5 : 1) * (state.uneven ? 0.6 : 1) * (planting.event?.detailsUnknown ? 0.7 : 1)
+        qualityWeight:(group.partial ? 0.5 : 1) * (isHarvestSymptomPresent(evidence.confirmed.unevenStatus) ? 0.6 : 1) * (planting.event?.detailsUnknown ? 0.7 : 1)
       }));
     });
   });
