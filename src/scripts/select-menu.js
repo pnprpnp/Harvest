@@ -5,6 +5,7 @@
   let closeTimer = 0;
   let suppressedClickSelect = null;
   let suppressedClickUntil = 0;
+  let menuPointerType = null;
 
   function getPanel(){
     if(panel) return panel;
@@ -29,7 +30,7 @@
       if(activeSelect) return;
       if(panel.hidePopover && panel.matches(":popover-open")) panel.hidePopover();
       panel.hidden = true;
-    }, 150);
+    }, 200);
     if(restoreFocus && select.isConnected) select.focus({preventScroll:true});
   }
 
@@ -49,12 +50,12 @@
     panel.style.top = `${openAbove ? Math.max(margin, rect.top - height) : Math.min(window.innerHeight - height - margin, rect.bottom)}px`;
   }
 
-  function chooseOption(index){
+  function chooseOption(index, restoreFocus = true){
     const select = activeSelect;
     if(!select || !select.options[index] || select.options[index].disabled) return;
     const changed = select.selectedIndex !== index;
     select.selectedIndex = index;
-    closeMenu(true);
+    closeMenu(restoreFocus);
     if(changed){
       select.dispatchEvent(new Event("input", {bubbles:true}));
       select.dispatchEvent(new Event("change", {bubbles:true}));
@@ -63,10 +64,11 @@
 
   function openMenu(select, focusOption = false){
     if(select.disabled || !select.options.length || select.multiple || select.size > 1) return;
-    if(activeSelect === select){ closeMenu(true); return; }
+    if(activeSelect === select){ closeMenu(); return; }
     closeMenu();
     const menu = getPanel();
     clearTimeout(closeTimer);
+    menuPointerType = null;
     const host = select.closest("dialog[open]") || document.body;
     if(menu.parentElement !== host) host.append(menu);
     menu.replaceChildren();
@@ -81,7 +83,7 @@
       button.textContent = option.textContent;
       button.disabled = option.disabled || !!option.closest("optgroup[disabled]");
       button.dataset.optionIndex = String(index);
-      button.addEventListener("click", () => chooseOption(index));
+      button.addEventListener("click", event => chooseOption(index, event.detail === 0 || menuPointerType !== "touch"));
       menu.append(button);
       if(option.selected) selectedButton = button;
     });
@@ -100,13 +102,29 @@
     if(focusOption) (selectedButton || menu.querySelector("button:not(:disabled)"))?.focus({preventScroll:true});
   }
 
+  function selectAtPoint(event){
+    if(event.target instanceof HTMLSelectElement) return event.target;
+    if(!(event.target instanceof Element)) return null;
+    if(panel?.contains(event.target)) return null;
+    // The select is visible but does not receive pointer events, so its parent is hit instead.
+    for(let parent = event.target; parent; parent = parent.parentElement){
+      for(const child of parent.children){
+        if(!(child instanceof HTMLSelectElement)) continue;
+        const rect = child.getBoundingClientRect();
+        if(event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom) return child;
+      }
+    }
+    return null;
+  }
+
   document.addEventListener("pointerdown", event => {
-    const select = event.target instanceof HTMLSelectElement ? event.target : null;
+    if(panel?.contains(event.target)) menuPointerType = event.pointerType;
+    const select = selectAtPoint(event);
     if(select && !select.disabled && !select.multiple && select.size <= 1 && (event.pointerType !== "mouse" || event.button === 0)){
       event.preventDefault();
       suppressedClickSelect = select;
       suppressedClickUntil = performance.now() + 600;
-      select.focus({preventScroll:true});
+      if(event.pointerType === "mouse") select.focus({preventScroll:true});
       openMenu(select);
       return;
     }
@@ -114,7 +132,8 @@
   }, true);
 
   document.addEventListener("click", event => {
-    const select = event.target instanceof HTMLSelectElement ? event.target : null;
+    const label = event.target instanceof Element ? event.target.closest("label") : null;
+    const select = selectAtPoint(event) || (label?.control instanceof HTMLSelectElement ? label.control : null);
     if(!select || select.disabled || select.multiple || select.size > 1) return;
     event.preventDefault();
     if(select === suppressedClickSelect && performance.now() < suppressedClickUntil){
@@ -158,4 +177,5 @@
   document.addEventListener("scroll", event => {
     if(activeSelect && event.target !== panel && !panel.contains(event.target)) closeMenu();
   }, true);
+  document.documentElement.classList.add("appSelectMenuEnabled");
 })();
