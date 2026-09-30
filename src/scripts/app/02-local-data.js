@@ -477,12 +477,6 @@ function normalizeHarvestSizeRating(value){
   return ["small", "normal", "large"].includes(normalized) ? normalized : "unknown";
 }
 
-function normalizeHarvestSizeRatings(value){
-  if(!Array.isArray(value)) return [];
-  const selected = new Set(value.map(normalizeHarvestSizeRating));
-  return ["small", "normal", "large"].filter(size => selected.has(size));
-}
-
 function getHarvestSizeRatingLabel(value){
   return {
     small: "小さめ",
@@ -570,8 +564,6 @@ function normalizeHarvestGrowthDetail(value, allowedBedKeys = null){
     }
   });
   const normalized = { uneven:source.uneven === true, bedOverrides };
-  const sizeRatings = normalizeHarvestSizeRatings(source.sizeRatings);
-  if(sizeRatings.length > 1) normalized.sizeRatings = sizeRatings;
   if(hasHarvestGrowthObservationFields(source)
     || Object.values(rawOverrides).some(hasHarvestGrowthObservationFields)){
     const schemaVersion = Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
@@ -585,18 +577,15 @@ function normalizeHarvestGrowthDetail(value, allowedBedKeys = null){
 
 function getHarvestGrowthOverallState(record = null){
   const qualityMemo = normalizeQualityMemo(record ? record.qualityMemo : getSelectedQualityMemo());
-  const growthDetail = normalizeHarvestGrowthDetail(record?.growthDetail);
-  const sizeRatings = growthDetail.sizeRatings || [];
   let sizeRating = normalizeHarvestSizeRating(record?.sizeRating);
-  if(sizeRatings.length > 1) sizeRating = "unknown";
-  else if(sizeRating === "unknown"){
+  if(sizeRating === "unknown"){
     const hasLarge = qualityMemo.tags.includes("large");
     const hasSmall = qualityMemo.tags.includes("small");
     if(hasLarge !== hasSmall) sizeRating = hasLarge ? "large" : "small";
   }
+  const growthDetail = normalizeHarvestGrowthDetail(record?.growthDetail);
   return {
     sizeRating,
-    ...(sizeRatings.length > 1 ? {sizeRatings} : {}),
     uneven: record ? growthDetail.uneven : !!document.getElementById("recordHarvestUnevenInput")?.checked,
     tipburn: isHarvestSymptomPresent(normalizeHarvestSymptomStatus(growthDetail.tipburnStatus, qualityMemo.tags.includes("chip"))),
     elongated: isHarvestSymptomPresent(normalizeHarvestSymptomStatus(growthDetail.elongatedStatus, qualityMemo.tags.includes("elongated"))),
@@ -624,14 +613,9 @@ function getHarvestGrowthStateForBed(record, bedKey){
 }
 
 function getSelectedHarvestSizeRating(){
-  const selected = getSelectedHarvestSizeRatings();
-  return selected.length === 1 ? selected[0] : "unknown";
-}
-
-function getSelectedHarvestSizeRatings(){
-  return normalizeHarvestSizeRatings(Array.from(
-    document.querySelectorAll('input[name="recordHarvestSizeRating"]:checked')
-  ).map(input => input.value));
+  return normalizeHarvestSizeRating(
+    document.querySelector('input[name="recordHarvestSizeRating"]:checked')?.value
+  );
 }
 
 function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
@@ -640,7 +624,6 @@ function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
   const normalized = normalizeHarvestGrowthDetail({
     schemaVersion:3,
     ...overall,
-    sizeRatings:getSelectedHarvestSizeRatings(),
     bedOverrides: recordHarvestGrowthBedOverrides
   }, allowedBedKeys);
   const bedOverrides = {};
@@ -661,9 +644,8 @@ function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
 
 function setSelectedHarvestGrowthAssessment(record = null){
   const overall = getHarvestGrowthOverallState(record);
-  const selectedSizes = overall.sizeRatings || (overall.sizeRating === "unknown" ? [] : [overall.sizeRating]);
   document.querySelectorAll('input[name="recordHarvestSizeRating"]').forEach(input => {
-    input.checked = selectedSizes.includes(normalizeHarvestSizeRating(input.value));
+    input.checked = normalizeHarvestSizeRating(input.value) === overall.sizeRating;
   });
   const unevenInput = document.getElementById("recordHarvestUnevenInput");
   if(unevenInput) unevenInput.checked = overall.uneven;
@@ -700,8 +682,7 @@ function formatHarvestGrowthAssessment(record){
   if(!record || record.type === "partialHarvest") return "-";
   const overall = getHarvestGrowthOverallState(record);
   const parts = [];
-  const selectedSizes = overall.sizeRatings || (overall.sizeRating === "unknown" ? [] : [overall.sizeRating]);
-  if(selectedSizes.length) parts.push(selectedSizes.map(getHarvestSizeRatingLabel).join("・"));
+  if(overall.sizeRating !== "unknown") parts.push(getHarvestSizeRatingLabel(overall.sizeRating));
   if(overall.unevenStatus !== "unknown") parts.push(`ばらつき${getHarvestSymptomStatusLabel(overall.unevenStatus)}`);
   if(overall.readyDate) parts.push(`適期確認 ${overall.readyDate}`);
   if(overall.tipburnStatus !== "unknown") parts.push(`チップバーン${getHarvestSymptomStatusLabel(overall.tipburnStatus)}`);
@@ -851,11 +832,6 @@ function serializeRecordForStorage(record){
     };
   }
 
-  const growthDetail = normalizeHarvestGrowthDetail(
-    record.growthDetail,
-    getHarvestBedKeysFromPalletKeys(record.palletKeys)
-  );
-
   const payload = {
     ...commonFields,
     palletSummary: record.palletSummary,
@@ -868,9 +844,11 @@ function serializeRecordForStorage(record){
     actualSeedlingLossRate: String(record.actualSeedlingLossRate ?? "").trim(),
     actualLoss: record.actualLoss,
     qualityMemo: normalizeQualityMemo(record.qualityMemo),
-    sizeRating: growthDetail.sizeRatings?.length > 1
-      ? "unknown" : normalizeHarvestSizeRating(record.sizeRating),
-    growthDetail,
+    sizeRating: normalizeHarvestSizeRating(record.sizeRating),
+    growthDetail: normalizeHarvestGrowthDetail(
+      record.growthDetail,
+      getHarvestBedKeysFromPalletKeys(record.palletKeys)
+    ),
     plantingAge: record.plantingAge || null,
     // 読み込み元の古い範囲ではなく、画面上の現在選択を保存する。
     palletRanges: compressPalletKeysToRanges(record.palletKeys),
@@ -901,10 +879,6 @@ function normalizeStoredRecord(record){
   const palletKeys = getPalletKeysFromRecord(record);
   if(!palletKeys.length) return null;
   const plantingPalletKeys = getPlantingPalletKeysFromRecord(record, palletKeys);
-  const growthDetail = normalizeHarvestGrowthDetail(
-    record.growthDetail,
-    getHarvestBedKeysFromPalletKeys(palletKeys)
-  );
   return {
     ...record,
     ...getNormalizedRecordCommonFields(record, "fullHarvest"),
@@ -918,9 +892,11 @@ function normalizeStoredRecord(record){
     plantingPending: !!record.plantingPending,
     plantingPalletKeys,
     qualityMemo: normalizeQualityMemo(record.qualityMemo),
-    sizeRating: growthDetail.sizeRatings?.length > 1
-      ? "unknown" : normalizeHarvestSizeRating(record.sizeRating),
-    growthDetail,
+    sizeRating: normalizeHarvestSizeRating(record.sizeRating),
+    growthDetail: normalizeHarvestGrowthDetail(
+      record.growthDetail,
+      getHarvestBedKeysFromPalletKeys(palletKeys)
+    ),
     plantingAge: normalizePlantingAgeSnapshot(record.plantingAge),
     palletKeys
   };

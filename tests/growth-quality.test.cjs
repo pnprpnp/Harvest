@@ -20,15 +20,15 @@ function browser(){
     harvestFillKeys:["2-A-1","2-B-1"],recordHarvestGrowthBedOverrides:{},growthObservationLegacyServerWarningShown:false,
     getPalletKeysFromRecord:record=>record.palletKeys || [],
     getSelectedQualityMemo:()=>({tags:Object.entries(tags).filter(([,v])=>v.checked).map(([k])=>k),other:""}),
-    document:{getElementById:id=>controls[id],querySelectorAll:selector=>selector.includes(":checked") ? sizes.filter(item=>item.checked) : sizes,createElement:()=>({}),
+    document:{getElementById:id=>controls[id],querySelectorAll:()=>sizes,createElement:()=>({}),
       querySelector:selector=>selector.includes("recordHarvestSizeRating") ? sizes.find(item=>item.checked) : tags[selector.match(/value="(.*?)"/)?.[1]]}
   });
   const files={
     "src/scripts/app/03-sheet-sync-core.js":["isStrictDateOnlyString"],
     "src/scripts/app/06-settings.js":["parsePalletKey"],
-    "src/scripts/app/02-local-data.js":["normalizeQualityTag","normalizeQualityMemo","normalizeHarvestSizeRating","normalizeHarvestSizeRatings","getHarvestBedKeyFromPalletKey","getHarvestBedKeysFromPalletKeys",
+    "src/scripts/app/02-local-data.js":["normalizeQualityTag","normalizeQualityMemo","normalizeHarvestSizeRating","getHarvestBedKeyFromPalletKey","getHarvestBedKeysFromPalletKeys",
       "normalizeHarvestSymptomStatus","isHarvestSymptomPresent","hasHarvestGrowthObservationFields","normalizeHarvestGrowthObservations","normalizeHarvestGrowthDetail",
-      "getHarvestGrowthOverallState","getHarvestGrowthStateForBed","getSelectedHarvestSizeRating","getSelectedHarvestSizeRatings","getSelectedHarvestGrowthDetail","setSelectedHarvestGrowthAssessment","formatHarvestGrowthAssessment","getHarvestSizeRatingLabel","getHarvestSymptomStatusLabel"],
+      "getHarvestGrowthOverallState","getHarvestGrowthStateForBed","getSelectedHarvestSizeRating","getSelectedHarvestGrowthDetail","setSelectedHarvestGrowthAssessment"],
     "src/scripts/app/09-record-workflow.js":["getCurrentRecordHarvestGrowthOverallState","compactRecordHarvestGrowthBedOverrides"],
     "src/scripts/app/15-sync-reconcile-and-backup.js":["preserveHarvestGrowthObservationsForLegacySync"]
   };
@@ -45,32 +45,6 @@ function server(){
 const sample=(status="unknown",extra={})=>({type:"fullHarvest",date:"2026-09-25",palletKeys:["2-A-1","2-B-1"],sizeRating:"normal",qualityMemo:{tags:[],other:""},
   growthDetail:{schemaVersion:3,readyDate:"2026-09-20",readyDateMode:"manual",unevenStatus:status,tipburnStatus:status,elongatedStatus:status,cultivar:"マルチリーフエアリ",
     bedOverrides:{"2-B":{sizeRating:"large",uneven:false,tipburn:false,elongated:false,readyDate:"",readyDateMode:"none",unevenStatus:"many",tipburnStatus:"slight",elongatedStatus:"none"}},...extra}});
-
-test("multiple harvest sizes survive form, local and server normalization while scalar stays unknown",()=>{
-  const front=browser(),back=server();
-  const record=sample("unknown",{sizeRatings:["large","small"]});
-  record.sizeRating="unknown";
-  record.growthDetail=plain(front.normalizeHarvestGrowthDetail(record.growthDetail,["2-A","2-B"]));
-  assert.deepEqual(record.growthDetail.sizeRatings,["small","large"]);
-  front.setSelectedHarvestGrowthAssessment(record);
-  assert.deepEqual(plain(front.getSelectedHarvestSizeRatings()),["small","large"]);
-  assert.equal(front.getSelectedHarvestSizeRating(),"unknown");
-  const selected=plain(front.getSelectedHarvestGrowthDetail(record.palletKeys));
-  assert.deepEqual(selected.sizeRatings,["small","large"]);
-  assert.deepEqual(plain(back.normalizeHarvestGrowthDetailInput(selected,record.palletKeys,record.date)),selected);
-  assert.deepEqual(plain(front.getHarvestGrowthOverallState({...record,growthDetail:selected}).sizeRatings),["small","large"]);
-  assert.match(front.formatHarvestGrowthAssessment({...record,growthDetail:selected}),/小さめ・大きめ/);
-  front.setSelectedHarvestGrowthAssessment({...record,sizeRating:"normal",growthDetail:{...selected,sizeRatings:[]}});
-  assert.deepEqual(plain(front.getSelectedHarvestSizeRatings()),["normal"]);
-  assert.equal(front.getSelectedHarvestGrowthDetail().sizeRatings,undefined);
-});
-
-test("server rejects invalid multiple size selections",()=>{
-  const back=server(),record=sample();
-  for(const sizeRatings of [["small","small"],["small","huge"],["small","normal","large","small"],"small,large"]){
-    assert.throws(()=>back.normalizeHarvestGrowthDetailInput({...record.growthDetail,sizeRatings},record.palletKeys,record.date));
-  }
-});
 
 test("unknown/none/slight/many and old present survive normalize, form restore, save, server and JSON roundtrip",()=>{
   const front=browser(), back=server();

@@ -2112,9 +2112,8 @@ function normalizeHarvestRecord(record) {
     RECORD_QUALITY_LENGTH_LIMIT,
     false
   );
-  const requestedSizeRating = normalizeOptionalSizeRating(record.sizeRating);
+  const sizeRating = normalizeOptionalSizeRating(record.sizeRating);
   const growthDetail = normalizeHarvestGrowthDetailInput(record.growthDetail, palletKeys, date);
-  const sizeRating = growthDetail.sizeRatings?.length > 1 ? "unknown" : requestedSizeRating;
   const plantingAge = normalizePlantingAgeInput(record.plantingAge);
   const plantingCaseInstruction = normalizeOptionalText(
     record.plantingCaseInstruction,
@@ -2642,17 +2641,6 @@ function normalizeHarvestGrowthDetailInput(value, palletKeys, harvestDate = "") 
     uneven: source.uneven === true,
     bedOverrides
   };
-  if (typeof source.sizeRatings !== "undefined") {
-    if (!Array.isArray(source.sizeRatings) || source.sizeRatings.length > 3
-      || source.sizeRatings.some(size => !["small", "normal", "large"].includes(size))) {
-      throw new Error("大きさの複数選択が正しくありません");
-    }
-    const sizeRatings = ["small", "normal", "large"].filter(size => source.sizeRatings.includes(size));
-    if (sizeRatings.length !== source.sizeRatings.length) {
-      throw new Error("大きさの複数選択が正しくありません");
-    }
-    if (sizeRatings.length > 1) normalized.sizeRatings = sizeRatings;
-  }
   if (hasObservations(source) || entries.some(entry => hasObservations(entry[1]))) {
     const schemaVersion = Number(source.schemaVersion) >= 3 || "unevenStatus" in source || "readyDateMode" in source
       || entries.some(entry => "unevenStatus" in entry[1] || "readyDateMode" in entry[1]) ? 3 : 2;

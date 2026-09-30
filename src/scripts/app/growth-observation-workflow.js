@@ -400,11 +400,7 @@ function openRecordGrowthUnrated(){
 }
 
 function renderRecordGrowthUnrated(){
-  const rows=records.filter(record=>{
-    if(record.type === "partialHarvest") return false;
-    const overall=getHarvestGrowthOverallState(record);
-    return overall.sizeRating === "unknown" && !overall.sizeRatings?.length;
-  }).slice(0,100);
+  const rows=records.filter(record=>record.type !== "partialHarvest" && getHarvestGrowthOverallState(record).sizeRating === "unknown").slice(0,100);
   document.getElementById("recordGrowthReadyForm").hidden=true;
   const controls=rows.length ? `<section class="recordGrowthBulkEditor" aria-label="選択した収穫のまとめ評価">
     <label>育ち具合<select id="recordGrowthBulkSize"><option value="">選択してください</option><option value="small">小さめ</option><option value="normal">並</option><option value="large">大きめ</option></select></label>
@@ -427,7 +423,6 @@ function buildGrowthUnratedRecordUpdate(record,size,quality){
     elongatedStatus:chosen.elongated==="keep" || !chosen.elongated ? overall.elongatedStatus : normalizeHarvestSymptomStatus(chosen.elongated),
     tipburnStatus:chosen.tipburn==="keep" || !chosen.tipburn ? overall.tipburnStatus : normalizeHarvestSymptomStatus(chosen.tipburn)};
   nextDetail.uneven=isHarvestSymptomPresent(nextDetail.unevenStatus);
-  delete nextDetail.sizeRatings;
   nextDetail.elongated=isHarvestSymptomPresent(nextDetail.elongatedStatus);
   nextDetail.tipburn=isHarvestSymptomPresent(nextDetail.tipburnStatus);
   return {...record,sizeRating:size,growthDetail:nextDetail,syncSchemaVersion:RECORD_SYNC_SCHEMA_VERSION,

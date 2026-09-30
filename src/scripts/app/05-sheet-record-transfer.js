@@ -88,10 +88,6 @@ function isValidTransferGrowthDetail(value, palletKeys = [], harvestDate = ""){
   }
   if(!value || typeof value !== "object" || Array.isArray(value)) return false;
   if(value.uneven !== undefined && typeof value.uneven !== "boolean") return false;
-  if(value.sizeRatings !== undefined && (!Array.isArray(value.sizeRatings)
-    || value.sizeRatings.length > 3
-    || new Set(value.sizeRatings).size !== value.sizeRatings.length
-    || value.sizeRatings.some(size => !["small","normal","large"].includes(size)))) return false;
   if(!validObservations(value)) return false;
   const overrides = value.bedOverrides === undefined ? {} : value.bedOverrides;
   if(!overrides || typeof overrides !== "object" || Array.isArray(overrides)) return false;
