@@ -1379,7 +1379,7 @@ function saveHarvestStateToStorage(options = {}){
     recordMemoInput: document.getElementById("recordMemoInput")?.value || "",
     qualityMemo: getSelectedQualityMemo(),
     recordHarvestSizeRating: getSelectedHarvestSizeRating(),
-    recordHarvestGrowthDetail: getSelectedHarvestGrowthDetail(harvestFillKeys),
+    recordHarvestGrowthDetail: getSelectedHarvestGrowthDetail(harvestFillKeys, harvestProgressState?.selectedBeds),
     qualityMemoByPallet: recordSelectionMode === "planting"
       ? normalizeQualityMemoByPallet(plantingRecordDraft?.qualityMemoByPallet, harvestFillKeys)
       : {},
@@ -1507,7 +1507,7 @@ function loadHarvestStateFromStorage(){
       harvestCasesAutoEstimated: !!parsed.harvestCasesAutoEstimated,
       harvestSelectionMode: normalizeHarvestSelectionMode(parsed.harvestSelectionMode),
       seedlingHouseAllocationMode: normalizeSeedlingHouseAllocationMode(parsed.seedlingHouseAllocationMode),
-      harvestProgressState: normalizeHarvestProgressState(parsed.harvestProgressState),
+      harvestProgressState: normalizeHarvestProgressState(parsed.harvestProgressState, { sanitizeGrowthEdits:true }),
       harvestProgressAvailable: typeof parsed.harvestProgressAvailable === "boolean"
         ? parsed.harvestProgressAvailable
         : (normalizeHarvestSelectionMode(parsed.harvestSelectionMode) === "auto"
@@ -1537,7 +1537,10 @@ function loadHarvestStateFromStorage(){
       recordHarvestSizeRating: normalizeHarvestSizeRating(parsed.recordHarvestSizeRating),
       recordHarvestGrowthDetail: normalizeHarvestGrowthDetail(
         parsed.recordHarvestGrowthDetail,
-        getHarvestBedKeysFromPalletKeys(parsed.harvestFillKeys)
+        [...new Set([
+          ...getHarvestBedKeysFromPalletKeys(parsed.harvestFillKeys),
+          ...(normalizeHarvestProgressState(parsed.harvestProgressState)?.selectedBeds || [])
+        ])]
       ),
       qualityMemoByPallet: normalizeQualityMemoByPallet(parsed.qualityMemoByPallet, parsed.harvestFillKeys),
       recordCasesEdited: !!parsed.recordCasesEdited,
@@ -2422,7 +2425,20 @@ function normalizeHarvestProgressEntry(value){
   };
 }
 
-function normalizeHarvestProgressState(value){
+function normalizeHarvestProgressGrowthEdits(value){
+  if(!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result = {};
+  Object.entries(value).slice(0, BUILDINGS.length * bedOrder.length).forEach(([bedKey, edit]) => {
+    if(!normalizeHarvestProgressBedKey(bedKey) || !edit || typeof edit !== "object") return;
+    const normalize = raw => raw == null ? null : normalizeHarvestGrowthDetail({
+      schemaVersion:4, bedOverrides:{ [bedKey]:raw }
+    }, [bedKey]).bedOverrides[bedKey] || null;
+    result[bedKey] = { original:normalize(edit.original), last:normalize(edit.last) };
+  });
+  return result;
+}
+
+function normalizeHarvestProgressState(value, options = {}){
   if(!value || typeof value !== "object" || Array.isArray(value)) return null;
   const planKeys = Array.isArray(value.planKeys)
     ? [...new Set(value.planKeys.filter(key => typeof key === "string" && isValidPalletKeyString(key)))]
@@ -2453,6 +2469,10 @@ function normalizeHarvestProgressState(value){
       .filter(Boolean)
       .slice(-HARVEST_PROGRESS_MAX_ENTRIES)
     : [];
+  const growthEdits = options.sanitizeGrowthEdits
+    ? normalizeHarvestProgressGrowthEdits(value.growthEdits)
+    : (value.growthEdits && typeof value.growthEdits === "object" && !Array.isArray(value.growthEdits)
+      ? { ...value.growthEdits } : {});
 
   return {
     inputMode: "incremental",
@@ -2464,6 +2484,7 @@ function normalizeHarvestProgressState(value){
     actualCasesInput,
     appliedActualCases,
     entries,
+    growthEdits,
     targetDate: parseDateOnlyString(targetDate) ? targetDate : "",
     targetCases: clampNumber(value.targetCases, 0, 999999, 0)
   };
@@ -2487,6 +2508,7 @@ function ensureHarvestProgressState(){
     actualCasesInput: "",
     appliedActualCases: null,
     entries: [],
+    growthEdits: {},
     targetDate: casePlan.date,
     targetCases: casePlan.totalCases
   };
@@ -3033,6 +3055,8 @@ function rebuildHarvestProgressAfterRegularEntryChange(){
   if(!state || !isHarvestProgressContextCurrent(state)) return false;
   const regularEntries = state.entries.filter(entry => entry.type === "regular");
   const completedBeds = [...new Set(regularEntries.flatMap(entry => entry.bedKeys))];
+  restoreHarvestProgressGrowthEdits(state,
+    Object.keys(state.growthEdits || {}).filter(bedKey => !completedBeds.includes(bedKey)));
   const actualCases = regularEntries.reduce((total, entry) => total + Number(entry.cases || 0), 0);
   state.selectedBeds = [...completedBeds];
   state.appliedSelectedBeds = [...completedBeds];
@@ -3315,6 +3339,108 @@ function renderHarvestProgressBeds(){
   });
 }
 
+function getHarvestProgressGrowthOverride(bedKey){
+  const raw = recordHarvestGrowthBedOverrides[bedKey];
+  if(!raw) return null;
+  return normalizeHarvestGrowthDetail({ schemaVersion:4, bedOverrides:{ [bedKey]:raw } }, [bedKey])
+    .bedOverrides[bedKey] || null;
+}
+
+function restoreHarvestProgressGrowthEdits(state, bedKeys){
+  if(!state?.growthEdits) return;
+  bedKeys.forEach(bedKey => {
+    const edit = state.growthEdits[bedKey];
+    if(!edit) return;
+    if(JSON.stringify(getHarvestProgressGrowthOverride(bedKey)) === JSON.stringify(edit.last)){
+      if(edit.original) recordHarvestGrowthBedOverrides[bedKey] = edit.original;
+      else delete recordHarvestGrowthBedOverrides[bedKey];
+    }
+    delete state.growthEdits[bedKey];
+  });
+}
+
+function updateHarvestProgressGrowthBed(bedKey, next){
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  if(!state || harvestProgressPartialSelectionMode || harvestProgressEntryEditState
+    || !state.selectedBeds.includes(bedKey)) return;
+  if(!state.growthEdits[bedKey]){
+    state.growthEdits[bedKey] = { original:getHarvestProgressGrowthOverride(bedKey), last:null };
+  }
+  if(next) recordHarvestGrowthBedOverrides[bedKey] = next;
+  else delete recordHarvestGrowthBedOverrides[bedKey];
+  state.growthEdits[bedKey].last = getHarvestProgressGrowthOverride(bedKey);
+  harvestProgressState = state;
+  renderHarvestProgressGrowthBeds();
+  scheduleHarvestStateSave();
+}
+
+function selectHarvestProgressGrowthBed(bedKey){
+  updateHarvestProgressGrowthBed(bedKey,
+    recordHarvestGrowthBedOverrides[bedKey] || getRecordHarvestGrowthBedDraft(bedKey));
+}
+
+function resetHarvestProgressGrowthBed(bedKey){
+  updateHarvestProgressGrowthBed(bedKey, null);
+}
+
+function setHarvestProgressGrowthSize(bedKey, value){
+  const current = getRecordHarvestGrowthBedDraft(bedKey);
+  updateHarvestProgressGrowthBed(bedKey, {
+    ...current,
+    sizeRating:normalizeHarvestSizeRating(value),
+    confirmedFields:[...new Set([...current.confirmedFields, "sizeRating"])]
+  });
+}
+
+function setHarvestProgressGrowthObservation(bedKey, field, value){
+  if(!["unevenStatus", "tipburnStatus", "elongatedStatus"].includes(field)) return;
+  const current = getRecordHarvestGrowthBedDraft(bedKey);
+  const next = {
+    ...current,
+    [field]:normalizeHarvestSymptomStatus(value),
+    confirmedFields:[...new Set([...current.confirmedFields, field])]
+  };
+  const symptom = field.replace("Status", "");
+  next[symptom] = isHarvestSymptomPresent(next[field]);
+  updateHarvestProgressGrowthBed(bedKey, next);
+}
+
+function renderHarvestProgressGrowthBeds(){
+  const section = document.getElementById("harvestProgressGrowthSection");
+  const container = document.getElementById("harvestProgressGrowthBeds");
+  if(!section || !container || section.hidden || !section.open) return;
+  const state = normalizeHarvestProgressState(harvestProgressState);
+  const bedKeys = state?.selectedBeds || [];
+  container.innerHTML = bedKeys.map(bedKey => {
+    const [building, bed] = bedKey.split("-");
+    const selected = Object.prototype.hasOwnProperty.call(recordHarvestGrowthBedOverrides, bedKey);
+    const current = getRecordHarvestGrowthBedDraft(bedKey);
+    return `<section class="recordHarvestGrowthBedRow" aria-label="${escapeHtml(`${building}号棟 ${bed}ベッドの収穫時の育ち具合・品質`)}">
+      <div class="recordHarvestGrowthBedTitle">
+        <span>${escapeHtml(`${building}号棟 ${bed}ベッド`)}</span>
+        <button type="button" class="recordHarvestGrowthBedReset" data-ui-click="${selected ? "resetHarvestProgressGrowthBed" : "selectHarvestProgressGrowthBed"}" data-ui-arg="${escapeHtml(bedKey)}">${selected ? "個別評価を解除" : "このベッドを確認"}</button>
+      </div>
+      ${selected ? `<div class="recordHarvestGrowthBedSizes" role="group" aria-label="育ち具合">
+        ${[["small","小さめ"],["normal","ちょうど良い"],["large","大きめ"]].map(([value,label]) =>
+          `<button type="button" class="recordHarvestGrowthBedSizeBtn${current.sizeRating === value ? " is-active" : ""}" data-ui-click="setHarvestProgressGrowthSize" data-ui-arg="${escapeHtml(bedKey)}" data-ui-arg2="${value}" aria-pressed="${current.sizeRating === value}">${label}</button>`
+        ).join("")}
+      </div>
+      <div class="recordGrowthObservationFields">
+        ${[["elongated","徒長"],["uneven","ばらつき"],["tipburn","チップバーン"]].map(([field,label]) =>
+          `<label>${label}<select data-progress-growth-bed="${escapeHtml(bedKey)}" data-progress-growth-field="${field}Status" aria-label="${escapeHtml(`${building}号棟 ${bed}ベッド ${label}`)}">
+            ${["unknown","none","slight","many","present"].map(value => `<option value="${value}"${current[`${field}Status`] === value ? " selected" : ""}>${getHarvestSymptomStatusLabel(value)}</option>`).join("")}
+          </select></label>`
+        ).join("")}
+      </div>` : '<div class="recordHarvestGrowthBedHelp">未入力。確認した項目だけ記録できます。</div>'}
+    </section>`;
+  }).join("");
+  container.querySelectorAll("[data-progress-growth-field]").forEach(input => {
+    input.addEventListener("change", () => setHarvestProgressGrowthObservation(
+      input.dataset.progressGrowthBed, input.dataset.progressGrowthField, input.value
+    ));
+  });
+}
+
 function getHarvestProgressResultModel(currentHarvestTotal = null){
   const state = normalizeHarvestProgressState(harvestProgressState);
   const casePlan = getHarvestCasePlan();
@@ -3454,6 +3580,11 @@ function updateHarvestProgressUi(options = {}){
           : (hasAppliedHarvestProgress()
               ? "新たに完了したベッドを選択してください"
               : "完了したベッドを選択してください"));
+  }
+  const growthSection = document.getElementById("harvestProgressGrowthSection");
+  if(growthSection){
+    growthSection.hidden = isPartialMode || isEntryEditMode || !state?.selectedBeds.length;
+    renderHarvestProgressGrowthBeds();
   }
   const result = document.getElementById("harvestProgressResult");
   if(result){
@@ -3670,7 +3801,10 @@ function toggleHarvestProgressBed(building, bed){
     return;
   }
   const selectedSet = new Set(state.selectedBeds);
-  if(selectedSet.has(bedKey)) selectedSet.delete(bedKey);
+  if(selectedSet.has(bedKey)){
+    selectedSet.delete(bedKey);
+    restoreHarvestProgressGrowthEdits(state, [bedKey]);
+  }
   else selectedSet.add(bedKey);
   state.selectedBeds = [...selectedSet];
   harvestProgressState = state;
@@ -3845,6 +3979,7 @@ function resetHarvestProgress(options = {}){
   }
   const state = normalizeHarvestProgressState(harvestProgressState);
   if(!state) return false;
+  restoreHarvestProgressGrowthEdits(state, Object.keys(state.growthEdits || {}));
   const shouldRestorePlan = options.restorePlan !== false;
   if(shouldRestorePlan){
     harvestFillKeys = [...state.planKeys];

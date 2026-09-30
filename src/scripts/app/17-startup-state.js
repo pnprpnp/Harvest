@@ -167,7 +167,7 @@ function restoreHarvestStateAtStartup(savedHarvestState){
     qualityMemo: savedHarvestState.qualityMemo,
     sizeRating: savedHarvestState.recordHarvestSizeRating,
     growthDetail: savedHarvestState.recordHarvestGrowthDetail
-  });
+  }, savedHarvestState.harvestProgressState?.selectedBeds);
   if(harvestFillKeys.length) recalcHarvestSummary();
   else harvestSummary = null;
 }

@@ -7229,6 +7229,75 @@
         }, "途中経過を70ケースと75ケースに分けて追加できません");
       });
 
+      await runTest("途中経過の収穫品質をベッド別に下書き保存し、取り消しで戻せる", () => {
+        const result = comparable(app.eval(`(() => {
+          const previous = {
+            getPlan:getHarvestCasePlan,
+            keys:[...harvestFillKeys],
+            progress:harvestProgressState,
+            overrides:JSON.parse(JSON.stringify(recordHarvestGrowthBedOverrides)),
+            cases:document.getElementById("casesInput")?.value || "",
+            stored:localStorage.getItem(HARVEST_STATE_KEY)
+          };
+          try{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = () => ({totalCases:20, regularCases:20, date:"2026-08-23"});
+            document.getElementById("casesInput").value = "20";
+            harvestFillKeys = ["2-A-1"];
+            harvestProgressState = {
+              inputMode:"incremental", baseSelectionMode:"manual", fixedReversePlan:false,
+              planKeys:["2-A-1","2-B-1"], selectedBeds:["2-A","2-B"],
+              appliedSelectedBeds:[], actualCasesInput:"", appliedActualCases:null,
+              entries:[], growthEdits:{}, targetDate:"2026-08-23", targetCases:20
+            };
+            delete recordHarvestGrowthBedOverrides["2-A"];
+            delete recordHarvestGrowthBedOverrides["2-B"];
+            const section = document.getElementById("harvestProgressGrowthSection");
+            section.hidden = false;
+            section.open = true;
+            renderHarvestProgressGrowthBeds();
+            const visibleBeds = document.querySelectorAll("#harvestProgressGrowthBeds .recordHarvestGrowthBedRow").length;
+            selectHarvestProgressGrowthBed("2-A");
+            setHarvestProgressGrowthSize("2-A", "small");
+            selectHarvestProgressGrowthBed("2-B");
+            setHarvestProgressGrowthSize("2-B", "large");
+            setHarvestProgressGrowthObservation("2-B", "tipburnStatus", "none");
+            saveHarvestStateToStorage();
+            const restored = loadHarvestStateFromStorage();
+            const draft = restored.recordHarvestGrowthDetail.bedOverrides;
+            const formal = getSelectedHarvestGrowthDetail(["2-A-1","2-B-1"]).bedOverrides;
+            const values = {
+              visibleBeds,
+              aSize:draft["2-A"]?.sizeRating,
+              bSize:draft["2-B"]?.sizeRating,
+              bTipburn:draft["2-B"]?.tipburnStatus,
+              bConfirmed:draft["2-B"]?.confirmedFields,
+              formalBeds:Object.keys(formal)
+            };
+            harvestProgressState = restored.harvestProgressState;
+            recordHarvestGrowthBedOverrides = draft;
+            resetHarvestProgress({render:false,save:false,silent:true});
+            values.reverted = !recordHarvestGrowthBedOverrides["2-A"]
+              && !recordHarvestGrowthBedOverrides["2-B"];
+            return values;
+          }finally{
+            cancelPendingHarvestStateSave();
+            getHarvestCasePlan = previous.getPlan;
+            harvestFillKeys = previous.keys;
+            harvestProgressState = previous.progress;
+            recordHarvestGrowthBedOverrides = previous.overrides;
+            document.getElementById("casesInput").value = previous.cases;
+            if(previous.stored === null) localStorage.removeItem(HARVEST_STATE_KEY);
+            else localStorage.setItem(HARVEST_STATE_KEY, previous.stored);
+          }
+        })()`));
+        assertDeepEqual(result, {
+          visibleBeds:2, aSize:"small", bSize:"large", bTipburn:"none",
+          bConfirmed:["sizeRating","tipburnStatus"],
+          formalBeds:["2-A","2-B"], reverted:true
+        }, "途中経過のベッド別評価が収穫下書きに保存されません");
+      });
+
       await runTest("途中経過の選択場所とケース数からロス率を表示する", () => {
         const state = comparable(app.eval(`(() => {
           const previous = {
@@ -17172,18 +17241,18 @@
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "90c5838f", elements: 2563, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "3b308b9d", elements: 2633, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "c7e05fd2", elements: 2633, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "9af38211", elements: 2567, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "64af541c", elements: 2584, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "276dffd3", elements: 2667, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "c17bdab1", elements: 2682, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "4f72e57f", elements: 2794, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "c3927eee", elements: 2794, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "4fbe0c4b", elements: 2838, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "c024f31f", elements: 2838, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "84cce67e", elements: 2838, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "17b92018", elements: 2570, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "daeac7d4", elements: 2640, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "c0f91dab", elements: 2640, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "cac23574", elements: 2574, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "20a1063b", elements: 2591, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "3a5993e9", elements: 2674, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "aef742d0", elements: 2689, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "e1a4a022", elements: 2801, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "ad356b63", elements: 2801, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "9f1fca2e", elements: 2845, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "14165fe2", elements: 2845, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "419fbea3", elements: 2845, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

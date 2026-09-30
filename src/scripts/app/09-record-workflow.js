@@ -2954,7 +2954,10 @@ function syncRecordHarvestGrowthQualityStatus(input){
 }
 
 function compactRecordHarvestGrowthBedOverrides(){
-  const allowed = new Set(getHarvestBedKeysFromPalletKeys(harvestFillKeys));
+  const allowed = new Set([
+    ...getHarvestBedKeysFromPalletKeys(harvestFillKeys),
+    ...(harvestProgressState?.selectedBeds || [])
+  ]);
   recordHarvestGrowthBedOverrides = normalizeHarvestGrowthDetail({
     bedOverrides: recordHarvestGrowthBedOverrides
   }, [...allowed]).bedOverrides;

@@ -643,8 +643,11 @@ function getSelectedHarvestSizeRating(){
   );
 }
 
-function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
-  const allowedBedKeys = getHarvestBedKeysFromPalletKeys(palletKeys);
+function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys, additionalBedKeys = []){
+  const allowedBedKeys = [...new Set([
+    ...getHarvestBedKeysFromPalletKeys(palletKeys),
+    ...(Array.isArray(additionalBedKeys) ? additionalBedKeys.map(normalizeHarvestProgressBedKey).filter(Boolean) : [])
+  ])];
   const overall = getCurrentRecordHarvestGrowthOverallState();
   const normalized = normalizeHarvestGrowthDetail({
     schemaVersion:4,
@@ -654,7 +657,7 @@ function getSelectedHarvestGrowthDetail(palletKeys = harvestFillKeys){
   return normalized;
 }
 
-function setSelectedHarvestGrowthAssessment(record = null){
+function setSelectedHarvestGrowthAssessment(record = null, additionalBedKeys = []){
   const overall = getHarvestGrowthOverallState(record);
   document.querySelectorAll('input[name="recordHarvestSizeRating"]').forEach(input => {
     input.checked = normalizeHarvestSizeRating(input.value) === overall.sizeRating;
@@ -680,7 +683,10 @@ function setSelectedHarvestGrowthAssessment(record = null){
       if(input) input.checked = isHarvestSymptomPresent(status);
     });
   }
-  const allowedBedKeys = getHarvestBedKeysFromPalletKeys(record?.palletKeys || harvestFillKeys);
+  const allowedBedKeys = [...new Set([
+    ...getHarvestBedKeysFromPalletKeys(record?.palletKeys || harvestFillKeys),
+    ...(Array.isArray(additionalBedKeys) ? additionalBedKeys.map(normalizeHarvestProgressBedKey).filter(Boolean) : [])
+  ])];
   recordHarvestGrowthBedOverrides = normalizeHarvestGrowthDetail(
     record?.growthDetail,
     allowedBedKeys
