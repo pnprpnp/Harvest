@@ -5383,6 +5383,74 @@
         }
       });
 
+      await runTest("7日カレンダーのカードが画面内に収まり注意・詳細だけを開閉する", async () => {
+        for(const [width,height] of [[320,568],[320,640],[390,844]]){
+          const frame=await loadVisualAppFrame(width,height,`../index.html?__hncheck=1&calendar-characterization=${Date.now()}`);
+          const visualApp=frame.contentWindow;
+          try{
+            visualApp.eval(`
+              protectedAccessUnlocked=true;
+              renderDashboardGrowthPrediction=()=>{};
+              const calendarToday=formatDateOnlyString(new Date());
+              const sampleDays=[0,2,3,5,6];
+              window.calendarRenderCalls=0;
+              window.calendarSampleItems=sampleDays.flatMap((offset,index)=>["large","normal","small"].map((status,size)=>({
+                id:offset+":"+status,date:formatDateOnlyString(addDays(parseDateOnlyString(calendarToday),offset)),status,
+                heads:[40.5,180.3,20.6][size]*12,palletKeys:["2-A-1"],
+                locations:[{building:2,bed:"A",confidence:"参考値",risk:offset===2 ? {tipburn:{level:"high",label:"注意",reason:"確認用の品質の注意"}} : {}}]
+              })));
+              getDashboardGrowthScheduledPlanningItems=()=>{window.calendarRenderCalls++;return window.calendarSampleItems;};
+              getDashboardGrowthPlanningItems=()=>[];
+              readDashboardGrowthChangeState=()=>({notifications:[]});
+              window.calendarSampleModel={asOf:calendarToday+"T12:00:00+09:00",scope:"test",baseModel:{canForecast:true},
+                weather:{forecastEndDate:formatDateOnlyString(addDays(parseDateOnlyString(calendarToday),6)),
+                  daily:Array.from({length:7},(_,offset)=>({source:"forecast",date:formatDateOnlyString(addDays(parseDateOnlyString(calendarToday),offset))}))}};
+              dashboardGrowthPredictionModelCache=window.calendarSampleModel;
+            `);
+            const doc=visualApp.document;
+            doc.getElementById("welcomeScreen")?.remove();
+            visualApp.switchTab("dashboard");visualApp.setDashboardSubtab("growth");
+            doc.getElementById("dashboardGrowthContent").hidden=false;
+            doc.getElementById("dashboardGrowthLocationMissing").hidden=true;
+            doc.getElementById("dashboardGrowthRefreshBtn").hidden=false;
+            visualApp.renderDashboardGrowthPlanning(visualApp.calendarSampleModel);
+            visualApp.scrollTo(0,0);
+            await settleVisualApp(visualApp);
+            const calendar=doc.querySelector(".dashboardGrowthCalendar");
+            const rows=calendar.querySelectorAll(".dashboardGrowthCalendarRow");
+            const details=doc.getElementById("dashboardGrowthPlanningDetails");
+            assertEqual(rows.length,7,"7日分のカードが揃っていません");
+            assert(!details.open,"初期表示で注意・詳細が開いています");
+            const last=rows[6].getBoundingClientRect();
+            const tabTop=doc.querySelector(".tabBar").getBoundingClientRect().top;
+            assert(last.bottom<=tabTop,width+"×"+height+"で7日目が下部タブに隠れます: "+last.bottom+" / "+tabTop);
+            assert(details.querySelector("summary").getBoundingClientRect().bottom<=tabTop,
+              width+"×"+height+"で詳細を開く行が画面外です");
+            for(const sizes of calendar.querySelectorAll(".dashboardGrowthCalendarSizes")){
+              assert(sizes.scrollWidth<=sizes.clientWidth,width+"px幅で内訳が横にはみ出ています");
+              for(const chip of sizes.children) assert(chip.scrollWidth<=chip.clientWidth,width+"px幅で大きさの文字がはみ出しています: "+chip.textContent);
+            }
+            const calls=visualApp.calendarRenderCalls;
+            const warning=calendar.querySelector(".dashboardGrowthCalendarAttention");
+            assert(warning,"注意のボタンが表示されません");
+            warning.click();
+            assert(details.open,"注意をタップしても詳細が開きません");
+            assert(doc.activeElement.id.startsWith("dashboardGrowthCalendarDetail-"),"注意した日の詳細へフォーカスが移りません");
+            assert(details.textContent.includes("チップバーン"),"注意の症状名が詳細から失われています");
+            assertEqual(visualApp.calendarRenderCalls,calls,"注意の表示だけで再計算しています");
+            details.querySelector("summary").click();
+            assert(!details.open,"詳細を閉じられません");
+            details.querySelector("summary").click();
+            visualApp.renderDashboardGrowthPlanning(visualApp.calendarSampleModel);
+            assert(doc.getElementById("dashboardGrowthPlanningDetails").open,"再表示で開いていた詳細を閉じています");
+            doc.getElementById("dashboardGrowthInfoBtn").click();
+            assert(doc.getElementById("dashboardGrowthInfoModal").classList.contains("show"),"計算説明を開けません");
+            assert(doc.getElementById("dashboardGrowthInfoWindowBody").textContent.includes("ロス率"),"計算の説明がありません");
+            visualApp.closeDashboardGrowthInfoWindow();
+          }finally{frame.remove();}
+        }
+      });
+
       await runTest("目安の固定バーが同じ外枠で1行表示し開閉・取消・画面切替で再計算しない", async () => {
         for(const width of [320,390,1024]){
           const frame = await loadVisualAppFrame(width,844);

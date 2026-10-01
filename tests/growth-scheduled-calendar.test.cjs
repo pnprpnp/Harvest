@@ -52,7 +52,10 @@ test("the guide's scheduled pallets use their scheduled-day size and actual coun
   assert.equal(day.sizes.large.heads,32);assert.equal(day.sizes.normal.heads,16);assert.equal(day.sizes.small.heads,0);
   assert.equal(day.entries.flatMap(item=>item.palletKeys).length,3);
   f.context.renderDashboardGrowthPlanning(f.model);
-  assert.match(f.container.innerHTML,/10\/2（金）<\/strong>.*大きめ2\.7ケース・ちょうど良い1\.3ケース/);
+  assert.match(f.container.innerHTML,/datetime="2026-10-02">10\/2（金）<\/time>/);
+  assert.match(f.container.innerHTML,/aria-label="大きめ2\.7ケース"/);
+  assert.match(f.container.innerHTML,/aria-label="ちょうど良い1\.3ケース"/);
+  assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>4<\/strong>/);
   assert.doesNotMatch(f.container.innerHTML,/開始：|期間中：|32ベッド/);
 });
 test("a bed split across harvest dates only contributes each day's selected portion",()=>{
@@ -75,7 +78,7 @@ test("partial totals crossing predicted sizes or dates stay unknown rather than 
       [planting(1,{"5-A-1":20,"5-A-2":20})],[partial]);
     assert.ok(f.items().every(item=>item.heads===null));
     f.context.renderDashboardGrowthPlanning(f.model);
-    assert.match(f.container.innerHTML,/ケース数不明/);assert.doesNotMatch(f.container.innerHTML,/大きめ1\.2ケース/);
+    assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>不明<\/strong>/);assert.doesNotMatch(f.container.innerHTML,/大きめ1\.2ケース/);
   }
 });
 test("missing stock counts and unknown size are distinct, with no invented zero",()=>{
@@ -85,7 +88,10 @@ test("missing stock counts and unknown size are distinct, with no invented zero"
   assert.equal(f.calendar()[1].sizes.large.heads,20);assert.equal(f.calendar()[1].sizes.large.unknownPallets,1);
   assert.equal(f.calendar()[1].sizes.unknown.heads,12);
   f.context.renderDashboardGrowthPlanning(f.model);
-  assert.match(f.container.innerHTML,/大きめ1\.7ケース＋ケース数不明・大きさ不明1ケース/);
+  assert.match(f.container.innerHTML,/aria-label="大きめ1\.7＋不明ケース"/);
+  assert.match(f.container.innerHTML,/aria-label="大きさ不明1ケース"/);
+  assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>不明<\/strong>/);
+  assert.match(f.container.innerHTML,/不明な分を除く合計：2\.7ケース/);
 });
 test("only exact scheduled inputs are reused; absent current crops and mismatched dates cannot gain a size",()=>{
   const f=fixture([cohort(["5-A-1"],"large")],[planting(1,{"5-A-1":20})],[],[["5-B-1","2026-10-02"]]);
@@ -103,7 +109,7 @@ test("forecast limits, missing dates and the seven-day bound never invent size p
   assert.equal(f.calendar()[6].predicted,false);assert.equal(f.calendar()[6].sizes,null);
   f.context.renderDashboardGrowthPlanning(f.model);
   assert.match(f.container.innerHTML,/今後7日の収穫予定と大きさ/);
-  assert.match(f.container.innerHTML,/10\/7（水）<\/strong><span>気象予報範囲外のため未予測/);
+  assert.match(f.container.innerHTML,/datetime="2026-10-07">10\/7（水）<\/time>.*未予測.*気象予報範囲外/);
   assert.doesNotMatch(f.container.innerHTML,/10\/8（木）<\/strong>/);
   const item={id:"one",date:"2026-10-02",status:"large",heads:20,palletKeys:["5-A-1"]};
   const days=planner.scheduledCalendar([item,item],{today:"2026-10-01",forecastEndDate:"2026-10-07",forecastDates:["2026-10-01"]});
@@ -143,8 +149,10 @@ test("scheduled cases use the applied loss per pallet before subtracting partial
   assert.equal(f.calendar()[1].sizes.large.heads,10); // 20*0.5 + 16*0.75 - 12.
   assert.equal(f.calendar()[1].sizes.normal.heads,12);
   f.context.renderDashboardGrowthPlanning(f.model);
-  assert.match(f.container.innerHTML,/大きめ0\.8ケース・ちょうど良い1ケース/);
-  assert.match(f.container.innerHTML,/「目安」で使用中のロス率を反映/);
+  assert.match(f.container.innerHTML,/aria-label="大きめ0\.8ケース"/);
+  assert.match(f.container.innerHTML,/aria-label="ちょうど良い1ケース"/);
+  assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>1\.8<\/strong>/);
+  assert.match(f.container.innerHTML,/ロス率反映済み/);
 });
 test("a 240-case plan displays only pallet rounding excess after 21 percent loss",()=>{
   const counts=Object.fromEntries(Array.from({length:183},(_,i)=>

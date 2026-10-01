@@ -274,6 +274,15 @@ function showDashboardGrowthPlanningQuantity(){
   if(dashboardGrowthPredictionModelCache) renderDashboardGrowthPlanning(dashboardGrowthPredictionModelCache);
 }
 
+function openDashboardGrowthPlanningDetails(date){
+  const details=document.getElementById("dashboardGrowthPlanningDetails");
+  if(!details) return;
+  details.open=true;
+  const target=document.getElementById(`dashboardGrowthCalendarDetail-${date}`) || details.querySelector("summary");
+  target?.focus({preventScroll:true});
+  target?.scrollIntoView({block:"nearest"});
+}
+
 function openDashboardGrowthBackupRestorePicker(){
   if(showDashboardGrowthPendingSettingsRecovery()) return;
   document.getElementById("dashboardGrowthBackupRestoreFile")?.click();
