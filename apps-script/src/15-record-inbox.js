@@ -256,6 +256,32 @@ function enqueueHarvestDayBatch(records, plantingEvents, batchId, syncRevision) 
       if (existing.fingerprint !== fingerprint) {
         throw new Error("同じ受付IDで異なる記録が送信されています");
       }
+      if (existing.status === HARVEST_RECORD_INBOX_STATUSES.failed) {
+        const nextAttemptAt = new Date();
+        // 元の受付順を保ったまま同じ行で再開し、重複追加や古い編集の優先を防ぎます。
+        sheet.getRange(existing.rowNumber, 3, 1, 8 + chunks.length).setValues([[
+          HARVEST_RECORD_INBOX_STATUSES.queued,
+          existing.acceptedAt || nextAttemptAt,
+          "",
+          "",
+          0,
+          nextAttemptAt,
+          "",
+          "",
+          ...chunks
+        ]]);
+        SpreadsheetApp.flush();
+        ensureHarvestRecordInboxTriggerInstalledUnlocked();
+        return buildHarvestRecordInboxStatus({
+          ...existing,
+          status: HARVEST_RECORD_INBOX_STATUSES.queued,
+          acceptedAt: existing.acceptedAt || nextAttemptAt,
+          processedAt: null,
+          attemptCount: 0,
+          errorMessage: "",
+          resultJson: ""
+        });
+      }
       if ([
         HARVEST_RECORD_INBOX_STATUSES.queued,
         HARVEST_RECORD_INBOX_STATUSES.processing

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261001-operation-error-dialog">
+<meta name="harvestnavi-version" content="20261001-inbox-resend-recovery">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -29792,7 +29792,13 @@ async function checkGoogleSheetAcceptedBatches(){
       || (result.queueStatus === "missing" && entry.checkCount >= 2)){
       markGoogleSheetAcceptedBatchFailed(entry, config);
       removeGoogleSheetAcceptedDayBatch(entry.batchId);
-      showToast("Google受信後の反映を確認できません。記録一覧の「修正・未送信」を確認してください", { error:true });
+      const failureReason = String(result.message || "").trim();
+      showToast(
+        "Google受信後の反映を確認できません。"
+          + (failureReason ? "\n\n理由: " + failureReason : "")
+          + "\n\n記録一覧の「修正・未送信」を確認してください",
+        { error:true }
+      );
     }else{
       entry.checkCount++;
       entry.nextCheckAt = Date.now() + getGoogleSheetAcceptedBatchCheckDelay(entry.checkCount);
@@ -33787,6 +33793,9 @@ async function enqueueGoogleSheetDayBatchChunk(
           error.googleSheetInboxUnsupported = true;
         }
         throw error;
+      }
+      if(result.failed === true || result.queueStatus === "failed"){
+        throw new Error(result.message || "Google側で記録を反映できませんでした");
       }
       if(result.accepted !== true){
         throw new Error(result.message || "記録の受信を確認できませんでした");

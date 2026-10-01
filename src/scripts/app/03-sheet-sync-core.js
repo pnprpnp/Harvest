@@ -1028,7 +1028,13 @@ async function checkGoogleSheetAcceptedBatches(){
       || (result.queueStatus === "missing" && entry.checkCount >= 2)){
       markGoogleSheetAcceptedBatchFailed(entry, config);
       removeGoogleSheetAcceptedDayBatch(entry.batchId);
-      showToast("Google受信後の反映を確認できません。記録一覧の「修正・未送信」を確認してください", { error:true });
+      const failureReason = String(result.message || "").trim();
+      showToast(
+        "Google受信後の反映を確認できません。"
+          + (failureReason ? "\n\n理由: " + failureReason : "")
+          + "\n\n記録一覧の「修正・未送信」を確認してください",
+        { error:true }
+      );
     }else{
       entry.checkCount++;
       entry.nextCheckAt = Date.now() + getGoogleSheetAcceptedBatchCheckDelay(entry.checkCount);

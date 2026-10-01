@@ -867,6 +867,108 @@
         );
       });
 
+      await runTest("失敗した受信記録の再送は同じ行で再開し、反映済みまで確認できる", () => {
+        const record = createBackgroundPartialRecord(216, 10);
+        const payload = app.buildGoogleSheetDayBatchInboxPayload([record], [], app.loadGoogleSheetConfig(), {
+          batchId:"day-failed-resend"
+        });
+        const result = comparable(appsScript.eval(`(() => {
+          const payload = ${JSON.stringify(payload)};
+          const previousEnsure = ensureHarvestRecordInboxSheet;
+          const previousFlush = SpreadsheetApp.flush;
+          const previousSave = saveHarvestDayBatch;
+          const previousHeads = appendHarvestRecordInboxHeads;
+          const previousLoadHeads = loadHarvestRecordInboxHeads;
+          const previousSpreadsheet = getSpreadsheet;
+          const previousTriggers = __appsScriptTestState.triggerHandlers.slice();
+          const acceptedAt = new Date("2026-09-16T00:00:00.000Z");
+          const row = [payload.batchId, getHarvestDayBatchRequestFingerprint(payload.records, []),
+            "failed", acceptedAt, "", new Date(), 5, "", "最初の失敗", "古い結果",
+            ...getHarvestRecordInboxPayloadChunks("壊れた内容")];
+          let writes = 0;
+          let saves = 0;
+          const sheet = {
+            getLastRow(){ return 2; },
+            appendRow(){ throw new Error("再送で受付行を重複追加しています"); },
+            getRange(_row, column, _rowCount = 1, columnCount = 1){
+              return {
+                getValues(){ return [row.slice(column - 1, column - 1 + columnCount)]; },
+                getValue(){ return row[column - 1]; },
+                setValues(values){
+                  writes++;
+                  values[0].forEach((value, index) => { row[column - 1 + index] = value; });
+                },
+                createTextFinder(id){
+                  return { matchEntireCell(){ return this; }, findNext(){
+                    return id === row[0] ? { getRow(){ return 2; } } : null;
+                  } };
+                }
+              };
+            }
+          };
+          try{
+            ensureHarvestRecordInboxSheet = () => sheet;
+            SpreadsheetApp.flush = () => {};
+            __appsScriptTestState.triggerHandlers = [];
+            appendHarvestRecordInboxHeads = () => {};
+            loadHarvestRecordInboxHeads = () => new Map();
+            getSpreadsheet = () => ({ getSheetByName(){ return sheet; } });
+            saveHarvestDayBatch = (records) => {
+              saves++;
+              return { failed:0, recordResults:records.map((record, index) => ({
+                index, ok:true, record:normalizeHarvestRecord(record)
+              })), plantingResults:[] };
+            };
+            const resumed = enqueueHarvestDayBatch(payload.records, [], payload.batchId, 3);
+            const resumedRow = row.slice();
+            const writesAfterResume = writes;
+            enqueueHarvestDayBatch(payload.records, [], payload.batchId, 3);
+            const queuedUnchanged = writes === writesAfterResume;
+            row[2] = "processing";
+            enqueueHarvestDayBatch(payload.records, [], payload.batchId, 3);
+            const processingUnchanged = writes === writesAfterResume;
+            row[2] = "queued";
+            let mismatchRejected = false;
+            try{
+              enqueueHarvestDayBatch([{ ...payload.records[0], memo:"別の送信内容" }], [], payload.batchId, 3);
+            }catch(error){ mismatchRejected = String(error.message).includes("異なる記録"); }
+            const processed = processHarvestRecordInbox();
+            const writesAfterProcess = writes;
+            const completed = enqueueHarvestDayBatch(payload.records, [], payload.batchId, 3);
+            return {
+              resumed, originalAcceptedAt:acceptedAt.toISOString(),
+              resetCount:resumedRow[6], clearedState:resumedRow.slice(4, 6).concat(resumedRow.slice(8, 10)),
+              nextAttemptScheduled:resumedRow[7] instanceof Date,
+              restoredPayload:JSON.parse(resumedRow.slice(10).map(decodeHarvestRecordInboxPayloadChunk).join("")),
+              queuedUnchanged, processingUnchanged, mismatchRejected, processed, completed, saves,
+              completedUnchanged:writes === writesAfterProcess,
+              idleTriggers:__appsScriptTestState.triggerHandlers.length
+            };
+          }finally{
+            ensureHarvestRecordInboxSheet = previousEnsure;
+            SpreadsheetApp.flush = previousFlush;
+            saveHarvestDayBatch = previousSave;
+            appendHarvestRecordInboxHeads = previousHeads;
+            loadHarvestRecordInboxHeads = previousLoadHeads;
+            getSpreadsheet = previousSpreadsheet;
+            __appsScriptTestState.triggerHandlers = previousTriggers;
+          }
+        })()`));
+        assertEqual(result.resumed.queueStatus, "queued", "失敗状態から再開できません");
+        assertEqual(result.resumed.acceptedAt, result.originalAcceptedAt, "元の受付順を変更しています");
+        assertEqual(result.resetCount, 0, "再試行回数を戻していません");
+        assertDeepEqual(result.clearedState, ["", "", "", ""], "過去の失敗情報が残っています");
+        assertEqual(result.nextAttemptScheduled, true, "再処理を予約していません");
+        assertDeepEqual(result.restoredPayload.records, comparable(payload.records), "再送内容を復元できません");
+        assertEqual(result.restoredPayload.syncRevision, 3, "再送時の同期番号を保存していません");
+        assert(result.queuedUnchanged && result.processingUnchanged, "待機・処理中の同じ受付を初期化しています");
+        assertEqual(result.mismatchRejected, true, "異なる内容で受付を上書きしています");
+        assertEqual(result.processed.completed, true, "再送後の本体反映に失敗しました");
+        assertEqual(result.completed.queueStatus, "completed", "再送後の完了を確認できません");
+        assert(result.completedUnchanged && result.saves === 1, "完了した受付を再処理しています");
+        assertEqual(result.idleTriggers, 0, "完了後に不要な定期処理が残っています");
+      });
+
       await runTest("Apps Scriptが収穫記録の連続列を一括書き込みする", () => {
         const result = comparable(appsScript.eval(`(() => {
           const previousFlush = SpreadsheetApp.flush;
@@ -1736,6 +1838,80 @@
             "反映済み",
             "スプレッドシート本体への反映完了を表示していません"
           );
+        });
+      });
+
+      await runTest("受信箱の失敗応答を受付済みにせず、端末記録を再送可能に保つ", async () => {
+        for(const failure of [{ failed:true }, { queueStatus:"failed" }]){
+          const record = createBackgroundPartialRecord(217, 10);
+          await withBackgroundSendTestState(app, [record], async () => {
+            app.eval('googleSheetInboxSupportState = "unknown";');
+            app.fetch = async () => ({ text:async () => JSON.stringify({
+              ok:true, accepted:true, processed:false, ...failure, message:"検証用の反映失敗"
+            }) });
+            const result = await app.sendGoogleSheetDayBatchesToGoogleSheet(
+              [app.getRecordByUuid(record.recordUuid)], [], { showFailureDialog:false }
+            );
+            assertEqual(result.successCount, 0, "失敗を成功として数えています");
+            assertEqual(result.failCount, 1, "失敗記録を数えていません");
+            assertEqual(result.errorMessage, "検証用の反映失敗", "具体的な失敗理由を失っています");
+            assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(record.recordUuid)), "failed", "失敗応答を受付済みにしています");
+            assertEqual(app.eval("googleSheetAcceptedBatchQueue.size"), 0, "失敗応答を反映確認待ちへ追加しています");
+            assertEqual(app.getGoogleSheetUnsentRecords().length, 1, "失敗した端末記録を再送できません");
+            assertEqual(app.getRecordByUuid(record.recordUuid).cases, record.cases, "端末記録の内容を変更しています");
+          });
+        }
+      });
+
+      await runTest("受信後の反映失敗は具体的な理由を表示し、再送後に反映済みになる", async () => {
+        const record = createBackgroundPartialRecord(218, 10);
+        await withBackgroundSendTestState(app, [record], async () => {
+          app.eval('googleSheetInboxSupportState = "unknown";');
+          const notifications = [];
+          const batchIds = [];
+          let shouldFail = true;
+          let acceptedPayload = null;
+          app.showToast = (message, options) => notifications.push({ message, options });
+          app.fetch = async (_url, options) => {
+            const payload = JSON.parse(options.body);
+            let result;
+            if(payload.type === "harvest-day-batch-inbox"){
+              acceptedPayload = payload;
+              batchIds.push(payload.batchId);
+              result = { ok:true, accepted:true, processed:false, queueStatus:"queued" };
+            }else if(shouldFail){
+              result = { ok:true, accepted:true, failed:true, queueStatus:"failed", message:"苗植え元の記録を確認できません" };
+            }else{
+              result = { ok:true, accepted:true, processed:true, queueStatus:"completed",
+                recordResults:[{ index:0, ok:true, record:createBackgroundServerRecord(acceptedPayload.records[0]) }],
+                plantingResults:[], previousSyncRevision:0, syncRevision:1 };
+            }
+            return { text:async () => JSON.stringify(result) };
+          };
+          const checkNow = async () => {
+            app.eval(`
+              googleSheetAcceptedBatchQueue.forEach(entry => { entry.nextCheckAt = 0; });
+              if(googleSheetAcceptedBatchCheckTimer !== null) clearTimeout(googleSheetAcceptedBatchCheckTimer);
+              googleSheetAcceptedBatchCheckTimer = null;
+              googleSheetAcceptedBatchCheckTimerDueAt = 0;
+            `);
+            await app.checkGoogleSheetAcceptedBatches();
+          };
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(record.recordUuid)), "送信待ちへ追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+          await checkNow();
+          assert(notifications.some(item => item.options?.error === true
+            && item.message.includes("苗植え元の記録を確認できません")), "具体的な失敗理由を表示していません");
+          assertEqual(app.getGoogleSheetUnsentRecords().length, 1, "反映失敗後に再送できません");
+          assertEqual(app.eval("googleSheetAcceptedBatchQueue.size"), 0, "失敗した確認待ちが残っています");
+          shouldFail = false;
+          assert(app.queueGoogleSheetRecordSend(app.getRecordByUuid(record.recordUuid)), "再送待ちへ追加できません");
+          await app.runGoogleSheetBackgroundSendQueue();
+          await checkNow();
+          assertEqual(batchIds.length, 2, "再送していません");
+          assertEqual(batchIds[0], batchIds[1], "再送で受付IDを変更しています");
+          assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(record.recordUuid)), "confirmed", "再送後に反映済みになりません");
+          assertEqual(app.getGoogleSheetUnsentRecords().length, 0, "反映済み記録が未送信のままです");
         });
       });
 

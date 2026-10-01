@@ -996,6 +996,9 @@ async function enqueueGoogleSheetDayBatchChunk(
         }
         throw error;
       }
+      if(result.failed === true || result.queueStatus === "failed"){
+        throw new Error(result.message || "Google側で記録を反映できませんでした");
+      }
       if(result.accepted !== true){
         throw new Error(result.message || "記録の受信を確認できませんでした");
       }
