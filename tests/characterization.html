@@ -5065,6 +5065,203 @@
         }
       });
 
+      await runTest("目安が植え数別ロス率・基本設定・共通指定と部分収穫を同じ計算経路で扱う", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            settings, records, plantingEvents,
+            cases:dashboardHarvestForecastCasesValue, loss:dashboardHarvestForecastLossValue,
+            calculate:calculateHarvestSelectionFromRecords, metrics:getDashboardRecentMetrics
+          };
+          const keys = [1,2,3,4,5,6].map(number => "2-A-" + number);
+          const counts = [12,16,20,12,16,20];
+          const today = startOfLocalDay(new Date());
+          let selectionCalls = 0;
+          const firstDay = () => {
+            selectionCalls = 0;
+            const model = buildDashboardHarvestForecastModel();
+            const date = getFirstDashboardHarvestDate(model.referenceDate).getTime();
+            return {model, keys:[...model.palletForecasts]
+              .filter(([, forecast]) => forecast.date.getTime() === date).map(([key]) => key)};
+          };
+          try{
+            settings = {...deepClone(defaultSettings), defaultLossRate:10,
+              usePlantingCountLossSettings:true,
+              harvestLossRatesByPlantingCount:{12:0,16:25,20:50}};
+            records = [];
+            plantingEvents = [{eventId:20000000009001, plantingDate:formatDateOnlyString(addDays(today,-20)),
+              sourceAllocations:[{harvestRecordId:20000000009000,palletKeys:keys}],
+              plantingPalletKeys:keys, plantingCountsByPallet:Object.fromEntries(keys.map((key,index) => [key,counts[index]]))}];
+            invalidateNormalizedBedCalculationSettings();
+            invalidatePlantingEventStateCache();
+            invalidateRecordDerivedCaches();
+            dashboardHarvestForecastCasesValue = "3";
+            dashboardHarvestForecastLossValue = null;
+            // Limit forecasts to one real selection, so small quantities do not
+            // simulate an entire farm rotation for every independent case.
+            calculateHarvestSelectionFromRecords = options => ++selectionCalls === 1
+              ? previous.calculate(options) : {palletKeys:[],totalHarvest:0};
+            const before = JSON.stringify({records,plantingEvents});
+            const configured = firstDay();
+            const usual = previous.calculate({referenceDate:configured.model.referenceDate,needHeads:36});
+            getDashboardRecentMetrics = () => ({averageCases:3,averageLoss:90,harvestDays:1});
+            const highAverage = firstDay();
+            dashboardHarvestForecastLossValue = "0";
+            const common = firstDay();
+            dashboardHarvestForecastLossValue = null;
+            settings = {...settings,harvestLossRatesByPlantingCount:{12:0,16:"",20:50}};
+            invalidateNormalizedBedCalculationSettings();
+            const blank = firstDay();
+            settings = {...settings,usePlantingCountLossSettings:false};
+            invalidateNormalizedBedCalculationSettings();
+            const disabled = firstDay();
+            settings = {...settings,usePlantingCountLossSettings:true,
+              harvestLossRatesByPlantingCount:{12:0,16:25,20:50}};
+            invalidateNormalizedBedCalculationSettings();
+            const unchanged = before === JSON.stringify({records,plantingEvents});
+            records = [{id:20000000009002,type:"partialHarvest",date:formatDateOnlyString(addDays(today,-1)),cases:1,
+              targets:[{building:2,bed:"A",start:1,end:1,plantsPerPallet:12}]}];
+            invalidateRecordDerivedCaches();
+            const partial = firstDay();
+            const targetDay = getFirstDashboardHarvestDate(today);
+            records[0] = {...records[0],date:formatDateOnlyString(targetDay)};
+            invalidateRecordDerivedCaches();
+            const sameDayPartial = firstDay();
+            dashboardHarvestForecastLossValue = "0";
+            const commonPartial = firstDay();
+            records = [];
+            invalidateRecordDerivedCaches();
+            dashboardHarvestForecastLossValue = "100";
+            const common100 = firstDay().model.canForecast;
+            dashboardHarvestForecastLossValue = null;
+            settings = {...settings,defaultLossRate:100,usePlantingCountLossSettings:false};
+            invalidateNormalizedBedCalculationSettings();
+            const all100 = firstDay().model;
+            return {
+              configured:configured.keys, usual:usual.palletKeys, usualHeads:usual.totalHarvest,
+              noAverageCanForecast:configured.model.canForecast, average:configured.model.averageLoss,
+              highAverage:highAverage.keys, common:common.keys, blank:blank.keys, disabled:disabled.keys,
+              unchanged, partial:partial.keys, sameDayPartial:sameDayPartial.keys, commonPartial:commonPartial.keys,
+              common100,all100:all100.canForecast,all100Message:getDashboardHarvestForecastUnavailableText(all100)
+            };
+          }catch(error){
+            throw new Error(error.stack || error.message);
+          }finally{
+            settings = previous.settings; records = previous.records; plantingEvents = previous.plantingEvents;
+            dashboardHarvestForecastCasesValue = previous.cases;
+            dashboardHarvestForecastLossValue = previous.loss;
+            calculateHarvestSelectionFromRecords = previous.calculate;
+            getDashboardRecentMetrics = previous.metrics;
+            invalidateNormalizedBedCalculationSettings();
+            invalidatePlantingEventStateCache();
+            invalidateRecordDerivedCaches();
+            invalidateDashboardDerivedData();
+          }
+        })()`));
+        const first = ["2-A-1","2-A-2","2-A-3"];
+        assertDeepEqual(state.configured, [...first,"2-A-4"], "植え数別ロス率が目安へ反映されません");
+        assertDeepEqual(state.usual, state.configured, "目安と通常計算の選択が一致しません");
+        assertEqual(state.usualHeads, 46, "0%・25%・50%のロス率を場所ごとに適用できません");
+        assertEqual(state.noAverageCanForecast, true, "平均ロス率がなくても設定値で予測できません");
+        assertEqual(state.average, null, "記録なしの平均ロス率を作っています");
+        assertDeepEqual(state.highAverage, state.configured, "参考の平均ロス率で通常予測が変わっています");
+        for(const name of ["common","blank","disabled"]){
+          assertDeepEqual(state[name], first, name + "の適用順または0%の扱いが違います");
+        }
+        assertEqual(state.unchanged, true, "試算が元記録を変更しています");
+        assertDeepEqual(state.partial, [...first,"2-A-4","2-A-5"], "部分収穫済み株数を控除できません");
+        assertDeepEqual(state.sameDayPartial, [...first,"2-A-4"], "同日の部分収穫ケース数を控除できません");
+        assertDeepEqual(state.commonPartial, first, "共通ロス率で部分収穫を控除できません");
+        assertEqual(state.common100, false, "共通100%で予測を実行しています");
+        assertEqual(state.all100, false, "設定値が全て100%で予測を実行しています");
+        assert(state.all100Message.includes("すべて100%"), "設定値が全て100%の説明がありません");
+      });
+
+      await runTest("目安のロス率切替を320px・390px幅で操作し予測時だけ反映する", async () => {
+        for(const width of [320,390]){
+          const frame = await loadVisualAppFrame(width,844);
+          const visualApp = frame.contentWindow;
+          try{
+            visualApp.eval(`
+              protectedAccessUnlocked = true;
+              records = []; plantingEvents = [];
+              settings = {...deepClone(defaultSettings),defaultLossRate:10};
+              invalidateNormalizedBedCalculationSettings();
+              invalidatePlantingEventStateCache();
+              invalidateRecordDerivedCaches();
+              dashboardHarvestForecastCasesValue = "1000";
+              dashboardHarvestForecastCasesDraftValue = "1000";
+              dashboardHarvestForecastLossValue = null;
+              dashboardHarvestForecastLossDraftValue = null;
+              invalidateDashboardDerivedData();
+            `);
+            visualApp.document.getElementById("welcomeScreen")?.remove();
+            visualApp.switchTab("dashboard");
+            visualApp.setDashboardSubtab("guide");
+            await settleVisualApp(visualApp);
+            const doc = visualApp.document;
+            const mode = doc.getElementById("dashboardForecastLossMode");
+            const input = doc.getElementById("dashboardForecastLossInput");
+            const wrap = doc.getElementById("dashboardForecastLossInputWrap");
+            const apply = doc.getElementById("dashboardForecastApplyBtn");
+            const pending = doc.getElementById("dashboardForecastPendingNote");
+            const initialModel = visualApp.eval("dashboardHarvestForecastModelCache");
+            const changeMode = value => {
+              mode.value = value;
+              mode.dispatchEvent(new visualApp.Event("change",{bubbles:true}));
+            };
+            const changeLoss = value => {
+              input.value = value;
+              input.dispatchEvent(new visualApp.Event("input",{bubbles:true}));
+            };
+            const checkWidth = () => {
+              const controls = doc.querySelector(".dashboardForecastControls");
+              assert(controls.scrollWidth <= controls.clientWidth + 1, width + "px幅で条件がはみ出しています");
+              for(const element of [mode,apply,doc.getElementById("dashboardForecastAverageBtn")]){
+                assert(element.getBoundingClientRect().height >= 44, "条件操作の高さが44px未満です");
+              }
+            };
+            assertEqual(mode.value,"settings","初期状態が設定値ではありません");
+            assert(wrap.hidden && input.disabled,"設定値使用時に共通入力が表示されています");
+            assert(doc.getElementById("dashboardForecastLossSettingsNote").textContent.includes("16植え 10%"),
+              "設定値の内訳が表示されません");
+            assert(doc.getElementById("dashboardForecastLossAverageNote").textContent.includes("記録不足"),
+              "平均ロス率が不明の場合の説明がありません");
+            checkWidth();
+            changeMode("common");
+            assert(!wrap.hidden && !input.disabled,"共通入力へ切り替わりません");
+            assertEqual(input.value,"10","実績がないとき基本設定で試算を開始できません");
+            changeLoss("0");
+            assertEqual(visualApp.eval("dashboardHarvestForecastModelCache"),initialModel,"入力だけで再計算しています");
+            assert(!pending.hidden && !apply.disabled,"未反映の条件が表示されません");
+            checkWidth();
+            apply.click();
+            const commonModel = visualApp.eval("dashboardHarvestForecastModelCache");
+            assertEqual(commonModel.forecastLoss,0,"共通0%が反映されません");
+            assertEqual(commonModel.lossUsesSettings,false,"共通試算へ反映されません");
+            assert(pending.hidden && apply.disabled,"反映後も未反映になっています");
+            for(const value of ["","100","101","-1"]){
+              changeLoss(value);
+              assert(apply.disabled,"無効な共通ロス率で予測できます: " + value);
+              assertEqual(visualApp.eval("dashboardHarvestForecastModelCache"),commonModel,"無効入力で予測が変わっています");
+            }
+            changeMode("settings");
+            assert(!apply.disabled,"無効入力から設定値に戻せません");
+            apply.click();
+            assertEqual(visualApp.eval("dashboardHarvestForecastModelCache.lossUsesSettings"),true,"設定値へ戻せません");
+            visualApp.eval(`settings = {...settings,defaultLossRate:20}; saveSettingsToStorage(); renderDashboardHarvestForecast();`);
+            assert(doc.getElementById("dashboardForecastLossSettingsNote").textContent.includes("16植え 20%"),
+              "設定保存後に目安の設定値が更新されません");
+            changeMode("common");
+            doc.getElementById("dashboardForecastAverageBtn").click();
+            assertEqual(mode.value,"settings","初期値へ戻すと設定値へ戻りません");
+            assertEqual(doc.getElementById("dashboardForecastCasesInput").value,"","ケース数が平均の状態へ戻りません");
+            checkWidth();
+          }finally{
+            frame.remove();
+          }
+        }
+      });
+
       await runTest("苗植え実績を次回収穫の理想株数として設定より優先する", () => {
         const originalSettings = comparable(app.eval("settings"));
         try{
@@ -17626,20 +17823,20 @@
 
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
-        // 非表示の失敗通知の背景要素を1個追加。通常画面の表示要素数は維持する。
+        // 目安のロス率切替・設定内訳・参考平均を追加。他タブの表示要素数は維持する。
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "fc18de67", elements: 2577, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "419da269", elements: 2647, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "a9f86862", elements: 2647, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "bbf3c7de", elements: 2581, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "1fc8ac33", elements: 2598, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "4b731f0a", elements: 2681, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "14614028", elements: 2696, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "7b00f83a", elements: 2808, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "8337dc21", elements: 2808, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "13fb2cc8", elements: 2852, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "13a73ddb", elements: 2852, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "f17ba868", elements: 2852, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "3057622a", elements: 2585, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "fbd9420e", elements: 2655, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "8dd7e6b5", elements: 2655, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "e37a0148", elements: 2589, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "cb2ab016", elements: 2606, visible: 106, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "eca5253a", elements: 2689, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "0ce94b08", elements: 2704, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "af6a1215", elements: 2816, visible: 169, viewport: "390x844" },
+          mobileSettings: { hash: "ad52df08", elements: 2816, visible: 193, viewport: "390x844" },
+          mobileMonitor: { hash: "00f96e3c", elements: 2860, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "178716b7", elements: 2860, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "8144f0bd", elements: 2860, visible: 106, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261001-seven-day-case-units">
+<meta name="harvestnavi-version" content="20261001-guide-loss-settings">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17174,6 +17174,30 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .operationErrorModal .recordImportErrorClose{min-height:44px;}
 
 /* Dashboard */
+.dashboardForecastLossMode{
+  width:100%;
+  min-width:0;
+  min-height:44px;
+  margin:0;
+  padding:9px 24px 9px 9px;
+  border:1px solid var(--ui-line-strong);
+  border-radius:12px;
+  background-color:var(--ui-surface-solid);
+  color:var(--ui-text);
+  font-size:12px;
+}
+#dashboardForecastLossInputWrap[hidden],
+#dashboardForecastPendingNote[hidden]{display:none;}
+.dashboardForecastLossNotes{
+  grid-column:1 / -1;
+  min-width:0;
+  color:var(--ui-text-secondary);
+  font-size:12px;
+  line-height:1.55;
+  overflow-wrap:anywhere;
+}
+.dashboardForecastLossNotes p{margin:0;}
+#dashboardForecastPendingNote{color:var(--ui-accent-dark);}
 .dashboardForecastValueInput > input,
 .dashboardForecastValueInput > input:hover,
 .dashboardForecastValueInput > input:focus{
@@ -20652,7 +20676,7 @@ requestAnimationFrame(function(){
                   <div class="calculationHelpItem">
                     <div class="calculationHelpLabel">収穫時期の目安</div>
                     <span class="calculationHelpFormula">1収穫日の必要株数 ＝ 最大0株（1日あたりケース数 − 同日の部分収穫ケース数）× 12株</span>
-                    <p class="calculationHelpText">火・水・木・土・日を収穫日として、指定したロス率で収穫場所の計算を日ごとに仮想実行します。実際の記録済みの日は重ねて計算せず、場所ごとの予測日を求めます。</p>
+                    <p class="calculationHelpText">火・水・木・土・日を収穫日として、通常の「計算する」と同じ植え数別・基本のロス率設定で収穫場所の計算を日ごとに仮想実行します。「共通ロス率で試算」を選んだ場合は入力した率を全場所に使います。実際の記録済みの日は重ねて計算せず、場所ごとの予測日を求めます。</p>
                   </div>
                   <div class="calculationHelpItem">
                     <div class="calculationHelpLabel">定植からの経過日数</div>
@@ -20707,16 +20731,25 @@ requestAnimationFrame(function(){
               <span class="dashboardForecastInputSuffix">ケース</span>
             </span>
           </label>
-          <label class="dashboardForecastControlField" for="dashboardForecastLossInput">
-            <span class="dashboardForecastControlLabel">収穫ロス率</span>
-            <span id="dashboardForecastLossInputWrap" class="dashboardForecastValueInput">
-              <input id="dashboardForecastLossInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" data-ui-input="handleDashboardHarvestForecastInput" data-ui-arg="loss">
+          <div class="dashboardForecastControlField">
+            <label class="dashboardForecastControlLabel" for="dashboardForecastLossMode">収穫ロス率</label>
+            <select id="dashboardForecastLossMode" class="dashboardForecastLossMode" data-ui-change="handleDashboardHarvestForecastInput" data-ui-arg="lossMode">
+              <option value="settings">設定値を使う</option>
+              <option value="common">共通ロス率で試算</option>
+            </select>
+            <span id="dashboardForecastLossInputWrap" class="dashboardForecastValueInput" hidden>
+              <input id="dashboardForecastLossInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" aria-label="試算用の共通収穫ロス率" data-ui-input="handleDashboardHarvestForecastInput" data-ui-arg="loss" disabled>
               <span class="dashboardForecastInputSuffix">%</span>
             </span>
-          </label>
+          </div>
           <div class="dashboardForecastActions">
-            <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" data-ui-click="resetDashboardHarvestForecastInputs">平均に戻す</button>
+            <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" data-ui-click="resetDashboardHarvestForecastInputs">初期値に戻す</button>
             <button id="dashboardForecastApplyBtn" type="button" class="dashboardForecastApplyBtn" data-ui-click="applyDashboardHarvestForecastInputs">予測する</button>
+          </div>
+          <div class="dashboardForecastLossNotes">
+            <p id="dashboardForecastLossSettingsNote"></p>
+            <p id="dashboardForecastLossAverageNote"></p>
+            <p id="dashboardForecastPendingNote" role="status" hidden>条件を変更しました。「予測する」で反映します。</p>
           </div>
         </div>
         <div id="dashboardHarvestForecastBuildingTabs" class="dashboardForecastBuildingTabs" aria-label="予想を表示する号棟"></div>
@@ -20961,9 +20994,11 @@ requestAnimationFrame(function(){
       <div id="dashboardForecastInfoWindowTitle" class="recordDetailWindowTitle">収穫時期の目安について</div>
       <button id="dashboardForecastInfoWindowClose" type="button" class="recordDetailWindowClose" data-ui-click="closeDashboardForecastInfoWindow">閉じる</button>
     </div>
-    <div id="dashboardForecastInfoWindowBody" class="recordDetailWindowBody">初期値は直近1ヶ月の平均です。ケース数とロス率を変更し、「予測する」を押すと試算できます。
+    <div id="dashboardForecastInfoWindowBody" class="recordDetailWindowBody">1日あたり収穫ケース数の初期値は直近1ヶ月の平均です。収穫ロス率は通常の「計算する」と同じ設定値を使います。植え数別設定が有効で入力がある場合はその率を優先し、未入力なら基本のロス率を使います。植え付け数は場所ごとの苗植え記録を優先し、株数が未記録なら計算設定の収穫時の個数を使います。
 
-収穫日は火・水・木・土・日として計算します。入力した1日あたり収穫ケース数と収穫ロス率で「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
+「共通ロス率で試算」を選ぶと、入力した率をすべての場所へ適用できます。ケース数やロス率の条件を変更したら「予測する」で反映します。「設定値を使う」に戻すこともできます。直近1ヶ月の平均ロス率は設定を見直すための参考値です。「初期値に戻す」はケース数を平均、ロス率を設定値に戻します。
+
+収穫日は火・水・木・土・日として計算します。「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。部分収穫済みの株数は見込み収穫数から差し引きます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
   </div>
 </div>
 <div id="dashboardSeedlingStatusInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardSeedlingStatusInfoWindowTitle" aria-describedby="dashboardSeedlingStatusInfoWindowBody" data-ui-backdrop-click="closeDashboardSeedlingStatusInfoWindow">
@@ -38126,14 +38161,24 @@ function parseDashboardHarvestForecastLossValue(value){
 }
 
 function handleDashboardHarvestForecastInput(kind){
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   if(kind === "cases"){
     dashboardHarvestForecastCasesDraftValue = document.getElementById("dashboardForecastCasesInput")?.value ?? "";
   }else if(kind === "loss"){
     dashboardHarvestForecastLossDraftValue = document.getElementById("dashboardForecastLossInput")?.value ?? "";
+  }else if(kind === "lossMode"){
+    if(document.getElementById("dashboardForecastLossMode")?.value === "common"){
+      const initialLoss = model.averageLoss !== null && model.averageLoss < 100
+        ? model.averageLoss
+        : getNormalizedBedCalculationSettings().defaultLossRate;
+      dashboardHarvestForecastLossDraftValue = dashboardHarvestForecastLossValue
+        ?? formatDashboardHarvestForecastInputValue(initialLoss < 100 ? initialLoss : 0);
+    }else{
+      dashboardHarvestForecastLossDraftValue = null;
+    }
   }else{
     return;
   }
-  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   syncDashboardHarvestForecastInputs(model);
 }
 
@@ -38149,10 +38194,12 @@ function applyDashboardHarvestForecastInputs(){
   const forecastCases = dashboardHarvestForecastCasesDraftValue === null
     ? currentModel.averageCases
     : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesDraftValue);
-  const forecastLoss = dashboardHarvestForecastLossDraftValue === null
-    ? currentModel.averageLoss
-    : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
-  if(forecastCases === null || forecastLoss === null || forecastLoss >= 100){
+  const lossUsesSettings = dashboardHarvestForecastLossDraftValue === null;
+  const forecastLoss = parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
+  const lossInvalid = lossUsesSettings
+    ? !currentModel.settingsLossRates.some(item => item.lossRate < 100)
+    : forecastLoss === null || forecastLoss >= 100;
+  if(forecastCases === null || lossInvalid){
     syncDashboardHarvestForecastInputs(currentModel);
     return;
   }
@@ -38169,6 +38216,7 @@ function applyDashboardHarvestForecastInputs(){
 function syncDashboardHarvestForecastInputs(model){
   const casesInput = document.getElementById("dashboardForecastCasesInput");
   const lossInput = document.getElementById("dashboardForecastLossInput");
+  const lossMode = document.getElementById("dashboardForecastLossMode");
   const casesWrap = document.getElementById("dashboardForecastCasesInputWrap");
   const lossWrap = document.getElementById("dashboardForecastLossInputWrap");
   const averageButton = document.getElementById("dashboardForecastAverageBtn");
@@ -38176,33 +38224,52 @@ function syncDashboardHarvestForecastInputs(model){
   const casesText = dashboardHarvestForecastCasesDraftValue === null
     ? formatDashboardHarvestForecastInputValue(model.averageCases)
     : dashboardHarvestForecastCasesDraftValue;
-  const lossText = dashboardHarvestForecastLossDraftValue === null
-    ? formatDashboardHarvestForecastInputValue(model.averageLoss)
-    : dashboardHarvestForecastLossDraftValue;
+  const lossUsesSettings = dashboardHarvestForecastLossDraftValue === null;
+  const lossText = dashboardHarvestForecastLossDraftValue ?? "";
 
   if(casesInput && casesInput.value !== casesText) casesInput.value = casesText;
   if(lossInput && lossInput.value !== lossText) lossInput.value = lossText;
+  if(lossMode) lossMode.value = lossUsesSettings ? "settings" : "common";
+  if(lossInput) lossInput.disabled = lossUsesSettings;
+  if(lossWrap) lossWrap.hidden = lossUsesSettings;
+  const settingsNote = document.getElementById("dashboardForecastLossSettingsNote");
+  if(settingsNote){
+    settingsNote.textContent = "設定値：" + model.settingsLossRates.map(item => (
+      `${item.plantingCount}植え ${formatDashboardHarvestForecastInputValue(item.lossRate)}%`
+    )).join(" ／ ");
+  }
+  const averageNote = document.getElementById("dashboardForecastLossAverageNote");
+  if(averageNote){
+    averageNote.textContent = model.averageLoss === null
+      ? "参考：直近1ヶ月の平均ロス率は記録不足で算出できません"
+      : `参考：直近1ヶ月の平均ロス率 ${formatDashboardHarvestForecastInputValue(model.averageLoss)}%`;
+  }
   const draftForecastCases = dashboardHarvestForecastCasesDraftValue === null
     ? model.averageCases
     : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesDraftValue);
-  const draftForecastLoss = dashboardHarvestForecastLossDraftValue === null
-    ? model.averageLoss
-    : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
+  const draftForecastLoss = parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
   const casesInvalid = draftForecastCases === null;
-  const lossInvalid = draftForecastLoss === null || draftForecastLoss >= 100;
-  const valuesMatchCurrentForecast = Number.isFinite(draftForecastCases)
-    && Number.isFinite(draftForecastLoss)
-    && Number.isFinite(model.forecastCases)
-    && Number.isFinite(model.forecastLoss)
-    && Math.abs(draftForecastCases - model.forecastCases) < 0.000001
-    && Math.abs(draftForecastLoss - model.forecastLoss) < 0.000001;
+  const lossInvalid = lossUsesSettings
+    ? !model.settingsLossRates.some(item => item.lossRate < 100)
+    : draftForecastLoss === null || draftForecastLoss >= 100;
+  const lossMatchesCurrentForecast = lossUsesSettings
+    ? model.lossUsesSettings
+    : !model.lossUsesSettings && !lossInvalid
+      && Math.abs(draftForecastLoss - model.forecastLoss) < 0.000001;
+  const casesMatchCurrentForecast = draftForecastCases === null
+    ? model.forecastCases === null
+    : Number.isFinite(model.forecastCases)
+      && Math.abs(draftForecastCases - model.forecastCases) < 0.000001;
+  const valuesMatchCurrentForecast = casesMatchCurrentForecast && lossMatchesCurrentForecast;
   dashboardHarvestForecastInputsDirty = !valuesMatchCurrentForecast;
+  const pendingNote = document.getElementById("dashboardForecastPendingNote");
+  if(pendingNote) pendingNote.hidden = !dashboardHarvestForecastInputsDirty;
   casesWrap?.classList.toggle("autoValue", dashboardHarvestForecastCasesDraftValue === null);
-  lossWrap?.classList.toggle("autoValue", dashboardHarvestForecastLossDraftValue === null);
   casesWrap?.classList.toggle("invalid", casesInvalid);
   lossWrap?.classList.toggle("invalid", lossInvalid);
   casesInput?.setAttribute("aria-invalid", casesInvalid ? "true" : "false");
   lossInput?.setAttribute("aria-invalid", lossInvalid ? "true" : "false");
+  lossMode?.setAttribute("aria-invalid", lossUsesSettings && lossInvalid ? "true" : "false");
   if(averageButton){
     averageButton.disabled = dashboardHarvestForecastCasesDraftValue === null
       && dashboardHarvestForecastLossDraftValue === null;
@@ -38228,13 +38295,17 @@ function buildDashboardHarvestForecastModel(){
     ? averageLoss
     : null;
   const casesUsesAverage = dashboardHarvestForecastCasesValue === null;
-  const lossUsesAverage = dashboardHarvestForecastLossValue === null;
+  const lossUsesSettings = dashboardHarvestForecastLossValue === null;
   const forecastCases = casesUsesAverage
     ? normalizedAverageCases
     : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesValue);
-  const forecastLoss = lossUsesAverage
-    ? normalizedAverageLoss
+  const forecastLoss = lossUsesSettings
+    ? null
     : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossValue);
+  const settingsLossRates = ALLOWED_YIELDS.map(plantingCount => ({
+    plantingCount,
+    lossRate: getAppliedLossRateForPlantingCount(bedOrder[0], plantingCount)
+  }));
 
   const model = {
     averageCases: normalizedAverageCases,
@@ -38242,8 +38313,11 @@ function buildDashboardHarvestForecastModel(){
     forecastCases,
     forecastLoss,
     casesUsesAverage,
-    lossUsesAverage,
-    canForecast: forecastCases !== null && forecastLoss !== null && forecastLoss < 100,
+    lossUsesSettings,
+    settingsLossRates,
+    canForecast: forecastCases !== null && (lossUsesSettings
+      ? settingsLossRates.some(item => item.lossRate < 100)
+      : forecastLoss !== null && forecastLoss < 100),
     harvestDays: metrics.harvestDays,
     recentPeriod,
     referenceDate,
@@ -38259,7 +38333,6 @@ function buildDashboardHarvestForecastModel(){
   if(!model.canForecast) return model;
 
   const virtualRecords = [...records].sort(compareRecordsByDateDesc);
-  const harvestRate = Math.max(0, (100 - model.forecastLoss) / 100);
   const maxIterations = totalPalletCount + RECORDED_LOOKBACK_COUNT * 2;
   const actualHarvestDates = new Set(records.filter(record =>
     record?.type !== "partialHarvest"
@@ -38293,7 +38366,8 @@ function buildDashboardHarvestForecastModel(){
       partialTargetDate: forecastDate,
       sourceRecords: virtualRecords,
       needHeads,
-      harvestRate,
+      // 指定しない場合は通常の「計算する」と同じ植え数別・基本設定を使う。
+      ...(model.lossUsesSettings ? {} : { harvestRate: (100 - model.forecastLoss) / 100 }),
       additionalExcludedPalletKeys: model.palletForecasts.keys(),
       releaseOldestIfBlocked: true
     });
@@ -38522,12 +38596,11 @@ function getDashboardHarvestForecastUnavailableText(model){
       ? "直近1ヶ月に収穫ケース数の記録がありません"
       : "1日あたり収穫ケース数を0より大きい数で入力してください");
   }
-  if(model.forecastLoss === null){
-    reasons.push(model.lossUsesAverage
-      ? "直近1ヶ月に収穫ロス率を計算できる通常収穫記録がありません"
-      : "収穫ロス率を0〜100%で入力してください");
-  }
-  if(model.forecastLoss !== null && model.forecastLoss >= 100){
+  if(model.lossUsesSettings && !model.settingsLossRates.some(item => item.lossRate < 100)){
+    reasons.push("設定の収穫ロス率がすべて100%のため見込み収穫数を計算できません");
+  }else if(!model.lossUsesSettings && model.forecastLoss === null){
+    reasons.push("共通の収穫ロス率を0〜100%で入力してください");
+  }else if(!model.lossUsesSettings && model.forecastLoss >= 100){
     reasons.push("収穫ロス率が100%のため見込み収穫数を計算できません");
   }
   return reasons.join("。");

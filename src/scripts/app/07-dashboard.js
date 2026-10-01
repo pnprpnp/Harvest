@@ -2020,14 +2020,24 @@ function parseDashboardHarvestForecastLossValue(value){
 }
 
 function handleDashboardHarvestForecastInput(kind){
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   if(kind === "cases"){
     dashboardHarvestForecastCasesDraftValue = document.getElementById("dashboardForecastCasesInput")?.value ?? "";
   }else if(kind === "loss"){
     dashboardHarvestForecastLossDraftValue = document.getElementById("dashboardForecastLossInput")?.value ?? "";
+  }else if(kind === "lossMode"){
+    if(document.getElementById("dashboardForecastLossMode")?.value === "common"){
+      const initialLoss = model.averageLoss !== null && model.averageLoss < 100
+        ? model.averageLoss
+        : getNormalizedBedCalculationSettings().defaultLossRate;
+      dashboardHarvestForecastLossDraftValue = dashboardHarvestForecastLossValue
+        ?? formatDashboardHarvestForecastInputValue(initialLoss < 100 ? initialLoss : 0);
+    }else{
+      dashboardHarvestForecastLossDraftValue = null;
+    }
   }else{
     return;
   }
-  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   syncDashboardHarvestForecastInputs(model);
 }
 
@@ -2043,10 +2053,12 @@ function applyDashboardHarvestForecastInputs(){
   const forecastCases = dashboardHarvestForecastCasesDraftValue === null
     ? currentModel.averageCases
     : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesDraftValue);
-  const forecastLoss = dashboardHarvestForecastLossDraftValue === null
-    ? currentModel.averageLoss
-    : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
-  if(forecastCases === null || forecastLoss === null || forecastLoss >= 100){
+  const lossUsesSettings = dashboardHarvestForecastLossDraftValue === null;
+  const forecastLoss = parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
+  const lossInvalid = lossUsesSettings
+    ? !currentModel.settingsLossRates.some(item => item.lossRate < 100)
+    : forecastLoss === null || forecastLoss >= 100;
+  if(forecastCases === null || lossInvalid){
     syncDashboardHarvestForecastInputs(currentModel);
     return;
   }
@@ -2063,6 +2075,7 @@ function applyDashboardHarvestForecastInputs(){
 function syncDashboardHarvestForecastInputs(model){
   const casesInput = document.getElementById("dashboardForecastCasesInput");
   const lossInput = document.getElementById("dashboardForecastLossInput");
+  const lossMode = document.getElementById("dashboardForecastLossMode");
   const casesWrap = document.getElementById("dashboardForecastCasesInputWrap");
   const lossWrap = document.getElementById("dashboardForecastLossInputWrap");
   const averageButton = document.getElementById("dashboardForecastAverageBtn");
@@ -2070,33 +2083,52 @@ function syncDashboardHarvestForecastInputs(model){
   const casesText = dashboardHarvestForecastCasesDraftValue === null
     ? formatDashboardHarvestForecastInputValue(model.averageCases)
     : dashboardHarvestForecastCasesDraftValue;
-  const lossText = dashboardHarvestForecastLossDraftValue === null
-    ? formatDashboardHarvestForecastInputValue(model.averageLoss)
-    : dashboardHarvestForecastLossDraftValue;
+  const lossUsesSettings = dashboardHarvestForecastLossDraftValue === null;
+  const lossText = dashboardHarvestForecastLossDraftValue ?? "";
 
   if(casesInput && casesInput.value !== casesText) casesInput.value = casesText;
   if(lossInput && lossInput.value !== lossText) lossInput.value = lossText;
+  if(lossMode) lossMode.value = lossUsesSettings ? "settings" : "common";
+  if(lossInput) lossInput.disabled = lossUsesSettings;
+  if(lossWrap) lossWrap.hidden = lossUsesSettings;
+  const settingsNote = document.getElementById("dashboardForecastLossSettingsNote");
+  if(settingsNote){
+    settingsNote.textContent = "設定値：" + model.settingsLossRates.map(item => (
+      `${item.plantingCount}植え ${formatDashboardHarvestForecastInputValue(item.lossRate)}%`
+    )).join(" ／ ");
+  }
+  const averageNote = document.getElementById("dashboardForecastLossAverageNote");
+  if(averageNote){
+    averageNote.textContent = model.averageLoss === null
+      ? "参考：直近1ヶ月の平均ロス率は記録不足で算出できません"
+      : `参考：直近1ヶ月の平均ロス率 ${formatDashboardHarvestForecastInputValue(model.averageLoss)}%`;
+  }
   const draftForecastCases = dashboardHarvestForecastCasesDraftValue === null
     ? model.averageCases
     : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesDraftValue);
-  const draftForecastLoss = dashboardHarvestForecastLossDraftValue === null
-    ? model.averageLoss
-    : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
+  const draftForecastLoss = parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossDraftValue);
   const casesInvalid = draftForecastCases === null;
-  const lossInvalid = draftForecastLoss === null || draftForecastLoss >= 100;
-  const valuesMatchCurrentForecast = Number.isFinite(draftForecastCases)
-    && Number.isFinite(draftForecastLoss)
-    && Number.isFinite(model.forecastCases)
-    && Number.isFinite(model.forecastLoss)
-    && Math.abs(draftForecastCases - model.forecastCases) < 0.000001
-    && Math.abs(draftForecastLoss - model.forecastLoss) < 0.000001;
+  const lossInvalid = lossUsesSettings
+    ? !model.settingsLossRates.some(item => item.lossRate < 100)
+    : draftForecastLoss === null || draftForecastLoss >= 100;
+  const lossMatchesCurrentForecast = lossUsesSettings
+    ? model.lossUsesSettings
+    : !model.lossUsesSettings && !lossInvalid
+      && Math.abs(draftForecastLoss - model.forecastLoss) < 0.000001;
+  const casesMatchCurrentForecast = draftForecastCases === null
+    ? model.forecastCases === null
+    : Number.isFinite(model.forecastCases)
+      && Math.abs(draftForecastCases - model.forecastCases) < 0.000001;
+  const valuesMatchCurrentForecast = casesMatchCurrentForecast && lossMatchesCurrentForecast;
   dashboardHarvestForecastInputsDirty = !valuesMatchCurrentForecast;
+  const pendingNote = document.getElementById("dashboardForecastPendingNote");
+  if(pendingNote) pendingNote.hidden = !dashboardHarvestForecastInputsDirty;
   casesWrap?.classList.toggle("autoValue", dashboardHarvestForecastCasesDraftValue === null);
-  lossWrap?.classList.toggle("autoValue", dashboardHarvestForecastLossDraftValue === null);
   casesWrap?.classList.toggle("invalid", casesInvalid);
   lossWrap?.classList.toggle("invalid", lossInvalid);
   casesInput?.setAttribute("aria-invalid", casesInvalid ? "true" : "false");
   lossInput?.setAttribute("aria-invalid", lossInvalid ? "true" : "false");
+  lossMode?.setAttribute("aria-invalid", lossUsesSettings && lossInvalid ? "true" : "false");
   if(averageButton){
     averageButton.disabled = dashboardHarvestForecastCasesDraftValue === null
       && dashboardHarvestForecastLossDraftValue === null;
@@ -2122,13 +2154,17 @@ function buildDashboardHarvestForecastModel(){
     ? averageLoss
     : null;
   const casesUsesAverage = dashboardHarvestForecastCasesValue === null;
-  const lossUsesAverage = dashboardHarvestForecastLossValue === null;
+  const lossUsesSettings = dashboardHarvestForecastLossValue === null;
   const forecastCases = casesUsesAverage
     ? normalizedAverageCases
     : parseDashboardHarvestForecastCasesValue(dashboardHarvestForecastCasesValue);
-  const forecastLoss = lossUsesAverage
-    ? normalizedAverageLoss
+  const forecastLoss = lossUsesSettings
+    ? null
     : parseDashboardHarvestForecastLossValue(dashboardHarvestForecastLossValue);
+  const settingsLossRates = ALLOWED_YIELDS.map(plantingCount => ({
+    plantingCount,
+    lossRate: getAppliedLossRateForPlantingCount(bedOrder[0], plantingCount)
+  }));
 
   const model = {
     averageCases: normalizedAverageCases,
@@ -2136,8 +2172,11 @@ function buildDashboardHarvestForecastModel(){
     forecastCases,
     forecastLoss,
     casesUsesAverage,
-    lossUsesAverage,
-    canForecast: forecastCases !== null && forecastLoss !== null && forecastLoss < 100,
+    lossUsesSettings,
+    settingsLossRates,
+    canForecast: forecastCases !== null && (lossUsesSettings
+      ? settingsLossRates.some(item => item.lossRate < 100)
+      : forecastLoss !== null && forecastLoss < 100),
     harvestDays: metrics.harvestDays,
     recentPeriod,
     referenceDate,
@@ -2153,7 +2192,6 @@ function buildDashboardHarvestForecastModel(){
   if(!model.canForecast) return model;
 
   const virtualRecords = [...records].sort(compareRecordsByDateDesc);
-  const harvestRate = Math.max(0, (100 - model.forecastLoss) / 100);
   const maxIterations = totalPalletCount + RECORDED_LOOKBACK_COUNT * 2;
   const actualHarvestDates = new Set(records.filter(record =>
     record?.type !== "partialHarvest"
@@ -2187,7 +2225,8 @@ function buildDashboardHarvestForecastModel(){
       partialTargetDate: forecastDate,
       sourceRecords: virtualRecords,
       needHeads,
-      harvestRate,
+      // 指定しない場合は通常の「計算する」と同じ植え数別・基本設定を使う。
+      ...(model.lossUsesSettings ? {} : { harvestRate: (100 - model.forecastLoss) / 100 }),
       additionalExcludedPalletKeys: model.palletForecasts.keys(),
       releaseOldestIfBlocked: true
     });
@@ -2416,12 +2455,11 @@ function getDashboardHarvestForecastUnavailableText(model){
       ? "直近1ヶ月に収穫ケース数の記録がありません"
       : "1日あたり収穫ケース数を0より大きい数で入力してください");
   }
-  if(model.forecastLoss === null){
-    reasons.push(model.lossUsesAverage
-      ? "直近1ヶ月に収穫ロス率を計算できる通常収穫記録がありません"
-      : "収穫ロス率を0〜100%で入力してください");
-  }
-  if(model.forecastLoss !== null && model.forecastLoss >= 100){
+  if(model.lossUsesSettings && !model.settingsLossRates.some(item => item.lossRate < 100)){
+    reasons.push("設定の収穫ロス率がすべて100%のため見込み収穫数を計算できません");
+  }else if(!model.lossUsesSettings && model.forecastLoss === null){
+    reasons.push("共通の収穫ロス率を0〜100%で入力してください");
+  }else if(!model.lossUsesSettings && model.forecastLoss >= 100){
     reasons.push("収穫ロス率が100%のため見込み収穫数を計算できません");
   }
   return reasons.join("。");
