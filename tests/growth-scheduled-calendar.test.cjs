@@ -52,7 +52,7 @@ test("the guide's scheduled pallets use their scheduled-day size and actual coun
   assert.equal(day.sizes.large.heads,32);assert.equal(day.sizes.normal.heads,16);assert.equal(day.sizes.small.heads,0);
   assert.equal(day.entries.flatMap(item=>item.palletKeys).length,3);
   f.context.renderDashboardGrowthPlanning(f.model);
-  assert.match(f.container.innerHTML,/10\/2<\/strong>.*大きめ32株・ちょうど良い16株/);
+  assert.match(f.container.innerHTML,/10\/2（金）<\/strong>.*大きめ32株・ちょうど良い16株/);
   assert.doesNotMatch(f.container.innerHTML,/開始：|期間中：|32ベッド/);
 });
 test("a bed split across harvest dates only contributes each day's selected portion",()=>{
@@ -103,8 +103,8 @@ test("forecast limits, missing dates and the seven-day bound never invent size p
   assert.equal(f.calendar()[6].predicted,false);assert.equal(f.calendar()[6].sizes,null);
   f.context.renderDashboardGrowthPlanning(f.model);
   assert.match(f.container.innerHTML,/今後7日の収穫予定と大きさ/);
-  assert.match(f.container.innerHTML,/10\/7<\/strong><span>気象予報範囲外のため未予測/);
-  assert.doesNotMatch(f.container.innerHTML,/10\/8<\/strong>/);
+  assert.match(f.container.innerHTML,/10\/7（水）<\/strong><span>気象予報範囲外のため未予測/);
+  assert.doesNotMatch(f.container.innerHTML,/10\/8（木）<\/strong>/);
   const item={id:"one",date:"2026-10-02",status:"large",heads:20,palletKeys:["5-A-1"]};
   const days=planner.scheduledCalendar([item,item],{today:"2026-10-01",forecastEndDate:"2026-10-07",forecastDates:["2026-10-01"]});
   assert.equal(days[1].predicted,false);assert.equal(days[1].entries.length,1);
