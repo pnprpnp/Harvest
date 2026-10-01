@@ -56,6 +56,7 @@ test("the guide's scheduled pallets use their scheduled-day size and actual coun
   assert.match(f.container.innerHTML,/aria-label="大きめ2\.7ケース"/);
   assert.match(f.container.innerHTML,/aria-label="ちょうど良い1\.3ケース"/);
   assert.doesNotMatch(f.container.innerHTML,/dashboardGrowthCalendarTotal/);
+  assert.match(f.container.innerHTML,/dashboardGrowthCalendarConfidence[^>]*aria-label="信頼度：参考値"/);
   assert.doesNotMatch(f.container.innerHTML,/開始：|期間中：|32ベッド/);
 });
 test("a bed split across harvest dates only contributes each day's selected portion",()=>{

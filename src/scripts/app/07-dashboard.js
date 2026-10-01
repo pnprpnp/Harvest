@@ -5286,7 +5286,7 @@ function renderDashboardGrowthPlanning(model){
   const caseNumber=value=>String(Math.round(value*10)/10);
   const dayDetails=[];
   const calendarRows=calendar.map(day=>{
-    const head=(state="",attention="")=>`<div class="dashboardGrowthCalendarHead"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${attention}${state}</div>`;
+    const head=(state="",metadata="")=>`<div class="dashboardGrowthCalendarHead"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${metadata ? `<div class="dashboardGrowthCalendarMeta">${metadata}</div>` : ""}${state}</div>`;
     const rowClass=`dashboardGrowthCalendarRow${day.date===today ? " is-today" : ""}`;
     if(!day.entries.length) return `<li class="${rowClass} is-empty">${head('<span class="dashboardGrowthCalendarState">収穫予定なし</span>')}</li>`;
     if(!day.predicted) return `<li class="${rowClass} is-unpredicted">${head('<span class="dashboardGrowthCalendarState">未予測</span>')}<span class="dashboardGrowthCalendarUnavailable">気象予報範囲外</span></li>`;
@@ -5304,7 +5304,8 @@ function renderDashboardGrowthPlanning(model){
     const riskOrder={high:2,medium:1,unknown:0,low:0};
     const mainRisk=affected.flatMap(item=>["elongated","uneven","tipburn"].map(kind=>({item,kind,level:HarvestGrowthPlanner.riskLevel(item.risk?.[kind])})))
       .filter(value=>riskOrder[value.level]>0).sort((a,b)=>riskOrder[b.level]-riskOrder[a.level] || ["elongated","uneven","tipburn"].indexOf(a.kind)-["elongated","uneven","tipburn"].indexOf(b.kind))[0];
-    const confidence=[...new Set(affected.map(item=>item.confidence).filter(Boolean))].join("・");
+    const confidence=[...new Set(affected.map(item=>item.confidence || "データ不足"))].join("・") || "データ不足";
+    const confidenceHtml=`<span class="dashboardGrowthCalendarConfidence" title="${escapeHtml(`信頼度：${confidence}`)}" aria-label="${escapeHtml(`信頼度：${confidence}`)}"><span>信頼度</span><strong>${escapeHtml(confidence)}</strong></span>`;
     const attention=mainRisk ? `<button type="button" class="dashboardGrowthCalendarAttention" data-ui-click="openDashboardGrowthPlanningDetails" data-ui-arg="${day.date}" aria-label="${escapeHtml(`${dateLabel(day.date)}の注意：${riskNames[mainRisk.kind]}`)}" aria-controls="dashboardGrowthPlanningDetails">△ 注意</button>` : "";
     const meta=[mainRisk ? `注意：${riskNames[mainRisk.kind]}（${mainRisk.item.building}号棟${mainRisk.item.bed}）${mainRisk.item.risk?.[mainRisk.kind]?.reason ? `：${mainRisk.item.risk[mainRisk.kind].reason}` : ""}` : "",confidence ? `信頼度：${confidence}` : ""].filter(Boolean);
     if(missingCounts && knownHeads>0) meta.push(`不明な分を除く合計：${caseNumber(knownHeads/HarvestGrowthPlanner.CASE_SIZE)}ケース`);
@@ -5312,7 +5313,7 @@ function renderDashboardGrowthPlanning(model){
       meta.push(day.missingQuantities ? "残存ケース数：不明" : `残存ケース数：${caseNumber(day.cases)}ケース（${caseNumber(day.low)}〜${caseNumber(day.high)}）`);
     }
     if(meta.length) dayDetails.push(`<li id="dashboardGrowthCalendarDetail-${day.date}" tabindex="-1"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>${escapeHtml(meta.join("・"))}</span></li>`);
-    return `<li class="${rowClass}">${head("",attention)}<div class="dashboardGrowthCalendarSizes${statuses.length===4 ? " is-four-sizes" : ""}">${sizeHtml}</div></li>`;
+    return `<li class="${rowClass}">${head("",attention+confidenceHtml)}<div class="dashboardGrowthCalendarSizes${statuses.length===4 ? " is-four-sizes" : ""}">${sizeHtml}</div></li>`;
   }).join("");
   const calendarHtml=`<section class="dashboardGrowthCalendarBlock" aria-label="今後7日の収穫予定と大きさ"><h3 class="dashboardGrowthCalendarTitle">7日の収穫予定</h3><p class="dashboardGrowthCalendarPeriod"><span>${shortDate(today)}〜${calendar.length ? shortDate(calendar[calendar.length-1].date) : shortDate(today)}</span><span>${model.baseModel.canForecast===false ? "条件未設定" : "ロス率反映済み"}</span></p>${model.baseModel.canForecast===false ? '<p class="dashboardEmpty">「目安」で収穫予定を計算すると、予定日の大きさを表示できます。</p>' : `<ul class="dashboardGrowthCalendar">${calendarRows}</ul>`}</section>`;
   const detailsHtml=`<details id="dashboardGrowthPlanningDetails" class="dashboardGrowthPlanningDetails"${detailsOpen ? " open" : ""}><summary>注意・詳しい内容<span aria-hidden="true">›</span></summary><div class="dashboardGrowthPlanningDetailsBody">${warningHtml}${changesHtml}${dayDetails.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">日別の注意・信頼度</h3><ul class="dashboardGrowthCalendarDetails">${dayDetails.join("")}</ul></section>` : '<p class="dashboardEmpty">表示できる注意・信頼度はありません。</p>'}${dashboardGrowthPlanningShowsQuantity ? '<p class="dashboardGrowthBasisMethod">残存ケース数は指定範囲に残る参考値です。予定日に収穫できる数量を保証する値ではありません。</p>' : '<button type="button" class="dashboardInlineBtn" data-ui-click="showDashboardGrowthPlanningQuantity">残存ケース数も確認</button>'}</div></details>`;

@@ -5397,7 +5397,7 @@
               window.calendarSampleItems=sampleDays.flatMap((offset,index)=>["large","normal","small"].map((status,size)=>({
                 id:offset+":"+status,date:formatDateOnlyString(addDays(parseDateOnlyString(calendarToday),offset)),status,
                 heads:[40.5,180.3,20.6][size]*12,palletKeys:["2-A-1"],
-                locations:[{building:2,bed:"A",confidence:"参考値",risk:offset===2 ? {tipburn:{level:"high",label:"注意",reason:"確認用の品質の注意"}} : {}}]
+                locations:[{building:2,bed:"A",confidence:offset===0 ? ["中","参考値","データ不足"][size] : "参考値",risk:offset===2 ? {tipburn:{level:"high",label:"注意",reason:"確認用の品質の注意"}} : {}}]
               })));
               getDashboardGrowthScheduledPlanningItems=()=>{window.calendarRenderCalls++;return window.calendarSampleItems;};
               getDashboardGrowthPlanningItems=()=>[];
@@ -5420,6 +5420,8 @@
             const rows=calendar.querySelectorAll(".dashboardGrowthCalendarRow");
             const details=doc.getElementById("dashboardGrowthPlanningDetails");
             assertEqual(rows.length,7,"7日分のカードが揃っていません");
+            assert(calendar.querySelector(".dashboardGrowthCalendarConfidence").textContent.includes("中・参考値・データ不足"),"日別の信頼度が併記されません");
+            for(const head of calendar.querySelectorAll(".dashboardGrowthCalendarHead")) assert(head.scrollWidth<=head.clientWidth,width+"px幅で日付・信頼度がはみ出ています");
             assert(!details.open,"初期表示で注意・詳細が開いています");
             const last=rows[6].getBoundingClientRect();
             const tabTop=doc.querySelector(".tabBar").getBoundingClientRect().top;
