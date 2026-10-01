@@ -5072,7 +5072,7 @@ function getDashboardGrowthPlanningItems(model,options={}){
 function getDashboardGrowthScheduledPlanningItems(model,options={}){
   let cache=model.scheduledPlanningItemsCache;
   if(!cache || cache.baseModel!==model.baseModel || cache.predictions!==model.predictions){
-    const today=model.asOf.slice(0,10),end=formatDateOnlyString(addDays(parseDateOnlyString(today),13));
+    const today=model.asOf.slice(0,10),end=formatDateOnlyString(addDays(parseDateOnlyString(today),6));
     const byPallet=new Map(),groups=new Map();
     model.predictions.forEach(item=>(item.cohorts || []).forEach(cohort=>
       cohort.palletKeys.forEach(key=>byPallet.set(key,{item,cohort}))));
@@ -5132,7 +5132,7 @@ function renderDashboardGrowthPlanning(model){
   const warningHtml=warnings.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">品質の注意（最大3件）</h3><ul class="dashboardGrowthWarningList">${warnings.map(item=>`<li class="dashboardGrowthWarningItem"><strong>${escapeHtml(`${item.building}号棟 ${item.bed}ベッド`)}</strong><span>${escapeHtml(riskNames[item.kind] || item.kind)}：${escapeHtml(item.risk?.label || "注意")}。${escapeHtml(item.risk?.reason || "計算根拠が不足しています。")}</span></li>`).join("")}</ul></section>` : "";
   const dateLabel=value=>{const date=parseDateOnlyString(value);return date ? `${date.getMonth()+1}/${date.getDate()}` : value;};
   const caseNumber=value=>Number.isInteger(Math.round(value*10)/10) ? String(Math.round(value)) : String(Math.round(value*10)/10);
-  const calendarHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今後14日の収穫予定と大きさ</h3><p class="dashboardGrowthBasisMethod">「目安」の収穫予定範囲を、予定日時点の予測サイズ別に集計しています。株数は植え付け記録から部分収穫済み分を差し引いた値です。</p>${model.baseModel.canForecast===false ? '<p class="dashboardEmpty">「目安」で収穫予定を計算すると、予定日の大きさを表示できます。</p>' : `<ul class="dashboardGrowthCalendar">${calendar.map(day=>{
+  const calendarHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今後7日の収穫予定と大きさ</h3><p class="dashboardGrowthBasisMethod">「目安」の収穫予定範囲を、予定日時点の予測サイズ別に集計しています。株数は植え付け記録から部分収穫済み分を差し引いた値です。</p>${model.baseModel.canForecast===false ? '<p class="dashboardEmpty">「目安」で収穫予定を計算すると、予定日の大きさを表示できます。</p>' : `<ul class="dashboardGrowthCalendar">${calendar.map(day=>{
     if(!day.entries.length) return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>収穫予定なし</span></li>`;
     if(!day.predicted) return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>気象予報範囲外のため未予測</span></li>`;
     const sizeText=[["large","大きめ"],["normal","ちょうど良い"],["small","小さめ"],["unknown","大きさ不明"]].flatMap(([status,label])=>{

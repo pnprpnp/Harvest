@@ -94,13 +94,17 @@ test("only exact scheduled inputs are reused; absent current crops and mismatche
   assert.equal(days[1].sizes.unknown.unknownPallets,1);assert.equal(days[2].sizes.unknown.heads,20);
   assert.equal(days[2].sizes.large.heads,0);
 });
-test("forecast limits, missing dates and the 14-day bound never invent size predictions",()=>{
-  const f=fixture([cohort(["5-A-1"],"large","2026-10-08"),cohort(["5-B-1"],"normal","2026-10-15")],
+test("forecast limits, missing dates and the seven-day bound never invent size predictions",()=>{
+  const f=fixture([cohort(["5-A-1"],"large","2026-10-07"),cohort(["5-B-1"],"normal","2026-10-08")],
     [planting(1,{"5-A-1":20,"5-B-1":20})]);
-  assert.equal(f.items().length,1);assert.equal(f.calendar().length,14);
-  assert.equal(f.calendar()[7].predicted,false);assert.equal(f.calendar()[7].sizes,null);
+  f.model.weather.forecastEndDate="2026-10-06";f.model.weather.daily.pop();
+  assert.equal(f.items().length,1);assert.equal(f.calendar().length,7);
+  assert.equal(f.calendar()[0].date,"2026-10-01");assert.equal(f.calendar()[6].date,"2026-10-07");
+  assert.equal(f.calendar()[6].predicted,false);assert.equal(f.calendar()[6].sizes,null);
   f.context.renderDashboardGrowthPlanning(f.model);
-  assert.match(f.container.innerHTML,/10\/8<\/strong><span>気象予報範囲外のため未予測/);
+  assert.match(f.container.innerHTML,/今後7日の収穫予定と大きさ/);
+  assert.match(f.container.innerHTML,/10\/7<\/strong><span>気象予報範囲外のため未予測/);
+  assert.doesNotMatch(f.container.innerHTML,/10\/8<\/strong>/);
   const item={id:"one",date:"2026-10-02",status:"large",heads:20,palletKeys:["5-A-1"]};
   const days=planner.scheduledCalendar([item,item],{today:"2026-10-01",forecastEndDate:"2026-10-07",forecastDates:["2026-10-01"]});
   assert.equal(days[1].predicted,false);assert.equal(days[1].entries.length,1);
@@ -119,7 +123,7 @@ test("repeated rendering reuses counts, lazily computes quantities once, and reb
 });
 test("no scheduled harvest and an unavailable guide have explicit empty states",()=>{
   const f=fixture([],[]);f.context.renderDashboardGrowthPlanning(f.model);
-  assert.equal((f.container.innerHTML.match(/収穫予定なし/g)||[]).length,14);
+  assert.equal((f.container.innerHTML.match(/収穫予定なし/g)||[]).length,7);
   assert.equal(f.reads().datasetReads,0);
   f.model.baseModel.canForecast=false;f.context.renderDashboardGrowthPlanning(f.model);
   assert.match(f.container.innerHTML,/「目安」で収穫予定を計算すると/);

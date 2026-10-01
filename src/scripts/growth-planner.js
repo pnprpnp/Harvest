@@ -106,7 +106,7 @@
       if(!byDate.has(item.date)) byDate.set(item.date,[]);
       byDate.get(item.date).push(item);
     });
-    return Array.from({length:14},(_,index) => {
+    return Array.from({length:7},(_,index) => {
       const date = add(today,index), entries = byDate.get(date) || [];
       const predicted = !!forecastEndDate && date <= forecastEndDate && (!available || available.has(date));
       const sizes = Object.fromEntries(["large","normal","small","unknown"].map(status => [status,{heads:0,unknownPallets:0}]));
