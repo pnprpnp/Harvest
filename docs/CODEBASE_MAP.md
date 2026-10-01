@@ -232,4 +232,4 @@ python3 tests/run_growth_history.py
 node tools/evaluate_growth.cjs 履歴.json --as-of 2026-09-25 > 結果.json
 ```
 
-UI変更は特性テストで320px・390pxの収まりを確認します。利用者向けの操作プレビューは「見せて」と依頼された場合だけ用意します。Apps Scriptの `clasp push` とデプロイ、Cloudflare Workerのデプロイは明示依頼がある場合だけ行います。
+UI変更は特性テストで320px・390pxの収まりを確認します。利用者向けの操作プレビューは「見せて」と依頼された場合だけ用意します。実画面プレビューやブラウザー上の動作確認はSafariを基本とし、ChromeはChrome固有の不具合やブラウザー間の違いを調べる必要がある場合だけ使います。Apps Scriptの `clasp push` とデプロイ、Cloudflare Workerのデプロイは明示依頼がある場合だけ行います。
