@@ -5251,6 +5251,7 @@
             checkWidth();
             apply.click();
             const commonModel = visualApp.eval("dashboardHarvestForecastModelCache");
+            assert(doc.getElementById("dashboardForecastControlsBackdrop").hidden,"予測の反映後も背景の暗さが残っています");
             assertEqual(commonModel.forecastLoss,0,"共通0%が反映されません");
             assertEqual(commonModel.lossUsesSettings,false,"共通試算へ反映されません");
             assertEqual(doc.getElementById("dashboardForecastBarText").textContent,
@@ -5307,6 +5308,7 @@
             const bar = doc.querySelector(".dashboardForecastFixedBar");
             const details = doc.getElementById("dashboardForecastControlsDetails");
             const summary = doc.getElementById("dashboardForecastBarSummary");
+            const backdrop = doc.getElementById("dashboardForecastControlsBackdrop");
             const text = doc.getElementById("dashboardForecastBarText");
             const casesInput = doc.getElementById("dashboardForecastCasesInput");
             const model = visualApp.eval("dashboardHarvestForecastModelCache");
@@ -5331,21 +5333,39 @@
             assert(summary.scrollWidth <= summary.clientWidth + 1,width + "px幅で最大桁数の条件がはみ出しています");
             visualApp.syncDashboardHarvestForecastBar(model);
             assert(!details.open,"入力欄が初めから開いています");
+            assert(backdrop.hidden,"入力欄を閉じた状態で背景が暗くなっています");
             summary.click();
             await settleVisualApp(visualApp);
             assert(details.open && summary.getAttribute("aria-expanded") === "true","バーのタップで入力欄が開きません");
+            assert(!backdrop.hidden,"入力欄を開いても背景が暗くなりません");
+            const backdropRect = backdrop.getBoundingClientRect();
+            assertEqual(backdropRect.width,width,"暗い背景が画面の幅を覆っていません");
+            assertEqual(backdropRect.height,844,"暗い背景が画面の高さを覆っていません");
+            assertEqual(doc.elementFromPoint(10,100),backdrop,"暗い背景の裏側を操作できてしまいます");
+            assertEqual(doc.elementFromPoint(width / 2,barRect.top + 20).closest("summary"),summary,
+              "暗い背景が固定バーを覆っています");
             const panel = doc.getElementById("dashboardForecastControlsPanel");
             const panelRect = panel.getBoundingClientRect();
             assert(panelRect.top >= 0 && panelRect.bottom <= barRect.top,"入力欄が画面内に収まりません");
             const mode = doc.getElementById("dashboardForecastLossMode");
+            assertEqual(visualApp.getComputedStyle(casesInput).fontSize,"18px","ケース数の入力値が大きくなっていません");
+            assertEqual(visualApp.getComputedStyle(mode).fontSize,"16px","ロス率の選択項目が大きくなっていません");
             mode.dispatchEvent(new visualApp.KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}));
+            await settleVisualApp(visualApp);
+            const option = doc.querySelector('.appSelectMenuOption[data-option-index="1"]');
+            const optionRect = option.getBoundingClientRect();
+            assertEqual(doc.elementFromPoint(optionRect.left + 10,optionRect.top + 10).closest(".appSelectMenuOption"),option,
+              "暗い背景がロス率の選択メニューを覆っています");
             doc.querySelector('.appSelectMenuOption[data-option-index="1"]').click();
             assert(details.open && mode.value === "common","選択メニューの操作で入力欄が閉じています");
+            assertEqual(visualApp.getComputedStyle(doc.getElementById("dashboardForecastLossInput")).fontSize,"18px",
+              "ロス率の入力値が大きくなっていません");
             casesInput.value = "1200";
             casesInput.dispatchEvent(new visualApp.Event("input",{bubbles:true}));
             assertEqual(text.textContent,"1000ケース/日　12:0% / 16:12.3% / 20:99.9%","未反映の条件をバーへ表示しています");
             doc.querySelector(".dashboardForecastControlsClose").click();
             assert(!details.open,"閉じる操作で入力欄が閉じません");
+            assert(backdrop.hidden,"入力欄を閉じても背景の暗さが残っています");
             assertEqual(casesInput.value,"1000","閉じる操作で下書きが取り消されません");
             assertEqual(mode.value,"settings","閉じる操作でロス率の下書きが取り消されません");
             assertEqual(doc.activeElement,summary,"閉じた後に固定バーへ操作位置が戻りません");
@@ -5353,21 +5373,25 @@
             await settleVisualApp(visualApp);
             casesInput.value = "1300";
             casesInput.dispatchEvent(new visualApp.Event("input",{bubbles:true}));
-            doc.querySelector(".dashboardForecastHeader").click();
+            backdrop.click();
             assert(!details.open && casesInput.value === "1000","入力欄の外側で閉じて取り消せません");
+            assert(backdrop.hidden,"背景のタップ後も暗さが残っています");
             summary.click();
             await settleVisualApp(visualApp);
             casesInput.dispatchEvent(new visualApp.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
             assert(!details.open,"Escapeで入力欄を閉じられません");
+            assert(backdrop.hidden,"Escapeで閉じても暗さが残っています");
             summary.click();
             await settleVisualApp(visualApp);
             visualApp.setDashboardSubtab("seedlings");
             assert(!details.open && bar.getBoundingClientRect().height === 0,"二次定植で目安の固定バーが表示されています");
+            assert(backdrop.hidden,"二次定植への切替で暗さが残っています");
             visualApp.setDashboardSubtab("guide");
             summary.click();
             await settleVisualApp(visualApp);
             visualApp.setMainTabSelection("forecast");
             assert(!details.open && bar.getBoundingClientRect().height === 0,"他タブで目安の入力欄が残っています");
+            assert(backdrop.hidden,"他タブへの切替で暗さが残っています");
             assertEqual(builds,0,"固定バーの開閉だけで予測を再計算しています");
             assertEqual(visualApp.eval("dashboardHarvestForecastModelCache"),model,"開閉で予測モデルが変わっています");
             visualApp.setMainTabSelection("dashboard");
@@ -17942,20 +17966,20 @@
 
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
-        // 目安の入力条件を下部固定バーの開閉欄へ移動。他タブの表示要素数は維持する。
+        // 目安の背景マスク追加と入力文字の拡大。他タブの表示要素数は維持する。
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "e394082e", elements: 2593, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "d8ed3586", elements: 2663, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "ad324645", elements: 2663, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "580c9ef4", elements: 2597, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "3682fca1", elements: 2614, visible: 96, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "c9f474f8", elements: 2697, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "3d913a5d", elements: 2712, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "12e51a52", elements: 2824, visible: 159, viewport: "390x844" },
-          mobileSettings: { hash: "dfa142ab", elements: 2824, visible: 183, viewport: "390x844" },
-          mobileMonitor: { hash: "d6708519", elements: 2868, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "9d8baefa", elements: 2868, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "c9cdeca1", elements: 2868, visible: 96, viewport: "1024x900" }
+          mobileForecast: { hash: "fb3f10df", elements: 2594, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "82697faf", elements: 2664, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "7ec6a0a4", elements: 2664, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "a97046ef", elements: 2598, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "148b81f0", elements: 2615, visible: 96, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "a0246b88", elements: 2698, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "b626a173", elements: 2713, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "59d074d2", elements: 2825, visible: 159, viewport: "390x844" },
+          mobileSettings: { hash: "7b6674af", elements: 2825, visible: 183, viewport: "390x844" },
+          mobileMonitor: { hash: "061c9759", elements: 2869, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "4405caba", elements: 2869, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "b17bcec1", elements: 2869, visible: 96, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

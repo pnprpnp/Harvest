@@ -2037,6 +2037,8 @@ function handleDashboardHarvestForecastControlsToggle(event){
   const details = event.target;
   const summary = document.getElementById("dashboardForecastBarSummary");
   summary?.setAttribute("aria-expanded", details.open ? "true" : "false");
+  const backdrop = document.getElementById("dashboardForecastControlsBackdrop");
+  if(backdrop) backdrop.hidden = !details.open;
   if(!details.open){
     // 閉じたときは未反映の入力だけを破棄し、実際の予測条件へ戻す。
     dashboardHarvestForecastCasesDraftValue = dashboardHarvestForecastCasesValue;

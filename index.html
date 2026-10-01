@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261001-guide-fixed-bar">
+<meta name="harvestnavi-version" content="20261001-guide-controls-visibility">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17175,6 +17175,13 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 
 /* Dashboard */
 #dashboardSubtabGuide{padding-bottom:76px;}
+.dashboardForecastControlsBackdrop{
+  position:fixed;
+  inset:0;
+  z-index:8899;
+  background:rgba(0,0,0,.25);
+}
+.dashboardForecastControlsBackdrop[hidden]{display:none;}
 .dashboardForecastControlsDetails{width:100%;max-width:760px;margin:0 auto;}
 .dashboardForecastBarSummary{
   height:46px;
@@ -17247,7 +17254,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   border-radius:12px;
   background-color:var(--ui-surface-solid);
   color:var(--ui-text);
-  font-size:12px;
+  font-size:16px;
 }
 #dashboardForecastLossInputWrap[hidden],
 #dashboardForecastPendingNote[hidden]{display:none;}
@@ -17270,6 +17277,7 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   background:#fff;
   color:var(--ui-text);
   box-shadow:none;
+  font-size:18px;
 }
 .dashboardForecastValueInput > input:focus{outline:none;}
 .dashboardForecastValueInput.autoValue > input,
@@ -20806,6 +20814,7 @@ requestAnimationFrame(function(){
           <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
         </div>
       </div>
+      <div id="dashboardForecastControlsBackdrop" class="dashboardForecastControlsBackdrop" hidden aria-hidden="true"></div>
       <div class="forecastActionRow dashboardForecastFixedBar">
         <details id="dashboardForecastControlsDetails" class="dashboardForecastControlsDetails" data-ui-toggle="handleDashboardHarvestForecastControlsToggle" data-ui-event-first="true">
           <summary id="dashboardForecastBarSummary" class="dashboardForecastBarSummary" aria-controls="dashboardForecastControlsPanel" aria-expanded="false">
@@ -38254,6 +38263,8 @@ function handleDashboardHarvestForecastControlsToggle(event){
   const details = event.target;
   const summary = document.getElementById("dashboardForecastBarSummary");
   summary?.setAttribute("aria-expanded", details.open ? "true" : "false");
+  const backdrop = document.getElementById("dashboardForecastControlsBackdrop");
+  if(backdrop) backdrop.hidden = !details.open;
   if(!details.open){
     // 閉じたときは未反映の入力だけを破棄し、実際の予測条件へ戻す。
     dashboardHarvestForecastCasesDraftValue = dashboardHarvestForecastCasesValue;
