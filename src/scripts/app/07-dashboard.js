@@ -3016,7 +3016,7 @@ function getDashboardSeedlingStatusDateGroupHtml(group, selectedIndex){
 function openRecordHistoryFromDashboardSeedlingStatus(dateString){
   const date = String(dateString || "").trim();
   if(!parseDateOnlyString(date)){
-    showToast("移動する記録の日付を確認できませんでした");
+    showToast("移動する記録の日付を確認できませんでした", { error:true });
     return false;
   }
   if(!switchTab("record")) return false;
@@ -5335,7 +5335,7 @@ async function exportDashboardGrowthHistory(){
     document.body.appendChild(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     showToast("予報・予測履歴と精度比較を書き出しました");
-  }catch(error){ showToast("履歴を書き出せませんでした。空き容量などを確認してください"); }
+  }catch(error){ showToast("履歴を書き出せませんでした。空き容量などを確認してください", { error:true }); }
 }
 
 function getDashboardGrowthBuildingTrend(model, building){

@@ -250,13 +250,13 @@ function rollbackDashboardGrowthModel(modelVersion){
 async function confirmDashboardGrowthCandidate(modelVersion){
   if(!window.confirm("検証済みの候補モデルを生育予測に採用しますか？ 採用後も以前の版へ戻せます。")) return false;
   try{return await adoptDashboardGrowthCandidate(modelVersion);}
-  catch(error){showToast(error?.message || "候補モデルを採用できませんでした");return false;}
+  catch(error){showToast(error?.message || "候補モデルを採用できませんでした", { error:true });return false;}
 }
 
 function confirmDashboardGrowthRollback(modelVersion){
   if(!window.confirm("生育予測を、この以前のモデル版へ戻しますか？ 予測履歴は削除されません。")) return false;
   try{return rollbackDashboardGrowthModel(modelVersion);}
-  catch(error){showToast(error?.message || "以前のモデルへ戻せませんでした");return false;}
+  catch(error){showToast(error?.message || "以前のモデルへ戻せませんでした", { error:true });return false;}
 }
 
 function resolveDashboardGrowthActiveConflict(index,choice){
@@ -266,7 +266,7 @@ function resolveDashboardGrowthActiveConflict(index,choice){
   try{
     getDashboardGrowthLearningRegistry().resolveActiveConflict(index,{explicit:true,keepLocal});
     dashboardGrowthPredictionModelCache=null;dashboardRenderedSubtabs.delete("growth");renderDashboardGrowthPrediction();return true;
-  }catch(error){showToast(error?.message || "モデルの選択を確定できませんでした");return false;}
+  }catch(error){showToast(error?.message || "モデルの選択を確定できませんでした", { error:true });return false;}
 }
 
 function showDashboardGrowthPlanningQuantity(){
@@ -346,5 +346,5 @@ async function exportDashboardGrowthCsv(){
     const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");
     link.href=url;link.download=`Harvestnavi-growth-${formatDateOnlyString(new Date())}.csv`;document.body.appendChild(link);link.click();link.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);showToast(`予測履歴${entries.length}回をCSVで書き出しました`);
-  }catch(error){showToast("予測履歴をCSVで書き出せませんでした");}
+  }catch(error){showToast("予測履歴をCSVで書き出せませんでした", { error:true });}
 }

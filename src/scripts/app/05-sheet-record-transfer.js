@@ -524,7 +524,7 @@ async function sendRecordToGoogleSheet(record, options = {}){
       const message = e?.name === "AbortError"
         ? "スプレッドシート送信がタイムアウトしました"
         : String(e?.message || "スプレッドシート送信に失敗しました");
-      showToast(message);
+      showToast(message, { error:true });
     }
     return false;
   }finally{
@@ -2402,25 +2402,13 @@ async function checkLatestAppFromMenu(){
 }
 
 function showRecordImportError(message, title = "読み込み失敗"){
-  const panel = document.getElementById("recordImportErrorPanel");
-  const titleBox = document.getElementById("recordImportErrorTitle");
-  const messageBox = document.getElementById("recordImportErrorMessage");
-
-  if(!panel || !messageBox){
-    showToast(message);
-    return;
-  }
-
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();
-  if(titleBox) titleBox.textContent = title;
-  messageBox.textContent = String(message || "原因不明");
-  panel.classList.add("show");
+  showOperationError(message, title);
 }
 
 function hideRecordImportError(){
-  const panel = document.getElementById("recordImportErrorPanel");
-  if(panel) panel.classList.remove("show");
+  acknowledgeOperationError();
 }
 
 async function fetchGoogleSheetCombinedSyncPages(config, options, signal){

@@ -665,7 +665,7 @@ function openHarvestPartialSplitWindow(id){
   }
   const record = getRecordById(id);
   if(!record || record.type !== "fullHarvest"){
-    showToast("分ける通常収穫記録が見つかりません");
+    showToast("分ける通常収穫記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "通常収穫の一部を部分収穫へ分ける")) return;
@@ -721,7 +721,7 @@ function saveHarvestPartialSplit(){
   if(!ensureGoogleSheetLocalMutationAllowed("通常収穫と部分収穫への分割を保存", { allowBackgroundSend: true })) return;
   const sourceRecord = splittingHarvestRecordId ? getRecordById(splittingHarvestRecordId) : null;
   if(!sourceRecord || sourceRecord.type !== "fullHarvest"){
-    showToast("分ける通常収穫記録が見つかりません");
+    showToast("分ける通常収穫記録が見つかりません", { error:true });
     closeHarvestPartialSplitWindow();
     return;
   }
@@ -752,7 +752,7 @@ function saveHarvestPartialSplit(){
 
   const id = getNextLocalHarvestRecordId();
   if(id === null){
-    showToast("新しい部分収穫記録の番号を作れませんでした");
+    showToast("新しい部分収穫記録の番号を作れませんでした", { error:true });
     return;
   }
   const targets = buildPartialHarvestTargets(building, beds, partialCases);
@@ -811,7 +811,8 @@ function saveHarvestPartialSplit(){
   showToast(
     `${sourceCases}ケースを通常${plan.regularCases}・部分${partialCases}ケースに分けました。`
     + otherLossText
-    + (queuedCount === plan.recordsToSync.length ? "" : " スプレッドシートは未送信です。")
+    + (queuedCount === plan.recordsToSync.length ? "" : " スプレッドシートは未送信です。"),
+    { error:isGoogleSheetSendQueueFailure(queuedCount === plan.recordsToSync.length) }
   );
   runAfterUiSettles(() => {
     try{
@@ -895,7 +896,7 @@ function savePartialHarvestRecordEdit(){
     ? getRecordById(editingPartialHarvestRecordId)
     : null;
   if(!record || record.type !== "partialHarvest"){
-    showToast("編集する部分収穫記録が見つかりません");
+    showToast("編集する部分収穫記録が見つかりません", { error:true });
     closePartialHarvestEditWindow();
     return;
   }
@@ -960,14 +961,14 @@ function savePartialHarvestRecordEdit(){
   showToast(getPartialHarvestSaveToastMessage({
     edited: true,
     sendQueued
-  }));
+  }), { error:isGoogleSheetSendQueueFailure(sendQueued) });
   runAfterUiSettles(() => {
     const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([previousDate, date]);
     scheduleRecordDataUiRefresh({ maps:true, actualLoss:true });
     if(predictionUpdate.recalculated && predictionUpdate.changed){
       showToast("収穫予想も変わったため、収穫場所を確認してください");
     }else if(predictionUpdate.attempted && !predictionUpdate.recalculated){
-      showToast("収穫予想を更新できなかったため、「計算する」を押してください");
+      showToast("収穫予想を更新できなかったため、「計算する」を押してください", { error:true });
     }
   });
 }

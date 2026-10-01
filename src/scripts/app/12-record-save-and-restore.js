@@ -169,7 +169,7 @@ async function saveRecord(){
       return;
     }
   }catch(error){
-    showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`);
+    showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`, { error:true });
     return;
   }finally{
     recordSaveUiTransitionPending=false;
@@ -258,7 +258,7 @@ async function saveRecord(){
           : "収穫記録を更新しました。スプレッドシートは未送信です。続けて苗植え場所を選択してください")
       : (sendQueued
           ? "収穫記録を更新しました"
-          : "収穫記録を更新しました。スプレッドシートは未送信です"));
+          : "収穫記録を更新しました。スプレッドシートは未送信です"), { error:isGoogleSheetSendQueueFailure(sendQueued) });
     return;
   }
 
@@ -266,7 +266,7 @@ async function saveRecord(){
   const newRecordCount = Number(cases > 0) + partialEntryCount;
   const recordIds = getNextLocalHarvestRecordIds(newRecordCount);
   if(recordIds.length !== newRecordCount){
-    showToast("新しい収穫記録の番号を作成できませんでした");
+    showToast("新しい収穫記録の番号を作成できませんでした", { error:true });
     return;
   }
   let nextRecordIdIndex = 0;
@@ -308,7 +308,7 @@ async function saveRecord(){
     : [];
   nextRecordIdIndex += partialEntryCount;
   if(partialDraft.isValid && partialRecords.length !== partialEntryCount){
-    showToast("部分収穫記録を作成できませんでした");
+    showToast("部分収穫記録を作成できませんでした", { error:true });
     return;
   }
   const newRecords = [record, ...partialRecords].filter(Boolean);
@@ -353,15 +353,16 @@ async function saveRecord(){
     scheduleRecordDataUiRefresh({ maps:true });
   });
   const sendFailed = sendQueuedCount !== newRecords.length;
+  const showSendFailure = isGoogleSheetSendQueueFailure(!sendFailed);
   const sendFailureSuffix = sendFailed ? "スプレッドシートは未送信です。" : "";
   if(record && partialRecords.length){
-    showToast(`通常収穫と部分収穫を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`);
+    showToast(`通常収穫と部分収穫を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`, { error:showSendFailure });
   }else if(record){
-    showToast(`収穫場所を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`);
+    showToast(`収穫場所を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`, { error:showSendFailure });
   }else{
     showToast(sendFailed
       ? "部分収穫を記録しました。スプレッドシートは未送信です"
-      : "部分収穫を記録しました");
+      : "部分収穫を記録しました", { error:showSendFailure });
   }
 }
 
@@ -539,7 +540,7 @@ async function savePlantingRecord(){
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   if(allocatedKeys.length !== normalizedSelectedKeys.length
     || allocatedKeys.some((key, index) => key !== normalizedSelectedKeys[index])){
-    showToast("選択した場所の収穫元を確認できません。記録を読み込み直してください");
+    showToast("選択した場所の収穫元を確認できません。記録を読み込み直してください", { error:true });
     return;
   }
 
@@ -619,7 +620,7 @@ async function savePlantingRecord(){
     detailsUnknown: false
   });
   if(!event){
-    showToast("苗植え記録を作成できませんでした。入力内容を確認してください");
+    showToast("苗植え記録を作成できませんでした。入力内容を確認してください", { error:true });
     return;
   }
   const initialSeedlingHouseStartKey = !existingEvent
@@ -633,7 +634,7 @@ async function savePlantingRecord(){
     event = normalizePlantingEvent({ ...event, seedlingHouseNextStartKey: nextKey });
   }
   if(!event){
-    showToast("1号棟の開始位置を苗植え記録へ反映できませんでした");
+    showToast("1号棟の開始位置を苗植え記録へ反映できませんでした", { error:true });
     return;
   }
   const unselectedPreviousLots = getUnselectedPreviousUnplantedPalletLots(
@@ -698,7 +699,7 @@ async function savePlantingRecord(){
     ? (existingEvent
         ? "苗植え記録を更新しました"
         : "苗植え場所を記録しました")
-    : "苗植え場所を記録しました。スプレッドシートは未送信です");
+    : "苗植え場所を記録しました。スプレッドシートは未送信です", { error:isGoogleSheetSendQueueFailure(sendQueued) });
 }
 
 function resumePlantingRecord(id, options = {}){
@@ -748,7 +749,7 @@ function editPlantingEvent(eventId){
   const preferredHarvestId = event?.sourceAllocations?.[0]?.harvestRecordId;
   const record = getRecordById(preferredHarvestId);
   if(!event || !record || record.type !== "fullHarvest"){
-    showToast("編集する苗植え記録の収穫元が見つかりません");
+    showToast("編集する苗植え記録の収穫元が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("planting", event, "苗植え記録を編集")) return;
@@ -794,7 +795,7 @@ async function confirmDeletePlantingEvent(eventId){
   if(!ensureGoogleSheetLocalMutationAllowed("苗植え記録を削除")) return;
   const event = getPlantingEventById(eventId);
   if(!event){
-    showToast("削除する苗植え記録が見つかりません");
+    showToast("削除する苗植え記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("planting", event, "苗植え記録を削除")) return;

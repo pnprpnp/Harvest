@@ -451,7 +451,7 @@ async function saveGoogleSheetConfig(){
     const message = e?.name === "AbortError"
       ? "連携トークンの確認がタイムアウトしました"
       : String(e?.message || e || "連携トークンを確認できませんでした");
-    showToast(message);
+    showToast(message, { error:true });
   }finally{
     googleSheetConfigSaving = false;
     if(saveButton){
@@ -1028,7 +1028,7 @@ async function checkGoogleSheetAcceptedBatches(){
       || (result.queueStatus === "missing" && entry.checkCount >= 2)){
       markGoogleSheetAcceptedBatchFailed(entry, config);
       removeGoogleSheetAcceptedDayBatch(entry.batchId);
-      showToast("Google受信後の反映を確認できません。記録一覧の「修正・未送信」を確認してください");
+      showToast("Google受信後の反映を確認できません。記録一覧の「修正・未送信」を確認してください", { error:true });
     }else{
       entry.checkCount++;
       entry.nextCheckAt = Date.now() + getGoogleSheetAcceptedBatchCheckDelay(entry.checkCount);
@@ -1383,6 +1383,11 @@ function queueGoogleSheetRecordSend(record, options = {}){
   return queueGoogleSheetRecordBatchSend([record], options) === 1;
 }
 
+function isGoogleSheetSendQueueFailure(queued){
+  // 連携未設定での端末保存は通常動作。連携済みの送信待ち作成失敗だけを通知する。
+  return !queued && validateGoogleSheetConfig(loadGoogleSheetConfig()).ok;
+}
+
 function queueGoogleSheetPlantingEventSend(event, options = {}){
   const eventId = getSafePositiveRecordId(event?.eventId);
   if(eventId === null) return false;
@@ -1644,7 +1649,7 @@ async function sendGoogleSheetBackgroundRecordBatch(){
     if(retryScheduled){
       console.warn("Google Sheetへの送信を自動で再試行します", result?.errorMessage || "通信エラー");
     }else if(failureMessage){
-      showToast(failureMessage);
+      showToast(failureMessage, { error:true });
     }
     return true;
   }finally{
@@ -1728,7 +1733,6 @@ async function sendGoogleSheetBackgroundDayBatch(){
     if(retryScheduled){
       console.warn("当日の記録を自動で再送します", result?.errorMessage || sendError || "通信エラー");
     }else if(failureMessage || result?.failCount > 0 || result?.plantingFailCount > 0){
-      showToast(failureMessage || "一部の記録は端末内に保存されています。スプレッドシートは未送信です");
       if(batch.plantingEvents.some(item => item.job.showFailureDetails)){
         showRecordImportError(
           "苗植え記録はアプリ内に保存されています。スプレッドシートへの送信だけ失敗しました。\n\n詳細: " +
@@ -1736,6 +1740,8 @@ async function sendGoogleSheetBackgroundDayBatch(){
             "\n\n「修正・未送信」から再送信してください。",
           "苗植え記録の送信失敗"
         );
+      }else{
+        showToast(failureMessage || "一部の記録は端末内に保存されています。スプレッドシートは未送信です", { error:true });
       }
     }
     return true;

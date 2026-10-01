@@ -49,7 +49,7 @@
 
 | ファイル | 主な担当・入口 |
 | --- | --- |
-| `01-core-ui-and-workflow.js` | 定数、保存キー、グローバル状態、共通UI、タブ、作業ナビ、途中状態保存。主状態は `records`、`plantingEvents`、`harvestFillKeys`。 |
+| `01-core-ui-and-workflow.js` | 定数、保存キー、グローバル状態、共通UI、タブ、作業ナビ、途中状態保存。失敗通知は `showToast(message, { error:true })` → `showOperationError()` で確認待ちダイアログへ送り、未確認通知は順に保持する。成功・入力案内は通常のテロップ。主状態は `records`、`plantingEvents`、`harvestFillKeys`。 |
 | `02-local-data.js` | 設定・収穫記録・苗植え記録・ごみ箱・競合の正規化と端末保存。保存後は `completeRecordDataMutation()` が派生キャッシュを無効化する。 |
 | `03-sheet-sync-core.js` | Google連携設定、同期状態、未送信キュー、再送、競合UI、削除要求、受信箱の受付状態確認。 |
 | `04-monitor-sync.js` | モニター内容のApps Script送受信、Firebase更新通知、編集中内容と履歴。Firebaseには内容ではなく更新通知だけを置く。 |

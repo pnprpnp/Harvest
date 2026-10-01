@@ -421,7 +421,7 @@ async function fetchMonitorRemoteContent(options = {}){
     return nextContent;
   }catch(e){
     if(!options.silentErrors){
-      showToast("モニター設定を取得できませんでした");
+      showToast("モニター設定を取得できませんでした", { error:true });
     }
     return null;
   }finally{
@@ -869,7 +869,7 @@ async function saveCurrentMonitorRemoteContent(){
     }
   }catch(e){
     console.error("Failed to save current monitor content", e);
-    showToast("モニターへの送信に失敗しました");
+    showToast("モニターへの送信に失敗しました", { error:true });
   }finally{
     monitorCurrentSaveInProgress = false;
     setCurrentMonitorSaveLoading(false);
@@ -962,7 +962,7 @@ async function saveMonitorRemoteContent(content, options = {}){
     }
     return true;
   }catch(e){
-    showToast("モニター内容の保存に失敗しました");
+    showToast("モニター内容の保存に失敗しました", { error:true });
     setStatus("保存に失敗しました: " + String(e && e.message ? e.message : e));
     return false;
   }finally{
@@ -1024,7 +1024,7 @@ async function loadMonitorEditHistory(options = {}){
     if(!silentErrors) setMonitorRemoteEditorStatus("編集履歴を読み込みました。");
   }catch(e){
     if(!silentErrors){
-      showToast("編集履歴の読み込みに失敗しました");
+      showToast("編集履歴の読み込みに失敗しました", { error:true });
       setMonitorRemoteEditorStatus("編集履歴の読み込みに失敗しました: " + String(e && e.message ? e.message : e));
     }
   }finally{

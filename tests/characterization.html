@@ -45,6 +45,7 @@
     let finished = false;
     let passedCount = 0;
     let failedCount = 0;
+    let notificationTestApp = null;
 
     function snapshotStorage(storage){
       const snapshot = {};
@@ -108,6 +109,9 @@
         item.dataset.testStatus = "failed";
         item.textContent = `失敗: ${name} — ${error?.message || String(error)}`;
         failedCount++;
+      }finally{
+        // 確認待ち通知を次の独立したテストへ持ち越さない。
+        notificationTestApp?.eval("while(operationErrorNotifications.length) acknowledgeOperationError();");
       }
       results.appendChild(item);
     }
@@ -468,6 +472,7 @@
 
     async function runCharacterizationTests(iframe, appsScriptIframe){
       const app = iframe.contentWindow;
+      notificationTestApp = app;
       const appsScript = appsScriptIframe.contentWindow;
       const requiredFunctions = [
         "createBrowserStorageGateway",
@@ -5845,6 +5850,7 @@
 
       await runTest("背景スクロールを止める画面を一つの一覧で管理する", () => {
         const expectedIds = [
+          "operationErrorModal",
           "monitorEditorModal",
           "monitorPreviewModal",
           "appMenuModal",
@@ -5891,6 +5897,114 @@
         assert(state.toastZIndex > state.modalZIndex, "通知テロップがベッド詳細の背景ぼかしより後ろにあります");
         assertEqual(state.toastVisible, true, "ベッド詳細表示中に通知テロップが見えていません");
         assertEqual(state.toastText, "選択内容を確認してください", "通知テロップの文が変わっています");
+      });
+
+      await runTest("失敗通知は時間経過・背景タップ・Escape・画面整理で閉じず確認で閉じる", () => {
+        const state = comparable(app.eval(`(() => {
+          const modal = document.getElementById("operationErrorModal");
+          const button = document.getElementById("operationErrorConfirm");
+          const toast = document.getElementById("toast");
+          const originalSetTimeout = window.setTimeout;
+          const timers = [];
+          window.setTimeout = (callback, delay) => { timers.push({callback, delay}); return 0; };
+          try{
+            showToast("日付を入力してください");
+            const guidance = toast.classList.contains("show") && !modal.classList.contains("show");
+            timers.pop().callback();
+            const guidanceExpired = !toast.classList.contains("show");
+            showToast("保存しました");
+            const success = toast.classList.contains("show") && !modal.classList.contains("show");
+            timers.pop().callback();
+            const successExpired = !toast.classList.contains("show");
+            showToast("保存に失敗しました", {error:true});
+            const noAutoClose = timers.length === 0;
+            modal.click();
+            button.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape", bubbles:true, cancelable:true}));
+            closeRecordFloatingUi();
+            const persisted = modal.classList.contains("show");
+            button.dispatchEvent(new KeyboardEvent("keydown", {key:"Tab", bubbles:true, cancelable:true}));
+            const focusHeld = document.activeElement === button;
+            showToast("保存しました");
+            timers.pop().callback();
+            const successCannotDismiss = modal.classList.contains("show");
+            button.click();
+            return {guidance, guidanceExpired, success, successExpired, noAutoClose, persisted,
+              focusHeld, successCannotDismiss, closed:!modal.classList.contains("show")};
+          }finally{
+            window.setTimeout = originalSetTimeout;
+            toast.classList.remove("show");
+          }
+        })()`));
+        assert(Object.values(state).every(Boolean), "通知の確認待ちまたは従来のテロップ動作が違います: " + JSON.stringify(state));
+      });
+
+      await runTest("異なる失敗通知を確認順に残し同じ通知を重複させず元の画面へ戻す", () => {
+        const state = comparable(app.eval(`(() => {
+          const underlying = document.getElementById("appMenuModal");
+          const returnButton = document.querySelector(".appMenuWindowClose");
+          showPageBlockingUi(underlying);
+          returnButton.focus();
+          showToast("通信に失敗しました", {error:true});
+          showToast("通信に失敗しました", {error:true});
+          showRecordImportError("読み込み失敗\\n<img src=x onerror=alert(1)>", "読み込み失敗");
+          const queuedCount = operationErrorNotifications.length;
+          const firstText = document.getElementById("recordImportErrorMessage").textContent;
+          document.getElementById("operationErrorConfirm").click();
+          const secondText = document.getElementById("recordImportErrorMessage").textContent;
+          const stillOpen = document.getElementById("operationErrorModal").classList.contains("show");
+          const safeText = !document.getElementById("recordImportErrorMessage").querySelector("img");
+          document.getElementById("operationErrorConfirm").click();
+          const preserved = underlying.classList.contains("show") && document.body.style.overflow === "hidden";
+          const restoredFocus = document.activeElement === returnButton;
+          hidePageBlockingUi(underlying);
+          return {queuedCount, firstText, secondText, stillOpen, safeText, preserved, restoredFocus};
+        })()`));
+        assertEqual(state.queuedCount, 2, "異なる通知の保持または同じ通知の重複防止が違います");
+        assertEqual(state.firstText, "通信に失敗しました", "後続通知が未確認通知を上書きしました");
+        assertEqual(state.secondText, "読み込み失敗\n<img src=x onerror=alert(1)>", "次の失敗通知が失われました");
+        assert(state.stillOpen && state.safeText && state.preserved && state.restoredFocus, "ダイアログの安全表示または元の画面への復帰が違います");
+      });
+
+      await runTest("連携未設定や通常の送信待ちを送信失敗として扱わない", () => {
+        const state = comparable(app.eval(`(() => {
+          const originalLoadConfig = loadGoogleSheetConfig;
+          try{
+            loadGoogleSheetConfig = () => ({url:"", token:""});
+            const unconfigured = isGoogleSheetSendQueueFailure(false);
+            loadGoogleSheetConfig = () => ({
+              url:"https://script.google.com/macros/s/characterization-test/exec",
+              token:"characterization-test-token-0000000000000000"
+            });
+            return {unconfigured, queued:isGoogleSheetSendQueueFailure(true), failed:isGoogleSheetSendQueueFailure(false)};
+          }finally{
+            loadGoogleSheetConfig = originalLoadConfig;
+          }
+        })()`));
+        assertDeepEqual(state, {unconfigured:false, queued:false, failed:true}, "通常の端末保存や送信待ちを失敗と判定しています");
+      });
+
+      await runTest("320px・390px幅で長い失敗通知も画面内に収まり確認ボタンを操作できる", () => {
+        const originalWidth = iframe.style.width;
+        try{
+          for(const width of [320, 390]){
+            iframe.style.width = width + "px";
+            app.showOperationError("通信の詳細\n" + "x".repeat(8000));
+            const state = comparable(app.eval(`(() => {
+              const panel = document.getElementById("recordImportErrorPanel");
+              const button = document.getElementById("operationErrorConfirm");
+              const rect = panel.getBoundingClientRect();
+              const buttonRect = button.getBoundingClientRect();
+              return {inside:rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
+                buttonVisible:buttonRect.top >= 0 && buttonRect.bottom <= innerHeight,
+                widthSafe:panel.scrollWidth <= panel.clientWidth,
+                touchHeight:buttonRect.height >= 44};
+            })()`));
+            assert(Object.values(state).every(Boolean), width + "pxで通知または確認ボタンが画面からはみ出します: " + JSON.stringify(state));
+            app.document.getElementById("operationErrorConfirm").click();
+          }
+        }finally{
+          iframe.style.width = originalWidth;
+        }
       });
 
       await runTest("4つのメインタブを一つの定義表で管理する", () => {
@@ -17336,19 +17450,20 @@
 
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
+        // 非表示の失敗通知の背景要素を1個追加。通常画面の表示要素数は維持する。
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "c57bc73e", elements: 2576, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "2d4eae16", elements: 2646, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "579f6a91", elements: 2646, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "b7216768", elements: 2580, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "252f360f", elements: 2597, visible: 105, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "f042024b", elements: 2680, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "c47772a3", elements: 2695, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "e120205a", elements: 2807, visible: 168, viewport: "390x844" },
-          mobileSettings: { hash: "dd978d09", elements: 2807, visible: 192, viewport: "390x844" },
-          mobileMonitor: { hash: "450e4531", elements: 2851, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "423bc9cd", elements: 2851, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "875734e2", elements: 2851, visible: 105, viewport: "1024x900" }
+          mobileForecast: { hash: "fc18de67", elements: 2577, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "419da269", elements: 2647, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "a9f86862", elements: 2647, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "bbf3c7de", elements: 2581, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "1fc8ac33", elements: 2598, visible: 105, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "4b731f0a", elements: 2681, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "14614028", elements: 2696, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "7b00f83a", elements: 2808, visible: 168, viewport: "390x844" },
+          mobileSettings: { hash: "8337dc21", elements: 2808, visible: 192, viewport: "390x844" },
+          mobileMonitor: { hash: "13fb2cc8", elements: 2852, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "13a73ddb", elements: 2852, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "f17ba868", elements: 2852, visible: 105, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

@@ -35,7 +35,7 @@ function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
   if(!deletedRecord){
-    showToast("削除する記録が見つかりません");
+    showToast("削除する記録が見つかりません", { error:true });
     return;
   }
   if(deletedRecord.type === "fullHarvest"
@@ -78,7 +78,7 @@ async function confirmDeleteRecord(id){
   if(!ensureGoogleSheetLocalMutationAllowed("記録を削除")) return;
   const record = getRecordById(id);
   if(!record){
-    showToast("削除する記録が見つかりません");
+    showToast("削除する記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "記録を削除")) return;
@@ -137,7 +137,7 @@ function editHarvestRecord(id, options = {}){
   if(!ensureGoogleSheetLocalMutationAllowed("収穫記録を編集")) return;
   const record = getRecordById(id);
   if(!record || record.type !== "fullHarvest"){
-    showToast("編集する収穫記録が見つかりません");
+    showToast("編集する収穫記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "収穫記録を編集")) return;
@@ -655,7 +655,7 @@ function scheduleRecordHistoryDateGroupOpen(dateKey){
       ));
     }catch(error){
       console.error("日付の記録を読み込めませんでした", error);
-      showToast("この日の記録を読み込めませんでした。もう一度お試しください");
+      showToast("この日の記録を読み込めませんでした。もう一度お試しください", { error:true });
     }finally{
       finishRecordHistoryListRender(scheduleId);
     }
@@ -1577,7 +1577,7 @@ function openDashboardDayRecordDetail(dateString){
   if(!modal || !title || !body) return;
   const context = getDashboardDayRecordDetailContext(dateString);
   if(!context){
-    showToast("詳細を表示する日の記録が見つかりません");
+    showToast("詳細を表示する日の記録が見つかりません", { error:true });
     return;
   }
 
@@ -1609,7 +1609,7 @@ function openRecordDetailWindow(kind, id){
 
   const safeId = getSafePositiveRecordId(id);
   if(!safeId){
-    showToast("詳細を表示する記録が見つかりません");
+    showToast("詳細を表示する記録が見つかりません", { error:true });
     return;
   }
 
@@ -1619,7 +1619,7 @@ function openRecordDetailWindow(kind, id){
   if(kind === "harvest"){
     const record = getRecordById(safeId);
     if(!record || record.type !== "fullHarvest"){
-      showToast("詳細を表示する収穫記録が見つかりません");
+      showToast("詳細を表示する収穫記録が見つかりません", { error:true });
       return;
     }
     const attention = getDashboardRecordAttentionInfo(record);
@@ -1641,7 +1641,7 @@ function openRecordDetailWindow(kind, id){
   }else if(kind === "partialHarvest"){
     const record = getRecordById(safeId);
     if(!record || record.type !== "partialHarvest"){
-      showToast("詳細を表示する部分収穫記録が見つかりません");
+      showToast("詳細を表示する部分収穫記録が見つかりません", { error:true });
       return;
     }
     const attention = getDashboardRecordAttentionInfo(record);
@@ -1656,7 +1656,7 @@ function openRecordDetailWindow(kind, id){
   }else if(kind === "planting"){
     const event = getPlantingEventById(safeId);
     if(!event){
-      showToast("詳細を表示する苗植え記録が見つかりません");
+      showToast("詳細を表示する苗植え記録が見つかりません", { error:true });
       return;
     }
     const usage = getPlantingEventUsage(event.eventId);
@@ -2237,7 +2237,6 @@ function toggleRecordImportMenu(){
   const menu = document.getElementById("recordImportMenu");
   if(!menu) return;
   hideGoogleSheetResendHelp();
-  hideRecordImportError();
   menu.classList.toggle("show");
 }
 

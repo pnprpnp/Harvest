@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261001-planting-location-eligibility">
+<meta name="harvestnavi-version" content="20261001-operation-error-dialog">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17119,6 +17119,32 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   box-shadow:0 0 0 9999px rgba(20,20,22,.38),var(--ui-shadow-float);
 }
 .googleSheetHelpTitle,.googleSheetConfirmTitle,.recordImportTitle{background:var(--ui-text);}
+.operationErrorModal{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:31000;
+  box-sizing:border-box;
+  padding:18px 12px;
+  align-items:center;
+  justify-content:center;
+  background:rgba(20,20,22,.38);
+}
+.operationErrorModal.show{display:flex;}
+.operationErrorModal .recordImportErrorPanel{
+  position:relative;
+  left:auto;
+  top:auto;
+  transform:none;
+  width:min(440px, 100%);
+  max-height:100%;
+  overflow:auto;
+  box-shadow:var(--ui-shadow-float);
+  transition:none;
+}
+.operationErrorModal .recordImportErrorTitle{border-radius:22px 22px 0 0;}
+.operationErrorModal .recordImportErrorMessage{overflow-wrap:anywhere;}
+.operationErrorModal .recordImportErrorClose{min-height:44px;}
 
 /* Dashboard */
 .dashboardForecastValueInput > input,
@@ -21587,10 +21613,12 @@ requestAnimationFrame(function(){
     </div>
   </div>
 </div>
-<div id="recordImportErrorPanel" class="recordImportErrorPanel" role="dialog" aria-modal="true" aria-labelledby="recordImportErrorTitle">
+<div id="operationErrorModal" class="operationErrorModal">
+<div id="recordImportErrorPanel" class="recordImportErrorPanel" role="alertdialog" aria-modal="true" aria-labelledby="recordImportErrorTitle" aria-describedby="recordImportErrorMessage">
   <div id="recordImportErrorTitle" class="recordImportErrorTitle">読み込み失敗</div>
   <div id="recordImportErrorMessage" class="recordImportErrorMessage"></div>
-  <button type="button" class="recordImportErrorClose" data-ui-click="hideRecordImportError">閉じる</button>
+  <button id="operationErrorConfirm" type="button" class="recordImportErrorClose" data-ui-click="hideRecordImportError">確認</button>
+</div>
 </div>
 <div id="syncConflictPanel" class="appUpdateConfirmOverlay" data-ui-backdrop-click="closeSyncConflictPanel">
   <div class="syncConflictWindow" role="dialog" aria-modal="true" aria-labelledby="syncConflictTitle">
@@ -22311,7 +22339,8 @@ function setAppAccessRole(nextRole, options = {}){
   return changed;
 }
 
-function showToast(message){
+function showToast(message, options = {}){
+  if(options.error) return showOperationError(message, options.title);
   const toast = document.getElementById("toast");
   toast.textContent = message;
   toast.classList.add("show");
@@ -22319,7 +22348,71 @@ function showToast(message){
   showToast._timer = setTimeout(() => toast.classList.remove("show"), 2800);
 }
 
+const operationErrorNotifications = [];
+let operationErrorReturnFocus = null;
+
+function renderOperationError(){
+  const notification = operationErrorNotifications[0];
+  if(!notification) return;
+  document.getElementById("recordImportErrorTitle").textContent = notification.title;
+  document.getElementById("recordImportErrorMessage").textContent = notification.message;
+  document.getElementById("recordImportErrorMessage").scrollTop = 0;
+  document.getElementById("operationErrorConfirm").focus();
+}
+
+function handleOperationErrorKeydown(event){
+  if(event.key !== "Escape" && event.key !== "Tab") return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if(event.key === "Tab") document.getElementById("operationErrorConfirm")?.focus();
+}
+
+function handleOperationErrorFocus(event){
+  const modal = document.getElementById("operationErrorModal");
+  if(modal && !modal.contains(event.target)){
+    document.getElementById("operationErrorConfirm")?.focus();
+  }
+}
+
+function showOperationError(message, title = "操作を完了できませんでした"){
+  const modal = document.getElementById("operationErrorModal");
+  const panel = document.getElementById("recordImportErrorPanel");
+  if(!modal || !panel){
+    window.alert(String(message || "原因不明"));
+    return;
+  }
+  const notification = { message:String(message || "原因不明"), title };
+  // 同じ失敗の繰り返しで確認回数を増やさず、別の未確認通知は順番に残す。
+  if(operationErrorNotifications.some(item => item.message === notification.message && item.title === title)) return;
+  operationErrorNotifications.push(notification);
+  if(operationErrorNotifications.length > 1) return;
+  operationErrorReturnFocus = document.activeElement;
+  clearTimeout(showToast._timer);
+  document.getElementById("toast")?.classList.remove("show");
+  panel.classList.add("show");
+  showPageBlockingUi(modal);
+  document.addEventListener("keydown", handleOperationErrorKeydown, true);
+  document.addEventListener("focusin", handleOperationErrorFocus, true);
+  renderOperationError();
+}
+
+function acknowledgeOperationError(){
+  operationErrorNotifications.shift();
+  if(operationErrorNotifications.length){
+    renderOperationError();
+    return;
+  }
+  document.removeEventListener("keydown", handleOperationErrorKeydown, true);
+  document.removeEventListener("focusin", handleOperationErrorFocus, true);
+  document.getElementById("recordImportErrorPanel")?.classList.remove("show");
+  hidePageBlockingUi(document.getElementById("operationErrorModal"));
+  const returnFocus = operationErrorReturnFocus;
+  operationErrorReturnFocus = null;
+  if(returnFocus?.isConnected) returnFocus.focus?.();
+}
+
 const PAGE_BLOCKING_UI_IDS = Object.freeze([
+  "operationErrorModal",
   "monitorEditorModal",
   "monitorPreviewModal",
   "appMenuModal",
@@ -23054,7 +23147,7 @@ function saveHarvestStateToStorageSafely(options = {}){
   }catch(error){
     console.error("Failed to save current harvest state", error);
     if(document.visibilityState !== "hidden"){
-      showToast("入力内容の一時保存に失敗しました");
+      showToast("入力内容の一時保存に失敗しました", { error:true });
     }
     return false;
   }
@@ -24599,7 +24692,7 @@ function startHarvestProgressEntryEdit(entryIndex){
   const safeIndex = Number(entryIndex);
   const entry = Number.isInteger(safeIndex) ? state?.entries?.[safeIndex] : null;
   if(!state || !entry){
-    showToast("修正する入力を読み込めませんでした");
+    showToast("修正する入力を読み込めませんでした", { error:true });
     return false;
   }
   const partialEntryIndex = entry.type === "partial"
@@ -24754,7 +24847,7 @@ function saveHarvestProgressEntryEdit(){
     if(!Number.isInteger(edit.partialEntryIndex)
       || edit.partialEntryIndex < 0
       || edit.partialEntryIndex >= draft.entries.length){
-      showToast("部分収穫の入力を読み込めませんでした");
+      showToast("部分収穫の入力を読み込めませんでした", { error:true });
       return false;
     }
     const entries = draft.entries.map(entry => ({ ...entry, bedKeys:[...entry.bedKeys] }));
@@ -25670,7 +25763,6 @@ function closeRecordFloatingUi(){
   hideRecordBedActionMenu();
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();
-  hideRecordImportError();
 }
 
 function preservePlantingStateBeforeTabSwitch(options = {}){
@@ -25946,7 +26038,7 @@ function scheduleMainTabPostSelectionWork(tabName){
       definition?.afterPaint?.();
     }catch(error){
       console.error("Failed to finish tab selection", error);
-      showToast("表示の更新に失敗しました。もう一度タブを押してください");
+      showToast("表示の更新に失敗しました。もう一度タブを押してください", { error:true });
     }finally{
       if(scheduleId === tabSwitchScheduleId){
         loadingTarget?.removeAttribute("aria-busy");
@@ -29123,7 +29215,7 @@ async function saveGoogleSheetConfig(){
     const message = e?.name === "AbortError"
       ? "連携トークンの確認がタイムアウトしました"
       : String(e?.message || e || "連携トークンを確認できませんでした");
-    showToast(message);
+    showToast(message, { error:true });
   }finally{
     googleSheetConfigSaving = false;
     if(saveButton){
@@ -29700,7 +29792,7 @@ async function checkGoogleSheetAcceptedBatches(){
       || (result.queueStatus === "missing" && entry.checkCount >= 2)){
       markGoogleSheetAcceptedBatchFailed(entry, config);
       removeGoogleSheetAcceptedDayBatch(entry.batchId);
-      showToast("Google受信後の反映を確認できません。記録一覧の「修正・未送信」を確認してください");
+      showToast("Google受信後の反映を確認できません。記録一覧の「修正・未送信」を確認してください", { error:true });
     }else{
       entry.checkCount++;
       entry.nextCheckAt = Date.now() + getGoogleSheetAcceptedBatchCheckDelay(entry.checkCount);
@@ -30055,6 +30147,11 @@ function queueGoogleSheetRecordSend(record, options = {}){
   return queueGoogleSheetRecordBatchSend([record], options) === 1;
 }
 
+function isGoogleSheetSendQueueFailure(queued){
+  // 連携未設定での端末保存は通常動作。連携済みの送信待ち作成失敗だけを通知する。
+  return !queued && validateGoogleSheetConfig(loadGoogleSheetConfig()).ok;
+}
+
 function queueGoogleSheetPlantingEventSend(event, options = {}){
   const eventId = getSafePositiveRecordId(event?.eventId);
   if(eventId === null) return false;
@@ -30316,7 +30413,7 @@ async function sendGoogleSheetBackgroundRecordBatch(){
     if(retryScheduled){
       console.warn("Google Sheetへの送信を自動で再試行します", result?.errorMessage || "通信エラー");
     }else if(failureMessage){
-      showToast(failureMessage);
+      showToast(failureMessage, { error:true });
     }
     return true;
   }finally{
@@ -30400,7 +30497,6 @@ async function sendGoogleSheetBackgroundDayBatch(){
     if(retryScheduled){
       console.warn("当日の記録を自動で再送します", result?.errorMessage || sendError || "通信エラー");
     }else if(failureMessage || result?.failCount > 0 || result?.plantingFailCount > 0){
-      showToast(failureMessage || "一部の記録は端末内に保存されています。スプレッドシートは未送信です");
       if(batch.plantingEvents.some(item => item.job.showFailureDetails)){
         showRecordImportError(
           "苗植え記録はアプリ内に保存されています。スプレッドシートへの送信だけ失敗しました。\n\n詳細: " +
@@ -30408,6 +30504,8 @@ async function sendGoogleSheetBackgroundDayBatch(){
             "\n\n「修正・未送信」から再送信してください。",
           "苗植え記録の送信失敗"
         );
+      }else{
+        showToast(failureMessage || "一部の記録は端末内に保存されています。スプレッドシートは未送信です", { error:true });
       }
     }
     return true;
@@ -32081,7 +32179,7 @@ async function fetchMonitorRemoteContent(options = {}){
     return nextContent;
   }catch(e){
     if(!options.silentErrors){
-      showToast("モニター設定を取得できませんでした");
+      showToast("モニター設定を取得できませんでした", { error:true });
     }
     return null;
   }finally{
@@ -32529,7 +32627,7 @@ async function saveCurrentMonitorRemoteContent(){
     }
   }catch(e){
     console.error("Failed to save current monitor content", e);
-    showToast("モニターへの送信に失敗しました");
+    showToast("モニターへの送信に失敗しました", { error:true });
   }finally{
     monitorCurrentSaveInProgress = false;
     setCurrentMonitorSaveLoading(false);
@@ -32622,7 +32720,7 @@ async function saveMonitorRemoteContent(content, options = {}){
     }
     return true;
   }catch(e){
-    showToast("モニター内容の保存に失敗しました");
+    showToast("モニター内容の保存に失敗しました", { error:true });
     setStatus("保存に失敗しました: " + String(e && e.message ? e.message : e));
     return false;
   }finally{
@@ -32684,7 +32782,7 @@ async function loadMonitorEditHistory(options = {}){
     if(!silentErrors) setMonitorRemoteEditorStatus("編集履歴を読み込みました。");
   }catch(e){
     if(!silentErrors){
-      showToast("編集履歴の読み込みに失敗しました");
+      showToast("編集履歴の読み込みに失敗しました", { error:true });
       setMonitorRemoteEditorStatus("編集履歴の読み込みに失敗しました: " + String(e && e.message ? e.message : e));
     }
   }finally{
@@ -33218,7 +33316,7 @@ async function sendRecordToGoogleSheet(record, options = {}){
       const message = e?.name === "AbortError"
         ? "スプレッドシート送信がタイムアウトしました"
         : String(e?.message || "スプレッドシート送信に失敗しました");
-      showToast(message);
+      showToast(message, { error:true });
     }
     return false;
   }finally{
@@ -35096,25 +35194,13 @@ async function checkLatestAppFromMenu(){
 }
 
 function showRecordImportError(message, title = "読み込み失敗"){
-  const panel = document.getElementById("recordImportErrorPanel");
-  const titleBox = document.getElementById("recordImportErrorTitle");
-  const messageBox = document.getElementById("recordImportErrorMessage");
-
-  if(!panel || !messageBox){
-    showToast(message);
-    return;
-  }
-
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();
-  if(titleBox) titleBox.textContent = title;
-  messageBox.textContent = String(message || "原因不明");
-  panel.classList.add("show");
+  showOperationError(message, title);
 }
 
 function hideRecordImportError(){
-  const panel = document.getElementById("recordImportErrorPanel");
-  if(panel) panel.classList.remove("show");
+  acknowledgeOperationError();
 }
 
 async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
@@ -38999,7 +39085,7 @@ function getDashboardSeedlingStatusDateGroupHtml(group, selectedIndex){
 function openRecordHistoryFromDashboardSeedlingStatus(dateString){
   const date = String(dateString || "").trim();
   if(!parseDateOnlyString(date)){
-    showToast("移動する記録の日付を確認できませんでした");
+    showToast("移動する記録の日付を確認できませんでした", { error:true });
     return false;
   }
   if(!switchTab("record")) return false;
@@ -41318,7 +41404,7 @@ async function exportDashboardGrowthHistory(){
     document.body.appendChild(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     showToast("予報・予測履歴と精度比較を書き出しました");
-  }catch(error){ showToast("履歴を書き出せませんでした。空き容量などを確認してください"); }
+  }catch(error){ showToast("履歴を書き出せませんでした。空き容量などを確認してください", { error:true }); }
 }
 
 function getDashboardGrowthBuildingTrend(model, building){
@@ -48308,7 +48394,7 @@ function scheduleRecordHistoryListRender(options = {}){
       }
     }catch(error){
       console.error("記録一覧を読み込めませんでした", error);
-      showToast("記録一覧を読み込めませんでした。もう一度お試しください");
+      showToast("記録一覧を読み込めませんでした。もう一度お試しください", { error:true });
     }finally{
       finishRecordHistoryListRender(scheduleId);
     }
@@ -48776,7 +48862,7 @@ async function handleRecordPrimaryAction(){
   }catch(e){
     console.error("Record action failed", e);
     closeRecordFloatingUi();
-    showToast("記録処理中にエラーが発生しました。再読み込みしてもう一度試してください");
+    showToast("記録処理中にエラーが発生しました。再読み込みしてもう一度試してください", { error:true });
   }
 }
 
@@ -50584,7 +50670,7 @@ function saveSeedlingHousePrimaryPlantingDate(eventId){
   }
   const index = plantingEvents.findIndex(event => Number(event.eventId) === Number(eventId));
   if(index < 0){
-    showToast("編集する苗取り記録が見つかりません");
+    showToast("編集する苗取り記録が見つかりません", { error:true });
     return;
   }
   const updatedEvent = normalizePlantingEvent({
@@ -50592,7 +50678,7 @@ function saveSeedlingHousePrimaryPlantingDate(eventId){
     seedlingHousePrimaryPlantingDate: value
   });
   if(!updatedEvent){
-    showToast("一次定植日を更新できませんでした");
+    showToast("一次定植日を更新できませんでした", { error:true });
     return;
   }
   plantingEvents[index] = updatedEvent;
@@ -50633,7 +50719,7 @@ function saveSeedlingHouseStartCorrection(){
     const index = plantingEvents.findIndex(event => Number(event.eventId) === Number(latestEvent.eventId));
     const updatedEvent = normalizePlantingEvent({ ...latestEvent, seedlingHouseNextStartKey: key });
     if(index < 0 || !updatedEvent){
-      showToast("開始位置を保存できませんでした");
+      showToast("開始位置を保存できませんでした", { error:true });
       return;
     }
     plantingEvents[index] = updatedEvent;
@@ -52613,7 +52699,7 @@ async function saveRecord(){
       return;
     }
   }catch(error){
-    showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`);
+    showToast(`変更前の記録を安全保存できませんでした。記録は未変更です。${error.message}`, { error:true });
     return;
   }finally{
     recordSaveUiTransitionPending=false;
@@ -52702,7 +52788,7 @@ async function saveRecord(){
           : "収穫記録を更新しました。スプレッドシートは未送信です。続けて苗植え場所を選択してください")
       : (sendQueued
           ? "収穫記録を更新しました"
-          : "収穫記録を更新しました。スプレッドシートは未送信です"));
+          : "収穫記録を更新しました。スプレッドシートは未送信です"), { error:isGoogleSheetSendQueueFailure(sendQueued) });
     return;
   }
 
@@ -52710,7 +52796,7 @@ async function saveRecord(){
   const newRecordCount = Number(cases > 0) + partialEntryCount;
   const recordIds = getNextLocalHarvestRecordIds(newRecordCount);
   if(recordIds.length !== newRecordCount){
-    showToast("新しい収穫記録の番号を作成できませんでした");
+    showToast("新しい収穫記録の番号を作成できませんでした", { error:true });
     return;
   }
   let nextRecordIdIndex = 0;
@@ -52752,7 +52838,7 @@ async function saveRecord(){
     : [];
   nextRecordIdIndex += partialEntryCount;
   if(partialDraft.isValid && partialRecords.length !== partialEntryCount){
-    showToast("部分収穫記録を作成できませんでした");
+    showToast("部分収穫記録を作成できませんでした", { error:true });
     return;
   }
   const newRecords = [record, ...partialRecords].filter(Boolean);
@@ -52797,15 +52883,16 @@ async function saveRecord(){
     scheduleRecordDataUiRefresh({ maps:true });
   });
   const sendFailed = sendQueuedCount !== newRecords.length;
+  const showSendFailure = isGoogleSheetSendQueueFailure(!sendFailed);
   const sendFailureSuffix = sendFailed ? "スプレッドシートは未送信です。" : "";
   if(record && partialRecords.length){
-    showToast(`通常収穫と部分収穫を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`);
+    showToast(`通常収穫と部分収穫を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`, { error:showSendFailure });
   }else if(record){
-    showToast(`収穫場所を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`);
+    showToast(`収穫場所を記録しました。${sendFailureSuffix}続けて苗植え場所を選択してください`, { error:showSendFailure });
   }else{
     showToast(sendFailed
       ? "部分収穫を記録しました。スプレッドシートは未送信です"
-      : "部分収穫を記録しました");
+      : "部分収穫を記録しました", { error:showSendFailure });
   }
 }
 
@@ -52983,7 +53070,7 @@ async function savePlantingRecord(){
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   if(allocatedKeys.length !== normalizedSelectedKeys.length
     || allocatedKeys.some((key, index) => key !== normalizedSelectedKeys[index])){
-    showToast("選択した場所の収穫元を確認できません。記録を読み込み直してください");
+    showToast("選択した場所の収穫元を確認できません。記録を読み込み直してください", { error:true });
     return;
   }
 
@@ -53063,7 +53150,7 @@ async function savePlantingRecord(){
     detailsUnknown: false
   });
   if(!event){
-    showToast("苗植え記録を作成できませんでした。入力内容を確認してください");
+    showToast("苗植え記録を作成できませんでした。入力内容を確認してください", { error:true });
     return;
   }
   const initialSeedlingHouseStartKey = !existingEvent
@@ -53077,7 +53164,7 @@ async function savePlantingRecord(){
     event = normalizePlantingEvent({ ...event, seedlingHouseNextStartKey: nextKey });
   }
   if(!event){
-    showToast("1号棟の開始位置を苗植え記録へ反映できませんでした");
+    showToast("1号棟の開始位置を苗植え記録へ反映できませんでした", { error:true });
     return;
   }
   const unselectedPreviousLots = getUnselectedPreviousUnplantedPalletLots(
@@ -53142,7 +53229,7 @@ async function savePlantingRecord(){
     ? (existingEvent
         ? "苗植え記録を更新しました"
         : "苗植え場所を記録しました")
-    : "苗植え場所を記録しました。スプレッドシートは未送信です");
+    : "苗植え場所を記録しました。スプレッドシートは未送信です", { error:isGoogleSheetSendQueueFailure(sendQueued) });
 }
 
 function resumePlantingRecord(id, options = {}){
@@ -53192,7 +53279,7 @@ function editPlantingEvent(eventId){
   const preferredHarvestId = event?.sourceAllocations?.[0]?.harvestRecordId;
   const record = getRecordById(preferredHarvestId);
   if(!event || !record || record.type !== "fullHarvest"){
-    showToast("編集する苗植え記録の収穫元が見つかりません");
+    showToast("編集する苗植え記録の収穫元が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("planting", event, "苗植え記録を編集")) return;
@@ -53238,7 +53325,7 @@ async function confirmDeletePlantingEvent(eventId){
   if(!ensureGoogleSheetLocalMutationAllowed("苗植え記録を削除")) return;
   const event = getPlantingEventById(eventId);
   if(!event){
-    showToast("削除する苗植え記録が見つかりません");
+    showToast("削除する苗植え記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("planting", event, "苗植え記録を削除")) return;
@@ -54295,7 +54382,7 @@ function openHarvestPartialSplitWindow(id){
   }
   const record = getRecordById(id);
   if(!record || record.type !== "fullHarvest"){
-    showToast("分ける通常収穫記録が見つかりません");
+    showToast("分ける通常収穫記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "通常収穫の一部を部分収穫へ分ける")) return;
@@ -54351,7 +54438,7 @@ function saveHarvestPartialSplit(){
   if(!ensureGoogleSheetLocalMutationAllowed("通常収穫と部分収穫への分割を保存", { allowBackgroundSend: true })) return;
   const sourceRecord = splittingHarvestRecordId ? getRecordById(splittingHarvestRecordId) : null;
   if(!sourceRecord || sourceRecord.type !== "fullHarvest"){
-    showToast("分ける通常収穫記録が見つかりません");
+    showToast("分ける通常収穫記録が見つかりません", { error:true });
     closeHarvestPartialSplitWindow();
     return;
   }
@@ -54382,7 +54469,7 @@ function saveHarvestPartialSplit(){
 
   const id = getNextLocalHarvestRecordId();
   if(id === null){
-    showToast("新しい部分収穫記録の番号を作れませんでした");
+    showToast("新しい部分収穫記録の番号を作れませんでした", { error:true });
     return;
   }
   const targets = buildPartialHarvestTargets(building, beds, partialCases);
@@ -54441,7 +54528,8 @@ function saveHarvestPartialSplit(){
   showToast(
     `${sourceCases}ケースを通常${plan.regularCases}・部分${partialCases}ケースに分けました。`
     + otherLossText
-    + (queuedCount === plan.recordsToSync.length ? "" : " スプレッドシートは未送信です。")
+    + (queuedCount === plan.recordsToSync.length ? "" : " スプレッドシートは未送信です。"),
+    { error:isGoogleSheetSendQueueFailure(queuedCount === plan.recordsToSync.length) }
   );
   runAfterUiSettles(() => {
     try{
@@ -54525,7 +54613,7 @@ function savePartialHarvestRecordEdit(){
     ? getRecordById(editingPartialHarvestRecordId)
     : null;
   if(!record || record.type !== "partialHarvest"){
-    showToast("編集する部分収穫記録が見つかりません");
+    showToast("編集する部分収穫記録が見つかりません", { error:true });
     closePartialHarvestEditWindow();
     return;
   }
@@ -54590,14 +54678,14 @@ function savePartialHarvestRecordEdit(){
   showToast(getPartialHarvestSaveToastMessage({
     edited: true,
     sendQueued
-  }));
+  }), { error:isGoogleSheetSendQueueFailure(sendQueued) });
   runAfterUiSettles(() => {
     const predictionUpdate = recalculateHarvestPredictionAfterPartialHarvest([previousDate, date]);
     scheduleRecordDataUiRefresh({ maps:true, actualLoss:true });
     if(predictionUpdate.recalculated && predictionUpdate.changed){
       showToast("収穫予想も変わったため、収穫場所を確認してください");
     }else if(predictionUpdate.attempted && !predictionUpdate.recalculated){
-      showToast("収穫予想を更新できなかったため、「計算する」を押してください");
+      showToast("収穫予想を更新できなかったため、「計算する」を押してください", { error:true });
     }
   });
 }
@@ -54639,7 +54727,7 @@ function deleteRecord(id, options = {}){
   if(!options.accessChecked && !ensureProtectedOperationAccess("記録の削除")) return;
   const deletedRecord = getRecordById(id);
   if(!deletedRecord){
-    showToast("削除する記録が見つかりません");
+    showToast("削除する記録が見つかりません", { error:true });
     return;
   }
   if(deletedRecord.type === "fullHarvest"
@@ -54682,7 +54770,7 @@ async function confirmDeleteRecord(id){
   if(!ensureGoogleSheetLocalMutationAllowed("記録を削除")) return;
   const record = getRecordById(id);
   if(!record){
-    showToast("削除する記録が見つかりません");
+    showToast("削除する記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "記録を削除")) return;
@@ -54741,7 +54829,7 @@ function editHarvestRecord(id, options = {}){
   if(!ensureGoogleSheetLocalMutationAllowed("収穫記録を編集")) return;
   const record = getRecordById(id);
   if(!record || record.type !== "fullHarvest"){
-    showToast("編集する収穫記録が見つかりません");
+    showToast("編集する収穫記録が見つかりません", { error:true });
     return;
   }
   if(!ensureSyncConflictResolvedBeforeChange("record", record, "収穫記録を編集")) return;
@@ -55259,7 +55347,7 @@ function scheduleRecordHistoryDateGroupOpen(dateKey){
       ));
     }catch(error){
       console.error("日付の記録を読み込めませんでした", error);
-      showToast("この日の記録を読み込めませんでした。もう一度お試しください");
+      showToast("この日の記録を読み込めませんでした。もう一度お試しください", { error:true });
     }finally{
       finishRecordHistoryListRender(scheduleId);
     }
@@ -56181,7 +56269,7 @@ function openDashboardDayRecordDetail(dateString){
   if(!modal || !title || !body) return;
   const context = getDashboardDayRecordDetailContext(dateString);
   if(!context){
-    showToast("詳細を表示する日の記録が見つかりません");
+    showToast("詳細を表示する日の記録が見つかりません", { error:true });
     return;
   }
 
@@ -56213,7 +56301,7 @@ function openRecordDetailWindow(kind, id){
 
   const safeId = getSafePositiveRecordId(id);
   if(!safeId){
-    showToast("詳細を表示する記録が見つかりません");
+    showToast("詳細を表示する記録が見つかりません", { error:true });
     return;
   }
 
@@ -56223,7 +56311,7 @@ function openRecordDetailWindow(kind, id){
   if(kind === "harvest"){
     const record = getRecordById(safeId);
     if(!record || record.type !== "fullHarvest"){
-      showToast("詳細を表示する収穫記録が見つかりません");
+      showToast("詳細を表示する収穫記録が見つかりません", { error:true });
       return;
     }
     const attention = getDashboardRecordAttentionInfo(record);
@@ -56245,7 +56333,7 @@ function openRecordDetailWindow(kind, id){
   }else if(kind === "partialHarvest"){
     const record = getRecordById(safeId);
     if(!record || record.type !== "partialHarvest"){
-      showToast("詳細を表示する部分収穫記録が見つかりません");
+      showToast("詳細を表示する部分収穫記録が見つかりません", { error:true });
       return;
     }
     const attention = getDashboardRecordAttentionInfo(record);
@@ -56260,7 +56348,7 @@ function openRecordDetailWindow(kind, id){
   }else if(kind === "planting"){
     const event = getPlantingEventById(safeId);
     if(!event){
-      showToast("詳細を表示する苗植え記録が見つかりません");
+      showToast("詳細を表示する苗植え記録が見つかりません", { error:true });
       return;
     }
     const usage = getPlantingEventUsage(event.eventId);
@@ -56841,7 +56929,6 @@ function toggleRecordImportMenu(){
   const menu = document.getElementById("recordImportMenu");
   if(!menu) return;
   hideGoogleSheetResendHelp();
-  hideRecordImportError();
   menu.classList.toggle("show");
 }
 
@@ -58486,13 +58573,13 @@ function rollbackDashboardGrowthModel(modelVersion){
 async function confirmDashboardGrowthCandidate(modelVersion){
   if(!window.confirm("検証済みの候補モデルを生育予測に採用しますか？ 採用後も以前の版へ戻せます。")) return false;
   try{return await adoptDashboardGrowthCandidate(modelVersion);}
-  catch(error){showToast(error?.message || "候補モデルを採用できませんでした");return false;}
+  catch(error){showToast(error?.message || "候補モデルを採用できませんでした", { error:true });return false;}
 }
 
 function confirmDashboardGrowthRollback(modelVersion){
   if(!window.confirm("生育予測を、この以前のモデル版へ戻しますか？ 予測履歴は削除されません。")) return false;
   try{return rollbackDashboardGrowthModel(modelVersion);}
-  catch(error){showToast(error?.message || "以前のモデルへ戻せませんでした");return false;}
+  catch(error){showToast(error?.message || "以前のモデルへ戻せませんでした", { error:true });return false;}
 }
 
 function resolveDashboardGrowthActiveConflict(index,choice){
@@ -58502,7 +58589,7 @@ function resolveDashboardGrowthActiveConflict(index,choice){
   try{
     getDashboardGrowthLearningRegistry().resolveActiveConflict(index,{explicit:true,keepLocal});
     dashboardGrowthPredictionModelCache=null;dashboardRenderedSubtabs.delete("growth");renderDashboardGrowthPrediction();return true;
-  }catch(error){showToast(error?.message || "モデルの選択を確定できませんでした");return false;}
+  }catch(error){showToast(error?.message || "モデルの選択を確定できませんでした", { error:true });return false;}
 }
 
 function showDashboardGrowthPlanningQuantity(){
@@ -58582,7 +58669,7 @@ async function exportDashboardGrowthCsv(){
     const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),link=document.createElement("a");
     link.href=url;link.download=`Harvestnavi-growth-${formatDateOnlyString(new Date())}.csv`;document.body.appendChild(link);link.click();link.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);showToast(`予測履歴${entries.length}回をCSVで書き出しました`);
-  }catch(error){showToast("予測履歴をCSVで書き出せませんでした");}
+  }catch(error){showToast("予測履歴をCSVで書き出せませんでした", { error:true });}
 }
 // Read-only farm evidence reports, cached separately from prediction coefficients.
 let dashboardGrowthReviewCache=null;

@@ -279,7 +279,7 @@ function saveSeedlingHousePrimaryPlantingDate(eventId){
   }
   const index = plantingEvents.findIndex(event => Number(event.eventId) === Number(eventId));
   if(index < 0){
-    showToast("編集する苗取り記録が見つかりません");
+    showToast("編集する苗取り記録が見つかりません", { error:true });
     return;
   }
   const updatedEvent = normalizePlantingEvent({
@@ -287,7 +287,7 @@ function saveSeedlingHousePrimaryPlantingDate(eventId){
     seedlingHousePrimaryPlantingDate: value
   });
   if(!updatedEvent){
-    showToast("一次定植日を更新できませんでした");
+    showToast("一次定植日を更新できませんでした", { error:true });
     return;
   }
   plantingEvents[index] = updatedEvent;
@@ -328,7 +328,7 @@ function saveSeedlingHouseStartCorrection(){
     const index = plantingEvents.findIndex(event => Number(event.eventId) === Number(latestEvent.eventId));
     const updatedEvent = normalizePlantingEvent({ ...latestEvent, seedlingHouseNextStartKey: key });
     if(index < 0 || !updatedEvent){
-      showToast("開始位置を保存できませんでした");
+      showToast("開始位置を保存できませんでした", { error:true });
       return;
     }
     plantingEvents[index] = updatedEvent;

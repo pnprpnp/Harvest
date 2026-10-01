@@ -696,7 +696,8 @@ function setAppAccessRole(nextRole, options = {}){
   return changed;
 }
 
-function showToast(message){
+function showToast(message, options = {}){
+  if(options.error) return showOperationError(message, options.title);
   const toast = document.getElementById("toast");
   toast.textContent = message;
   toast.classList.add("show");
@@ -704,7 +705,71 @@ function showToast(message){
   showToast._timer = setTimeout(() => toast.classList.remove("show"), 2800);
 }
 
+const operationErrorNotifications = [];
+let operationErrorReturnFocus = null;
+
+function renderOperationError(){
+  const notification = operationErrorNotifications[0];
+  if(!notification) return;
+  document.getElementById("recordImportErrorTitle").textContent = notification.title;
+  document.getElementById("recordImportErrorMessage").textContent = notification.message;
+  document.getElementById("recordImportErrorMessage").scrollTop = 0;
+  document.getElementById("operationErrorConfirm").focus();
+}
+
+function handleOperationErrorKeydown(event){
+  if(event.key !== "Escape" && event.key !== "Tab") return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if(event.key === "Tab") document.getElementById("operationErrorConfirm")?.focus();
+}
+
+function handleOperationErrorFocus(event){
+  const modal = document.getElementById("operationErrorModal");
+  if(modal && !modal.contains(event.target)){
+    document.getElementById("operationErrorConfirm")?.focus();
+  }
+}
+
+function showOperationError(message, title = "操作を完了できませんでした"){
+  const modal = document.getElementById("operationErrorModal");
+  const panel = document.getElementById("recordImportErrorPanel");
+  if(!modal || !panel){
+    window.alert(String(message || "原因不明"));
+    return;
+  }
+  const notification = { message:String(message || "原因不明"), title };
+  // 同じ失敗の繰り返しで確認回数を増やさず、別の未確認通知は順番に残す。
+  if(operationErrorNotifications.some(item => item.message === notification.message && item.title === title)) return;
+  operationErrorNotifications.push(notification);
+  if(operationErrorNotifications.length > 1) return;
+  operationErrorReturnFocus = document.activeElement;
+  clearTimeout(showToast._timer);
+  document.getElementById("toast")?.classList.remove("show");
+  panel.classList.add("show");
+  showPageBlockingUi(modal);
+  document.addEventListener("keydown", handleOperationErrorKeydown, true);
+  document.addEventListener("focusin", handleOperationErrorFocus, true);
+  renderOperationError();
+}
+
+function acknowledgeOperationError(){
+  operationErrorNotifications.shift();
+  if(operationErrorNotifications.length){
+    renderOperationError();
+    return;
+  }
+  document.removeEventListener("keydown", handleOperationErrorKeydown, true);
+  document.removeEventListener("focusin", handleOperationErrorFocus, true);
+  document.getElementById("recordImportErrorPanel")?.classList.remove("show");
+  hidePageBlockingUi(document.getElementById("operationErrorModal"));
+  const returnFocus = operationErrorReturnFocus;
+  operationErrorReturnFocus = null;
+  if(returnFocus?.isConnected) returnFocus.focus?.();
+}
+
 const PAGE_BLOCKING_UI_IDS = Object.freeze([
+  "operationErrorModal",
   "monitorEditorModal",
   "monitorPreviewModal",
   "appMenuModal",
@@ -1439,7 +1504,7 @@ function saveHarvestStateToStorageSafely(options = {}){
   }catch(error){
     console.error("Failed to save current harvest state", error);
     if(document.visibilityState !== "hidden"){
-      showToast("入力内容の一時保存に失敗しました");
+      showToast("入力内容の一時保存に失敗しました", { error:true });
     }
     return false;
   }
@@ -2984,7 +3049,7 @@ function startHarvestProgressEntryEdit(entryIndex){
   const safeIndex = Number(entryIndex);
   const entry = Number.isInteger(safeIndex) ? state?.entries?.[safeIndex] : null;
   if(!state || !entry){
-    showToast("修正する入力を読み込めませんでした");
+    showToast("修正する入力を読み込めませんでした", { error:true });
     return false;
   }
   const partialEntryIndex = entry.type === "partial"
@@ -3139,7 +3204,7 @@ function saveHarvestProgressEntryEdit(){
     if(!Number.isInteger(edit.partialEntryIndex)
       || edit.partialEntryIndex < 0
       || edit.partialEntryIndex >= draft.entries.length){
-      showToast("部分収穫の入力を読み込めませんでした");
+      showToast("部分収穫の入力を読み込めませんでした", { error:true });
       return false;
     }
     const entries = draft.entries.map(entry => ({ ...entry, bedKeys:[...entry.bedKeys] }));
@@ -4055,7 +4120,6 @@ function closeRecordFloatingUi(){
   hideRecordBedActionMenu();
   hideRecordImportMenu();
   hideGoogleSheetResendHelp();
-  hideRecordImportError();
 }
 
 function preservePlantingStateBeforeTabSwitch(options = {}){
@@ -4331,7 +4395,7 @@ function scheduleMainTabPostSelectionWork(tabName){
       definition?.afterPaint?.();
     }catch(error){
       console.error("Failed to finish tab selection", error);
-      showToast("表示の更新に失敗しました。もう一度タブを押してください");
+      showToast("表示の更新に失敗しました。もう一度タブを押してください", { error:true });
     }finally{
       if(scheduleId === tabSwitchScheduleId){
         loadingTarget?.removeAttribute("aria-busy");

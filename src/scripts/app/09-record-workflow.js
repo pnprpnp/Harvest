@@ -2849,7 +2849,7 @@ function scheduleRecordHistoryListRender(options = {}){
       }
     }catch(error){
       console.error("記録一覧を読み込めませんでした", error);
-      showToast("記録一覧を読み込めませんでした。もう一度お試しください");
+      showToast("記録一覧を読み込めませんでした。もう一度お試しください", { error:true });
     }finally{
       finishRecordHistoryListRender(scheduleId);
     }
@@ -3317,7 +3317,7 @@ async function handleRecordPrimaryAction(){
   }catch(e){
     console.error("Record action failed", e);
     closeRecordFloatingUi();
-    showToast("記録処理中にエラーが発生しました。再読み込みしてもう一度試してください");
+    showToast("記録処理中にエラーが発生しました。再読み込みしてもう一度試してください", { error:true });
   }
 }
 
