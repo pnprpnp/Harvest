@@ -96,6 +96,33 @@
     })).sort((a,b)=>strength[b.level]-strength[a.level] || order[a.kind]-order[b.kind]
       || (a.daysToReady ?? Infinity)-(b.daysToReady ?? Infinity)).slice(0,3);
   }
+  function scheduledCalendar(items,{today,forecastEndDate,forecastDates} = {}){
+    if(!day(today)) return [];
+    const available = forecastDates ? new Set(forecastDates) : null;
+    const byDate = new Map(), seen = new Set();
+    (items || []).forEach(item => {
+      if(!day(item.date) || !item.id || seen.has(item.id)) return;
+      seen.add(item.id);
+      if(!byDate.has(item.date)) byDate.set(item.date,[]);
+      byDate.get(item.date).push(item);
+    });
+    return Array.from({length:14},(_,index) => {
+      const date = add(today,index), entries = byDate.get(date) || [];
+      const predicted = !!forecastEndDate && date <= forecastEndDate && (!available || available.has(date));
+      const sizes = Object.fromEntries(["large","normal","small","unknown"].map(status => [status,{heads:0,unknownPallets:0}]));
+      if(predicted) entries.forEach(item => {
+        const bucket = sizes[item.status] || sizes.unknown;
+        if(finite(item.heads) && item.heads >= 0) bucket.heads += item.heads;
+        else bucket.unknownPallets += item.palletKeys.length;
+      });
+      const known = predicted ? entries.filter(item => finite(item.quantity?.center)) : [];
+      return {date,predicted,entries,sizes:predicted ? sizes : null,
+        cases:predicted ? known.reduce((sum,item)=>sum+item.quantity.center,0) : null,
+        low:predicted ? known.reduce((sum,item)=>sum+item.quantity.low,0) : null,
+        high:predicted ? known.reduce((sum,item)=>sum+item.quantity.high,0) : null,
+        missingQuantities:entries.length-known.length};
+    });
+  }
   function changes(previous,current){
     const prior = new Map((previous || []).map(item=>[item.id,item]));
     return (current || []).flatMap(item => {
@@ -114,5 +141,5 @@
       return result;
     });
   }
-  return Object.freeze({CASE_SIZE,fitYield,quantity,calendar,priority,warnings,changes,adjusted,riskLevel});
+  return Object.freeze({CASE_SIZE,fitYield,quantity,calendar,scheduledCalendar,priority,warnings,changes,adjusted,riskLevel});
 });

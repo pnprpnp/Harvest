@@ -5069,12 +5069,62 @@ function getDashboardGrowthPlanningItems(model,options={}){
   });
 }
 
+function getDashboardGrowthScheduledPlanningItems(model,options={}){
+  let cache=model.scheduledPlanningItemsCache;
+  if(!cache || cache.baseModel!==model.baseModel || cache.predictions!==model.predictions){
+    const today=model.asOf.slice(0,10),end=formatDateOnlyString(addDays(parseDateOnlyString(today),13));
+    const byPallet=new Map(),groups=new Map();
+    model.predictions.forEach(item=>(item.cohorts || []).forEach(cohort=>
+      cohort.palletKeys.forEach(key=>byPallet.set(key,{item,cohort}))));
+    model.baseModel.palletForecasts.forEach((forecast,key)=>{
+      const date=formatDateOnlyString(forecast.date);
+      if(date<today || date>end) return;
+      const source=byPallet.get(key),cohort=source?.cohort;
+      const status=cohort?.input?.targetDate===date && ["small","normal","large"].includes(cohort.prediction?.status)
+        ? cohort.prediction.status : "unknown";
+      // Join matching scopes before subtracting partial totals. Never allocate a
+      // partial record across different harvest dates or predicted sizes.
+      const id=`${date}:${cohort ? cohort.plantingEventId : key}:${status}`;
+      if(!groups.has(id)) groups.set(id,{id,date,status,plantingEventId:cohort?.plantingEventId,
+        palletKeys:[],locations:new Map(),heads:null,quantity:null});
+      const group=groups.get(id);
+      group.palletKeys.push(key);
+      if(cohort) group.locations.set(cohort,{building:source.item.building,bed:source.item.bed,
+        risk:cohort.risk || source.item.risk,confidence:cohort.prediction?.confidence?.label});
+    });
+    let dataset=null;
+    if(groups.size){
+      try{dataset=getDashboardGrowthYieldAnalysis(model.asOf).dataset;}catch(error){/* Keep unknown counts visible. */}
+    }
+    const items=[...groups.values()].map(group=>{
+      const input=HarvestGrowthYield.currentInput(dataset,{palletKeys:group.palletKeys,plantingEventId:group.plantingEventId});
+      group.heads=input.valid && Number.isFinite(input.plantedHeads) && Number.isFinite(input.partialHeads)
+        ? Math.max(0,input.plantedHeads-input.partialHeads) : null;
+      group.locations=[...group.locations.values()];
+      return group;
+    });
+    cache={baseModel:model.baseModel,predictions:model.predictions,items,hasQuantities:false};
+    model.scheduledPlanningItemsCache=cache;
+  }
+  if(options.includeQuantity && !cache.hasQuantities){
+    cache.items.forEach(item=>{
+      try{
+        const value=getDashboardGrowthYieldPrediction(item.palletKeys,item.plantingEventId,model.modelVersion,model.asOf);
+        if(value?.available && Number.isFinite(value.center)) item.quantity=value;
+      }catch(error){/* Keep unavailable quantities separate from zero. */}
+    });
+    cache.hasQuantities=true;
+  }
+  return cache.items;
+}
+
 function renderDashboardGrowthPlanning(model){
   const container=document.getElementById("dashboardGrowthPlanning");
   if(!container) return;
-  const items=getDashboardGrowthPlanningItems(model),today=model.asOf.slice(0,10);
+  const items=getDashboardGrowthPlanningItems(model,{includeQuantity:false}),today=model.asOf.slice(0,10);
+  const scheduledItems=getDashboardGrowthScheduledPlanningItems(model,{includeQuantity:dashboardGrowthPlanningShowsQuantity});
   const forecastDates=model.weather.daily.filter(day=>day.source==="forecast").map(day=>day.date);
-  const calendar=HarvestGrowthPlanner.calendar(items,{today,forecastEndDate:model.weather.forecastEndDate,forecastDates});
+  const calendar=HarvestGrowthPlanner.scheduledCalendar(scheduledItems,{today,forecastEndDate:model.weather.forecastEndDate,forecastDates});
   const warnings=HarvestGrowthPlanner.warnings(items,today),riskNames={elongated:"徒長",uneven:"ばらつき",tipburn:"チップバーン"};
   const changeState=readDashboardGrowthChangeState(model.scope),recentChanges=changeState.notifications.slice(0,3);
   const unreadChanges=changeState.notifications.filter(item=>!item.readAt).length;
@@ -5082,11 +5132,14 @@ function renderDashboardGrowthPlanning(model){
   const warningHtml=warnings.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">品質の注意（最大3件）</h3><ul class="dashboardGrowthWarningList">${warnings.map(item=>`<li class="dashboardGrowthWarningItem"><strong>${escapeHtml(`${item.building}号棟 ${item.bed}ベッド`)}</strong><span>${escapeHtml(riskNames[item.kind] || item.kind)}：${escapeHtml(item.risk?.label || "注意")}。${escapeHtml(item.risk?.reason || "計算根拠が不足しています。")}</span></li>`).join("")}</ul></section>` : "";
   const dateLabel=value=>{const date=parseDateOnlyString(value);return date ? `${date.getMonth()+1}/${date.getDate()}` : value;};
   const caseNumber=value=>Number.isInteger(Math.round(value*10)/10) ? String(Math.round(value)) : String(Math.round(value*10)/10);
-  const calendarHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今後14日の適期</h3><ul class="dashboardGrowthCalendar">${calendar.map(day=>{
+  const calendarHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今後14日の収穫予定と大きさ</h3><p class="dashboardGrowthBasisMethod">「目安」の収穫予定範囲を、予定日時点の予測サイズ別に集計しています。株数は植え付け記録から部分収穫済み分を差し引いた値です。</p>${model.baseModel.canForecast===false ? '<p class="dashboardEmpty">「目安」で収穫予定を計算すると、予定日の大きさを表示できます。</p>' : `<ul class="dashboardGrowthCalendar">${calendar.map(day=>{
+    if(!day.entries.length) return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>収穫予定なし</span></li>`;
     if(!day.predicted) return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>気象予報範囲外のため未予測</span></li>`;
-    const started=day.entries.map(item=>`${item.building}号棟${item.bed}${item.manualAdjusted ? "（手動補正）" : ""}`).join("、") || "なし";
-    const ongoing=day.ongoing.map(item=>`${item.building}号棟${item.bed}${item.manualAdjusted ? "（手動補正）" : ""}`).join("、") || "なし";
-    const affected=[...new Map([...day.entries,...day.ongoing].map(item=>[item.id,item])).values()];
+    const sizeText=[["large","大きめ"],["normal","ちょうど良い"],["small","小さめ"],["unknown","大きさ不明"]].flatMap(([status,label])=>{
+      const size=day.sizes[status],known=size.heads>0 ? `${label}${caseNumber(size.heads)}株` : "";
+      return size.unknownPallets ? [`${known || label}${known ? "＋" : "："}株数不明`] : known ? [known] : [];
+    }).join("・") || "残り株なし";
+    const affected=day.entries.flatMap(item=>item.locations);
     const riskOrder={high:2,medium:1,unknown:0,low:0};
     const mainRisk=affected.flatMap(item=>["elongated","uneven","tipburn"].map(kind=>({item,kind,level:HarvestGrowthPlanner.riskLevel(item.risk?.[kind])})))
       .filter(value=>riskOrder[value.level]>0).sort((a,b)=>riskOrder[b.level]-riskOrder[a.level] || ["elongated","uneven","tipburn"].indexOf(a.kind)-["elongated","uneven","tipburn"].indexOf(b.kind))[0];
@@ -5096,8 +5149,8 @@ function renderDashboardGrowthPlanning(model){
       quantity=day.missingQuantities ? "残存ケース数：不明" : `残存ケース数：${caseNumber(day.cases)}ケース（${caseNumber(day.low)}〜${caseNumber(day.high)}）`;
     }
     const meta=[mainRisk ? `注意：${riskNames[mainRisk.kind]}（${mainRisk.item.building}号棟${mainRisk.item.bed}）` : "",confidence ? `信頼度：${confidence}` : "",quantity].filter(Boolean).join("・");
-    return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span class="dashboardGrowthCalendarCopy"><span>開始：${escapeHtml(started)}／期間中：${escapeHtml(ongoing)}</span>${meta ? `<small>${escapeHtml(meta)}</small>` : ""}</span></li>`;
-  }).join("")}</ul>${dashboardGrowthPlanningShowsQuantity ? '<p class="dashboardGrowthBasisMethod">ケース数は指定範囲に残る参考値です。適期日に収穫できる数量を保証する値ではありません。</p>' : '<button type="button" class="dashboardInlineBtn" data-ui-click="showDashboardGrowthPlanningQuantity">残存ケース数も確認</button>'}</section>`;
+    return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span class="dashboardGrowthCalendarCopy"><span>${escapeHtml(sizeText)}</span>${meta ? `<small>${escapeHtml(meta)}</small>` : ""}</span></li>`;
+  }).join("")}</ul>`}${dashboardGrowthPlanningShowsQuantity ? '<p class="dashboardGrowthBasisMethod">ケース数は指定範囲に残る参考値です。予定日に収穫できる数量を保証する値ではありません。</p>' : '<button type="button" class="dashboardInlineBtn" data-ui-click="showDashboardGrowthPlanningQuantity">残存ケース数も確認</button>'}</section>`;
   container.innerHTML=changesHtml+warningHtml+calendarHtml;
 }
 
