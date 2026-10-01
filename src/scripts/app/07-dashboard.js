@@ -5086,9 +5086,6 @@ function renderDashboardGrowthPlanning(model){
   const changeState=readDashboardGrowthChangeState(model.scope),recentChanges=changeState.notifications.slice(0,3);
   const unreadChanges=changeState.notifications.filter(item=>!item.readAt).length;
   const changesHtml=recentChanges.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">前回予測からの変化</h3><ul class="dashboardGrowthChangeList">${recentChanges.map(change=>`<li class="dashboardGrowthChangeItem">${escapeHtml(formatDashboardGrowthChange(change))}</li>`).join("")}</ul>${unreadChanges ? '<button type="button" class="dashboardInlineBtn" data-ui-click="markDashboardGrowthChangesRead">確認済みにする</button>' : ""}</section>` : "";
-  const priorityGroups={urgent:[],today:[],later:[]};
-  items.forEach(item=>priorityGroups[HarvestGrowthPlanner.priority(item,today)].push(item));
-  const priorityHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今日の確認順</h3><div class="dashboardGrowthModelGate"><span>今すぐ優先 ${priorityGroups.urgent.length}件：${escapeHtml(priorityGroups.urgent.map(item=>`${item.building}号棟${item.bed}`).join("、") || "なし")}</span><span>今日中が理想 ${priorityGroups.today.length}件：${escapeHtml(priorityGroups.today.map(item=>`${item.building}号棟${item.bed}`).join("、") || "なし")}</span><span>まだ余裕あり ${priorityGroups.later.length}件</span></div><p class="dashboardGrowthBasisMethod">現在の大きさが小さい・不明な作は、品質注意だけで収穫優先へ上げません。</p></section>`;
   const warningHtml=warnings.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">品質の注意（最大3件）</h3><ul class="dashboardGrowthWarningList">${warnings.map(item=>`<li class="dashboardGrowthWarningItem"><strong>${escapeHtml(`${item.building}号棟 ${item.bed}ベッド`)}</strong><span>${escapeHtml(riskNames[item.kind] || item.kind)}：${escapeHtml(item.risk?.label || "注意")}。${escapeHtml(item.risk?.reason || "計算根拠が不足しています。")}</span></li>`).join("")}</ul></section>` : "";
   const dateLabel=value=>{const date=parseDateOnlyString(value);return date ? `${date.getMonth()+1}/${date.getDate()}` : value;};
   const caseNumber=value=>Number.isInteger(Math.round(value*10)/10) ? String(Math.round(value)) : String(Math.round(value*10)/10);
@@ -5108,7 +5105,7 @@ function renderDashboardGrowthPlanning(model){
     const meta=[mainRisk ? `注意：${riskNames[mainRisk.kind]}（${mainRisk.item.building}号棟${mainRisk.item.bed}）` : "",confidence ? `信頼度：${confidence}` : "",quantity].filter(Boolean).join("・");
     return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span class="dashboardGrowthCalendarCopy"><span>開始：${escapeHtml(started)}／期間中：${escapeHtml(ongoing)}</span>${meta ? `<small>${escapeHtml(meta)}</small>` : ""}</span></li>`;
   }).join("")}</ul>${dashboardGrowthPlanningShowsQuantity ? '<p class="dashboardGrowthBasisMethod">ケース数は指定範囲に残る参考値です。適期日に収穫できる数量を保証する値ではありません。</p>' : '<button type="button" class="dashboardInlineBtn" data-ui-click="showDashboardGrowthPlanningQuantity">残存ケース数も確認</button>'}</section>`;
-  container.innerHTML=changesHtml+priorityHtml+warningHtml+calendarHtml;
+  container.innerHTML=changesHtml+warningHtml+calendarHtml;
 }
 
 function renderDashboardGrowthValidation(model){
