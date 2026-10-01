@@ -3363,7 +3363,13 @@ function calculateHarvestSelectionFromRecords(options = {}){
         sourceRecords,
         { lookup: harvestRecordLookup }
       );
-      const baseHarvest = harvestRate === null
+      const plantCount = options.harvestLossRatesByPlantingCount
+        ? getHarvestPlantCountForPallet(current.building, current.bed, current.number, partialTargetDate)
+        : null;
+      const countLossRate = options.harvestLossRatesByPlantingCount?.[plantCount];
+      const baseHarvest = Number.isFinite(countLossRate)
+        ? plantCount * (100 - clampNumber(countLossRate, 0, 100, 0)) / 100
+        : harvestRate === null
         ? getPredictedHarvestForBed(current.building, current.bed, current.number, partialTargetDate)
         : getHarvestPlantCountForPallet(current.building, current.bed, current.number, partialTargetDate) * harvestRate;
       const harvest = Math.max(0, baseHarvest - partialCount);

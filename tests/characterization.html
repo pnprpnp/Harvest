@@ -5101,7 +5101,13 @@
             calculateHarvestSelectionFromRecords = options => ++selectionCalls === 1
               ? previous.calculate(options) : {palletKeys:[],totalHarvest:0};
             const before = JSON.stringify({records,plantingEvents});
+            const settingsBefore = JSON.stringify(settings);
             const configured = firstDay();
+            dashboardHarvestForecastLossValue = {12:"50",16:"0",20:"0"};
+            const byCount = firstDay();
+            const sharedAfterTrial = previous.calculate({referenceDate:today,needHeads:36});
+            const settingsUnchanged = JSON.stringify(settings) === settingsBefore;
+            dashboardHarvestForecastLossValue = null;
             const usual = previous.calculate({referenceDate:configured.model.referenceDate,needHeads:36});
             getDashboardRecentMetrics = () => ({averageCases:3,averageLoss:90,harvestDays:1});
             const highAverage = firstDay();
@@ -5128,6 +5134,10 @@
             const sameDayPartial = firstDay();
             dashboardHarvestForecastLossValue = "0";
             const commonPartial = firstDay();
+            dashboardHarvestForecastLossValue = {12:"50",16:"0",20:"0"};
+            const byCountPartial = firstDay();
+            dashboardHarvestForecastLossValue = {12:"100",16:"100",20:"100"};
+            const byCount100 = firstDay().model.canForecast;
             records = [];
             invalidateRecordDerivedCaches();
             dashboardHarvestForecastLossValue = "100";
@@ -5137,6 +5147,8 @@
             invalidateNormalizedBedCalculationSettings();
             const all100 = firstDay().model;
             return {
+              byCount:byCount.keys, sharedAfterTrial:sharedAfterTrial.palletKeys, settingsUnchanged,
+              byCountPartial:byCountPartial.keys, byCount100,
               configured:configured.keys, usual:usual.palletKeys, usualHeads:usual.totalHarvest,
               noAverageCanForecast:configured.model.canForecast, average:configured.model.averageLoss,
               highAverage:highAverage.keys, common:common.keys, blank:blank.keys, disabled:disabled.keys,
@@ -5160,6 +5172,11 @@
         const first = ["2-A-1","2-A-2","2-A-3"];
         assertDeepEqual(state.configured, [...first,"2-A-4"], "植え数別ロス率が目安へ反映されません");
         assertDeepEqual(state.usual, state.configured, "目安と通常計算の選択が一致しません");
+        assertDeepEqual(state.byCount, first, "目安専用の植え数別ロス率を混在する株数に適用できません");
+        assertDeepEqual(state.sharedAfterTrial, state.usual, "目安の試算でシミュの通常計算が変わっています");
+        assertEqual(state.settingsUnchanged, true, "目安の試算で共有設定が変わっています");
+        assertDeepEqual(state.byCountPartial, first, "植え数別の試算で同日の部分収穫を控除できません");
+        assertEqual(state.byCount100, false, "植え数別のロス率が全て100%でも予測を実行しています");
         assertEqual(state.usualHeads, 46, "0%・25%・50%のロス率を場所ごとに適用できません");
         assertEqual(state.noAverageCanForecast, true, "平均ロス率がなくても設定値で予測できません");
         assertEqual(state.average, null, "記録なしの平均ロス率を作っています");
@@ -5278,6 +5295,83 @@
           }finally{
             frame.remove();
           }
+        }
+      });
+
+      await runTest("目安のケース数同行配置と植え数別ロス率がシミュ設定から独立する", async () => {
+        for(const width of [320,390]){
+          const frame = await loadVisualAppFrame(width,844);
+          const visualApp = frame.contentWindow;
+          try{
+            visualApp.eval(`
+              protectedAccessUnlocked = true; records = []; plantingEvents = [];
+              settings = {...deepClone(defaultSettings),defaultLossRate:10,usePlantingCountLossSettings:true,
+                harvestLossRatesByPlantingCount:{12:0,16:12.3,20:30}};
+              invalidateNormalizedBedCalculationSettings(); invalidatePlantingEventStateCache(); invalidateRecordDerivedCaches();
+              dashboardHarvestForecastCasesValue = dashboardHarvestForecastCasesDraftValue = "1000";
+              dashboardHarvestForecastLossValue = dashboardHarvestForecastLossDraftValue = null;
+              invalidateDashboardDerivedData();
+            `);
+            const settingsBefore = visualApp.eval("JSON.stringify(settings)");
+            const storageBefore = visualApp.localStorage.getItem("harvestForecastSettings_v16");
+            const normalizedBefore = visualApp.getNormalizedBedCalculationSettings();
+            visualApp.document.getElementById("welcomeScreen")?.remove();
+            visualApp.switchTab("dashboard"); visualApp.setDashboardSubtab("guide");
+            await settleVisualApp(visualApp);
+            const doc = visualApp.document;
+            const summary = doc.getElementById("dashboardForecastBarSummary");
+            const details = doc.getElementById("dashboardForecastControlsDetails");
+            const mode = doc.getElementById("dashboardForecastLossMode");
+            const apply = doc.getElementById("dashboardForecastApplyBtn");
+            const open = async () => {if(!details.open) summary.click(); await settleVisualApp(visualApp);};
+            const change = (count,value) => {
+              const input = doc.getElementById(`dashboardForecastLoss${count}Input`);
+              input.value = value; input.dispatchEvent(new visualApp.Event("input",{bubbles:true}));
+            };
+            await open();
+            const caseLabel = doc.querySelector(".dashboardForecastCasesField > .dashboardForecastControlLabel").getBoundingClientRect();
+            const caseInput = doc.getElementById("dashboardForecastCasesInputWrap").getBoundingClientRect();
+            assert(caseLabel.right <= caseInput.left && caseLabel.top < caseInput.bottom && caseLabel.bottom > caseInput.top,
+              width + "px幅でケース数の項目名と入力欄が同じ行になっていません");
+            mode.value = "plantingCount"; mode.dispatchEvent(new visualApp.Event("change",{bubbles:true}));
+            const grid = doc.getElementById("dashboardForecastPlantingLossInputs");
+            assert(!grid.hidden,"植え数別の入力欄が開きません");
+            assertEqual(doc.getElementById("dashboardForecastLoss16Input").value,"12.3","初期値にシミュの設定を使っていません");
+            const model = visualApp.eval("dashboardHarvestForecastModelCache");
+            change(12,"5"); change(16,"25"); change(20,"100");
+            assertEqual(visualApp.eval("dashboardHarvestForecastModelCache"),model,"下書きだけで再計算しています");
+            assert(!apply.disabled,"一部の植え数が100%でも他の植え数で試算できません");
+            const panel = doc.getElementById("dashboardForecastControlsPanel");
+            assert(panel.scrollWidth <= panel.clientWidth + 1,width + "px幅で入力欄がはみ出しています");
+            for(const input of grid.querySelectorAll("input")){
+              assert(input.getBoundingClientRect().height >= 44,"植え数別入力の操作領域が小さすぎます");
+            }
+            apply.click();
+            assert(!details.open,"反映後に入力欄が閉じません");
+            assertEqual(doc.getElementById("dashboardForecastBarText").textContent,
+              "1000ケース/日　12:5% / 16:25% / 20:100%","植え数別の試算値が固定バーへ反映されません");
+            const appliedModel = visualApp.eval("dashboardHarvestForecastModelCache");
+            await open(); change(16,"40");
+            doc.getElementById("dashboardForecastControlsBackdrop").click();
+            await open();
+            assertEqual(doc.getElementById("dashboardForecastLoss16Input").value,"25","取消しが反映済みの植え数別値を書き換えています");
+            for(const value of ["","-1","101"]){
+              change(12,value); assert(apply.disabled,"無効な植え数別ロス率で試算できます: " + value);
+            }
+            change(12,"100"); change(16,"100"); assert(apply.disabled,"全植え数100%でも試算できます");
+            assertEqual(visualApp.eval("dashboardHarvestForecastModelCache"),appliedModel,"無効入力で適用済み予測が変わっています");
+            doc.querySelector(".dashboardForecastControlsClose").click();
+            assertEqual(visualApp.eval("JSON.stringify(settings)"),settingsBefore,"目安の入力でシミュ設定が変わっています");
+            assertEqual(visualApp.localStorage.getItem("harvestForecastSettings_v16"),storageBefore,"目安の入力が共有設定へ保存されています");
+            assertEqual(visualApp.getNormalizedBedCalculationSettings(),normalizedBefore,"目安の入力でシミュ設定のキャッシュが無効化されています");
+            await open();
+            doc.getElementById("dashboardForecastAverageBtn").click();
+            assertEqual(mode.value,"settings","初期値に戻す操作でシミュ設定の参照へ戻りません");
+            assert(grid.hidden,"設定値使用時も植え数別入力が残っています");
+            doc.querySelector(".dashboardForecastControlsClose").click();
+            await open();
+            assertEqual(mode.value,"plantingCount","取消しで反映済みの試算モードへ戻りません");
+          }finally{frame.remove();}
         }
       });
 

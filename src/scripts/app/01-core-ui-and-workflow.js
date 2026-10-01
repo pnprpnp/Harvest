@@ -340,6 +340,7 @@ let dashboardPastCalendarActive = false;
 let dashboardPastCalendarStartMonth = null;
 let dashboardPastCalendarItemsByDateCache = null;
 let dashboardHarvestForecastCasesValue = null;
+// null: シミュの設定値を参照、文字列: 共通ロス率、オブジェクト: 目安専用の植え数別ロス率。
 let dashboardHarvestForecastLossValue = null;
 let dashboardHarvestForecastCasesDraftValue = null;
 let dashboardHarvestForecastLossDraftValue = null;
