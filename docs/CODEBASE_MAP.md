@@ -143,7 +143,7 @@
 → `runHarvestPrediction()` が収穫量・ケース数・ロスを計算
 → 記録変更時だけ関連索引を無効化・再構築する。
 
-「目安」の `buildDashboardHarvestForecastModel()` も同じ選択処理を使います。通常は `harvestRate` を渡さず、苗植え実績の株数と植え数別・基本のロス率設定を適用します。「共通ロス率で試算」の反映時だけ共通の `harvestRate` を渡します。直近1ヶ月の平均ロス率は参考表示で、ケース数は引き続き実績平均を初期値にします。条件の下書き変更は再計算せず、「予測する」で収穫予定モデルと生育予測モデルを無効化します。設定保存は既存の `saveSettingsToStorage()` → `invalidateDashboardDerivedData()` 経路で反映します。必須確認は `tests/run_characterization.py` の植え数別・共通ロス率・部分収穫と320px・390px幅の切替操作です。
+「目安」の `buildDashboardHarvestForecastModel()` も同じ選択処理を使います。通常は `harvestRate` を渡さず、苗植え実績の株数と植え数別・基本のロス率設定を適用します。「共通ロス率で試算」の反映時だけ共通の `harvestRate` を渡します。直近1ヶ月の平均ロス率は参考表示で、ケース数は引き続き実績平均を初期値にします。条件の下書き変更は再計算せず、「予測する」で収穫予定モデルと生育予測モデルを無効化します。設定保存は既存の `saveSettingsToStorage()` → `invalidateDashboardDerivedData()` 経路で反映します。下部固定バーはシミュの `forecastActionRow` と外枠を共用し、反映済みモデルから1行表示を導出します。入力欄の開閉は既存モデルを再利用し、閉じる・外側タップ・Escape・画面切替で未反映の下書きを取り消します。必須確認は `tests/run_characterization.py` の植え数別・共通ロス率・部分収穫、320px・390px幅の切替操作、固定バーの外枠・開閉・取消・キャッシュ再利用です。
 
 ### 生育予測β
 

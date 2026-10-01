@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261001-no-pre-edit-confirmation">
+<meta name="harvestnavi-version" content="20261001-guide-fixed-bar">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17174,6 +17174,68 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .operationErrorModal .recordImportErrorClose{min-height:44px;}
 
 /* Dashboard */
+#dashboardSubtabGuide{padding-bottom:76px;}
+.dashboardForecastControlsDetails{width:100%;max-width:760px;margin:0 auto;}
+.dashboardForecastBarSummary{
+  height:46px;
+  box-sizing:border-box;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:0 4px;
+  border:1px solid var(--ui-line-strong);
+  border-radius:12px;
+  background:var(--ui-surface-solid);
+  color:var(--ui-text);
+  font-size:12px;
+  font-weight:750;
+  line-height:1.2;
+  white-space:nowrap;
+  list-style:none;
+  cursor:pointer;
+  font-variant-numeric:tabular-nums;
+}
+.dashboardForecastBarSummary::-webkit-details-marker{display:none;}
+.dashboardForecastBarSummary:focus-visible{outline:2px solid var(--ui-blue);outline-offset:2px;}
+.dashboardForecastBarChevron{flex:none;color:var(--ui-text-tertiary);}
+.dashboardForecastControlsDetails[open] .dashboardForecastBarChevron{transform:rotate(180deg);}
+.dashboardForecastControlsPanel{
+  position:absolute;
+  right:0;
+  bottom:calc(100% + 8px);
+  left:0;
+  width:calc(100% - 28px);
+  max-width:760px;
+  max-height:calc(100vh - 180px);
+  max-height:calc(100dvh - 180px);
+  box-sizing:border-box;
+  margin:0 auto;
+  padding:14px;
+  overflow:auto;
+  overscroll-behavior:contain;
+  border:1px solid var(--ui-line);
+  border-radius:16px;
+  background:var(--ui-surface-solid);
+  box-shadow:var(--ui-shadow-float);
+}
+.dashboardForecastControlsDetails:not([open]) > .dashboardForecastControlsPanel{display:none;}
+.dashboardForecastControlsHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.dashboardForecastControlsHeading strong{color:var(--ui-text);font-size:14px;}
+.dashboardForecastControlsClose{
+  min-height:44px;
+  margin:0;
+  padding:6px 10px;
+  border:0;
+  border-radius:10px;
+  background:var(--ui-surface-muted);
+  color:var(--ui-text-secondary);
+  font-size:12px;
+}
+@media(max-width:360px){
+  .dashboardForecastBarSummary{font-size:11px;gap:4px;}
+  .dashboardForecastBarSummary.is-compact{font-size:10px;}
+}
 .dashboardForecastControls{grid-template-columns:minmax(0, 1fr);}
 .dashboardForecastLossMode{
   width:100%;
@@ -20717,35 +20779,6 @@ requestAnimationFrame(function(){
 
     <div id="dashboardSubtabGuide" class="dashboardSubtabPanel" role="tabpanel" aria-labelledby="dashboardSubtabGuideBtn" data-dashboard-subtab-panel="guide">
       <div class="card dashboardHarvestForecastCard">
-        <div class="dashboardForecastControls">
-          <label class="dashboardForecastControlField" for="dashboardForecastCasesInput">
-            <span class="dashboardForecastControlLabel">1日あたり収穫ケース数</span>
-            <span id="dashboardForecastCasesInputWrap" class="dashboardForecastValueInput">
-              <input id="dashboardForecastCasesInput" type="number" min="0.1" max="999999" step="0.1" inputmode="decimal" data-ui-input="handleDashboardHarvestForecastInput" data-ui-arg="cases">
-              <span class="dashboardForecastInputSuffix">ケース</span>
-            </span>
-          </label>
-          <div class="dashboardForecastControlField">
-            <label class="dashboardForecastControlLabel" for="dashboardForecastLossMode">収穫ロス率</label>
-            <select id="dashboardForecastLossMode" class="dashboardForecastLossMode" data-ui-change="handleDashboardHarvestForecastInput" data-ui-arg="lossMode">
-              <option value="settings">設定値を使う</option>
-              <option value="common">共通ロス率で試算</option>
-            </select>
-            <span id="dashboardForecastLossInputWrap" class="dashboardForecastValueInput" hidden>
-              <input id="dashboardForecastLossInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" aria-label="試算用の共通収穫ロス率" data-ui-input="handleDashboardHarvestForecastInput" data-ui-arg="loss" disabled>
-              <span class="dashboardForecastInputSuffix">%</span>
-            </span>
-          </div>
-          <div class="dashboardForecastActions">
-            <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" data-ui-click="resetDashboardHarvestForecastInputs">初期値に戻す</button>
-            <button id="dashboardForecastApplyBtn" type="button" class="dashboardForecastApplyBtn" data-ui-click="applyDashboardHarvestForecastInputs">予測する</button>
-          </div>
-          <div class="dashboardForecastLossNotes">
-            <p id="dashboardForecastLossSettingsNote"></p>
-            <p id="dashboardForecastLossAverageNote"></p>
-            <p id="dashboardForecastPendingNote" role="status" hidden>条件を変更しました。「予測する」で反映します。</p>
-          </div>
-        </div>
         <div class="dashboardForecastHeader">
           <button id="dashboardForecastInfoBtn" type="button" class="dashboardForecastInfoBtn" data-ui-click="openDashboardForecastInfoWindow" aria-label="収穫時期の目安について">i</button>
           <div class="dashboardForecastViewSwitch" role="group" aria-label="収穫時期の目安の表示方法">
@@ -20772,6 +20805,47 @@ requestAnimationFrame(function(){
           <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#8b5cf6"></span>7日後</span>
           <span class="dashboardForecastLegendItem"><span class="dashboardForecastLegendSwatch" style="background:#94a3b8"></span>8日後以降</span>
         </div>
+      </div>
+      <div class="forecastActionRow dashboardForecastFixedBar">
+        <details id="dashboardForecastControlsDetails" class="dashboardForecastControlsDetails" data-ui-toggle="handleDashboardHarvestForecastControlsToggle" data-ui-event-first="true">
+          <summary id="dashboardForecastBarSummary" class="dashboardForecastBarSummary" aria-controls="dashboardForecastControlsPanel" aria-expanded="false">
+            <span id="dashboardForecastBarText">--ケース/日　12:--% / 16:--% / 20:--%</span>
+            <span class="dashboardForecastBarChevron" aria-hidden="true">⌃</span>
+          </summary>
+          <div id="dashboardForecastControlsPanel" class="dashboardForecastControls dashboardForecastControlsPanel" role="region" aria-labelledby="dashboardForecastControlsTitle">
+            <div class="dashboardForecastControlsHeading">
+              <strong id="dashboardForecastControlsTitle">予測条件</strong>
+              <button type="button" class="dashboardForecastControlsClose" data-ui-click="closeDashboardHarvestForecastControls">閉じる</button>
+            </div>
+            <label class="dashboardForecastControlField" for="dashboardForecastCasesInput">
+              <span class="dashboardForecastControlLabel">1日あたり収穫ケース数</span>
+              <span id="dashboardForecastCasesInputWrap" class="dashboardForecastValueInput">
+                <input id="dashboardForecastCasesInput" type="number" min="0.1" max="999999" step="0.1" inputmode="decimal" data-ui-input="handleDashboardHarvestForecastInput" data-ui-arg="cases">
+                <span class="dashboardForecastInputSuffix">ケース</span>
+              </span>
+            </label>
+            <div class="dashboardForecastControlField">
+              <label class="dashboardForecastControlLabel" for="dashboardForecastLossMode">収穫ロス率</label>
+              <select id="dashboardForecastLossMode" class="dashboardForecastLossMode" data-ui-change="handleDashboardHarvestForecastInput" data-ui-arg="lossMode">
+                <option value="settings">設定値を使う</option>
+                <option value="common">共通ロス率で試算</option>
+              </select>
+              <span id="dashboardForecastLossInputWrap" class="dashboardForecastValueInput" hidden>
+                <input id="dashboardForecastLossInput" type="number" min="0" max="100" step="0.1" inputmode="decimal" aria-label="試算用の共通収穫ロス率" data-ui-input="handleDashboardHarvestForecastInput" data-ui-arg="loss" disabled>
+                <span class="dashboardForecastInputSuffix">%</span>
+              </span>
+            </div>
+            <div class="dashboardForecastActions">
+              <button id="dashboardForecastAverageBtn" type="button" class="dashboardForecastAverageBtn" data-ui-click="resetDashboardHarvestForecastInputs">初期値に戻す</button>
+              <button id="dashboardForecastApplyBtn" type="button" class="dashboardForecastApplyBtn" data-ui-click="applyDashboardHarvestForecastInputs">予測する</button>
+            </div>
+            <div class="dashboardForecastLossNotes">
+              <p id="dashboardForecastLossSettingsNote"></p>
+              <p id="dashboardForecastLossAverageNote"></p>
+              <p id="dashboardForecastPendingNote" role="status" hidden>条件を変更しました。「予測する」で反映します。</p>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -20997,7 +21071,7 @@ requestAnimationFrame(function(){
     </div>
     <div id="dashboardForecastInfoWindowBody" class="recordDetailWindowBody">1日あたり収穫ケース数の初期値は直近1ヶ月の平均です。収穫ロス率は通常の「計算する」と同じ設定値を使います。植え数別設定が有効で入力がある場合はその率を優先し、未入力なら基本のロス率を使います。植え付け数は場所ごとの苗植え記録を優先し、株数が未記録なら計算設定の収穫時の個数を使います。
 
-「共通ロス率で試算」を選ぶと、入力した率をすべての場所へ適用できます。ケース数やロス率の条件を変更したら「予測する」で反映します。「設定値を使う」に戻すこともできます。直近1ヶ月の平均ロス率は設定を見直すための参考値です。「初期値に戻す」はケース数を平均、ロス率を設定値に戻します。
+下部の固定バーには、予測に使用中のケース数と12・16・20植えごとのロス率を表示します。バーをタップすると入力欄が開きます。「共通ロス率で試算」を選ぶと、入力した率をすべての場所へ適用できます。ケース数やロス率の条件を変更したら「予測する」で反映します。「閉じる」や入力欄の外側をタップすると、未反映の変更は取り消されます。「設定値を使う」に戻すこともできます。直近1ヶ月の平均ロス率は設定を見直すための参考値です。「初期値に戻す」はケース数を平均、ロス率を設定値に戻します。
 
 収穫日は火・水・木・土・日として計算します。「計算する」を収穫日ごとに仮想実行し、予想用の直近10件を入れ替えながら、同じ場所を重ねず各場所の予測日を求めます。部分収穫済みの株数は見込み収穫数から差し引きます。現在未定植の場所は、次回〜次々回の収穫日に定植する想定で定植日数へ反映します。実際の記録は変更しません。</div>
   </div>
@@ -26020,6 +26094,7 @@ function handleMainTabPress(tabName){
 }
 
 function setMainTabSelection(tabName){
+  if(tabName !== "dashboard") closeDashboardHarvestForecastControls({ restoreFocus: false });
   MAIN_TAB_NAMES.forEach(name => {
     const isSelected = name === tabName;
     const panel = document.getElementById(name + "Tab");
@@ -36705,6 +36780,7 @@ function scheduleDashboardSelectedBuildingButtonReveal(subtab = dashboardFilter.
 
 function syncDashboardSubtabUi(){
   const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
+  if(activeSubtab !== "guide") closeDashboardHarvestForecastControls({ restoreFocus: false });
   document.querySelectorAll("[data-dashboard-subtab]").forEach(button => {
     const isActive = button.dataset.dashboardSubtab === activeSubtab;
     button.classList.toggle("active", isActive);
@@ -38161,6 +38237,51 @@ function parseDashboardHarvestForecastLossValue(value){
     : null;
 }
 
+function syncDashboardHarvestForecastBar(model){
+  const text = document.getElementById("dashboardForecastBarText");
+  if(!text) return;
+  const cases = formatDashboardHarvestForecastInputValue(model.forecastCases) || "--";
+  const rates = [...model.settingsLossRates].sort((left, right) => left.plantingCount - right.plantingCount).map(item => {
+    const loss = model.lossUsesSettings ? item.lossRate : model.forecastLoss;
+    return `${item.plantingCount}:${formatDashboardHarvestForecastInputValue(loss) || "--"}%`;
+  }).join(" / ");
+  const summary = `${cases}ケース/日　${rates}`;
+  if(text.textContent !== summary) text.textContent = summary;
+  document.getElementById("dashboardForecastBarSummary")?.classList.toggle("is-compact", summary.length >= 40);
+}
+
+function handleDashboardHarvestForecastControlsToggle(event){
+  const details = event.target;
+  const summary = document.getElementById("dashboardForecastBarSummary");
+  summary?.setAttribute("aria-expanded", details.open ? "true" : "false");
+  if(!details.open){
+    // 閉じたときは未反映の入力だけを破棄し、実際の予測条件へ戻す。
+    dashboardHarvestForecastCasesDraftValue = dashboardHarvestForecastCasesValue;
+    dashboardHarvestForecastLossDraftValue = dashboardHarvestForecastLossValue;
+  }
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  dashboardHarvestForecastModelCache = model;
+  syncDashboardHarvestForecastInputs(model);
+}
+
+function closeDashboardHarvestForecastControls(options = {}){
+  const details = document.getElementById("dashboardForecastControlsDetails");
+  if(!details?.open) return;
+  details.open = false;
+  handleDashboardHarvestForecastControlsToggle({ target: details });
+  if(options.restoreFocus !== false){
+    document.getElementById("dashboardForecastBarSummary")?.focus({ preventScroll: true });
+  }
+}
+
+function handleDashboardHarvestForecastControlsOutsideClick(event){
+  const details = document.getElementById("dashboardForecastControlsDetails");
+  if(!details?.open || details.contains(event.target)) return;
+  // 共通の選択メニューはbody直下に開くため、入力欄の内側として扱う。
+  if(event.target.closest?.(".appSelectMenu")) return;
+  closeDashboardHarvestForecastControls({ restoreFocus: false });
+}
+
 function handleDashboardHarvestForecastInput(kind){
   const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   if(kind === "cases"){
@@ -38212,6 +38333,7 @@ function applyDashboardHarvestForecastInputs(){
   dashboardGrowthPredictionModelCache = null;
   dashboardRenderedSubtabs.delete("growth");
   renderDashboardHarvestForecast();
+  closeDashboardHarvestForecastControls();
 }
 
 function syncDashboardHarvestForecastInputs(model){
@@ -38278,6 +38400,7 @@ function syncDashboardHarvestForecastInputs(model){
   if(applyButton){
     applyButton.disabled = !dashboardHarvestForecastInputsDirty || casesInvalid || lossInvalid;
   }
+  syncDashboardHarvestForecastBar(model);
 }
 
 function buildDashboardHarvestForecastModel(){
@@ -59661,6 +59784,11 @@ function installStartupImportEvent(){
 
 function handleStartupEscapeKey(event){
   if(event.key !== "Escape") return;
+  if(!event.defaultPrevented && document.getElementById("dashboardForecastControlsDetails")?.open){
+    event.preventDefault();
+    closeDashboardHarvestForecastControls();
+    return;
+  }
   if(dashboardSeedlingStatusDetailOpen){
     closeDashboardSeedlingStatusDetail();
     return;
@@ -59784,6 +59912,7 @@ function handleRecordDetailFocusTrap(event){
 
 function installStartupGlobalEvents(){
   document.addEventListener("keydown", handleStartupEscapeKey);
+  document.addEventListener("click", handleDashboardHarvestForecastControlsOutsideClick);
   window.addEventListener("resize", () => {
     if(dashboardSeedlingStatusDetailOpen){
       scheduleDashboardSeedlingStatusDetailPosition({ ensureBedVisible: true });

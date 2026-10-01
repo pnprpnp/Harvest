@@ -563,6 +563,7 @@ function scheduleDashboardSelectedBuildingButtonReveal(subtab = dashboardFilter.
 
 function syncDashboardSubtabUi(){
   const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
+  if(activeSubtab !== "guide") closeDashboardHarvestForecastControls({ restoreFocus: false });
   document.querySelectorAll("[data-dashboard-subtab]").forEach(button => {
     const isActive = button.dataset.dashboardSubtab === activeSubtab;
     button.classList.toggle("active", isActive);
@@ -2019,6 +2020,51 @@ function parseDashboardHarvestForecastLossValue(value){
     : null;
 }
 
+function syncDashboardHarvestForecastBar(model){
+  const text = document.getElementById("dashboardForecastBarText");
+  if(!text) return;
+  const cases = formatDashboardHarvestForecastInputValue(model.forecastCases) || "--";
+  const rates = [...model.settingsLossRates].sort((left, right) => left.plantingCount - right.plantingCount).map(item => {
+    const loss = model.lossUsesSettings ? item.lossRate : model.forecastLoss;
+    return `${item.plantingCount}:${formatDashboardHarvestForecastInputValue(loss) || "--"}%`;
+  }).join(" / ");
+  const summary = `${cases}ケース/日　${rates}`;
+  if(text.textContent !== summary) text.textContent = summary;
+  document.getElementById("dashboardForecastBarSummary")?.classList.toggle("is-compact", summary.length >= 40);
+}
+
+function handleDashboardHarvestForecastControlsToggle(event){
+  const details = event.target;
+  const summary = document.getElementById("dashboardForecastBarSummary");
+  summary?.setAttribute("aria-expanded", details.open ? "true" : "false");
+  if(!details.open){
+    // 閉じたときは未反映の入力だけを破棄し、実際の予測条件へ戻す。
+    dashboardHarvestForecastCasesDraftValue = dashboardHarvestForecastCasesValue;
+    dashboardHarvestForecastLossDraftValue = dashboardHarvestForecastLossValue;
+  }
+  const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
+  dashboardHarvestForecastModelCache = model;
+  syncDashboardHarvestForecastInputs(model);
+}
+
+function closeDashboardHarvestForecastControls(options = {}){
+  const details = document.getElementById("dashboardForecastControlsDetails");
+  if(!details?.open) return;
+  details.open = false;
+  handleDashboardHarvestForecastControlsToggle({ target: details });
+  if(options.restoreFocus !== false){
+    document.getElementById("dashboardForecastBarSummary")?.focus({ preventScroll: true });
+  }
+}
+
+function handleDashboardHarvestForecastControlsOutsideClick(event){
+  const details = document.getElementById("dashboardForecastControlsDetails");
+  if(!details?.open || details.contains(event.target)) return;
+  // 共通の選択メニューはbody直下に開くため、入力欄の内側として扱う。
+  if(event.target.closest?.(".appSelectMenu")) return;
+  closeDashboardHarvestForecastControls({ restoreFocus: false });
+}
+
 function handleDashboardHarvestForecastInput(kind){
   const model = dashboardHarvestForecastModelCache || buildDashboardHarvestForecastModel();
   if(kind === "cases"){
@@ -2070,6 +2116,7 @@ function applyDashboardHarvestForecastInputs(){
   dashboardGrowthPredictionModelCache = null;
   dashboardRenderedSubtabs.delete("growth");
   renderDashboardHarvestForecast();
+  closeDashboardHarvestForecastControls();
 }
 
 function syncDashboardHarvestForecastInputs(model){
@@ -2136,6 +2183,7 @@ function syncDashboardHarvestForecastInputs(model){
   if(applyButton){
     applyButton.disabled = !dashboardHarvestForecastInputsDirty || casesInvalid || lossInvalid;
   }
+  syncDashboardHarvestForecastBar(model);
 }
 
 function buildDashboardHarvestForecastModel(){

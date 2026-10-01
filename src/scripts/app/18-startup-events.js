@@ -252,6 +252,11 @@ function installStartupImportEvent(){
 
 function handleStartupEscapeKey(event){
   if(event.key !== "Escape") return;
+  if(!event.defaultPrevented && document.getElementById("dashboardForecastControlsDetails")?.open){
+    event.preventDefault();
+    closeDashboardHarvestForecastControls();
+    return;
+  }
   if(dashboardSeedlingStatusDetailOpen){
     closeDashboardSeedlingStatusDetail();
     return;
@@ -375,6 +380,7 @@ function handleRecordDetailFocusTrap(event){
 
 function installStartupGlobalEvents(){
   document.addEventListener("keydown", handleStartupEscapeKey);
+  document.addEventListener("click", handleDashboardHarvestForecastControlsOutsideClick);
   window.addEventListener("resize", () => {
     if(dashboardSeedlingStatusDetailOpen){
       scheduleDashboardSeedlingStatusDetailPosition({ ensureBedVisible: true });

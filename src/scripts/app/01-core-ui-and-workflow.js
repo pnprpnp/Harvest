@@ -4313,6 +4313,7 @@ function handleMainTabPress(tabName){
 }
 
 function setMainTabSelection(tabName){
+  if(tabName !== "dashboard") closeDashboardHarvestForecastControls({ restoreFocus: false });
   MAIN_TAB_NAMES.forEach(name => {
     const isSelected = name === tabName;
     const panel = document.getElementById(name + "Tab");
