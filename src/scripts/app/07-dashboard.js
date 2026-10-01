@@ -4810,17 +4810,10 @@ function getDashboardGrowthWeatherFallbacksHtml(fallbacks){
 }
 
 function renderDashboardGrowthWeatherDiagnostics(model){
-  let container = document.getElementById("dashboardGrowthWeatherDiagnostics");
+  const container = document.getElementById("dashboardGrowthWeatherDiagnostics");
+  if(!container) return;
   const diagnostics = model.weatherDiagnostics;
-  if(!diagnostics){ if(container) container.innerHTML = ""; return; }
-  if(!container){
-    const content = document.getElementById("dashboardGrowthContent");
-    if(!content) return;
-    container = document.createElement("div");
-    container.id = "dashboardGrowthWeatherDiagnostics";
-    container.setAttribute("aria-live", "polite");
-    content.prepend(container);
-  }
+  if(!diagnostics){ container.innerHTML = ""; return; }
   const weather = model.weather;
   const status = [];
   if(weather.fetchError) status.push(`今回の取得失敗：${weather.fetchError}`);

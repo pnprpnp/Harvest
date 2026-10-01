@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261001-remove-daily-priority">
+<meta name="harvestnavi-version" content="20261001-weather-details-position">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -20775,6 +20775,7 @@ requestAnimationFrame(function(){
             <p id="dashboardGrowthRestoreStatus" role="status" aria-live="polite"></p>
             <div id="dashboardGrowthSavedEvaluation"></div>
           </details>
+          <div id="dashboardGrowthWeatherDiagnostics" aria-live="polite"></div>
           <p class="dashboardGrowthDisclaimer">対象品種：マルチリーフエアリ。実績が少ない間は参考値です。外気から推定するため、ハウス内の湿度・気流・養液などの影響は完全には分かりません。症状の注意表示は発生確率ではありません。</p>
           <p class="dashboardGrowthAttribution">出典：<a href="https://www.jma.go.jp/" target="_blank" rel="noopener noreferrer">気象庁ホームページ</a>をもとにHarvestnaviが加工</p>
           <div id="dashboardGrowthLocationBar" class="dashboardGrowthLocationBar">
@@ -40888,17 +40889,10 @@ function getDashboardGrowthWeatherFallbacksHtml(fallbacks){
 }
 
 function renderDashboardGrowthWeatherDiagnostics(model){
-  let container = document.getElementById("dashboardGrowthWeatherDiagnostics");
+  const container = document.getElementById("dashboardGrowthWeatherDiagnostics");
+  if(!container) return;
   const diagnostics = model.weatherDiagnostics;
-  if(!diagnostics){ if(container) container.innerHTML = ""; return; }
-  if(!container){
-    const content = document.getElementById("dashboardGrowthContent");
-    if(!content) return;
-    container = document.createElement("div");
-    container.id = "dashboardGrowthWeatherDiagnostics";
-    container.setAttribute("aria-live", "polite");
-    content.prepend(container);
-  }
+  if(!diagnostics){ container.innerHTML = ""; return; }
   const weather = model.weather;
   const status = [];
   if(weather.fetchError) status.push(`今回の取得失敗：${weather.fetchError}`);
