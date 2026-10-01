@@ -52,7 +52,7 @@ test("the guide's scheduled pallets use their scheduled-day size and actual coun
   assert.equal(day.sizes.large.heads,32);assert.equal(day.sizes.normal.heads,16);assert.equal(day.sizes.small.heads,0);
   assert.equal(day.entries.flatMap(item=>item.palletKeys).length,3);
   f.context.renderDashboardGrowthPlanning(f.model);
-  assert.match(f.container.innerHTML,/10\/2（金）<\/strong>.*大きめ32株・ちょうど良い16株/);
+  assert.match(f.container.innerHTML,/10\/2（金）<\/strong>.*大きめ2\.7ケース・ちょうど良い1\.3ケース/);
   assert.doesNotMatch(f.container.innerHTML,/開始：|期間中：|32ベッド/);
 });
 test("a bed split across harvest dates only contributes each day's selected portion",()=>{
@@ -75,7 +75,7 @@ test("partial totals crossing predicted sizes or dates stay unknown rather than 
       [planting(1,{"5-A-1":20,"5-A-2":20})],[partial]);
     assert.ok(f.items().every(item=>item.heads===null));
     f.context.renderDashboardGrowthPlanning(f.model);
-    assert.match(f.container.innerHTML,/株数不明/);assert.doesNotMatch(f.container.innerHTML,/大きめ14株/);
+    assert.match(f.container.innerHTML,/ケース数不明/);assert.doesNotMatch(f.container.innerHTML,/大きめ1\.2ケース/);
   }
 });
 test("missing stock counts and unknown size are distinct, with no invented zero",()=>{
@@ -85,7 +85,7 @@ test("missing stock counts and unknown size are distinct, with no invented zero"
   assert.equal(f.calendar()[1].sizes.large.heads,20);assert.equal(f.calendar()[1].sizes.large.unknownPallets,1);
   assert.equal(f.calendar()[1].sizes.unknown.heads,12);
   f.context.renderDashboardGrowthPlanning(f.model);
-  assert.match(f.container.innerHTML,/大きめ20株＋株数不明・大きさ不明12株/);
+  assert.match(f.container.innerHTML,/大きめ1\.7ケース＋ケース数不明・大きさ不明1ケース/);
 });
 test("only exact scheduled inputs are reused; absent current crops and mismatched dates cannot gain a size",()=>{
   const f=fixture([cohort(["5-A-1"],"large")],[planting(1,{"5-A-1":20})],[],[["5-B-1","2026-10-02"]]);
@@ -116,7 +116,7 @@ test("repeated rendering reuses counts, lazily computes quantities once, and reb
   f.context.dashboardGrowthPlanningShowsQuantity=true;
   f.context.renderDashboardGrowthPlanning(f.model);f.context.renderDashboardGrowthPlanning(f.model);
   assert.deepEqual(f.reads(),{datasetReads:1,quantities:1});
-  assert.match(f.container.innerHTML,/大きめ20株/);
+  assert.match(f.container.innerHTML,/大きめ1\.7ケース/);
   assert.match(f.container.innerHTML,/残存ケース数：0.8ケース/);
   f.model.predictions=new Map(f.model.predictions);
   assert.notEqual(f.items(),first);assert.equal(f.reads().datasetReads,2);
