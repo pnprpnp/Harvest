@@ -5286,7 +5286,7 @@ function renderDashboardGrowthPlanning(model){
   const caseNumber=value=>String(Math.round(value*10)/10);
   const dayDetails=[];
   const calendarRows=calendar.map(day=>{
-    const head=(total,attention="")=>`<div class="dashboardGrowthCalendarHead"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${attention}<span class="dashboardGrowthCalendarTotal">${total}</span></div>`;
+    const head=(state="",attention="")=>`<div class="dashboardGrowthCalendarHead"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${attention}${state}</div>`;
     const rowClass=`dashboardGrowthCalendarRow${day.date===today ? " is-today" : ""}`;
     if(!day.entries.length) return `<li class="${rowClass} is-empty">${head('<span class="dashboardGrowthCalendarState">収穫予定なし</span>')}</li>`;
     if(!day.predicted) return `<li class="${rowClass} is-unpredicted">${head('<span class="dashboardGrowthCalendarState">未予測</span>')}<span class="dashboardGrowthCalendarUnavailable">気象予報範囲外</span></li>`;
@@ -5294,7 +5294,6 @@ function renderDashboardGrowthPlanning(model){
     if(day.sizes.unknown.heads>0 || day.sizes.unknown.unknownPallets) statuses.push(["unknown","大きさ不明"]);
     const knownHeads=Object.values(day.sizes).reduce((sum,size)=>sum+size.heads,0);
     const missingCounts=Object.values(day.sizes).some(size=>size.unknownPallets>0);
-    const totalText=missingCounts ? "不明" : caseNumber(knownHeads/HarvestGrowthPlanner.CASE_SIZE);
     const sizeHtml=statuses.map(([status,label])=>{
       const size=day.sizes[status];
       const value=size.unknownPallets ? (size.heads>0 ? `${caseNumber(size.heads/HarvestGrowthPlanner.CASE_SIZE)}＋不明` : "不明") : caseNumber(size.heads/HarvestGrowthPlanner.CASE_SIZE);
@@ -5313,7 +5312,7 @@ function renderDashboardGrowthPlanning(model){
       meta.push(day.missingQuantities ? "残存ケース数：不明" : `残存ケース数：${caseNumber(day.cases)}ケース（${caseNumber(day.low)}〜${caseNumber(day.high)}）`);
     }
     if(meta.length) dayDetails.push(`<li id="dashboardGrowthCalendarDetail-${day.date}" tabindex="-1"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>${escapeHtml(meta.join("・"))}</span></li>`);
-    return `<li class="${rowClass}">${head(`<strong>${escapeHtml(totalText)}</strong><span class="dashboardGrowthCalendarUnit">ケース</span>`,attention)}<div class="dashboardGrowthCalendarSizes${statuses.length===4 ? " is-four-sizes" : ""}">${sizeHtml}</div></li>`;
+    return `<li class="${rowClass}">${head("",attention)}<div class="dashboardGrowthCalendarSizes${statuses.length===4 ? " is-four-sizes" : ""}">${sizeHtml}</div></li>`;
   }).join("");
   const calendarHtml=`<section class="dashboardGrowthCalendarBlock" aria-label="今後7日の収穫予定と大きさ"><h3 class="dashboardGrowthCalendarTitle">7日の収穫予定</h3><p class="dashboardGrowthCalendarPeriod"><span>${shortDate(today)}〜${calendar.length ? shortDate(calendar[calendar.length-1].date) : shortDate(today)}</span><span>${model.baseModel.canForecast===false ? "条件未設定" : "ロス率反映済み"}</span></p>${model.baseModel.canForecast===false ? '<p class="dashboardEmpty">「目安」で収穫予定を計算すると、予定日の大きさを表示できます。</p>' : `<ul class="dashboardGrowthCalendar">${calendarRows}</ul>`}</section>`;
   const detailsHtml=`<details id="dashboardGrowthPlanningDetails" class="dashboardGrowthPlanningDetails"${detailsOpen ? " open" : ""}><summary>注意・詳しい内容<span aria-hidden="true">›</span></summary><div class="dashboardGrowthPlanningDetailsBody">${warningHtml}${changesHtml}${dayDetails.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">日別の注意・信頼度</h3><ul class="dashboardGrowthCalendarDetails">${dayDetails.join("")}</ul></section>` : '<p class="dashboardEmpty">表示できる注意・信頼度はありません。</p>'}${dashboardGrowthPlanningShowsQuantity ? '<p class="dashboardGrowthBasisMethod">残存ケース数は指定範囲に残る参考値です。予定日に収穫できる数量を保証する値ではありません。</p>' : '<button type="button" class="dashboardInlineBtn" data-ui-click="showDashboardGrowthPlanningQuantity">残存ケース数も確認</button>'}</div></details>`;

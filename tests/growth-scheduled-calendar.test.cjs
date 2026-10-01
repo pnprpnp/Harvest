@@ -55,7 +55,7 @@ test("the guide's scheduled pallets use their scheduled-day size and actual coun
   assert.match(f.container.innerHTML,/datetime="2026-10-02">10\/2（金）<\/time>/);
   assert.match(f.container.innerHTML,/aria-label="大きめ2\.7ケース"/);
   assert.match(f.container.innerHTML,/aria-label="ちょうど良い1\.3ケース"/);
-  assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>4<\/strong>/);
+  assert.doesNotMatch(f.container.innerHTML,/dashboardGrowthCalendarTotal/);
   assert.doesNotMatch(f.container.innerHTML,/開始：|期間中：|32ベッド/);
 });
 test("a bed split across harvest dates only contributes each day's selected portion",()=>{
@@ -78,7 +78,7 @@ test("partial totals crossing predicted sizes or dates stay unknown rather than 
       [planting(1,{"5-A-1":20,"5-A-2":20})],[partial]);
     assert.ok(f.items().every(item=>item.heads===null));
     f.context.renderDashboardGrowthPlanning(f.model);
-    assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>不明<\/strong>/);assert.doesNotMatch(f.container.innerHTML,/大きめ1\.2ケース/);
+    assert.doesNotMatch(f.container.innerHTML,/dashboardGrowthCalendarTotal/);assert.doesNotMatch(f.container.innerHTML,/大きめ1\.2ケース/);
   }
 });
 test("missing stock counts and unknown size are distinct, with no invented zero",()=>{
@@ -90,7 +90,7 @@ test("missing stock counts and unknown size are distinct, with no invented zero"
   f.context.renderDashboardGrowthPlanning(f.model);
   assert.match(f.container.innerHTML,/aria-label="大きめ1\.7＋不明ケース"/);
   assert.match(f.container.innerHTML,/aria-label="大きさ不明1ケース"/);
-  assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>不明<\/strong>/);
+  assert.doesNotMatch(f.container.innerHTML,/dashboardGrowthCalendarTotal/);
   assert.match(f.container.innerHTML,/不明な分を除く合計：2\.7ケース/);
 });
 test("only exact scheduled inputs are reused; absent current crops and mismatched dates cannot gain a size",()=>{
@@ -151,7 +151,7 @@ test("scheduled cases use the applied loss per pallet before subtracting partial
   f.context.renderDashboardGrowthPlanning(f.model);
   assert.match(f.container.innerHTML,/aria-label="大きめ0\.8ケース"/);
   assert.match(f.container.innerHTML,/aria-label="ちょうど良い1ケース"/);
-  assert.match(f.container.innerHTML,/dashboardGrowthCalendarTotal"><strong>1\.8<\/strong>/);
+  assert.doesNotMatch(f.container.innerHTML,/dashboardGrowthCalendarTotal/);
   assert.match(f.container.innerHTML,/ロス率反映済み/);
 });
 test("a 240-case plan displays only pallet rounding excess after 21 percent loss",()=>{
