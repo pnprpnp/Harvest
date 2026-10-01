@@ -2042,10 +2042,13 @@ function syncDashboardHarvestForecastBar(model){
   const rates = [...model.settingsLossRates].sort((left, right) => left.plantingCount - right.plantingCount).map(item => {
     const loss = model.lossUsesSettings ? item.lossRate : model.lossUsesPlantingCounts
       ? model.lossRates.find(rate => rate.plantingCount === item.plantingCount)?.lossRate : model.forecastLoss;
-    return `${item.plantingCount}:${formatDashboardHarvestForecastInputValue(loss) || "--"}%`;
-  }).join(" / ");
-  const summary = `${cases}ケース/日　${rates}`;
-  if(text.textContent !== summary) text.textContent = summary;
+    return {plantingCount:item.plantingCount, loss:formatDashboardHarvestForecastInputValue(loss) || "--"};
+  });
+  const summary = `${cases}ケース/日　${rates.map(item => `${item.plantingCount}:${item.loss}%`).join(" / ")}`;
+  if(text.textContent !== summary || !text.querySelector(".dashboardForecastBarValue")){
+    const emphasize = value => `<strong class="dashboardForecastBarValue">${escapeHtml(String(value))}</strong>`;
+    text.innerHTML = `${emphasize(cases)}ケース/日　${rates.map(item => `${item.plantingCount}:${emphasize(item.loss)}%`).join(" / ")}`;
+  }
   document.getElementById("dashboardForecastBarSummary")?.classList.toggle("is-compact", summary.length >= 40);
 }
 
@@ -2178,12 +2181,6 @@ function syncDashboardHarvestForecastInputs(model){
     input.setAttribute("aria-invalid", invalid ? "true" : "false");
     input.closest(".dashboardForecastValueInput")?.classList.toggle("invalid", invalid);
   });
-  const settingsNote = document.getElementById("dashboardForecastLossSettingsNote");
-  if(settingsNote){
-    settingsNote.textContent = "設定値：" + model.settingsLossRates.map(item => (
-      `${item.plantingCount}植え ${formatDashboardHarvestForecastInputValue(item.lossRate)}%`
-    )).join(" ／ ");
-  }
   const averageNote = document.getElementById("dashboardForecastLossAverageNote");
   if(averageNote){
     averageNote.textContent = model.averageLoss === null
