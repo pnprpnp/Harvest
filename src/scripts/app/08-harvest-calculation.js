@@ -466,8 +466,7 @@ function renderForecastPlantingAgeResult(){
   const statusCard = document.getElementById("forecastPlacementStatusCard");
   if(!result || !range) return;
 
-  const shouldShow = harvestSelectionMode === "auto"
-    && !!harvestSummary
+  const shouldShow = !!harvestSummary
     && Array.isArray(harvestFillKeys)
     && harvestFillKeys.length > 0;
   result.hidden = !shouldShow;

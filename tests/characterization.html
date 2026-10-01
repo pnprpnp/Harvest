@@ -6792,7 +6792,7 @@
         }
       });
 
-      await runTest("定植日数詳細を計算後にページネーション下の共有カードへ表示する", () => {
+      await runTest("定植日数詳細を手動・自動選択時に共有カードへ表示する", () => {
         const mapState = comparable(app.eval(`(() => {
           const dateInput = document.getElementById("recordDateInput");
           const result = document.getElementById("forecastPlantingAgeResult");
@@ -6830,9 +6830,9 @@
             renderForecastPlantingAgeResult();
             const hiddenBeforeCalculation = result.hidden;
             const hiddenRemainingRect = remaining.getBoundingClientRect();
+            result.click();
             harvestSelectionMode = "auto";
             renderForecastPlantingAgeResult();
-            result.click();
             const visibleStatusRect = statusCard.getBoundingClientRect();
             const visibleRemainingRect = remaining.getBoundingClientRect();
             const visibleResultRect = result.getBoundingClientRect();
@@ -6953,8 +6953,8 @@
           }
         })()`));
         assertDeepEqual(mapState, {
-          hiddenBeforeCalculation: true,
-          visibleBeforeCalculation: false,
+          hiddenBeforeCalculation: false,
+          visibleBeforeCalculation: true,
           visibleAfterCalculation: true,
           belowPagination: true,
           sharedStatusCard: true,
@@ -6995,7 +6995,7 @@
           emptyBedCount: 4,
           titles: ["1番 定植から31日目", "3番 定植から20日目", "4番 定植から20日目", "4番 定植記録なし"],
           hiddenAfterClear: true
-        }, "定植日数の詳細が計算後にページネーション下の共有カードへ表示されていません");
+        }, "定植日数の詳細が手動・自動選択時に共有カードへ表示されていません");
       });
 
       await runTest("1号棟・途中経過・クリアの操作行を常時控えめに表示する", async () => {
