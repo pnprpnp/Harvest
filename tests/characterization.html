@@ -5216,6 +5216,12 @@
             const checkWidth = () => {
               const controls = doc.querySelector(".dashboardForecastControls");
               assert(controls.scrollWidth <= controls.clientWidth + 1, width + "px幅で条件がはみ出しています");
+              const casesRect = doc.getElementById("dashboardForecastCasesInput")
+                .closest(".dashboardForecastControlField").getBoundingClientRect();
+              const lossRect = mode.closest(".dashboardForecastControlField").getBoundingClientRect();
+              const headerRect = doc.querySelector(".dashboardForecastHeader").getBoundingClientRect();
+              assert(casesRect.bottom <= lossRect.top, width + "px幅でケース数とロス率が別の行になっていません");
+              assert(lossRect.bottom <= headerRect.top, width + "px幅で入力条件が情報・表示切替より上にありません");
               for(const element of [mode,apply,doc.getElementById("dashboardForecastAverageBtn")]){
                 assert(element.getBoundingClientRect().height >= 44, "条件操作の高さが44px未満です");
               }
@@ -17823,20 +17829,20 @@
 
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
-        // 目安のロス率切替・設定内訳・参考平均を追加。他タブの表示要素数は維持する。
+        // 目安の入力条件を縦に並べ、情報・表示切替より上へ移動。他タブの表示要素数は維持する。
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "3057622a", elements: 2585, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "fbd9420e", elements: 2655, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "8dd7e6b5", elements: 2655, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "e37a0148", elements: 2589, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "cb2ab016", elements: 2606, visible: 106, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "eca5253a", elements: 2689, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "0ce94b08", elements: 2704, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "af6a1215", elements: 2816, visible: 169, viewport: "390x844" },
-          mobileSettings: { hash: "ad52df08", elements: 2816, visible: 193, viewport: "390x844" },
-          mobileMonitor: { hash: "00f96e3c", elements: 2860, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "178716b7", elements: 2860, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "8144f0bd", elements: 2860, visible: 106, viewport: "1024x900" }
+          mobileForecast: { hash: "39fb45ac", elements: 2585, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "51206df0", elements: 2655, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "1f58fcd7", elements: 2655, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "634b02fc", elements: 2589, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "ebd2542f", elements: 2606, visible: 106, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "278f35ee", elements: 2689, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "16e146ec", elements: 2704, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "c3ba4c3c", elements: 2816, visible: 169, viewport: "390x844" },
+          mobileSettings: { hash: "dd06cbc5", elements: 2816, visible: 193, viewport: "390x844" },
+          mobileMonitor: { hash: "4679b68e", elements: 2860, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "16feb062", elements: 2860, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "b049b1d0", elements: 2860, visible: 106, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
