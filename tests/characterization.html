@@ -5150,6 +5150,10 @@
               byCount:byCount.keys, sharedAfterTrial:sharedAfterTrial.palletKeys, settingsUnchanged,
               byCountPartial:byCountPartial.keys, byCount100,
               configured:configured.keys, usual:usual.palletKeys, usualHeads:usual.totalHarvest,
+              configuredRates:configured.keys.map(key=>configured.model.palletForecasts.get(key).lossRate),
+              trialRates:byCount.keys.map(key=>byCount.model.palletForecasts.get(key).lossRate),
+              commonRates:common.keys.map(key=>common.model.palletForecasts.get(key).lossRate),
+              fallbackRates:blank.keys.map(key=>blank.model.palletForecasts.get(key).lossRate),
               noAverageCanForecast:configured.model.canForecast, average:configured.model.averageLoss,
               highAverage:highAverage.keys, common:common.keys, blank:blank.keys, disabled:disabled.keys,
               unchanged, partial:partial.keys, sameDayPartial:sameDayPartial.keys, commonPartial:commonPartial.keys,
@@ -5177,6 +5181,10 @@
         assertEqual(state.settingsUnchanged, true, "目安の試算で共有設定が変わっています");
         assertDeepEqual(state.byCountPartial, first, "植え数別の試算で同日の部分収穫を控除できません");
         assertEqual(state.byCount100, false, "植え数別のロス率が全て100%でも予測を実行しています");
+        assertDeepEqual(state.configuredRates,[0,25,50,0],"予定範囲に設定のロス率が保持されません");
+        assertDeepEqual(state.trialRates,[50,0,0],"予定範囲に植え数別試算のロス率が保持されません");
+        assertDeepEqual(state.commonRates,[0,0,0],"予定範囲に共通試算のロス率が保持されません");
+        assertDeepEqual(state.fallbackRates,[0,10,50],"未入力の植え数別ロス率が基本設定へ戻りません");
         assertEqual(state.usualHeads, 46, "0%・25%・50%のロス率を場所ごとに適用できません");
         assertEqual(state.noAverageCanForecast, true, "平均ロス率がなくても設定値で予測できません");
         assertEqual(state.average, null, "記録なしの平均ロス率を作っています");

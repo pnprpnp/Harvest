@@ -67,7 +67,7 @@
     if(selected.every(key => crop.counts.has(key))) return selected.reduce((sum,key) => sum + crop.counts.get(key),0);
     return selected.length === crop.keys.length && crop.keys.every(key => selected.includes(key)) ? crop.actualTotal : null;
   }
-  function scopeInput(crop, selected){
+  function scopeInput(crop, selected, includePalletCounts=false){
     const plantedHeads = headsFor(crop, selected), selectedSet = new Set(selected);
     const reasons = [...crop.invalid];
     if(!(plantedHeads > 0)) reasons.push("unknownActualPlantedHeads");
@@ -84,6 +84,8 @@
     return { valid:reasons.length === 0, reasons:[...new Set(reasons)], cropId:crop.id, plantingEventId:crop.eventId,
       plantingDate:crop.plantingDate, building:buildings.length === 1 ? buildings[0] : null, palletKeys:selected.slice(),
       plantedHeads, partialHeads, partialRecordIds:partialIds,
+      plantedHeadsByPallet:includePalletCounts && selected.every(key=>crop.counts.has(key))
+        ? Object.fromEntries(selected.map(key=>[key,crop.counts.get(key)])) : null,
       aggregation:"exact-scope-total-no-position-allocation",
       // A scope total is passed as one quantity bucket, not assigned to a real pallet.
       pallets:reasons.length ? [] : [{ palletKeys:selected.slice(), plantedHeads, partialHeads }] };
@@ -219,14 +221,14 @@
         "混合作・欠損苗数・範囲を分割しないと控除できない部分収穫は未評価です。",
         "既存保存処理が過去に補完した苗数や、上書きされた古い入力版は元の入力状態を完全に復元できません。"] };
   }
-  function currentInput(dataset,{ palletKeys, plantingEventId } = {}){
+  function currentInput(dataset,{ palletKeys, plantingEventId, includePalletCounts=false } = {}){
     const selected = keys(palletKeys), index = dataset?._index;
     if(!selected?.length || !index) return { valid:false, reasons:["missingPredictionScope"], pallets:[] };
     const crops = [...new Set(selected.map(key => index.activeByPallet.get(key)).filter(Boolean))];
     if(crops.length !== 1 || selected.some(key => !index.activeByPallet.has(key))) return { valid:false, reasons:["mixedOrUnknownCurrentCrop"], pallets:[] };
     const crop = crops[0];
     if(plantingEventId !== undefined && String(plantingEventId) !== String(crop.eventId)) return { valid:false, reasons:["differentPlantingEvent"], pallets:[] };
-    const input = scopeInput(crop,selected);
+    const input = scopeInput(crop,selected,includePalletCounts);
     if(crop.special){ input.valid=false; input.reasons.push("specialExcluded"); input.pallets=[]; }
     return input;
   }

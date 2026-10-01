@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261001-guide-bar-green">
+<meta name="harvestnavi-version" content="20261001-calendar-loss-cases">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -1741,7 +1741,7 @@ const HarvestGrowthHistory = (() => {
     if(selected.every(key => crop.counts.has(key))) return selected.reduce((sum,key) => sum + crop.counts.get(key),0);
     return selected.length === crop.keys.length && crop.keys.every(key => selected.includes(key)) ? crop.actualTotal : null;
   }
-  function scopeInput(crop, selected){
+  function scopeInput(crop, selected, includePalletCounts=false){
     const plantedHeads = headsFor(crop, selected), selectedSet = new Set(selected);
     const reasons = [...crop.invalid];
     if(!(plantedHeads > 0)) reasons.push("unknownActualPlantedHeads");
@@ -1758,6 +1758,8 @@ const HarvestGrowthHistory = (() => {
     return { valid:reasons.length === 0, reasons:[...new Set(reasons)], cropId:crop.id, plantingEventId:crop.eventId,
       plantingDate:crop.plantingDate, building:buildings.length === 1 ? buildings[0] : null, palletKeys:selected.slice(),
       plantedHeads, partialHeads, partialRecordIds:partialIds,
+      plantedHeadsByPallet:includePalletCounts && selected.every(key=>crop.counts.has(key))
+        ? Object.fromEntries(selected.map(key=>[key,crop.counts.get(key)])) : null,
       aggregation:"exact-scope-total-no-position-allocation",
       // A scope total is passed as one quantity bucket, not assigned to a real pallet.
       pallets:reasons.length ? [] : [{ palletKeys:selected.slice(), plantedHeads, partialHeads }] };
@@ -1893,14 +1895,14 @@ const HarvestGrowthHistory = (() => {
         "混合作・欠損苗数・範囲を分割しないと控除できない部分収穫は未評価です。",
         "既存保存処理が過去に補完した苗数や、上書きされた古い入力版は元の入力状態を完全に復元できません。"] };
   }
-  function currentInput(dataset,{ palletKeys, plantingEventId } = {}){
+  function currentInput(dataset,{ palletKeys, plantingEventId, includePalletCounts=false } = {}){
     const selected = keys(palletKeys), index = dataset?._index;
     if(!selected?.length || !index) return { valid:false, reasons:["missingPredictionScope"], pallets:[] };
     const crops = [...new Set(selected.map(key => index.activeByPallet.get(key)).filter(Boolean))];
     if(crops.length !== 1 || selected.some(key => !index.activeByPallet.has(key))) return { valid:false, reasons:["mixedOrUnknownCurrentCrop"], pallets:[] };
     const crop = crops[0];
     if(plantingEventId !== undefined && String(plantingEventId) !== String(crop.eventId)) return { valid:false, reasons:["differentPlantingEvent"], pallets:[] };
-    const input = scopeInput(crop,selected);
+    const input = scopeInput(crop,selected,includePalletCounts);
     if(crop.special){ input.valid=false; input.reasons.push("specialExcluded"); input.pallets=[]; }
     return input;
   }
@@ -38572,10 +38574,18 @@ function buildDashboardHarvestForecastModel(){
     let newForecastCount = 0;
     selection.palletKeys.forEach(key => {
       if(model.palletForecasts.has(key)) return;
+      const pallet = parsePalletKey(key);
+      const plantCount = getHarvestPlantCountForPallet(pallet.building, pallet.bed, pallet.number, forecastDate);
+      const lossRate = model.lossUsesSettings
+        ? getAppliedLossRateForPlantingCount(pallet.bed, plantCount)
+        : model.lossUsesPlantingCounts
+        ? lossOptions.harvestLossRatesByPlantingCount[plantCount]
+        : model.forecastLoss;
       model.palletForecasts.set(key, {
         date: new Date(forecastDate),
         daysAfter: getLocalDayDiff(referenceDate, forecastDate),
         harvestDateIndex: iteration,
+        lossRate,
       });
       newForecastCount++;
     });
@@ -41466,9 +41476,10 @@ function getDashboardGrowthScheduledPlanningItems(model,options={}){
       // partial record across different harvest dates or predicted sizes.
       const id=`${date}:${cohort ? cohort.plantingEventId : key}:${status}`;
       if(!groups.has(id)) groups.set(id,{id,date,status,plantingEventId:cohort?.plantingEventId,
-        palletKeys:[],locations:new Map(),heads:null,quantity:null});
+        palletKeys:[],lossRates:new Map(),locations:new Map(),heads:null,quantity:null});
       const group=groups.get(id);
       group.palletKeys.push(key);
+      group.lossRates.set(key,forecast.lossRate);
       if(cohort) group.locations.set(cohort,{building:source.item.building,bed:source.item.bed,
         risk:cohort.risk || source.item.risk,confidence:cohort.prediction?.confidence?.label});
     });
@@ -41477,9 +41488,21 @@ function getDashboardGrowthScheduledPlanningItems(model,options={}){
       try{dataset=getDashboardGrowthYieldAnalysis(model.asOf).dataset;}catch(error){/* Keep unknown counts visible. */}
     }
     const items=[...groups.values()].map(group=>{
-      const input=HarvestGrowthYield.currentInput(dataset,{palletKeys:group.palletKeys,plantingEventId:group.plantingEventId});
-      group.heads=input.valid && Number.isFinite(input.plantedHeads) && Number.isFinite(input.partialHeads)
-        ? Math.max(0,input.plantedHeads-input.partialHeads) : null;
+      const input=HarvestGrowthYield.currentInput(dataset,{palletKeys:group.palletKeys,plantingEventId:group.plantingEventId,includePalletCounts:true});
+      const rates=[...group.lossRates.values()];
+      const ratesKnown=rates.every(rate=>Number.isFinite(rate) && rate>=0 && rate<=100);
+      let harvestHeads=null;
+      if(input.valid && ratesKnown){
+        if(rates.every(rate=>rate===rates[0])){
+          harvestHeads=input.plantedHeads*(100-rates[0])/100;
+        }else if(input.plantedHeadsByPallet){
+          harvestHeads=group.palletKeys.reduce((sum,key)=>
+            sum+input.plantedHeadsByPallet[key]*(100-group.lossRates.get(key))/100,0);
+        }
+      }
+      // Apply loss to planted heads first, then subtract the harvested total once.
+      group.heads=Number.isFinite(harvestHeads) && Number.isFinite(input.partialHeads)
+        ? Math.max(0,harvestHeads-input.partialHeads) : null;
       group.locations=[...group.locations.values()];
       return group;
     });
@@ -41512,7 +41535,7 @@ function renderDashboardGrowthPlanning(model){
   const warningHtml=warnings.length ? `<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">品質の注意（最大3件）</h3><ul class="dashboardGrowthWarningList">${warnings.map(item=>`<li class="dashboardGrowthWarningItem"><strong>${escapeHtml(`${item.building}号棟 ${item.bed}ベッド`)}</strong><span>${escapeHtml(riskNames[item.kind] || item.kind)}：${escapeHtml(item.risk?.label || "注意")}。${escapeHtml(item.risk?.reason || "計算根拠が不足しています。")}</span></li>`).join("")}</ul></section>` : "";
   const dateLabel=value=>{const date=parseDateOnlyString(value);return date ? `${date.getMonth()+1}/${date.getDate()}（${"日月火水木金土"[date.getDay()]}）` : value;};
   const caseNumber=value=>Number.isInteger(Math.round(value*10)/10) ? String(Math.round(value)) : String(Math.round(value*10)/10);
-  const calendarHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今後7日の収穫予定と大きさ</h3><p class="dashboardGrowthBasisMethod">「目安」の収穫予定範囲を、予定日時点の予測サイズ別に集計しています。ケース数は植え付け記録から部分収穫済み分を差し引いた株数を、${HarvestGrowthPlanner.CASE_SIZE}株＝1ケースで換算しています。</p>${model.baseModel.canForecast===false ? '<p class="dashboardEmpty">「目安」で収穫予定を計算すると、予定日の大きさを表示できます。</p>' : `<ul class="dashboardGrowthCalendar">${calendar.map(day=>{
+  const calendarHtml=`<section class="dashboardGrowthPlanningBlock"><h3 class="dashboardGrowthPlanningTitle">今後7日の収穫予定と大きさ</h3><p class="dashboardGrowthBasisMethod">「目安」の収穫予定範囲を、予定日時点の予測サイズ別に集計しています。ケース数は植え付け記録の株数に「目安」で使用中のロス率を反映し、部分収穫済み分を差し引いて、${HarvestGrowthPlanner.CASE_SIZE}株＝1ケースで換算しています。パレット単位で範囲を選ぶため、目安のケース数を少し超える場合があります。</p>${model.baseModel.canForecast===false ? '<p class="dashboardEmpty">「目安」で収穫予定を計算すると、予定日の大きさを表示できます。</p>' : `<ul class="dashboardGrowthCalendar">${calendar.map(day=>{
     if(!day.entries.length) return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>収穫予定なし</span></li>`;
     if(!day.predicted) return `<li class="dashboardGrowthCalendarRow"><strong>${escapeHtml(dateLabel(day.date))}</strong><span>気象予報範囲外のため未予測</span></li>`;
     const sizeText=[["large","大きめ"],["normal","ちょうど良い"],["small","小さめ"],["unknown","大きさ不明"]].flatMap(([status,label])=>{
