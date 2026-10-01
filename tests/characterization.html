@@ -14582,6 +14582,41 @@
         }, "植え付け数プリセットの選択状態が一致しません");
       });
 
+      await runTest("苗植え候補に収穫画面の古い選択場所を混ぜない", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            keys:harvestFillKeys,
+            unplanted:getUnplantedPalletSet,
+            cache:plantingAllowedPalletSetCache,
+            cacheRecordId:plantingAllowedPalletSetCacheRecordId,
+            cacheRecordCount:plantingAllowedPalletSetCacheRecordCount,
+            cacheEventId:plantingAllowedPalletSetCacheEventId
+          };
+          try{
+            harvestFillKeys = ["2-A-2"];
+            getUnplantedPalletSet = () => new Set(["2-A-1"]);
+            invalidatePlantingAllowedPalletSetCache();
+            return {
+              allowed:[...getPlantingAllowedPalletSet({ fast:true })],
+              unplanted:isPlantingSelectionAllowed("2-A-1", { fast:true }),
+              staleSelection:isPlantingSelectionAllowed("2-A-2", { fast:true })
+            };
+          }finally{
+            harvestFillKeys = previous.keys;
+            getUnplantedPalletSet = previous.unplanted;
+            plantingAllowedPalletSetCache = previous.cache;
+            plantingAllowedPalletSetCacheRecordId = previous.cacheRecordId;
+            plantingAllowedPalletSetCacheRecordCount = previous.cacheRecordCount;
+            plantingAllowedPalletSetCacheEventId = previous.cacheEventId;
+          }
+        })()`));
+        assertDeepEqual(state, {
+          allowed:["2-A-1"],
+          unplanted:true,
+          staleSelection:false
+        }, "収穫画面の選択状態が苗植え可能判定へ混入しています");
+      });
+
       await runTest("苗植え場所選択後の初期植え付け数にシミュの計算設定を使う", () => {
         const state = comparable(app.eval(`(() => {
           const previous = {

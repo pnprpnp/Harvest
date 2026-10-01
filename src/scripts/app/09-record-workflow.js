@@ -1859,7 +1859,6 @@ function getPlantingAllowedPalletSet(options = {}){
   }
 
   const allowed = getUnplantedPalletSet({ excludeEventId: editingPlantingEventId });
-  harvestFillKeys.forEach(key => allowed.add(key));
 
   plantingAllowedPalletSetCache = new Set(allowed);
   plantingAllowedPalletSetCacheRecordId = activeRecordId;
