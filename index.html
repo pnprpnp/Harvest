@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261002-growth-calendar-day-map">
+<meta name="harvestnavi-version" content="20261002-growth-temperature-details">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17683,6 +17683,13 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .dashboardGrowthBedMore::after{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg) translateY(-1px);}
 .dashboardGrowthBedCard[open] .dashboardGrowthBedMore::after{transform:rotate(225deg) translate(-1px,-1px);}
 .dashboardGrowthBedDetails{padding:0 12px 12px;border-top:1px solid var(--ui-line);}
+.dashboardGrowthTemperature{display:grid;gap:8px;margin:12px 0;padding:10px;border:1px solid var(--ui-line);border-radius:10px;background:var(--ui-surface-muted);}
+.dashboardGrowthTemperature .dashboardGrowthBasisMethod{margin:0;}
+.dashboardGrowthTemperatureGroup{display:grid;gap:5px;min-width:0;font-size:11px;}
+.dashboardGrowthTemperatureValues{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.dashboardGrowthTemperatureValue{display:grid;gap:2px;min-width:0;padding:8px;border-radius:8px;background:var(--ui-surface-solid);overflow-wrap:anywhere;}
+.dashboardGrowthTemperatureValue > strong{color:var(--ui-text);font-size:16px;font-weight:850;}
+.dashboardGrowthTemperaturePeriod,.dashboardGrowthTemperatureSource{color:var(--ui-text-secondary);font-size:10px;line-height:1.5;}
 .dashboardGrowthBasis{
   display:grid;
   gap:8px;
@@ -40945,6 +40952,50 @@ function getDashboardGrowthRisk(weatherIndex, forecastDate, building, samples){
   return result;
 }
 
+function getDashboardGrowthTemperatureTotal(context,start,end){
+  const engine=HarvestGrowthModel;
+  if(!context?.observations || !context?.forecasts || !engine.dateKey(start) || !engine.dateKey(end) || start>end) return null;
+  const days=engine.daysBetween(start,end)+1;
+  if(days>731) return null;
+  let cache=context.temperatureTotalCache;
+  if(!cache){
+    // Use the model's normalized, time-checked inputs, independently of sunshine.
+    // Prefix sums allow all beds to share one weather index without range scans.
+    const rows=[...context.observations.values(),...context.forecasts.values()]
+      .filter(day=>Number.isFinite(day.meanTemp)
+        && (!day.estimatedTemperature || day.weatherPolicy==="provider-fallback-v1"))
+      .sort((a,b)=>a.date.localeCompare(b.date));
+    const prefixes=[{total:0,observed:0,forecast:0,fallback:0}];
+    rows.forEach(day=>{
+      const value={...prefixes[prefixes.length-1]};
+      value.total+=day.meanTemp;
+      const kind=day.fallbackFields?.includes("meanTemp") ? "fallback" : day.source==="forecast" ? "forecast" : "observed";
+      value[kind]++;
+      prefixes.push(value);
+    });
+    cache={dates:rows.map(day=>day.date),prefixes,ranges:new Map()};
+    context.temperatureTotalCache=cache;
+  }
+  const key=`${start}|${end}`;
+  if(cache.ranges.has(key)) return cache.ranges.get(key);
+  const lowerBound=date=>{
+    let low=0,high=cache.dates.length;
+    while(low<high){
+      const middle=Math.floor((low+high)/2);
+      if(cache.dates[middle]<date) low=middle+1;
+      else high=middle;
+    }
+    return low;
+  };
+  const first=lowerBound(start),last=lowerBound(engine.addDays(end,1));
+  const missingDays=days-(last-first),before=cache.prefixes[first],after=cache.prefixes[last];
+  const result={start,end,total:missingDays ? null : after.total-before.total,missingDays,
+    dayCounts:{observed:after.observed-before.observed,forecast:after.forecast-before.forecast,
+      fallback:after.fallback-before.fallback,total:days}};
+  cache.ranges.set(key,result);
+  return result;
+}
+
 function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, building, bed, target = null){
   // A model-less call is retained for legacy previews/tests; production supplies the fitted engine.
   if(!baseModel.growthFit) return getDashboardGrowthLegacyBedPrediction(baseModel, weatherIndex, samples, building, bed, target);
@@ -40982,6 +41033,10 @@ function getDashboardGrowthBedPrediction(baseModel, weatherIndex, samples, build
     const riskInput={asOf:baseModel.growthAsOf,building,forecastDate:input.targetDate,
       manualAdjustment:input.manualAdjustment,environmentRegimes:input.environmentRegimes,weatherDaily:weatherIndex.riskWeather};
     return {...cohort,input,prediction,currentPrediction,
+      temperatureTotals:{
+        current:getDashboardGrowthTemperatureTotal(baseModel.growthFit.weatherContext,input.plantingDate,baseModel.growthAsOf.slice(0,10)),
+        scheduled:getDashboardGrowthTemperatureTotal(baseModel.growthFit.weatherContext,input.plantingDate,input.targetDate)
+      },
       risk:baseModel.growthRiskFit ? HarvestGrowthRisk.predict(baseModel.growthRiskFit,riskInput) : null,
       shadowRisk:baseModel.growthShadowRiskFit ? HarvestGrowthRisk.predict(baseModel.growthShadowRiskFit,riskInput) : null,
       shadowPrediction:baseModel.growthShadowFit ? HarvestGrowthModel.predict(baseModel.growthShadowFit,input) : null};
@@ -41481,14 +41536,32 @@ function renderDashboardGrowthWeatherDiagnostics(model){
     ${getDashboardGrowthWeatherFallbacksHtml(diagnostics.fallbacks)}</details>`;
 }
 
+function getDashboardGrowthTemperatureHtml(item){
+  const cohorts=(item.cohorts || []).filter(cohort=>cohort.temperatureTotals);
+  if(!cohorts.length) return "";
+  const shortDate=value=>{
+    const date=parseDateOnlyString(value);
+    return date ? `${date.getMonth()+1}/${date.getDate()}` : "不明";
+  };
+  const valueHtml=(label,value)=>{
+    const amount=Number.isFinite(value?.total) ? `${Math.round(value.total*10)/10}℃・日` : "未算出";
+    const counts=value?.dayCounts;
+    const detail=value?.missingDays ? `平均気温が${value.missingDays}日不足` : counts
+      ? `観測${counts.observed}日・予報${counts.forecast}日${counts.fallback ? `・代替${counts.fallback}日` : ""}` : "平均気温のデータ不足";
+    return `<div class="dashboardGrowthTemperatureValue"><span>${label}</span>${value ? `<span class="dashboardGrowthTemperaturePeriod" title="${escapeHtml(`${value.start}〜${value.end}`)}">${shortDate(value.start)}〜${shortDate(value.end)}</span>` : ""}<strong>${escapeHtml(amount)}</strong><span class="dashboardGrowthTemperatureSource">${escapeHtml(detail)}</span></div>`;
+  };
+  return `<section class="dashboardGrowthTemperature" aria-label="定植からの積算温度"><strong class="dashboardGrowthBasisTitle">積算温度</strong><p class="dashboardGrowthBasisMethod">定植日と対象日を含む日平均気温の合計です（℃・日）。日照係数や号棟の気温補正は加えません。現在までの値にも当日の予報を含む場合があります。</p>${cohorts.map(cohort=>`<div class="dashboardGrowthTemperatureGroup"><strong>${shortDate(cohort.input?.plantingDate)}定植・${cohort.palletKeys.length}パレット</strong><div class="dashboardGrowthTemperatureValues">${valueHtml("現在まで",cohort.temperatureTotals.current)}${item.range ? valueHtml("予定日まで",cohort.temperatureTotals.scheduled) : ""}</div></div>`).join("")}</section>`;
+}
+
 function getDashboardGrowthLearningBasisHtml(item){
   const basis = item.basis || {};
   const gapsHtml = getDashboardGrowthWeatherGapsHtml((item.cohorts || []).flatMap(cohort => cohort.prediction.weatherGaps || []));
   const fallbackHtml = getDashboardGrowthWeatherFallbacksHtml((item.cohorts || []).flatMap(cohort => cohort.prediction.weatherFallbacks || []));
   const checked = (item.cohorts || []).some(cohort => cohort.prediction.dayCounts);
+  const temperatureHtml=getDashboardGrowthTemperatureHtml(item);
   const weatherHtml = gapsHtml || fallbackHtml || checked ? `<div class="dashboardGrowthWeatherShortage"><strong>対象期間の気象データ${gapsHtml ? "不足" : "：不足なし"}</strong>${gapsHtml}</div>${fallbackHtml}` : "";
   if(!Number.isFinite(basis.currentGrowthUnits) || !Number.isFinite(basis.targetGrowthUnits)){
-    return `<section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠"><strong class="dashboardGrowthBasisTitle">判定の根拠</strong><p class="dashboardGrowthBasisUnavailable">苗植え日または比較に必要なデータが不足しています。</p>${weatherHtml}</section>`;
+    return `<section class="dashboardGrowthBasis is-unavailable" aria-label="判定の根拠"><strong class="dashboardGrowthBasisTitle">判定の根拠</strong><p class="dashboardGrowthBasisUnavailable">苗植え日または比較に必要なデータが不足しています。</p>${temperatureHtml}${weatherHtml}</section>`;
   }
   const percent = value => Number.isFinite(value) ? `${Math.round(value)}%` : "不明";
   const formatDate = value => parseDateOnlyString(value || "") ? formatDashboardForecastDate(parseDateOnlyString(value)) : "不明";
@@ -41525,7 +41598,7 @@ function getDashboardGrowthLearningBasisHtml(item){
     <p class="dashboardGrowthBasisConclusion">${item.range ? `予定日の目標比：${percent(basis.achievementRate)}。` : "収穫予定は未設定です。"}対象${basis.palletCount || 0}パレットの中央値。${basis.units === "days" ? "検証で選ばれた栽培日数モデルを使用しています。" : "重量の測定値ではなく、温度と日照からの生育目安です。"}</p>
     <p class="dashboardGrowthReadyDate">AIの適期期間：${escapeHtml(ready)}（参考）</p>
     <p class="dashboardGrowthBasisMethod">${escapeHtml(interval)} 当日はまだ確定していないため、現在の進捗にも取得済みの当日予報を含む場合があります。適期日は予定日を変更しません。</p>
-    ${weatherHtml}
+    ${temperatureHtml}${weatherHtml}
     ${cohortHtml}
     ${getDashboardGrowthQualityDetailsHtml(item.risk)}
   </section>`;

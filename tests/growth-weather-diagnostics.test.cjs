@@ -9,7 +9,7 @@ function setup(){
     document:{getElementById:()=>container},
     escapeHtml:value=>String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c])});
   for(const name of ["parseDateOnlyString","buildDashboardGrowthWeatherDiagnostics","getDashboardGrowthWeatherGapReason",
-    "getDashboardGrowthWeatherGapsHtml","getDashboardGrowthWeatherFallbacksHtml","renderDashboardGrowthWeatherDiagnostics","getDashboardGrowthLearningBasisHtml"]){
+    "getDashboardGrowthWeatherGapsHtml","getDashboardGrowthWeatherFallbacksHtml","renderDashboardGrowthWeatherDiagnostics","getDashboardGrowthTemperatureHtml","getDashboardGrowthLearningBasisHtml"]){
     const start=source.indexOf(`function ${name}(`),end=source.indexOf("\n}",start);
     vm.runInContext(source.slice(start,end+2),context);
   }

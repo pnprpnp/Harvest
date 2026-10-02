@@ -64,7 +64,7 @@ function context(records = [], plantingEvents = [], observations = []){
     "07-dashboard.js":["parseDateOnlyString","startOfLocalDay","formatDateOnlyString","addDays",
       "getDashboardGrowthMedian","buildDashboardGrowthPlantingIndex","getDashboardGrowthPriorPlanting",
       "getDashboardGrowthPriorPlantingDate","buildDashboardGrowthTrainingSamples","getDashboardGrowthSourceState",
-      "invalidateDashboardDerivedData","getDashboardGrowthAsOf","getDashboardGrowthBedPrediction",
+      "invalidateDashboardDerivedData","getDashboardGrowthAsOf","getDashboardGrowthTemperatureTotal","getDashboardGrowthBedPrediction",
       "buildDashboardGrowthWeatherDiagnostics","buildDashboardGrowthPredictionModel"]
   };
   for(const [file, names] of Object.entries(functions)){
@@ -179,6 +179,28 @@ test("current crops older than 35 days reach the growth model without changing t
   assert.equal(schedule.growthFit,undefined);
   assert.equal(c.dashboardHarvestForecastModelCache,schedule);
   assert.equal(c.fitCalls.length,1);
+});
+
+test("each real planting cohort gets current and scheduled temperature totals without changing forecasts", () => {
+  const engine=require("../src/scripts/growth-model.js");
+  const c=context([],[planting(1,"2026-09-23",["2-A-1"]),planting(2,"2026-09-24",["2-A-2"])]);
+  c.HarvestGrowthModel={...c.HarvestGrowthModel,dateKey:engine.dateKey,daysBetween:engine.daysBetween,addDays:engine.addDays};
+  const planned=date(c,"2026-09-26");
+  const schedule={referenceDate:date(c,"2026-09-25"),startBuilding:2,canForecast:true,
+    plantingDateByPallet:new Map(),estimatedPlantingPalletKeys:new Set(),
+    palletForecasts:new Map(["2-A-1","2-A-2"].map(key=>[key,{date:planned,lossRate:0}])),
+    bedRanges:new Map([["2-A",{start:{date:planned},end:{date:planned}}]]),buildingRanges:new Map()};
+  c.dashboardHarvestForecastModelCache=schedule;
+  const daily=["2026-09-23","2026-09-24","2026-09-25","2026-09-26"].map(day=>({date:day,meanTemp:20,
+    source:day<"2026-09-25" ? "observation" : "forecast",issuedAt:"2026-09-24T17:00:00+09:00"}));
+  const weatherContext=engine.prepareWeather(daily,{asOf:"2026-09-25T12:00:00+09:00"});
+  const model=c.buildDashboardGrowthPredictionModel({daily},{learning:{fit:{weatherContext,sampleCount:0}}});
+  const cohorts=model.predictions.get("2-A").cohorts;
+  assert.equal(cohorts.length,2);
+  assert.deepEqual(plain(cohorts.map(cohort=>[cohort.temperatureTotals.current.total,cohort.temperatureTotals.scheduled.total])),[[60,80],[40,60]]);
+  assert.ok(cohorts.every(cohort=>cohort.prediction.status==="normal" && cohort.input.targetDate==="2026-09-26"));
+  assert.equal(schedule.growthFit,undefined);assert.equal(c.dashboardHarvestForecastModelCache,schedule);
+  assert.equal(model.baseModel.palletForecasts,schedule.palletForecasts);assert.equal(c.fitCalls.length,0);
 });
 
 test("an explicit environment position splits prediction cohorts without changing targets or the harvest schedule cache", () => {

@@ -18308,6 +18308,8 @@
           assert(openedBed.reason.length > 0, "ベッド詳細に予測理由がありません");
           assert(openedBed.confidence.startsWith("信頼度："), "詳細ボタンの左に信頼度がありません");
           assert(openedBed.scrollWidth <= openedBed.viewport && openedBed.basisRight <= openedBed.viewport, "数値付きの判定根拠が320px幅から横にはみ出しています");
+          assert(detailCard.querySelector(".dashboardGrowthTemperature")?.textContent.includes("℃・日"),"ベッド詳細に積算温度が表示されません");
+          assert(detailCard.querySelector(".dashboardGrowthTemperature")?.textContent.includes("平均気温が"),"予報範囲外の積算温度に不足日数が表示されません");
           detailCard?.querySelector("summary")?.click();
           await settleVisualApp(previewApp);
 
@@ -18387,6 +18389,21 @@
           assert(growth390.scrollWidth <= growth390.viewport, "生育予測画面が390px幅から横にはみ出しています");
           for(const width of [320,390]){
             preview.document.querySelector(`[data-preview-width="${width}"]`).click();
+            const temperatureCard=[...previewApp.document.querySelectorAll("details.dashboardGrowthBedCard")]
+              .find(card=>card.querySelector(".dashboardGrowthBedName")?.textContent.includes("Aベッド"));
+            temperatureCard.open=true;
+            await settleVisualApp(previewApp);
+            const temperature=temperatureCard.querySelector(".dashboardGrowthTemperature");
+            assert(temperature?.textContent.includes("現在まで") && temperature?.textContent.includes("予定日まで"),"現在と予定日の積算温度が表示されません");
+            const totals=comparable(previewApp.eval(`dashboardGrowthPredictionModelCache.predictions.get("2-A").cohorts.map(cohort=>[
+              Math.round(cohort.temperatureTotals.current.total*10)/10+"℃・日",
+              Math.round(cohort.temperatureTotals.scheduled.total*10)/10+"℃・日"])`));
+            assertDeepEqual([...temperature.querySelectorAll(".dashboardGrowthTemperatureValue > strong")].map(node=>node.textContent.trim()),totals.flat(),"積算温度の計算値と表示が一致しません");
+            assert(temperature.scrollWidth<=temperature.clientWidth && temperature.getBoundingClientRect().right<=previewApp.innerWidth,width+"px幅で積算温度がはみ出しています");
+            for(const value of temperature.querySelectorAll(".dashboardGrowthTemperatureValue")){
+              assert(value.scrollWidth<=value.clientWidth,width+"px幅で積算温度の数値がはみ出しています");
+            }
+            temperatureCard.open=false;
             previewApp.eval(`(() => {
               const weather={historyStartDate:"2026-05-29",normal:{historyCheckedThrough:"2026-06-02"},stale:true,
                 fetchError:"気象データの取得が時間切れになりました",lastError:"気象庁の過去データを取得できません（HTTP 503）",

@@ -170,6 +170,8 @@
 
 7日カレンダーの日付は `openDashboardGrowthDayMap()` で予定場所の配置図を開きます。`getDashboardGrowthScheduledDayMap()` が同じ予定集計入力の `palletKeys` と予定日時点の `status` を日付・ベッド別に索引化し、入力配列が交換された場合だけ索引を更新します。履歴の再読込みや予測の再計算はしません。配置図は対象号棟の6ベッドを既存の `bedMap` 順で表示し、同じベッド内でも番号範囲ごとに大きさを表示します。予定外の場所と大きさ不明を区別し、気象予報範囲外・欠測日はサイズ判定を表示しません。必須確認は予定日・混在サイズ・番号範囲・複数号棟・空の日・予報不足・索引再利用の `tests/growth-scheduled-calendar.test.cjs` と、ブラウザー特性テストの320px・390px幅での日付タップ、配置図の収まり、閉じる・背景・Escape・フォーカス復帰です。
 
+各ベッドの詳細に表示する積算温度は `getDashboardGrowthTemperatureTotal()` が予測モデルの `weatherContext.observations` / `forecasts`（時点・出所を確認した気象入力）から導出し、cohortの `temperatureTotals` に保持します。定植日・対象日を含む日平均気温の単純合計で、日照係数・号棟補正を含む積算生育値とは別の参考指標です。気温だけが揃っていれば算出し、平均気温の不足は未算出、代替気温は別の日数として表示します。気象contextごとの累積和索引と期間キャッシュを再利用し、モデルの気象context交換で破棄します。画面表示では再計算せず、記録形式・学習係数・予定日を変更しません。必須確認は `tests/growth-temperature.test.cjs`、`tests/growth-integration.test.cjs` とブラウザー特性テストの320px・390pxでの各詳細の現在・予定日積算温度、複数の定植日、気温不足、数値の収まりです。
+
 アルゴリズム、候補採用条件、データ不足時の扱い、気象の改訂履歴を完全再現できない制約、未デプロイのサーバー変更は `docs/GROWTH_PREDICTION.md` を参照してください。実農場データによる精度改善は、アプリ上の評価または書き出しJSONを `tools/evaluate_growth.cjs` で確認して判断します。
 
 ### 過去記録の編集・削除・復元
