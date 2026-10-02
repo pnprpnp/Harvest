@@ -1,3 +1,43 @@
+let googleSheetRelayReceiveStatus = null;
+
+function getGoogleSheetRelayReceiveScope(config){
+  return JSON.stringify([String(config.url || "").trim(),
+    String(config.relayUrl || "").trim().replace(/\/+$/, ""), config.token]);
+}
+
+function getGoogleSheetRelayReceiveStatusText(){
+  const status = googleSheetRelayReceiveStatus;
+  if(!status) return "";
+  const time = new Date(status.checkedAt).toLocaleString("ja-JP", {
+    month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit"
+  });
+  const received = `中継の記録を受信（${time}確認）`;
+  if(status.phase === "latest") return `${received}。Googleの最新情報も確認済みです。`;
+  if(status.phase === "updated") return `${received}。Googleに新しい変更があります。もう一度受信してください。`;
+  if(status.phase === "failed") return `${received}。Googleの最新確認ができませんでした。再受信して確認してください。`;
+  return `${received}。Googleの最新情報を確認中です。`;
+}
+
+function renderGoogleSheetRelayReceiveStatus(){
+  const config = loadGoogleSheetConfig();
+  const visible = googleSheetRelayReceiveStatus && !isWorkerMode()
+    && googleSheetRelayReceiveStatus.scope === getGoogleSheetRelayReceiveScope(config);
+  const message = visible ? getGoogleSheetRelayReceiveStatusText() : "";
+  const element = document.getElementById("recordRelaySyncStatus");
+  if(element){ element.hidden = !message; element.textContent = message; }
+  const button = document.getElementById("headerRecordSyncBtn");
+  if(button) button.title = message;
+}
+
+function completeGoogleSheetRelayReceive(combinedSync, config){
+  googleSheetRelayReceiveStatus = combinedSync.relayCache ? {
+    scope:getGoogleSheetRelayReceiveScope(config), checkedAt:combinedSync.relayCache.checkedAt,
+    phase:"checking"
+  } : null;
+  renderGoogleSheetRelayReceiveStatus();
+  return !!combinedSync.relayCache;
+}
+
 function parseMaybeJson(value, fallback){
   if(typeof value !== "string") return value ?? fallback;
   const trimmed = value.trim();
@@ -2100,6 +2140,7 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_TIMEOUT_MS);
   const initialSyncRevision = loadGoogleSheetSyncRevision(config);
+  const relayStatusAtStart = googleSheetRelayReceiveStatus;
 
   try{
     const response = await fetchGoogleSheetReadRequest(config.url, {
@@ -2128,14 +2169,27 @@ async function checkGoogleSheetUpdateAvailabilitySilently(){
     // 確認中に送信・同期が始まった場合、古い応答で通知ドットを更新しない。
     if(googleSheetSendState !== "idle"
       || googleSheetOperationOwner
-      || googleSheetOperationSequence !== operationSequenceAtStart) return;
+      || googleSheetOperationSequence !== operationSequenceAtStart
+      || isWorkerMode()
+      || getGoogleSheetRelayReceiveScope(loadGoogleSheetConfig()) !== getGoogleSheetRelayReceiveScope(config)) return;
     setRecordSyncAvailabilityNotice(
       result.updateAvailable === true
         || initialSyncRevision === null
         || remoteSyncRevision !== initialSyncRevision
     );
+    if(relayStatusAtStart && googleSheetRelayReceiveStatus === relayStatusAtStart
+      && relayStatusAtStart.scope === getGoogleSheetRelayReceiveScope(config)){
+      relayStatusAtStart.phase = result.updateAvailable === true
+        || remoteSyncRevision !== initialSyncRevision ? "updated" : "latest";
+      renderGoogleSheetRelayReceiveStatus();
+    }
   }catch(e){
     console.warn("Background record update check failed", e);
+    if(relayStatusAtStart && googleSheetRelayReceiveStatus === relayStatusAtStart
+      && googleSheetSendState === "idle" && googleSheetOperationSequence === operationSequenceAtStart){
+      relayStatusAtStart.phase = "failed";
+      renderGoogleSheetRelayReceiveStatus();
+    }
   }finally{
     clearTimeout(timer);
   }
@@ -2414,6 +2468,71 @@ function hideRecordImportError(){
   acknowledgeOperationError();
 }
 
+function validateGoogleSheetCombinedReadResult(result){
+  if(result?.ok !== true) throw new Error(result?.message || "収穫・苗植え記録を同期できませんでした");
+  if(result.revisionSync !== true) throw new Error("Apps Scriptが同期番号による差分同期に対応していません");
+  const rows = extractRecordsFromGoogleSheetResponse(result);
+  if(!Array.isArray(rows) || rows.length > GOOGLE_SHEET_MAX_LIST_RECORDS
+    || !Array.isArray(result.events) || result.events.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENTS
+    || normalizeGoogleSheetSyncRevision(result.nextSyncRevision ?? result.syncRevision) === null){
+    throw new Error("一括同期応答の記録または同期番号が正しくありません");
+  }
+  if(result.deletedEventIds !== undefined && (!Array.isArray(result.deletedEventIds)
+    || result.deletedEventIds.length > GOOGLE_SHEET_MAX_LIST_PLANTING_EVENT_TOMBSTONES)){
+    throw new Error("削除済み苗植え記録の件数が正しくありません");
+  }
+  for(const field of ["deletedRecords", "deletedRecordUuids", "deletedRecordIds"]){
+    if(result[field] !== undefined && (!Array.isArray(result[field])
+      || result[field].length > GOOGLE_SHEET_MAX_LIST_RECORD_TOMBSTONES)){
+      throw new Error("削除済み収穫記録の件数が正しくありません");
+    }
+  }
+  return result;
+}
+
+async function fetchGoogleSheetCombinedSyncPage(config, payload, signal, options = {}){
+  const requestOptions = {method:"POST", mode:"cors",
+    headers:{"Content-Type":"text/plain;charset=utf-8"}, body:payload, signal};
+  if(config.relayUrl && !options.directOnly){
+    const relayController = new AbortController();
+    const abortRelay = () => relayController.abort();
+    signal?.addEventListener("abort", abortRelay, {once:true});
+    if(signal?.aborted) relayController.abort();
+    // A missing/slow relay should not add another long Google timeout to the read.
+    const timer = setTimeout(abortRelay, 4000);
+    try{
+      const response = await fetch(config.relayUrl.replace(/\/$/, "") + "/records", {
+        ...requestOptions, signal:relayController.signal,
+        body:buildValidatedGoogleSheetRequestBody({...JSON.parse(payload), sourceUrl:config.url,
+          forceFresh:options.forceFresh === true})
+      });
+      const text = await response.text();
+      if(response.ok === false || !isWithinGoogleSheetResponseLimits(text)) throw new Error("中継受信を利用できません");
+      const result = validateGoogleSheetCombinedReadResult(JSON.parse(text));
+      const checkedAt = Date.parse(result.relayCache?.checkedAt || "");
+      if(typeof result.relayCache?.hit !== "boolean" || !Number.isFinite(checkedAt)
+        || result.relayCache.maxAgeMs !== 60000
+        || (result.relayCache.hit && (Date.now() - checkedAt >= 60000 || checkedAt > Date.now() + 5000))){
+        throw new Error("中継の確認時刻を確認できません");
+      }
+      return result;
+    }catch(error){
+      if(signal?.aborted) throw error;
+      console.warn("中継受信を使えないためGoogleから直接読み込みます", error.message);
+    }finally{
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abortRelay);
+    }
+  }
+  const response = await fetchGoogleSheetReadRequest(config.url, requestOptions);
+  const text = await response.text();
+  if(!isWithinGoogleSheetResponseLimits(text)) throw new Error("スプレッドシートの一括同期応答が大きすぎます");
+  const result = validateGoogleSheetCombinedReadResult(JSON.parse(text));
+  // Only a response from the relay endpoint may request the cached-data UI.
+  delete result.relayCache;
+  return result;
+}
+
 async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
   let recordCursor = null;
   let plantingCursor = null;
@@ -2427,6 +2546,9 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
   let deletedEventIds = [];
   const seenCursorPairs = new Set();
   const seenSyncRevisions = new Set();
+  let relayCache = null;
+  const forceFresh = options.resetSyncRevision === true
+    || document.getElementById("headerRecordSyncBtn")?.classList.contains("hasAvailabilityNotice");
 
   const buildResult = () => {
     const uniqueTombstones = [];
@@ -2454,7 +2576,8 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
       tombstones: uniqueTombstones,
       events: uniqueEvents,
       deletedEventIds: [...new Set(deletedEventIds.map(Number).filter(Number.isSafeInteger))],
-      finalSyncRevision
+      finalSyncRevision,
+      ...(relayCache ? {relayCache} : {})
     };
   };
 
@@ -2465,23 +2588,11 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
       syncRevision,
       revisionReset: revisionResetInProgress
     }));
-    const response = await fetchGoogleSheetReadRequest(config.url, {
-      method: "POST",
-      mode: "cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: payload,
-      signal
+    const result = await fetchGoogleSheetCombinedSyncPage(config, payload, signal, {
+      forceFresh, directOnly:options.directOnly === true
     });
-    const text = await response.text();
-    if(!isWithinGoogleSheetResponseLimits(text)){
-      throw new Error("スプレッドシートの一括同期応答が大きすぎます");
-    }
-    let result;
-    try{
-      result = text ? JSON.parse(text) : {};
-    }catch(e){
-      throw new Error("スプレッドシートの一括同期応答を読み込めません");
-    }
+    if(result.relayCache?.hit && (!relayCache
+      || result.relayCache.checkedAt < relayCache.checkedAt)) relayCache = result.relayCache;
     if(result.ok !== true){
       throw new Error(result.message || "収穫・苗植え記録を同期できませんでした");
     }
@@ -2768,6 +2879,8 @@ async function importRecordsFromGoogleSheet(options = {}){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_SHEET_IMPORT_TIMEOUT_MS);
   let snapshot = null;
+  let relayLatestCheckRequired = false;
+  const previousRelayReceiveStatus = googleSheetRelayReceiveStatus;
 
   try{
     const combinedSync = await fetchGoogleSheetCombinedSyncPages(config, options, controller.signal);
@@ -2779,9 +2892,11 @@ async function importRecordsFromGoogleSheet(options = {}){
     if(!combinedSync.records.length && !combinedSync.tombstones.length
       && !combinedSync.events.length && !combinedSync.deletedEventIds.length){
       saveGoogleSheetSyncRevision(config, combinedSync.finalSyncRevision);
-      setRecordSyncAvailabilityNotice(false);
+      relayLatestCheckRequired = completeGoogleSheetRelayReceive(combinedSync, config);
+      if(!relayLatestCheckRequired) setRecordSyncAvailabilityNotice(false);
       if(!silentErrors && !options.silentNoChange){
-        showToast(options.emptyMessage || "スプレッドシートと同期済みです");
+        showToast(relayLatestCheckRequired ? getGoogleSheetRelayReceiveStatusText()
+          : options.emptyMessage || "スプレッドシートと同期済みです");
       }
       return false;
     }
@@ -2814,22 +2929,28 @@ async function importRecordsFromGoogleSheet(options = {}){
     if(finalSyncRevision !== null){
       saveGoogleSheetSyncRevision(config, finalSyncRevision);
     }
-    setRecordSyncAvailabilityNotice(false);
+    if(!combinedSync.relayCache) setRecordSyncAvailabilityNotice(false);
 
     const totalChanged = Number(recordResult.changedCount || 0)
       + Number(importedEventCount || 0);
     refreshRecordDataUi();
+    relayLatestCheckRequired = completeGoogleSheetRelayReceive(combinedSync, config);
+    const receiveLabel = relayLatestCheckRequired ? "中継から受信（Googleの最新確認中）" : "同期完了";
     if(!silentErrors){
       if(totalConflictCount){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}を競合一覧へ保護しました）`);
+        showToast(`${receiveLabel}: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}（競合${totalConflictCount}件：収穫${Number(recordResult.conflictCount || 0)}・苗植え${Number(plantingResult.conflictCount || 0)}を競合一覧へ保護しました）`);
       }else if(totalChanged){
-        showToast(`同期完了: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}`);
+        showToast(`${receiveLabel}: 追加${recordResult.addedCount}・更新${recordResult.updatedCount}・削除${recordResult.deletedCount}・苗植え${Number(importedEventCount || 0)}`);
       }else if(!options.silentNoChange){
-        showToast(options.emptyMessage || "スプレッドシートと同期済みです");
+        showToast(relayLatestCheckRequired ? getGoogleSheetRelayReceiveStatusText()
+          : options.emptyMessage || "スプレッドシートと同期済みです");
       }
     }
     return totalChanged > 0;
   }catch(e){
+    relayLatestCheckRequired = false;
+    googleSheetRelayReceiveStatus = previousRelayReceiveStatus;
+    renderGoogleSheetRelayReceiveStatus();
     if(snapshot){
       try{
         restoreBackupImportSnapshot(snapshot);
@@ -2854,6 +2975,7 @@ async function importRecordsFromGoogleSheet(options = {}){
   }finally{
     clearTimeout(timer);
     endGoogleSheetOperation(operationOwner);
+    if(relayLatestCheckRequired) void checkGoogleSheetUpdateAvailabilitySilently();
   }
 }
 

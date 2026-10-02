@@ -581,6 +581,7 @@ function getGoogleSheetOperationBusyMessage(action = "操作"){
 }
 
 function updateGoogleSheetOperationControls(){
+  if(typeof renderGoogleSheetRelayReceiveStatus === "function") renderGoogleSheetRelayReceiveStatus();
   updateGoogleSheetResendButtonState();
   const busy = googleSheetSendState !== "idle";
   const syncing = googleSheetSendState === "syncing";

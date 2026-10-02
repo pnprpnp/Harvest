@@ -1,4 +1,5 @@
 import { WEATHER_POLICY, prepareJmaDay, reuseJmaForecast, fetchWeatherFallbacks } from "./weather-fallback.mjs";
+import { getRelayRecordSync, invalidateRelayRecordSyncCache, cleanupRelayRecordSyncCache } from "./record-sync-cache.mjs";
 
 const MAX_REQUEST_BYTES = 1_000_000;
 const MAX_BATCH_ITEMS = 100;
@@ -921,14 +922,14 @@ async function updateBatchFailure(env, batchId, status, error){
   `).bind(batchId, status, message, new Date().toISOString()).run();
 }
 
-async function postAppsScript(env, payload){
+async function postAppsScript(env, payload, accessToken = env.APPS_SCRIPT_TOKEN){
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
   try{
     const response = await fetch(String(env.APPS_SCRIPT_URL), {
       method:"POST",
       headers:{ "Content-Type":"text/plain;charset=utf-8" },
-      body:JSON.stringify({ ...payload, token:String(env.APPS_SCRIPT_TOKEN) }),
+      body:JSON.stringify({ ...payload, token:String(accessToken) }),
       signal:controller.signal
     });
     const text = await response.text();
@@ -943,6 +944,15 @@ async function postAppsScript(env, payload){
     return result;
   }finally{
     clearTimeout(timer);
+  }
+}
+
+async function invalidateRecordReceiveCacheSafely(env){
+  try{
+    await invalidateRelayRecordSyncCache(env);
+  }catch(error){
+    // Older deployments without the new table retain their existing send path.
+    console.warn("中継受信の再利用状態を更新できませんでした", error.message);
   }
 }
 
@@ -972,6 +982,7 @@ async function forwardBatch(env, batchId){
       throw new Error(result.message || "Apps Scriptが記録を受け付けませんでした");
     }
     const completed = result.processed === true && result.queueStatus === "completed";
+    if(completed) await invalidateRecordReceiveCacheSafely(env);
     const timestamp = new Date().toISOString();
     await env.DB.prepare(`
       UPDATE relay_batches
@@ -1018,6 +1029,7 @@ async function enqueueBatch(payload, env, context){
       message:"同じ受付IDで異なる内容が送信されています"
     }, 409);
   }
+  if(row.status !== "completed") await invalidateRecordReceiveCacheSafely(env);
   if(row.status === "failed"){
     await env.DB.prepare(`
       UPDATE relay_batches
@@ -1101,6 +1113,7 @@ async function checkBatchStatus(payload, env, context){
       batchId
     });
     if(result.processed === true && result.queueStatus === "completed"){
+      await invalidateRecordReceiveCacheSafely(env);
       const timestamp = new Date().toISOString();
       await env.DB.prepare(`
         UPDATE relay_batches
@@ -1151,6 +1164,11 @@ async function processPendingBatches(env){
     DELETE FROM relay_batches
     WHERE status IN ('completed', 'failed') AND updated_at < ?1
   `).bind(cleanupBefore).run();
+  try{
+    await cleanupRelayRecordSyncCache(env);
+  }catch(error){
+    console.warn("期限切れの中継受信結果を整理できませんでした", error.message);
+  }
 }
 
 async function processGrowthWeatherSubscriptions(env){
@@ -1198,6 +1216,24 @@ export default {
         return await getGrowthWeather(payload, env, context);
       }catch(error){
         return jsonResponse({ ok:false, message:String(error?.message || error) }, 400);
+      }
+    }
+    if(request.method === "POST" && url.pathname === "/records"){
+      if(!isRelayReady(env)) return jsonResponse({ok:false, message:"中継受信の設定が完了していません"}, 503);
+      try{
+        const payload = await readRequestJson(request);
+        if(!await relayTokenMatches(payload?.token, env.RELAY_TOKEN_SHA256)){
+          return jsonResponse({ok:false, message:"中継サーバーの認証に失敗しました"}, 403);
+        }
+        const received = getRelayRecordSync(payload, env, {
+          hash:sha256, post:(body, token) => postAppsScript(env, body, token)
+        });
+        // Finish warming the cache even if the caller has already fallen back.
+        if(typeof context?.waitUntil === "function") context.waitUntil(received.catch(() => {}));
+        return jsonResponse(await received);
+      }catch(error){
+        console.warn("中継受信を利用できませんでした", error.message);
+        return jsonResponse({ok:false, message:"中継受信を利用できません。Googleから直接読み込んでください"}, 503);
       }
     }
     if(request.method !== "POST" || url.pathname !== "/"){

@@ -135,6 +135,7 @@
       const originalSchedule = app.scheduleGoogleSheetBackgroundSend;
       const originalShowToast = app.showToast;
       const previousInboxSupportState = app.eval("googleSheetInboxSupportState");
+      const previousRelayReceiveStatus = app.eval("googleSheetRelayReceiveStatus");
       try{
         app.eval(`
           if(googleSheetBackgroundSendTimer !== null) clearTimeout(googleSheetBackgroundSendTimer);
@@ -149,6 +150,7 @@
           googleSheetBackgroundSendRunning = false;
           googleSheetOperationOwner = null;
           googleSheetSendState = "idle";
+          googleSheetRelayReceiveStatus = null;
         `);
         app.scheduleGoogleSheetBackgroundSend = () => {};
         app.saveGoogleSheetConfigToStorage({
@@ -180,6 +182,7 @@
           googleSheetOperationOwner = null;
           googleSheetSendState = "idle";
           googleSheetInboxSupportState = ${JSON.stringify(previousInboxSupportState)};
+          googleSheetRelayReceiveStatus = ${JSON.stringify(previousRelayReceiveStatus)};
           updateGoogleSheetOperationControls();
         `);
         restoreStorage(app.localStorage, previousStorage);
@@ -6542,6 +6545,151 @@
             assertEqual(app.loadGoogleSheetSyncRevision(app.loadGoogleSheetConfig()), 0, "失敗した同期位置を進めました");
           }finally{
             app.saveGoogleSheetSyncRevision = originalSaveRevision;
+          }
+        });
+      });
+
+      await runTest("中継の受信はGoogleの最新確認を待たずに完了し確認時刻と新しい変更を表示する", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          app.saveGoogleSheetConfigToStorage({...app.loadGoogleSheetConfig(), relayUrl:"https://relay.test"});
+          const checkedAt = new Date(Date.now() - 1000).toISOString();
+          let resolveLatest, latestStarted = false;
+          const latest = new Promise(resolve => {resolveLatest = resolve;});
+          const record = createBackgroundPartialRecord(71);
+          app.fetch = async (url, options) => {
+            if(String(url).endsWith("/records")) return {text:async () => JSON.stringify({ok:true, revisionSync:true,
+              records:[createBackgroundServerRecord(record)], events:[], deletedRecords:[], deletedEventIds:[],
+              nextSyncRevision:1, hasMore:false, relayCache:{hit:true, checkedAt, maxAgeMs:60000}})};
+            assertEqual(JSON.parse(options.body).action, "checkUpdates", "中継受信後に履歴を重複取得しています");
+            latestStarted = true;
+            await latest;
+            return {text:async () => JSON.stringify({ok:true, revisionSync:true, currentSyncRevision:2, updateAvailable:true})};
+          };
+          assertEqual(await app.importRecordsFromGoogleSheet({silentErrors:true}), true, "最新確認を待たずに受信できません");
+          assert(latestStarted, "最新確認を裏で開始していません");
+          assertEqual(app.eval("googleSheetSendState"), "idle", "最新確認中も受信操作がロックされています");
+          assertEqual(app.getRecordByUuid(record.recordUuid).id, record.id, "中継の確定記録が反映されません");
+          const status = app.document.getElementById("recordRelaySyncStatus");
+          assert(!status.hidden && status.textContent.includes("確認中"), "確認時刻と未確認状態が表示されません");
+          assertEqual(app.eval("googleSheetRelayReceiveStatus.checkedAt"), checkedAt, "中継の確認時刻が変わりました");
+          resolveLatest();
+          await new Promise(resolve => setTimeout(resolve, 0));
+          assert(status.textContent.includes("新しい変更"), "中継の記録をGoogleの最新として表示しています");
+          assert(app.document.getElementById("headerRecordSyncBtn").classList.contains("hasAvailabilityNotice"), "未受信の変更を通知していません");
+        });
+      });
+
+      await runTest("Googleに新しい変更があると分かった次の中継受信は再利用せず取り直す", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          app.saveGoogleSheetConfigToStorage({...app.loadGoogleSheetConfig(), relayUrl:"https://relay.test"});
+          app.setRecordSyncAvailabilityNotice(true);
+          let calls = 0;
+          app.fetch = async (url, options) => {
+            calls++;
+            assert(String(url).endsWith("/records"), "既知の更新がある時に中継受信を利用できません");
+            assertEqual(JSON.parse(options.body).forceFresh, true, "古い応答を再利用しない指定がありません");
+            return {text:async () => JSON.stringify({ok:true, revisionSync:true, records:[], events:[],
+              nextSyncRevision:2, hasMore:false, relayCache:{hit:false, checkedAt:new Date().toISOString(), maxAgeMs:60000}})};
+          };
+          await app.importRecordsFromGoogleSheet({silentErrors:true});
+          assertEqual(calls, 1, "Google確認済みの受信後にも重複して最新確認しています");
+          assertEqual(app.loadGoogleSheetSyncRevision(app.loadGoogleSheetConfig()), 2, "最新の同期位置を保存していません");
+          assertEqual(app.document.getElementById("recordRelaySyncStatus").hidden, true, "古い中継の状態表示が残っています");
+        });
+      });
+
+      await runTest("中継の最新確認中に接続先が変わった古い応答で通知を更新しない", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          app.saveGoogleSheetConfigToStorage({...app.loadGoogleSheetConfig(), relayUrl:"https://relay.test"});
+          app.setRecordSyncAvailabilityNotice(false);
+          app.completeGoogleSheetRelayReceive({relayCache:{checkedAt:new Date().toISOString()}}, app.loadGoogleSheetConfig());
+          let release;
+          const gate = new Promise(resolve => {release = resolve;});
+          app.fetch = async () => {
+            await gate;
+            return {text:async () => JSON.stringify({ok:true, revisionSync:true, currentSyncRevision:9, updateAvailable:true})};
+          };
+          const checking = app.checkGoogleSheetUpdateAvailabilitySilently();
+          app.saveGoogleSheetConfigToStorage({...app.loadGoogleSheetConfig(),
+            url:"https://script.google.com/macros/s/other-source-test/exec"});
+          release();await checking;
+          app.renderGoogleSheetRelayReceiveStatus();
+          assertEqual(app.document.getElementById("headerRecordSyncBtn").classList.contains("hasAvailabilityNotice"), false,
+            "古い接続先の更新を新しい接続先へ通知しました");
+          assertEqual(app.document.getElementById("recordRelaySyncStatus").hidden, true, "古い接続先の確認時刻が残っています");
+        });
+      });
+
+      await runTest("中継の未対応・期限切れ・不正応答はGoogle直接受信へ戻り記録を守る", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          app.saveGoogleSheetConfigToStorage({...app.loadGoogleSheetConfig(), relayUrl:"https://relay.test"});
+          const config = app.loadGoogleSheetConfig();
+          const valid = {ok:true, revisionSync:true, records:[], events:[], nextSyncRevision:3, hasMore:false};
+          const badResponses = [
+            {ok:false, message:"unsupported"},
+            {...valid, relayCache:{hit:true, checkedAt:new Date(Date.now() - 60001).toISOString(), maxAgeMs:60000}},
+            {...valid, relayCache:{hit:true, checkedAt:"invalid", maxAgeMs:60000}},
+            {...valid, events:"invalid", relayCache:{hit:true, checkedAt:new Date().toISOString(), maxAgeMs:60000}}
+          ];
+          for(const bad of badResponses){
+            const urls = [];
+            app.fetch = async url => {
+              urls.push(String(url));
+              return {text:async () => JSON.stringify(String(url).endsWith("/records") ? bad : valid)};
+            };
+            const data = await app.fetchGoogleSheetCombinedSyncPages(config, {}, new AbortController().signal);
+            assertDeepEqual(urls, ["https://relay.test/records", config.url], "Google直接受信へ戻っていません");
+            assertEqual(data.finalSyncRevision, 3, "直接受信の同期位置が失われました");
+            assertEqual(data.relayCache, undefined, "直接受信を中継のコピーとして扱いました");
+          }
+        });
+      });
+
+      await runTest("中継受信の中止はGoogleへ再接続せず同期位置を進めない", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          app.saveGoogleSheetConfigToStorage({...app.loadGoogleSheetConfig(), relayUrl:"https://relay.test"});
+          const controller = new AbortController();
+          let calls = 0;
+          app.fetch = async (_url, options) => {
+            calls++;
+            const waiting = new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            }, {once:true}));
+            controller.abort();return waiting;
+          };
+          let error = null;
+          try{await app.fetchGoogleSheetCombinedSyncPages(app.loadGoogleSheetConfig(), {}, controller.signal);}
+          catch(caught){error = caught;}
+          assertEqual(error?.name, "AbortError", "中止が無視されました");
+          assertEqual(calls, 1, "中止した後でGoogleへ再接続しています");
+          assertEqual(app.loadGoogleSheetSyncRevision(app.loadGoogleSheetConfig()), 0, "中止した同期位置を進めました");
+        });
+      });
+
+      await runTest("中継の確認時刻は320px・390pxで収まりGoogle確認の失敗を未確認として残す", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          const originalWidth = iframe.style.width;
+          try{
+            app.saveGoogleSheetConfigToStorage({...app.loadGoogleSheetConfig(), relayUrl:"https://relay.test"});
+            app.completeGoogleSheetRelayReceive({relayCache:{checkedAt:new Date().toISOString()}}, app.loadGoogleSheetConfig());
+            app.fetch = async () => ({text:async () => JSON.stringify({ok:false, message:"offline"})});
+            await app.checkGoogleSheetUpdateAvailabilitySilently();
+            assertEqual(app.eval("googleSheetRelayReceiveStatus.phase"), "failed", "Googleの確認失敗を最新扱いにしています");
+            assert(app.document.getElementById("recordRelaySyncStatus").textContent.includes("できませんでした"), "未確認状態を案内していません");
+            app.openAppMenuWindow({page:"records"});
+            for(const width of [320,390]){
+              iframe.style.width = width + "px";
+              const state = app.eval(`(() => {
+                const element = document.getElementById("recordRelaySyncStatus");
+                const rect = element.getBoundingClientRect();
+                return {visible:rect.width > 0, fits:element.scrollWidth <= element.clientWidth,
+                  inside:rect.left >= 0 && rect.right <= innerWidth};
+              })()`);
+              assert(state.visible && state.fits && state.inside, width + "pxで確認時刻がはみ出しました");
+            }
+          }finally{
+            iframe.style.width = originalWidth;
+            app.closeAppMenuWindow();
           }
         });
       });
