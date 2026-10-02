@@ -1743,13 +1743,14 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
   saveDeletedPlantingEventsToStorage();
   const deletedEventIds = new Set(deletedPlantingEvents.map(entry => Number(entry.event?.eventId)));
   const normalizedIncomingEvents = sourceEvents.map(normalizePlantingEvent).filter(Boolean);
-  const byId = new Map(plantingEvents.map(event => [Number(event.eventId), event]));
+  const byId = new Map(plantingEvents.map((event, index) => [Number(event.eventId), index]));
   let changedCount = 0;
 
   normalizedIncomingEvents.forEach(incoming => {
     if(deletedEventIds.has(Number(incoming.eventId))) return;
     const eventId = Number(incoming.eventId);
-    const existing = byId.get(eventId);
+    const existingIndex = byId.get(eventId);
+    const existing = existingIndex === undefined ? null : plantingEvents[existingIndex];
     let localChanged = false;
     if(existing){
       const sameContent = getPlantingEventSendSignature(existing) === getPlantingEventSendSignature(incoming);
@@ -1773,14 +1774,13 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
           ?? (options.openingCarryoverAuthoritative ? null : existing.openingCarryoverBefore ?? null)
       };
       if(JSON.stringify(serializePlantingEventForStorage(existing)) !== JSON.stringify(serializePlantingEventForStorage(nextEvent))){
-        const index = plantingEvents.findIndex(event => Number(event.eventId) === eventId);
-        if(index >= 0) plantingEvents[index] = nextEvent;
+        plantingEvents[existingIndex] = nextEvent;
         changedCount++;
         localChanged = true;
       }
     }else{
+      byId.set(eventId, plantingEvents.length);
       plantingEvents.push(incoming);
-      byId.set(eventId, incoming);
       changedCount++;
       localChanged = true;
     }
@@ -1793,8 +1793,8 @@ function importPlantingEventsFromSource(sourceEvents, options = {}){
 
   savePlantingEventSyncStatus(status);
   if(changedCount){
-    savePlantingEventsToStorage();
-    syncHarvestPlantingPendingFlags();
+    savePlantingEventsToStorage({ deferLifecycle: options.deferLifecycle === true });
+    if(!options.deferPendingFlags) syncHarvestPlantingPendingFlags({ deferLifecycle: options.deferLifecycle === true });
     if(!options.deferUiRefresh){
       refreshRecordHistoryViews();
       refreshHarvestMapViews();
@@ -1866,8 +1866,8 @@ function applyRemoteDeletedPlantingEventIds(values, options = {}){
     plantingEvents = plantingEvents.filter(event => (
       !deletedIds.has(Number(event.eventId)) || protectedIds.has(Number(event.eventId))
     ));
-    savePlantingEventsToStorage();
-    syncHarvestPlantingPendingFlags();
+    savePlantingEventsToStorage({ deferLifecycle: options.deferLifecycle === true });
+    if(!options.deferPendingFlags) syncHarvestPlantingPendingFlags({ deferLifecycle: options.deferLifecycle === true });
   }
   saveDeletedPlantingEventsToStorage();
   savePlantingEventSyncStatus(status);
@@ -2421,18 +2421,12 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
   let finalSyncRevision = syncRevision;
   let fullSyncSnapshotRevision = null;
   let revisionResetInProgress = false;
-  const recordsToSync = [];
-  const eventsToSync = [];
+  let recordsToSync = [];
+  let eventsToSync = [];
   let tombstones = [];
   let deletedEventIds = [];
   const seenCursorPairs = new Set();
   const seenSyncRevisions = new Set();
-  const removeMatchingItems = (items, key, getKey) => {
-    if(!key) return;
-    for(let index = items.length - 1; index >= 0; index--){
-      if(getKey(items[index]) === key) items.splice(index, 1);
-    }
-  };
 
   const buildResult = () => {
     const uniqueTombstones = [];
@@ -2513,35 +2507,49 @@ async function fetchGoogleSheetCombinedSyncPages(config, options, signal){
     const pageTombstones = normalizeRemoteHarvestTombstones(result);
     const pageDeletedEventIds = result.deletedEventIds || [];
     if(isRevisionDelta){
-      // 差分取得中に同じ記録が再更新されても、後のページを正とする。
+      // ページ内の最新版を索引へまとめ、蓄積済み差分はページごとに一度だけ照合する。
+      const recordChanges = new Map();
+      const plantingChanges = new Map();
       pageRecords.forEach(record => {
         const key = getHarvestRecordIdentityKey(record);
         if(!key) throw new Error("差分同期の収穫記録に識別情報がありません");
-        removeMatchingItems(recordsToSync, key, getHarvestRecordIdentityKey);
-        removeMatchingItems(tombstones, key, getHarvestRecordIdentityKey);
-        recordsToSync.push(record);
+        recordChanges.delete(key);
+        recordChanges.set(key, { record });
       });
       pageTombstones.forEach(tombstone => {
         const key = getHarvestRecordIdentityKey(tombstone);
         if(!key) throw new Error("差分同期の削除記録に識別情報がありません");
-        removeMatchingItems(recordsToSync, key, getHarvestRecordIdentityKey);
-        removeMatchingItems(tombstones, key, getHarvestRecordIdentityKey);
-        tombstones.push(tombstone);
+        recordChanges.delete(key);
+        recordChanges.set(key, { tombstone });
       });
       pageEvents.forEach(event => {
         const eventId = getSafePositiveRecordId(event?.eventId);
         if(eventId === null) throw new Error("差分同期の苗植え記録IDが正しくありません");
-        removeMatchingItems(eventsToSync, eventId, item => getSafePositiveRecordId(item?.eventId));
-        deletedEventIds = deletedEventIds.filter(value => getSafePositiveRecordId(value) !== eventId);
-        eventsToSync.push(event);
+        plantingChanges.delete(eventId);
+        plantingChanges.set(eventId, { event });
       });
       pageDeletedEventIds.forEach(value => {
         const eventId = getSafePositiveRecordId(value);
         if(eventId === null) throw new Error("差分同期の削除済み苗植え記録IDが正しくありません");
-        removeMatchingItems(eventsToSync, eventId, item => getSafePositiveRecordId(item?.eventId));
-        deletedEventIds = deletedEventIds.filter(item => getSafePositiveRecordId(item) !== eventId);
-        deletedEventIds.push(eventId);
+        plantingChanges.delete(eventId);
+        plantingChanges.set(eventId, { eventId });
       });
+      if(recordChanges.size){
+        recordsToSync = recordsToSync.filter(record => !recordChanges.has(getHarvestRecordIdentityKey(record)));
+        tombstones = tombstones.filter(item => !recordChanges.has(getHarvestRecordIdentityKey(item)));
+        recordChanges.forEach(change => {
+          if(change.record) recordsToSync.push(change.record);
+          else tombstones.push(change.tombstone);
+        });
+      }
+      if(plantingChanges.size){
+        eventsToSync = eventsToSync.filter(event => !plantingChanges.has(getSafePositiveRecordId(event?.eventId)));
+        deletedEventIds = deletedEventIds.filter(value => !plantingChanges.has(getSafePositiveRecordId(value)));
+        plantingChanges.forEach(change => {
+          if(change.event) eventsToSync.push(change.event);
+          else deletedEventIds.push(change.eventId);
+        });
+      }
     }else{
       recordsToSync.push(...pageRecords);
       eventsToSync.push(...pageEvents);
@@ -2767,23 +2775,39 @@ async function importRecordsFromGoogleSheet(options = {}){
       records: combinedSync.records,
       tombstones: combinedSync.tombstones
     };
+    // 差分がない時は元記録・派生状態に触れず、同期位置と通知だけを更新する。
+    if(!combinedSync.records.length && !combinedSync.tombstones.length
+      && !combinedSync.events.length && !combinedSync.deletedEventIds.length){
+      saveGoogleSheetSyncRevision(config, combinedSync.finalSyncRevision);
+      setRecordSyncAvailabilityNotice(false);
+      if(!silentErrors && !options.silentNoChange){
+        showToast(options.emptyMessage || "スプレッドシートと同期済みです");
+      }
+      return false;
+    }
     snapshot = createBackupImportSnapshot();
+    const mutationOptions = { deferLifecycle: true, deferPendingFlags: true };
     // 先に収穫IDの競合を解決し、既存のlocal苗植え参照だけを新IDへ移す。
     // その後remote苗植えイベントを入れることで、server IDの参照を誤って付け替えない。
-    const recordResult = reconcileGoogleSheetRecords(recordSync.records, recordSync.tombstones, options);
+    const recordResult = recordSync.records.length || recordSync.tombstones.length
+      ? reconcileGoogleSheetRecords(recordSync.records, recordSync.tombstones, { ...options, ...mutationOptions })
+      : { addedCount: 0, updatedCount: 0, deletedCount: 0, conflictCount: 0, changedCount: 0 };
     const plantingResult = {
       conflictCount: 0
     };
     const deletedEventCount = applyRemoteDeletedPlantingEventIds(combinedSync.deletedEventIds, {
+      ...mutationOptions,
       resultTracker: plantingResult
     });
-    const importedEventCount = deletedEventCount + importPlantingEventsFromSource(combinedSync.events, {
+    const importedEventCount = deletedEventCount + (combinedSync.events.length ? importPlantingEventsFromSource(combinedSync.events, {
+      ...mutationOptions,
       fromGoogleSheetPaged: true,
       openingCarryoverAuthoritative: false,
       deferUiRefresh: true,
       resultTracker: plantingResult
-    });
-    syncHarvestPlantingPendingFlags();
+    }) : 0);
+    syncHarvestPlantingPendingFlags({ deferLifecycle: true });
+    rebuildCurrentPalletLifecycleState({ persist: true });
     // 競合は両方の内容を競合一覧へ退避済みなので、同期位置を進めても失われない。
     const totalConflictCount = Number(recordResult.conflictCount || 0) + Number(plantingResult.conflictCount || 0);
     const finalSyncRevision = normalizeGoogleSheetSyncRevision(combinedSync.finalSyncRevision);

@@ -6386,6 +6386,166 @@
         );
       });
 
+      await runTest("変更なしの受信は履歴保存・状態再計算・画面再描画を省き未送信記録を守る", async () => {
+        const record = createBackgroundPartialRecord(61);
+        await withBackgroundSendTestState(app, [record], async () => {
+          const heavyNames = ["createBackupImportSnapshot", "saveRecordsToStorage", "savePlantingEventsToStorage",
+            "syncHarvestPlantingPendingFlags", "rebuildCurrentPalletLifecycleState", "refreshRecordDataUi"];
+          const originals = heavyNames.map(name => app[name]);
+          const before = comparable(app.eval("records"));
+          const storedRecords = app.localStorage.getItem(app.getActiveRecordsStorageKey());
+          const previousSyncState = app.getGoogleSheetRecordSyncState(app.getRecordByUuid(record.recordUuid));
+          const messages = [];
+          try{
+            heavyNames.forEach(name => { app[name] = () => { throw new Error("不要な処理: " + name); }; });
+            app.showToast = message => messages.push(message);
+            app.setRecordSyncAvailabilityNotice(true);
+            app.fetch = async () => ({ text:async () => JSON.stringify({ok:true, revisionSync:true,
+              records:[], events:[], deletedRecords:[], deletedEventIds:[], nextSyncRevision:7, hasMore:false}) });
+            assertEqual(await app.importRecordsFromGoogleSheet(), false, "変更なしを追加扱いにしています");
+            assertDeepEqual(messages, ["スプレッドシートと同期済みです"], "同期完了を案内できません");
+            assertDeepEqual(app.eval("records"), before, "未送信の元記録が変わりました");
+            assertEqual(app.localStorage.getItem(app.getActiveRecordsStorageKey()), storedRecords, "記録を再保存しました");
+            assertEqual(app.loadGoogleSheetSyncRevision(app.loadGoogleSheetConfig()), 7, "同期位置を進めていません");
+            assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(record.recordUuid)), previousSyncState, "未送信が確認済みになりました");
+            assertEqual(app.eval("googleSheetSendState"), "idle", "同期操作のロックを解除していません");
+          }finally{
+            heavyNames.forEach((name, index) => { app[name] = originals[index]; });
+          }
+        });
+      });
+
+      await runTest("複数ページの差分受信は更新・削除・復元の最後の内容を採用する", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          const first = createBackgroundPartialRecord(62);
+          const second = createBackgroundPartialRecord(63);
+          const pages = [
+            {records:[first, second], events:[{eventId:1, memo:"old"}], deletedRecords:[], deletedEventIds:[]},
+            {records:[], events:[], deletedRecords:[{id:first.id, recordUuid:first.recordUuid}], deletedEventIds:[1]},
+            {records:[{...first, memo:"restored"}], events:[{eventId:1, memo:"restored"}],
+              deletedRecords:[{id:second.id, recordUuid:second.recordUuid}], deletedEventIds:[2]}
+          ];
+          const revisions = [];
+          app.fetch = async (_url, options) => {
+            revisions.push(JSON.parse(options.body).syncRevision);
+            const index = revisions.length - 1;
+            return {text:async () => JSON.stringify({ok:true, revisionSync:true, ...pages[index],
+              nextSyncRevision:index + 1, hasMore:index < pages.length - 1})};
+          };
+          const result = await app.fetchGoogleSheetCombinedSyncPages(app.loadGoogleSheetConfig(), {}, new AbortController().signal);
+          assertDeepEqual(revisions, [0,1,2], "差分の続き位置が違います");
+          assertDeepEqual(result.records.map(record => [record.id, record.memo]), [[first.id, "restored"]], "復元または削除が失われました");
+          assertDeepEqual(result.tombstones.map(record => record.id), [second.id], "復元済み記録を削除扱いにしています");
+          assertDeepEqual(result.events, [{eventId:1, memo:"restored"}], "苗植えの復元が失われました");
+          assertDeepEqual(result.deletedEventIds, [2], "復元済み苗植えを削除扱いにしています");
+          assertEqual(result.finalSyncRevision, 3, "最終同期番号が違います");
+        });
+      });
+
+      await runTest("大量差分の照合は記録ごとに蓄積済み差分を走査しない", async () => {
+        await withBackgroundSendTestState(app, [], async () => {
+          const originalIdentity = app.getHarvestRecordIdentityKey;
+          let lookups = 0;
+          let page = 0;
+          try{
+            app.getHarvestRecordIdentityKey = value => { lookups++; return originalIdentity(value); };
+            app.fetch = async () => {
+              const offset = page++ * 200;
+              return {text:async () => JSON.stringify({ok:true, revisionSync:true,
+                records:Array.from({length:200}, (_, index) => ({id:offset + index + 1})),
+                events:[], deletedRecords:[], deletedEventIds:[], nextSyncRevision:page, hasMore:page < 3})};
+            };
+            const result = await app.fetchGoogleSheetCombinedSyncPages(app.loadGoogleSheetConfig(), {}, new AbortController().signal);
+            assertEqual(result.records.length, 600, "差分記録が欠けました");
+            assert(lookups <= 1200, "600件の差分に過剰な照合が発生しました: " + lookups);
+          }finally{
+            app.getHarvestRecordIdentityKey = originalIdentity;
+          }
+        });
+      });
+
+      await runTest("収穫と苗植えの受信後はパレット状態を一度だけ再計算する", async () => {
+        const fullRecord = createBackgroundFullRecord(64, "2026-09-01");
+        const event = createBackgroundPlantingEvent(64, fullRecord);
+        await withBackgroundSendTestState(app, [], async () => {
+          const originalRebuild = app.rebuildCurrentPalletLifecycleState;
+          let rebuildCount = 0;
+          try{
+            app.rebuildCurrentPalletLifecycleState = options => { rebuildCount++; return originalRebuild(options); };
+            app.fetch = async () => ({text:async () => JSON.stringify({ok:true, revisionSync:true,
+              records:[createBackgroundServerRecord(fullRecord)], events:[event], deletedRecords:[], deletedEventIds:[],
+              nextSyncRevision:1, hasMore:false})});
+            assertEqual(await app.importRecordsFromGoogleSheet({silentErrors:true}), true, "収穫と苗植えを取り込めません");
+            assertEqual(rebuildCount, 1, "受信途中の状態も繰り返し再計算しています");
+            assertEqual(app.eval("plantingEvents.length"), 1, "苗植えが失われました");
+            assertEqual(app.eval("plantingEvents[0].sourceAllocations[0].harvestRecordId"), fullRecord.id, "収穫参照が変わりました");
+            assertEqual(app.eval("records[0].plantingPending"), true, "残りの未定植場所が失われました");
+            assertDeepEqual(app.ensureCurrentPalletLifecycleState(), app.buildCurrentPalletLifecycleState(app.eval("records"), app.eval("plantingEvents")),
+              "受信後の状態が通常の再計算結果と違います");
+          }finally{
+            app.rebuildCurrentPalletLifecycleState = originalRebuild;
+          }
+        });
+      });
+
+      await runTest("苗植えの同一IDを続けて受信しても直前の更新と繰越枚数を引き継ぐ", async () => {
+        const record = createBackgroundFullRecord(67, "2026-09-01");
+        const event = createBackgroundPlantingEvent(67, record);
+        await withBackgroundSendTestState(app, [record], async () => {
+          app.savePlantingEventSyncStatus({[event.eventId]:{state:"confirmed"}});
+          app.importPlantingEventsFromSource([
+            {...event, actualSeedlingTrayCount:2, openingCarryoverBefore:5},
+            {...event, actualSeedlingTrayCount:3}
+          ], {deferUiRefresh:true});
+          assertEqual(app.eval("plantingEvents.length"), 1, "同じIDの苗植えが重複しました");
+          assertEqual(app.eval("plantingEvents[0].actualSeedlingTrayCount"), 3, "直前の更新が反映されません");
+          assertEqual(app.eval("plantingEvents[0].openingCarryoverBefore"), 5, "直前に受信した繰越枚数が失われました");
+        }, [event]);
+      });
+
+      await runTest("差分受信の再計算をまとめても端末の修正を競合へ保護し確定済みの削除を反映する", async () => {
+        const edited = createBackgroundPartialRecord(68, 10, "local");
+        const deleted = createBackgroundPartialRecord(69);
+        await withBackgroundSendTestState(app, [edited, deleted], async () => {
+          const before = app.createBackupImportSnapshot();
+          try{
+            app.markGoogleSheetRecordsSynced(app.eval("records"));
+            app.setGoogleSheetSyncStatus(app.getRecordByUuid(edited.recordUuid), "edited");
+            app.fetch = async () => ({text:async () => JSON.stringify({ok:true, revisionSync:true,
+              records:[{...createBackgroundServerRecord(edited), memo:"remote"}], events:[],
+              deletedRecords:[{id:deleted.id, recordUuid:deleted.recordUuid}], deletedEventIds:[], nextSyncRevision:2, hasMore:false})});
+            await app.importRecordsFromGoogleSheet({silentErrors:true});
+            assertEqual(app.getRecordByUuid(edited.recordUuid).memo, "local", "端末の修正が上書きされました");
+            assertEqual(app.getGoogleSheetRecordSyncState(app.getRecordByUuid(edited.recordUuid)), "conflict", "競合が保存されません");
+            assertEqual(app.getRecordByUuid(deleted.recordUuid), null, "削除を反映していません");
+            assert(app.eval("deletedRecords").some(entry => entry.record.recordUuid === deleted.recordUuid && entry.sheetDeleted), "削除記録がごみ箱へ保護されません");
+            assert(app.eval("syncConflicts").some(entry => entry.remoteVersion?.memo === "remote"), "リモート側の内容が保護されません");
+          }finally{
+            app.restoreBackupImportSnapshot(before);
+          }
+        });
+      });
+
+      await runTest("受信後の保存失敗は元記録と同期位置を同期前へ戻す", async () => {
+        const record = createBackgroundPartialRecord(65);
+        await withBackgroundSendTestState(app, [record], async () => {
+          const originalSaveRevision = app.saveGoogleSheetSyncRevision;
+          const before = app.createBackupImportSnapshot();
+          try{
+            app.saveGoogleSheetSyncRevision = () => { throw new Error("revision write failed"); };
+            app.fetch = async () => ({text:async () => JSON.stringify({ok:true, revisionSync:true,
+              records:[createBackgroundServerRecord(createBackgroundPartialRecord(66))], events:[], deletedRecords:[],
+              deletedEventIds:[], nextSyncRevision:1, hasMore:false})});
+            await app.importRecordsFromGoogleSheet({silentErrors:true});
+            assertDeepEqual(app.eval("records"), before.records, "受信失敗後に元記録が変わりました");
+            assertDeepEqual(app.createBackupImportSnapshot().storageValues, before.storageValues, "受信失敗後に保存内容が変わりました");
+            assertEqual(app.loadGoogleSheetSyncRevision(app.loadGoogleSheetConfig()), 0, "失敗した同期位置を進めました");
+          }finally{
+            app.saveGoogleSheetSyncRevision = originalSaveRevision;
+          }
+        });
+      });
+
       await runTest("自端末の送信だけなら同期番号を進めて通知ドットを消す", () => {
         const config = {
           url: "https://example.test/harvestnavi-own-write-ack",

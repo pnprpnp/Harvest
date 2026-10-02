@@ -574,12 +574,11 @@ function reconcileGoogleSheetRecords(sourceRecords, tombstones, options = {}){
   if(trashEntriesToRemove.size){
     deletedRecords = deletedRecords.filter(entry => !trashEntriesToRemove.has(entry));
   }
-  records.sort(compareRecordsByDateDesc);
-  saveRecordsToStorage();
+  saveRecordsToStorage({ deferLifecycle: options.deferLifecycle === true });
   saveDeletedRecordsToStorage();
   saveGoogleSheetSyncStatus(status);
   if(plantingReferenceChanged){
-    savePlantingEventsToStorage();
+    savePlantingEventsToStorage({ deferLifecycle: options.deferLifecycle === true });
     saveDeletedPlantingEventsToStorage();
   }
   if(recordIdChanged) saveHarvestStateToStorage();
