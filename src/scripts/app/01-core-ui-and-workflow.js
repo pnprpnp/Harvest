@@ -781,6 +781,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "dashboardForecastInfoModal",
   "dashboardSeedlingStatusInfoModal",
   "dashboardGrowthInfoModal",
+  "dashboardGrowthDayMapModal",
   "dashboardForecastDaysAllModal",
   "plantingAgeModal",
   "harvestProgressModal",

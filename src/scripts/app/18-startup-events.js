@@ -345,6 +345,10 @@ function handleStartupEscapeKey(event){
     return;
   }
   const dashboardGrowthInfoModal = document.getElementById("dashboardGrowthInfoModal");
+  if(document.getElementById("dashboardGrowthDayMapModal")?.classList.contains("show")){
+    closeDashboardGrowthDayMap();
+    return;
+  }
   if(dashboardGrowthInfoModal?.classList.contains("show")){
     closeDashboardGrowthInfoWindow();
     return;

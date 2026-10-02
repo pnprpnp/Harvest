@@ -28,6 +28,8 @@ function fixture(cohorts,plantingEvents,records=[],extraForecasts=[],lossRates={
   let datasetReads=0,quantities=0;
   const container={innerHTML:""};
   const context=vm.createContext({Date,HarvestGrowthPlanner:planner,HarvestGrowthYield:yieldEngine,
+    BUILDINGS:[2,3,4,5,6,7,8,9],bedOrder:["A","B","C","D","E","F"],bedMap:["F","D","B","E","C","A"],PALLETS_PER_BED:78,ROWS:39,
+    parsePalletKey:key=>{const [building,bed,number]=key.split("-");return {building:Number(building),bed,number:Number(number)};},
     document:{getElementById:()=>container},dashboardGrowthPlanningShowsQuantity:false,
     getDashboardGrowthYieldAnalysis:()=>{datasetReads++;return {dataset};},
     getDashboardGrowthYieldPrediction:(palletKeys,plantingEventId)=>{
@@ -35,7 +37,7 @@ function fixture(cohorts,plantingEvents,records=[],extraForecasts=[],lossRates={
       return yieldEngine.predict({planner,model:{rows:[{factor:0.5,building:5}]},dataset,palletKeys,plantingEventId});
     },getDashboardGrowthPlanningItems:()=>[],readDashboardGrowthChangeState:()=>({notifications:[]}),
     escapeHtml:value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))});
-  for(const name of ["parseDateOnlyString","startOfLocalDay","formatDateOnlyString","addDays","getDashboardGrowthScheduledPlanningItems","renderDashboardGrowthPlanning"]){
+  for(const name of ["parseDateOnlyString","startOfLocalDay","formatDateOnlyString","addDays","getDashboardGrowthScheduledPlanningItems","getDashboardGrowthScheduledDayMap","getDashboardGrowthScheduledDayMapHtml","renderDashboardGrowthPlanning"]){
     const start=source.indexOf(`function ${name}(`),end=source.indexOf("\n}",start);
     assert.ok(start>=0 && end>start,name);
     vm.runInContext(source.slice(start,end+2),context);
@@ -58,6 +60,42 @@ test("the guide's scheduled pallets use their scheduled-day size and actual coun
   assert.doesNotMatch(f.container.innerHTML,/dashboardGrowthCalendarTotal/);
   assert.match(f.container.innerHTML,/dashboardGrowthCalendarConfidence[^>]*aria-label="信頼度：参考値"/);
   assert.doesNotMatch(f.container.innerHTML,/開始：|期間中：|32ベッド/);
+});
+test("tapping dates opens a map of exact scheduled places with separate sizes within each bed",()=>{
+  const f=fixture([cohort(["5-A-1","5-A-2"],"normal"),cohort(["5-A-4"],"large"),
+    cohort(["5-A-3"],"small","2026-10-03"),cohort(["6-B-78"],"small")],
+    [planting(1,{"5-A-1":12,"5-A-2":12,"5-A-3":12,"5-A-4":12,"6-B-78":12})]);
+  f.context.renderDashboardGrowthPlanning(f.model);
+  assert.match(f.container.innerHTML,/data-ui-click="openDashboardGrowthDayMap" data-ui-arg="2026-10-02"/);
+  const beds=f.context.getDashboardGrowthScheduledDayMap(f.model,"2026-10-02");
+  assert.deepEqual(JSON.parse(JSON.stringify([...beds.get("5-A").palletStatuses])),[ [1,"normal"],[2,"normal"],[4,"large"] ]);
+  const html=f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-02");
+  assert.match(html,/5号棟の収穫予定場所/);assert.match(html,/6号棟の収穫予定場所/);
+  assert.doesNotMatch(html,/7号棟の収穫予定場所/);
+  assert.match(html,/is-normal" data-growth-day-pallet="5-A-1"/);
+  assert.match(html,/is-none" data-growth-day-pallet="5-A-3"/);
+  assert.match(html,/is-large" data-growth-day-pallet="5-A-4"/);
+  assert.match(html,/is-small" data-growth-day-pallet="6-B-78"/);
+  assert.match(html,/<strong>1〜2番<\/strong><span>ちょうど良い<\/span>/);
+  assert.match(html,/<strong>4番<\/strong><span>大きめ<\/span>/);
+  assert.ok(html.indexOf('data-growth-day-pallet="5-A-77"')<html.indexOf('data-growth-day-pallet="5-A-1"'));
+  assert.equal((html.match(/data-growth-day-bed=/g)||[]).length,12);
+  assert.equal(f.context.getDashboardGrowthScheduledDayMap(f.model,"2026-10-02"),beds);
+  assert.deepEqual(f.reads(),{datasetReads:1,quantities:0});
+  f.model.predictions=new Map(f.model.predictions);
+  assert.notEqual(f.context.getDashboardGrowthScheduledDayMap(f.model,"2026-10-02"),beds);
+  assert.equal(f.reads().datasetReads,2);
+});
+test("maps distinguish no harvest, missing size, and a day outside weather forecasts",()=>{
+  const f=fixture([cohort(["5-A-1"],"large")],[planting(1,{"5-A-1":12})],[],[["5-B-2","2026-10-02"]]);
+  assert.match(f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-01"),/この日の収穫予定はありません/);
+  assert.match(f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-02"),/is-unknown" data-growth-day-pallet="5-B-2"/);
+  f.model.weather.daily=f.model.weather.daily.filter(day=>day.date!=="2026-10-02");
+  const html=f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-02");
+  assert.match(html,/大きさは未予測/);
+  assert.match(html,/is-unknown" data-growth-day-pallet="5-A-1"/);
+  assert.doesNotMatch(html,/<span>大きめ<\/span>/);
+  assert.equal(f.reads().datasetReads,1);
 });
 test("a bed split across harvest dates only contributes each day's selected portion",()=>{
   const f=fixture([cohort(["5-A-1"],"normal"),cohort(["5-A-2"],"large","2026-10-03")],

@@ -5273,6 +5273,78 @@ function getDashboardGrowthScheduledPlanningItems(model,options={}){
   return cache.items;
 }
 
+function getDashboardGrowthScheduledDayMap(model,date){
+  const items=getDashboardGrowthScheduledPlanningItems(model,{includeQuantity:false});
+  let cache=model.scheduledDayMapCache;
+  if(!cache || cache.items!==items){
+    const days=new Map();
+    items.forEach(item=>item.palletKeys.forEach(key=>{
+      const pallet=parsePalletKey(key);
+      if(!BUILDINGS.includes(pallet.building) || !bedOrder.includes(pallet.bed)
+        || !Number.isInteger(pallet.number) || pallet.number<1 || pallet.number>PALLETS_PER_BED) return;
+      if(!days.has(item.date)) days.set(item.date,new Map());
+      const beds=days.get(item.date),id=`${pallet.building}-${pallet.bed}`;
+      if(!beds.has(id)) beds.set(id,{building:pallet.building,bed:pallet.bed,palletStatuses:new Map()});
+      beds.get(id).palletStatuses.set(pallet.number,item.status);
+    }));
+    cache={items,days};
+    model.scheduledDayMapCache=cache;
+  }
+  return cache.days.get(date) || new Map();
+}
+
+function getDashboardGrowthScheduledDayMapHtml(model,date){
+  const beds=getDashboardGrowthScheduledDayMap(model,date);
+  if(!beds.size) return '<p class="dashboardEmpty">この日の収穫予定はありません。</p>';
+  const predicted=!!model.weather.forecastEndDate && date<=model.weather.forecastEndDate
+    && model.weather.daily.some(day=>day.source==="forecast" && day.date===date);
+  const labels={large:"大きめ",normal:"ちょうど良い",small:"小さめ",unknown:"大きさ不明"};
+  const statusOf=value=>predicted && ["large","normal","small"].includes(value) ? value : "unknown";
+  const buildings=BUILDINGS.filter(building=>[...beds.values()].some(bed=>bed.building===building));
+  return `<p class="dashboardGrowthDayMapGuide">色の付いた場所が収穫予定です。配置図は上が奥（77・78番）、下が手前（1・2番）です。</p>${!predicted ? '<p class="dashboardGrowthDayMapGuide">気象予報範囲外のため、大きさは未予測です。</p>' : ""}
+    <div class="dashboardGrowthDayMapLegend" aria-label="予定日の大きさの色分け">${Object.entries(labels).map(([status,label])=>`<span class="dashboardGrowthCalendarSize is-${status}">${label}</span>`).join("")}<span class="dashboardGrowthCalendarSize">予定なし</span></div>
+    ${buildings.map(building=>`<section class="dashboardGrowthDayMapBuilding" aria-label="${building}号棟の収穫予定場所"><h3>${building}号棟</h3><div class="dashboardGrowthDayMapBeds">${bedMap.map(bed=>{
+      const planned=beds.get(`${building}-${bed}`)?.palletStatuses || new Map();
+      const ranges=[];
+      [...planned.keys()].sort((a,b)=>a-b).forEach(number=>{
+        const status=statusOf(planned.get(number)),last=ranges[ranges.length-1];
+        if(last && last.end===number-1 && last.status===status) last.end=number;
+        else ranges.push({start:number,end:number,status});
+      });
+      const statuses=[...new Set(ranges.map(range=>range.status))];
+      const cells=[];
+      for(let row=ROWS;row>=1;row--){
+        for(const number of [row*2-1,row*2]){
+          const status=planned.has(number) ? statusOf(planned.get(number)) : "none";
+          cells.push(`<span class="dashboardGrowthDayMapCell is-${status}" data-growth-day-pallet="${building}-${bed}-${number}"></span>`);
+        }
+      }
+      return `<article class="dashboardGrowthDayMapBed${planned.size ? " is-planned" : ""}" data-growth-day-bed="${building}-${bed}"><h4>${bed}ベッド</h4><div class="dashboardGrowthDayMapBedSizes">${statuses.length ? statuses.map(status=>`<span class="dashboardGrowthCalendarSize is-${status}">${labels[status]}</span>`).join("") : '<span class="dashboardGrowthDayMapNoPlan">予定なし</span>'}</div><div class="dashboardGrowthDayMapGrid" aria-hidden="true">${cells.join("")}</div>${ranges.length ? `<ul class="dashboardGrowthDayMapRanges">${ranges.map(range=>`<li><strong>${range.start===range.end ? range.start : `${range.start}〜${range.end}`}番</strong><span>${labels[range.status]}</span></li>`).join("")}</ul>` : ""}</article>`;
+    }).join("")}</div></section>`).join("")}`;
+}
+
+let dashboardGrowthDayMapReturnFocus=null;
+
+function openDashboardGrowthDayMap(date){
+  const model=dashboardGrowthPredictionModelCache,day=parseDateOnlyString(date);
+  const modal=document.getElementById("dashboardGrowthDayMapModal");
+  if(!model || !day || !modal) return;
+  dashboardGrowthDayMapReturnFocus=document.activeElement;
+  document.getElementById("dashboardGrowthDayMapTitle").textContent=`${day.getMonth()+1}/${day.getDate()}（${"日月火水木金土"[day.getDay()]}）の収穫予定場所`;
+  const body=document.getElementById("dashboardGrowthDayMapBody");
+  body.innerHTML=getDashboardGrowthScheduledDayMapHtml(model,date);
+  body.scrollTop=0;
+  showPageBlockingUi(modal);
+  requestAnimationFrame(()=>document.getElementById("dashboardGrowthDayMapClose")?.focus());
+}
+
+function closeDashboardGrowthDayMap(){
+  hidePageBlockingUi(document.getElementById("dashboardGrowthDayMapModal"));
+  const returnFocus=dashboardGrowthDayMapReturnFocus;
+  dashboardGrowthDayMapReturnFocus=null;
+  requestAnimationFrame(()=>returnFocus?.isConnected && returnFocus.focus());
+}
+
 function renderDashboardGrowthPlanning(model){
   const container=document.getElementById("dashboardGrowthPlanning");
   if(!container) return;
@@ -5291,7 +5363,7 @@ function renderDashboardGrowthPlanning(model){
   const caseNumber=value=>String(Math.round(value*10)/10);
   const dayDetails=[];
   const calendarRows=calendar.map(day=>{
-    const head=(state="",metadata="")=>`<div class="dashboardGrowthCalendarHead"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${metadata ? `<div class="dashboardGrowthCalendarMeta">${metadata}</div>` : ""}${state}</div>`;
+    const head=(state="",metadata="")=>`<div class="dashboardGrowthCalendarHead"><button type="button" class="dashboardGrowthCalendarDate" data-ui-click="openDashboardGrowthDayMap" data-ui-arg="${day.date}" aria-label="${escapeHtml(`${dateLabel(day.date)}の収穫予定場所を配置図で表示`)}" aria-haspopup="dialog" aria-controls="dashboardGrowthDayMapModal"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time></button>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${metadata ? `<div class="dashboardGrowthCalendarMeta">${metadata}</div>` : ""}${state}</div>`;
     const rowClass=`dashboardGrowthCalendarRow${day.date===today ? " is-today" : ""}`;
     if(!day.entries.length) return `<li class="${rowClass} is-empty">${head('<span class="dashboardGrowthCalendarState">収穫予定なし</span>')}</li>`;
     if(!day.predicted) return `<li class="${rowClass} is-unpredicted">${head('<span class="dashboardGrowthCalendarState">未予測</span>')}<span class="dashboardGrowthCalendarUnavailable">気象予報範囲外</span></li>`;

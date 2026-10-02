@@ -5386,7 +5386,7 @@
         }
       });
 
-      await runTest("7日カレンダーのカードが画面内に収まり注意・詳細だけを開閉する", async () => {
+      await runTest("7日カレンダーが画面内に収まり日付の配置図と注意・詳細を開閉する", async () => {
         for(const [width,height] of [[320,568],[320,640],[390,844]]){
           const frame=await loadVisualAppFrame(width,height,`../index.html?__hncheck=1&calendar-characterization=${Date.now()}`);
           const visualApp=frame.contentWindow;
@@ -5399,7 +5399,7 @@
               window.calendarRenderCalls=0;
               window.calendarSampleItems=sampleDays.flatMap((offset,index)=>["large","normal","small"].map((status,size)=>({
                 id:offset+":"+status,date:formatDateOnlyString(addDays(parseDateOnlyString(calendarToday),offset)),status,
-                heads:[40.5,180.3,20.6][size]*12,palletKeys:["2-A-1"],
+                heads:[40.5,180.3,20.6][size]*12,palletKeys:["2-"+["A","B","C"][size]+"-1"],
                 locations:[{building:2,bed:"A",confidence:offset===0 ? ["中","参考値","データ不足"][size] : "参考値",risk:offset===2 ? {tipburn:{level:"high",label:"注意",reason:"確認用の品質の注意"}} : {}}]
               })));
               getDashboardGrowthScheduledPlanningItems=()=>{window.calendarRenderCalls++;return window.calendarSampleItems;};
@@ -5435,6 +5435,32 @@
               assert(sizes.scrollWidth<=sizes.clientWidth,width+"px幅で内訳が横にはみ出ています");
               for(const chip of sizes.children) assert(chip.scrollWidth<=chip.clientWidth,width+"px幅で大きさの文字がはみ出しています: "+chip.textContent);
             }
+            const dateButton=calendar.querySelector(".dashboardGrowthCalendarDate");
+            dateButton.focus();dateButton.click();
+            await settleVisualApp(visualApp);
+            const mapModal=doc.getElementById("dashboardGrowthDayMapModal");
+            const mapBody=doc.getElementById("dashboardGrowthDayMapBody");
+            assert(mapModal.classList.contains("show"),"日付をタップしても収穫予定の配置図が開きません");
+            assertEqual(doc.activeElement.id,"dashboardGrowthDayMapClose","配置図の閉じる操作へフォーカスが移りません");
+            assertEqual(mapBody.querySelectorAll("[data-growth-day-bed]").length,6,"号棟内の6ベッドが表示されません");
+            assert(mapBody.querySelector('[data-growth-day-pallet="2-A-1"]').classList.contains("is-large"),"予定の大きさが配置図へ反映されません");
+            assert(mapBody.querySelector('[data-growth-day-pallet="2-A-2"]').classList.contains("is-none"),"予定外の場所まで色が付いています");
+            assert(mapBody.querySelector('[data-growth-day-bed="2-B"]').textContent.includes("ちょうど良い"),"ベッドごとの大きさが表示されません");
+            assert(mapBody.scrollWidth<=mapBody.clientWidth,width+"px幅で配置図が横にはみ出しています");
+            for(const chip of mapBody.querySelectorAll(".dashboardGrowthDayMapBedSizes .dashboardGrowthCalendarSize")){
+              assert(chip.scrollWidth<=chip.clientWidth,width+"px幅でベッドの大きさがはみ出ています");
+            }
+            visualApp.document.dispatchEvent(new visualApp.KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
+            await settleVisualApp(visualApp);
+            assert(!mapModal.classList.contains("show"),"Escapeで配置図を閉じられません");
+            assert(doc.activeElement===dateButton,"閉じた後に日付へフォーカスが戻りません");
+            rows[1].querySelector(".dashboardGrowthCalendarDate").click();
+            assert(mapBody.textContent.includes("この日の収穫予定はありません"),"予定のない日にも前の配置図が表示されます");
+            doc.getElementById("dashboardGrowthDayMapClose").click();
+            assert(!mapModal.classList.contains("show"),"閉じるボタンで配置図を閉じられません");
+            dateButton.click();
+            mapModal.click();
+            assert(!mapModal.classList.contains("show"),"背景のタップで配置図を閉じられません");
             const calls=visualApp.calendarRenderCalls;
             const warning=calendar.querySelector(".dashboardGrowthCalendarAttention");
             assert(warning,"注意のボタンが表示されません");
@@ -6870,6 +6896,7 @@
           "dashboardForecastInfoModal",
           "dashboardSeedlingStatusInfoModal",
           "dashboardGrowthInfoModal",
+          "dashboardGrowthDayMapModal",
           "dashboardForecastDaysAllModal",
           "plantingAgeModal",
           "harvestProgressModal",
@@ -18459,21 +18486,21 @@
 
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
-        // 0d0d7c6の画面と照合済み。表示差分は目安バーの数字4つの強調だけ。
-        // 非表示の植え数別入力・7日カレンダーの説明・中継確認時刻も要素数へ含める。
+        // 日別配置図の非表示ダイアログ6要素と説明1要素を追加。各画面の表示要素数は維持。
+        // 配置図とカレンダーの日付操作・320px/390pxの収まりは専用テストで確認する。
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "462b9d75", elements: 2621, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "cd8b5366", elements: 2691, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "4efddce9", elements: 2691, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "5d10159b", elements: 2625, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "d6f6a99f", elements: 2642, visible: 100, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "1fca99ad", elements: 2725, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "1c1005ec", elements: 2740, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "4404606a", elements: 2852, visible: 163, viewport: "390x844" },
-          mobileSettings: { hash: "2a5061e5", elements: 2852, visible: 187, viewport: "390x844" },
-          mobileMonitor: { hash: "79291430", elements: 2896, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "889dee39", elements: 2896, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "7b70b5b9", elements: 2896, visible: 100, viewport: "1024x900" }
+          mobileForecast: { hash: "83185f7f", elements: 2628, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "14385e91", elements: 2698, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "0e854b6e", elements: 2698, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "a8ae2b65", elements: 2632, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "db488036", elements: 2649, visible: 100, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "c45cf01a", elements: 2732, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "f8895ac2", elements: 2747, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "d7a51e00", elements: 2859, visible: 163, viewport: "390x844" },
+          mobileSettings: { hash: "68b3513d", elements: 2859, visible: 187, viewport: "390x844" },
+          mobileMonitor: { hash: "00a26326", elements: 2903, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "3773966f", elements: 2903, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "e18684ef", elements: 2903, visible: 100, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }

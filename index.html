@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261002-guide-bar-visual-tests">
+<meta name="harvestnavi-version" content="20261002-growth-calendar-day-map">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -17748,6 +17748,30 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
 .dashboardGrowthCalendarRow.is-today{border-color:var(--ui-accent);box-shadow:inset 0 0 0 1px var(--ui-accent-soft);}
 .dashboardGrowthCalendarHead{display:flex;align-items:center;gap:5px;min-width:0;min-height:24px;line-height:1.2;}
 .dashboardGrowthCalendarHead time{flex:none;font-size:13px;font-weight:750;white-space:nowrap;}
+.dashboardGrowthCalendarDate{flex:none;min-height:24px;margin:0;padding:2px 0;border:0;border-radius:4px;background:transparent;color:var(--ui-accent-dark);line-height:1.2;text-decoration:underline;text-underline-offset:3px;cursor:pointer;}
+.dashboardGrowthCalendarDate:focus-visible{outline:2px solid var(--ui-blue);outline-offset:2px;}
+.dashboardGrowthDayMapBody{white-space:normal;}
+.dashboardGrowthDayMapGuide{margin:0 0 10px;color:var(--ui-text-secondary);font-size:12px;line-height:1.6;}
+.dashboardGrowthDayMapLegend{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;}
+.dashboardGrowthDayMapBuilding + .dashboardGrowthDayMapBuilding{margin-top:18px;}
+.dashboardGrowthDayMapBuilding h3{margin:0 0 8px;font-size:16px;}
+.dashboardGrowthDayMapBeds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start;}
+.dashboardGrowthDayMapBed{min-width:0;padding:8px 5px;border:1px solid var(--ui-line);border-radius:10px;background:var(--ui-surface-muted);}
+.dashboardGrowthDayMapBed.is-planned{border-color:var(--ui-accent);background:var(--ui-surface-solid);}
+.dashboardGrowthDayMapBed h4{margin:0 0 5px;text-align:center;font-size:12px;}
+.dashboardGrowthDayMapBedSizes{display:grid;gap:3px;min-height:38px;align-content:center;}
+.dashboardGrowthDayMapBedSizes .dashboardGrowthCalendarSize{white-space:normal;text-align:center;font-size:10px;line-height:14px;padding:2px;}
+.dashboardGrowthDayMapNoPlan{color:var(--ui-text-secondary);text-align:center;font-size:11px;}
+.dashboardGrowthDayMapGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(39,4px);gap:1px;margin-top:6px;padding:1px;border:1px solid var(--ui-line);background:var(--ui-line);}
+.dashboardGrowthDayMapCell.is-none{background:var(--ui-surface-muted);}
+.dashboardGrowthDayMapCell.is-large{background:#ef9a3f;}
+.dashboardGrowthDayMapCell.is-normal{background:#61b66f;}
+.dashboardGrowthDayMapCell.is-small{background:#65a9ed;}
+.dashboardGrowthDayMapCell.is-unknown{background:repeating-linear-gradient(135deg,#8895a5 0 2px,#c8d0db 2px 4px);}
+.dashboardGrowthDayMapBody .dashboardGrowthCalendarSize.is-unknown{border:1px dashed var(--ui-text-secondary);}
+.dashboardGrowthDayMapRanges{display:grid;gap:6px;list-style:none;margin:8px 0 0;padding:0;}
+.dashboardGrowthDayMapRanges li{display:grid;gap:1px;font-size:10px;line-height:1.4;overflow-wrap:anywhere;}
+.dashboardGrowthDayMapRanges strong{font-size:11px;}
 .dashboardGrowthCalendarToday{padding:2px 4px;border-radius:5px;background:var(--ui-accent);color:var(--ui-surface-solid);font-size:10px;font-weight:750;white-space:nowrap;}
 .dashboardGrowthCalendarMeta{display:flex;align-items:center;justify-content:flex-end;gap:5px;min-width:0;margin-left:auto;}
 .dashboardGrowthCalendarConfidence{display:flex;align-items:baseline;gap:3px;min-width:0;color:var(--ui-text-secondary);font-size:10px;white-space:nowrap;}
@@ -17798,6 +17822,7 @@ html[data-theme="dark"] .dashboardGrowthCalendarSize.is-small{background:#162f4a
   .dashboardGrowthCalendar{gap:3px;}
   .dashboardGrowthCalendarRow,.dashboardGrowthCalendarRow.is-empty{padding-top:2px;padding-bottom:2px;}
   .dashboardGrowthCalendarHead{min-height:20px;}
+  .dashboardGrowthCalendarDate{min-height:20px;padding-top:0;padding-bottom:0;}
   .dashboardGrowthCalendarAttention{min-height:20px;padding-top:0;padding-bottom:0;}
   .dashboardGrowthCalendarSize{line-height:14px;}
   .dashboardGrowthPlanning{gap:2px;}
@@ -21191,6 +21216,15 @@ requestAnimationFrame(function(){
     </div>
   </div>
 </div>
+<div id="dashboardGrowthDayMapModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardGrowthDayMapTitle" data-ui-backdrop-click="closeDashboardGrowthDayMap">
+  <div class="recordDetailWindow">
+    <div class="recordDetailWindowHeader">
+      <div id="dashboardGrowthDayMapTitle" class="recordDetailWindowTitle">収穫予定場所</div>
+      <button id="dashboardGrowthDayMapClose" type="button" class="recordDetailWindowClose" data-ui-click="closeDashboardGrowthDayMap">閉じる</button>
+    </div>
+    <div id="dashboardGrowthDayMapBody" class="recordDetailWindowBody dashboardGrowthDayMapBody"></div>
+  </div>
+</div>
 <div id="dashboardGrowthInfoModal" class="recordDetailModal" role="dialog" aria-modal="true" aria-labelledby="dashboardGrowthInfoWindowTitle" aria-describedby="dashboardGrowthInfoWindowBody" data-ui-backdrop-click="closeDashboardGrowthInfoWindow">
   <div class="recordDetailWindow">
     <div class="recordDetailWindowHeader">
@@ -21203,6 +21237,7 @@ requestAnimationFrame(function(){
         <div class="dashboardGrowthInfoSectionTitle">7日カレンダーの見方</div>
         <p class="dashboardGrowthInfoText">日付の右に予測の信頼度、その下に大きさ別のケース数を表示します。信頼度が複数ある日は併記し、表示が省略された場合は「注意・詳しい内容」で全文を確認できます。「目安」の収穫予定範囲を予定日の予測サイズで集計し、植え付け株数に「目安」で使用中のロス率を反映してから部分収穫済み分を一度だけ差し引き、12株＝1ケースで換算しています。パレット単位で範囲を選ぶため、目安のケース数を少し超える場合があります。</p>
         <p class="dashboardGrowthInfoText">株数が分からない分を含む内訳は「不明」と表示します。分かる分の合計は「注意・詳しい内容」で確認できます。大きさだけが分からない場合は「大きさ不明」の内訳に含めます。内訳が4種類ある日は「並」がちょうど良い大きさ、「不明」が大きさ不明を表します。「収穫予定なし」と、気象予報範囲外の「未予測」は区別します。</p>
+        <p class="dashboardGrowthInfoText">日付をタップすると、その日の収穫予定場所を配置図で表示します。色の付いた範囲が収穫予定で、ベッドごとに予定日の大きさとパレット番号を確認できます。同じベッド内で大きさが異なる場合は範囲ごとに表示します。</p>
         <p class="dashboardGrowthInfoText">「注意」をタップすると、その日の詳細を開きます。カレンダー下の「注意・詳しい内容」では品質の注意、信頼度、前回予測からの変化を確認できます。「残存ケース数も確認」は実績から求める別の参考推定で、カレンダーのロス率反映後のケース数とは計算方法が異なります。</p>
       </section>
       <section class="dashboardGrowthInfoSection">
@@ -22665,6 +22700,7 @@ const PAGE_BLOCKING_UI_IDS = Object.freeze([
   "dashboardForecastInfoModal",
   "dashboardSeedlingStatusInfoModal",
   "dashboardGrowthInfoModal",
+  "dashboardGrowthDayMapModal",
   "dashboardForecastDaysAllModal",
   "plantingAgeModal",
   "harvestProgressModal",
@@ -41741,6 +41777,78 @@ function getDashboardGrowthScheduledPlanningItems(model,options={}){
   return cache.items;
 }
 
+function getDashboardGrowthScheduledDayMap(model,date){
+  const items=getDashboardGrowthScheduledPlanningItems(model,{includeQuantity:false});
+  let cache=model.scheduledDayMapCache;
+  if(!cache || cache.items!==items){
+    const days=new Map();
+    items.forEach(item=>item.palletKeys.forEach(key=>{
+      const pallet=parsePalletKey(key);
+      if(!BUILDINGS.includes(pallet.building) || !bedOrder.includes(pallet.bed)
+        || !Number.isInteger(pallet.number) || pallet.number<1 || pallet.number>PALLETS_PER_BED) return;
+      if(!days.has(item.date)) days.set(item.date,new Map());
+      const beds=days.get(item.date),id=`${pallet.building}-${pallet.bed}`;
+      if(!beds.has(id)) beds.set(id,{building:pallet.building,bed:pallet.bed,palletStatuses:new Map()});
+      beds.get(id).palletStatuses.set(pallet.number,item.status);
+    }));
+    cache={items,days};
+    model.scheduledDayMapCache=cache;
+  }
+  return cache.days.get(date) || new Map();
+}
+
+function getDashboardGrowthScheduledDayMapHtml(model,date){
+  const beds=getDashboardGrowthScheduledDayMap(model,date);
+  if(!beds.size) return '<p class="dashboardEmpty">この日の収穫予定はありません。</p>';
+  const predicted=!!model.weather.forecastEndDate && date<=model.weather.forecastEndDate
+    && model.weather.daily.some(day=>day.source==="forecast" && day.date===date);
+  const labels={large:"大きめ",normal:"ちょうど良い",small:"小さめ",unknown:"大きさ不明"};
+  const statusOf=value=>predicted && ["large","normal","small"].includes(value) ? value : "unknown";
+  const buildings=BUILDINGS.filter(building=>[...beds.values()].some(bed=>bed.building===building));
+  return `<p class="dashboardGrowthDayMapGuide">色の付いた場所が収穫予定です。配置図は上が奥（77・78番）、下が手前（1・2番）です。</p>${!predicted ? '<p class="dashboardGrowthDayMapGuide">気象予報範囲外のため、大きさは未予測です。</p>' : ""}
+    <div class="dashboardGrowthDayMapLegend" aria-label="予定日の大きさの色分け">${Object.entries(labels).map(([status,label])=>`<span class="dashboardGrowthCalendarSize is-${status}">${label}</span>`).join("")}<span class="dashboardGrowthCalendarSize">予定なし</span></div>
+    ${buildings.map(building=>`<section class="dashboardGrowthDayMapBuilding" aria-label="${building}号棟の収穫予定場所"><h3>${building}号棟</h3><div class="dashboardGrowthDayMapBeds">${bedMap.map(bed=>{
+      const planned=beds.get(`${building}-${bed}`)?.palletStatuses || new Map();
+      const ranges=[];
+      [...planned.keys()].sort((a,b)=>a-b).forEach(number=>{
+        const status=statusOf(planned.get(number)),last=ranges[ranges.length-1];
+        if(last && last.end===number-1 && last.status===status) last.end=number;
+        else ranges.push({start:number,end:number,status});
+      });
+      const statuses=[...new Set(ranges.map(range=>range.status))];
+      const cells=[];
+      for(let row=ROWS;row>=1;row--){
+        for(const number of [row*2-1,row*2]){
+          const status=planned.has(number) ? statusOf(planned.get(number)) : "none";
+          cells.push(`<span class="dashboardGrowthDayMapCell is-${status}" data-growth-day-pallet="${building}-${bed}-${number}"></span>`);
+        }
+      }
+      return `<article class="dashboardGrowthDayMapBed${planned.size ? " is-planned" : ""}" data-growth-day-bed="${building}-${bed}"><h4>${bed}ベッド</h4><div class="dashboardGrowthDayMapBedSizes">${statuses.length ? statuses.map(status=>`<span class="dashboardGrowthCalendarSize is-${status}">${labels[status]}</span>`).join("") : '<span class="dashboardGrowthDayMapNoPlan">予定なし</span>'}</div><div class="dashboardGrowthDayMapGrid" aria-hidden="true">${cells.join("")}</div>${ranges.length ? `<ul class="dashboardGrowthDayMapRanges">${ranges.map(range=>`<li><strong>${range.start===range.end ? range.start : `${range.start}〜${range.end}`}番</strong><span>${labels[range.status]}</span></li>`).join("")}</ul>` : ""}</article>`;
+    }).join("")}</div></section>`).join("")}`;
+}
+
+let dashboardGrowthDayMapReturnFocus=null;
+
+function openDashboardGrowthDayMap(date){
+  const model=dashboardGrowthPredictionModelCache,day=parseDateOnlyString(date);
+  const modal=document.getElementById("dashboardGrowthDayMapModal");
+  if(!model || !day || !modal) return;
+  dashboardGrowthDayMapReturnFocus=document.activeElement;
+  document.getElementById("dashboardGrowthDayMapTitle").textContent=`${day.getMonth()+1}/${day.getDate()}（${"日月火水木金土"[day.getDay()]}）の収穫予定場所`;
+  const body=document.getElementById("dashboardGrowthDayMapBody");
+  body.innerHTML=getDashboardGrowthScheduledDayMapHtml(model,date);
+  body.scrollTop=0;
+  showPageBlockingUi(modal);
+  requestAnimationFrame(()=>document.getElementById("dashboardGrowthDayMapClose")?.focus());
+}
+
+function closeDashboardGrowthDayMap(){
+  hidePageBlockingUi(document.getElementById("dashboardGrowthDayMapModal"));
+  const returnFocus=dashboardGrowthDayMapReturnFocus;
+  dashboardGrowthDayMapReturnFocus=null;
+  requestAnimationFrame(()=>returnFocus?.isConnected && returnFocus.focus());
+}
+
 function renderDashboardGrowthPlanning(model){
   const container=document.getElementById("dashboardGrowthPlanning");
   if(!container) return;
@@ -41759,7 +41867,7 @@ function renderDashboardGrowthPlanning(model){
   const caseNumber=value=>String(Math.round(value*10)/10);
   const dayDetails=[];
   const calendarRows=calendar.map(day=>{
-    const head=(state="",metadata="")=>`<div class="dashboardGrowthCalendarHead"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${metadata ? `<div class="dashboardGrowthCalendarMeta">${metadata}</div>` : ""}${state}</div>`;
+    const head=(state="",metadata="")=>`<div class="dashboardGrowthCalendarHead"><button type="button" class="dashboardGrowthCalendarDate" data-ui-click="openDashboardGrowthDayMap" data-ui-arg="${day.date}" aria-label="${escapeHtml(`${dateLabel(day.date)}の収穫予定場所を配置図で表示`)}" aria-haspopup="dialog" aria-controls="dashboardGrowthDayMapModal"><time datetime="${day.date}">${escapeHtml(dateLabel(day.date))}</time></button>${day.date===today ? '<span class="dashboardGrowthCalendarToday">今日</span>' : ""}${metadata ? `<div class="dashboardGrowthCalendarMeta">${metadata}</div>` : ""}${state}</div>`;
     const rowClass=`dashboardGrowthCalendarRow${day.date===today ? " is-today" : ""}`;
     if(!day.entries.length) return `<li class="${rowClass} is-empty">${head('<span class="dashboardGrowthCalendarState">収穫予定なし</span>')}</li>`;
     if(!day.predicted) return `<li class="${rowClass} is-unpredicted">${head('<span class="dashboardGrowthCalendarState">未予測</span>')}<span class="dashboardGrowthCalendarUnavailable">気象予報範囲外</span></li>`;
@@ -60227,6 +60335,10 @@ function handleStartupEscapeKey(event){
     return;
   }
   const dashboardGrowthInfoModal = document.getElementById("dashboardGrowthInfoModal");
+  if(document.getElementById("dashboardGrowthDayMapModal")?.classList.contains("show")){
+    closeDashboardGrowthDayMap();
+    return;
+  }
   if(dashboardGrowthInfoModal?.classList.contains("show")){
     closeDashboardGrowthInfoWindow();
     return;
