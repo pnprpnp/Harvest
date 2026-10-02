@@ -1667,23 +1667,27 @@ function getBedOverviewMapCellHtml(building, bed, number, sectionStart, options 
   return `<span class="${classes.join(" ")}"${styleText ? ` style="${styleText}"` : ""} title="${number}番 ${escapeHtml(stateText)}"></span>`;
 }
 
-function appendBedOverviewMap(bedElement, building, bed, options = {}){
-  if(!bedElement) return;
+function getBedOverviewMapHtml(building, bed, options = {}){
   const cells = [];
   for(let row = ROWS; row >= 1; row--){
     const displayRowIndex = ROWS - row;
     const sectionStart = displayRowIndex > 0
       && Math.floor(displayRowIndex * 6 / ROWS) > Math.floor((displayRowIndex - 1) * 6 / ROWS);
-    cells.push(getBedOverviewMapCellHtml(building, bed, row * 2 - 1, sectionStart, options));
-    cells.push(getBedOverviewMapCellHtml(building, bed, row * 2, sectionStart, options));
+    const renderCell = number => typeof options.renderCell === "function"
+      ? options.renderCell(number, sectionStart)
+      : getBedOverviewMapCellHtml(building, bed, number, sectionStart, options);
+    cells.push(renderCell(row * 2 - 1));
+    cells.push(renderCell(row * 2));
   }
 
-  const map = document.createElement("div");
-  map.className = "dashboardSeedlingBedMap simulationBedMap"
+  const className = "dashboardSeedlingBedMap simulationBedMap"
     + (options.context === "record" ? " recordBedMap" : "");
-  map.setAttribute("aria-hidden", "true");
-  map.innerHTML = `<div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div>`;
-  bedElement.appendChild(map);
+  return `<div class="${className}" aria-hidden="true"><div class="dashboardSeedlingBedMapGrid">${cells.join("")}</div></div>`;
+}
+
+function appendBedOverviewMap(bedElement, building, bed, options = {}){
+  if(!bedElement) return;
+  bedElement.insertAdjacentHTML("beforeend", getBedOverviewMapHtml(building, bed, options));
 }
 
 function applyRecordBedRange(action){

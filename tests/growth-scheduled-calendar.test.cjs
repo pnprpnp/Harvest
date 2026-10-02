@@ -42,6 +42,9 @@ function fixture(cohorts,plantingEvents,records=[],extraForecasts=[],lossRates={
     assert.ok(start>=0 && end>start,name);
     vm.runInContext(source.slice(start,end+2),context);
   }
+  const mapSource=fs.readFileSync(require.resolve("../src/scripts/app/08-harvest-calculation.js"),"utf8");
+  const mapStart=mapSource.indexOf("function getBedOverviewMapHtml("),mapEnd=mapSource.indexOf("\n}",mapStart);
+  vm.runInContext(mapSource.slice(mapStart,mapEnd+2),context);
   return {model,context,container,reads:()=>({datasetReads,quantities}),
     items:options=>context.getDashboardGrowthScheduledPlanningItems(model,options),
     calendar:()=>planner.scheduledCalendar(context.getDashboardGrowthScheduledPlanningItems(model),{
@@ -70,16 +73,23 @@ test("tapping dates opens a map of exact scheduled places with separate sizes wi
   const beds=f.context.getDashboardGrowthScheduledDayMap(f.model,"2026-10-02");
   assert.deepEqual(JSON.parse(JSON.stringify([...beds.get("5-A").palletStatuses])),[ [1,"normal"],[2,"normal"],[4,"large"] ]);
   const html=f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-02");
-  assert.match(html,/5号棟の収穫予定場所/);assert.match(html,/6号棟の収穫予定場所/);
+  assert.match(html,/5号棟の収穫予定場所/);
+  assert.match(html,/data-ui-click="setDashboardGrowthDayMapBuilding" data-ui-number="6"/);
+  assert.doesNotMatch(html,/6号棟の収穫予定場所/);
   assert.doesNotMatch(html,/7号棟の収穫予定場所/);
   assert.match(html,/is-normal" data-growth-day-pallet="5-A-1"/);
   assert.match(html,/is-none" data-growth-day-pallet="5-A-3"/);
   assert.match(html,/is-large" data-growth-day-pallet="5-A-4"/);
-  assert.match(html,/is-small" data-growth-day-pallet="6-B-78"/);
+  const nextHtml=f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-02",6);
+  assert.match(nextHtml,/6号棟の収穫予定場所/);
+  assert.match(nextHtml,/is-small" data-growth-day-pallet="6-B-78"/);
+  assert.doesNotMatch(nextHtml,/data-growth-day-pallet="5-/);
+  assert.match(html,/class="dashboardSeedlingBedMap simulationBedMap"/);
+  assert.match(html,/class="dashboardSeedlingBedMapGrid"/);
   assert.match(html,/<strong>1〜2番<\/strong><span>ちょうど良い<\/span>/);
   assert.match(html,/<strong>4番<\/strong><span>大きめ<\/span>/);
   assert.ok(html.indexOf('data-growth-day-pallet="5-A-77"')<html.indexOf('data-growth-day-pallet="5-A-1"'));
-  assert.equal((html.match(/data-growth-day-bed=/g)||[]).length,12);
+  assert.equal((html.match(/data-growth-day-bed=/g)||[]).length,6);
   assert.equal(f.context.getDashboardGrowthScheduledDayMap(f.model,"2026-10-02"),beds);
   assert.deepEqual(f.reads(),{datasetReads:1,quantities:0});
   f.model.predictions=new Map(f.model.predictions);
@@ -92,7 +102,7 @@ test("maps distinguish no harvest, missing size, and a day outside weather forec
   assert.match(f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-02"),/is-unknown" data-growth-day-pallet="5-B-2"/);
   f.model.weather.daily=f.model.weather.daily.filter(day=>day.date!=="2026-10-02");
   const html=f.context.getDashboardGrowthScheduledDayMapHtml(f.model,"2026-10-02");
-  assert.match(html,/大きさは未予測/);
+  assert.match(html,/大きさは予報範囲外のため未予測/);
   assert.match(html,/is-unknown" data-growth-day-pallet="5-A-1"/);
   assert.doesNotMatch(html,/<span>大きめ<\/span>/);
   assert.equal(f.reads().datasetReads,1);

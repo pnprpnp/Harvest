@@ -5359,7 +5359,7 @@ function getDashboardGrowthScheduledDayMap(model,date){
   return cache.days.get(date) || new Map();
 }
 
-function getDashboardGrowthScheduledDayMapHtml(model,date){
+function getDashboardGrowthScheduledDayMapHtml(model,date,selectedBuilding=null){
   const beds=getDashboardGrowthScheduledDayMap(model,date);
   if(!beds.size) return '<p class="dashboardEmpty">この日の収穫予定はありません。</p>';
   const predicted=!!model.weather.forecastEndDate && date<=model.weather.forecastEndDate
@@ -5367,9 +5367,11 @@ function getDashboardGrowthScheduledDayMapHtml(model,date){
   const labels={large:"大きめ",normal:"ちょうど良い",small:"小さめ",unknown:"大きさ不明"};
   const statusOf=value=>predicted && ["large","normal","small"].includes(value) ? value : "unknown";
   const buildings=BUILDINGS.filter(building=>[...beds.values()].some(bed=>bed.building===building));
-  return `<p class="dashboardGrowthDayMapGuide">色の付いた場所が収穫予定です。配置図は上が奥（77・78番）、下が手前（1・2番）です。</p>${!predicted ? '<p class="dashboardGrowthDayMapGuide">気象予報範囲外のため、大きさは未予測です。</p>' : ""}
-    <div class="dashboardGrowthDayMapLegend" aria-label="予定日の大きさの色分け">${Object.entries(labels).map(([status,label])=>`<span class="dashboardGrowthCalendarSize is-${status}">${label}</span>`).join("")}<span class="dashboardGrowthCalendarSize">予定なし</span></div>
-    ${buildings.map(building=>`<section class="dashboardGrowthDayMapBuilding" aria-label="${building}号棟の収穫予定場所"><h3>${building}号棟</h3><div class="dashboardGrowthDayMapBeds">${bedMap.map(bed=>{
+  const building=buildings.includes(Number(selectedBuilding)) ? Number(selectedBuilding) : buildings[0];
+  const pager=buildings.length>1 ? `<div class="dashboardGrowthDayMapPager dashboardForecastBuildingTabs" role="group" aria-label="表示する号棟">${buildings.map(value=>`<button type="button" class="dashboardForecastBuildingBtn${value===building ? " active" : ""}" data-ui-click="setDashboardGrowthDayMapBuilding" data-ui-number="${value}" aria-pressed="${value===building}">${value}号棟</button>`).join("")}</div>` : `<h3 class="dashboardGrowthDayMapBuildingTitle">${building}号棟</h3>`;
+  return `<p class="dashboardGrowthDayMapGuide">色付きが収穫予定（上：奥／下：手前）。${!predicted ? "大きさは予報範囲外のため未予測です。" : ""}</p>
+    <div class="dashboardGrowthDayMapLegend" aria-label="予定日の大きさの色分け">${Object.entries(labels).map(([status,label])=>`<span class="dashboardGrowthCalendarSize is-${status}">${status==="normal" ? "並（ちょうど良い）" : label}</span>`).join("")}<span class="dashboardGrowthCalendarSize">予定なし</span></div>${pager}
+    <section class="dashboardGrowthDayMapBuilding" data-growth-day-building="${building}" aria-label="${building}号棟の収穫予定場所"><div class="bedWrap dashboardGrowthDayMapBeds">${bedMap.map(bed=>{
       const planned=beds.get(`${building}-${bed}`)?.palletStatuses || new Map();
       const ranges=[];
       [...planned.keys()].sort((a,b)=>a-b).forEach(number=>{
@@ -5378,24 +5380,32 @@ function getDashboardGrowthScheduledDayMapHtml(model,date){
         else ranges.push({start:number,end:number,status});
       });
       const statuses=[...new Set(ranges.map(range=>range.status))];
-      const cells=[];
-      for(let row=ROWS;row>=1;row--){
-        for(const number of [row*2-1,row*2]){
-          const status=planned.has(number) ? statusOf(planned.get(number)) : "none";
-          cells.push(`<span class="dashboardGrowthDayMapCell is-${status}" data-growth-day-pallet="${building}-${bed}-${number}"></span>`);
-        }
-      }
-      return `<article class="dashboardGrowthDayMapBed${planned.size ? " is-planned" : ""}" data-growth-day-bed="${building}-${bed}"><h4>${bed}ベッド</h4><div class="dashboardGrowthDayMapBedSizes">${statuses.length ? statuses.map(status=>`<span class="dashboardGrowthCalendarSize is-${status}">${labels[status]}</span>`).join("") : '<span class="dashboardGrowthDayMapNoPlan">予定なし</span>'}</div><div class="dashboardGrowthDayMapGrid" aria-hidden="true">${cells.join("")}</div>${ranges.length ? `<ul class="dashboardGrowthDayMapRanges">${ranges.map(range=>`<li><strong>${range.start===range.end ? range.start : `${range.start}〜${range.end}`}番</strong><span>${labels[range.status]}</span></li>`).join("")}</ul>` : ""}</article>`;
-    }).join("")}</div></section>`).join("")}`;
+      const mapHtml=getBedOverviewMapHtml(building,bed,{renderCell:(number,sectionStart)=>{
+        const status=planned.has(number) ? statusOf(planned.get(number)) : "none";
+        return `<span class="dashboardSeedlingBedMapCell simulationBedMapCell dashboardGrowthDayMapCell${sectionStart ? " is-section-start" : ""} is-${status}" data-growth-day-pallet="${building}-${bed}-${number}" title="${number}番 ${status==="none" ? "予定なし" : labels[status]}"></span>`;
+      }});
+      return `<article class="bed bedCollapsed simulationBedOverview dashboardGrowthDayMapBed${planned.size ? " is-planned" : ""}" data-growth-day-bed="${building}-${bed}"><div class="bedTitle"><span class="bedTitleMain">${bed}ベッド</span></div><div class="dashboardGrowthDayMapBedSizes">${statuses.length ? statuses.map(status=>`<span class="dashboardGrowthCalendarSize is-${status}" aria-label="${labels[status]}">${statuses.length>1 && status==="normal" ? "並" : statuses.length>1 && status==="unknown" ? "不明" : labels[status]}</span>`).join("") : '<span class="dashboardGrowthDayMapNoPlan">予定なし</span>'}</div>${mapHtml}${ranges.length ? `<ul class="dashboardGrowthDayMapRanges">${ranges.map(range=>`<li><strong>${range.start===range.end ? range.start : `${range.start}〜${range.end}`}番</strong><span>${labels[range.status]}</span></li>`).join("")}</ul>` : ""}</article>`;
+    }).join("")}</div></section>`;
 }
 
 let dashboardGrowthDayMapReturnFocus=null;
+let dashboardGrowthDayMapDate="";
+
+function setDashboardGrowthDayMapBuilding(building){
+  const modal=document.getElementById("dashboardGrowthDayMapModal"),model=dashboardGrowthPredictionModelCache;
+  if(!modal?.classList.contains("show") || !model || !dashboardGrowthDayMapDate) return;
+  const body=document.getElementById("dashboardGrowthDayMapBody");
+  if(Number(body.querySelector("[data-growth-day-building]")?.dataset.growthDayBuilding)===Number(building)) return;
+  body.innerHTML=getDashboardGrowthScheduledDayMapHtml(model,dashboardGrowthDayMapDate,building);
+  body.querySelector('[aria-pressed="true"]')?.focus();
+}
 
 function openDashboardGrowthDayMap(date){
   const model=dashboardGrowthPredictionModelCache,day=parseDateOnlyString(date);
   const modal=document.getElementById("dashboardGrowthDayMapModal");
   if(!model || !day || !modal) return;
   dashboardGrowthDayMapReturnFocus=document.activeElement;
+  dashboardGrowthDayMapDate=date;
   document.getElementById("dashboardGrowthDayMapTitle").textContent=`${day.getMonth()+1}/${day.getDate()}（${"日月火水木金土"[day.getDay()]}）の収穫予定場所`;
   const body=document.getElementById("dashboardGrowthDayMapBody");
   body.innerHTML=getDashboardGrowthScheduledDayMapHtml(model,date);
@@ -5408,6 +5418,7 @@ function closeDashboardGrowthDayMap(){
   hidePageBlockingUi(document.getElementById("dashboardGrowthDayMapModal"));
   const returnFocus=dashboardGrowthDayMapReturnFocus;
   dashboardGrowthDayMapReturnFocus=null;
+  dashboardGrowthDayMapDate="";
   requestAnimationFrame(()=>returnFocus?.isConnected && returnFocus.focus());
 }
 
