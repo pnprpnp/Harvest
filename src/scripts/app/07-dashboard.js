@@ -2044,12 +2044,17 @@ function syncDashboardHarvestForecastBar(model){
       ? model.lossRates.find(rate => rate.plantingCount === item.plantingCount)?.lossRate : model.forecastLoss;
     return {plantingCount:item.plantingCount, loss:formatDashboardHarvestForecastInputValue(loss) || "--"};
   });
-  const summary = `${cases}ケース/日　${rates.map(item => `${item.plantingCount}:${item.loss}%`).join(" / ")}`;
+  const fullSummary = `${cases}ケース/日　${rates.map(item => `${item.plantingCount}:${item.loss}%`).join(" / ")}`;
+  // まず区切りの余白を詰め、さらに長い条件だけ数字の強調サイズを抑える。
+  const tightSpacing = fullSummary.length >= 37;
+  const gap = tightSpacing ? " " : "　";
+  const separator = tightSpacing ? "/" : " / ";
+  const summary = `${cases}ケース/日${gap}${rates.map(item => `${item.plantingCount}:${item.loss}%`).join(separator)}`;
   if(text.textContent !== summary || !text.querySelector(".dashboardForecastBarValue")){
     const emphasize = value => `<strong class="dashboardForecastBarValue">${escapeHtml(String(value))}</strong>`;
-    text.innerHTML = `${emphasize(cases)}ケース/日　${rates.map(item => `${item.plantingCount}:${emphasize(item.loss)}%`).join(" / ")}`;
+    text.innerHTML = `${emphasize(cases)}ケース/日${gap}${rates.map(item => `${item.plantingCount}:${emphasize(item.loss)}%`).join(separator)}`;
   }
-  document.getElementById("dashboardForecastBarSummary")?.classList.toggle("is-compact", summary.length >= 40);
+  document.getElementById("dashboardForecastBarSummary")?.classList.toggle("is-compact", fullSummary.length >= 39);
 }
 
 function handleDashboardHarvestForecastControlsToggle(event){

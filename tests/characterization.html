@@ -5500,13 +5500,26 @@
             for(const property of ["height","bottom","paddingTop","paddingBottom","borderTopWidth"]){
               assertEqual(guideStyle[property],forecastStyle[property],"他の下部固定バーと外枠が違います: " + property);
             }
-            assertEqual(text.textContent,"1000ケース/日　12:0% / 16:12.3% / 20:99.9%","反映済みの条件を表示していません");
+            assertEqual(text.textContent,"1000ケース/日 12:0%/16:12.3%/20:99.9%","反映済みの条件を表示していません");
             assertEqual(visualApp.getComputedStyle(summary).whiteSpace,"nowrap","固定バーが1行表示ではありません");
             assert(summary.scrollWidth <= summary.clientWidth + 1,width + "px幅で固定バーの内容がはみ出しています");
-            visualApp.syncDashboardHarvestForecastBar({...model,forecastCases:999998.9,
-              settingsLossRates:[12,16,20].map(plantingCount => ({plantingCount,lossRate:99.9}))});
-            assert(summary.scrollWidth <= summary.clientWidth + 1,width + "px幅で最大桁数の条件がはみ出しています");
+            for(const [forecastCases,lossRate] of [[999998.9,99.9],[999999,100],[99999.9,99.9],[9999.9,99.9],
+              [9999.9,100],[1000,100],[99.9,100],[999.9,9.9],[0.1,99.9]]){
+              visualApp.syncDashboardHarvestForecastBar({...model,forecastCases,
+                settingsLossRates:[12,16,20].map(plantingCount => ({plantingCount,lossRate}))});
+              const context = `${width}px幅・${forecastCases}ケース・${lossRate}%`;
+              assert(summary.scrollWidth <= summary.clientWidth + 1,context + "で条件がはみ出しています");
+              assertEqual(Array.from(text.querySelectorAll("strong"),element => element.textContent).join(","),
+                [forecastCases,lossRate,lossRate,lossRate].join(","),context + "で条件の数字が省略されています");
+              const textRect = text.getBoundingClientRect();
+              const chevronRect = doc.querySelector(".dashboardForecastBarChevron").getBoundingClientRect();
+              const summaryRect = summary.getBoundingClientRect();
+              assert(textRect.left >= summaryRect.left && textRect.right <= chevronRect.left,
+                context + "で条件が矢印と重なっています");
+              assert(chevronRect.right <= summaryRect.right,context + "で矢印がはみ出しています");
+            }
             visualApp.syncDashboardHarvestForecastBar(model);
+            assert(!summary.classList.contains("is-compact"),"通常の条件へ戻しても文字が縮小されたままです");
             assert(!details.open,"入力欄が初めから開いています");
             assert(backdrop.hidden,"入力欄を閉じた状態で背景が暗くなっています");
             summary.click();
@@ -5537,7 +5550,7 @@
               "ロス率の入力値が大きくなっていません");
             casesInput.value = "1200";
             casesInput.dispatchEvent(new visualApp.Event("input",{bubbles:true}));
-            assertEqual(text.textContent,"1000ケース/日　12:0% / 16:12.3% / 20:99.9%","未反映の条件をバーへ表示しています");
+            assertEqual(text.textContent,"1000ケース/日 12:0%/16:12.3%/20:99.9%","未反映の条件をバーへ表示しています");
             doc.querySelector(".dashboardForecastControlsClose").click();
             assert(!details.open,"閉じる操作で入力欄が閉じません");
             assert(backdrop.hidden,"入力欄を閉じても背景の暗さが残っています");
@@ -18446,20 +18459,21 @@
 
       await runTest("主要画面の見た目をスマートフォン幅と広い画面幅で維持する", async () => {
         const fingerprints = await collectVisualFingerprints();
-        // 目安の背景マスク追加と入力文字の拡大。他タブの表示要素数は維持する。
+        // 0d0d7c6の画面と照合済み。表示差分は目安バーの数字4つの強調だけ。
+        // 非表示の植え数別入力・7日カレンダーの説明・中継確認時刻も要素数へ含める。
         assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "fb3f10df", elements: 2594, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "82697faf", elements: 2664, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "7ec6a0a4", elements: 2664, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "a97046ef", elements: 2598, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "148b81f0", elements: 2615, visible: 96, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "a0246b88", elements: 2698, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "b626a173", elements: 2713, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "59d074d2", elements: 2825, visible: 159, viewport: "390x844" },
-          mobileSettings: { hash: "7b6674af", elements: 2825, visible: 183, viewport: "390x844" },
-          mobileMonitor: { hash: "061c9759", elements: 2869, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "4405caba", elements: 2869, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "b17bcec1", elements: 2869, visible: 96, viewport: "1024x900" }
+          mobileForecast: { hash: "462b9d75", elements: 2621, visible: 615, viewport: "390x844" },
+          cssStates: { hash: "cd8b5366", elements: 2691, visible: 671, viewport: "390x844" },
+          cssFocus: { hash: "4efddce9", elements: 2691, visible: 671, viewport: "390x844" },
+          mobileRecord: { hash: "5d10159b", elements: 2625, visible: 80, viewport: "390x844" },
+          mobileDashboard: { hash: "d6f6a99f", elements: 2642, visible: 100, viewport: "390x844" },
+          mobileDashboardRecord: { hash: "1fca99ad", elements: 2725, visible: 169, viewport: "390x844" },
+          mobileDashboardResultsGraph: { hash: "1c1005ec", elements: 2740, visible: 90, viewport: "390x844" },
+          mobileMenu: { hash: "4404606a", elements: 2852, visible: 163, viewport: "390x844" },
+          mobileSettings: { hash: "2a5061e5", elements: 2852, visible: 187, viewport: "390x844" },
+          mobileMonitor: { hash: "79291430", elements: 2896, visible: 101, viewport: "390x844" },
+          wideForecast: { hash: "889dee39", elements: 2896, visible: 615, viewport: "1024x900" },
+          wideDashboard: { hash: "7b70b5b9", elements: 2896, visible: 100, viewport: "1024x900" }
         }, "現在の見た目から変化しています");
       });
     }
