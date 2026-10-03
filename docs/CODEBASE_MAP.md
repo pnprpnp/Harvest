@@ -55,7 +55,7 @@
 | `04-monitor-sync.js` | モニター内容のApps Script送受信、Firebase更新通知、編集中内容と履歴。Firebaseには内容ではなく更新通知だけを置く。 |
 | `05-sheet-record-transfer.js` | 収穫・苗植え記録の検証、送信、ページ取得、起動時取込、通知ドット。同期応答の統合入口。 |
 | `06-settings.js` | 計算設定とケース配置設定。設定変更時の正規化・保存・関連再計算。 |
-| `07-dashboard.js` | 集計、履歴検索、グラフ、収穫予測一覧、生育予測β。生育予測の気象取得はタブ選択後だけ行い、`invalidateDashboardDerivedData()` で派生データを破棄する。 |
+| `07-dashboard.js` | 集計、履歴検索、グラフ、収穫予測一覧、生育予測β。集計内のタブと実績の表示切替は選択状態・パネルを先に更新し、`01-core-ui-and-workflow.js: scheduleDashboardRenderAfterTabSelection()` で描画後に読み込む。連続選択は最後の予約だけを実行し、当日読み込み済みのタブへ戻る場合は再計算しない。生育予測の気象取得はタブ選択後だけ行い、`invalidateDashboardDerivedData()` で派生データを破棄する。確認は `tests/dashboard-tab-loading.test.cjs` と320px・390px幅のブラウザー特性テスト。 |
 | `08-harvest-calculation.js` | パレット状態、収穫可能判定、収穫量予測、ロス、部分収穫控除、選択順。`runHarvestPrediction()` が予測実行の中心。 |
 | `09-record-workflow.js` | 記録画面の段階操作、苗数・品質割当、苗ハウス、部分収穫下書き、記録一覧表示切替。 |
 | `10-monitor-view.js` | モニター表示用の配置図、指示、メモ、文字サイズ調整。 |

@@ -4160,19 +4160,35 @@ function runAfterUiSettles(callback){
 function setDashboardLoadingState(isLoading){
   const loadingState = document.getElementById("dashboardLoadingState");
   if(!loadingState) return;
+  if(isLoading){
+    const navigation = document.querySelector(".dashboardSubtabNav");
+    const resultsSwitch = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab) === "graphs"
+      ? document.querySelector(".dashboardResultsViewSwitch")
+      : null;
+    // 読み込み表示で選択したタブや実績の表示切り替えを覆わない。
+    const navigationBottom = Math.max(
+      navigation?.getBoundingClientRect().bottom || 0,
+      resultsSwitch?.getBoundingClientRect().bottom || 0
+    );
+    if(navigationBottom > 0) loadingState.style.top = `${navigationBottom}px`;
+  }else{
+    loadingState.style.removeProperty("top");
+  }
   loadingState.hidden = !isLoading;
 }
 
-function scheduleDashboardRenderAfterTabSelection(){
+function scheduleDashboardRenderAfterTabSelection(options = {}){
+  // 読み込み済みのタブへ戻った場合も、それ以前の予約を取り消す。
+  const scheduleId = ++dashboardRenderScheduleId;
   const activeSubtab = normalizeDashboardSubtab(dashboardFilter.dashboardSubtab);
   if(
     dashboardRenderedDayKey === formatDateOnlyString(new Date())
     && dashboardRenderedSubtabs.has(activeSubtab)
   ){
     setDashboardLoadingState(false);
+    options.onRendered?.();
     return;
   }
-  const scheduleId = ++dashboardRenderScheduleId;
   setDashboardLoadingState(true);
   runAfterUiSettles(() => {
     if(scheduleId !== dashboardRenderScheduleId || activeAppTab !== "dashboard"){
@@ -4181,10 +4197,11 @@ function scheduleDashboardRenderAfterTabSelection(){
     }
     try{
       renderDashboard();
+      options.onRendered?.();
     }catch(error){
       console.error("集計を読み込めませんでした", error);
     }finally{
-      setDashboardLoadingState(false);
+      if(scheduleId === dashboardRenderScheduleId) setDashboardLoadingState(false);
     }
   });
 }

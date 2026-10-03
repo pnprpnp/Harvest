@@ -599,12 +599,9 @@ function setDashboardResultsView(value){
     saveDashboardFilter();
   }
   syncDashboardResultsViewUi();
-  if(nextView === "harvestStart"){
-    renderDashboardHarvestStartTimeline();
-  }else if(nextView === "graphs"){
-    renderDashboardGraphs();
-  }else{
-    renderDashboardRecordResults();
+  dashboardRenderedSubtabs.delete("graphs");
+  if(normalizeDashboardSubtab(dashboardFilter.dashboardSubtab) === "graphs"){
+    scheduleDashboardRenderAfterTabSelection();
   }
 }
 
@@ -634,9 +631,11 @@ function setDashboardSubtab(value){
     saveDashboardFilter();
   }
   syncDashboardSubtabUi();
-  renderDashboardSubtab(nextSubtab);
-  if(nextSubtab === "growth" && dashboardGrowthPredictionModelCache) markDashboardGrowthChangesRead();
-  dashboardRenderedDayKey = formatDateOnlyString(new Date());
+  scheduleDashboardRenderAfterTabSelection({
+    onRendered: () => {
+      if(nextSubtab === "growth" && dashboardGrowthPredictionModelCache) markDashboardGrowthChangesRead();
+    }
+  });
 }
 
 function handleDashboardSubtabKeydown(event){
