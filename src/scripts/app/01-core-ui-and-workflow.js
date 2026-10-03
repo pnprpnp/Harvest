@@ -1701,10 +1701,9 @@ function updateEstimatedHarvestCasesFromSelection(currentHarvestTotal = null){
   const casesInput = document.getElementById("casesInput");
   if(!casesInput) return;
   const progressState = normalizeHarvestProgressState(harvestProgressState);
-  if(isReverseHarvestProgressState(progressState) && hasAppliedHarvestProgress()){
-    updateHarvestCasesAutoEstimatedAppearance();
-    return;
-  }
+  const syncReverseProgress = progressState
+    && isReverseHarvestProgressState(progressState)
+    && isHarvestProgressContextCurrent(progressState);
   if(casesInput.value !== "" && !harvestCasesAutoEstimated) return;
 
   const resolvedHarvestTotal = Number.isFinite(Number(currentHarvestTotal))
@@ -1717,7 +1716,12 @@ function updateEstimatedHarvestCasesFromSelection(currentHarvestTotal = null){
     ? estimatedRegularCases + getRecordPartialHarvestDraftCases()
     : 0;
   casesInput.value = estimatedCases > 0 ? String(estimatedCases) : "";
-  harvestCasesAutoEstimated = estimatedCases > 0;
+  harvestCasesAutoEstimated = estimatedCases > 0 || !!syncReverseProgress;
+  if(syncReverseProgress){
+    // 逆算値と途中経過の基準値を一緒に更新し、完了場所と実績を引き継ぐ。
+    progressState.targetCases = getHarvestCasePlan().totalCases;
+    harvestProgressState = progressState;
+  }
   if(harvestSummary){
     harvestSummary.needHeads = getHarvestCasePlan().regularCases * CASE_SIZE;
   }
@@ -3534,8 +3538,8 @@ function getHarvestProgressResultModel(currentHarvestTotal = null){
     return {
       text: `実績 ${formatHarvestProgressCases(actualCases)}ケース / 逆算予測 ${formatHarvestProgressCases(state.targetCases)}ケース\n`
         + (remainingPlanKeys.length
-          ? `残りの選択場所は変更していません（残り予測 約${formatHarvestProgressCases(selectedRemainingCases)}ケース）`
-          : "逆算時に選択した場所はすべて完了です。"),
+          ? `実績と残りの選択場所から逆算しています（残り予測 約${formatHarvestProgressCases(selectedRemainingCases)}ケース）`
+          : "選択した場所はすべて完了です。"),
       className: remainingPlanKeys.length ? "" : "is-complete"
     };
   }

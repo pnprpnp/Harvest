@@ -9639,12 +9639,14 @@
         }, "苗取り画面を表示しない日の記録を次回開始位置へ反映できません");
       });
 
-      await runTest("逆算時の途中経過は最初の選択場所を固定して反映する", () => {
+      await runTest("逆算時の途中経過は選択場所を維持して実績と残り予測を反映する", () => {
         const reverseProgress = comparable(app.eval(`(() => {
           const previous = {
             getPlan:getHarvestCasePlan,
             getRecorded:getRecordedPalletSet,
             getPredicted:getPredictedHarvestForPallet,
+            getAvailability:getHarvestAvailabilityState,
+            getPartialCases:getRecordPartialHarvestDraftCases,
             activeTab:activeAppTab,
             keys:[...harvestFillKeys],
             summary:harvestSummary,
@@ -9660,7 +9662,13 @@
           };
           try{
             cancelPendingHarvestStateSave();
-            getHarvestCasePlan = () => ({ totalCases:3, regularCases:3, date:"2026-08-24" });
+            let partialCases = 0;
+            getRecordPartialHarvestDraftCases = () => partialCases;
+            getHarvestCasePlan = () => {
+              const totalCases = Number(document.getElementById("casesInput").value || 0);
+              return { totalCases, regularCases:Math.max(0, totalCases - partialCases), date:"2026-08-24" };
+            };
+            getHarvestAvailabilityState = () => ({ unavailableSet:new Set() });
             getRecordedPalletSet = () => new Set();
             getPredictedHarvestForPallet = () => 12;
             activeAppTab = "forecast";
@@ -9692,7 +9700,7 @@
             handleHarvestProgressCasesInput();
             recalculateFromHarvestProgress();
             const resultText = document.getElementById("harvestProgressResult")?.textContent.trim() || "";
-            return {
+            const initialResult = {
               enabledFromReverseSelection,
               autoEstimatedCases:document.getElementById("casesInput")?.value || "",
               unplannedBedDisabled,
@@ -9715,11 +9723,52 @@
               resultText,
               applyLabel:document.getElementById("harvestProgressApplyBtn")?.textContent.trim() || ""
             };
+            const snapshot = () => ({
+              cases:document.getElementById("casesInput").value,
+              targetCases:harvestProgressState.targetCases,
+              contextCurrent:isHarvestProgressContextCurrent(),
+              actualCases:getHarvestProgressActualCases(),
+              completedKeys:[...getAppliedHarvestProgressCompletedKeySet()].sort(),
+              remainingKeys:getHarvestProgressRemainingSelectionKeys().sort(),
+              needHeads:harvestSummary.needHeads
+            });
+            togglePallet(2, "C", 1);
+            const added = snapshot();
+            togglePallet(2, "B", 1);
+            const removed = snapshot();
+            togglePallet(2, "C", 1);
+            const onlyCompleted = snapshot();
+            togglePallet(2, "A", 1);
+            const completedProtected = snapshot();
+            togglePallet(2, "B", 1);
+            partialCases = 2;
+            refreshAfterHarvestSelectionChanged();
+            const withPartial = snapshot();
+            getPredictedHarvestForPallet = () => 6;
+            recalculateHarvestPredictionAfterPartialHarvest(getHarvestTargetDateString());
+            const afterPartialRecalculation = snapshot();
+            toggleHarvestProgressBed(2, "B");
+            input.value = "3";
+            handleHarvestProgressCasesInput();
+            recalculateFromHarvestProgress();
+            const additionalProgress = snapshot();
+            harvestProgressState = normalizeHarvestProgressState(JSON.parse(JSON.stringify(harvestProgressState)));
+            const restored = snapshot();
+            harvestProgressState.entries[0].cases = 2;
+            rebuildHarvestProgressAfterRegularEntryChange();
+            const edited = snapshot();
+            harvestProgressState.entries = harvestProgressState.entries.slice(1);
+            rebuildHarvestProgressAfterRegularEntryChange();
+            const deleted = snapshot();
+            return { initialResult, added, removed, onlyCompleted, completedProtected,
+              withPartial, afterPartialRecalculation, additionalProgress, restored, edited, deleted };
           }finally{
             cancelPendingHarvestStateSave();
             getHarvestCasePlan = previous.getPlan;
             getRecordedPalletSet = previous.getRecorded;
             getPredictedHarvestForPallet = previous.getPredicted;
+            getHarvestAvailabilityState = previous.getAvailability;
+            getRecordPartialHarvestDraftCases = previous.getPartialCases;
             activeAppTab = previous.activeTab;
             harvestFillKeys = previous.keys;
             harvestSummary = previous.summary;
@@ -9736,9 +9785,9 @@
             renderForecastSummary();
           }
         })()`));
-        assertDeepEqual(reverseProgress, {
+        assertDeepEqual(reverseProgress.initialResult, {
           enabledFromReverseSelection:true,
-          autoEstimatedCases:"3",
+          autoEstimatedCases:"2",
           unplannedBedDisabled:true,
           unplannedBedRejected:true,
           completedKeys:["2-A-1", "2-A-2"],
@@ -9746,9 +9795,23 @@
           selectionKeys:["2-A-1", "2-A-2", "2-B-1"],
           reverseBedKeys:["2-A-1", "2-A-2"],
           autoBedKeyCount:78,
-          resultText:"入力済み\n2号棟A1ケースロス率 70.0%\n\n実績 1ケース / 逆算予測 3ケース\n残りの選択場所は変更していません（残り予測 約1ケース）",
+          resultText:"入力済み\n2号棟A1ケースロス率 70.0%\n\n実績 1ケース / 逆算予測 2ケース\n実績と残りの選択場所から逆算しています（残り予測 約1ケース）",
           applyLabel:"追加して反映する"
         }, "逆算時の途中経過が未選択パレットを巻き込むか、残りの選択場所を変えています");
+        const expected = (cases, actualCases, remainingKeys, completedKeys = ["2-A-1", "2-A-2"], regularCases = cases) => ({
+          cases:String(cases), targetCases:cases, contextCurrent:true, actualCases,
+          completedKeys, remainingKeys, needHeads:regularCases * 12
+        });
+        assertDeepEqual(reverseProgress.added, expected(3, 1, ["2-B-1", "2-C-1"]), "追加した場所が逆算値へ反映されません");
+        assertDeepEqual(reverseProgress.removed, expected(2, 1, ["2-C-1"]), "解除した場所が逆算値へ反映されません");
+        assertDeepEqual(reverseProgress.onlyCompleted, expected(1, 1, []), "残り場所を全解除したとき実績だけになりません");
+        assertDeepEqual(reverseProgress.completedProtected, reverseProgress.onlyCompleted, "完了場所を手動解除できてしまいます");
+        assertDeepEqual(reverseProgress.withPartial, expected(4, 1, ["2-B-1"], undefined, 2), "部分収穫を合計へ一度だけ加算していません");
+        assertDeepEqual(reverseProgress.afterPartialRecalculation, expected(3, 1, ["2-B-1"], undefined, 1), "部分収穫後に途中経過の基準が古い値へ戻ります");
+        assertDeepEqual(reverseProgress.additionalProgress, expected(6, 4, [], ["2-A-1", "2-A-2", "2-B-1"], 4), "選び直した後の途中経過を追加できません");
+        assertDeepEqual(reverseProgress.restored, reverseProgress.additionalProgress, "保存形式から復元すると実績と逆算値が不整合になります");
+        assertDeepEqual(reverseProgress.edited, expected(7, 5, [], ["2-A-1", "2-A-2", "2-B-1"], 5), "途中経過の実績修正が逆算値へ反映されません");
+        assertDeepEqual(reverseProgress.deleted, expected(6, 3, ["2-A-1", "2-A-2"], ["2-B-1"], 4), "途中経過を削除した場所の予測が正しく戻りません");
       });
 
       await runTest("手動選択中は指定ケース数までの残りを表示し、超過分だけを別色にする", () => {

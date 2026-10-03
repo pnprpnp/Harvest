@@ -3545,7 +3545,6 @@ function recalculateHarvestPredictionAfterPartialHarvest(affectedDates){
   const shouldPreserveProgress = !!progressState && isHarvestProgressContextCurrent(progressState);
   if(shouldPreserveProgress && progressState.baseSelectionMode !== "auto"){
     refreshAfterHarvestSelectionChanged({ selectionChangeSource: "progress-manual" });
-    harvestProgressState = progressState;
     harvestProgressAvailable = true;
     updateHarvestProgressUi();
     return {
