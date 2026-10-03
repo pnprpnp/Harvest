@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261003-planting-discard-history">
+<meta name="harvestnavi-version" content="20261003-completed-planting-return">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -48090,6 +48090,14 @@ function getActivePlantingRecord(){
   return getRecordById(activePlantingRecordId);
 }
 
+function hasPendingPlantingForHarvest(record){
+  if(!record || record.type !== "fullHarvest") return false;
+  const state = getPlantingEventStateIndex();
+  const recordId = Number(record.id);
+  return !state.noPlantingCompletedHarvestIds.has(recordId)
+    && (state.pendingByHarvestId.get(recordId)?.size || 0) > 0;
+}
+
 function getPlantingResumeCandidateRecordIdSet(options = {}){
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
   const referenceDate = parseDateOnlyString(String(
@@ -49731,6 +49739,7 @@ function discardRecordEditChanges(){
   const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
   const returnPlantingRecordId = pendingReturnPlantingRecordId !== null
     && pendingReturnPlantingRecordId === getSafePositiveRecordId(editingHarvestRecordId)
+    && hasPendingPlantingForHarvest(getRecordById(pendingReturnPlantingRecordId))
     ? pendingReturnPlantingRecordId
     : null;
   closeRecordFloatingUi();
@@ -53417,6 +53426,8 @@ function resetPlantingRecordChanges(){
   if(!ensureProtectedOperationAccess("収穫記録に戻る", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("収穫記録に戻る操作を")) return;
 
+  // 保存済みの苗植え編集は履歴へ戻す。未完了の入力だけを再開対象にする。
+  const returnFromPlantingClear = !editingPlantingEventId && hasPendingPlantingForHarvest(record);
   hideRecordBedActionMenu();
   plantingRecordDraft = null;
   editingPlantingEventId = null;
@@ -53424,7 +53435,7 @@ function resetPlantingRecordChanges(){
   editHarvestRecord(record.id, {
     accessChecked: true,
     skipForecastCapture: true,
-    returnFromPlantingClear: true
+    returnFromPlantingClear
   });
 }
 
@@ -53611,6 +53622,7 @@ async function saveRecord(){
     const editedRecordDate = date;
     const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
     const returnPlantingRecordId = pendingReturnPlantingRecordId === Number(editingRecord.id)
+      && hasPendingPlantingForHarvest(editingRecord)
       ? pendingReturnPlantingRecordId
       : null;
     const allocatedKeys = getRemotePlantingEventDependenciesForHarvest(editingRecord.id)

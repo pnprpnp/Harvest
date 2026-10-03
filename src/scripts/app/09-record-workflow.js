@@ -1668,6 +1668,14 @@ function getActivePlantingRecord(){
   return getRecordById(activePlantingRecordId);
 }
 
+function hasPendingPlantingForHarvest(record){
+  if(!record || record.type !== "fullHarvest") return false;
+  const state = getPlantingEventStateIndex();
+  const recordId = Number(record.id);
+  return !state.noPlantingCompletedHarvestIds.has(recordId)
+    && (state.pendingByHarvestId.get(recordId)?.size || 0) > 0;
+}
+
 function getPlantingResumeCandidateRecordIdSet(options = {}){
   const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
   const referenceDate = parseDateOnlyString(String(
@@ -3309,6 +3317,7 @@ function discardRecordEditChanges(){
   const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
   const returnPlantingRecordId = pendingReturnPlantingRecordId !== null
     && pendingReturnPlantingRecordId === getSafePositiveRecordId(editingHarvestRecordId)
+    && hasPendingPlantingForHarvest(getRecordById(pendingReturnPlantingRecordId))
     ? pendingReturnPlantingRecordId
     : null;
   closeRecordFloatingUi();

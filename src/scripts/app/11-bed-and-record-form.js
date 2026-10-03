@@ -2126,6 +2126,8 @@ function resetPlantingRecordChanges(){
   if(!ensureProtectedOperationAccess("収穫記録に戻る", { workerAllowed: true })) return;
   if(!ensureGoogleSheetLocalMutationAllowed("収穫記録に戻る操作を")) return;
 
+  // 保存済みの苗植え編集は履歴へ戻す。未完了の入力だけを再開対象にする。
+  const returnFromPlantingClear = !editingPlantingEventId && hasPendingPlantingForHarvest(record);
   hideRecordBedActionMenu();
   plantingRecordDraft = null;
   editingPlantingEventId = null;
@@ -2133,6 +2135,6 @@ function resetPlantingRecordChanges(){
   editHarvestRecord(record.id, {
     accessChecked: true,
     skipForecastCapture: true,
-    returnFromPlantingClear: true
+    returnFromPlantingClear
   });
 }

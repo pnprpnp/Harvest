@@ -181,6 +181,7 @@ async function saveRecord(){
     const editedRecordDate = date;
     const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
     const returnPlantingRecordId = pendingReturnPlantingRecordId === Number(editingRecord.id)
+      && hasPendingPlantingForHarvest(editingRecord)
       ? pendingReturnPlantingRecordId
       : null;
     const allocatedKeys = getRemotePlantingEventDependenciesForHarvest(editingRecord.id)
