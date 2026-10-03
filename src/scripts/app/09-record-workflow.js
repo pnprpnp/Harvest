@@ -3303,14 +3303,16 @@ function handleRecordClearAction(){
 
 function discardRecordEditChanges(){
   if(!isRecordEditMode()) return;
-  const editingDate = editingHarvestRecordId ? getRecordById(editingHarvestRecordId)?.date || "" : "";
+  const editingDate = editingHarvestRecordId
+    ? getRecordById(editingHarvestRecordId)?.date || ""
+    : getPlantingEventById(editingPlantingEventId)?.plantingDate || "";
   const pendingReturnPlantingRecordId = getSafePositiveRecordId(harvestEditReturnPlantingRecordId);
   const returnPlantingRecordId = pendingReturnPlantingRecordId !== null
     && pendingReturnPlantingRecordId === getSafePositiveRecordId(editingHarvestRecordId)
     ? pendingReturnPlantingRecordId
     : null;
   closeRecordFloatingUi();
-  clearRecordForm({ save:returnPlantingRecordId === null });
+  clearRecordForm({ save:false });
   if(returnPlantingRecordId !== null && getRecordById(returnPlantingRecordId)){
     resumePlantingRecord(returnPlantingRecordId, { auto:true });
     showToast("編集内容を破棄して苗植え記録へ戻りました");
@@ -3322,6 +3324,7 @@ function discardRecordEditChanges(){
     refreshRecordDateDependentUi();
     showRecordHistoryView({ date:editingDate });
   }
+  saveHarvestStateToStorage();
   showToast("編集内容を破棄して戻りました");
 }
 

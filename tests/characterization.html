@@ -14594,6 +14594,72 @@
         }, "苗植えから収穫記録へ戻った後、同じ記録の苗植えへ復帰できません");
       });
 
+      await runTest("過去の苗植え編集を破棄したら今日の完了状態を保って元の日付の履歴へ戻る", async () => {
+        for(const width of [320,390]){
+          const frame = await loadVisualAppFrame(width, 844);
+          const visualApp = frame.contentWindow;
+          const today = visualApp.formatDateOnlyString(new visualApp.Date());
+          const pastDate = visualApp.formatDateOnlyString(visualApp.addDays(new visualApp.Date(), -10));
+          const makeHarvest = (id, date, key) => ({
+            palletNumberingVersion:2, id, recordUuid:`00000000-0000-4000-8000-${String(id).padStart(12,"0")}`,
+            type:"fullHarvest", date, cases:1, palletKeys:[key], plantingPending:false
+          });
+          const makePlanting = (eventId, plantingDate, harvestRecordId, key) => ({
+            palletNumberingVersion:2, eventId, plantingDate,
+            sourceAllocations:[{harvestRecordId,palletKeys:[key]}], plantingPalletKeys:[key],
+            actualSeedlingTrayCount:1, actualSeedlingCarryoverMode:"loss"
+          });
+          try{
+            await withBackgroundSendTestState(visualApp, [
+              makeHarvest(901,pastDate,"2-A-1"), makeHarvest(902,today,"2-A-2")
+            ], async () => {
+              visualApp.eval(`protectedAccessUnlocked=true;
+                invalidateRecordDerivedCaches({harvestRecords:true,plantingEvents:true});
+                setWorkflowGuideStage(WORKFLOW_GUIDE_COMPLETE_STAGE,{force:true,resetFurthest:true});`);
+              visualApp.ensureProtectedOperationAccess = () => true;
+              visualApp.ensureGoogleSheetLocalMutationAllowed = () => true;
+              visualApp.ensureSyncConflictResolvedBeforeChange = () => true;
+              const before = visualApp.eval("JSON.stringify({records,plantingEvents})");
+              assertEqual(visualApp.hasCompletedTodayHarvestRecord(), true, "今日の作業完了を再現できません");
+              visualApp.showRecordHistoryView({date:pastDate,scroll:false});
+              visualApp.editPlantingEvent(911);
+              await settleVisualApp(visualApp);
+              assertEqual(visualApp.eval("editingPlantingEventId"), 911, "過去の苗植えを編集できません");
+              // 編集中に日付と場所を変えても、戻り先は保存済みの元の苗植え日。
+              visualApp.document.getElementById("recordDateInput").value = today;
+              visualApp.eval('harvestFillKeys=["2-A-2"];');
+              visualApp.document.getElementById("recordDiscardEditBtn").click();
+              await settleVisualApp(visualApp);
+              assertDeepEqual(comparable(visualApp.eval(`({view:recordViewMode,mode:recordSelectionMode,
+                editingId:editingPlantingEventId,activeId:activePlantingRecordId,draft:plantingRecordDraft,
+                workflowActive:workflowPlantingSessionActive,date:document.getElementById("recordDateInput").value,
+                saveHidden:document.getElementById("recordSaveCard").hidden,
+                historyHidden:document.getElementById("recordHistoryCard").hidden,
+                todayRecorded:!document.getElementById("recordTodayRecordedStatus").hidden})`)), {
+                view:"history",mode:"harvest",editingId:null,activeId:null,draft:null,workflowActive:false,
+                date:pastDate,saveHidden:true,historyHidden:false,todayRecorded:true
+              }, `${width}pxで過去の編集を破棄すると今日の入力画面へ移ってしまいます`);
+              assertEqual(visualApp.eval("JSON.stringify({records,plantingEvents})"), before, "破棄時に保存済み記録を変えました");
+              const saved = comparable(visualApp.eval("harvestnaviLocalStorage.readJson(HARVEST_STATE_KEY, {})"));
+              assertEqual(saved.recordViewMode, "history", "破棄後の履歴画面を端末へ保存していません");
+              assertEqual(saved.editingPlantingEventId, null, "破棄した苗植え編集が端末に残っています");
+              assertEqual(visualApp.getWorkflowGuideState().key, "complete", "今日の作業完了の案内を変えてしまいました");
+              // タブを往復しても、完了済みの今日の苗植えを再開しない。
+              visualApp.switchTab("forecast");
+              visualApp.switchTab("record");
+              await settleVisualApp(visualApp);
+              assertEqual(visualApp.eval("recordSelectionMode"), "harvest", "タブを戻すと苗植え入力を再開しました");
+              assertEqual(visualApp.eval("activePlantingRecordId"), null, "完了済みの苗植えを再開しました");
+              assertEqual(visualApp.hasCompletedTodayHarvestRecord(), true, "タブ移動後に今日の完了状態が変わりました");
+              visualApp.cancelPendingHarvestStateSave();
+            }, [makePlanting(911,pastDate,901,"2-A-1"), makePlanting(912,today,902,"2-A-2")]);
+          }finally{
+            visualApp.cancelPendingHarvestStateSave();
+            frame.remove();
+          }
+        }
+      });
+
       await runTest("記録の工程表示をヘッダー直下へ配置する", () => {
         const layoutState = comparable(app.eval(`(() => {
           const previousTab = activeAppTab;
