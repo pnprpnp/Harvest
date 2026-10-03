@@ -427,7 +427,7 @@ function applyPlantingSelectionToRecord(targetRecord, keysToApply, options = {})
   return options.isActiveRecord || beforePending;
 }
 
-function getPlantingSaveAllocationState(selectedKeys, record, existingEvent, noPlantingEvent){
+function getPlantingSaveAllocationState(selectedKeys, record, existingEvent, noPlantingEvent, plantingDate = existingEvent?.plantingDate){
   const normalizedSelectedKeys = [...new Set(Array.isArray(selectedKeys) ? selectedKeys : [])]
     .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
   const existingPlantingKeys = existingEvent
@@ -453,7 +453,8 @@ function getPlantingSaveAllocationState(selectedKeys, record, existingEvent, noP
     sourceAllocations = resolvePlantingEventAllocations(normalizedSelectedKeys, {
       preferredHarvestId: record?.id,
       excludeEventId: existingEvent?.eventId,
-      existingEvent
+      existingEvent,
+      plantingDate
     });
   }
 
@@ -533,7 +534,8 @@ async function savePlantingRecord(){
     selectedKeys,
     record,
     existingEvent,
-    noPlantingEvent
+    noPlantingEvent,
+    plantingDate
   );
   const { sourceAllocations, normalizedSelectedKeys, samePlantingKeys } = allocationState;
   const allocatedKeys = [...new Set(sourceAllocations.flatMap(allocation => allocation.palletKeys))]

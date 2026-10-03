@@ -1748,9 +1748,7 @@ function getPreviousFullHarvestRecord(options = {}){
 }
 
 function getUnplantedPalletSet(options = {}){
-  const state = options.excludeEventId
-    ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
-    : getPlantingEventStateIndex();
+  const state = getPlantingEventStateIndex(options);
   return new Set(state.allowedPalletSet);
 }
 
@@ -1758,9 +1756,10 @@ function getUnselectedPreviousUnplantedPalletLots(sourceAllocations, activeRecor
   if(!activeRecord || activeRecord.type !== "fullHarvest") return [];
   const plantingDate = parseDateOnlyString(String(options.plantingDate || "").trim());
   if(!plantingDate) return [];
-  const state = options.excludeEventId
-    ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
-    : getPlantingEventStateIndex();
+  const state = getPlantingEventStateIndex({
+    excludeEventId: options.excludeEventId,
+    referenceDate: options.excludeEventId ? options.plantingDate : ""
+  });
   const noPlantingCompletedHarvestIds = new Set(state.noPlantingCompletedHarvestIds);
   const excludedEvent = options.excludeEventId
     ? getPlantingEventById(options.excludeEventId)
@@ -1829,6 +1828,13 @@ function invalidatePlantingAllowedPalletSetCache(){
   plantingAllowedPalletSetCacheRecordId = null;
   plantingAllowedPalletSetCacheRecordCount = 0;
   plantingAllowedPalletSetCacheEventId = null;
+  plantingAllowedPalletSetCacheDate = "";
+}
+
+function getPlantingSelectionReferenceDate(){
+  if(!editingPlantingEventId) return "";
+  return document.getElementById("recordDateInput")?.value
+    || getPlantingEventById(editingPlantingEventId)?.plantingDate || "";
 }
 
 function getFastPlantingAllowedPalletSet(){
@@ -1836,7 +1842,8 @@ function getFastPlantingAllowedPalletSet(){
   if(plantingAllowedPalletSetCache
     && Number(plantingAllowedPalletSetCacheRecordId) === Number(activeRecord?.id)
     && plantingAllowedPalletSetCacheRecordCount === records.length
-    && Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId)){
+    && Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId)
+    && plantingAllowedPalletSetCacheDate === getPlantingSelectionReferenceDate()){
     return plantingAllowedPalletSetCache;
   }
   return getPlantingAllowedPalletSet();
@@ -1849,21 +1856,34 @@ function getPlantingAllowedPalletSet(options = {}){
   }
 
   const activeRecordId = Number(activeRecord?.id);
+  const referenceDate = getPlantingSelectionReferenceDate();
   if(
     plantingAllowedPalletSetCache &&
     Number(plantingAllowedPalletSetCacheRecordId) === activeRecordId &&
     plantingAllowedPalletSetCacheRecordCount === records.length &&
-    Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId)
+    Number(plantingAllowedPalletSetCacheEventId) === Number(editingPlantingEventId) &&
+    plantingAllowedPalletSetCacheDate === referenceDate
   ){
     return plantingAllowedPalletSetCache;
   }
 
-  const allowed = getUnplantedPalletSet({ excludeEventId: editingPlantingEventId });
+  const allowed = getUnplantedPalletSet({ excludeEventId: editingPlantingEventId, referenceDate });
+  const editingEvent = editingPlantingEventId ? getPlantingEventById(editingPlantingEventId) : null;
+  (editingEvent?.sourceAllocations || []).forEach(allocation => {
+    const harvestDate = getRecordById(allocation.harvestRecordId)?.date || "";
+    // 元の場所は後の収穫周期があっても編集できる。日付を前に移す場合は収穫前を許可しない。
+    if(referenceDate === editingEvent.plantingDate || (harvestDate && harvestDate <= referenceDate)){
+      allocation.palletKeys.forEach(key => allowed.add(key));
+    }else{
+      allocation.palletKeys.forEach(key => allowed.delete(key));
+    }
+  });
 
   plantingAllowedPalletSetCache = new Set(allowed);
   plantingAllowedPalletSetCacheRecordId = activeRecordId;
   plantingAllowedPalletSetCacheRecordCount = records.length;
   plantingAllowedPalletSetCacheEventId = editingPlantingEventId;
+  plantingAllowedPalletSetCacheDate = referenceDate;
   return plantingAllowedPalletSetCache;
 }
 

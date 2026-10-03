@@ -3744,6 +3744,114 @@
         }
       });
 
+      await runTest("過去の苗植え編集は当時の収穫回を使い未来の未定植場所を選択・保存しない", async () => {
+        const harvest = (id, date, keys) => ({
+          palletNumberingVersion:2, id, type:"fullHarvest", date, cases:1,
+          recordUuid:`00000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
+          palletKeys:keys, plantingPending:true
+        });
+        const event = (eventId, plantingDate, harvestRecordId, keys) => ({
+          palletNumberingVersion:2, eventId, plantingDate,
+          sourceAllocations:[{ harvestRecordId, palletKeys:keys }], plantingPalletKeys:keys,
+          actualSeedlingTrayCount:1, actualSeedlingCarryoverMode:"loss"
+        });
+        const previousRecords = comparable(app.eval("records"));
+        const previousEvents = comparable(app.eval("plantingEvents"));
+        const previous = app.eval(`({ activePlantingRecordId, editingPlantingEventId,
+          recordSelectionMode, harvestFillKeys, date:document.getElementById("recordDateInput").value })`);
+        const previousStorage = snapshotStorage(app.localStorage);
+        const originalBuild = app.buildPlantingEventStateIndex;
+        const originals = Object.fromEntries(["ensureProtectedOperationAccess", "ensureGoogleSheetLocalMutationAllowed",
+          "getRecordActualSeedlingTrayCount", "getIncompleteRecordPlantingFlowBuildings", "showToast",
+          "canPlantSeedlingKeysWithinCapacity", "getRecordSeedlingCarryoverMode", "getActualSeedlingLossRateValue",
+          "confirmPlantingRecordBeforeSend", "queueGoogleSheetPlantingEventSend", "scheduleRecordSaveUiTransition"]
+          .map(key => [key, app[key]]));
+        let builds = 0;
+        const notices = [];
+        try{
+          replaceAppHistory(app, [
+            harvest(100, "2026-08-01", ["2-A-1"]),
+            harvest(101, "2026-09-01", ["2-A-1", "2-A-2", "2-A-4", "2-A-6"]),
+            harvest(102, "2026-10-01", ["2-A-1", "2-A-2", "2-A-3"]),
+            harvest(103, "2026-09-02", ["2-A-5"])
+          ], [
+            event(201, "2026-09-02", 101, ["2-A-1"]),
+            event(202, "2026-10-02", 102, ["2-A-1"]),
+            event(203, "2026-10-02", 101, ["2-A-4"]),
+            event(204, "2026-09-01", 101, ["2-A-6"])
+          ]);
+          assertEqual(app.eval("records.length"), 4, "テスト用の収穫記録を読み込めません");
+          app.invalidatePlantingEventStateCache();
+          app.buildPlantingEventStateIndex = options => { builds++; return originalBuild(options); };
+          app.eval(`activePlantingRecordId=101; editingPlantingEventId=201; recordSelectionMode="planting";
+            harvestFillKeys=["2-A-1"]; document.getElementById("recordDateInput").value="2026-09-02";`);
+          assertDeepEqual(comparable(app.eval('[...getPlantingAllowedPalletSet()].sort()')),
+            ["2-A-1", "2-A-2", "2-A-5"], "未来の場所や他記録に割当済みの場所が混ざるか、元の場所・同日の収穫が消えています");
+          assertDeepEqual(comparable(app.eval(`getPlantingSaveAllocationState(["2-A-1","2-A-2","2-A-5"],
+            getRecordById(101), getPlantingEventById(201), false, "2026-09-02").sourceAllocations`)), [
+            { harvestRecordId:101, palletKeys:["2-A-1", "2-A-2"] },
+            { harvestRecordId:103, palletKeys:["2-A-5"] }
+          ], "追加した場所が後の収穫回へ割り当てられています");
+          assertDeepEqual(comparable(app.eval(`resolvePlantingEventAllocations(["2-A-3"], {
+            excludeEventId:201, existingEvent:getPlantingEventById(201), plantingDate:"2026-09-02" })`)), [],
+            "保存時の割当処理が未来の収穫を受け入れました");
+          assertDeepEqual(comparable(app.eval(`getUnselectedPreviousUnplantedPalletLots(
+            [{harvestRecordId:101,palletKeys:["2-A-1"]}], getRecordById(101),
+            {excludeEventId:201,plantingDate:"2026-09-02"})`)),
+            [{harvestRecordId:101,palletKey:"2-A-2"}], "当時の未定植場所の警告が現在の収穫に左右されています");
+          for(let i=0;i<5;i++) app.getPlantingAllowedPalletSet({fast:true});
+          assertEqual(builds, 1, "選択や保存確認ごとに履歴を再計算しています");
+          app.document.getElementById("recordDateInput").value = "2026-10-03";
+          assertEqual(app.isPlantingSelectionAllowed("2-A-3", {fast:true}), true, "日付変更で候補が更新されません");
+          app.document.getElementById("recordDateInput").value = "2026-08-31";
+          assertDeepEqual(comparable(app.eval('[...getPlantingAllowedPalletSet({fast:true})]')), [],
+            "日付を収穫前へ移しても元の場所を選択できてしまいます");
+          app.document.getElementById("recordDateInput").value = "2026-09-02";
+          app.ensureProtectedOperationAccess = () => true;
+          app.ensureGoogleSheetLocalMutationAllowed = () => true;
+          app.getRecordActualSeedlingTrayCount = () => 1;
+          app.getIncompleteRecordPlantingFlowBuildings = () => [];
+          app.showToast = message => notices.push(message);
+          app.eval('harvestFillKeys=["2-A-3"];');
+          const before = app.eval("JSON.stringify({records,plantingEvents})");
+          await app.savePlantingRecord();
+          assertEqual(notices[0], "苗植えできる場所だけを選択してください", "古い下書きに未来の場所が残っていても保存を拒否しません");
+          assertEqual(app.eval("JSON.stringify({records,plantingEvents})"), before, "保存拒否時に履歴を変更しました");
+          app.eval("editingPlantingEventId=null;");
+          assertEqual(app.isPlantingSelectionAllowed("2-A-3", {fast:true}), true, "通常の苗植え候補が過去日に制限されています");
+          app.invalidatePlantingEventStateCache();
+          const countBefore = builds;
+          app.getPlantingAllowedPalletSet({fast:true});
+          assertEqual(builds, countBefore + 1, "元記録変更時に候補の計算結果を破棄していません");
+          app.eval('editingPlantingEventId=201; harvestFillKeys=["2-A-1","2-A-2","2-A-5"];');
+          app.canPlantSeedlingKeysWithinCapacity = () => true;
+          app.getRecordSeedlingCarryoverMode = () => "loss";
+          app.getActualSeedlingLossRateValue = () => "0";
+          app.confirmPlantingRecordBeforeSend = () => true;
+          app.queueGoogleSheetPlantingEventSend = () => true;
+          app.scheduleRecordSaveUiTransition = () => {};
+          await app.savePlantingRecord();
+          assertDeepEqual(comparable(app.getPlantingEventById(201).sourceAllocations), [
+            { harvestRecordId:101, palletKeys:["2-A-1", "2-A-2"] },
+            { harvestRecordId:103, palletKeys:["2-A-5"] }
+          ], "保存後の記録が当時の収穫元と一致しません");
+          app.syncHarvestPlantingPendingFlags({persist:false});
+          assertDeepEqual(comparable(app.eval("records.map(record => [record.id,record.plantingPending])")),
+            [[100,false],[101,false],[102,true],[103,false]], "過去の苗植え編集が後の収穫回の未定植状態を変えています");
+        }finally{
+          app.buildPlantingEventStateIndex = originalBuild;
+          Object.entries(originals).forEach(([key,value]) => { app[key]=value; });
+          replaceAppHistory(app, previousRecords, previousEvents);
+          app.eval(`activePlantingRecordId=${JSON.stringify(previous.activePlantingRecordId)};
+            editingPlantingEventId=${JSON.stringify(previous.editingPlantingEventId)};
+            recordSelectionMode=${JSON.stringify(previous.recordSelectionMode)};
+            harvestFillKeys=${JSON.stringify(previous.harvestFillKeys)};
+            document.getElementById("recordDateInput").value=${JSON.stringify(previous.date)};`);
+          app.invalidatePlantingEventStateCache();
+          restoreStorage(app.localStorage, previousStorage);
+        }
+      });
+
       await runTest("定植後10日未満を選択不可にし10日後も自動選択順を維持する", () => {
         const harvestRecord = {
           palletNumberingVersion: 2,

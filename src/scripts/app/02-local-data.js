@@ -1381,6 +1381,8 @@ function getNextPlantingEventId(){
 function invalidatePlantingEventStateCache(){
   plantingEventStateCache = null;
   plantingEventStateCacheKey = "";
+  plantingEditStateCache = null;
+  plantingEditStateCacheKey = "";
   seedlingHouseNextKeyCache = "";
   seedlingHouseNextKeyCacheEvents = null;
   seedlingHouseNextKeyCacheInitialStart = "";
@@ -1514,8 +1516,14 @@ function getPlantingCarryoverBeforePosition(plantingDateValue, eventId = null){
 
 function buildPlantingEventStateIndex(options = {}){
   const excludeEventId = getSafePositiveRecordId(options.excludeEventId);
+  const referenceDate = parseDateOnlyString(String(options.referenceDate || "").trim());
   const harvestRecords = records
     .filter(record => record?.type === "fullHarvest")
+    .filter(record => {
+      if(!referenceDate) return true;
+      const harvestDate = parseDateOnlyString(record?.date);
+      return !!harvestDate && harvestDate.getTime() <= referenceDate.getTime();
+    })
     .sort((a, b) => {
       const timeA = parseDateOnlyString(a?.date)?.getTime() ?? Infinity;
       const timeB = parseDateOnlyString(b?.date)?.getTime() ?? Infinity;
@@ -1606,7 +1614,16 @@ function buildPlantingEventStateIndex(options = {}){
   };
 }
 
-function getPlantingEventStateIndex(){
+function getPlantingEventStateIndex(options = {}){
+  if(options.excludeEventId){
+    const key = `${options.excludeEventId}::${options.referenceDate || ""}`;
+    if(!plantingEditStateCache || plantingEditStateCacheKey !== key){
+      // 他の苗植え記録の割当は後日分も残し、同じ収穫回への重複割当を防ぐ。
+      plantingEditStateCache = buildPlantingEventStateIndex(options);
+      plantingEditStateCacheKey = key;
+    }
+    return plantingEditStateCache;
+  }
   if(!plantingEventStateCache){
     plantingEventStateCache = buildPlantingEventStateIndex();
   }
@@ -1671,9 +1688,10 @@ function resolvePlantingEventAllocations(selectedKeys, options = {}){
   (existingEvent?.sourceAllocations || []).forEach(allocation => {
     allocation.palletKeys.forEach(key => existingOwnerByPalletKey.set(key, Number(allocation.harvestRecordId)));
   });
-  const state = options.excludeEventId
-    ? buildPlantingEventStateIndex({ excludeEventId: options.excludeEventId })
-    : getPlantingEventStateIndex();
+  const state = getPlantingEventStateIndex({
+    excludeEventId: options.excludeEventId,
+    referenceDate: existingEvent ? (options.plantingDate || existingEvent.plantingDate) : ""
+  });
   const groups = new Map();
 
   [...new Set(Array.isArray(selectedKeys) ? selectedKeys : [])].forEach(palletKey => {
