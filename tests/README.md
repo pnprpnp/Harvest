@@ -22,7 +22,9 @@ Node.js が使える環境では、次のコマンドでも同じテストを実
 npm test
 ```
 
-Google Chrome または Chromium が必要です。標準の場所にない場合は `CHROME_BIN` に実行ファイルの場所を指定します。
+コマンドでの実行にはGoogle Chrome または Chromium が必要です。標準の場所にない場合は `CHROME_BIN` に実行ファイルの場所を指定します。
+
+Codexの内蔵ブラウザで確認する場合は、ローカルサーバーの `tests/characterization.html?__hncheck=1&visual-baseline=codex-browser` を開きます。主要画面の見た目は、字体・標準入力欄の描画差を区別するため、ローカルChrome（`local-chrome`）と内蔵ブラウザ（`codex-browser`）の基準値を別々に固定しています。基準を変更する場合は対象画面のレイアウトを確認し、両方のブラウザで検証してください。工程ナビの案内文は320px・390pxで幅・文字の高さ・ボタンとの重なりも確認します。
 
 テストは一時的なブラウザープロファイルで動くため、普段使っている Harvestnavi の記録や設定には触れません。手動で `tests/characterization.html` を開いた場合も、同じURLに保存されていたブラウザー内データをテスト終了後に戻します。
 

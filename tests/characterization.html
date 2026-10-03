@@ -237,7 +237,7 @@
       });
     }
 
-    function loadVisualAppFrame(width, height, source = `../index.html?visual-characterization=${Date.now()}`){
+    function loadVisualAppFrame(width, height, source = `../index.html?__hncheck=1&visual-characterization=${Date.now()}`){
       return new Promise((resolve, reject) => {
         const visualFrame = document.createElement("iframe");
         visualFrame.title = "見た目比較用のHarvestnavi";
@@ -7540,6 +7540,33 @@
         assertEqual(state.restoredFromPreviousDay.stage, 5, "前日に保存した工程が日付変更扱いでリセットされました");
         assertEqual(state.restoredFromPreviousDay.title, "二次定植完了後、二次定植の記録へ", "前日の工程表示を引き継げません");
         assert(state.recordsPreserved, "最初に戻る操作で保存済み記録が変わりました");
+      });
+
+      await runTest("工程ナビの最初の案内文を320px・390px幅で切らずに1行表示する", async () => {
+        for(const width of [320,390]){
+          const frame = await loadVisualAppFrame(width, 568, `../index.html?__hncheck=workflow-layout-${width}`);
+          const visualApp = frame.contentWindow;
+          try{
+            visualApp.document.getElementById("welcomeScreen")?.remove();
+            visualApp.eval("setWorkflowGuideStage(1,{force:true,resetFurthest:true}); updateWorkflowGuide();");
+            visualApp.document.getElementById("workflowBar").hidden = false;
+            await settleVisualApp(visualApp);
+            const title = visualApp.document.getElementById("workflowNextTitle");
+            const next = visualApp.document.getElementById("workflowNextActionBtn");
+            const titleRect = title.getBoundingClientRect();
+            const textRange = visualApp.document.createRange();
+            textRange.selectNodeContents(title);
+            const textRect = textRange.getBoundingClientRect();
+            assertEqual(visualApp.getComputedStyle(title).whiteSpace, "nowrap", `${width}pxで案内文が折り返します`);
+            assert(title.scrollWidth <= title.clientWidth, `${width}pxで案内文の横幅が不足しています`);
+            assert(title.scrollHeight <= title.clientHeight, `${width}pxで案内文の上下が切れます`);
+            assert(textRect.height <= titleRect.height + .5, `${width}pxで文字の高さが表示領域を超えています`);
+            assert(titleRect.right < next.getBoundingClientRect().left, `${width}pxで案内文と次へボタンが重なります`);
+            assertEqual(next.disabled, false, `${width}pxで次へボタンが操作できません`);
+          }finally{
+            frame.remove();
+          }
+        }
       });
 
       await runTest("シミュタブの号棟移動ボタンを押しやすい大きさにする", () => {
@@ -18713,20 +18740,40 @@
         const fingerprints = await collectVisualFingerprints();
         // 日別配置図の非表示ダイアログを画面の高さに合わせた。各画面の要素数・表示要素数は維持。
         // 共用したシミュ・記録の配置図は同じHTML構造。日別表示の高さ・号棟切替・混在サイズは専用テストで確認する。
-        assertDeepEqual(fingerprints, {
-          mobileForecast: { hash: "107c7109", elements: 2628, visible: 615, viewport: "390x844" },
-          cssStates: { hash: "8e20c4d7", elements: 2698, visible: 671, viewport: "390x844" },
-          cssFocus: { hash: "7854591c", elements: 2698, visible: 671, viewport: "390x844" },
-          mobileRecord: { hash: "3b1173f7", elements: 2632, visible: 80, viewport: "390x844" },
-          mobileDashboard: { hash: "09e74a6a", elements: 2649, visible: 100, viewport: "390x844" },
-          mobileDashboardRecord: { hash: "d32a5c48", elements: 2732, visible: 169, viewport: "390x844" },
-          mobileDashboardResultsGraph: { hash: "a5b502d8", elements: 2747, visible: 90, viewport: "390x844" },
-          mobileMenu: { hash: "d470960a", elements: 2859, visible: 163, viewport: "390x844" },
-          mobileSettings: { hash: "ded4356f", elements: 2859, visible: 187, viewport: "390x844" },
-          mobileMonitor: { hash: "06f82afa", elements: 2903, visible: 101, viewport: "390x844" },
-          wideForecast: { hash: "e68297f1", elements: 2903, visible: 615, viewport: "1024x900" },
-          wideDashboard: { hash: "aa258271", elements: 2903, visible: 100, viewport: "1024x900" }
-        }, "現在の見た目から変化しています");
+        // 字体・標準入力欄・丸めの差を許容するのではなく、確認環境ごとに基準を固定する。
+        const environment = new URLSearchParams(location.search).get("visual-baseline") || "local-chrome";
+        const baselines = {
+          "local-chrome": {
+            mobileForecast: {"hash": "6115347c", "elements": 2628, "visible": 615, "viewport": "390x844"},
+            cssStates: {"hash": "5480e8de", "elements": 2698, "visible": 671, "viewport": "390x844"},
+            cssFocus: {"hash": "b3a80955", "elements": 2698, "visible": 671, "viewport": "390x844"},
+            mobileRecord: {"hash": "9184376c", "elements": 2632, "visible": 80, "viewport": "390x844"},
+            mobileDashboard: {"hash": "f1fb3519", "elements": 2649, "visible": 100, "viewport": "390x844"},
+            mobileDashboardRecord: {"hash": "5c56e845", "elements": 2732, "visible": 169, "viewport": "390x844"},
+            mobileDashboardResultsGraph: {"hash": "9f96d62b", "elements": 2747, "visible": 90, "viewport": "390x844"},
+            mobileMenu: {"hash": "ad30fbb9", "elements": 2859, "visible": 163, "viewport": "390x844"},
+            mobileSettings: {"hash": "c1322470", "elements": 2859, "visible": 187, "viewport": "390x844"},
+            mobileMonitor: {"hash": "f66e99ef", "elements": 2903, "visible": 101, "viewport": "390x844"},
+            wideForecast: {"hash": "5ec678dd", "elements": 2903, "visible": 615, "viewport": "1024x900"},
+            wideDashboard: {"hash": "406a86dd", "elements": 2903, "visible": 100, "viewport": "1024x900"}
+          },
+          "codex-browser": {
+            mobileForecast: {"hash": "7e152279", "elements": 2628, "visible": 615, "viewport": "390x844"},
+            cssStates: {"hash": "5d13b567", "elements": 2698, "visible": 671, "viewport": "390x844"},
+            cssFocus: {"hash": "eac4a57a", "elements": 2698, "visible": 671, "viewport": "390x844"},
+            mobileRecord: {"hash": "cc972887", "elements": 2632, "visible": 80, "viewport": "390x844"},
+            mobileDashboard: {"hash": "c2cd694e", "elements": 2649, "visible": 100, "viewport": "390x844"},
+            mobileDashboardRecord: {"hash": "c6d9d02f", "elements": 2732, "visible": 169, "viewport": "390x844"},
+            mobileDashboardResultsGraph: {"hash": "65922232", "elements": 2747, "visible": 90, "viewport": "390x844"},
+            mobileMenu: {"hash": "fa6a2e2c", "elements": 2859, "visible": 163, "viewport": "390x844"},
+            mobileSettings: {"hash": "c1e705a4", "elements": 2859, "visible": 187, "viewport": "390x844"},
+            mobileMonitor: {"hash": "c35ddadd", "elements": 2903, "visible": 101, "viewport": "390x844"},
+            wideForecast: {"hash": "4a70129c", "elements": 2903, "visible": 615, "viewport": "1024x900"},
+            wideDashboard: {"hash": "c568c4af", "elements": 2903, "visible": 100, "viewport": "1024x900"}
+          }
+        };
+        assert(Object.prototype.hasOwnProperty.call(baselines, environment), "この確認環境の見た目の基準値は未登録です");
+        assertDeepEqual(fingerprints, baselines[environment], `${environment}の見た目の基準から変化しています`);
       });
     }
 
@@ -18764,7 +18811,7 @@
       }
     }, { once: true });
 
-    iframe.src = `../index.html?characterization-test=${Date.now()}`;
+    iframe.src = `../index.html?__hncheck=1&characterization-test=${Date.now()}`;
     document.body.appendChild(iframe);
   })();
   </script>
