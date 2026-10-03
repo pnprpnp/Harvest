@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- version.json の version と同じ値にする -->
-<meta name="harvestnavi-version" content="20261002-growth-map-fit-screen">
+<meta name="harvestnavi-version" content="20261003-record-harvest-colors">
 <title>Harvestnavi</title>
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260716-2">
 <link rel="icon" href="apple-touch-icon.png?v=20260716-2">
@@ -16738,6 +16738,33 @@ html[data-theme="dark"] .monitorV2Dashboard{--monitor-v2-number-color:#7dcc96;}
   grid-template-columns:repeat(auto-fit,minmax(76px,1fr));
   margin-bottom:4px;
 }
+.recordDetailLocationSection{
+  --record-full-harvest-fill:#2563eb;
+  --record-partial-harvest-fill:#fbbf24;
+  --record-full-harvest-text:#1d4ed8;
+  --record-partial-harvest-text:#9a6700;
+}
+.recordDetailLocationSection .dashboardSeedlingBedMapCell.is-record-full-harvest,
+.recordDetailLocationSection .dashboardSeedlingStatusMapGuideSwatch.is-record-full-harvest{
+  background:var(--record-full-harvest-fill);
+}
+.recordDetailLocationSection .dashboardSeedlingBedMapCell.is-record-partial-harvest,
+.recordDetailLocationSection .dashboardSeedlingStatusMapGuideSwatch.is-record-partial-harvest{
+  background:var(--record-partial-harvest-fill);
+}
+.recordDetailLocationSection .dashboardSeedlingBedMapCell.is-record-both-harvest,
+.recordDetailLocationSection .dashboardSeedlingStatusMapGuideSwatch.is-record-both-harvest{
+  background:repeating-linear-gradient(135deg,var(--record-full-harvest-fill) 0 3px,var(--record-partial-harvest-fill) 3px 6px);
+}
+.recordDetailLocationSection .recordDetailLocationGroupLabel.is-record-full-harvest{
+  color:var(--record-full-harvest-text);
+}
+.recordDetailLocationSection .recordDetailLocationGroupLabel.is-record-partial-harvest{
+  color:var(--record-partial-harvest-text);
+}
+.recordDetailLocationSection .recordDetailLocationGroupLabel.is-record-both-harvest{
+  color:var(--ui-text);
+}
 .recordDetailLocationQualitySummary{
   display:block;
   margin-top:2px;
@@ -18743,6 +18770,12 @@ html[data-theme="dark"] .recordTitlePlanting{color:#8bbcff;}
 html[data-theme="dark"] .recordDateGroupType.is-harvest{color:#71dc92;}
 html[data-theme="dark"] .recordDateGroupType.is-planting{color:#8bbcff;}
 html[data-theme="dark"] .recordDateGroupType.is-partial{color:#e2b86b;}
+html[data-theme="dark"] .recordDetailLocationSection{
+  --record-full-harvest-fill:#60a5fa;
+  --record-partial-harvest-fill:#fbbf24;
+  --record-full-harvest-text:#93c5fd;
+  --record-partial-harvest-text:#e2b86b;
+}
 html[data-theme="dark"] .recordDetailInfoLabel,
 html[data-theme="dark"] .recordMeta,
 html[data-theme="dark"] .recordDetailWindowBody,
@@ -56648,7 +56681,11 @@ function buildRecordDetailLocationModel(kind, entity){
           keys: palletKeys.filter(key => !ALLOWED_YIELDS.includes(Number(plantingCountsByPallet[key])))
         }
       ].filter(group => group.keys.length > 0)
-    : [{ label: qualityText, className: qualityClass, keys: palletKeys }];
+    : (entity?.harvestLocationGroups || [{
+        label: kind === "partialHarvest" ? "部分収穫" : "通常収穫",
+        className: kind === "partialHarvest" ? "is-record-partial-harvest" : "is-record-full-harvest",
+        keys: palletKeys
+      }]);
   const isIndividualPlantingRecord = kind === "planting"
     && getSafePositiveRecordId(entity?.eventId) !== null;
   const locationGroups = isIndividualPlantingRecord
@@ -56857,7 +56894,7 @@ function renderRecordDetailLocationDisplay(){
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${item.className}"></span>苗の品質（${escapeHtml(item.text)}）</span>
         `).join("")}
       ` : model.locationGroups.map(group => `
-        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>今回の${model.actionLabel}（${escapeHtml(group.label)}）</span>
+        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>${escapeHtml(group.label)}</span>
       `).join("")}
       <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>対象外</span>
     </div>
@@ -57052,9 +57089,22 @@ function buildDashboardDayRecordLocationEntity(context, view){
   }
 
   const harvestRecords = context?.harvestRecords || [];
+  const fullKeys = new Set();
+  const partialKeys = new Set();
+  harvestRecords.forEach(record => {
+    const keys = record?.type === "partialHarvest" ? partialKeys : fullKeys;
+    getRecordDetailHarvestPalletKeys(record).forEach(key => keys.add(key));
+  });
+  const palletKeys = [...new Set([...fullKeys, ...partialKeys])]
+    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  const harvestLocationGroups = [
+    { label: "通常収穫", className: "is-record-full-harvest", keys: palletKeys.filter(key => fullKeys.has(key) && !partialKeys.has(key)) },
+    { label: "部分収穫", className: "is-record-partial-harvest", keys: palletKeys.filter(key => partialKeys.has(key) && !fullKeys.has(key)) },
+    { label: "通常収穫・部分収穫", className: "is-record-both-harvest", keys: palletKeys.filter(key => fullKeys.has(key) && partialKeys.has(key)) }
+  ].filter(group => group.keys.length > 0);
   return {
-    palletKeys: [...new Set(harvestRecords.flatMap(getRecordDetailHarvestPalletKeys))]
-      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b)),
+    palletKeys,
+    harvestLocationGroups,
     qualityMemo: harvestRecords.length === 1 ? harvestRecords[0]?.qualityMemo : { other: "複数記録" },
     locationEmptyText: "この日の収穫場所はありません。"
   };

@@ -1134,7 +1134,11 @@ function buildRecordDetailLocationModel(kind, entity){
           keys: palletKeys.filter(key => !ALLOWED_YIELDS.includes(Number(plantingCountsByPallet[key])))
         }
       ].filter(group => group.keys.length > 0)
-    : [{ label: qualityText, className: qualityClass, keys: palletKeys }];
+    : (entity?.harvestLocationGroups || [{
+        label: kind === "partialHarvest" ? "部分収穫" : "通常収穫",
+        className: kind === "partialHarvest" ? "is-record-partial-harvest" : "is-record-full-harvest",
+        keys: palletKeys
+      }]);
   const isIndividualPlantingRecord = kind === "planting"
     && getSafePositiveRecordId(entity?.eventId) !== null;
   const locationGroups = isIndividualPlantingRecord
@@ -1343,7 +1347,7 @@ function renderRecordDetailLocationDisplay(){
           <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${item.className}"></span>苗の品質（${escapeHtml(item.text)}）</span>
         `).join("")}
       ` : model.locationGroups.map(group => `
-        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>今回の${model.actionLabel}（${escapeHtml(group.label)}）</span>
+        <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch ${group.className}"></span>${escapeHtml(group.label)}</span>
       `).join("")}
       <span class="dashboardSeedlingStatusMapGuideItem"><span class="dashboardSeedlingStatusMapGuideSwatch is-unplanted"></span>対象外</span>
     </div>
@@ -1538,9 +1542,22 @@ function buildDashboardDayRecordLocationEntity(context, view){
   }
 
   const harvestRecords = context?.harvestRecords || [];
+  const fullKeys = new Set();
+  const partialKeys = new Set();
+  harvestRecords.forEach(record => {
+    const keys = record?.type === "partialHarvest" ? partialKeys : fullKeys;
+    getRecordDetailHarvestPalletKeys(record).forEach(key => keys.add(key));
+  });
+  const palletKeys = [...new Set([...fullKeys, ...partialKeys])]
+    .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b));
+  const harvestLocationGroups = [
+    { label: "通常収穫", className: "is-record-full-harvest", keys: palletKeys.filter(key => fullKeys.has(key) && !partialKeys.has(key)) },
+    { label: "部分収穫", className: "is-record-partial-harvest", keys: palletKeys.filter(key => partialKeys.has(key) && !fullKeys.has(key)) },
+    { label: "通常収穫・部分収穫", className: "is-record-both-harvest", keys: palletKeys.filter(key => fullKeys.has(key) && partialKeys.has(key)) }
+  ].filter(group => group.keys.length > 0);
   return {
-    palletKeys: [...new Set(harvestRecords.flatMap(getRecordDetailHarvestPalletKeys))]
-      .sort((a, b) => getOrderIndexFromKey(a) - getOrderIndexFromKey(b)),
+    palletKeys,
+    harvestLocationGroups,
     qualityMemo: harvestRecords.length === 1 ? harvestRecords[0]?.qualityMemo : { other: "複数記録" },
     locationEmptyText: "この日の収穫場所はありません。"
   };

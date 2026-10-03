@@ -16527,6 +16527,86 @@
         );
       });
 
+      await runTest("カレンダー詳細は通常・部分・同じ場所の両方の収穫を色と凡例で区別する", () => {
+        const state = comparable(app.eval(`(() => {
+          const previous = {
+            model: recordDetailLocationModel,
+            building: recordDetailLocationBuilding,
+            bed: recordDetailLocationSelectedBed,
+            groupClass: recordDetailLocationSelectedGroupClass,
+            theme: document.documentElement.getAttribute("data-theme")
+          };
+          const section = document.createElement("section");
+          section.className = "recordDetailLocationSection";
+          const mount = document.createElement("div");
+          mount.id = "recordDetailLocationMount";
+          section.appendChild(mount);
+          document.body.appendChild(section);
+          try{
+            const full = { palletKeys: ["2-A-1", "2-A-2"] };
+            const partial = { type: "partialHarvest", targets: [
+              { building: 2, bed: "A", start: 2, end: 3, plantsPerPallet: 9 }
+            ] };
+            const build = recordsForDay => buildRecordDetailLocationModel("harvest",
+              buildDashboardDayRecordLocationEntity({ harvestRecords: recordsForDay }, "harvest"));
+            recordDetailLocationModel = build([full, partial, partial]);
+            recordDetailLocationBuilding = 2;
+            recordDetailLocationSelectedBed = "A";
+            recordDetailLocationSelectedGroupClass = null;
+            renderRecordDetailLocationDisplay();
+            const themes = ["light", "dark"].map(theme => {
+              document.documentElement.setAttribute("data-theme", theme);
+              const bed = mount.querySelector('[data-record-detail-bed="A"]');
+              const styles = [1, 2, 3, 4].map(number => {
+                const cell = bed.querySelector('[data-record-detail-pallet-number="' + number + '"]');
+                const style = getComputedStyle(cell);
+                return { className: cell.className, color: style.backgroundColor, image: style.backgroundImage };
+              });
+              return { theme, styles, swatches: [...mount.querySelectorAll('.dashboardSeedlingStatusMapGuideSwatch')]
+                .map(swatch => ({ color: getComputedStyle(swatch).backgroundColor, image: getComputedStyle(swatch).backgroundImage })) };
+            });
+            return {
+              keys: [...recordDetailLocationModel.keySet],
+              groups: recordDetailLocationModel.locationGroups.map(group => ({ label: group.label, keys: group.keys })),
+              guide: [...mount.querySelectorAll('.dashboardSeedlingStatusMapGuideItem')].map(item => item.textContent.trim()),
+              detail: [...mount.querySelectorAll('.recordDetailLocationGroupLabel')].map(item => item.textContent),
+              themes,
+              fullOnly: build([full]).locationGroups.map(group => group.label),
+              partialOnly: build([partial]).locationGroups.map(group => group.label),
+              empty: build([]).keySet.size,
+              individualPartial: buildRecordDetailLocationModel("partialHarvest", partial).locationGroups[0].className
+            };
+          }finally{
+            section.remove();
+            recordDetailLocationModel = previous.model;
+            recordDetailLocationBuilding = previous.building;
+            recordDetailLocationSelectedBed = previous.bed;
+            recordDetailLocationSelectedGroupClass = previous.groupClass;
+            if(previous.theme === null) document.documentElement.removeAttribute("data-theme");
+            else document.documentElement.setAttribute("data-theme", previous.theme);
+          }
+        })()`));
+        assertDeepEqual(state.keys, ["2-A-1", "2-A-2", "2-A-3"], "重複する収穫場所の数が増えています");
+        assertDeepEqual(state.groups, [
+          { label: "通常収穫", keys: ["2-A-1"] },
+          { label: "部分収穫", keys: ["2-A-3"] },
+          { label: "通常収穫・部分収穫", keys: ["2-A-2"] }
+        ], "収穫の種類ごとに場所を分類できません");
+        assertDeepEqual(state.guide, ["通常収穫", "部分収穫", "通常収穫・部分収穫", "対象外"], "色の意味を凡例で説明できません");
+        assertDeepEqual(state.detail, state.guide.slice(0, 3), "ベッド詳細で収穫の種類を確認できません");
+        for(const { theme, styles, swatches } of state.themes){
+          assert(styles[0].className.includes("is-record-full-harvest"), theme + "で通常収穫の色を適用できません");
+          assert(styles[2].className.includes("is-record-partial-harvest"), theme + "で部分収穫の色を適用できません");
+          assert(styles[0].color !== styles[2].color && styles[2].color !== styles[3].color,
+            theme + "で通常収穫・部分収穫・対象外の色が重複しています");
+          assert(styles[1].image.includes("repeating-linear-gradient"), theme + "で両方の収穫をしま模様で表示できません");
+          assertDeepEqual(swatches, [styles[0], styles[2], styles[1], styles[3]].map(({ color, image }) => ({ color, image })),
+            theme + "で凡例とパレットの色が一致しません");
+        }
+        assertDeepEqual([state.fullOnly, state.partialOnly, state.empty, state.individualPartial],
+          [["通常収穫"], ["部分収穫"], 0, "is-record-partial-harvest"], "単独の収穫・空の日・個別詳細の区別が変わっています");
+      });
+
       await runTest("苗植え詳細の場所を植え付け数で切り替え、苗の品質色で表示する", () => {
         const locationState = comparable(app.eval(`(() => {
           const previous = {
